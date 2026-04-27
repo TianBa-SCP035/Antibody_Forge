@@ -1,0 +1,43 @@
+# === 1. 全局规则 ===
+
+
+# === 2. 后端规则 ===
+
+# server/.venv
+# server/**/__pycache__/
+
+
+
+# === 3. 前端规则 ===
+
+bbctg_vita_web/**/node_modules
+bbctg_vita_web/**/dist
+bbctg_vita_web/**/dist-ssr
+bbctg_vita_web/**/dist.zip
+bbctg_vita_web/**/dist.tar
+bbctg_vita_web/**/dist.war
+bbctg_vita_web/**/.nitro
+bbctg_vita_web/**/.output
+bbctg_vita_web/**/*-dist.zip
+bbctg_vita_web/**/*-dist.tar
+bbctg_vita_web/**/*-dist.war
+bbctg_vita_web/**/coverage
+bbctg_vita_web/**/*.local
+bbctg_vita_web/**/.vitepress/cache
+bbctg_vita_web/**/.cache
+bbctg_vita_web/**/.turbo
+bbctg_vita_web/**/.temp
+bbctg_vita_web/**/dev-dist
+bbctg_vita_web/**/.stylelintcache
+bbctg_vita_web/**/yarn.lock
+bbctg_vita_web/**/package-lock.json
+bbctg_vita_web/**/.VSCodeCounter
+bbctg_vita_web/**/backend-mock/data
+bbctg_vita_web/**/.omx
+bbctg_vita_web/**/.env.local
+bbctg_vita_web/**/.env.*.local
+bbctg_vita_web/**/.eslintcache
+bbctg_vita_web/**/vite.config.mts.*
+bbctg_vita_web/**/vite.config.mjs.*
+bbctg_vita_web/**/vite.config.js.*
+bbctg_vita_web/**/vite.config.ts.*

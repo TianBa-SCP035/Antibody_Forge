@@ -15,7 +15,7 @@ const authStore = useAuthStore();
 
 const MOCK_USER_OPTIONS: BasicOption[] = [
   {
-    label: 'Super',
+    label: '周科钢',
     value: 'vben',
   },
   {

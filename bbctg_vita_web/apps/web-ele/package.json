@@ -26,6 +26,7 @@
     "#/*": "./src/*"
   },
   "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
     "@vben/access": "workspace:*",
     "@vben/common-ui": "workspace:*",
     "@vben/constants": "workspace:*",
@@ -45,7 +46,8 @@
     "element-plus": "catalog:",
     "pinia": "catalog:",
     "vue": "catalog:",
-    "vue-router": "catalog:"
+    "vue-router": "catalog:",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "unplugin-element-plus": "catalog:"

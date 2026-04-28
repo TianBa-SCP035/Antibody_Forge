@@ -5,7 +5,8 @@ import { registerLoadingDirective } from '@vben/common-ui';
 import { preferences } from '@vben/preferences';
 import { initStores } from '@vben/stores';
 import '@vben/styles';
-import '@vben/styles/ele';
+// Temporarily disable Vben's Element Plus-specific style overrides.
+// import '@vben/styles/ele';
 
 import { useTitle } from '@vueuse/core';
 import { ElLoading } from 'element-plus';

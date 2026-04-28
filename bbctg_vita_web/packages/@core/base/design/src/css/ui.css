@@ -86,6 +86,144 @@
   z-index: var(--popup-z-index);
 }
 
+@media not all {
+html:root {
+  /*
+   * Serum migration sizing:
+   * Element UI mini ~= Element Plus small in our migrated pages.
+   * Keep default/large on Element Plus semantics, but make small match Element UI mini.
+   */
+  --el-component-size-small: 28px;
+}
+
+html:root .el-button--small {
+  --el-button-size: var(--el-component-size-small);
+
+  height: var(--el-button-size);
+  padding: 7px 15px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+
+/* Element UI small ~= Element Plus default for the migrated serum pages. */
+html:root .el-button:not(.el-button--small):not(.el-button--large) {
+  font-size: 12px;
+}
+
+html:root .el-input:not(.el-input--small):not(.el-input--large),
+html:root .el-textarea,
+html:root .el-select:not(.el-select--small):not(.el-select--large) {
+  font-size: 13px;
+}
+
+html:root .el-input--small {
+  --el-input-height: var(--el-component-size-small);
+
+  font-size: 12px;
+}
+
+html:root .el-select--small .el-select__wrapper,
+html:root .el-input--small .el-input__wrapper {
+  min-height: var(--el-component-size-small);
+  font-size: 12px;
+}
+
+html:root .el-date-editor.el-input--small {
+  --el-input-height: var(--el-component-size-small);
+}
+
+html:root .el-input-number--small {
+  width: 130px;
+  line-height: 26px;
+}
+
+html:root .el-input-number--small .el-input-number__decrease,
+html:root .el-input-number--small .el-input-number__increase {
+  width: 28px;
+  font-size: 12px;
+}
+
+html:root .el-input-number--small .el-input__wrapper {
+  padding-right: 35px;
+  padding-left: 35px;
+}
+
+html:root .el-tag--small {
+  height: 20px;
+  padding: 0 5px;
+  font-size: 12px;
+  line-height: 19px;
+}
+
+html:root .el-table--small {
+  font-size: 12px;
+}
+
+html:root .el-table--small .el-table__cell {
+  padding: 6px 0;
+}
+
+html:root .el-table:not(.el-table--small):not(.el-table--large) {
+  font-size: 12px;
+}
+
+html:root .el-descriptions--small {
+  font-size: 12px;
+}
+
+html:root
+  .el-descriptions--small
+  .el-descriptions__body
+  .el-descriptions__table.is-bordered
+  .el-descriptions__cell {
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+html:root .el-descriptions:not(.el-descriptions--small):not(.el-descriptions--large) {
+  font-size: 12px;
+}
+
+html:root
+  .el-descriptions:not(.el-descriptions--small):not(.el-descriptions--large)
+  .el-descriptions__body
+  .el-descriptions__table
+  .el-descriptions__cell {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+html:root .el-table--small .el-input--small .el-input__wrapper,
+html:root .el-table--small .el-select--small .el-select__wrapper {
+  padding-right: 14px;
+  padding-left: 14px;
+}
+
+html:root .el-table--small .el-date-editor.el-input--small .el-input__wrapper {
+  padding-right: 12px;
+  padding-left: 12px;
+}
+
+/* Match Element UI's clickable affordance for picker-like inputs. */
+.el-select:hover .el-select__wrapper,
+.el-select:hover .el-input__wrapper,
+.el-select:hover .el-input__inner,
+.el-date-editor:hover,
+.el-date-editor:hover .el-input__wrapper,
+.el-date-editor:hover .el-input__inner,
+.el-cascader:hover .el-input__wrapper,
+.el-cascader:hover .el-input__inner {
+  cursor: pointer;
+}
+
+.el-select .el-input__inner:focus,
+.el-date-editor .el-input__inner:focus,
+.el-cascader .el-input__inner:focus {
+  cursor: text;
+}
+}
+
 @keyframes shrink {
   0% {
     transform: scale(1);

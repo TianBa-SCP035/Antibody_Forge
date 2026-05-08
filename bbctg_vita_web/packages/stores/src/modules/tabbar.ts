@@ -712,7 +712,7 @@ function getTabKey(tab: RouteLocationNormalized | RouteRecordNormalized) {
   const {
     fullPath,
     path,
-    meta: { fullPathKey } = {},
+    meta: { fullPathKey, tabKey } = {},
     query = {},
   } = tab as RouteLocationNormalized;
   // pageKey可能是数组（查询参数重复时可能出现）
@@ -722,6 +722,8 @@ function getTabKey(tab: RouteLocationNormalized | RouteRecordNormalized) {
   let rawKey;
   if (pageKey) {
     rawKey = pageKey;
+  } else if (tabKey) {
+    rawKey = tabKey;
   } else {
     rawKey = fullPathKey === false ? path : (fullPath ?? path);
   }

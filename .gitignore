@@ -3,8 +3,13 @@
 
 # === 2. 后端规则 ===
 
-# server/.venv
-# server/**/__pycache__/
+bbctg_vita_server/.venv
+bbctg_vita_server/**/__pycache__/
+bbctg_vita_server/**/*.pyc
+config/local/
+config/test/
+config/prod/
+repository/
 
 
 

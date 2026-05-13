@@ -1,4 +1,5 @@
 import { RequestClient } from '@vben/request';
+import { useAccessStore } from '@vben/stores';
 
 const serumApiURL = import.meta.env.VITE_SERUM_API_URL || '/serum-api';
 
@@ -6,6 +7,18 @@ const request = new RequestClient({
   baseURL: serumApiURL,
   timeout: 360_000,
   withCredentials: true,
+});
+
+request.addRequestInterceptor({
+  fulfilled: async (config) => {
+    const accessStore = useAccessStore();
+    const token = accessStore.accessToken;
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
 });
 
 request.addResponseInterceptor({

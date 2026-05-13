@@ -1,16 +1,55 @@
-const ADMIN_ROLES = new Set(['DOGE', 'super', 'admin']);
-
-function normalizeRoles(roles: unknown): string[] {
-  if (Array.isArray(roles)) {
-    return roles.map(String).filter(Boolean);
+function normalizeStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(String).filter(Boolean);
   }
-  if (typeof roles === 'string') {
-    return roles
+  if (typeof value === 'string') {
+    return value
       .split(',')
-      .map((role) => role.trim())
+      .map((item) => item.trim())
       .filter(Boolean);
   }
   return [];
+}
+
+function normalizeRoles(roles: unknown): string[] {
+  return normalizeStringList(roles);
+}
+
+function getAccessCodes(userInfo: any): string[] {
+  return normalizeStringList(
+    userInfo?.accessCodes || userInfo?.permissions || userInfo?.permissionCodes,
+  );
+}
+
+function hasAccessCode(userInfo: any, code: string): boolean {
+  const codes = getAccessCodes(userInfo);
+  return codes.includes('*') || codes.includes(code);
+}
+
+function normalizeName(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function getUserNameAliases(userInfo: any): string[] {
+  const names = [
+    normalizeName(userInfo?.realName),
+    normalizeName(userInfo?.displayName),
+    normalizeName(userInfo?.display_name),
+    normalizeName(userInfo?.username),
+  ].filter(Boolean);
+  return [
+    ...new Set(
+      names.flatMap((name) => {
+        const firstPart = name.split(/\s+/)[0] || '';
+        return firstPart && firstPart !== name ? [name, firstPart] : [name];
+      }),
+    ),
+  ];
+}
+
+function isProjectOwner(userInfo: any, project: any): boolean {
+  const owner = normalizeName(project?.owner);
+  return Boolean(owner && getUserNameAliases(userInfo).includes(owner));
 }
 
 export function getSerumUserName(userInfo: any): string {
@@ -21,55 +60,72 @@ export function getSerumUserRoles(userInfo: any): string[] {
   return normalizeRoles(userInfo?.roles);
 }
 
-export function isSerumAdmin(roles: unknown): boolean {
-  return normalizeRoles(roles).some((role) => ADMIN_ROLES.has(role));
-}
-
-export function isSerumOwner(userInfo: any, owner?: string): boolean {
-  if (!owner) {
-    return false;
-  }
-  return getSerumUserName(userInfo).includes(owner);
-}
-
 export function canCreateSerumProject(userInfo: any): boolean {
-  const roles = getSerumUserRoles(userInfo);
-  return isSerumAdmin(roles) || roles.includes('serum_project_create');
+  return hasAccessCode(userInfo, 'serum.project.create');
+}
+
+export function canEditAllSerumProjects(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.project.edit_all');
+}
+
+export function canEditAllSerumTiter(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.titer.edit_all');
 }
 
 export function canEditSerumProject(userInfo: any, project: any): boolean {
-  const roles = getSerumUserRoles(userInfo);
-  return isSerumAdmin(roles) || isSerumOwner(userInfo, project?.owner);
+  if (canEditAllSerumProjects(userInfo)) {
+    return true;
+  }
+  return hasAccessCode(userInfo, 'serum.project.edit') && isProjectOwner(userInfo, project);
+}
+
+export function canDeleteSerumProject(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.project.delete');
+}
+
+export function canUpdateSerumStatus(userInfo: any, project: any): boolean {
+  return (
+    hasAccessCode(userInfo, 'serum.status.update') &&
+    (canEditAllSerumProjects(userInfo) || isProjectOwner(userInfo, project))
+  );
+}
+
+export function canUpdateSerumCage(userInfo: any, project: any): boolean {
+  return (
+    hasAccessCode(userInfo, 'serum.cage.update') &&
+    (canEditAllSerumProjects(userInfo) || isProjectOwner(userInfo, project))
+  );
 }
 
 export function canEditSerumTiter(userInfo: any, project: any): boolean {
-  const roles = getSerumUserRoles(userInfo);
   return (
-    isSerumAdmin(roles) ||
-    roles.includes('serum_titer') ||
-    isSerumOwner(userInfo, project?.owner)
+    hasAccessCode(userInfo, 'serum.titer.edit') &&
+    (canEditAllSerumTiter(userInfo) || isProjectOwner(userInfo, project))
+  );
+}
+
+export function canManageSerumTiterFiles(userInfo: any, project: any): boolean {
+  return (
+    hasAccessCode(userInfo, 'serum.file.manage') &&
+    (canEditAllSerumTiter(userInfo) || isProjectOwner(userInfo, project))
   );
 }
 
 export function canExportSerumMouse(userInfo: any): boolean {
-  const roles = getSerumUserRoles(userInfo);
-  return isSerumAdmin(roles) || roles.includes('serum_export');
+  return hasAccessCode(userInfo, 'serum.mouse.export');
 }
 
 export function canAutoUpdateSerumStatus(userInfo: any): boolean {
-  return isSerumAdmin(getSerumUserRoles(userInfo));
+  return hasAccessCode(userInfo, 'serum.status.auto_update');
 }
 
 export function canViewSerumCellInventory(userInfo: any): boolean {
-  const roles = getSerumUserRoles(userInfo);
-  return isSerumAdmin(roles) || roles.includes('serum_cell_inventory');
+  return hasAccessCode(userInfo, 'serum.cell.view');
 }
 
 export function canUpdateSerumPrepStatus(userInfo: any, project: any): boolean {
-  const roles = getSerumUserRoles(userInfo);
   return (
-    isSerumAdmin(roles) ||
-    roles.includes('serum_cell_prep') ||
-    isSerumOwner(userInfo, project?.owner)
+    hasAccessCode(userInfo, 'serum.cell.prep_status.update') &&
+    (canEditAllSerumProjects(userInfo) || isProjectOwner(userInfo, project))
   );
 }

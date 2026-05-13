@@ -26,6 +26,15 @@ export async function loginApi(data: AuthApi.LoginParams) {
 }
 
 /**
+ * 云之家免密登录
+ */
+export async function yunzhijiaLoginApi(ticket: string) {
+  return requestClient.get<AuthApi.LoginResult>('/auth/yunzhijia', {
+    params: { ticket },
+  });
+}
+
+/**
  * 刷新accessToken
  */
 export async function refreshTokenApi() {

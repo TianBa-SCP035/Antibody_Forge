@@ -14,7 +14,7 @@ import { markRaw, toRaw } from 'vue';
 import { preferences } from '@vben-core/preferences';
 import {
   createStack,
-  openRouteInNewWindow,
+  openWindow,
   Stack,
   startProgress,
   stopProgress,
@@ -371,8 +371,9 @@ export const useTabbarStore = defineStore('core-tabbar', {
      * @zh_CN 新窗口打开标签页
      * @param tab
      */
-    async openTabInNewWindow(tab: TabDefinition) {
-      openRouteInNewWindow(tab.fullPath || tab.path);
+    async openTabInNewWindow(tab: TabDefinition, router: Router) {
+      const href = router.resolve(tab.fullPath || tab.path).href;
+      openWindow(new URL(href, location.href).href, { target: '_blank' });
     },
 
     /**
@@ -712,18 +713,18 @@ function getTabKey(tab: RouteLocationNormalized | RouteRecordNormalized) {
   const {
     fullPath,
     path,
-    meta: { fullPathKey, tabKey } = {},
+    meta: { fullPathKey, tabGroup } = {},
     query = {},
   } = tab as RouteLocationNormalized;
   // pageKey可能是数组（查询参数重复时可能出现）
   const pageKey = Array.isArray(query.pageKey)
     ? query.pageKey[0]
     : query.pageKey;
-  let rawKey;
-  if (pageKey) {
+  let rawKey: string;
+  if (typeof pageKey === 'string' && pageKey) {
     rawKey = pageKey;
-  } else if (tabKey) {
-    rawKey = tabKey;
+  } else if (typeof tabGroup === 'string' && tabGroup) {
+    rawKey = tabGroup;
   } else {
     rawKey = fullPathKey === false ? path : (fullPath ?? path);
   }

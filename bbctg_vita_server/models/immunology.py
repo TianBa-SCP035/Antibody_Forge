@@ -256,6 +256,8 @@ class SerumFacsPlate(Base):
     lower_group: Mapped[str | None] = mapped_column(String(32))
     upper_mouse_list: Mapped[object | None] = mapped_column(JSON)
     lower_mouse_list: Mapped[object | None] = mapped_column(JSON)
+    upper_slot_groups: Mapped[object | None] = mapped_column(JSON)
+    lower_slot_groups: Mapped[object | None] = mapped_column(JSON)
     positive_well_list: Mapped[object | None] = mapped_column(JSON)
     instrument_type: Mapped[str | None] = mapped_column(String(64))
 
@@ -276,6 +278,8 @@ class SerumFacsPlate(Base):
             "lower_group": self.lower_group,
             "upper_mouse_list": self.upper_mouse_list,
             "lower_mouse_list": self.lower_mouse_list,
+            "upper_slot_groups": self.upper_slot_groups,
+            "lower_slot_groups": self.lower_slot_groups,
             "positive_well_list": self.positive_well_list,
             "instrument_type": self.instrument_type,
         }

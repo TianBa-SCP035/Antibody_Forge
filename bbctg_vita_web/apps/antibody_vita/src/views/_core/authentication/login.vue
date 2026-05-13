@@ -1,10 +1,9 @@
 <script lang="ts" setup>
 import type { VbenFormSchema } from '@vben/common-ui';
-import type { BasicOption } from '@vben/types';
 
-import { computed, markRaw } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
-import { AuthenticationLogin, SliderCaptcha, z } from '@vben/common-ui';
+import { AuthenticationLogin, z } from '@vben/common-ui';
 import { $t } from '@vben/locales';
 
 import { useAuthStore } from '#/store';
@@ -12,62 +11,40 @@ import { useAuthStore } from '#/store';
 defineOptions({ name: 'Login' });
 
 const authStore = useAuthStore();
-
-const MOCK_USER_OPTIONS: BasicOption[] = [
-  {
-    label: '周科钢',
-    value: 'vben',
-  },
-  {
-    label: 'Admin',
-    value: 'admin',
-  },
-  {
-    label: 'User',
-    value: 'jack',
-  },
-];
+const loginRef = ref<any>(null);
+const recentAccounts = ref<Array<{ lastLoginAt?: string; realName?: string; username: string }>>([]);
+const RECENT_LOGIN_ACCOUNTS_KEY = `ANTIBODY_RECENT_LOGIN_ACCOUNTS_${location.hostname}`;
 
 const formSchema = computed((): VbenFormSchema[] => {
+  const recentAccountSchema: VbenFormSchema[] = recentAccounts.value.length
+    ? [
+        {
+          component: 'VbenSelect',
+          componentProps: {
+            allowClear: true,
+            options: recentAccounts.value.map((account) => ({
+              label: account.realName || account.username,
+              value: account.username,
+            })),
+            placeholder: '快速选择账号',
+            'onUpdate:modelValue': selectRecentAccount,
+          },
+          fieldName: 'recentAccount',
+          label: '快速选择账号',
+        },
+      ]
+    : [];
+
   return [
-    {
-      component: 'VbenSelect',
-      componentProps: {
-        options: MOCK_USER_OPTIONS,
-        placeholder: $t('authentication.selectAccount'),
-      },
-      fieldName: 'selectAccount',
-      label: $t('authentication.selectAccount'),
-      rules: z
-        .string()
-        .min(1, { message: $t('authentication.selectAccount') })
-        .optional()
-        .default('vben'),
-    },
+    ...recentAccountSchema,
     {
       component: 'VbenInput',
       componentProps: {
-        placeholder: $t('authentication.usernameTip'),
-      },
-      dependencies: {
-        trigger(values, form) {
-          if (values.selectAccount) {
-            const findUser = MOCK_USER_OPTIONS.find(
-              (item) => item.value === values.selectAccount,
-            );
-            if (findUser) {
-              form.setValues({
-                password: '123456',
-                username: findUser.value,
-              });
-            }
-          }
-        },
-        triggerFields: ['selectAccount'],
+        placeholder: '请输入账号',
       },
       fieldName: 'username',
-      label: $t('authentication.username'),
-      rules: z.string().min(1, { message: $t('authentication.usernameTip') }),
+      label: '账号',
+      rules: z.string().min(1, { message: '请输入账号' }),
     },
     {
       component: 'VbenInputPassword',
@@ -78,21 +55,29 @@ const formSchema = computed((): VbenFormSchema[] => {
       label: $t('authentication.password'),
       rules: z.string().min(1, { message: $t('authentication.passwordTip') }),
     },
-    {
-      component: markRaw(SliderCaptcha),
-      fieldName: 'captcha',
-      rules: z.boolean().refine((value) => value, {
-        message: $t('authentication.verifyRequiredTip'),
-      }),
-    },
   ];
 });
+
+function loadRecentAccounts() {
+  const raw = localStorage.getItem(RECENT_LOGIN_ACCOUNTS_KEY);
+  recentAccounts.value = raw ? JSON.parse(raw) : [];
+}
+
+function selectRecentAccount(username?: string) {
+  if (!username) return;
+  loginRef.value?.getFormApi?.().setFieldValue('username', username);
+}
+
+onMounted(loadRecentAccounts);
 </script>
 
 <template>
-  <AuthenticationLogin
-    :form-schema="formSchema"
-    :loading="authStore.loginLoading"
-    @submit="authStore.authLogin"
-  />
+  <div>
+    <AuthenticationLogin
+      ref="loginRef"
+      :form-schema="formSchema"
+      :loading="authStore.loginLoading"
+      @submit="authStore.authLogin"
+    />
+  </div>
 </template>

@@ -5,7 +5,7 @@ import { unref } from 'vue';
 import { RouterView } from 'vue-router';
 
 import { usePreferences } from '@vben/preferences';
-import { getTabKey, storeToRefs, useTabbarStore } from '@vben/stores';
+import { storeToRefs, useTabbarStore } from '@vben/stores';
 
 import { transformComponent, useLayoutHook } from '../../hooks';
 import { IFrameRouterView } from '../../iframe';
@@ -28,6 +28,16 @@ const { getEnabledTransition, getTransitionName } = useLayoutHook();
 const showComponent = (route: RouteLocationNormalizedLoadedGeneric) => {
   return !route.meta.domCached && unref(renderRouteView);
 };
+
+function getRouteViewKey(route: RouteLocationNormalizedLoadedGeneric) {
+  const { fullPath, path, meta: { fullPathKey } = {} } = route;
+  const rawKey = fullPathKey === false ? path : (fullPath ?? path);
+  try {
+    return decodeURIComponent(rawKey);
+  } catch {
+    return rawKey;
+  }
+}
 </script>
 
 <template>
@@ -55,13 +65,13 @@ const showComponent = (route: RouteLocationNormalizedLoadedGeneric) => {
             :is="transformComponent(Component, route)"
             v-if="showComponent(route)"
             v-show="!route.meta.iframeSrc"
-            :key="getTabKey(route)"
+            :key="getRouteViewKey(route)"
           />
         </KeepAlive>
         <component
           :is="Component"
           v-else-if="showComponent(route)"
-          :key="getTabKey(route)"
+          :key="getRouteViewKey(route)"
         />
       </Transition>
       <template v-else>
@@ -74,13 +84,13 @@ const showComponent = (route: RouteLocationNormalizedLoadedGeneric) => {
             :is="transformComponent(Component, route)"
             v-if="showComponent(route)"
             v-show="!route.meta.iframeSrc"
-            :key="getTabKey(route)"
+            :key="getRouteViewKey(route)"
           />
         </KeepAlive>
         <component
           :is="Component"
           v-else-if="showComponent(route)"
-          :key="getTabKey(route)"
+          :key="getRouteViewKey(route)"
         />
       </template>
     </RouterView>

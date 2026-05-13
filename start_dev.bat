@@ -4,7 +4,7 @@ setlocal
 set "CONDA_ENV=Bender"
 set "ROOT=%~dp0"
 
-for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":9091 .*LISTENING" /C:":5777 .*LISTENING"') do (
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":8888 .*LISTENING" /C:":5777 .*LISTENING"') do (
   taskkill /PID %%P /T /F >nul 2>nul
 )
 

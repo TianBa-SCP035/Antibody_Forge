@@ -57,6 +57,14 @@ const coreRoutes: RouteRecordRaw[] = [
         },
       },
       {
+        name: 'YunzhijiaLogin',
+        path: 'yunzhijia',
+        component: () => import('#/views/_core/authentication/yunzhijia.vue'),
+        meta: {
+          title: '云之家登录',
+        },
+      },
+      {
         name: 'CodeLogin',
         path: 'code-login',
         component: () => import('#/views/_core/authentication/code-login.vue'),

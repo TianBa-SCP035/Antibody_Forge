@@ -31,7 +31,7 @@
               class="titer-upload"
               action=""
               :http-request="handleFileUpload"
-              :disabled="!canEditTiter()"
+              :disabled="!canManageFiles()"
               drag
               multiple
               :show-file-list="false"
@@ -89,7 +89,7 @@
                   <!-- Image Preview -->
                   <el-image 
                     v-if="isImage(file.file_name)" 
-                    :src="getImageUrl(file)" 
+                    :src="file.thumb_object_url || ''" 
                     fit="cover" 
                     class="file-thumb"
                   >
@@ -275,6 +275,7 @@
               :is-saving="savingPlateKeys[getPlateKey(plate)]"
               :is-editable="canEditTiter()"
               @delete="handleDeletePlate"
+              @load-image-preview="loadPreviewImage"
               @save="handleSavePlate"
             />
           </el-tab-pane>
@@ -303,10 +304,10 @@
           <!-- Large Preview -->
           <div v-if="isImage(currentFile.file_name)" class="preview-container">
             <el-image 
-              :src="getDownloadUrl(currentFile, true)" 
+              :src="currentFile.preview_object_url || currentFile.thumb_object_url || ''" 
               fit="contain" 
               class="full-image"
-              :preview-src-list="[getDownloadUrl(currentFile, true)]"
+              :preview-src-list="[currentFile.preview_object_url || currentFile.thumb_object_url || '']"
             />
           </div>
           <div v-else-if="isExcel(currentFile.file_name)" class="excel-preview-area">
@@ -359,7 +360,7 @@
               <el-form-item label="重命名 (Rename)">
                 <el-input v-model="editFileName" placeholder="输入新文件名">
                   <template #append>
-                    <el-button type="primary" :disabled="!canEditTiter()" @click="handleRename">保存</el-button>
+                    <el-button type="primary" :disabled="!canManageFiles()" @click="handleRename">保存</el-button>
                   </template>
                 </el-input>
               </el-form-item>
@@ -373,15 +374,15 @@
                   action=""
                   :http-request="handleReplaceFile"
                   :show-file-list="false"
-                  :disabled="!canEditTiter()"
+                  :disabled="!canManageFiles()"
                   class="replace-uploader"
                 >
-                  <el-button type="warning" plain :disabled="!canEditTiter()">
+                  <el-button type="warning" plain :disabled="!canManageFiles()">
                     <el-icon><Refresh /></el-icon>
                     <span>替换文件</span>
                   </el-button>
                 </el-upload>
-                <el-button type="danger" plain :disabled="!canEditTiter()" @click="handleDeleteFile(currentFile)">
+                <el-button type="danger" plain :disabled="!canManageFiles()" @click="handleDeleteFile(currentFile)">
                   <el-icon><Delete /></el-icon>
                   <span>删除文件</span>
                 </el-button>
@@ -395,7 +396,7 @@
 </template>
 
 <script>
-import { useUserStore } from '@vben/stores'
+import { useAccessStore, useUserStore } from '@vben/stores'
 
 import {
   Aim,
@@ -448,6 +449,7 @@ import FacsPlateCard from './FacsPlateCard.vue'
 import { fetchDetail, fetchIndexFiles, saveIndexFile, deleteIndexFile, renameIndexFile, replaceIndexFile, saveTiterTargets, saveTiterPcs, fetchFacsPlates, saveFacsPlate, deleteFacsPlate } from '#/api/serum'
 import {
   canEditSerumTiter,
+  canManageSerumTiterFiles,
   getSerumUserName,
 } from '#/utils/serumPermission'
 
@@ -499,9 +501,11 @@ export default {
     Warning,
   },
   setup() {
+    const accessStore = useAccessStore()
     const userStore = useUserStore()
 
     return {
+      accessStore,
       userStore,
     }
   },
@@ -536,7 +540,8 @@ export default {
       activePlateName: '',
       plateTimers: {},
       plateSaveSeq: {},
-      savingPlateKeys: {}
+      savingPlateKeys: {},
+      fileObjectUrls: {}
     }
   },
   computed: {
@@ -606,6 +611,8 @@ export default {
       this.excelData = []
       this.currentFile = null
       this.fileList = []
+      Object.values(this.fileObjectUrls).forEach(url => URL.revokeObjectURL(url))
+      this.fileObjectUrls = {}
       
       this.titer_targets = []
       this.titer_pcs = []
@@ -635,11 +642,12 @@ export default {
       this.filesLoading = true
       fetchIndexFiles({ experiment_id: expId }).then(res => {
         this.fileList = res.data.items || []
+        this.loadImageThumbs()
         this.filesLoading = false
       }).catch(() => { this.filesLoading = false })
     },
     handleFileUpload(param) {
-      if (!this.canEditTiter()) {
+      if (!this.canManageFiles()) {
         ElMessage.warning('您没有权限编辑此项目')
         return
       }
@@ -650,7 +658,6 @@ export default {
       const formData = new FormData()
       formData.append('file', param.file)
       formData.append('experiment_id', this.experiment_id)
-      formData.append('user_name', this.currentUserName)
       
       saveIndexFile(formData).then(res => {
         ElMessage.success('上传成功')
@@ -668,6 +675,8 @@ export default {
       
       if (this.isExcel(file.file_name)) {
         this.loadExcelData(file)
+      } else if (this.isImage(file.file_name)) {
+        this.loadPreviewImage(file)
       } else {
         this.excelData = []
       }
@@ -683,7 +692,7 @@ export default {
       this.editFileName = ''
     },
     handleRename() {
-      if (!this.canEditTiter()) {
+      if (!this.canManageFiles()) {
         ElMessage.warning('您没有权限编辑此项目')
         return
       }
@@ -693,7 +702,6 @@ export default {
       renameIndexFile({ 
         id: this.currentFile.id, 
         new_name: this.editFileName,
-        user_name: this.currentUserName
       }).then(res => {
         ElMessage.success('重命名成功')
         this.currentFile.file_name = this.editFileName 
@@ -703,7 +711,7 @@ export default {
       })
     },
     handleReplaceFile(param) {
-      if (!this.canEditTiter()) {
+      if (!this.canManageFiles()) {
         ElMessage.warning('您没有权限编辑此项目')
         return
       }
@@ -715,18 +723,18 @@ export default {
         const formData = new FormData()
         formData.append('file', param.file)
         formData.append('id', this.currentFile.id)
-        formData.append('user_name', this.currentUserName)
         
         replaceIndexFile(formData).then(res => {
           ElMessage.success('替换成功')
           
-          const currentUserName = this.currentUserName
+          const savedFile = res.data || {}
+          const uploadUser = savedFile.upload_user || this.currentUserName
           const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
-          const newFileName = param.file.name
+          const newFileName = savedFile.file_name || param.file.name
           
           this.currentFile.file_name = newFileName
-          this.currentFile.upload_user = currentUserName
-          this.currentFile.updated_time = now
+          this.currentFile.upload_user = uploadUser
+          this.currentFile.updated_time = savedFile.updated_time || now
           this.currentFile._timestamp = Date.now()
           this.editFileName = newFileName
           
@@ -737,8 +745,8 @@ export default {
           const fileInList = this.fileList.find(f => f.id === this.currentFile.id)
           if (fileInList) {
             fileInList.file_name = newFileName
-            fileInList.upload_user = currentUserName
-            fileInList.updated_time = now
+            fileInList.upload_user = uploadUser
+            fileInList.updated_time = savedFile.updated_time || now
             fileInList._timestamp = Date.now()
           }
         }).catch(err => {
@@ -748,7 +756,7 @@ export default {
       }).catch(() => {})
     },
     handleDeleteFile(file) {
-      if (!this.canEditTiter()) {
+      if (!this.canManageFiles()) {
         ElMessage.warning('您没有权限编辑此项目')
         return
       }
@@ -764,13 +772,21 @@ export default {
         })
       }).catch(() => {})
     },
-    handleDownload(file) {
-      const link = document.createElement('a');
-      link.href = this.getDownloadUrl(file);
-      link.download = file.file_name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+    async handleDownload(file) {
+      try {
+        const blob = await this.fetchFileBlob(this.getDownloadUrl(file))
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = file.file_name
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+      } catch (error) {
+        console.error('下载文件失败:', error)
+        ElMessage.error('下载失败')
+      }
     },
     
     getDownloadUrl(file, isPreview = false) {
@@ -784,15 +800,12 @@ export default {
       return url
     },
     getImageUrl(file) {
-      if (file.thumb_url) {
-        const baseUrl = serumApiBaseUrl
-        const thumbUrl = file.thumb_url.startsWith('/') ? file.thumb_url : '/' + file.thumb_url
-        return baseUrl + thumbUrl
-      }
-      return this.getThumbnailUrl(file)
+      return file.thumb_object_url || ''
     },
     getThumbnailUrl(file) {
-      let url = serumApiBaseUrl + `/serum/titer/file/download?id=${file.id}&thumb=true&w=200&h=200`
+      let url = file.thumb_url
+        ? serumApiBaseUrl + (file.thumb_url.startsWith('/') ? file.thumb_url : `/${file.thumb_url}`)
+        : serumApiBaseUrl + `/serum/titer/file/download?id=${file.id}&thumb=true&w=400&h=400`
       if (file._timestamp) {
         url += `&_t=${file._timestamp}`
       }
@@ -824,14 +837,59 @@ export default {
       const ext = filename.split('.').pop().toLowerCase()
       return ['xls', 'xlsx', 'csv'].includes(ext)
     },
+    authHeaders() {
+      const token = this.accessStore.accessToken
+      return token ? { Authorization: `Bearer ${token}` } : {}
+    },
+    async fetchFileBlob(url) {
+      const response = await fetch(url, { headers: this.authHeaders() })
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      return await response.blob()
+    },
+    setFileObjectUrl(file, field, key, blob) {
+      const previous = file[field]
+      if (previous) {
+        URL.revokeObjectURL(previous)
+      }
+      const url = URL.createObjectURL(blob)
+      file[field] = url
+      this.fileObjectUrls[key] = url
+      return url
+    },
+    async loadImageThumbs() {
+      await Promise.all(
+        this.fileList
+          .filter(file => this.isImage(file.file_name))
+          .map(async file => {
+            const key = `thumb_${file.id}_${file._timestamp || ''}`
+            try {
+              const blob = await this.fetchFileBlob(this.getThumbnailUrl(file))
+              this.setFileObjectUrl(file, 'thumb_object_url', key, blob)
+            } catch (error) {
+              console.error('加载缩略图失败:', error)
+            }
+          })
+      )
+    },
+    async loadPreviewImage(file) {
+      const key = `preview_${file.id}_${file._timestamp || ''}`
+      try {
+        const blob = await this.fetchFileBlob(this.getDownloadUrl(file, true))
+        this.setFileObjectUrl(file, 'preview_object_url', key, blob)
+      } catch (error) {
+        console.error('加载图片预览失败:', error)
+      }
+    },
     async loadExcelData(file) {
       this.excelLoading = true
       this.excelData = []
       
       try {
         const url = this.getDownloadUrl(file, true)
-        const response = await fetch(url)
-        const arrayBuffer = await response.arrayBuffer()
+        const blob = await this.fetchFileBlob(url)
+        const arrayBuffer = await blob.arrayBuffer()
         const workbook = XLSX.read(arrayBuffer, { type: 'array' })
         
         const firstSheetName = workbook.SheetNames[0]
@@ -982,8 +1040,10 @@ export default {
         pc_lower_id: null,
         upper_group: '',
         lower_group: '',
-        upper_mouse_list: [],
-        lower_mouse_list: [],
+        upper_mouse_list: ['NC', '', '', '', '', '', '', '', '', '', '', 'PC'],
+        lower_mouse_list: ['NC', '', '', '', '', '', '', '', '', '', '', 'PC'],
+        upper_slot_groups: [],
+        lower_slot_groups: [],
         positive_well_list: [],
         instrument_type: '国产'
       }
@@ -1085,6 +1145,9 @@ export default {
     },
     canEditTiter() {
       return canEditSerumTiter(this.currentUserInfo, this.project || {})
+    },
+    canManageFiles() {
+      return canManageSerumTiterFiles(this.currentUserInfo, this.project || {})
     }
   }
 }

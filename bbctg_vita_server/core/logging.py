@@ -10,6 +10,44 @@ from fastapi import FastAPI, Request
 from core.config import get_settings
 
 MAX_BODY_LOG = 2000
+REDACTED = "[REDACTED]"
+SENSITIVE_FIELD_NAMES = {
+    "access_token",
+    "appsecret",
+    "authorization",
+    "new_password",
+    "old_password",
+    "password",
+    "refresh_token",
+    "secret",
+    "token",
+}
+
+
+def _is_sensitive_key(key: object) -> bool:
+    normalized = str(key).lower().replace("-", "_")
+    return normalized in SENSITIVE_FIELD_NAMES or normalized.endswith("_secret") or normalized.endswith("_token")
+
+
+def _redact_sensitive_values(value):
+    if isinstance(value, dict):
+        return {key: REDACTED if _is_sensitive_key(key) else _redact_sensitive_values(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_sensitive_values(item) for item in value]
+    return value
+
+
+def _sanitize_body_for_log(raw: bytes, content_type: str):
+    if not raw:
+        return None
+    if "application/json" not in content_type:
+        return {"note": "non-json body skipped", "bytes": len(raw)}
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return {"note": "invalid json body skipped", "bytes": len(raw)}
+    text = json.dumps(_redact_sensitive_values(data), ensure_ascii=False)
+    return text[:MAX_BODY_LOG]
 
 
 def setup_logging(app: FastAPI) -> None:
@@ -44,10 +82,15 @@ def setup_logging(app: FastAPI) -> None:
             else:
                 raw = await request.body()
                 if raw:
-                    text = raw.decode("utf-8", errors="replace")
-                    body_info = text[:MAX_BODY_LOG]
+                    body_info = _sanitize_body_for_log(raw, content_type)
+
+                body_replayed = False
 
                 async def receive():
+                    nonlocal body_replayed
+                    if body_replayed:
+                        return {"type": "http.disconnect"}
+                    body_replayed = True
                     return {"type": "http.request", "body": raw, "more_body": False}
 
                 request = Request(request.scope, receive)

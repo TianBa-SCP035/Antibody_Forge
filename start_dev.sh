@@ -5,7 +5,7 @@ CONDA_ENV=Bender
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if command -v lsof >/dev/null 2>&1; then
-  PIDS="$({ lsof -ti tcp:9091 2>/dev/null || true; lsof -ti tcp:5777 2>/dev/null || true; } | sort -u)"
+  PIDS="$({ lsof -ti tcp:8888 2>/dev/null || true; lsof -ti tcp:5777 2>/dev/null || true; } | sort -u)"
   [ -n "$PIDS" ] && kill -9 $PIDS 2>/dev/null || true
 else
   pkill -f "python.*server.py" 2>/dev/null || true

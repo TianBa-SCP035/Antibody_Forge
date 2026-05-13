@@ -163,34 +163,56 @@
             </div>
 
             <div class="image-display">
-              <div class="wells-row top-wells">
-                <div class="well-input">
-                  <el-input
-                    model-value="NC"
-                    disabled
-                    size="small"
-                  />
+              <div class="slot-editor upper-slot-editor">
+                <div class="slot-groups-row" :style="slotTrackStyle">
+                  <div
+                    v-for="(group, index) in upperSlotGroups"
+                    :key="'upper-group-' + index"
+                    class="slot-group-block"
+                    :style="getGroupStyle(group)"
+                  >
+                    <el-input
+                      :model-value="group.label"
+                      size="small"
+                      placeholder="分组标题"
+                      :disabled="!isEditable"
+                      @input="setSlotGroupLabel('upper', index, $event)"
+                      @change="autoSave"
+                    />
+                    <span
+                      v-if="isEditable"
+                      class="slot-group-remove"
+                      @click.stop="removeSlotGroup('upper', index)"
+                    >×</span>
+                  </div>
+                  <div
+                    v-if="selectionRange && dragState.section === 'upper'"
+                    class="slot-group-block drag-preview"
+                    :style="getGroupStyle(selectionRange)"
+                  >
+                    {{ getSelectionLabel('upper') }}
+                  </div>
                 </div>
-                <div
-                  v-for="i in 10"
-                  :key="'top-' + i"
-                  class="well-input"
-                >
-                  <el-input
-                    :ref="'top-' + i"
-                    :model-value="getUpperWell(i - 1)"
-                    size="small"
-                    :disabled="!isEditable"
-                    @input="setUpperWell(i - 1, $event)"
-                    @keydown.enter.prevent="handleWellEnter('top', i)"
-                  />
-                </div>
-                <div class="well-input">
-                  <el-input
-                    model-value="PC"
-                    disabled
-                    size="small"
-                  />
+
+                <div class="wells-row top-wells">
+                  <div
+                    v-for="i in slotCount"
+                    :key="'top-' + i"
+                    class="well-input"
+                    :class="getSlotClass('upper', i - 1)"
+                    @mouseenter="handleSlotMouseEnter('upper', i - 1)"
+                    @mouseup="handleSlotMouseUp"
+                  >
+                    <el-input
+                      :ref="'top-' + i"
+                      :model-value="getUpperWell(i - 1)"
+                      size="small"
+                      :disabled="!isEditable"
+                      @input="setSlotValue('upper', i - 1, $event)"
+                      @mousedown="handleSlotMouseDown($event, 'upper', i - 1)"
+                      @keydown.enter.prevent="handleWellEnter('top', i)"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -246,34 +268,56 @@
                 </div>
               </div>
 
-              <div class="wells-row bottom-wells">
-                <div class="well-input">
-                  <el-input
-                    model-value="NC"
-                    disabled
-                    size="small"
-                  />
+              <div class="slot-editor lower-slot-editor">
+                <div class="wells-row bottom-wells">
+                  <div
+                    v-for="i in slotCount"
+                    :key="'bottom-' + i"
+                    class="well-input"
+                    :class="getSlotClass('lower', i - 1)"
+                    @mouseenter="handleSlotMouseEnter('lower', i - 1)"
+                    @mouseup="handleSlotMouseUp"
+                  >
+                    <el-input
+                      :ref="'bottom-' + i"
+                      :model-value="getLowerWell(i - 1)"
+                      size="small"
+                      :disabled="!isEditable"
+                      @input="setSlotValue('lower', i - 1, $event)"
+                      @mousedown="handleSlotMouseDown($event, 'lower', i - 1)"
+                      @keydown.enter.prevent="handleWellEnter('bottom', i)"
+                    />
+                  </div>
                 </div>
-                <div
-                  v-for="i in 10"
-                  :key="'bottom-' + i"
-                  class="well-input"
-                >
-                  <el-input
-                    :ref="'bottom-' + i"
-                    :model-value="getLowerWell(i - 1)"
-                    size="small"
-                    :disabled="!isEditable"
-                    @input="setLowerWell(i - 1, $event)"
-                    @keydown.enter.prevent="handleWellEnter('bottom', i)"
-                  />
-                </div>
-                <div class="well-input">
-                  <el-input
-                    model-value="PC"
-                    disabled
-                    size="small"
-                  />
+
+                <div class="slot-groups-row" :style="slotTrackStyle">
+                  <div
+                    v-for="(group, index) in lowerSlotGroups"
+                    :key="'lower-group-' + index"
+                    class="slot-group-block"
+                    :style="getGroupStyle(group)"
+                  >
+                    <el-input
+                      :model-value="group.label"
+                      size="small"
+                      placeholder="分组标题"
+                      :disabled="!isEditable"
+                      @input="setSlotGroupLabel('lower', index, $event)"
+                      @change="autoSave"
+                    />
+                    <span
+                      v-if="isEditable"
+                      class="slot-group-remove"
+                      @click.stop="removeSlotGroup('lower', index)"
+                    >×</span>
+                  </div>
+                  <div
+                    v-if="selectionRange && dragState.section === 'lower'"
+                    class="slot-group-block drag-preview"
+                    :style="getGroupStyle(selectionRange)"
+                  >
+                    {{ getSelectionLabel('lower') }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -310,7 +354,10 @@ const GATE_TEMPLATES = {
   domestic: { top: 7.3, left: 3.9, bottom: 4.4, right: 2.1 },
   cytomics: { top: 9.5, left: 6.6, bottom: 5.2, right: 3.6 }
 }
-const serumApiBaseUrl = import.meta.env.VITE_SERUM_API_URL || '/serum-api'
+const SLOT_COUNT = 12
+const SLOT_WIDTH = 60
+const SLOT_GAP = 8
+const DEFAULT_SLOT_VALUES = ['NC', '', '', '', '', '', '', '', '', '', '', 'PC']
 
 export default {
   name: 'FacsPlateCard',
@@ -350,6 +397,8 @@ export default {
         lower_group: '',
         upper_mouse_list: [],
         lower_mouse_list: [],
+        upper_slot_groups: [],
+        lower_slot_groups: [],
         positive_well_list: [],
         instrument_type: '国产',
         tempId: null
@@ -401,10 +450,37 @@ export default {
         bottom: 4,
         left: 4.1
       },
+      dragState: {
+        active: false,
+        section: null,
+        start: null,
+        end: null
+      },
       saveTimer: null
     }
   },
   computed: {
+    slotCount() {
+      return SLOT_COUNT
+    },
+    slotTrackStyle() {
+      return {
+        width: `${SLOT_COUNT * SLOT_WIDTH + (SLOT_COUNT - 1) * SLOT_GAP}px`
+      }
+    },
+    upperSlotGroups() {
+      return Array.isArray(this.plateData.upper_slot_groups) ? this.plateData.upper_slot_groups : []
+    },
+    lowerSlotGroups() {
+      return Array.isArray(this.plateData.lower_slot_groups) ? this.plateData.lower_slot_groups : []
+    },
+    selectionRange() {
+      if (!this.dragState.active || this.dragState.start === null || this.dragState.end === null) return null
+      return {
+        start: Math.min(this.dragState.start, this.dragState.end),
+        end: Math.max(this.dragState.start, this.dragState.end)
+      }
+    },
     imageFileOptions() {
       return this.fileList.filter(file => this.isImage(file.file_name))
     },
@@ -458,6 +534,14 @@ export default {
     isActive(val) {
       if (val) this.forceRecalc()
     },
+    selectedImageFile: {
+      handler(file) {
+        if (file && !file.preview_object_url) {
+          this.$emit('load-image-preview', file)
+        }
+      },
+      immediate: true
+    },
     selectedImageUrl() {
       this.imageNaturalSize = { width: 0, height: 0 }
       this.forceRecalc()
@@ -473,8 +557,7 @@ export default {
       return ['xls', 'xlsx', 'csv'].includes(ext)
     },
     getImageUrl(file) {
-      const baseUrl = serumApiBaseUrl
-      return `${baseUrl}/serum/titer/file/download?id=${file.id}&preview=true`
+      return file.preview_object_url || file.thumb_object_url || ''
     },
     autoSave() {
       if (!this.isEditable) return
@@ -491,7 +574,11 @@ export default {
           pc_upper_id: toNullIfEmpty(this.plateData.pc_upper_id),
           pc_lower_id: toNullIfEmpty(this.plateData.pc_lower_id),
           upper_group: this.plateData.upper_group === null ? '' : this.plateData.upper_group,
-          lower_group: this.plateData.lower_group === null ? '' : this.plateData.lower_group
+          lower_group: this.plateData.lower_group === null ? '' : this.plateData.lower_group,
+          upper_mouse_list: this.normalizeSlotValues(this.plateData.upper_mouse_list),
+          lower_mouse_list: this.normalizeSlotValues(this.plateData.lower_mouse_list),
+          upper_slot_groups: this.normalizeSlotGroups(this.plateData.upper_slot_groups),
+          lower_slot_groups: this.normalizeSlotGroups(this.plateData.lower_slot_groups)
         }
         this.$emit('save', payload)
       }, 200)
@@ -508,19 +595,50 @@ export default {
       if (type === 'lower_group') this.plateData.lower_group = null
       this.autoSave()
     },
+    normalizeSlotValues(list) {
+      if (Array.isArray(list) && list.length === 10) {
+        return ['NC', ...list, 'PC']
+      }
+
+      const source = Array.isArray(list) ? list : []
+      const normalized = DEFAULT_SLOT_VALUES.slice()
+      for (let i = 0; i < Math.min(source.length, SLOT_COUNT); i += 1) {
+        normalized[i] = source[i] === undefined || source[i] === null ? '' : source[i]
+      }
+      return normalized
+    },
+    normalizeSlotGroups(groups) {
+      if (!Array.isArray(groups)) return []
+      const normalized = groups
+        .map(group => {
+          const start = Number(group.start)
+          const end = Number(group.end)
+          if (Number.isNaN(start) || Number.isNaN(end)) return null
+          const safeStart = Math.max(0, Math.min(SLOT_COUNT - 1, start))
+          const safeEnd = Math.max(0, Math.min(SLOT_COUNT - 1, end))
+          return {
+            start: Math.min(safeStart, safeEnd),
+            end: Math.max(safeStart, safeEnd),
+            label: group.label || ''
+          }
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.start - b.start)
+
+      const result = []
+      normalized.forEach(group => {
+        const prev = result[result.length - 1]
+        if (!prev || group.start > prev.end) {
+          result.push(group)
+        }
+      })
+      return result
+    },
     ensureWellArrays() {
-      if (!Array.isArray(this.plateData.upper_mouse_list)) {
-        this.plateData.upper_mouse_list = Array(10).fill('')
-      }
-      if (!Array.isArray(this.plateData.lower_mouse_list)) {
-        this.plateData.lower_mouse_list = Array(10).fill('')
-      }
-      
-      while (this.plateData.upper_mouse_list.length < 10) this.plateData.upper_mouse_list.push('')
-      while (this.plateData.lower_mouse_list.length < 10) this.plateData.lower_mouse_list.push('')
-      
-      this.plateData.upper_mouse_list = this.plateData.upper_mouse_list.slice(0, 10)
-      this.plateData.lower_mouse_list = this.plateData.lower_mouse_list.slice(0, 10)
+      this.plateData.upper_mouse_list = this.normalizeSlotValues(this.plateData.upper_mouse_list)
+      this.plateData.lower_mouse_list = this.normalizeSlotValues(this.plateData.lower_mouse_list)
+      this.plateData.upper_slot_groups = this.normalizeSlotGroups(this.plateData.upper_slot_groups)
+      this.plateData.lower_slot_groups = this.normalizeSlotGroups(this.plateData.lower_slot_groups)
     },
     getUpperWell(idx) {
       return Array.isArray(this.plateData.upper_mouse_list)
@@ -532,23 +650,22 @@ export default {
         ? (this.plateData.lower_mouse_list[idx] || '')
         : ''
     },
-    setUpperWell(idx, val) {
-      if (!this.isEditable) return
-      const v = (val && val.target) ? val.target.value : val
-      this.ensureWellArrays()
-      this.plateData.upper_mouse_list[idx] = v
-      this.autoSave()
+    getMouseListField(section) {
+      return section === 'upper' ? 'upper_mouse_list' : 'lower_mouse_list'
     },
-    setLowerWell(idx, val) {
+    isCornerSlot(index) {
+      return index === 0 || index === SLOT_COUNT - 1
+    },
+    setSlotValue(section, idx, val) {
       if (!this.isEditable) return
       const v = (val && val.target) ? val.target.value : val
       this.ensureWellArrays()
-      this.plateData.lower_mouse_list[idx] = v
+      this.plateData[this.getMouseListField(section)][idx] = v
       this.autoSave()
     },
     handleWellEnter(row, index) {
       const nextIndex = index + 1
-      if (nextIndex > 10) return
+      if (nextIndex > SLOT_COUNT) return
       
       const nextRef = `${row}-${nextIndex}`
       let ref = this.$refs[nextRef]
@@ -563,6 +680,122 @@ export default {
       
       const el = ref.$el ? ref.$el.querySelector('input') : null
       if (el) el.focus()
+    },
+    getSlotClass(section, index) {
+      const selected = this.selectionRange &&
+        this.dragState.section === section &&
+        index >= this.selectionRange.start &&
+        index <= this.selectionRange.end
+
+      return {
+        'corner-well': this.isCornerSlot(index),
+        'drag-selected': selected
+      }
+    },
+    getGroupField(section) {
+      return section === 'upper' ? 'upper_slot_groups' : 'lower_slot_groups'
+    },
+    getGroupsForSection(section) {
+      const field = this.getGroupField(section)
+      if (!Array.isArray(this.plateData[field])) {
+        this.plateData[field] = []
+      }
+      return this.plateData[field]
+    },
+    getGroupStyle(group) {
+      const start = Math.max(0, Math.min(SLOT_COUNT - 1, Number(group.start)))
+      const end = Math.max(start, Math.min(SLOT_COUNT - 1, Number(group.end)))
+      const count = end - start + 1
+      return {
+        left: `${start * (SLOT_WIDTH + SLOT_GAP)}px`,
+        width: `${count * SLOT_WIDTH + (count - 1) * SLOT_GAP}px`
+      }
+    },
+    getSelectionLabel(section) {
+      const range = this.selectionRange
+      if (!range) return ''
+      const source = this.getGroupsForSection(section).find(group => range.start >= group.start && range.start <= group.end)
+      return source && source.label ? source.label : '新分组'
+    },
+    setSlotGroupLabel(section, index, value) {
+      if (!this.isEditable) return
+      const groups = this.getGroupsForSection(section)
+      if (!groups[index]) return
+      groups[index].label = value
+      this.autoSave()
+    },
+    removeSlotGroup(section, index) {
+      if (!this.isEditable) return
+      const groups = [...this.getGroupsForSection(section)]
+      groups.splice(index, 1)
+      this.plateData[this.getGroupField(section)] = groups
+      this.autoSave()
+    },
+    handleSlotMouseDown(event, section, index) {
+      if (!this.isEditable || !event.altKey) return
+      event.preventDefault()
+      this.ensureWellArrays()
+      this.dragState = {
+        active: true,
+        section,
+        start: index,
+        end: index
+      }
+    },
+    handleSlotMouseEnter(section, index) {
+      if (!this.dragState.active || this.dragState.section !== section) return
+      this.dragState.end = index
+    },
+    handleSlotMouseUp() {
+      this.finishSlotDrag()
+    },
+    finishSlotDrag() {
+      if (!this.dragState.active) return
+      const section = this.dragState.section
+      const range = this.selectionRange
+      this.dragState = {
+        active: false,
+        section: null,
+        start: null,
+        end: null
+      }
+      if (!section || !range) return
+      this.applySlotSelection(section, range)
+    },
+    applySlotSelection(section, range) {
+      if (!this.isEditable) return
+      const groups = this.getGroupsForSection(section)
+      const sourceGroup = groups.find(group => range.start >= group.start && range.start <= group.end)
+      const nextGroups = []
+
+      groups.forEach(group => {
+        const overlap = !(range.end < group.start || range.start > group.end)
+        if (!overlap) {
+          nextGroups.push({ ...group })
+          return
+        }
+        if (group.start < range.start) {
+          nextGroups.push({
+            ...group,
+            end: range.start - 1
+          })
+        }
+        if (group.end > range.end) {
+          nextGroups.push({
+            ...group,
+            start: range.end + 1
+          })
+        }
+      })
+
+      nextGroups.push({
+        start: range.start,
+        end: range.end,
+        label: sourceGroup ? sourceGroup.label : ''
+      })
+
+      this.plateData[this.getGroupField(section)] = nextGroups.sort((a, b) => a.start - b.start)
+      this.autoSave()
     },
     calcGridBBoxByMarginPct(iw, ih, { top, left, bottom, right }) {
       const x0 = iw * (left / 100)
@@ -713,11 +946,13 @@ export default {
       
       const type = this.plateData.instrument_type === '赛多利斯' ? 'cytomics' : 'domestic'
       this.applyPreset(type)
+      document.addEventListener('mouseup', this.finishSlotDrag)
     })
   },
   beforeUnmount() {
     if (this._ro) this._ro.disconnect()
     if (this.saveTimer) clearTimeout(this.saveTimer)
+    document.removeEventListener('mouseup', this.finishSlotDrag)
   }
 }
 </script>
@@ -867,6 +1102,75 @@ export default {
     min-height: 0;
   }
 
+  .slot-editor {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .slot-groups-row {
+    position: relative;
+    height: 34px;
+    flex-shrink: 0;
+  }
+
+  .slot-group-block {
+    position: absolute;
+    top: 0;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #409EFF;
+    border-radius: 8px;
+    background: rgba(64, 158, 255, 0.1);
+    color: #306cb3;
+    overflow: hidden;
+
+    :deep(.el-input__wrapper) {
+      box-shadow: none;
+      background: transparent;
+    }
+
+    :deep(.el-input__inner) {
+      height: 30px;
+      line-height: 30px;
+      padding: 0 16px 0 12px;
+      border: none;
+      background: transparent;
+      color: #306cb3;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    &.drag-preview {
+      border-style: dashed;
+      background: rgba(64, 158, 255, 0.18);
+      font-size: 12px;
+      font-weight: 600;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .slot-group-remove {
+      position: absolute;
+      top: 8px;
+      right: 6px;
+      font-size: 15px;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    &:hover .slot-group-remove {
+      opacity: 0.75;
+    }
+  }
+
   .wells-row {
     display: flex;
     gap: 8px;
@@ -877,6 +1181,32 @@ export default {
     .well-input {
       width: 60px;
       flex-shrink: 0;
+
+      :deep(.el-input__inner) {
+        padding-left: 5px;
+        padding-right: 5px;
+      }
+
+      &.corner-well {
+        :deep(.el-input__wrapper) {
+          background: #f4f4f5;
+          box-shadow: 0 0 0 1px #dcdfe6 inset;
+        }
+
+        :deep(.el-input__inner) {
+          background: #f4f4f5;
+          color: #606266;
+          font-weight: 600;
+          -webkit-text-fill-color: #606266;
+        }
+      }
+
+      &.drag-selected {
+        :deep(.el-input__wrapper) {
+          box-shadow: 0 0 0 1px #409EFF inset, 0 0 0 2px rgba(64, 158, 255, 0.15);
+          background: #ecf5ff;
+        }
+      }
     }
   }
 

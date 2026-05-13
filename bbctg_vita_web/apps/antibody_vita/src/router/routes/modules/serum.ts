@@ -1,6 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router';
 
-const SERUM_TAB_KEY = '/serum';
+const SERUM_TAB_GROUP = '/serum';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -18,8 +18,9 @@ const routes: RouteRecordRaw[] = [
         path: '/serum/list',
         component: () => import('#/views/Serum/SerumList.vue'),
         meta: {
+          authority: ['serum.page.list'],
           icon: 'lucide:list',
-          tabKey: SERUM_TAB_KEY,
+          tabGroup: SERUM_TAB_GROUP,
           title: '血清实验列表',
         },
       },
@@ -28,9 +29,10 @@ const routes: RouteRecordRaw[] = [
         path: '/serum/detail',
         component: () => import('#/views/Serum/SerumDataDetail.vue'),
         meta: {
+          authority: ['serum.page.detail'],
           hideInMenu: true,
           icon: 'lucide:file-text',
-          tabKey: SERUM_TAB_KEY,
+          tabGroup: SERUM_TAB_GROUP,
           title: '血清实验详情',
         },
       },
@@ -39,9 +41,10 @@ const routes: RouteRecordRaw[] = [
         path: '/serum/edit',
         component: () => import('#/views/Serum/SerumEdit.vue'),
         meta: {
+          authority: ['serum.page.edit'],
           hideInMenu: true,
           icon: 'lucide:edit',
-          tabKey: SERUM_TAB_KEY,
+          tabGroup: SERUM_TAB_GROUP,
           title: '编辑血清实验',
         },
       },
@@ -50,9 +53,10 @@ const routes: RouteRecordRaw[] = [
         path: '/serum/titer',
         component: () => import('#/views/Serum/SerumTiter.vue'),
         meta: {
+          authority: ['serum.page.titer'],
           hideInMenu: true,
           icon: 'lucide:chart-no-axes-combined',
-          tabKey: SERUM_TAB_KEY,
+          tabGroup: SERUM_TAB_GROUP,
           title: '血清效价数据',
         },
       },
@@ -61,9 +65,10 @@ const routes: RouteRecordRaw[] = [
         path: '/serum/cell',
         component: () => import('#/views/Serum/SerumCell.vue'),
         meta: {
+          authority: ['serum.page.cell'],
           hideInMenu: true,
           icon: 'lucide:warehouse',
-          tabKey: SERUM_TAB_KEY,
+          tabGroup: SERUM_TAB_GROUP,
           title: '细胞库存查询',
         },
       },

@@ -24,3 +24,16 @@ def get_cell_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def get_employee_db() -> Generator[Session, None, None]:
+    settings = get_settings()
+    factory = _create_optional_session_factory(settings.employee_db_url)
+    if factory is None:
+        raise RuntimeError("EMPLOYEE_DB_URL 未配置")
+
+    db = factory()
+    try:
+        yield db
+    finally:
+        db.close()

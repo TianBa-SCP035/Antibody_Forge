@@ -21,12 +21,12 @@ export default defineConfig(async () => {
         proxy: {
           '/api': {
             changeOrigin: true,
-            target: 'http://127.0.0.1:9091',
+            target: 'http://127.0.0.1:8888',
           },
           '/serum-api': {
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/serum-api/, '/api'),
-            target: 'http://127.0.0.1:9091',
+            target: 'http://127.0.0.1:8888',
           },
         },
       },

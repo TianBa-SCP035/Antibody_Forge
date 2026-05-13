@@ -52,9 +52,9 @@ interface RouteMeta {
    */
   fullPathKey?: boolean;
   /**
-   * 自定义标签页 key，相同 key 的路由复用同一个标签页
+   * 标签页分组 key，相同分组的路由共用一个标签页
    */
-  tabKey?: string;
+  tabGroup?: string;
   /**
    * 当前路由的子级在菜单中不展现
    * @default false

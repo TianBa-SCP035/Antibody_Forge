@@ -28,8 +28,8 @@
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="管理员" prop="owner">
-              <el-select v-model="postForm.owner" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入管理员">
+            <el-form-item label="负责人" prop="owner">
+              <el-select v-model="postForm.owner" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入负责人" :disabled="!canAssignProjectOwner">
                 <el-option v-for="item in users" :key="item" :label="item" :value="item" />
               </el-select>
             </el-form-item>
@@ -664,7 +664,7 @@
             删除后将无法恢复，所有相关数据（小鼠分组、抗原信息、免疫步骤、效价检测等）都将被永久清除。请谨慎操作。
           </p>
         </div>
-        <el-button type="danger" size="small" :disabled="!canSaveForm()" @click="handleDelete" plain>
+        <el-button type="danger" size="small" :disabled="!canDeleteForm()" @click="handleDelete" plain>
           <el-icon><Delete /></el-icon> 删除实验项目
         </el-button>
       </div>
@@ -710,7 +710,9 @@ import {
 
 import { fetchDetail, saveSerum, fetchNextId, deleteSerum, getSerumFilterOptions } from '#/api/serum'
 import {
+  canEditAllSerumProjects,
   canCreateSerumProject,
+  canDeleteSerumProject,
   canEditSerumProject,
   getSerumUserName,
 } from '#/utils/serumPermission'
@@ -802,6 +804,9 @@ export default {
     },
     currentUserName() {
       return getSerumUserName(this.currentUserInfo)
+    },
+    canAssignProjectOwner() {
+      return canEditAllSerumProjects(this.currentUserInfo)
     },
   },
   watch: {
@@ -1275,7 +1280,7 @@ export default {
         this.$router.go(-1)
     },
     handleDelete() {
-        if (!this.canSaveForm()) {
+        if (!this.canDeleteForm()) {
             ElMessage.warning('您没有权限删除此项目')
             return
         }
@@ -1541,6 +1546,9 @@ export default {
         return canEditSerumProject(this.currentUserInfo, this.postForm)
       }
       return canCreateSerumProject(this.currentUserInfo)
+    },
+    canDeleteForm() {
+      return Boolean(this.postForm.id) && canDeleteSerumProject(this.currentUserInfo)
     },
     updateProjectName() {
         const targetName = this.postForm.target_name || ''

@@ -290,7 +290,7 @@
                   @keyup.enter="handleEnter(row)"
                   @blur="handleBlur(row)"
                />
-               <span v-else @click="handleCageClick(row)" :style="isCageMode && canEdit(row) ? 'cursor: pointer; min-height: 20px; display: inline-block; min-width: 20px;' : 'cursor: default; min-height: 20px; display: inline-block; min-width: 20px;'">
+               <span v-else @click="handleCageClick(row)" :style="isCageMode && canUpdateCage(row) ? 'cursor: pointer; min-height: 20px; display: inline-block; min-width: 20px;' : 'cursor: default; min-height: 20px; display: inline-block; min-width: 20px;'">
                   {{ isCageMode ? (row.cage_position_display || '') : (row.remark || '') }}
                </span>
             </template>
@@ -312,7 +312,7 @@
         
         <el-table-column label="开始日期" prop="start_date" align="center" width="120" sortable />
         
-        <el-table-column label="状态" prop="project_status" align="center" width="100" sortable>
+        <el-table-column label="状态" prop="project_status" align="center" width="100" sortable class-name="status-column-cell">
             <template #default="{ row }">
               <el-popover
                 :visible="activeStatusRowId === row.id"
@@ -329,7 +329,7 @@
                   </div>
                 </div>
                 <template #reference>
-                  <el-tag class="status-tag" :type="statusFilter(row.project_status)" effect="plain" :style="canEdit(row) ? 'cursor: pointer;' : 'cursor: default;'" @click="canEdit(row) && handleStatusClick(row)">
+                  <el-tag class="status-tag" :type="statusFilter(row.project_status)" effect="plain" :style="canUpdateStatus(row) ? 'cursor: pointer;' : 'cursor: default;'" @click="canUpdateStatus(row) && handleStatusClick(row)">
                     {{ row.project_status }}
                   </el-tag>
                 </template>
@@ -455,6 +455,8 @@ import {
   canEditSerumProject,
   canEditSerumTiter,
   canExportSerumMouse,
+  canUpdateSerumCage,
+  canUpdateSerumStatus,
   canViewSerumCellInventory,
   getSerumUserName,
   getSerumUserRoles,
@@ -854,6 +856,12 @@ export default {
     canEditTiter(row) {
         return canEditSerumTiter(this.currentUserInfo, row)
     },
+    canUpdateStatus(row) {
+        return canUpdateSerumStatus(this.currentUserInfo, row)
+    },
+    canUpdateCage(row) {
+        return canUpdateSerumCage(this.currentUserInfo, row)
+    },
     canExportMouse() {
         return canExportSerumMouse(this.currentUserInfo)
     },
@@ -904,7 +912,7 @@ export default {
         this.editingRowId = null
         return
       }
-      if (!this.canEdit(row)) {
+      if (!this.canUpdateCage(row)) {
         ElMessage.warning('您没有权限编辑此项目')
         this.editingRowId = null
         return
@@ -938,6 +946,12 @@ export default {
         this.editingValue = ''
         return
       }
+      if (!this.canUpdateCage(row)) {
+        ElMessage.warning('您没有权限编辑此项目')
+        this.editingRowId = null
+        this.editingValue = ''
+        return
+      }
       this.isSaving = true
       updateCagePosition({ 
         id: row.id, 
@@ -962,7 +976,7 @@ export default {
       })
     },
     saveStatus(row, newStatus) {
-      if (!this.canEdit(row)) {
+      if (!this.canUpdateStatus(row)) {
         ElMessage.warning('您没有权限编辑此项目')
         return
       }
@@ -1109,10 +1123,14 @@ export default {
     font-size: 13px;
 }
 .status-tag {
-    height: 27px;
-    padding: 0 13px;
+    height: 25px;
+    padding: 0 8px;
     font-size: 13px;
     border-radius: 10px;
+}
+.app-container :deep(.status-column-cell .cell) {
+    padding-left: 5px;
+    padding-right: 5px;
 }
 .table-card {
     border-radius: 4px;

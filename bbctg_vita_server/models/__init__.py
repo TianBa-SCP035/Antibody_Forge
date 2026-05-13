@@ -8,10 +8,20 @@ from models.immunology import (
     SerumTiterPc,
     SerumTiterTarget,
 )
-from models.user import BbctgUser
+from models.system import (
+    SysOperationLog,
+    SysPermission,
+    SysPermissionApi,
+    SysPermissionBundle,
+    SysPermissionBundleItem,
+    SysRole,
+    SysRolePermissionBundle,
+    SysUser,
+    SysUserPermissionOverride,
+    SysUserRole,
+)
 
 __all__ = [
-    "BbctgUser",
     "SerumFacsPlate",
     "SerumFile",
     "SerumImmAntigen",
@@ -20,4 +30,14 @@ __all__ = [
     "SerumImmStep",
     "SerumTiterPc",
     "SerumTiterTarget",
+    "SysOperationLog",
+    "SysPermission",
+    "SysPermissionApi",
+    "SysPermissionBundle",
+    "SysPermissionBundleItem",
+    "SysRole",
+    "SysRolePermissionBundle",
+    "SysUser",
+    "SysUserPermissionOverride",
+    "SysUserRole",
 ]

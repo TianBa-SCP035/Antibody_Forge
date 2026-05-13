@@ -1,18 +1,28 @@
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.response import error, success
 from db.session import get_db
+from models.immunology import SerumFacsPlate, SerumFile, SerumImmProject
+from models.system import SysUser
+from modules.auth.dependencies import get_current_user
 from modules.immunology.titer import service
+from modules.system.permissions import require_permission
 
 router = APIRouter()
 
 
 @router.post("/file/list")
-def file_list(data: dict, db: Session = Depends(get_db)) -> dict:
+def file_list(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "serum.page.titer")
     return success({"items": service.get_file_list(db, data.get("experiment_id"))})
 
 
@@ -20,31 +30,51 @@ def file_list(data: dict, db: Session = Depends(get_db)) -> dict:
 def file_save(
     file: UploadFile = File(...),
     experiment_id: str = Form(...),
-    user_name: str = Form("unknown"),
     db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     try:
-        return success(service.save_file(db, file, experiment_id, user_name))
+        require_permission(db, current_user, "serum.file.manage")
+        _require_project_owner_or_edit_all(db, current_user, experiment_id=experiment_id)
+        return success(service.save_file(db, file, experiment_id, _operator_name(current_user)))
+    except HTTPException:
+        raise
     except Exception as exc:
         db.rollback()
         return error(str(exc))
 
 
 @router.post("/file/delete")
-def file_delete(data: dict, db: Session = Depends(get_db)) -> dict:
+def file_delete(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
     try:
+        require_permission(db, current_user, "serum.file.manage")
+        _require_project_owner_or_edit_all(db, current_user, file_id=int(data.get("id")))
         service.delete_file(db, int(data.get("id")))
         return success({"message": "Success"})
+    except HTTPException:
+        raise
     except Exception as exc:
         db.rollback()
         return error(str(exc))
 
 
 @router.post("/file/rename")
-def file_rename(data: dict, db: Session = Depends(get_db)) -> dict:
+def file_rename(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
     try:
+        require_permission(db, current_user, "serum.file.manage")
+        _require_project_owner_or_edit_all(db, current_user, file_id=int(data.get("id")))
         service.rename_file(db, int(data.get("id")), data.get("new_name"))
         return success({"message": "Success"})
+    except HTTPException:
+        raise
     except Exception as exc:
         db.rollback()
         return error(str(exc))
@@ -54,11 +84,15 @@ def file_rename(data: dict, db: Session = Depends(get_db)) -> dict:
 def file_replace(
     file: UploadFile = File(...),
     id: int = Form(...),
-    user_name: str = Form("unknown"),
     db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     try:
-        return success(service.replace_file(db, id, file, user_name))
+        require_permission(db, current_user, "serum.file.manage")
+        _require_project_owner_or_edit_all(db, current_user, file_id=id)
+        return success(service.replace_file(db, id, file, _operator_name(current_user)))
+    except HTTPException:
+        raise
     except Exception as exc:
         db.rollback()
         return error(str(exc))
@@ -72,8 +106,10 @@ def file_download(
     w: int = 400,
     h: int = 400,
     db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
 ):
     try:
+        require_permission(db, current_user, "serum.page.titer")
         record, file_path = service.get_download_record(db, id)
         if thumb and thumb.lower() in {"1", "true"}:
             thumbnail = service.create_thumbnail(file_path, w, h)
@@ -86,47 +122,142 @@ def file_download(
             media_type=None,
             headers={"Content-Disposition": f"{'inline' if preview == 'true' else 'attachment'}; filename*=UTF-8''{quote(record.file_name)}"},
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         return error(str(exc))
 
 
 @router.post("/target/save")
-def target_save(data: dict, db: Session = Depends(get_db)) -> dict:
+def target_save(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
     try:
+        require_permission(db, current_user, "serum.titer.edit")
+        _require_project_owner_or_edit_all(db, current_user, experiment_id=data.get("experiment_id"))
         return success({"items": service.save_targets(db, data.get("experiment_id"), data.get("targets", []))})
+    except HTTPException:
+        raise
     except Exception as exc:
         db.rollback()
         return error(str(exc))
 
 
 @router.post("/pc/save")
-def pc_save(data: dict, db: Session = Depends(get_db)) -> dict:
+def pc_save(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
     try:
+        require_permission(db, current_user, "serum.titer.edit")
+        _require_project_owner_or_edit_all(db, current_user, experiment_id=data.get("experiment_id"))
         return success({"items": service.save_pcs(db, data.get("experiment_id"), data.get("pcs", []))})
+    except HTTPException:
+        raise
     except Exception as exc:
         db.rollback()
         return error(str(exc))
 
 
 @router.post("/plate/list")
-def plate_list(data: dict, db: Session = Depends(get_db)) -> dict:
+def plate_list(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "serum.page.titer")
     return success({"items": service.get_facs_plates(db, data.get("experiment_id"))})
 
 
 @router.post("/plate/save")
-def plate_save(data: dict, db: Session = Depends(get_db)) -> dict:
+def plate_save(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
     try:
+        require_permission(db, current_user, "serum.titer.edit")
+        _require_project_owner_or_edit_all(db, current_user, experiment_id=(data or {}).get("experiment_id"))
         return success(service.save_facs_plate(db, data or {}))
+    except HTTPException:
+        raise
     except Exception as exc:
         db.rollback()
         return error(str(exc))
 
 
 @router.post("/plate/delete")
-def plate_delete(data: dict, db: Session = Depends(get_db)) -> dict:
+def plate_delete(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
     try:
+        require_permission(db, current_user, "serum.titer.edit")
+        _require_project_owner_or_edit_all(db, current_user, plate_id=int(data.get("id")))
         service.delete_facs_plate(db, int(data.get("id")))
         return success({"message": "Success"})
+    except HTTPException:
+        raise
     except Exception as exc:
         db.rollback()
         return error(str(exc))
+
+
+def _require_project_owner_or_edit_all(
+    db: Session,
+    user: SysUser,
+    *,
+    experiment_id: str | None = None,
+    file_id: int | None = None,
+    plate_id: int | None = None,
+) -> None:
+    project = _resolve_project(db, experiment_id=experiment_id, file_id=file_id, plate_id=plate_id)
+    if not project:
+        raise ValueError("Project not found")
+    if _is_owner_name(user, project.owner):
+        return
+    require_permission(db, user, "serum.titer.edit_all")
+
+
+def _resolve_project(
+    db: Session,
+    *,
+    experiment_id: str | None = None,
+    file_id: int | None = None,
+    plate_id: int | None = None,
+) -> SerumImmProject | None:
+    target_experiment_id = experiment_id
+    if file_id is not None:
+        record = db.get(SerumFile, file_id)
+        if not record:
+            raise ValueError("File not found")
+        target_experiment_id = record.experiment_id
+    if plate_id is not None:
+        plate = db.get(SerumFacsPlate, plate_id)
+        if not plate:
+            raise ValueError("Plate not found")
+        target_experiment_id = plate.experiment_id
+    if not target_experiment_id:
+        return None
+    return db.scalar(select(SerumImmProject).where(SerumImmProject.experiment_id == target_experiment_id))
+
+
+def _operator_name(user: SysUser) -> str:
+    return (user.display_name or user.username or "unknown").strip()
+
+
+def _owner_aliases(user: SysUser) -> set[str]:
+    values = {user.username, user.display_name, _operator_name(user)}
+    aliases = {str(value).strip() for value in values if str(value or "").strip()}
+    for value in list(aliases):
+        aliases.add(value.split()[0])
+    return aliases
+
+
+def _is_owner_name(user: SysUser, owner: str | None) -> bool:
+    owner_name = str(owner or "").strip()
+    return bool(owner_name and owner_name in _owner_aliases(user))

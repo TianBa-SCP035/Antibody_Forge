@@ -6,6 +6,7 @@ from core.config import get_settings
 from core.errors import setup_exception_handlers
 from core.logging import setup_logging
 from jobs.registry import start_scheduler
+from modules.system.audit import setup_audit_middleware
 
 
 def create_app() -> FastAPI:
@@ -22,10 +23,12 @@ def create_app() -> FastAPI:
 
     setup_exception_handlers(app)
     setup_logging(app)
+    setup_audit_middleware(app)
     app.include_router(api_router, prefix="/api")
 
     @app.on_event("startup")
     def on_startup() -> None:
-        start_scheduler()
+        if settings.should_start_scheduler:
+            start_scheduler()
 
     return app

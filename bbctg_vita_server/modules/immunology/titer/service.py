@@ -21,10 +21,7 @@ def _upload_root() -> Path:
 def get_full_path(relative_path: str) -> Path:
     path_parts = relative_path.lstrip("/")
     settings = get_settings()
-    primary_path = Path(settings.repository_root) / "uploads" / path_parts
-    if primary_path.exists() or not settings.legacy_titer_upload_root:
-        return primary_path
-    return Path(settings.legacy_titer_upload_root) / path_parts
+    return Path(settings.repository_root) / "uploads" / path_parts
 
 
 def get_file_list(db: Session, experiment_id: str) -> list[dict]:
@@ -125,6 +122,8 @@ def create_thumbnail(file_path: Path, width: int, height: int) -> tuple[BytesIO,
 
 def _replace_children(db: Session, model_class, experiment_id: str, items: list[dict], id_field: str = "id") -> list[dict]:
     submitted_ids = set()
+    created_objs = []
+    valid_fields = set(model_class.__table__.columns.keys())
     for item in items:
         item_id = item.get(id_field)
         if item_id:
@@ -136,14 +135,17 @@ def _replace_children(db: Session, model_class, experiment_id: str, items: list[
                 obj.experiment_id = experiment_id
                 submitted_ids.add(int(item_id))
                 continue
-        data = {key: value for key, value in item.items() if key != id_field}
+        data = {key: value for key, value in item.items() if key in valid_fields and key != id_field}
         data["experiment_id"] = experiment_id
         obj = model_class(**data)
         db.add(obj)
+        created_objs.append(obj)
 
+    db.flush()
+    keep_ids = submitted_ids | {getattr(obj, id_field) for obj in created_objs if getattr(obj, id_field, None)}
     existing = db.scalars(select(model_class).where(model_class.experiment_id == experiment_id)).all()
     for obj in existing:
-        if not submitted_ids or getattr(obj, id_field) not in submitted_ids:
+        if getattr(obj, id_field) not in keep_ids:
             db.delete(obj)
     db.commit()
     return [item.to_dict() for item in db.scalars(select(model_class).where(model_class.experiment_id == experiment_id)).all()]
@@ -175,6 +177,8 @@ PLATE_FIELDS = [
     "lower_group",
     "upper_mouse_list",
     "lower_mouse_list",
+    "upper_slot_groups",
+    "lower_slot_groups",
     "positive_well_list",
     "instrument_type",
 ]

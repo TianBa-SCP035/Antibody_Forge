@@ -1,6 +1,8 @@
 from collections import defaultdict
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
+import shutil
 from typing import Any
 
 from openpyxl import Workbook
@@ -8,6 +10,7 @@ from openpyxl.styles import Font
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from core.config import get_settings
 from models.immunology import (
     SerumFacsPlate,
     SerumFile,
@@ -221,6 +224,66 @@ PROJECT_FIELDS = [
 ]
 
 
+def _titer_upload_root() -> Path:
+    return Path(get_settings().repository_root) / "uploads" / "titer_files"
+
+
+def _next_available_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    candidate = path.with_name(f"{path.stem}_{stamp}{path.suffix}")
+    index = 1
+    while candidate.exists():
+        candidate = path.with_name(f"{path.stem}_{stamp}_{index}{path.suffix}")
+        index += 1
+    return candidate
+
+
+def _move_titer_experiment_dir(old_eid: str, new_eid: str) -> dict[str, str]:
+    upload_root = _titer_upload_root()
+    old_dir = upload_root / old_eid
+    new_dir = upload_root / new_eid
+    path_map: dict[str, str] = {}
+    if not old_dir.exists():
+        return path_map
+    if not new_dir.exists():
+        new_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(old_dir), str(new_dir))
+        return path_map
+
+    for source in old_dir.rglob("*"):
+        if not source.is_file():
+            continue
+        relative = source.relative_to(old_dir).as_posix()
+        target = _next_available_path(new_dir / relative)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(target))
+        path_map[relative] = f"/titer_files/{new_eid}/{target.relative_to(new_dir).as_posix()}"
+    return path_map
+
+
+def _rewrite_titer_file_path(file_path: str | None, old_eid: str, new_eid: str, path_map: dict[str, str]) -> str | None:
+    if not file_path:
+        return file_path
+    old_prefix = f"/titer_files/{old_eid}/"
+    if not file_path.startswith(old_prefix):
+        return file_path
+    relative = file_path[len(old_prefix) :]
+    return path_map.get(relative, f"/titer_files/{new_eid}/{relative}")
+
+
+def _rename_experiment_related_records(db: Session, old_eid: str | None, new_eid: str | None) -> None:
+    if not old_eid or not new_eid or old_eid == new_eid:
+        return
+    path_map = _move_titer_experiment_dir(old_eid, new_eid)
+    for record in db.scalars(select(SerumFile).where(SerumFile.experiment_id == old_eid)).all():
+        record.file_path = _rewrite_titer_file_path(record.file_path, old_eid, new_eid, path_map)
+        record.experiment_id = new_eid
+    for model in [SerumImmMouse, SerumImmAntigen, SerumImmStep, SerumTiterTarget, SerumTiterPc, SerumFacsPlate]:
+        db.query(model).filter(model.experiment_id == old_eid).update({"experiment_id": new_eid}, synchronize_session=False)
+
+
 def save_serum(db: Session, data: dict[str, Any]) -> dict:
     project_id = data.get("id")
     new_eid = data.get("experiment_id")
@@ -231,11 +294,21 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
         if not project:
             raise ValueError("Project not found")
         old_eid = project.experiment_id
+        if old_eid != new_eid:
+            if not new_eid:
+                raise ValueError("Experiment ID is required")
+            existing_project = db.scalar(
+                select(SerumImmProject).where(
+                    SerumImmProject.experiment_id == new_eid,
+                    SerumImmProject.id != project.id,
+                )
+            )
+            if existing_project:
+                raise ValueError("Experiment ID already exists")
         for field in PROJECT_FIELDS:
             setattr(project, field, data.get(field))
         if old_eid != new_eid:
-            for model in [SerumFile, SerumImmMouse, SerumImmAntigen, SerumImmStep, SerumTiterTarget, SerumTiterPc, SerumFacsPlate]:
-                db.query(model).filter(model.experiment_id == old_eid).update({"experiment_id": new_eid}, synchronize_session=False)
+            _rename_experiment_related_records(db, old_eid, new_eid)
         new_mice = incremental_update(db, SerumImmMouse, data.get("mouse_groups", []), new_eid)
         new_antigens = incremental_update(db, SerumImmAntigen, data.get("antigens", []), new_eid)
         new_steps = incremental_update(db, SerumImmStep, data.get("steps", []), new_eid, id_field="step_id")
@@ -280,7 +353,7 @@ def delete_serum(db: Session, project_id: int) -> None:
     if not project:
         raise ValueError("Project not found")
     exp_id = project.experiment_id
-    for model in [SerumImmMouse, SerumImmAntigen, SerumImmStep, SerumTiterTarget, SerumTiterPc]:
+    for model in [SerumFacsPlate, SerumFile, SerumImmMouse, SerumImmAntigen, SerumImmStep, SerumTiterTarget, SerumTiterPc]:
         db.query(model).filter(model.experiment_id == exp_id).delete(synchronize_session=False)
     db.delete(project)
     db.commit()

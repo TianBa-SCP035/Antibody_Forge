@@ -26,6 +26,7 @@
     "clean": "node ./scripts/clean.mjs",
     "dev": "pnpm -F @bbctg/antibody-vita run dev",
     "dev:app": "pnpm -F @bbctg/antibody-vita run dev",
+    "dev:test": "pnpm -F @bbctg/antibody-vita run dev:test",
     "postinstall": "pnpm -r run stub --if-present",
     "preinstall": "npx only-allow pnpm",
     "preview": "pnpm -F @bbctg/antibody-vita run preview",

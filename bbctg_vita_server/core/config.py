@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     secret_key: str = "please-change-me"
 
     repository_root: Path = Field(default=PROJECT_ROOT / "repository")
-    cors_origins: str = "http://localhost:5777,http://127.0.0.1:5777"
+    cors_origins: str = "http://localhost:5555,http://127.0.0.1:5555"
 
     yunzhijia_appid: str = ""
     yunzhijia_appsecret: str = ""

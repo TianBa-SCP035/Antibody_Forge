@@ -12,6 +12,7 @@
   "scripts": {
     "build": "pnpm vite build --mode production",
     "dev": "pnpm vite --mode development",
+    "dev:test": "pnpm vite --mode test",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit --skipLibCheck"
   },

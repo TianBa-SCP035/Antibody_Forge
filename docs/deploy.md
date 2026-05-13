@@ -103,6 +103,8 @@ cd bbctg_vita_web
 pnpm -F @bbctg/antibody-vita run dev
 ```
 
+本地前端开发端口为 `5555`，后端 local 端口为 `8888`。Vite 开发代理默认转发到 `8888`，也可以用 `VITA_DEV_BACKEND=http://127.0.0.1:<port>` 临时覆盖。
+
 健康检查：
 
 ```text
@@ -209,6 +211,12 @@ WantedBy=multi-user.target
 
 Nginx 代理示例：
 
+仓库内也提供了当前服务器可直接参考的站点配置：
+
+```text
+bbctg_vita_web/scripts/deploy/nginx-antibody-forge-sites-active.conf
+```
+
 ```nginx
 client_max_body_size 200m;
 proxy_read_timeout 300s;
@@ -224,6 +232,7 @@ location /api/ {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header Authorization $http_authorization;
 }
 
@@ -232,6 +241,7 @@ location /serum-api/ {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header Authorization $http_authorization;
 }
 ```

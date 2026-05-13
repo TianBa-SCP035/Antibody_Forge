@@ -43,7 +43,6 @@ bbctg_vita_server/
 ```text
 config/
   vita_server.env.example
-  vita_web.env.example
   local/
   test/
   prod/

@@ -122,7 +122,7 @@ class PreferenceManager {
     // 使用命名空间初始化存储管理器
     this.cache = new StorageManager({ prefix: namespace });
 
-    // 合并初始偏好设置
+    // defu reduce：后者为模板、前者覆盖；须先 defaults 再 overrides，项目 overrides 才能盖住默认
     this.initialPreferences = merge({}, overrides, defaultPreferences);
     this.customPreferencesExtension = extension ?? null;
     this.initialCustomPreferences = this.resolveCustomPreferencesDefaults(
@@ -139,6 +139,7 @@ class PreferenceManager {
 
     // 更新偏好设置
     this.updatePreferences(mergedPreference);
+
     this.replaceCustomPreferences(
       merge(
         {},

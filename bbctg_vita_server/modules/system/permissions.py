@@ -44,10 +44,12 @@ ALL_FALLBACK_CODES = sorted(
         "system.page.role",
         "system.page.permission",
         "system.page.operation_log",
+        "system.page.feature",
         "system.user.manage",
         "system.role.manage",
         "system.permission.manage",
         "system.operation_log.view",
+        "system.feature.manage",
     }
 )
 

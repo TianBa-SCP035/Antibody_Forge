@@ -16,7 +16,7 @@ exports[`defaultPreferences immutability test > should not modify the config obj
     "contentPaddingLeft": 0,
     "contentPaddingRight": 0,
     "contentPaddingTop": 0,
-    "defaultAvatar": "https://unpkg.com/@vbenjs/static-source@0.1.7/source/avatar-v1.webp",
+    "defaultAvatar": "/Vita256.ico",
     "defaultHomePath": "/analytics",
     "dynamicTitle": true,
     "enableCheckUpdates": true,
@@ -28,7 +28,7 @@ exports[`defaultPreferences immutability test > should not modify the config obj
     "layout": "sidebar-nav",
     "locale": "zh-CN",
     "loginExpiredMode": "page",
-    "name": "Vben Admin",
+    "name": "Antibody Vita",
     "preferencesButtonPosition": "auto",
     "watermark": false,
     "watermarkContent": "",
@@ -65,7 +65,8 @@ exports[`defaultPreferences immutability test > should not modify the config obj
   "logo": {
     "enable": true,
     "fit": "contain",
-    "source": "https://unpkg.com/@vbenjs/static-source@0.1.7/source/logo-v1.webp",
+    "source": "/Vita.png",
+    "sourceDark": "/Vita.png",
   },
   "navigation": {
     "accordion": true,

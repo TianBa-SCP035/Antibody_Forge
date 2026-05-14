@@ -6,8 +6,9 @@ const routes: RouteRecordRaw[] = [
   {
     meta: {
       icon: 'lucide:test-tube',
+      featureCode: 'menu.serum',
       order: 10,
-      title: '血清实验',
+      title: '小鼠免疫',
     },
     name: 'Serum',
     path: '/serum',
@@ -21,7 +22,7 @@ const routes: RouteRecordRaw[] = [
           authority: ['serum.page.list'],
           icon: 'lucide:list',
           tabGroup: SERUM_TAB_GROUP,
-          title: '血清实验列表',
+          title: '免疫实验列表',
         },
       },
       {
@@ -33,7 +34,7 @@ const routes: RouteRecordRaw[] = [
           hideInMenu: true,
           icon: 'lucide:file-text',
           tabGroup: SERUM_TAB_GROUP,
-          title: '血清实验详情',
+          title: '免疫实验详情',
         },
       },
       {
@@ -45,7 +46,7 @@ const routes: RouteRecordRaw[] = [
           hideInMenu: true,
           icon: 'lucide:edit',
           tabGroup: SERUM_TAB_GROUP,
-          title: '编辑血清实验',
+          title: '编辑免疫实验',
         },
       },
       {
@@ -57,7 +58,7 @@ const routes: RouteRecordRaw[] = [
           hideInMenu: true,
           icon: 'lucide:chart-no-axes-combined',
           tabGroup: SERUM_TAB_GROUP,
-          title: '血清效价数据',
+          title: '效价数据',
         },
       },
       {
@@ -69,7 +70,7 @@ const routes: RouteRecordRaw[] = [
           hideInMenu: true,
           icon: 'lucide:warehouse',
           tabGroup: SERUM_TAB_GROUP,
-          title: '细胞库存查询',
+          title: '细胞及库存管理',
         },
       },
     ],

@@ -147,6 +147,40 @@ CREATE TABLE IF NOT EXISTS sys_permission_api (
   KEY idx_sys_permission_api_path (path_pattern)
 ) COMMENT='权限点接口映射表';
 
+CREATE TABLE IF NOT EXISTS sys_feature_flag (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  code VARCHAR(128) NOT NULL UNIQUE COMMENT '功能编码',
+  name VARCHAR(128) NOT NULL COMMENT '功能名称',
+  category VARCHAR(32) NOT NULL COMMENT '功能分类',
+  description VARCHAR(255) NULL COMMENT '功能说明',
+  enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  visible TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否显示',
+  sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
+  config JSON NULL COMMENT '扩展配置',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  KEY idx_sys_feature_flag_category (category),
+  KEY idx_sys_feature_flag_enabled (enabled),
+  KEY idx_sys_feature_flag_visible (visible)
+) COMMENT='运行时功能配置（菜单可见性、功能开关、定时任务参数、站点偏好等）';
+
+CREATE TABLE IF NOT EXISTS sys_job_run_log (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  job_code VARCHAR(128) NOT NULL COMMENT '任务编码',
+  job_name VARCHAR(128) NOT NULL COMMENT '任务名称',
+  started_at DATETIME NULL COMMENT '开始时间',
+  finished_at DATETIME NULL COMMENT '结束时间',
+  duration_ms INT NULL COMMENT '耗时毫秒',
+  result VARCHAR(16) NOT NULL DEFAULT 'success' COMMENT '执行结果',
+  summary VARCHAR(255) NULL COMMENT '结果摘要',
+  detail JSON NULL COMMENT '执行详情',
+  error_message TEXT NULL COMMENT '错误信息',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  KEY idx_sys_job_run_log_job (job_code),
+  KEY idx_sys_job_run_log_started_at (started_at),
+  KEY idx_sys_job_run_log_result (result)
+) COMMENT='定时任务运行日志（起止时间、耗时、结果摘要与结构化详情）';
+
 INSERT IGNORE INTO sys_permission
   (code, name, type, module, resource, action, route_path, ui_key, parent_code, sort_order)
 VALUES
@@ -168,14 +202,16 @@ VALUES
   ('serum.file.manage', '管理效价文件', 'action', 'serum', 'file', 'manage', NULL, 'serum.file.manage_button', 'serum.page.titer', 280),
   ('serum.cell.view', '查看细胞库存', 'action', 'serum', 'cell', 'view_inventory', NULL, 'serum.cell.view_button', 'serum.page.cell', 290),
   ('serum.cell.prep_status.update', '更新细胞制备状态', 'action', 'serum', 'cell', 'update_prep_status', NULL, 'serum.cell.prep_status.update_button', 'serum.page.cell', 300),
-  ('system.page.user', '用户管理页面', 'page', 'system', 'user', 'view', '/system', NULL, NULL, 900),
-  ('system.page.role', '角色管理页面', 'page', 'system', 'role', 'view', '/system', NULL, NULL, 910),
-  ('system.page.permission', '权限管理页面', 'page', 'system', 'permission', 'view', '/system', NULL, NULL, 920),
-  ('system.page.operation_log', '操作日志页面', 'page', 'system', 'operation_log', 'view', '/system', NULL, NULL, 930),
+  ('system.page.user', '用户管理页面', 'page', 'system', 'user', 'view', '/system/user-permission', NULL, NULL, 900),
+  ('system.page.role', '角色管理页面', 'page', 'system', 'role', 'view', '/system/user-permission', NULL, NULL, 910),
+  ('system.page.permission', '权限管理页面', 'page', 'system', 'permission', 'view', '/system/user-permission', NULL, NULL, 920),
+  ('system.page.operation_log', '操作日志页面', 'page', 'system', 'operation_log', 'view', '/system/user-permission', NULL, NULL, 930),
+  ('system.page.feature', '系统功能页面', 'page', 'system', 'feature', 'view', '/system/features', NULL, NULL, 940),
   ('system.user.manage', '管理用户', 'action', 'system', 'user', 'manage', NULL, 'system.user.manage_button', 'system.page.user', 1000),
   ('system.role.manage', '管理角色', 'action', 'system', 'role', 'manage', NULL, 'system.role.manage_button', 'system.page.role', 1010),
   ('system.permission.manage', '管理权限点', 'action', 'system', 'permission', 'manage', NULL, 'system.permission.manage_button', 'system.page.permission', 1020),
-  ('system.operation_log.view', '查看操作日志', 'action', 'system', 'operation_log', 'view', NULL, 'system.operation_log.view_button', 'system.page.operation_log', 1030);
+  ('system.operation_log.view', '查看操作日志', 'action', 'system', 'operation_log', 'view', NULL, 'system.operation_log.view_button', 'system.page.operation_log', 1030),
+  ('system.feature.manage', '管理系统功能', 'action', 'system', 'feature', 'manage', NULL, 'system.feature.manage_button', 'system.page.feature', 1040);
 
 INSERT IGNORE INTO sys_permission_api
   (permission_code, method, path_pattern, description)
@@ -205,7 +241,11 @@ VALUES
   ('system.permission.manage', 'POST', '/api/system/permission_bundles/save', '新增或编辑权限包'),
   ('system.permission.manage', 'POST', '/api/system/permission_bundles/delete', '删除权限包'),
   ('system.permission.manage', 'POST', '/api/system/users/{user_id}/permission_overrides', '保存用户个人权限覆盖'),
-  ('system.operation_log.view', 'GET', '/api/system/operation_logs', '查看操作日志');
+  ('system.operation_log.view', 'GET', '/api/system/operation_logs', '查看操作日志'),
+  ('system.feature.manage', 'GET', '/api/system/features', '查看系统功能配置'),
+  ('system.feature.manage', 'GET', '/api/system/features/job_logs', '查看定时任务运行日志'),
+  ('system.feature.manage', 'GET', '/api/system/features/system_status', '查看系统基础状态'),
+  ('system.feature.manage', 'POST', '/api/system/features/save', '保存系统功能配置');
 
 INSERT IGNORE INTO sys_permission_bundle (code, name, module, description, sort_order) VALUES
   ('serum_readonly', '查看', 'serum', '查看血清列表、详情、效价和细胞库存', 100),
@@ -256,10 +296,23 @@ INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VAL
   ('system_admin', 'system.page.role'),
   ('system_admin', 'system.page.permission'),
   ('system_admin', 'system.page.operation_log'),
+  ('system_admin', 'system.page.feature'),
   ('system_admin', 'system.user.manage'),
   ('system_admin', 'system.role.manage'),
   ('system_admin', 'system.permission.manage'),
-  ('system_admin', 'system.operation_log.view');
+  ('system_admin', 'system.operation_log.view'),
+  ('system_admin', 'system.feature.manage');
+
+INSERT IGNORE INTO sys_feature_flag
+  (code, name, category, description, enabled, visible, sort_order, config)
+VALUES
+  ('menu.serum', '血清实验菜单', 'menu', '控制血清实验模块菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum', 'icon', 'lucide:test-tube')),
+  ('menu.system', '系统管理', 'menu', '控制系统管理父级菜单显示', 1, 1, 90, JSON_OBJECT('path', '/system', 'icon', 'lucide:settings')),
+  ('menu.system.user_permission', '用户权限菜单', 'menu', '控制系统管理下用户权限页面显示', 1, 1, 10, JSON_OBJECT('path', '/system/user-permission', 'icon', 'lucide:shield-check', 'parent_code', 'menu.system')),
+  ('menu.system.features', '系统功能菜单', 'menu', '控制系统管理下系统功能页面显示', 1, 1, 20, JSON_OBJECT('path', '/system/features', 'icon', 'lucide:sliders-horizontal', 'parent_code', 'menu.system')),
+  ('feature.yunzhijia_auto_provision', '云之家自动创建用户', 'feature', '允许云之家登录时自动创建未绑定用户', 0, 1, 110, JSON_OBJECT()),
+  ('job.employee_profile_sync', '员工资料定时同步', 'job', '每天 00:30 同步外部员工基础资料', 1, 1, 200, JSON_OBJECT('hour', 0, 'minute', 30, 'cron', '30 0 * * *', 'restart_required', true)),
+  ('job.serum_auto_update_status', '血清状态自动更新', 'job', '每天 01:00 自动更新血清实验状态', 1, 1, 210, JSON_OBJECT('hour', 1, 'minute', 0, 'cron', '0 1 * * *', 'restart_required', true));
 
 INSERT IGNORE INTO sys_role (code, name, description, sort_order) VALUES
   ('super_admin', '超级管理员', '拥有系统所有权限', 1),
@@ -296,3 +349,35 @@ WHERE r.code = 'readonly' AND b.code = 'serum_readonly';
 -- INSERT INTO sys_user_role (user_id, role_id)
 -- SELECT u.id, r.id FROM sys_user u JOIN sys_role r
 -- WHERE u.username = 'admin' AND r.code = 'super_admin';
+
+-- -----------------------------------------------------------------------------
+-- 可选：表已由旧脚本创建且缺少列/表注释时，在 MySQL 上执行一次以与 ORM 及上文 DDL 对齐
+-- （新建库执行上方 CREATE TABLE 即可，无需再跑本节）
+-- -----------------------------------------------------------------------------
+ALTER TABLE sys_feature_flag
+  MODIFY id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  MODIFY code VARCHAR(128) NOT NULL COMMENT '功能编码',
+  MODIFY name VARCHAR(128) NOT NULL COMMENT '功能名称',
+  MODIFY category VARCHAR(32) NOT NULL COMMENT '功能分类',
+  MODIFY description VARCHAR(255) NULL COMMENT '功能说明',
+  MODIFY enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  MODIFY visible TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否显示',
+  MODIFY sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
+  MODIFY config JSON NULL COMMENT '扩展配置',
+  MODIFY created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  MODIFY updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  COMMENT = '运行时功能配置（菜单可见性、功能开关、定时任务参数、站点偏好等）';
+
+ALTER TABLE sys_job_run_log
+  MODIFY id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  MODIFY job_code VARCHAR(128) NOT NULL COMMENT '任务编码',
+  MODIFY job_name VARCHAR(128) NOT NULL COMMENT '任务名称',
+  MODIFY started_at DATETIME NULL COMMENT '开始时间',
+  MODIFY finished_at DATETIME NULL COMMENT '结束时间',
+  MODIFY duration_ms INT NULL COMMENT '耗时毫秒',
+  MODIFY result VARCHAR(16) NOT NULL DEFAULT 'success' COMMENT '执行结果',
+  MODIFY summary VARCHAR(255) NULL COMMENT '结果摘要',
+  MODIFY detail JSON NULL COMMENT '执行详情',
+  MODIFY error_message TEXT NULL COMMENT '错误信息',
+  MODIFY created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  COMMENT = '定时任务运行日志（起止时间、耗时、结果摘要与结构化详情）';

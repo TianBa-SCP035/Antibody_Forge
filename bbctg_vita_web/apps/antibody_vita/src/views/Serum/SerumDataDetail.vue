@@ -5,7 +5,7 @@
       <div class="title-wrap">
         <div class="title-row">
           <div class="page-title">
-            {{ postForm.project_name || '血清实验详情' }}
+            {{ postForm.project_name || '免疫实验详情' }}
           </div>
 
           <el-tag

@@ -43,7 +43,8 @@ config/vita_server.env.example
 ```text
 APP_ENV                   可选。当前环境：local、test 或 prod；不填时自动识别。
 VITA_SERVER_ENV_FILE      可选。显式指定后端配置文件路径，适合 systemd。
-DATABASE_URL              主业务数据库连接。
+DATABASE_URL              主业务数据库连接。test/prod 必须在 env 中配置真实连接串，禁止依赖应用代码里的占位默认。
+SECRET_KEY                JWT 签名密钥，生产必须替换为强随机串，禁止依赖代码或示例中的默认值。
 CELL_DB_URL               细胞库存外部数据库连接。
 EMPLOYEE_DB_URL           外部员工信息只读库连接，按需配置。
 SECRET_KEY                JWT 签名密钥，生产必须替换。
@@ -119,9 +120,10 @@ GET /api/health
 
 ## 后台定时任务
 
-当前系统只注册一个后台任务：
+当前系统注册以下后台任务：
 
 - `serum_auto_update_status`：每天 01:00 执行 `auto_update_status(db, {})`，自动更新血清实验状态。
+- `employee_profile_sync`：每天 00:30 从外部员工信息库同步用户基础资料。
 
 启动策略：
 
@@ -129,8 +131,6 @@ GET /api/health
 - `APP_ENV=prod` 会启动定时任务。
 - 任意环境设置 `ENABLE_SCHEDULER=true` 也会启动定时任务。
 - 任务运行结果写入 `repository/logs/app.log`。
-
-后续如果增加员工资料同步任务，建议使用独立任务名 `employee_profile_sync`，例如每天 02:00 执行，并继续只在 prod 或显式开启时运行。
 
 ## 云之家登录
 
@@ -148,16 +148,17 @@ GET /api/health
 
 ## 外部员工信息库
 
-员工信息库使用独立只读配置 `EMPLOYEE_DB_URL`，不复用 `CELL_DB_URL`，也不提交真实连接串。
+员工信息库使用独立只读配置 `EMPLOYEE_DB_URL`，不复用 `CELL_DB_URL`，也不提交真实连接串。该配置只需要放在生产环境配置文件中；`local` 和 `test` 默认不启动定时任务，可以保持为空。
 
-第一阶段建议只做只读查询和字段映射确认，重点确认外部 `sys_user` 是否包含姓名、工号、手机号、部门、岗位、在职状态和 openid。同步策略建议：
+当前员工同步任务读取 `xdida_platform_biocytogen.org_emp`，并通过 `org_emp.depart_id = org_depart.id` 关联组别，再通过 `org_depart.top_id` 关联上级部门。同步策略：
 
 - 只同步基础资料，不同步权限、不同步密码。
-- 匹配优先级为 `openid`、`job_no`、公司账号字段。
-- 可更新本系统 `display_name`、`department`、`group_name`、`position_title`、`employment_status`、`email`、`mobile`。
-- 新员工可创建为无角色用户，供管理员快速授权。
-
-后续实现时建议先在系统管理页提供手动“同步员工信息”，稳定后再增加 `employee_profile_sync` 定时任务。
+- 按 `cloud_open_id` 匹配本系统 `sys_user.openid`，并用工号 `snum` 校验；工号不一致时跳过，不覆盖。
+- 更新已有用户时读取全部外部员工，用于刷新姓名、部门、组别、岗位、性别、邮箱、手机号和离职状态。
+- 新增用户只使用外部 `is_locked=0` 的员工，账号 `username` 使用手机号，`status` 固定为 `active`，不自动分配角色。
+- 自动新增的用户会写入随机密码哈希，不记录也不返回明文密码；如需账号密码登录，由管理员重置密码。
+- 外部有 `leave_date` 时将本系统 `employment_status` 更新为 `resigned`；没有离职时间时不强行改回在职。
+- `openid` 重复、手机号缺失/重复、手机号已被本系统账号占用等情况都会跳过并写入任务统计日志。
 
 ## 生产部署建议
 

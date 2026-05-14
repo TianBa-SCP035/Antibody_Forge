@@ -1,6 +1,6 @@
 {
   "name": "@bbctg/antibody-vita",
-  "version": "5.7.0",
+  "version": "5.7.5",
   "repository": {
     "type": "git",
     "directory": "apps/antibody_vita"

@@ -106,24 +106,104 @@ export interface SystemAuditTargetSnapshot {
   username?: string;
 }
 
+export interface SystemFeatureFlag {
+  category: 'feature' | 'job' | 'menu' | string;
+  code: string;
+  config?: Record<string, any>;
+  description?: string;
+  enabled: boolean;
+  id?: number;
+  name: string;
+  sort_order?: number;
+  visible: boolean;
+}
+
+export interface SystemJobRunLog {
+  detail?: Record<string, any>;
+  duration_ms?: number;
+  error_message?: string;
+  finished_at?: string;
+  id: number;
+  job_code: string;
+  job_name: string;
+  result: string;
+  started_at?: string;
+  summary?: string;
+}
+
 export interface SystemUserQuery {
   department?: string;
   employment_status?: string;
   gender?: string;
   group_name?: string;
+  has_admin_role?: string;
   keyword?: string;
+  page?: number;
+  page_size?: number;
   status?: string;
 }
 
 export function getSystemUsersApi(params: string | SystemUserQuery = '') {
   const query = typeof params === 'string' ? { keyword: params } : params;
-  return requestClient.get<{ items: SystemUser[] }>('/system/users', {
+  return requestClient.get<{
+    active_total?: number;
+    items: SystemUser[];
+    page?: number;
+    page_size?: number;
+    total?: number;
+  }>('/system/users', {
     params: query,
+  });
+}
+
+export function getSystemUserSuggestionsApi(params: {
+  field: 'department' | 'group_name' | 'keyword';
+  keyword?: string;
+  limit?: number;
+}) {
+  return requestClient.get<{ items: string[] }>('/system/users/suggestions', {
+    params,
   });
 }
 
 export function saveSystemUserApi(data: SystemUser & { password?: string }) {
   return requestClient.post('/system/users/save', data);
+}
+
+export function getSystemFeaturesApi() {
+  return requestClient.get<{ items: SystemFeatureFlag[] }>('/system/features');
+}
+
+export function getSystemEffectiveFeaturesApi() {
+  return requestClient.get<{
+    items: Array<Pick<SystemFeatureFlag, 'category' | 'code' | 'enabled' | 'sort_order' | 'visible'>>;
+  }>('/system/features/effective');
+}
+
+export function getSystemJobRunLogsApi(
+  params: {
+    end_date?: string;
+    job_code?: string;
+    limit?: number;
+    result?: string;
+    start_date?: string;
+  } = {},
+) {
+  return requestClient.get<{ items: SystemJobRunLog[] }>('/system/features/job_logs', {
+    params,
+  });
+}
+
+export function getSystemFeatureStatusApi() {
+  return requestClient.get<{
+    server_time: string;
+    timezone: string;
+    user_id?: number;
+  }>('/system/features/system_status');
+}
+
+export function saveSystemFeatureApi(data: SystemFeatureFlag) {
+  return requestClient.post<SystemFeatureFlag>('/system/features/save', data);
 }
 
 export function deleteSystemUserApi(id: number, snapshot: SystemAuditTargetSnapshot = {}) {

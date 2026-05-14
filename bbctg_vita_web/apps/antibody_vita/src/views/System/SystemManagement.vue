@@ -15,6 +15,7 @@ import { useAccessStore, useUserStore } from '@vben/stores';
 
 import {
   ElAlert,
+  ElAutocomplete,
   ElButton,
   ElCard,
   ElCheckbox,
@@ -51,6 +52,7 @@ import {
   getSystemPermissionsApi,
   getSystemRolesApi,
   getSystemUserPermissionOverridesApi,
+  getSystemUserSuggestionsApi,
   getSystemUsersApi,
   resetSystemUserPasswordApi,
   saveSystemPermissionBundleApi,
@@ -59,7 +61,7 @@ import {
   saveSystemUserPermissionOverridesApi,
 } from '#/api';
 
-defineOptions({ name: 'SystemManagement' });
+defineOptions({ name: 'SystemUserPermission' });
 
 const accessStore = useAccessStore();
 const userStore = useUserStore();
@@ -87,7 +89,13 @@ const logQuery = reactive<SystemOperationLogQuery>({
   result: '',
   username: '',
 });
+const userQuery = reactive({
+  page: 1,
+  page_size: 50,
+});
 const logTotal = ref(0);
+const userTotal = ref(0);
+const activeUserTotal = ref(0);
 
 const users = ref<SystemUser[]>([]);
 const roles = ref<SystemRole[]>([]);
@@ -103,6 +111,9 @@ const userFilters = reactive({
   group_name: '',
   status: '',
 });
+
+/** 客户端筛选：任一已绑定角色的名称包含「管理员」 */
+const systemAdminRoleFilter = ref<'' | 'no' | 'yes'>('');
 
 const userForm = reactive<SystemUser & { password?: string }>({
   username: '',
@@ -201,7 +212,7 @@ const visibleTabs = computed(() => [
 ]);
 
 const activeUsersCount = computed(() => {
-  return users.value.filter((user) => user.status === 'active').length;
+  return activeUserTotal.value;
 });
 
 const activeRolesCount = computed(() => {
@@ -213,14 +224,18 @@ const activePermissionBundlesCount = computed(() => {
 });
 
 const usersForTable = computed(() => {
-  return users.value.map((user) => ({
-    ...user,
-    employment_status_text: formatEmploymentStatus(user.employment_status),
-    gender_text: formatGender(user.gender),
-    org_summary: [user.department, user.group_name].filter(Boolean).join(' / ') || '-',
-    role_names: formatRoleNames(user.role_ids) || '-',
-    is_superuser_text: user.is_superuser ? '是' : '否',
-  }));
+  return users.value.map((user) => {
+    const isSystemAdminRole = userRoleNameHasAdmin(user.role_ids);
+    return {
+      ...user,
+      employment_status_text: formatEmploymentStatus(user.employment_status),
+      gender_text: formatGender(user.gender),
+      org_summary: [user.department, user.group_name].filter(Boolean).join(' / ') || '-',
+      role_names: formatRoleNames(user.role_ids) || '-',
+      is_system_admin_role: isSystemAdminRole,
+      system_admin_text: isSystemAdminRole ? '是' : '否',
+    };
+  });
 });
 
 const rolesForTable = computed(() => {
@@ -311,6 +326,17 @@ function formatRoleNames(roleIds?: number[]) {
     .join('、');
 }
 
+/** 角色名称含「管理员」即视为系统管理类角色，用于列表展示与筛选（不参与权限计算） */
+function userRoleNameHasAdmin(roleIds?: number[]) {
+  for (const roleId of roleIds || []) {
+    const name = roleNameMap.value.get(roleId);
+    if (name && name.includes('管理员')) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function formatBundleNames(bundleCodes?: string[]) {
   const groups = new Map<string, string[]>();
   for (const code of bundleCodes || []) {
@@ -357,7 +383,7 @@ function ensureActiveTab() {
 function getPermissionModuleName(value: string) {
   const moduleCode = value.includes('.') ? value.split('.')[0] || '' : value;
   const map: Record<string, string> = {
-    serum: '血清实验',
+    serum: '小鼠免疫',
     system: '系统管理',
   };
   return map[moduleCode] || moduleCode || '其他';
@@ -439,7 +465,7 @@ function formatLogTargetType(log: SystemOperationLog) {
     bundle: '权限包',
     file: '文件',
     permission: '权限',
-    project: '血清项目',
+    project: '免疫项目',
     role: '角色',
     titer: '效价',
     user: '用户',
@@ -520,11 +546,18 @@ async function loadData() {
     if (canManageUsers.value) {
       const userResult = await getSystemUsersApi({
         ...userFilters,
+        has_admin_role: systemAdminRoleFilter.value,
         keyword: userKeyword.value.trim(),
+        page: userQuery.page,
+        page_size: userQuery.page_size,
       });
       users.value = userResult?.items || [];
+      userTotal.value = userResult?.total || users.value.length;
+      activeUserTotal.value = userResult?.active_total || 0;
     } else {
       users.value = [];
+      userTotal.value = 0;
+      activeUserTotal.value = 0;
       selectedUserRows.value = [];
     }
 
@@ -557,10 +590,10 @@ async function loadData() {
     }
 
     if (!visibleTabs.value.length) {
-      errorMessage.value = '当前账号没有系统管理明细权限';
+      errorMessage.value = '当前账号没有用户权限管理明细权限';
     }
   } catch (error: any) {
-    errorMessage.value = error?.message || '系统管理数据加载失败';
+    errorMessage.value = error?.message || '用户权限数据加载失败';
   } finally {
     loading.value = false;
   }
@@ -576,6 +609,51 @@ async function loadLogs() {
   } finally {
     loading.value = false;
   }
+}
+
+function handleUserSearch() {
+  userQuery.page = 1;
+  selectedUserRows.value = [];
+  loadData();
+}
+
+function handleUserPageChange(page: number) {
+  userQuery.page = page;
+  selectedUserRows.value = [];
+  loadData();
+}
+
+async function fetchUserSuggestions(
+  field: 'department' | 'group_name' | 'keyword',
+  query: string,
+  callback: (items: Array<{ value: string }>) => void,
+) {
+  try {
+    const result = await getSystemUserSuggestionsApi({
+      field,
+      keyword: query,
+      limit: 20,
+    });
+    callback((result?.items || []).map((value) => ({ value })));
+  } catch {
+    callback([]);
+  }
+}
+
+function fetchKeywordSuggestions(query: string, callback: (items: Array<{ value: string }>) => void) {
+  fetchUserSuggestions('keyword', query, callback);
+}
+
+function fetchDepartmentSuggestions(query: string, callback: (items: Array<{ value: string }>) => void) {
+  fetchUserSuggestions('department', query, callback);
+}
+
+function fetchGroupSuggestions(query: string, callback: (items: Array<{ value: string }>) => void) {
+  fetchUserSuggestions('group_name', query, callback);
+}
+
+function handleUserSuggestionSelect() {
+  handleUserSearch();
 }
 
 function openUserDialog(user?: SystemUser) {
@@ -899,7 +977,7 @@ onMounted(loadData);
   <div class="system-page">
     <div class="system-header">
       <div>
-        <h2>系统管理</h2>
+        <h2>用户权限</h2>
         <p>账号、角色权限、个人权限覆盖与操作审计</p>
       </div>
       <el-button :loading="loading" type="primary" @click="loadData">
@@ -919,7 +997,7 @@ onMounted(loadData);
       <el-col :lg="6" :sm="12" :xs="24">
         <el-card shadow="never" class="summary-card">
           <span>用户</span>
-          <strong>{{ activeUsersCount }} / {{ users.length }}</strong>
+          <strong>{{ activeUsersCount }} / {{ userTotal }}</strong>
         </el-card>
       </el-col>
       <el-col :lg="6" :sm="12" :xs="24">
@@ -947,33 +1025,60 @@ onMounted(loadData);
         <el-tab-pane v-if="canManageUsers" label="用户管理" name="users">
           <div class="table-toolbar">
             <el-space wrap>
-              <el-input
+              <el-autocomplete
                 v-model="userKeyword"
                 clearable
-                placeholder="搜索账号、姓名、OpenID、工号"
+                :debounce="250"
+                :fetch-suggestions="fetchKeywordSuggestions"
+                placeholder="搜索账号、姓名、工号"
                 style="width: 220px"
-                @keyup.enter="loadData"
+                value-key="value"
+                @clear="handleUserSearch"
+                @keyup.enter="handleUserSearch"
+                @select="handleUserSuggestionSelect"
               />
-              <el-input
+              <el-autocomplete
                 v-model="userFilters.department"
                 clearable
+                :debounce="250"
+                :fetch-suggestions="fetchDepartmentSuggestions"
                 placeholder="部门"
                 style="width: 140px"
-                @keyup.enter="loadData"
+                value-key="value"
+                @clear="handleUserSearch"
+                @keyup.enter="handleUserSearch"
+                @select="handleUserSuggestionSelect"
               />
-              <el-input
+              <el-autocomplete
                 v-model="userFilters.group_name"
                 clearable
+                :debounce="250"
+                :fetch-suggestions="fetchGroupSuggestions"
                 placeholder="组别"
                 style="width: 140px"
-                @keyup.enter="loadData"
+                value-key="value"
+                @clear="handleUserSearch"
+                @keyup.enter="handleUserSearch"
+                @select="handleUserSuggestionSelect"
               />
-              <el-select v-model="userFilters.gender" clearable placeholder="性别" style="width: 110px">
+              <el-select
+                v-model="userFilters.gender"
+                clearable
+                placeholder="性别"
+                style="width: 110px"
+                @change="handleUserSearch"
+              >
                 <el-option label="男" value="male" />
                 <el-option label="女" value="female" />
                 <el-option label="未知" value="unknown" />
               </el-select>
-              <el-select v-model="userFilters.status" clearable placeholder="账号状态" style="width: 120px">
+              <el-select
+                v-model="userFilters.status"
+                clearable
+                placeholder="账号状态"
+                style="width: 120px"
+                @change="handleUserSearch"
+              >
                 <el-option label="启用" value="active" />
                 <el-option label="禁用" value="disabled" />
               </el-select>
@@ -982,12 +1087,23 @@ onMounted(loadData);
                 clearable
                 placeholder="在职状态"
                 style="width: 120px"
+                @change="handleUserSearch"
               >
                 <el-option label="在职" value="active" />
                 <el-option label="休假中" value="on_leave" />
                 <el-option label="已离职" value="resigned" />
               </el-select>
-              <el-button :loading="loading" @click="loadData">查询</el-button>
+              <el-select
+                v-model="systemAdminRoleFilter"
+                clearable
+                placeholder="系统管理员"
+                style="width: 130px"
+                @change="handleUserSearch"
+              >
+                <el-option label="是" value="yes" />
+                <el-option label="否" value="no" />
+              </el-select>
+              <el-button :loading="loading" @click="handleUserSearch">查询</el-button>
             </el-space>
             <el-space>
               <el-button @click="openBatchRoleDialog">
@@ -1019,10 +1135,10 @@ onMounted(loadData);
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="超级管理员" width="120">
+            <el-table-column label="系统管理员" width="120">
               <template #default="{ row }">
-                <el-tag :type="row.is_superuser ? 'danger' : 'info'">
-                  {{ row.is_superuser_text }}
+                <el-tag :type="row.is_system_admin_role ? 'danger' : 'info'">
+                  {{ row.system_admin_text }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -1045,6 +1161,16 @@ onMounted(loadData);
               </template>
             </el-table-column>
           </el-table>
+          <div class="pagination-line">
+            <el-pagination
+              background
+              layout="prev, pager, next, total"
+              :current-page="userQuery.page"
+              :page-size="userQuery.page_size"
+              :total="userTotal"
+              @current-change="handleUserPageChange"
+            />
+          </div>
         </el-tab-pane>
 
         <el-tab-pane v-if="canManageRoles" label="角色管理" name="roles">
@@ -1308,7 +1434,7 @@ onMounted(loadData);
                   v-model="userForm.profile_signature"
                   maxlength="255"
                   show-word-limit
-                  placeholder="例如：专注抗体工程与血清效价数据"
+                  placeholder="例如：专注抗体工程与免疫效价数据"
                 />
               </el-form-item>
             </el-col>
@@ -1560,7 +1686,7 @@ onMounted(loadData);
             <el-col :span="12">
               <el-form-item label="业务模块">
                 <el-select v-model="bundleForm.module" style="width: 100%">
-                  <el-option label="血清实验" value="serum" />
+                  <el-option label="小鼠免疫" value="serum" />
                   <el-option label="系统管理" value="system" />
                 </el-select>
               </el-form-item>

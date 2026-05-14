@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import type { CSSProperties } from 'vue';
 
-import { VbenAvatar } from '../avatar';
+import { computed } from 'vue';
 
 interface Props {
   /**
@@ -63,6 +63,32 @@ const logoSrc = computed(() => {
   // 否则使用默认的 src
   return props.src;
 });
+
+/** 站点根路径下的静态资源，避免出现无前导 / 时在子路由下 404 */
+function resolveStaticAssetUrl(href: string): string {
+  const raw = href.trim();
+  if (!raw) {
+    return '';
+  }
+  if (/^https?:\/\//i.test(raw) || raw.startsWith('//')) {
+    return raw;
+  }
+  const path = raw.startsWith('/') ? raw : `/${raw}`;
+  const base = import.meta.env.BASE_URL || '/';
+  if (base === '/') {
+    return path;
+  }
+  return `${String(base).replace(/\/$/, '')}${path}`;
+}
+
+const resolvedLogoSrc = computed(() => resolveStaticAssetUrl(logoSrc.value || ''));
+
+/** Logo 用原生 img：.ico 等在 Reka AvatarImage 里常加载失败，浏览器 tab favicon 不受影响 */
+const logoImgStyle = computed<CSSProperties>(() => ({
+  height: `${props.logoSize}px`,
+  objectFit: props.fit,
+  width: `${props.logoSize}px`,
+}));
 </script>
 
 <template>
@@ -72,13 +98,13 @@ const logoSrc = computed(() => {
       :href="href"
       class="flex h-full items-center gap-2 overflow-hidden px-3 text-lg leading-normal transition-all duration-500"
     >
-      <VbenAvatar
-        v-if="logoSrc"
+      <img
+        v-if="resolvedLogoSrc"
         :alt="text"
-        :src="logoSrc"
-        :size="logoSize"
-        :fit="fit"
-        class="relative rounded-none bg-transparent"
+        :src="resolvedLogoSrc"
+        :style="logoImgStyle"
+        class="relative shrink-0 select-none rounded-none bg-transparent"
+        decoding="async"
       />
       <template v-if="!collapsed">
         <slot name="text">

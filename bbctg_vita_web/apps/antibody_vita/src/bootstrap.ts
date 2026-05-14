@@ -68,8 +68,10 @@ async function bootstrap(namespace: string) {
   watchEffect(() => {
     if (preferences.app.dynamicTitle) {
       const routeTitle = router.currentRoute.value.meta?.title;
+      // 标签页后缀用 VITE_APP_TITLE（如 Antibody Vita）；左上角文案用 preferences.app.name
+      const tabSuffix = import.meta.env.VITE_APP_TITLE || preferences.app.name;
       const pageTitle =
-        (routeTitle ? `${$t(routeTitle)} - ` : '') + preferences.app.name;
+        (routeTitle ? `${$t(routeTitle)} - ` : '') + tabSuffix;
       useTitle(pageTitle);
     }
   });

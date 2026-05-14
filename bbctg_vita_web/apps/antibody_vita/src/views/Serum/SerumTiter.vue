@@ -1057,28 +1057,52 @@ export default {
         return
       }
       if (!plateData) return
+      const deletedKey = this.getPlateKey(plateData)
+      const deletedIndex = this.sortedFacsPlates.findIndex(p => this.getPlateKey(p) === deletedKey)
       
-      if (plateData.id) {
-        ElMessageBox.confirm('确定要删除这个FACS板吗？', '提示', {
-          type: 'warning'
-        }).then(() => {
+      ElMessageBox.confirm('确定要删除这个FACS板吗？', '提示', {
+        type: 'warning'
+      }).then(() => {
+        if (plateData.id) {
           deleteFacsPlate(plateData.id).then(() => {
             const index = this.facsPlates.findIndex(p => p.id === plateData.id)
             if (index !== -1) {
               this.facsPlates.splice(index, 1)
+              this.cleanupPlateState(deletedKey)
+              this.activatePlateAfterDelete(deletedKey, deletedIndex)
             }
             ElMessage.success('FACS板已删除')
           }).catch(() => {
             ElMessage.error('删除失败')
           })
-        }).catch(() => {})
-      } else {
-        const index = this.facsPlates.findIndex(p => p.tempId === plateData.tempId)
-        if (index !== -1) {
-          this.facsPlates.splice(index, 1)
-          ElMessage.success('FACS板已删除')
+        } else {
+          const index = this.facsPlates.findIndex(p => p.tempId === plateData.tempId)
+          if (index !== -1) {
+            this.facsPlates.splice(index, 1)
+            this.cleanupPlateState(deletedKey)
+            this.activatePlateAfterDelete(deletedKey, deletedIndex)
+            ElMessage.success('FACS板已删除')
+          }
         }
+      }).catch(() => {})
+    },
+    cleanupPlateState(plateKey) {
+      if (this.plateTimers[plateKey]) {
+        clearTimeout(this.plateTimers[plateKey])
+        delete this.plateTimers[plateKey]
       }
+      delete this.plateSaveSeq[plateKey]
+      delete this.savingPlateKeys[plateKey]
+    },
+    activatePlateAfterDelete(deletedKey, deletedIndex) {
+      if (this.activePlateName && this.activePlateName !== deletedKey) return
+      const plates = this.sortedFacsPlates
+      if (!plates.length) {
+        this.activePlateName = ''
+        return
+      }
+      const nextIndex = Math.min(Math.max(deletedIndex, 0), plates.length - 1)
+      this.activePlateName = this.getPlateKey(plates[nextIndex])
     },
     handleSavePlate(plateData) {
       if (!this.canEditTiter()) return

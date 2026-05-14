@@ -13,7 +13,7 @@ python server.py
 
 推荐后端端口为 `local=8888`、`test=9527`、`prod=8848`。test/prod 经 Nginx 反代时，后端 `HOST` 可设为 `127.0.0.1`。
 
-后台定时任务默认关闭，`APP_ENV=prod` 或 `ENABLE_SCHEDULER=true` 时启动。当前只注册 `serum_auto_update_status`，每天 01:00 自动更新血清实验状态。
+后台定时任务默认关闭，`APP_ENV=prod` 或 `ENABLE_SCHEDULER=true` 时启动。当前注册 `serum_auto_update_status`（每天 01:00 自动更新血清实验状态）和 `employee_profile_sync`（每天 00:30 同步外部员工基础资料）。
 
 ## 运行时目录
 

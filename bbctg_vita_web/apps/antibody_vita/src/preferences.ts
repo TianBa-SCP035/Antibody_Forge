@@ -9,6 +9,12 @@ export const overridesPreferences = defineOverridesPreferences({
   // overrides
   app: {
     defaultHomePath: '/serum/list',
-    name: import.meta.env.VITE_APP_TITLE,
+    defaultAvatar: '/Vita256.ico',
+  },
+  logo: {
+    enable: true,
+    fit: 'contain',
+    source: '/Vita.png',
+    sourceDark: '/Vita.png',
   },
 });

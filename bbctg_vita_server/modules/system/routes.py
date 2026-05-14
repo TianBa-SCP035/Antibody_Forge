@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
@@ -17,9 +19,18 @@ from models.system import (
 )
 from modules.auth.dependencies import get_current_user
 from modules.auth.security import hash_password
+from modules.system.features import list_feature_flags, list_job_run_logs, save_feature_flag
 from modules.system.permissions import build_user_context, require_permission
 
 router = APIRouter()
+
+
+def _compact_text(value: str | None) -> str:
+    return "".join(str(value or "").split())
+
+
+def _compact_column(column):
+    return func.replace(func.replace(func.coalesce(column, ""), " ", ""), "　", "")
 
 
 @router.get("/permissions/current")
@@ -45,35 +56,123 @@ def list_users(
     gender: str = "",
     status: str = "",
     employment_status: str = "",
+    has_admin_role: str = "",
+    page: int = 1,
+    page_size: int = 50,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, "system.user.manage")
     stmt = select(SysUser).order_by(SysUser.id.desc())
-    if keyword:
-        pattern = f"%{keyword}%"
+    compact_keyword = _compact_text(keyword)
+    if compact_keyword:
+        pattern = f"%{compact_keyword}%"
         stmt = stmt.where(
-            (SysUser.username.like(pattern))
-            | (SysUser.display_name.like(pattern))
-            | (SysUser.openid.like(pattern))
-            | (SysUser.job_no.like(pattern))
-            | (SysUser.department.like(pattern))
-            | (SysUser.group_name.like(pattern))
-            | (SysUser.position_title.like(pattern))
+            (_compact_column(SysUser.username).like(pattern))
+            | (_compact_column(SysUser.display_name).like(pattern))
+            | (_compact_column(SysUser.job_no).like(pattern))
         )
-    if department:
-        stmt = stmt.where(SysUser.department == department)
-    if group_name:
-        stmt = stmt.where(SysUser.group_name == group_name)
+    compact_department = _compact_text(department)
+    if compact_department:
+        stmt = stmt.where(_compact_column(SysUser.department).like(f"%{compact_department}%"))
+    compact_group_name = _compact_text(group_name)
+    if compact_group_name:
+        stmt = stmt.where(_compact_column(SysUser.group_name).like(f"%{compact_group_name}%"))
     if gender:
         stmt = stmt.where(SysUser.gender == gender)
     if status:
         stmt = stmt.where(SysUser.status == status)
     if employment_status:
         stmt = stmt.where(SysUser.employment_status == employment_status)
-    users = db.scalars(stmt).all()
+    admin_user_ids = (
+        select(SysUserRole.user_id)
+        .join(SysRole, SysRole.id == SysUserRole.role_id)
+        .where(SysRole.name.like("%管理员%"))
+    )
+    if has_admin_role == "yes":
+        stmt = stmt.where(SysUser.id.in_(admin_user_ids))
+    elif has_admin_role == "no":
+        stmt = stmt.where(SysUser.id.not_in(admin_user_ids))
+
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 200)
+    filtered_users = stmt.order_by(None).subquery()
+    total = db.scalar(select(func.count()).select_from(filtered_users)) or 0
+    active_total = (
+        db.scalar(
+            select(func.count())
+            .select_from(filtered_users)
+            .where(filtered_users.c.status == "active")
+        )
+        or 0
+    )
+    users = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
     role_map = _get_user_role_map(db, [user.id for user in users])
-    return vben_success({"items": [_user_to_dict(user, role_map.get(user.id, [])) for user in users]})
+    return vben_success(
+        {
+            "items": [_user_to_dict(user, role_map.get(user.id, [])) for user in users],
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "active_total": active_total,
+        }
+    )
+
+
+@router.get("/users/suggestions")
+def user_suggestions(
+    field: str,
+    keyword: str = "",
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "system.user.manage")
+    compact_keyword = _compact_text(keyword)
+    pattern = f"%{compact_keyword}%"
+    limit = min(max(limit, 1), 50)
+
+    if field == "department":
+        stmt = select(SysUser.department).where(SysUser.department.is_not(None))
+        if compact_keyword:
+            stmt = stmt.where(_compact_column(SysUser.department).like(pattern))
+        items = db.scalars(stmt.distinct().order_by(SysUser.department).limit(limit)).all()
+        return vben_success({"items": [item for item in items if item]})
+
+    if field == "group_name":
+        stmt = select(SysUser.group_name).where(SysUser.group_name.is_not(None))
+        if compact_keyword:
+            stmt = stmt.where(_compact_column(SysUser.group_name).like(pattern))
+        items = db.scalars(stmt.distinct().order_by(SysUser.group_name).limit(limit)).all()
+        return vben_success({"items": [item for item in items if item]})
+
+    if field == "keyword":
+        stmt = select(SysUser).order_by(SysUser.id.desc())
+        if compact_keyword:
+            stmt = stmt.where(
+                (_compact_column(SysUser.username).like(pattern))
+                | (_compact_column(SysUser.display_name).like(pattern))
+                | (_compact_column(SysUser.job_no).like(pattern))
+            )
+        users = db.scalars(stmt.limit(limit)).all()
+        values: list[str] = []
+        seen: set[str] = set()
+        for user in users:
+            for value in [user.display_name, user.username, user.job_no]:
+                if (
+                    value
+                    and value not in seen
+                    and (not compact_keyword or compact_keyword in _compact_text(value))
+                ):
+                    values.append(value)
+                    seen.add(value)
+                if len(values) >= limit:
+                    break
+            if len(values) >= limit:
+                break
+        return vben_success({"items": values})
+
+    raise ValueError("不支持的候选字段")
 
 
 @router.post("/users/save")
@@ -129,6 +228,97 @@ def save_user(
         _replace_user_roles(db, user.id, role_ids)
     db.commit()
     return vben_success({"id": user.id})
+
+
+@router.get("/features")
+def list_features(
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "system.page.feature")
+    return vben_success({"items": list_feature_flags(db)})
+
+
+@router.get("/features/job_logs")
+def feature_job_logs(
+    job_code: str = "",
+    result: str = "",
+    start_date: str = "",
+    end_date: str = "",
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "system.page.feature")
+    return vben_success(
+        {
+            "items": list_job_run_logs(
+                db,
+                job_code=job_code,
+                result=result,
+                start_date=_parse_datetime(start_date),
+                end_date=_parse_datetime(end_date, end_of_day=True),
+                limit=limit,
+            )
+        }
+    )
+
+
+@router.get("/features/system_status")
+def feature_system_status(
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    return vben_success(
+        {
+            "server_time": datetime.now().isoformat(timespec="seconds"),
+            "timezone": "Asia/Shanghai",
+            "user_id": current_user.id,
+        }
+    )
+
+
+def _parse_datetime(value: str, *, end_of_day: bool = False) -> datetime | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        if len(text) == 10:
+            suffix = " 23:59:59" if end_of_day else " 00:00:00"
+            return datetime.fromisoformat(text + suffix)
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+@router.get("/features/effective")
+def effective_features(
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    return vben_success(
+        {
+            "items": [
+                {
+                    "code": item["code"],
+                    "category": item["category"],
+                    "enabled": item["enabled"],
+                    "sort_order": item.get("sort_order"),
+                    "visible": item["visible"],
+                }
+                for item in list_feature_flags(db)
+            ]
+        }
+    )
+
+
+@router.post("/features/save")
+def save_feature(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "system.feature.manage")
+    return vben_success(save_feature_flag(db, data))
 
 
 @router.post("/users/delete")

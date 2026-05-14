@@ -161,6 +161,72 @@ class SysPermissionApi(Base):
     created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")
 
 
+class SysFeatureFlag(Base):
+    __tablename__ = "sys_feature_flag"
+    __table_args__ = {"comment": "运行时功能配置（菜单可见性、功能开关、定时任务参数、站点偏好等）"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    code: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, comment="功能编码")
+    name: Mapped[str] = mapped_column(String(128), nullable=False, comment="功能名称")
+    category: Mapped[str] = mapped_column(String(32), nullable=False, comment="功能分类")
+    description: Mapped[str | None] = mapped_column(String(255), comment="功能说明")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否启用")
+    visible: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否显示")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, comment="排序值")
+    config: Mapped[object | None] = mapped_column(JSON, comment="扩展配置")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+        comment="更新时间",
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "code": self.code,
+            "name": self.name,
+            "category": self.category,
+            "description": self.description,
+            "enabled": self.enabled,
+            "visible": self.visible,
+            "sort_order": self.sort_order,
+            "config": self.config or {},
+        }
+
+
+class SysJobRunLog(Base):
+    __tablename__ = "sys_job_run_log"
+    __table_args__ = {"comment": "定时任务运行日志（起止时间、耗时、结果摘要与结构化详情）"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    job_code: Mapped[str] = mapped_column(String(128), nullable=False, comment="任务编码")
+    job_name: Mapped[str] = mapped_column(String(128), nullable=False, comment="任务名称")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, comment="开始时间")
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, comment="结束时间")
+    duration_ms: Mapped[int | None] = mapped_column(Integer, comment="耗时毫秒")
+    result: Mapped[str] = mapped_column(String(16), default="success", comment="执行结果")
+    summary: Mapped[str | None] = mapped_column(String(255), comment="结果摘要")
+    detail: Mapped[object | None] = mapped_column(JSON, comment="执行详情")
+    error_message: Mapped[str | None] = mapped_column(Text, comment="错误信息")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "job_code": self.job_code,
+            "job_name": self.job_name,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "duration_ms": self.duration_ms,
+            "result": self.result,
+            "summary": self.summary,
+            "detail": self.detail or {},
+            "error_message": self.error_message,
+        }
+
+
 class SysOperationLog(Base):
     __tablename__ = "sys_operation_log"
 

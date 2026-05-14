@@ -2,21 +2,46 @@ import type { RouteRecordRaw } from 'vue-router';
 
 const routes: RouteRecordRaw[] = [
   {
-    name: 'SystemManagement',
     path: '/system',
-    component: () => import('#/views/System/SystemManagement.vue'),
+    redirect: '/system/user-permission',
     meta: {
-      authority: [
-        'system.page.user',
-        'system.page.role',
-        'system.page.permission',
-        'system.page.operation_log',
-      ],
+      featureCode: 'menu.system',
       icon: 'lucide:settings',
       order: 90,
-      tabGroup: '/system',
       title: '系统管理',
     },
+    name: 'System',
+    children: [
+      {
+        name: 'SystemUserPermission',
+        path: '/system/user-permission',
+        component: () => import('#/views/System/SystemManagement.vue'),
+        meta: {
+          authority: [
+            'system.page.user',
+            'system.page.role',
+            'system.page.permission',
+            'system.page.operation_log',
+          ],
+          featureCode: 'menu.system.user_permission',
+          icon: 'lucide:shield-check',
+          tabGroup: '/system',
+          title: '用户权限',
+        },
+      },
+      {
+        name: 'SystemFeatures',
+        path: '/system/features',
+        component: () => import('#/views/System/SystemFeatures.vue'),
+        meta: {
+          authority: ['system.page.feature'],
+          featureCode: 'menu.system.features',
+          icon: 'lucide:sliders-horizontal',
+          tabGroup: '/system',
+          title: '系统功能',
+        },
+      },
+    ],
   },
 ];
 

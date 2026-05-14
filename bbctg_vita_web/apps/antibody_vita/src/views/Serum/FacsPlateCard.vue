@@ -345,7 +345,6 @@ import {
   ElIcon,
   ElInput,
   ElInputNumber,
-  ElMessageBox,
   ElOption,
   ElSelect,
 } from 'element-plus'
@@ -909,11 +908,7 @@ export default {
     },
     handleDelete() {
       if (!this.isEditable) return
-      ElMessageBox.confirm('确定要删除这个FACS板吗？', '提示', {
-        type: 'warning'
-      }).then(() => {
-        this.$emit('delete', this.plateData)
-      }).catch(() => {})
+      this.$emit('delete', this.plateData)
     },
     getPlateData() {
       return this.plateData

@@ -136,6 +136,11 @@ class PreferenceManager {
       cachedPreferences,
       this.initialPreferences,
     );
+    // defu：后序对象只填补 undefined，已存在于缓存的 app.name 会挡住 initial 中的站点名；部署改名后须以代码为准
+    if (this.initialPreferences.app?.name) {
+      mergedPreference.app ??= {};
+      mergedPreference.app.name = this.initialPreferences.app.name;
+    }
 
     // 更新偏好设置
     this.updatePreferences(mergedPreference);

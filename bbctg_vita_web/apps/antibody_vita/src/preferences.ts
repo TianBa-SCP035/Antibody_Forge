@@ -17,4 +17,7 @@ export const overridesPreferences = defineOverridesPreferences({
     source: '/Vita.png',
     sourceDark: '/Vita.png',
   },
+  theme: {
+    mode: 'light',
+  },
 });

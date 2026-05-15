@@ -5,6 +5,14 @@ const routes: RouteRecordRaw[] = [
     path: '/system',
     redirect: '/system/user-permission',
     meta: {
+      // 与任一子页权限一致：父级未设 authority 时前端会视为全员可见，导致子级全被过滤后仍显示「系统管理」空目录
+      authority: [
+        'system.page.user',
+        'system.page.role',
+        'system.page.permission',
+        'system.page.operation_log',
+        'system.page.feature',
+      ],
       featureCode: 'menu.system',
       icon: 'lucide:settings',
       order: 90,

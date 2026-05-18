@@ -250,7 +250,8 @@ function formatJobDetail(log: SystemJobRunLog) {
     const skipped = detail.skipped && typeof detail.skipped === 'object'
       ? Object.values(detail.skipped).reduce((sum: number, value: any) => sum + Number(value || 0), 0)
       : 0;
-    return `新增 ${detail.created || 0}，更新 ${detail.updated || 0}，跳过 ${skipped}`;
+    const disabled = detail.disabled_on_resignation || 0;
+    return `新增 ${detail.created || 0}，更新 ${detail.updated || 0}，离职禁用 ${disabled}，跳过 ${skipped}`;
   }
   if (log.summary) return log.summary;
   if (Object.keys(detail).length === 0) return '-';

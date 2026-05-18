@@ -263,7 +263,11 @@ def list_job_run_logs(
 def summarize_job_result(result: Any) -> str:
     if isinstance(result, dict):
         parts: list[str] = []
-        for key, label in [("created", "新增"), ("updated", "更新")]:
+        for key, label in [
+            ("created", "新增"),
+            ("updated", "更新"),
+            ("disabled_on_resignation", "离职禁用"),
+        ]:
             if key in result:
                 parts.append(f"{label} {result.get(key) or 0}")
         skipped = result.get("skipped")

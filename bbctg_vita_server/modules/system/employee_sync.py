@@ -81,6 +81,7 @@ def sync_employee_profiles(db: Session, employee_db: Session, *, dry_run: bool =
             "duplicate_mobile": 0,
             "username_exists": 0,
         },
+        "disabled_on_resignation": 0,
     }
 
     for employee in external_employees:
@@ -96,8 +97,11 @@ def sync_employee_profiles(db: Session, employee_db: Session, *, dry_run: bool =
             if user.job_no and user.job_no != employee.job_no:
                 result["skipped"]["job_no_mismatch"] += 1
                 continue
-            if _apply_employee_update(user, employee):
+            changed, disabled_account = _apply_employee_update(user, employee)
+            if changed:
                 result["updated"] += 1
+            if disabled_account:
+                result["disabled_on_resignation"] += 1
             continue
 
         if employee.is_locked:
@@ -162,8 +166,9 @@ def _external_employee_from_row(row: dict[str, Any]) -> ExternalEmployee:
     )
 
 
-def _apply_employee_update(user: SysUser, employee: ExternalEmployee) -> bool:
+def _apply_employee_update(user: SysUser, employee: ExternalEmployee) -> tuple[bool, bool]:
     changed = False
+    disabled_account = False
     updates = {
         "job_no": employee.job_no or user.job_no,
         "display_name": employee.display_name,
@@ -176,12 +181,16 @@ def _apply_employee_update(user: SysUser, employee: ExternalEmployee) -> bool:
     }
     if employee.leave_date:
         updates["employment_status"] = "resigned"
+        # 仅当本次由在职变为离职时禁用账号；已是离职但仍为启用的历史数据不改动
+        if user.employment_status != "resigned":
+            updates["status"] = "disabled"
+            disabled_account = True
 
     for field, value in updates.items():
         if getattr(user, field) != value:
             setattr(user, field, value)
             changed = True
-    return changed
+    return changed, disabled_account
 
 
 def _clean(value: Any) -> str | None:

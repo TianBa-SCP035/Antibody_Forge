@@ -92,9 +92,37 @@ class EmployeeSyncTest(TestCase):
         result = employee_sync.sync_employee_profiles(db, employee_db)
 
         self.assertEqual(result["updated"], 1)
+        self.assertEqual(result["disabled_on_resignation"], 1)
         self.assertEqual(user.mobile, "13900000000")
         self.assertEqual(user.employment_status, "resigned")
+        self.assertEqual(user.status, "disabled")
         self.assertTrue(db.committed)
+
+    def test_does_not_disable_already_resigned_user_with_active_status(self):
+        user = SysUser(
+            username="old",
+            openid="openid-1",
+            job_no="E001",
+            display_name="Employee",
+            mobile="13900000000",
+            email="employee@example.com",
+            department="研发部",
+            group_name="研发一组",
+            position_title="研究员",
+            gender="male",
+            employment_status="resigned",
+            status="active",
+        )
+        db = _FakeDb([user])
+        employee_db = _FakeEmployeeDb(
+            [_row(openid="openid-1", mobile="13900000000", leave_date=date(2026, 1, 1))]
+        )
+
+        result = employee_sync.sync_employee_profiles(db, employee_db)
+
+        self.assertEqual(result["disabled_on_resignation"], 0)
+        self.assertEqual(user.status, "active")
+        self.assertEqual(user.employment_status, "resigned")
 
     def test_skips_job_no_mismatch_without_overwriting(self):
         user = SysUser(username="old", openid="openid-1", job_no="E001", mobile="13800000000")

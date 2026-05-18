@@ -1,5 +1,6 @@
--- 新系统认证与权限表结构。
--- 说明：本文件需要手动在 bbctg_vita 数据库中执行，后端代码不会自动建表。
+-- Antibody Forge：认证与权限表结构 + 种子数据
+-- 文档：docs/auth-permissions.md
+-- 说明：需在 bbctg_vita 主库手动执行；后端不会自动建表/迁移。
 
 CREATE TABLE IF NOT EXISTS sys_user (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',

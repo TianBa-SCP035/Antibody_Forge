@@ -1,5 +1,7 @@
 # 部署说明
 
+> 文档索引：[README.md](./README.md) · 权限与登录：[auth-permissions.md](./auth-permissions.md)
+
 ## 环境划分
 
 建议至少区分三类环境：

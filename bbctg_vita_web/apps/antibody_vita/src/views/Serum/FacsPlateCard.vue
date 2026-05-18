@@ -211,6 +211,7 @@
                       @input="setSlotValue('upper', i - 1, $event)"
                       @mousedown="handleSlotMouseDown($event, 'upper', i - 1)"
                       @keydown.enter.prevent="handleWellEnter('top', i)"
+                      @paste="handleWellPaste($event, 'top', i)"
                     />
                   </div>
                 </div>
@@ -222,7 +223,7 @@
                   <p>请先选择图片</p>
                 </div>
                 <img v-else :src="selectedImageUrl" class="preview-image" ref="previewImage" @load="handleImageLoad">
-                <div v-if="selectedImageUrl" class="well-grid-overlay" :style="gridStyle">
+                <div v-if="selectedImageUrl" ref="wellGridOverlay" class="well-grid-overlay" :style="gridStyle" @mousemove="handleWellGridMouseMove">
                   <div
                     v-for="(row, rowIndex) in 8"
                     :key="'row-' + rowIndex"
@@ -232,8 +233,10 @@
                       v-for="(col, colIndex) in 12"
                       :key="'cell-' + rowIndex + '-' + colIndex"
                       class="grid-cell"
-                      :class="{ 'positive': wellMatrix[rowIndex][colIndex] }"
-                      @click="toggleWellStatus(rowIndex, colIndex)"
+                      :data-row="rowIndex"
+                      :data-col="colIndex"
+                      :class="getWellCellClass(rowIndex, colIndex)"
+                      @mousedown.prevent="handleWellMouseDown($event, rowIndex, colIndex)"
                     >
                       <span class="cell-label">{{ String.fromCharCode(65 + rowIndex) }}{{ colIndex + 1 }}</span>
                       <el-icon v-if="wellMatrix[rowIndex][colIndex]" class="check-icon"><Check /></el-icon>
@@ -286,6 +289,7 @@
                       @input="setSlotValue('lower', i - 1, $event)"
                       @mousedown="handleSlotMouseDown($event, 'lower', i - 1)"
                       @keydown.enter.prevent="handleWellEnter('bottom', i)"
+                      @paste="handleWellPaste($event, 'bottom', i)"
                     />
                   </div>
                 </div>
@@ -357,6 +361,21 @@ const SLOT_COUNT = 12
 const SLOT_WIDTH = 60
 const SLOT_GAP = 8
 const DEFAULT_SLOT_VALUES = ['NC', '', '', '', '', '', '', '', '', '', '', 'PC']
+
+/** 将剪贴板文本拆成多个鼠号：多行、Tab/逗号/分号分隔的单行 */
+function splitPasteTokens(text) {
+  const normalized = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+  if (!normalized) return []
+
+  const lines = normalized.split('\n').map(s => s.trim()).filter(Boolean)
+  if (lines.length > 1) return lines
+
+  const line = lines[0]
+  if (/[\t,;]/.test(line)) {
+    return line.split(/[\t,;]+/).map(s => s.trim()).filter(Boolean)
+  }
+  return [line]
+}
 
 export default {
   name: 'FacsPlateCard',
@@ -455,6 +474,14 @@ export default {
         start: null,
         end: null
       },
+      wellDragState: {
+        active: false,
+        startRow: null,
+        startCol: null,
+        endRow: null,
+        endCol: null,
+        applyPositive: true
+      },
       saveTimer: null
     }
   },
@@ -478,6 +505,16 @@ export default {
       return {
         start: Math.min(this.dragState.start, this.dragState.end),
         end: Math.max(this.dragState.start, this.dragState.end)
+      }
+    },
+    wellSelectionRect() {
+      const d = this.wellDragState
+      if (!d.active || d.startRow === null || d.endRow === null) return null
+      return {
+        r0: Math.min(d.startRow, d.endRow),
+        r1: Math.max(d.startRow, d.endRow),
+        c0: Math.min(d.startCol, d.endCol),
+        c1: Math.max(d.startCol, d.endCol)
       }
     },
     imageFileOptions() {
@@ -662,23 +699,42 @@ export default {
       this.plateData[this.getMouseListField(section)][idx] = v
       this.autoSave()
     },
-    handleWellEnter(row, index) {
-      const nextIndex = index + 1
-      if (nextIndex > SLOT_COUNT) return
-      
-      const nextRef = `${row}-${nextIndex}`
-      let ref = this.$refs[nextRef]
-      
+    focusWellInput(row, index) {
+      if (index < 1 || index > SLOT_COUNT) return
+      const refKey = `${row}-${index}`
+      let ref = this.$refs[refKey]
       if (Array.isArray(ref)) ref = ref[0]
       if (!ref) return
-      
       if (typeof ref.focus === 'function') {
         ref.focus()
         return
       }
-      
       const el = ref.$el ? ref.$el.querySelector('input') : null
-      if (el) el.focus()
+      if (el) {
+        el.focus()
+        el.select()
+      }
+    },
+    handleWellPaste(event, row, index) {
+      if (!this.isEditable) return
+      const values = splitPasteTokens(event.clipboardData?.getData('text/plain'))
+      if (values.length <= 1) return
+
+      event.preventDefault()
+      const startIdx = index - 1
+      this.ensureWellArrays()
+      const field = this.getMouseListField(row === 'top' ? 'upper' : 'lower')
+      const n = Math.min(values.length, SLOT_COUNT - startIdx)
+      for (let i = 0; i < n; i += 1) {
+        this.plateData[field][startIdx + i] = values[i]
+      }
+      this.autoSave()
+      this.$nextTick(() => this.focusWellInput(row, Math.min(startIdx + n + 1, SLOT_COUNT)))
+    },
+    handleWellEnter(row, index) {
+      const nextIndex = index + 1
+      if (nextIndex > SLOT_COUNT) return
+      this.focusWellInput(row, nextIndex)
     },
     getSlotClass(section, index) {
       const selected = this.selectionRange &&
@@ -747,6 +803,10 @@ export default {
     },
     handleSlotMouseUp() {
       this.finishSlotDrag()
+    },
+    handleDocumentMouseUp() {
+      this.finishSlotDrag()
+      this.finishWellDrag()
     },
     finishSlotDrag() {
       if (!this.dragState.active) return
@@ -870,27 +930,88 @@ export default {
         this.containRect = { dx, dy, scale, dw: r.width, dh: r.height }
       })
     },
-    toggleWellStatus(rowIndex, colIndex) {
+    wellCodeAt(rowIndex, colIndex) {
+      return `${String.fromCharCode(65 + rowIndex)}${colIndex + 1}`
+    },
+    getWellCellClass(rowIndex, colIndex) {
+      const rect = this.wellSelectionRect
+      const inDrag = rect &&
+        rowIndex >= rect.r0 && rowIndex <= rect.r1 &&
+        colIndex >= rect.c0 && colIndex <= rect.c1
+      return {
+        positive: this.wellMatrix[rowIndex][colIndex],
+        'well-drag-preview': inDrag,
+        'well-drag-add': inDrag && this.wellDragState.applyPositive,
+        'well-drag-remove': inDrag && !this.wellDragState.applyPositive
+      }
+    },
+    resetWellDragState() {
+      this.wellDragState = {
+        active: false,
+        startRow: null,
+        startCol: null,
+        endRow: null,
+        endCol: null,
+        applyPositive: true
+      }
+    },
+    updateWellDragEnd(rowIndex, colIndex) {
+      if (!this.wellDragState.active) return
+      if (rowIndex < 0 || rowIndex > 7 || colIndex < 0 || colIndex > 11) return
+      this.wellDragState.endRow = rowIndex
+      this.wellDragState.endCol = colIndex
+    },
+    handleWellMouseDown(event, rowIndex, colIndex) {
+      if (!this.isEditable || event.button !== 0) return
+      this.wellDragState = {
+        active: true,
+        startRow: rowIndex,
+        startCol: colIndex,
+        endRow: rowIndex,
+        endCol: colIndex,
+        applyPositive: !this.wellMatrix[rowIndex][colIndex]
+      }
+    },
+    handleWellGridMouseMove(event) {
+      if (!this.wellDragState.active) return
+      const overlay = this.$refs.wellGridOverlay
+      const cell = event.target.closest?.('.grid-cell')
+      if (!cell || !overlay?.contains(cell)) return
+      const row = Number(cell.dataset.row)
+      const col = Number(cell.dataset.col)
+      if (Number.isNaN(row) || Number.isNaN(col)) return
+      this.updateWellDragEnd(row, col)
+    },
+    finishWellDrag() {
+      if (!this.wellDragState.active) return
+      const { startRow, startCol, endRow, endCol, applyPositive } = this.wellDragState
+      this.resetWellDragState()
+      if (!this.isEditable || startRow === null || endRow === null) return
+      const r0 = Math.min(startRow, endRow)
+      const r1 = Math.max(startRow, endRow)
+      const c0 = Math.min(startCol, endCol)
+      const c1 = Math.max(startCol, endCol)
+      this.applyWellRectangle(r0, c0, r1, c1, applyPositive)
+    },
+    applyWellRectangle(r0, c0, r1, c1, positive) {
       if (!this.isEditable) return
-      this.wellMatrix[rowIndex][colIndex] = !this.wellMatrix[rowIndex][colIndex]
-      
-      const wellCode = `${String.fromCharCode(65 + rowIndex)}${colIndex + 1}`
-      const currentList = Array.isArray(this.plateData.positive_well_list) 
-        ? [...this.plateData.positive_well_list] 
-        : []
-      
-      if (this.wellMatrix[rowIndex][colIndex]) {
-        if (!currentList.includes(wellCode)) {
-          currentList.push(wellCode)
-        }
-      } else {
-        const index = currentList.indexOf(wellCode)
-        if (index !== -1) {
-          currentList.splice(index, 1)
+      const listSet = new Set(
+        (Array.isArray(this.plateData.positive_well_list) ? this.plateData.positive_well_list : [])
+          .filter(w => w && typeof w === 'string')
+      )
+      let changed = false
+      for (let r = r0; r <= r1; r += 1) {
+        for (let c = c0; c <= c1; c += 1) {
+          if (this.wellMatrix[r][c] === positive) continue
+          this.wellMatrix[r][c] = positive
+          changed = true
+          const code = this.wellCodeAt(r, c)
+          if (positive) listSet.add(code)
+          else listSet.delete(code)
         }
       }
-      
-      this.plateData.positive_well_list = currentList
+      if (!changed) return
+      this.plateData.positive_well_list = [...listSet]
       this.autoSave()
     },
     handleMaskToggle() {
@@ -941,13 +1062,14 @@ export default {
       
       const type = this.plateData.instrument_type === '赛多利斯' ? 'cytomics' : 'domestic'
       this.applyPreset(type)
-      document.addEventListener('mouseup', this.finishSlotDrag)
+      document.addEventListener('mouseup', this.handleDocumentMouseUp)
     })
   },
   beforeUnmount() {
     if (this._ro) this._ro.disconnect()
     if (this.saveTimer) clearTimeout(this.saveTimer)
-    document.removeEventListener('mouseup', this.finishSlotDrag)
+    document.removeEventListener('mouseup', this.handleDocumentMouseUp)
+    if (this.wellDragState.active) this.resetWellDragState()
   }
 }
 </script>
@@ -1247,6 +1369,7 @@ export default {
       flex-direction: column;
       pointer-events: auto;
       z-index: 10;
+      user-select: none;
     }
 
     .mask-adjuster {
@@ -1373,6 +1496,22 @@ export default {
         &:hover {
           background: rgba(100, 200, 255, 0.5);
         }
+      }
+
+      &.well-drag-preview {
+        z-index: 1;
+      }
+
+      &.well-drag-add {
+        background: rgba(64, 158, 255, 0.45);
+        border-color: #409EFF;
+        box-shadow: inset 0 0 0 1px rgba(64, 158, 255, 0.6);
+      }
+
+      &.well-drag-remove {
+        background: rgba(245, 108, 108, 0.35);
+        border-color: #f56c6c;
+        box-shadow: inset 0 0 0 1px rgba(245, 108, 108, 0.5);
       }
     }
   }

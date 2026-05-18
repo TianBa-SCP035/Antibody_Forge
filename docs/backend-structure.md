@@ -1,6 +1,8 @@
-# bbctg_vita_server 后端结构
+# 后端结构
 
-新后端使用 Python API 服务，当前按 FastAPI 组织。结构目标是：顶层简单、业务按部门组织、数据库模型统一管理、配置和运行文件放在项目根目录。
+> 仓库总览见 [overview.md](./overview.md)；权限见 [auth-permissions.md](./auth-permissions.md)。
+
+`bbctg_vita_server` 为 Python FastAPI 服务：顶层简单、业务按部门组织、模型统一、配置与运行时目录在仓库根目录。
 
 ## 顶层结构
 
@@ -26,7 +28,10 @@ bbctg_vita_server/
 - `core/`：配置读取、统一响应、统一异常、请求日志等项目基础能力。
 - `db/`：数据库连接、主库 session、细胞库存和员工信息等外部只读库 session。
 - `models/`：统一数据库表定义。当前迁移了用户、血清实验、效价、FACS 板、细胞库存外部表模型。
-- `modules/`：业务模块。当前按免疫部拆分为 `serum`、`titer`、`cell`。
+- `modules/`：业务模块目录。
+  - `auth/` — 登录、JWT、用户信息
+  - `system/` — 用户/角色/权限包、审计、功能开关、员工同步
+  - `immunology/serum`、`titer`、`cell` — 免疫部业务
 - `integrations/`：外部系统适配。当前包含云之家 ticket 登录客户端。
 - `jobs/`：定时任务。当前只注册 `serum_auto_update_status`，每天 01:00 自动更新血清实验状态。
 - `utils/`：少量纯工具函数，避免变成杂物目录。
@@ -64,15 +69,22 @@ repository/
 - 同步内容限制为姓名、部门、组别、岗位、在职状态、邮箱、手机号等资料字段，不同步密码、角色和权限。
 - 后续定时同步任务建议命名为 `employee_profile_sync`，与血清状态自动更新任务独立。
 
-## 当前接口兼容策略
+## API 路由汇总
 
-为了先接回现有前端，后端暂时保留旧系统响应格式：
+| 前缀 | 模块 |
+|------|------|
+| `/api/auth` | 登录、JWT、`/user/info`、改密、云之家 |
+| `/api/serum` | 血清项目 CRUD、状态、笼位、导出 |
+| `/api/serum/titer` | 效价靶点、FACS、附件 |
+| `/api/serum/cell_inventory` | 细胞库存只读查询 |
+| `/api/system` | 用户/角色/权限、日志、功能开关 |
+| `/api/user/info` | Vben 兼容的用户信息（同 auth 构建逻辑） |
 
-```json
-{
-  "code": 20000,
-  "data": {}
-}
-```
+## 响应格式
 
-后续等前后端稳定后，再统一评估是否改成新的响应码规范。
+| 调用方 | 格式 |
+|--------|------|
+| Vben 框架（`/api/auth`、`/api/system` 等） | `{ "code": 0, "data": ... }` |
+| Serum 业务页（经 `/serum-api` 代理） | `{ "code": 20000, "data": ... }` |
+
+两套格式并存是为兼容迁移中的前端；稳定后可再统一评估。

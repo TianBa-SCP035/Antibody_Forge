@@ -160,6 +160,15 @@ GET /api/health
 - 外部有 `leave_date` 时将本系统 `employment_status` 更新为 `resigned`；没有离职时间时不强行改回在职。
 - `openid` 重复、手机号缺失/重复、手机号已被本系统账号占用等情况都会跳过并写入任务统计日志。
 
+## 个人中心
+
+路由 `/profile`（菜单「个人中心」）供当前登录用户查看与有限自助修改：
+
+- **组织字段**（姓名、工号、部门、组别、岗位、性别、邮箱、手机等）由 `employee_profile_sync` 或管理员在系统用户管理中维护，个人中心**只读**。
+- **个性名片**（`profile_signature`，≤255 字）用户本人可通过 `PUT /api/auth/user/profile` 修改。
+- **登录密码**：已登录用户可通过 `POST /api/auth/user/change_password` 设置或更新本人密码，**无需填写原密码**，也**不需要**额外 `sys_permission` 权限点（仅校验 JWT / 当前用户）。
+- 接口不向个人中心下发 `openid`、`status` 等运维字段；操作日志中密码相关字段会脱敏，不记录明文密码。
+
 ## 生产部署建议
 
 生产环境建议：

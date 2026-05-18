@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from core.config import get_settings
 from integrations.yunzhijia import YunzhijiaClient
 from models.system import SysUser
-from modules.auth.security import create_access_token, verify_password
+from modules.auth.security import create_access_token, hash_password, verify_password
 from modules.system.audit import write_operation_log
 from modules.system.permissions import build_user_context
 
@@ -132,6 +132,7 @@ def login_with_yunzhijia_ticket(db: Session, ticket: str) -> dict:
 
 def build_user_info(db: Session, user: SysUser) -> dict:
     context = build_user_context(db, user)
+    last_login_at = user.last_login_at.isoformat() if user.last_login_at else None
     return {
         "id": context.id,
         "roles": context.roles,
@@ -142,7 +143,58 @@ def build_user_info(db: Session, user: SysUser) -> dict:
         "username": context.username,
         "homePath": "/serum/list",
         "isSuperuser": context.is_superuser,
+        "department": user.department,
+        "groupName": user.group_name,
+        "jobNo": user.job_no,
+        "positionTitle": user.position_title,
+        "gender": user.gender,
+        "email": user.email,
+        "mobile": user.mobile,
+        "profileSignature": user.profile_signature,
+        "lastLoginAt": last_login_at,
+        "hasPassword": bool(user.password_hash),
     }
+
+
+def update_profile_signature(db: Session, user: SysUser, signature: str | None) -> dict:
+    normalized = (signature or "").strip()
+    if len(normalized) > 255:
+        raise ValueError("个性名片不能超过 255 个字符")
+    user.profile_signature = normalized or None
+    write_operation_log(
+        db,
+        "auth.update_profile_signature",
+        "sys_user",
+        str(user.id),
+        {"field": "profile_signature"},
+        user=user,
+        operation_name="更新个性名片",
+        operation_type="update",
+        target_label=user.display_name or user.username,
+    )
+    db.commit()
+    db.refresh(user)
+    return build_user_info(db, user)
+
+
+def change_user_password(db: Session, user: SysUser, new_password: str) -> None:
+    password = (new_password or "").strip()
+    if len(password) < 6:
+        raise ValueError("密码至少需要 6 位")
+    mode = "change" if user.password_hash else "set"
+    user.password_hash = hash_password(password)
+    write_operation_log(
+        db,
+        "auth.change_password",
+        "sys_user",
+        str(user.id),
+        {"mode": mode},
+        user=user,
+        operation_name="修改登录密码",
+        operation_type="update",
+        target_label=user.display_name or user.username,
+    )
+    db.commit()
 
 
 def _mark_login(db: Session, user: SysUser) -> None:

@@ -129,6 +129,29 @@ async def _read_reusable_body(request: Request) -> bytes:
     return body
 
 
+_SENSITIVE_BODY_KEYS = frozenset(
+    {
+        "password",
+        "oldPassword",
+        "old_password",
+        "newPassword",
+        "new_password",
+        "confirmPassword",
+        "confirm_password",
+    }
+)
+
+
+def _redact_sensitive_body(data: dict) -> dict:
+    if not data:
+        return data
+    redacted = dict(data)
+    for key in list(redacted):
+        if key in _SENSITIVE_BODY_KEYS:
+            redacted[key] = "***"
+    return redacted
+
+
 def _parse_body(body: bytes, content_type: str) -> dict:
     if not body or "application/json" not in content_type:
         return {}
@@ -136,7 +159,9 @@ def _parse_body(body: bytes, content_type: str) -> dict:
         value = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         return {}
-    return value if isinstance(value, dict) else {}
+    if not isinstance(value, dict):
+        return {}
+    return _redact_sensitive_body(value)
 
 
 def _build_audit_context(request: Request, body_data: dict) -> dict | None:

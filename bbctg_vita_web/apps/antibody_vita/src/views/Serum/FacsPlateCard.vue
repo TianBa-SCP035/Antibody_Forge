@@ -3,14 +3,15 @@
     <div class="plate-content">
       <div class="top-row">
         <div class="left-top-panel">
-          <div class="form-section">
+          <div class="left-form-grid">
+          <div class="form-section form-section--files">
             <div class="section-header">
               <div class="header-left">
                 <el-icon><FolderOpened /></el-icon>
                 <span>文件选择</span>
               </div>
             </div>
-            <el-form label-width="80px" class="plate-form">
+            <el-form class="plate-form">
               <el-form-item label="96孔板图片">
                 <el-select
                   v-model="plateData.image_file_id"
@@ -41,8 +42,8 @@
                   clearable
                   :disabled="!isEditable"
                   style="width: 100%"
-                  @change="autoSave"
-                  @clear="onClearFile('excel')"
+                  @change="onExcelFileChange"
+                  @clear="onClearExcelFile"
                 >
                   <el-option
                     v-for="file in excelFileOptions"
@@ -69,7 +70,7 @@
                 <span>保存中...</span>
               </div>
             </div>
-            <el-form label-width="80px" class="plate-form">
+            <el-form class="plate-form">
               <el-form-item label="二维码编号">
                 <el-input v-model="plateData.qr_code" placeholder="扫描或输入二维码" :disabled="!isEditable" @change="autoSave" />
               </el-form-item>
@@ -93,11 +94,39 @@
                   />
                 </el-select>
               </el-form-item>
-              <el-form-item label="横坐标参数">
-                <el-input v-model="plateData.x_axis" placeholder="如：SSC-H" :disabled="!isEditable" @change="autoSave" />
-              </el-form-item>
               <el-form-item label="纵坐标参数">
-                <el-input v-model="plateData.y_axis" placeholder="如：RL1-H" :disabled="!isEditable" @change="autoSave" />
+                <el-select
+                  v-model="plateData.y_axis"
+                  placeholder="如：SSC-H"
+                  clearable
+                  :disabled="!isEditable"
+                  style="width: 100%"
+                  @change="autoSave"
+                >
+                  <el-option
+                    v-for="opt in yAxisOptions"
+                    :key="opt"
+                    :label="opt"
+                    :value="opt"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="横坐标参数">
+                <el-select
+                  v-model="plateData.x_axis"
+                  placeholder="如：RL1-H"
+                  clearable
+                  :disabled="!isEditable"
+                  style="width: 100%"
+                  @change="autoSave"
+                >
+                  <el-option
+                    v-for="opt in xAxisOptions"
+                    :key="opt"
+                    :label="opt"
+                    :value="opt"
+                  />
+                </el-select>
               </el-form-item>
               <el-form-item label="上半PC">
                 <el-select v-model="plateData.pc_upper_id" placeholder="请选择上PC" clearable :disabled="!isEditable" style="width: 100%" @change="autoSave" @clear="onClearFile('pc_upper_id')">
@@ -141,6 +170,7 @@
               </el-form-item>
             </el-form>
           </div>
+          </div>
         </div>
 
         <div class="right-panel">
@@ -163,7 +193,11 @@
             </div>
 
             <div class="image-display">
-              <div class="slot-editor upper-slot-editor">
+              <div
+                class="image-cluster"
+                :class="{ 'has-legend': selectedImageUrl && dilutionLegend }"
+              >
+              <div class="slot-editor upper-slot-editor plate-column">
                 <div class="slot-groups-row" :style="slotTrackStyle">
                   <div
                     v-for="(group, index) in upperSlotGroups"
@@ -217,7 +251,7 @@
                 </div>
               </div>
 
-              <div class="image-preview-area" ref="imageContainer">
+              <div class="image-preview-area plate-column" ref="imageContainer">
                 <div v-if="!selectedImageUrl" class="empty-image">
                   <el-icon><Picture /></el-icon>
                   <p>请先选择图片</p>
@@ -271,7 +305,28 @@
                 </div>
               </div>
 
-              <div class="slot-editor lower-slot-editor">
+              <div
+                v-if="selectedImageUrl && dilutionLegend"
+                class="dilution-legend legend-column"
+                aria-label="行稀释度"
+              >
+                <div class="dilution-legend__title" :style="dilutionLegend.title">稀释度</div>
+                <div class="dilution-legend__rows" :style="dilutionLegend.rows">
+                  <span class="dilution-legend__divider" aria-hidden="true" />
+                  <div
+                    v-for="(row, rowIndex) in plateRows"
+                    :key="row"
+                    class="dilution-legend__row"
+                    :class="rowIndex < 4 ? 'is-upper' : 'is-lower'"
+                    :style="dilutionLegend.row(rowIndex)"
+                  >
+                    <span>{{ row }}</span>
+                    <span>{{ formatRowDilution(rowIndex) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="slot-editor lower-slot-editor plate-column">
                 <div class="wells-row bottom-wells">
                   <div
                     v-for="i in slotCount"
@@ -324,6 +379,7 @@
                   </div>
                 </div>
               </div>
+              </div>
             </div>
           </div>
         </div>
@@ -361,7 +417,12 @@ const SLOT_COUNT = 12
 const SLOT_WIDTH = 60
 const SLOT_GAP = 8
 const DEFAULT_SLOT_VALUES = ['NC', '', '', '', '', '', '', '', '', '', '', 'PC']
-
+const X_AXIS_OPTIONS = ['RL1-H', 'BL1-H', 'APC-H']
+const Y_AXIS_OPTIONS = ['SSC-H', 'BL1-H']
+const PLATE_ROWS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+const DILUTION_EXPONENTS = [2, 3, 4, 5, 2, 3, 4, 5]
+const DILUTION_SUPERSCRIPT = { 2: '²', 3: '³', 4: '⁴', 5: '⁵' }
+const DILUTION_LEGEND_PADDING_X = 12
 /** 将剪贴板文本拆成多个鼠号：多行、Tab/逗号/分号分隔的单行 */
 function splitPasteTokens(text) {
   const normalized = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
@@ -457,6 +518,8 @@ export default {
   },
   data() {
     return {
+      xAxisOptions: X_AXIS_OPTIONS,
+      yAxisOptions: Y_AXIS_OPTIONS,
       imageNaturalSize: { width: 0, height: 0 },
       gridBBox: { x: 0, y: 0, width: 0, height: 0 },
       containRect: { dx: 0, dy: 0, scale: 1, dw: 0, dh: 0 },
@@ -500,6 +563,31 @@ export default {
     lowerSlotGroups() {
       return Array.isArray(this.plateData.lower_slot_groups) ? this.plateData.lower_slot_groups : []
     },
+    plateRows() {
+      return PLATE_ROWS
+    },
+    dilutionLegend() {
+      const { dy, scale, dh } = this.containRect
+      const { y, height } = this.gridBBox
+      if (!scale || !dh || !height) return null
+
+      return {
+        title: {
+          top: `${dy}px`,
+        },
+        rows: {
+          position: 'absolute',
+          left: `${DILUTION_LEGEND_PADDING_X}px`,
+          right: `${DILUTION_LEGEND_PADDING_X}px`,
+          top: `${dy + y * scale}px`,
+          height: `${height * scale}px`,
+        },
+        row: (rowIndex) => ({
+          top: `${rowIndex * 12.5}%`,
+          height: '12.5%',
+        }),
+      }
+    },
     selectionRange() {
       if (!this.dragState.active || this.dragState.start === null || this.dragState.end === null) return null
       return {
@@ -534,19 +622,19 @@ export default {
     gridStyle() {
       const { dx, dy, scale } = this.containRect
       const { x, y, width, height } = this.gridBBox
-      
+
       if (!width || !height || !scale) {
         return { display: 'none' }
       }
-      
+
       return {
         position: 'absolute',
         left: `${dx + x * scale}px`,
         top: `${dy + y * scale}px`,
         width: `${width * scale}px`,
-        height: `${height * scale}px`
+        height: `${height * scale}px`,
       }
-    }
+    },
   },
   watch: {
     'plateData.positive_well_list': {
@@ -584,6 +672,10 @@ export default {
     }
   },
   methods: {
+    formatRowDilution(rowIndex) {
+      const exp = DILUTION_EXPONENTS[rowIndex] ?? 2
+      return `10${DILUTION_SUPERSCRIPT[exp] ?? exp}`
+    },
     isImage(filename) {
       const ext = filename.split('.').pop().toLowerCase()
       return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext)
@@ -619,10 +711,21 @@ export default {
         this.$emit('save', payload)
       }, 200)
     },
+    onExcelFileChange() {
+      if (!this.isEditable) return
+      this.$emit('excel-file-change', {
+        fileId: this.plateData.excel_file_id,
+      })
+    },
+    onClearExcelFile() {
+      if (!this.isEditable) return
+      this.plateData.excel_file_id = null
+      this.plateData.positive_well_list = []
+      this.autoSave()
+    },
     onClearFile(type) {
       if (!this.isEditable) return
       if (type === 'image') this.plateData.image_file_id = null
-      if (type === 'excel') this.plateData.excel_file_id = null
       if (type === 'immune_stage') this.plateData.immune_stage = null
       if (type === 'cell_target_id') this.plateData.cell_target_id = null
       if (type === 'pc_upper_id') this.plateData.pc_upper_id = null
@@ -1081,6 +1184,8 @@ export default {
     flex-direction: column;
     gap: 16px;
     padding: 20px 0 20px 20px;
+    min-width: 0;
+    overflow-x: auto;
   }
 }
 
@@ -1115,47 +1220,177 @@ export default {
   font-size: 12px;
 }
 
+// 左 2 : 右 7；宽度不足时由 min-width 顶住，再窄则整行横向滚动
+$plate-col-left-ratio: 2;
+$plate-col-right-ratio: 7;
+$plate-col-left-min: 300px;
+$plate-col-right-min: 900px;
+// 表单行：最长标签宽(max-content) | 间距(2fr,min) | 输入框(5fr,min)，间距:输入框 = 2:5
+$plate-form-gap-min: 10px;
+$plate-form-input-min: 96px;
+$plate-form-cols: max-content minmax(#{$plate-form-gap-min}, 2fr) minmax(#{$plate-form-input-min}, 5fr);
+$plate-legend-width: 72px;
+$plate-legend-gap: 12px;
+
 .top-row {
   display: flex;
   gap: 20px;
   align-items: stretch;
+  min-width: 0;
 }
 
 .left-top-panel {
-  width: 360px;
-  flex-shrink: 0;
+  flex: $plate-col-left-ratio $plate-col-left-ratio 0%;
+  min-width: $plate-col-left-min;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  min-height: 0;
+
+  .left-form-grid {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    width: 100%;
+  }
 
   .form-section {
-    &:first-child {
-      flex-shrink: 0;
-    }
+    min-width: 0;
+    padding: 16px;
+    box-sizing: border-box;
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #e4e7ed;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    display: grid;
+    grid-template-columns: #{$plate-form-cols};
+    row-gap: 10px;
+    align-content: start;
 
-    &:last-child {
-      flex: 1;
+    .section-header {
+      grid-column: 1 / -1;
       display: flex;
-      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 2px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #ebeef5;
+      font-size: 15px;
+      font-weight: 700;
+      color: #303133;
 
-      .plate-form {
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        color: #909399;
+
+        .el-icon {
+          font-size: 14px;
+        }
+      }
+
+      .el-icon {
+        color: #409EFF;
+        font-size: 14px;
+      }
+    }
+  }
+
+  .form-section--files {
+    flex-shrink: 0;
+  }
+
+  .basic-info-section {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .plate-form {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    row-gap: 10px;
+    align-content: start;
+
+    :deep(.el-form-item) {
+      display: grid;
+      grid-template-columns: subgrid;
+      grid-column: 1 / -1;
+      align-items: center;
+      margin-bottom: 0 !important;
+
+      .el-form-item__label {
+        grid-column: 1;
+        width: auto !important;
+        max-width: none;
+        float: none;
+        text-align: left;
+        justify-content: flex-start;
+        padding-right: 0;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 32px;
+        color: #606266;
+        white-space: nowrap;
+      }
+
+      .el-form-item__content {
+        grid-column: 3;
         flex: 1;
         display: flex;
-        flex-direction: column;
+        width: 100%;
+        min-width: 0;
+        margin-left: 0 !important;
+
+        .el-input,
+        .el-select {
+          width: 100%;
+          min-width: 0;
+          font-size: 14px;
+        }
+
+        .el-input__wrapper,
+        .el-select__wrapper {
+          min-width: 0;
+        }
+
+        .el-select__selected-item,
+        .el-input__inner {
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .el-textarea__inner {
+          width: 100%;
+        }
       }
     }
   }
 }
 
 .right-panel {
-  flex: 1;
+  flex: $plate-col-right-ratio $plate-col-right-ratio 0%;
+  min-width: $plate-col-right-min;
   display: flex;
   flex-direction: column;
+  overflow: visible;
 
   .image-section {
     flex: 1;
     display: flex;
     flex-direction: column;
+    overflow: visible;
   }
 
   .section-title {
@@ -1212,11 +1447,39 @@ export default {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    align-items: center;
     background: #fafafa;
     border-radius: 8px;
     padding: 20px;
     min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .image-cluster {
+    display: inline-grid;
+    max-width: 100%;
+    grid-template-columns: minmax(0, 808px);
+    grid-template-rows: auto auto auto;
+    row-gap: 16px;
+
+    &.has-legend {
+      grid-template-columns: minmax(0, 808px) #{$plate-legend-gap} #{$plate-legend-width};
+    }
+
+    .plate-column {
+      grid-column: 1;
+      min-width: 0;
+    }
+
+    .legend-column {
+      grid-column: 3;
+      grid-row: 2;
+      align-self: stretch;
+      position: relative;
+      width: $plate-legend-width;
+      min-height: 0;
+    }
   }
 
   .slot-editor {
@@ -1327,6 +1590,73 @@ export default {
     }
   }
 
+  .dilution-legend {
+    box-sizing: border-box;
+    pointer-events: none;
+    flex-shrink: 0;
+    z-index: 11;
+    background: #fff;
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+
+    &__title {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 15px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #303133;
+      border-bottom: 1px solid #ebeef5;
+      background: #fff;
+      border-radius: 8px 8px 0 0;
+    }
+
+    &__rows {
+      position: absolute;
+    }
+
+    &__divider {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      z-index: 0;
+      height: 1px;
+      transform: translateY(-50%);
+      background: linear-gradient(90deg, transparent, #dcdfe6 15%, #dcdfe6 85%, transparent);
+    }
+
+    &__row {
+      position: absolute;
+      left: 0;
+      right: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      color: #606266;
+
+      span:first-child {
+        font-weight: 600;
+      }
+
+      span:last-child {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+
+      &.is-upper span:last-child { color: #409EFF; }
+      &.is-lower span:last-child { color: #67C23A; }
+    }
+  }
+
   .image-preview-area {
     display: flex;
     align-items: center;
@@ -1337,7 +1667,7 @@ export default {
     position: relative;
     width: 100%;
     max-width: 800px;
-    margin: 0 auto;
+    justify-self: center;
     min-height: 450px;
 
     .empty-image {
@@ -1517,103 +1847,4 @@ export default {
   }
 }
 
-.bottom-row {
-  display: flex;
-  gap: 16px;
-
-  .form-section {
-    flex: 1;
-  }
-}
-
-.form-section {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
-  border: 1px solid #e4e7ed;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 15px;
-    font-weight: 700;
-    color: #303133;
-    margin-bottom: 2px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #ebeef5;
-
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 12px;
-      color: #909399;
-
-      .el-icon {
-        font-size: 14px;
-      }
-    }
-
-    .el-icon {
-      color: #409EFF;
-      font-size: 14px;
-    }
-
-    .delete-btn {
-      color: #F56C6C;
-    }
-
-    &:has(.delete-btn) {
-      justify-content: space-between;
-    }
-  }
-
-  .plate-form {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-
-    :deep(.el-form-item) {
-      margin-bottom: 10px;
-      display: flex;
-      align-items: flex-start;
-
-      .el-form-item__label {
-        text-align: left;
-        justify-content: flex-start;
-        padding-right: 8px;
-        font-size: 14px;
-        font-weight: 700;
-        line-height: 32px;
-        color: #606266;
-      }
-
-      .el-form-item__content {
-        flex: 1;
-        display: flex;
-        margin-left: 75px !important;
-
-        .el-input,
-        .el-select {
-          font-size: 14px;
-        }
-
-        .el-input,
-        .el-select,
-        .el-textarea__inner {
-          width: 100%;
-        }
-      }
-    }
-  }
-}
 </style>

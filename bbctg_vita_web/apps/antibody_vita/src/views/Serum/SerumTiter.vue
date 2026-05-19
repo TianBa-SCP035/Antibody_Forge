@@ -275,6 +275,7 @@
               :is-saving="savingPlateKeys[getPlateKey(plate)]"
               :is-editable="canEditTiter()"
               @delete="handleDeletePlate"
+              @excel-file-change="(payload) => handlePlateExcelChange(payload, plate)"
               @load-image-preview="loadPreviewImage"
               @save="handleSavePlate"
             />
@@ -447,6 +448,7 @@ import {
 import * as XLSX from 'xlsx'
 import FacsPlateCard from './FacsPlateCard.vue'
 import { fetchDetail, fetchIndexFiles, saveIndexFile, deleteIndexFile, renameIndexFile, replaceIndexFile, saveTiterTargets, saveTiterPcs, fetchFacsPlates, saveFacsPlate, deleteFacsPlate } from '#/api/serum'
+import { parseFacsExcelFromRows } from '#/utils/facsExcelPositive'
 import {
   canEditSerumTiter,
   canManageSerumTiterFiles,
@@ -557,9 +559,17 @@ export default {
       return [...new Set(stages)]
     },
     groupOptions() {
-      if (!this.project || !this.project.mouse_groups) return []
-      const groups = this.project.mouse_groups.map(g => g.group_id).filter(g => g && g.trim())
-      return [...new Set(groups)]
+      if (!this.project?.mouse_groups) return []
+      const seen = new Set()
+      const options = []
+      for (const g of this.project.mouse_groups) {
+        const id = (g.group_id || '').trim()
+        if (!id || seen.has(id)) continue
+        seen.add(id)
+        const strain = (g.mouse_strain || '').trim()
+        options.push(strain ? `${id}-${strain}` : id)
+      }
+      return options
     },
     sortedFacsPlates() {
       const arr = this.facsPlates || []
@@ -882,20 +892,21 @@ export default {
         console.error('加载图片预览失败:', error)
       }
     },
+    async loadExcelSheetRows(file) {
+      const url = this.getDownloadUrl(file, true)
+      const blob = await this.fetchFileBlob(url)
+      const arrayBuffer = await blob.arrayBuffer()
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+      const firstSheetName = workbook.SheetNames[0]
+      const worksheet = workbook.Sheets[firstSheetName]
+      return XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' })
+    },
     async loadExcelData(file) {
       this.excelLoading = true
       this.excelData = []
-      
+
       try {
-        const url = this.getDownloadUrl(file, true)
-        const blob = await this.fetchFileBlob(url)
-        const arrayBuffer = await blob.arrayBuffer()
-        const workbook = XLSX.read(arrayBuffer, { type: 'array' })
-        
-        const firstSheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[firstSheetName]
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
-        
+        const jsonData = await this.loadExcelSheetRows(file)
         if (jsonData.length > 0) {
           this.excelData = jsonData
         }
@@ -903,6 +914,42 @@ export default {
         console.error('读取 Excel 文件失败:', error)
       } finally {
         this.excelLoading = false
+      }
+    },
+    async handlePlateExcelChange({ fileId }, plate) {
+      if (!this.canEditTiter() || !plate) return
+
+      if (!fileId) {
+        plate.positive_well_list = []
+        this.handleSavePlate(plate)
+        return
+      }
+
+      const file = this.fileList.find((f) => f.id === fileId)
+      if (!file || !this.isExcel(file.file_name)) {
+        ElMessage.warning('未找到有效的 Excel 文件')
+        return
+      }
+
+      try {
+        const rows = await this.loadExcelSheetRows(file)
+        const { instrumentType, positiveWells, error } = parseFacsExcelFromRows(rows)
+
+        if (error) {
+          ElMessage.warning('无法识别 Excel 格式或阳性率表格，请检查文件')
+          return
+        }
+
+        plate.instrument_type = instrumentType
+        plate.positive_well_list = positiveWells
+        this.handleSavePlate(plate)
+
+        ElMessage.success(
+          `已识别为${instrumentType}仪器，自动标注 ${positiveWells.length} 个阳性孔（>10%）`,
+        )
+      } catch (error) {
+        console.error('解析 Excel 阳性率失败:', error)
+        ElMessage.error('读取或解析 Excel 失败')
       }
     },
 
@@ -1179,14 +1226,16 @@ export default {
 
 <style lang="scss" scoped>
 .serum-titer-page {
-  padding: 16px;
+  padding: clamp(8px, 1vw, 16px);
   background-color: #f5f7fa;
   min-height: 100vh;
-  position: relative; 
+  position: relative;
 
   .content-wrapper {
     width: 100%;
+    max-width: 100%;
     margin: 0 auto;
+    min-width: 0;
   }
 }
 
@@ -1898,7 +1947,7 @@ export default {
     }
 
     :deep(.el-tabs__nav-wrap) {
-      padding: 0 20px;
+      padding: 0 clamp(8px, 1.2vw, 20px);
     }
 
     :deep(.el-tabs__item) {

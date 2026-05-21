@@ -1,4 +1,5 @@
 from models.immunology import (
+    SerumElisaPlate,
     SerumFacsPlate,
     SerumFile,
     SerumImmAntigen,
@@ -22,6 +23,7 @@ from models.system import (
 )
 
 __all__ = [
+    "SerumElisaPlate",
     "SerumFacsPlate",
     "SerumFile",
     "SerumImmAntigen",

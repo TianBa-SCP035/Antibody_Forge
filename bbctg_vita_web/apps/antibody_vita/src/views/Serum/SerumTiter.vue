@@ -250,7 +250,7 @@
               <el-icon><Plus /></el-icon>
               <span>新建FACS板</span>
             </el-button>
-            <el-button type="success" class="plate-create-btn" disabled>
+            <el-button type="success" class="plate-create-btn" :disabled="!canEditTiter()" @click="handleAddElisaPlate">
               <el-icon><Plus /></el-icon>
               <span>新建Elisa板</span>
             </el-button>
@@ -259,12 +259,13 @@
 
         <el-tabs v-model="activePlateName" type="card" class="plates-tabs">
           <el-tab-pane
-            v-for="(plate, index) in sortedFacsPlates"
+            v-for="(plate, index) in sortedAllPlates"
             :key="getPlateKey(plate)"
-            :label="`FACS板-${index + 1}`"
+            :label="getPlateTabLabel(plate, index)"
             :name="getPlateKey(plate)"
           >
             <FacsPlateCard
+              v-if="plate.plate_type === 'facs'"
               :plate-data="plate"
               :target-options="titer_targets"
               :pc-options="titer_pcs"
@@ -279,14 +280,30 @@
               @load-image-preview="loadPreviewImage"
               @save="handleSavePlate"
             />
+            <ElisaPlateCard
+              v-else
+              :plate-data="plate"
+              :target-options="titer_targets"
+              :pc-options="titer_pcs"
+              :file-list="fileList"
+              :immune-stage-options="immuneStageOptions"
+              :group-options="groupOptions"
+              :antigen-type-options="antigenTypeOptions"
+              :extra-absorbance-sheets="getElisaExtraAbsorbance(plate)"
+              :is-saving="savingPlateKeys[getPlateKey(plate)]"
+              :is-editable="canEditTiter()"
+              @delete="handleDeletePlate"
+              @excel-file-change="(payload) => handleElisaExcelChange(payload, plate)"
+              @save="handleSavePlate"
+            />
           </el-tab-pane>
         </el-tabs>
 
-        <div v-if="!platesLoading && facsPlates.length === 0" class="empty-plates">
+        <div v-if="!platesLoading && sortedAllPlates.length === 0" class="empty-plates">
           <div class="empty-content">
             <el-icon><FolderOpened /></el-icon>
-            <p>暂无FACS板数据</p>
-            <span class="sub-text">点击上方"新建FACS板"按钮添加</span>
+            <p>暂无板卡数据</p>
+            <span class="sub-text">点击上方「新建FACS板」或「新建Elisa板」添加</span>
           </div>
         </div>
       </div>
@@ -447,7 +464,30 @@ import {
 } from 'element-plus'
 import * as XLSX from 'xlsx'
 import FacsPlateCard from './FacsPlateCard.vue'
-import { fetchDetail, fetchIndexFiles, saveIndexFile, deleteIndexFile, renameIndexFile, replaceIndexFile, saveTiterTargets, saveTiterPcs, fetchFacsPlates, saveFacsPlate, deleteFacsPlate } from '#/api/serum'
+import ElisaPlateCard from './ElisaPlateCard.vue'
+import {
+  deleteElisaPlate,
+  deleteFacsPlate,
+  fetchDetail,
+  fetchElisaPlates,
+  fetchFacsPlates,
+  fetchIndexFiles,
+  renameIndexFile,
+  replaceIndexFile,
+  saveElisaPlate,
+  saveFacsPlate,
+  saveIndexFile,
+  deleteIndexFile,
+  saveTiterPcs,
+  saveTiterTargets,
+} from '#/api/serum'
+import {
+  computeAutoPositiveFromPlate,
+  createDefaultLowerSlotList,
+  createDefaultUpperSlotList,
+  normalizeSlotList,
+  parseElisaArrayBuffer,
+} from '#/utils/elisaPlate'
 import { parseFacsExcelFromRows } from '#/utils/facsExcelPositive'
 import {
   canEditSerumTiter,
@@ -488,6 +528,7 @@ export default {
     ElTableColumn,
     ElTabs,
     ElUpload,
+    ElisaPlateCard,
     FacsPlateCard,
     Files,
     FolderOpened,
@@ -536,8 +577,10 @@ export default {
       targetsTimer: null,
       pcsTimer: null,
 
-      // FACS Plates
+      // Plates
       facsPlates: [],
+      elisaPlates: [],
+      elisaAbsPreviewCache: {},
       platesLoading: false,
       activePlateName: '',
       plateTimers: {},
@@ -571,20 +614,23 @@ export default {
       }
       return options
     },
-    sortedFacsPlates() {
-      const arr = this.facsPlates || []
-      return [...arr].sort((a, b) => {
+    antigenTypeOptions() {
+      const types = new Set()
+      ;(this.project?.antigens || []).forEach((a) => {
+        if (a?.antigen_type?.trim()) types.add(a.antigen_type.trim())
+      })
+      return [...types]
+    },
+    sortedAllPlates() {
+      return [...(this.facsPlates || []), ...(this.elisaPlates || [])].sort((a, b) => {
         const aHas = !!a.id
         const bHas = !!b.id
-        
         if (aHas && !bHas) return -1
         if (!aHas && bHas) return 1
-        
         if (aHas && bHas) return a.id - b.id
-        
         return (a.tempId || 0) - (b.tempId || 0)
       })
-    }
+    },
   },
   created() {
     this.project_id = this.$route.query.id
@@ -595,7 +641,7 @@ export default {
     } else if (this.experiment_id) {
       this.project = { experiment_id: this.experiment_id }
       this.getFiles()
-      this.getFacsPlates()
+      this.getPlates()
     }
   },
   beforeUnmount() {
@@ -637,7 +683,7 @@ export default {
             this.experiment_id = this.project.experiment_id
           }
           this.getFiles()
-          this.getFacsPlates()
+          this.getPlates()
         }
       })
     },
@@ -652,6 +698,7 @@ export default {
       this.filesLoading = true
       fetchIndexFiles({ experiment_id: expId }).then(res => {
         this.fileList = res.data.items || []
+        this.restoreElisaAbsorbancePreviews()
         this.loadImageThumbs()
         this.filesLoading = false
       }).catch(() => { this.filesLoading = false })
@@ -1034,24 +1081,40 @@ export default {
       }, 500)
     },
 
-    // --- FACS Plate Methods ---
-    getFacsPlates() {
+    // --- Plate Methods ---
+    getPlates() {
       const expId = this.experiment_id || (this.project ? this.project.experiment_id : null)
       if (!expId) return
-      
+
       this.platesLoading = true
-      fetchFacsPlates({ experiment_id: expId }).then(res => {
-        this.facsPlates = (res.data.items || []).map(p => ({
-          ...p,
-          tempId: p.tempId || null,
-          _uid: p.id ? `id_${p.id}` : `tmp_${p.tempId}`
-        }))
-        const first = this.sortedFacsPlates[0]
-        if (first) {
-          this.activePlateName = this.getPlateKey(first)
-        }
-        this.platesLoading = false
-      }).catch(() => { this.platesLoading = false })
+      Promise.all([
+        fetchFacsPlates({ experiment_id: expId }),
+        fetchElisaPlates({ experiment_id: expId }),
+      ])
+        .then(([facsRes, elisaRes]) => {
+          this.facsPlates = (facsRes.data.items || []).map((p) => ({
+            ...p,
+            plate_type: 'facs',
+            tempId: p.tempId || null,
+            _uid: p.id ? `id_${p.id}` : `tmp_${p.tempId}`,
+          }))
+          this.elisaPlates = (elisaRes.data.items || []).map((p) => ({
+            ...p,
+            plate_type: 'elisa',
+            tempId: p.tempId || null,
+            _uid: p.id ? `id_${p.id}` : `tmp_${p.tempId}`,
+            upper_slot_list: p.upper_slot_list || createDefaultUpperSlotList(),
+            lower_slot_list: p.lower_slot_list || createDefaultLowerSlotList(),
+            slot_groups: p.slot_groups || [],
+          }))
+          const first = this.sortedAllPlates[0]
+          if (first) this.activePlateName = this.getPlateKey(first)
+          this.restoreElisaAbsorbancePreviews()
+          this.platesLoading = false
+        })
+        .catch(() => {
+          this.platesLoading = false
+        })
     },
     getPlateKey(plate) {
       return plate.id ? `id_${plate.id}` : `tmp_${plate.tempId}`
@@ -1062,8 +1125,42 @@ export default {
       }
       return plate._uid
     },
-    getPlateLabel(plate, index) {
-      return `FACS板-${index + 1}`
+    getPlateTabLabel(plate, index) {
+      const type = plate.plate_type === 'elisa' ? 'ELISA' : 'FACS'
+      const sameType = this.sortedAllPlates.filter((p) => p.plate_type === plate.plate_type)
+      const typeIndex = sameType.findIndex((p) => this.getPlateKey(p) === this.getPlateKey(plate)) + 1
+      return `${type}板-${typeIndex || index + 1}`
+    },
+    getElisaExtraAbsorbance(plate) {
+      return this.elisaAbsPreviewCache[this.getPlateKey(plate)] || []
+    },
+    restoreElisaAbsorbancePreviews() {
+      if (!this.elisaPlates.length || !this.fileList.length) return
+      const tasks = this.elisaPlates
+        .filter((plate) => plate.excel_file_id && !this.elisaAbsPreviewCache[this.getPlateKey(plate)])
+        .map(async (plate) => {
+          const file = this.fileList.find((f) => f.id === plate.excel_file_id)
+          if (!file || !this.isExcel(file.file_name)) return null
+          try {
+            const blob = await this.fetchFileBlob(this.getDownloadUrl(file, true))
+            const parsed = parseElisaArrayBuffer(await blob.arrayBuffer(), file.file_name)
+            if (parsed.error || !parsed.primary?.matrix) return null
+            return { key: this.getPlateKey(plate), sheets: parsed.extraSheets || [] }
+          } catch (error) {
+            console.error('恢复 ELISA 吸光度预览失败:', error)
+            return null
+          }
+        })
+      if (!tasks.length) return
+      Promise.all(tasks).then((items) => {
+        const next = { ...this.elisaAbsPreviewCache }
+        for (const item of items) {
+          if (!item) continue
+          if (item.sheets.length) next[item.key] = item.sheets
+          else delete next[item.key]
+        }
+        this.elisaAbsPreviewCache = next
+      })
     },
     handleAddPlate() {
       if (!this.canEditTiter()) {
@@ -1075,7 +1172,7 @@ export default {
         _uid: `tmp_${tempId}`,
         id: null,
         tempId,
-        experiment_id: this.experiment_id,
+        experiment_id: this.experiment_id || this.project?.experiment_id,
         qr_code: '',
         image_file_id: null,
         excel_file_id: null,
@@ -1094,9 +1191,38 @@ export default {
         positive_well_list: [],
         instrument_type: '国产'
       }
-      this.facsPlates.push(newPlate)
+      this.facsPlates.push({ ...newPlate, plate_type: 'facs' })
       this.activePlateName = this.getPlateKey(newPlate)
       ElMessage.success('已创建新的FACS板')
+    },
+    handleAddElisaPlate() {
+      if (!this.canEditTiter()) {
+        ElMessage.warning('您没有权限编辑此项目')
+        return
+      }
+      const tempId = Date.now()
+      const newPlate = {
+        _uid: `tmp_${tempId}`,
+        id: null,
+        tempId,
+        plate_type: 'elisa',
+        experiment_id: this.experiment_id || this.project?.experiment_id,
+        qr_code: '',
+        excel_file_id: null,
+        immune_stage: '',
+        protein_target_id: null,
+        pc_id: null,
+        mouse_group: '',
+        antigen_type: '',
+        slot_groups: [],
+        upper_slot_list: createDefaultUpperSlotList(),
+        lower_slot_list: createDefaultLowerSlotList(),
+        positive_well_list: [],
+        absorbance_1: null,
+      }
+      this.elisaPlates.push(newPlate)
+      this.activePlateName = this.getPlateKey(newPlate)
+      ElMessage.success('已创建新的ELISA板')
     },
     handleDeletePlate(plateData) {
       if (!this.canEditTiter()) {
@@ -1105,31 +1231,29 @@ export default {
       }
       if (!plateData) return
       const deletedKey = this.getPlateKey(plateData)
-      const deletedIndex = this.sortedFacsPlates.findIndex(p => this.getPlateKey(p) === deletedKey)
-      
-      ElMessageBox.confirm('确定要删除这个FACS板吗？', '提示', {
-        type: 'warning'
+      const deletedIndex = this.sortedAllPlates.findIndex((p) => this.getPlateKey(p) === deletedKey)
+      const isElisa = plateData.plate_type === 'elisa'
+      const label = isElisa ? 'ELISA' : 'FACS'
+
+      ElMessageBox.confirm(`确定要删除这个${label}板吗？`, '提示', {
+        type: 'warning',
       }).then(() => {
+        const removeLocal = () => {
+          const list = isElisa ? this.elisaPlates : this.facsPlates
+          const index = plateData.id
+            ? list.findIndex((p) => p.id === plateData.id)
+            : list.findIndex((p) => p.tempId === plateData.tempId)
+          if (index !== -1) list.splice(index, 1)
+          if (isElisa) delete this.elisaAbsPreviewCache[deletedKey]
+          this.cleanupPlateState(deletedKey)
+          this.activatePlateAfterDelete(deletedKey, deletedIndex)
+          ElMessage.success(`${label}板已删除`)
+        }
         if (plateData.id) {
-          deleteFacsPlate(plateData.id).then(() => {
-            const index = this.facsPlates.findIndex(p => p.id === plateData.id)
-            if (index !== -1) {
-              this.facsPlates.splice(index, 1)
-              this.cleanupPlateState(deletedKey)
-              this.activatePlateAfterDelete(deletedKey, deletedIndex)
-            }
-            ElMessage.success('FACS板已删除')
-          }).catch(() => {
-            ElMessage.error('删除失败')
-          })
+          const req = isElisa ? deleteElisaPlate(plateData.id) : deleteFacsPlate(plateData.id)
+          req.then(removeLocal).catch(() => ElMessage.error('删除失败'))
         } else {
-          const index = this.facsPlates.findIndex(p => p.tempId === plateData.tempId)
-          if (index !== -1) {
-            this.facsPlates.splice(index, 1)
-            this.cleanupPlateState(deletedKey)
-            this.activatePlateAfterDelete(deletedKey, deletedIndex)
-            ElMessage.success('FACS板已删除')
-          }
+          removeLocal()
         }
       }).catch(() => {})
     },
@@ -1143,7 +1267,7 @@ export default {
     },
     activatePlateAfterDelete(deletedKey, deletedIndex) {
       if (this.activePlateName && this.activePlateName !== deletedKey) return
-      const plates = this.sortedFacsPlates
+      const plates = this.sortedAllPlates
       if (!plates.length) {
         this.activePlateName = ''
         return
@@ -1154,36 +1278,49 @@ export default {
     handleSavePlate(plateData) {
       if (!this.canEditTiter()) return
       if (!this.experiment_id) return
-      
+
+      const isElisa = plateData.plate_type === 'elisa'
       const stableKey = plateData.id ? `id_${plateData.id}` : `tmp_${plateData.tempId}`
-      
+
       const seq = (this.plateSaveSeq[stableKey] || 0) + 1
       this.plateSaveSeq[stableKey] = seq
       this.savingPlateKeys[stableKey] = true
-      
+
       if (this.plateTimers[stableKey]) clearTimeout(this.plateTimers[stableKey])
-      
+
       this.plateTimers[stableKey] = setTimeout(async () => {
         const mySeq = seq
         const myKey = stableKey
         let finalKey = myKey
-        
+
         try {
-          const res = await saveFacsPlate(plateData)
-          
+          const payload = isElisa
+            ? { ...plateData, experiment_id: this.experiment_id, immune_stage: plateData.immune_stage ?? '' }
+            : plateData
+          const res = isElisa ? await saveElisaPlate(payload) : await saveFacsPlate(payload)
+
           if (this.plateSaveSeq[myKey] !== mySeq) return
-          
-          if (res.data && res.data.id) {
+
+          if (res.data?.id) {
             const newId = res.data.id
             const newKey = `id_${newId}`
             const oldKey = plateData.id ? `id_${plateData.id}` : `tmp_${plateData.tempId}`
-            
-            const index = this.facsPlates.findIndex(p => p._uid === myKey)
+            const list = isElisa ? this.elisaPlates : this.facsPlates
+            const index = list.findIndex((p) => p._uid === myKey || (!p.id && p.tempId === plateData.tempId))
             if (index === -1) return
-            
-            this.facsPlates[index].id = newId
-            this.facsPlates[index]._uid = newKey
-            
+
+            if (isElisa) {
+              list[index].id = newId
+              list[index]._uid = newKey
+              if (res.data.absorbance_1 !== undefined) list[index].absorbance_1 = res.data.absorbance_1
+              if (res.data.positive_well_list !== undefined) {
+                list[index].positive_well_list = res.data.positive_well_list
+              }
+            } else {
+              list[index].id = newId
+              list[index]._uid = newKey
+            }
+
             if (oldKey !== newKey) {
               delete this.plateTimers[oldKey]
               if (this.plateSaveSeq[oldKey] !== undefined && this.plateSaveSeq[newKey] === undefined) {
@@ -1194,9 +1331,14 @@ export default {
                 this.savingPlateKeys[newKey] = this.savingPlateKeys[oldKey]
                 delete this.savingPlateKeys[oldKey]
               }
+              if (isElisa && this.elisaAbsPreviewCache[oldKey]) {
+                const nextCache = { ...this.elisaAbsPreviewCache, [newKey]: this.elisaAbsPreviewCache[oldKey] }
+                delete nextCache[oldKey]
+                this.elisaAbsPreviewCache = nextCache
+              }
               finalKey = newKey
             }
-            
+
             if (this.activePlateName === myKey) {
               this.activePlateName = newKey
             }
@@ -1213,6 +1355,53 @@ export default {
           }
         }
       }, 500)
+    },
+    async handleElisaExcelChange({ fileId }, plate) {
+      if (!this.canEditTiter() || !plate) return
+      const cacheKey = this.getPlateKey(plate)
+
+      if (!fileId) {
+        plate.absorbance_1 = null
+        plate.positive_well_list = []
+        const next = { ...this.elisaAbsPreviewCache }
+        delete next[cacheKey]
+        this.elisaAbsPreviewCache = next
+        this.handleSavePlate(plate)
+        return
+      }
+
+      const file = this.fileList.find((f) => f.id === fileId)
+      if (!file || !this.isExcel(file.file_name)) {
+        ElMessage.warning('未找到有效的 Excel 文件')
+        return
+      }
+
+      try {
+        const blob = await this.fetchFileBlob(this.getDownloadUrl(file, true))
+        const parsed = parseElisaArrayBuffer(await blob.arrayBuffer(), file.file_name)
+        if (parsed.error || !parsed.primary?.matrix) {
+          ElMessage.warning('无法解析 ELISA 吸光度表格，请检查文件')
+          return
+        }
+        plate.absorbance_1 = parsed.primary
+        if (parsed.extraSheets.length) {
+          this.elisaAbsPreviewCache = { ...this.elisaAbsPreviewCache, [cacheKey]: parsed.extraSheets }
+        } else {
+          const next = { ...this.elisaAbsPreviewCache }
+          delete next[cacheKey]
+          this.elisaAbsPreviewCache = next
+        }
+        const lower = normalizeSlotList(plate.lower_slot_list, 'lower')
+        plate.positive_well_list = computeAutoPositiveFromPlate(parsed.primary.matrix, lower)
+        this.handleSavePlate(plate)
+        const extraHint = parsed.extraSheets.length ? `，另有 ${parsed.extraSheets.length} 张吸光度可预览` : ''
+        ElMessage.success(
+          `已导入吸光度 1（${parsed.primary.wavelength ?? '-'} nm），自动标注 ${plate.positive_well_list.length} 个阳性孔${extraHint}`,
+        )
+      } catch (error) {
+        console.error('解析 ELISA Excel 失败:', error)
+        ElMessage.error('读取或解析 Excel 失败')
+      }
     },
     canEditTiter() {
       return canEditSerumTiter(this.currentUserInfo, this.project || {})

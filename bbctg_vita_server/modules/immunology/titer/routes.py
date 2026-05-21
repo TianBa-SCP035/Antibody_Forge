@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from core.response import error, success
 from db.session import get_db
-from models.immunology import SerumFacsPlate, SerumFile, SerumImmProject
+from models.immunology import SerumElisaPlate, SerumFacsPlate, SerumFile, SerumImmProject
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
 from modules.immunology.titer import service
@@ -207,6 +207,51 @@ def plate_delete(
         return error(str(exc))
 
 
+@router.post("/elisa/plate/list")
+def elisa_plate_list(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "serum.page.titer")
+    return success({"items": service.get_elisa_plates(db, data.get("experiment_id"))})
+
+
+@router.post("/elisa/plate/save")
+def elisa_plate_save(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    try:
+        require_permission(db, current_user, "serum.titer.edit")
+        _require_project_owner_or_edit_all(db, current_user, experiment_id=(data or {}).get("experiment_id"))
+        return success(service.save_elisa_plate(db, data or {}))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        return error(str(exc))
+
+
+@router.post("/elisa/plate/delete")
+def elisa_plate_delete(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    try:
+        require_permission(db, current_user, "serum.titer.edit")
+        _require_project_owner_or_edit_all(db, current_user, elisa_plate_id=int(data.get("id")))
+        service.delete_elisa_plate(db, int(data.get("id")))
+        return success({"message": "Success"})
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        return error(str(exc))
+
+
 def _require_project_owner_or_edit_all(
     db: Session,
     user: SysUser,
@@ -214,8 +259,15 @@ def _require_project_owner_or_edit_all(
     experiment_id: str | None = None,
     file_id: int | None = None,
     plate_id: int | None = None,
+    elisa_plate_id: int | None = None,
 ) -> None:
-    project = _resolve_project(db, experiment_id=experiment_id, file_id=file_id, plate_id=plate_id)
+    project = _resolve_project(
+        db,
+        experiment_id=experiment_id,
+        file_id=file_id,
+        plate_id=plate_id,
+        elisa_plate_id=elisa_plate_id,
+    )
     if not project:
         raise ValueError("Project not found")
     if _is_owner_name(user, project.owner):
@@ -229,6 +281,7 @@ def _resolve_project(
     experiment_id: str | None = None,
     file_id: int | None = None,
     plate_id: int | None = None,
+    elisa_plate_id: int | None = None,
 ) -> SerumImmProject | None:
     target_experiment_id = experiment_id
     if file_id is not None:
@@ -238,6 +291,11 @@ def _resolve_project(
         target_experiment_id = record.experiment_id
     if plate_id is not None:
         plate = db.get(SerumFacsPlate, plate_id)
+        if not plate:
+            raise ValueError("Plate not found")
+        target_experiment_id = plate.experiment_id
+    if elisa_plate_id is not None:
+        plate = db.get(SerumElisaPlate, elisa_plate_id)
         if not plate:
             raise ValueError("Plate not found")
         target_experiment_id = plate.experiment_id

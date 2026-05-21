@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
-from models.immunology import SerumFacsPlate, SerumFile, SerumTiterPc, SerumTiterTarget
+from models.immunology import SerumElisaPlate, SerumFacsPlate, SerumFile, SerumTiterPc, SerumTiterTarget
 
 
 def _upload_root() -> Path:
@@ -209,6 +209,59 @@ def save_facs_plate(db: Session, plate_data: dict[str, Any]) -> dict:
 
 def delete_facs_plate(db: Session, plate_id: int) -> None:
     plate = db.get(SerumFacsPlate, plate_id)
+    if not plate:
+        raise ValueError("Plate not found")
+    db.delete(plate)
+    db.commit()
+
+
+def get_elisa_plates(db: Session, experiment_id: str) -> list[dict]:
+    return [item.to_dict() for item in db.scalars(select(SerumElisaPlate).where(SerumElisaPlate.experiment_id == experiment_id)).all()]
+
+
+ELISA_PLATE_FIELDS = [
+    "qr_code",
+    "excel_file_id",
+    "immune_stage",
+    "protein_target_id",
+    "pc_id",
+    "mouse_group",
+    "antigen_type",
+    "slot_groups",
+    "upper_slot_list",
+    "lower_slot_list",
+    "positive_well_list",
+    "absorbance_1",
+]
+
+
+def save_elisa_plate(db: Session, plate_data: dict[str, Any]) -> dict:
+    experiment_id = plate_data.get("experiment_id")
+    if not experiment_id:
+        raise ValueError("Missing experiment_id")
+
+    plate_id = plate_data.get("id")
+    if plate_id:
+        plate = db.get(SerumElisaPlate, int(plate_id))
+        if not plate:
+            raise ValueError("Plate not found")
+        if plate.experiment_id != experiment_id:
+            raise ValueError("Plate does not belong to this experiment")
+    else:
+        plate = SerumElisaPlate(experiment_id=experiment_id, immune_stage="")
+        db.add(plate)
+
+    for field in ELISA_PLATE_FIELDS:
+        setattr(plate, field, plate_data.get(field))
+    if not plate.immune_stage:
+        plate.immune_stage = ""
+    db.commit()
+    db.refresh(plate)
+    return plate.to_dict()
+
+
+def delete_elisa_plate(db: Session, plate_id: int) -> None:
+    plate = db.get(SerumElisaPlate, plate_id)
     if not plate:
         raise ValueError("Plate not found")
     db.delete(plate)

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from core.config import get_settings
 from models.immunology import (
+    SerumElisaPlate,
     SerumFacsPlate,
     SerumFile,
     SerumImmAntigen,
@@ -280,7 +281,7 @@ def _rename_experiment_related_records(db: Session, old_eid: str | None, new_eid
     for record in db.scalars(select(SerumFile).where(SerumFile.experiment_id == old_eid)).all():
         record.file_path = _rewrite_titer_file_path(record.file_path, old_eid, new_eid, path_map)
         record.experiment_id = new_eid
-    for model in [SerumImmMouse, SerumImmAntigen, SerumImmStep, SerumTiterTarget, SerumTiterPc, SerumFacsPlate]:
+    for model in [SerumImmMouse, SerumImmAntigen, SerumImmStep, SerumTiterTarget, SerumTiterPc, SerumFacsPlate, SerumElisaPlate]:
         db.query(model).filter(model.experiment_id == old_eid).update({"experiment_id": new_eid}, synchronize_session=False)
 
 
@@ -353,7 +354,7 @@ def delete_serum(db: Session, project_id: int) -> None:
     if not project:
         raise ValueError("Project not found")
     exp_id = project.experiment_id
-    for model in [SerumFacsPlate, SerumFile, SerumImmMouse, SerumImmAntigen, SerumImmStep, SerumTiterTarget, SerumTiterPc]:
+    for model in [SerumFacsPlate, SerumElisaPlate, SerumFile, SerumImmMouse, SerumImmAntigen, SerumImmStep, SerumTiterTarget, SerumTiterPc]:
         db.query(model).filter(model.experiment_id == exp_id).delete(synchronize_session=False)
     db.delete(project)
     db.commit()

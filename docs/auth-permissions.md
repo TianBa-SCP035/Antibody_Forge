@@ -75,7 +75,7 @@ DDL 与种子数据见 [system-auth-permission-schema.sql](./system-auth-permiss
 | `serum.project.edit_all` | action | 编辑**任意**项目（含改负责人） |
 | `serum.project.delete` | action | 删除项目 |
 | `serum.status.update` | action | 快速改状态（需负责人或 edit_all） |
-| `serum.status.auto_update` | action | 批量自动更新状态（另需 edit_all） |
+| `serum.status.auto_update` | action | 批量自动更新状态 |
 | `serum.mouse.export` | action | 导出小鼠免疫数据 |
 | `serum.cage.update` | action | 更新笼位 |
 | `serum.titer.edit` | action | 编辑效价（负责人或 edit_all） |
@@ -178,7 +178,7 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 | 新建项目 | 需 `serum.project.create`；普通用户只能把自己设为 `owner` |
 | 改状态 / 笼位 / 制备状态 | 需对应 action 权限，且为项目负责人 **或** 拥有 `serum.project.edit_all` |
 | 效价写操作 | 需 `serum.titer.edit` 等，且为项目负责人 **或** `serum.titer.edit_all` |
-| 自动更新状态 | 同时需要 `serum.status.auto_update` 与 `serum.project.edit_all` |
+| 自动更新状态 | 需要 `serum.status.auto_update` |
 
 负责人匹配：用户 `display_name` / `realName` / `username` 与项目 `owner` 字符串比对（含首段别名）。
 

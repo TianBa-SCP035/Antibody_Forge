@@ -238,6 +238,44 @@ class SerumTiterTarget(Base):
         }
 
 
+class SerumElisaPlate(Base):
+    __tablename__ = "serum_elisa_plate"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    qr_code: Mapped[str | None] = mapped_column(String(128))
+    excel_file_id: Mapped[int | None] = mapped_column(BigInteger)
+    immune_stage: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    protein_target_id: Mapped[int | None] = mapped_column(BigInteger)
+    pc_id: Mapped[int | None] = mapped_column(BigInteger)
+    mouse_group: Mapped[str | None] = mapped_column(String(64))
+    antigen_type: Mapped[str | None] = mapped_column(String(64))
+    slot_groups: Mapped[object | None] = mapped_column(JSON)
+    upper_slot_list: Mapped[object | None] = mapped_column(JSON)
+    lower_slot_list: Mapped[object | None] = mapped_column(JSON)
+    positive_well_list: Mapped[object | None] = mapped_column(JSON)
+    absorbance_1: Mapped[object | None] = mapped_column(JSON)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "qr_code": self.qr_code,
+            "excel_file_id": self.excel_file_id,
+            "immune_stage": self.immune_stage,
+            "protein_target_id": self.protein_target_id,
+            "pc_id": self.pc_id,
+            "mouse_group": self.mouse_group,
+            "antigen_type": self.antigen_type,
+            "slot_groups": self.slot_groups,
+            "upper_slot_list": self.upper_slot_list,
+            "lower_slot_list": self.lower_slot_list,
+            "positive_well_list": self.positive_well_list,
+            "absorbance_1": self.absorbance_1,
+            "plate_type": "elisa",
+        }
+
+
 class SerumFacsPlate(Base):
     __tablename__ = "serum_facs_plate"
 
@@ -282,4 +320,5 @@ class SerumFacsPlate(Base):
             "lower_slot_groups": self.lower_slot_groups,
             "positive_well_list": self.positive_well_list,
             "instrument_type": self.instrument_type,
+            "plate_type": "facs",
         }

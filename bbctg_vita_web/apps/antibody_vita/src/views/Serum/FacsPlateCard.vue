@@ -204,15 +204,24 @@
                     :key="'upper-group-' + index"
                     class="slot-group-block"
                     :style="getGroupStyle(group)"
+                    @mouseenter="updateGroupTooltipOverflow('upper', index)"
                   >
-                    <el-input
-                      :model-value="group.label"
-                      size="small"
-                      placeholder="分组标题"
-                      :disabled="!isEditable"
-                      @input="setSlotGroupLabel('upper', index, $event)"
-                      @change="autoSave"
-                    />
+                    <el-tooltip
+                      :content="group.label"
+                      :disabled="!groupTooltipOverflow.upper[index]"
+                      placement="top"
+                      effect="dark"
+                    >
+                      <el-input
+                        :ref="groupInputRef('upper', index)"
+                        :model-value="group.label"
+                        size="small"
+                        placeholder="分组标题"
+                        :disabled="!isEditable"
+                        @input="setSlotGroupLabel('upper', index, $event)"
+                        @change="autoSave"
+                      />
+                    </el-tooltip>
                     <span
                       v-if="isEditable"
                       class="slot-group-remove"
@@ -355,15 +364,24 @@
                     :key="'lower-group-' + index"
                     class="slot-group-block"
                     :style="getGroupStyle(group)"
+                    @mouseenter="updateGroupTooltipOverflow('lower', index)"
                   >
-                    <el-input
-                      :model-value="group.label"
-                      size="small"
-                      placeholder="分组标题"
-                      :disabled="!isEditable"
-                      @input="setSlotGroupLabel('lower', index, $event)"
-                      @change="autoSave"
-                    />
+                    <el-tooltip
+                      :content="group.label"
+                      :disabled="!groupTooltipOverflow.lower[index]"
+                      placement="top"
+                      effect="dark"
+                    >
+                      <el-input
+                        :ref="groupInputRef('lower', index)"
+                        :model-value="group.label"
+                        size="small"
+                        placeholder="分组标题"
+                        :disabled="!isEditable"
+                        @input="setSlotGroupLabel('lower', index, $event)"
+                        @change="autoSave"
+                      />
+                    </el-tooltip>
                     <span
                       v-if="isEditable"
                       class="slot-group-remove"
@@ -407,6 +425,7 @@ import {
   ElInputNumber,
   ElOption,
   ElSelect,
+  ElTooltip,
 } from 'element-plus'
 
 const GATE_TEMPLATES = {
@@ -452,6 +471,7 @@ export default {
     ElInputNumber,
     ElOption,
     ElSelect,
+    ElTooltip,
     FolderOpened,
     Loading,
     Picture,
@@ -544,6 +564,10 @@ export default {
         endRow: null,
         endCol: null,
         applyPositive: true
+      },
+      groupTooltipOverflow: {
+        upper: {},
+        lower: {}
       },
       saveTimer: null
     }
@@ -880,7 +904,25 @@ export default {
       const groups = this.getGroupsForSection(section)
       if (!groups[index]) return
       groups[index].label = value
+      this.$nextTick(() => this.updateGroupTooltipOverflow(section, index))
       this.autoSave()
+    },
+    groupInputRef(section, index) {
+      return `${section}-group-input-${index}`
+    },
+    updateGroupTooltipOverflow(section, index) {
+      const group = this.getGroupsForSection(section)[index]
+      const next = { ...this.groupTooltipOverflow[section] }
+      if (!group?.label) {
+        next[index] = false
+        this.groupTooltipOverflow = { ...this.groupTooltipOverflow, [section]: next }
+        return
+      }
+      let ref = this.$refs[this.groupInputRef(section, index)]
+      if (Array.isArray(ref)) ref = ref[0]
+      const input = ref?.$el?.querySelector?.('input')
+      next[index] = !!input && input.scrollWidth > input.clientWidth + 1
+      this.groupTooltipOverflow = { ...this.groupTooltipOverflow, [section]: next }
     },
     removeSlotGroup(section, index) {
       if (!this.isEditable) return

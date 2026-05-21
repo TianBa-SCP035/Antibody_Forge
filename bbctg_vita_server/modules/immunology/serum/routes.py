@@ -164,7 +164,6 @@ def auto_update_status(
 ) -> dict:
     try:
         require_permission(db, current_user, "serum.status.auto_update")
-        require_permission(db, current_user, "serum.project.edit_all")
         return success(service.auto_update_status(db, data or {}))
     except HTTPException:
         raise

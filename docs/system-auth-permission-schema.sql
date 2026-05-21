@@ -233,6 +233,8 @@ VALUES
   ('serum.titer.edit', 'POST', '/api/serum/titer/pc/save', '保存效价阳性对照'),
   ('serum.titer.edit', 'POST', '/api/serum/titer/plate/save', '保存FACS板'),
   ('serum.titer.edit', 'POST', '/api/serum/titer/plate/delete', '删除FACS板'),
+  ('serum.titer.edit', 'POST', '/api/serum/titer/elisa/plate/save', '保存ELISA板'),
+  ('serum.titer.edit', 'POST', '/api/serum/titer/elisa/plate/delete', '删除ELISA板'),
   ('system.user.manage', 'POST', '/api/system/users/save', '新增或编辑用户'),
   ('system.user.manage', 'POST', '/api/system/users/reset_password', '重置用户密码'),
   ('system.user.manage', 'POST', '/api/system/users/delete', '删除用户'),

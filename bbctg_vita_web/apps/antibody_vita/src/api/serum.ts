@@ -168,3 +168,27 @@ export function deleteFacsPlate(id: any) {
     url: '/serum/titer/plate/delete',
   });
 }
+
+export function fetchElisaPlates(data: any) {
+  return request({
+    data,
+    method: 'post',
+    url: '/serum/titer/elisa/plate/list',
+  });
+}
+
+export function saveElisaPlate(data: any) {
+  return request({
+    data,
+    method: 'post',
+    url: '/serum/titer/elisa/plate/save',
+  });
+}
+
+export function deleteElisaPlate(id: any) {
+  return request({
+    data: { id },
+    method: 'post',
+    url: '/serum/titer/elisa/plate/delete',
+  });
+}

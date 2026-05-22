@@ -261,9 +261,16 @@
           <el-tab-pane
             v-for="(plate, index) in sortedAllPlates"
             :key="getPlateKey(plate)"
-            :label="getPlateTabLabel(plate, index)"
             :name="getPlateKey(plate)"
           >
+            <template #label>
+              <span
+                title="右键复制鼠号和分组标题"
+                @contextmenu.prevent="openPlateCopyDialog(plate)"
+              >
+                {{ getPlateTabLabel(plate, index) }}
+              </span>
+            </template>
             <FacsPlateCard
               v-if="plate.plate_type === 'facs'"
               :plate-data="plate"
@@ -308,6 +315,42 @@
         </div>
       </div>
     </div>
+
+    <el-dialog
+      v-model="plateCopyDialogVisible"
+      title="复制鼠号和分组标题"
+      width="620px"
+    >
+      <el-form label-width="85px">
+        <el-form-item label="来源板">
+          <el-input :value="copySourcePlateLabel" disabled />
+        </el-form-item>
+        <el-form-item label="目标板">
+          <div class="copy-target-row">
+            <el-select
+              v-model="copyTargetPlateKeys"
+              multiple
+              collapse-tags
+              collapse-tags-tooltip
+              :max-collapse-tags="2"
+              class="copy-target-select"
+              placeholder="请选择同类型目标板（可多选）"
+            >
+              <el-option
+                v-for="option in copyTargetPlateOptions"
+                :key="option.key"
+                :label="option.label"
+                :value="option.key"
+              />
+            </el-select>
+            <div class="copy-target-actions">
+              <el-button @click="plateCopyDialogVisible = false">取消</el-button>
+              <el-button type="primary" :disabled="!copyTargetPlateKeys.length" @click="confirmCopyPlateSlots">确定复制</el-button>
+            </div>
+          </div>
+        </el-form-item>
+      </el-form>
+    </el-dialog>
 
     <!-- 4. File Detail Dialog -->
     <el-dialog
@@ -583,6 +626,9 @@ export default {
       elisaAbsPreviewCache: {},
       platesLoading: false,
       activePlateName: '',
+      plateCopyDialogVisible: false,
+      copySourcePlateKey: '',
+      copyTargetPlateKeys: [],
       plateTimers: {},
       plateSaveSeq: {},
       savingPlateKeys: {},
@@ -630,6 +676,25 @@ export default {
         if (aHas && bHas) return a.id - b.id
         return (a.tempId || 0) - (b.tempId || 0)
       })
+    },
+    copySourcePlate() {
+      return this.sortedAllPlates.find((plate) => this.getPlateKey(plate) === this.copySourcePlateKey) || null
+    },
+    copySourcePlateLabel() {
+      if (!this.copySourcePlate) return ''
+      const index = this.sortedAllPlates.findIndex((plate) => this.getPlateKey(plate) === this.copySourcePlateKey)
+      return this.getPlateTabLabel(this.copySourcePlate, index)
+    },
+    copyTargetPlateOptions() {
+      const source = this.copySourcePlate
+      if (!source) return []
+      return this.sortedAllPlates
+        .map((plate, index) => ({ plate, index, key: this.getPlateKey(plate) }))
+        .filter((item) => item.key !== this.copySourcePlateKey && item.plate.plate_type === source.plate_type)
+        .map((item) => ({
+          key: item.key,
+          label: this.getPlateTabLabel(item.plate, item.index),
+        }))
     },
   },
   created() {
@@ -1134,6 +1199,65 @@ export default {
     getElisaExtraAbsorbance(plate) {
       return this.elisaAbsPreviewCache[this.getPlateKey(plate)] || []
     },
+    openPlateCopyDialog(plate) {
+      if (!this.canEditTiter()) {
+        ElMessage.warning('您没有权限编辑此项目')
+        return
+      }
+      this.copySourcePlateKey = this.getPlateKey(plate)
+      this.copyTargetPlateKeys = []
+      this.plateCopyDialogVisible = true
+    },
+    cloneJson(value, fallback) {
+      if (value === undefined || value === null) return fallback
+      return JSON.parse(JSON.stringify(value))
+    },
+    clonePlateSlotPayload(sourcePlate) {
+      if (sourcePlate.plate_type === 'elisa') {
+        return {
+          upper_slot_list: this.cloneJson(sourcePlate.upper_slot_list, createDefaultUpperSlotList()),
+          lower_slot_list: this.cloneJson(sourcePlate.lower_slot_list, createDefaultLowerSlotList()),
+          slot_groups: this.cloneJson(sourcePlate.slot_groups, []),
+        }
+      }
+      return {
+        upper_mouse_list: this.cloneJson(sourcePlate.upper_mouse_list, []),
+        lower_mouse_list: this.cloneJson(sourcePlate.lower_mouse_list, []),
+        upper_slot_groups: this.cloneJson(sourcePlate.upper_slot_groups, []),
+        lower_slot_groups: this.cloneJson(sourcePlate.lower_slot_groups, []),
+      }
+    },
+    applyPlateSlotPayload(targetPlate, payload) {
+      Object.assign(targetPlate, this.cloneJson(payload, {}))
+    },
+    confirmCopyPlateSlots() {
+      const source = this.copySourcePlate
+      const targets = this.sortedAllPlates.filter((plate) => this.copyTargetPlateKeys.includes(this.getPlateKey(plate)))
+      if (!source) {
+        ElMessage.warning('来源板异常')
+        return
+      }
+      if (!targets.length) {
+        ElMessage.warning('请选择至少一个目标板')
+        return
+      }
+      if (targets.some((plate) => plate.plate_type !== source.plate_type)) {
+        ElMessage.warning('只能复制到同类型板')
+        return
+      }
+
+      const payload = this.clonePlateSlotPayload(source)
+      targets.forEach((target) => {
+        this.applyPlateSlotPayload(target, payload)
+        this.handleSavePlate(target)
+      })
+      const targetNames = targets.map((target) => {
+        const index = this.sortedAllPlates.findIndex((plate) => this.getPlateKey(plate) === this.getPlateKey(target))
+        return this.getPlateTabLabel(target, index)
+      })
+      ElMessage.success(`已复制到 ${targetNames.join('、')}`)
+      this.plateCopyDialogVisible = false
+    },
     restoreElisaAbsorbancePreviews() {
       if (!this.elisaPlates.length || !this.fileList.length) return
       const tasks = this.elisaPlates
@@ -1443,6 +1567,39 @@ export default {
   padding: 10px;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.copy-target-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.copy-target-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.copy-target-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+
+  .el-button + .el-button {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .copy-target-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .copy-target-actions {
+    justify-content: flex-end;
+  }
 }
 
 /* Header */

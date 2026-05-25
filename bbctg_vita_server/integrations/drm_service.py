@@ -40,10 +40,12 @@ def decrypt_upload_file_if_available(
 
     runtime = _get_drm_runtime(db)
     if runtime is None:
+        logging.info("DRM upload decrypt skipped: %s", _drm_skip_reason(db))
         return False
 
     drm_module = _load_drm_module()
     if drm_module is None:
+        logging.warning("DRM upload decrypt skipped: integrations.drm not importable")
         return False
 
     decrypt_func = getattr(drm_module, "decrypt_file_if_needed", None)
@@ -53,10 +55,14 @@ def decrypt_upload_file_if_available(
 
     applicant_id = (decrypt_user_id or "").strip() or runtime["settings"].drm_user_id
 
+    path = Path(file_path)
     try:
-        return bool(decrypt_func(Path(file_path), decrypt_user_id=applicant_id, **runtime["sdk_kwargs"]))
+        decrypted = bool(decrypt_func(path, decrypt_user_id=applicant_id, **runtime["sdk_kwargs"]))
+        if decrypted:
+            logging.info("DRM upload decrypt completed: %s", path)
+        return decrypted
     except Exception:
-        logging.exception("DRM upload decrypt failed, upload continues: %s", file_path)
+        logging.exception("DRM upload decrypt failed, upload continues: %s", path)
         return False
 
 
@@ -162,11 +168,25 @@ def _get_drm_runtime(db: Session) -> dict[str, Any] | None:
     }
 
 
+def _drm_skip_reason(db: Session) -> str:
+    settings = get_settings()
+    if not is_feature_enabled(db, DRM_FEATURE_CODE, default=False):
+        return "feature.drm_file_security is disabled"
+    if not settings.drm_enabled:
+        return "DRM_ENABLED=false"
+    lib_dir = _resolve_lib_dir(settings.drm_lib_dir)
+    if not _has_native_library(lib_dir):
+        return f"native library missing under {lib_dir}"
+    if not _has_server_config(settings):
+        return "DRM_SERVER_HOST/PORT/USER_ID/PASSWORD incomplete"
+    return "unknown"
+
+
 def _load_drm_module() -> Any | None:
     try:
         return importlib.import_module("integrations.drm")
     except Exception as exc:
-        logging.info("DRM module is not available: %s", exc)
+        logging.warning("DRM module is not available: %s", exc)
         return None
 
 

@@ -15,6 +15,8 @@
 bbctg_vita_server/.venv
 bbctg_vita_server/**/__pycache__/
 bbctg_vita_server/**/*.pyc
+# DRM SDK 整目录（含 __init__.py 与 lib/）由运维按环境手动部署，不提交 Git
+bbctg_vita_server/integrations/drm/
 config/local/
 config/test/
 config/prod/

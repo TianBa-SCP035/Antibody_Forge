@@ -32,7 +32,7 @@ bbctg_vita_server/
   - `auth/` — 登录、JWT、用户信息
   - `system/` — 用户/角色/权限包、审计、功能开关、员工同步
   - `immunology/serum`、`titer`、`cell` — 免疫部业务
-- `integrations/`：外部系统适配。当前包含云之家 ticket 登录客户端。
+- `integrations/`：外部系统适配。当前包含云之家 ticket 登录客户端，以及 DRM 文件安全模块（`drm_service.py` + `integrations/drm/`）；动态库由各环境自行部署，不提交 Git。
 - `jobs/`：定时任务。当前只注册 `serum_auto_update_status`，每天 01:00 自动更新血清实验状态。
 - `utils/`：少量纯工具函数，避免变成杂物目录。
 

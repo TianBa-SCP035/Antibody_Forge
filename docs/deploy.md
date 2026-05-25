@@ -53,6 +53,15 @@ SECRET_KEY                JWT 签名密钥，生产必须替换。
 REPOSITORY_ROOT           运行时文件仓库根目录，默认 repository。
 ENABLE_SCHEDULER          是否启用后台定时任务；prod 环境也会自动启用。
 YUNZHIJIA_AUTO_PROVISION  云之家未绑定用户是否自动创建本系统账号，默认 false。
+DRM_ENABLED               DRM 文件安全模块环境级开关，系统功能开关关闭或 SDK 缺失时仍会跳过。
+DRM_LIB_DIR               可选。DLL/SO 目录；默认使用 bbctg_vita_server/integrations/drm/lib。
+DRM_SERVER_HOST           DRM 服务地址。
+DRM_SERVER_PORT           DRM 服务端口。
+DRM_USER_ID               DRM SDK 认证账号。
+DRM_PASSWORD              DRM SDK 认证口令。
+DRM_CONFIG_PATH           DRM SDK 本地缓存目录，默认 repository/cache/drm。
+DRM_ENCRYPT_OWNER_ID      下载加密时的文件属主，留空则使用 DRM_USER_ID。
+DRM_ENCRYPT_SECRET_LEVEL_ID  下载加密密级，默认 1。
 DEV_USER_OPENID           本地开发临时登录用户 openid。
 DEV_USER_NAME             本地开发临时登录用户名称。
 ```
@@ -87,6 +96,33 @@ repository/
 ```bash
 sudo mkdir -p /srv/antibody-forge/prod/repository/{uploads,exports,cache,logs,tmp}
 sudo chown -R antibody:antibody /srv/antibody-forge/prod/repository
+```
+
+## DRM 文件安全模块
+
+`integrations/drm/` 整目录不提交 Git，由各环境整包手动部署（含 `__init__.py` 与 `lib/`，缺一不可）：
+
+```text
+bbctg_vita_server/integrations/drm/
+  __init__.py       # SDK Python 封装，必需
+  lib/
+    DrmEdiC.dll     # Windows
+    libdrmedi.so    # Linux
+    libhttpcomm.so  # Linux，与 libdrmedi.so 同目录
+```
+
+未部署该目录时后端仍可启动；系统功能未开启或目录/动态库缺失时，上传与下载会静默跳过 DRM。连接参数写在 `config/<env>/vita_server.env`，勿提交 Git。
+
+生产环境如果不希望把 SO 放在代码目录下，可把文件放到独立目录，并在 `config/prod/vita_server.env` 设置：
+
+```text
+DRM_LIB_DIR=/srv/antibody-forge/prod/drm_lib
+```
+
+Linux 下如果动态库之间存在运行时依赖，可在 systemd 中补充：
+
+```ini
+Environment=LD_LIBRARY_PATH=/srv/antibody-forge/prod/drm_lib
 ```
 
 ## 本地启动

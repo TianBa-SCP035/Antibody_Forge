@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
+from integrations import drm_service
 from models.immunology import SerumElisaPlate, SerumFacsPlate, SerumFile, SerumTiterPc, SerumTiterTarget
 
 
@@ -30,6 +31,17 @@ def get_file_list(db: Session, experiment_id: str) -> list[dict]:
     return [item.to_dict() for item in db.scalars(select(SerumFile).where(SerumFile.experiment_id == experiment_id)).all()]
 
 
+def _save_upload_content(db: Session, file_obj: UploadFile, file_path: Path) -> None:
+    with file_path.open("wb") as target:
+        target.write(file_obj.file.read())
+    try:
+        drm_service.decrypt_upload_file_if_available(db, file_path)
+    except Exception:
+        if file_path.exists():
+            file_path.unlink()
+        raise
+
+
 def save_file(db: Session, file_obj: UploadFile, experiment_id: str, user_name: str = "unknown") -> dict:
     if not file_obj.filename or not experiment_id:
         raise ValueError("Missing file or experiment ID")
@@ -39,8 +51,7 @@ def save_file(db: Session, file_obj: UploadFile, experiment_id: str, user_name: 
     save_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{Path(file_obj.filename).name}"
     file_path = exp_dir / save_name
 
-    with file_path.open("wb") as target:
-        target.write(file_obj.file.read())
+    _save_upload_content(db, file_obj, file_path)
 
     record = SerumFile(
         experiment_id=experiment_id,
@@ -84,10 +95,9 @@ def replace_file(db: Session, file_id: int, file_obj: UploadFile, user_name: str
     save_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{Path(file_obj.filename or '').name}"
     new_path = exp_dir / save_name
 
-    if old_path.exists():
+    _save_upload_content(db, file_obj, new_path)
+    if old_path != new_path and old_path.exists():
         old_path.unlink()
-    with new_path.open("wb") as target:
-        target.write(file_obj.file.read())
 
     record.file_name = file_obj.filename or save_name
     record.file_path = f"/titer_files/{record.experiment_id}/{save_name}"
@@ -105,6 +115,11 @@ def get_download_record(db: Session, file_id: int) -> tuple[SerumFile, Path]:
     if not full_path.exists():
         raise ValueError("File not found on disk")
     return record, full_path
+
+
+def prepare_office_download_file(db: Session, source_path: Path, file_name: str) -> tuple[Path, Path | None]:
+    """Attachment download: encrypt Office files on a temp copy; preview uses plaintext path."""
+    return drm_service.prepare_office_download_file(db, source_path, file_name)
 
 
 def create_thumbnail(file_path: Path, width: int, height: int) -> tuple[BytesIO, str] | None:

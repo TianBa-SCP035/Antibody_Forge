@@ -48,6 +48,16 @@ class Settings(BaseSettings):
     yunzhijia_appid: str = ""
     yunzhijia_appsecret: str = ""
     yunzhijia_auto_provision: bool = False
+    drm_enabled: bool = True
+    drm_lib_dir: str = ""
+    drm_server_ssl: bool = False
+    drm_server_host: str = ""
+    drm_server_port: int = 0
+    drm_user_id: str = ""
+    drm_password: str = ""
+    drm_config_path: Path = Field(default=PROJECT_ROOT / "repository" / "cache" / "drm")
+    drm_encrypt_owner_id: str = ""
+    drm_encrypt_secret_level_id: int = 1
     equip_appid: str = ""
     equip_appsecret: str = ""
     cell_db_url: str = ""
@@ -65,6 +75,8 @@ class Settings(BaseSettings):
         self.app_env = (self.app_env or "local").strip().lower()
         if not self.repository_root.is_absolute():
             self.repository_root = (PROJECT_ROOT / self.repository_root).resolve()
+        if not self.drm_config_path.is_absolute():
+            self.drm_config_path = (PROJECT_ROOT / self.drm_config_path).resolve()
 
     @property
     def cors_origin_list(self) -> list[str]:

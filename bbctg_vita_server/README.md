@@ -21,3 +21,20 @@ python server.py
 - `repository/`：上传文件、导出文件、缓存、日志等运行时数据。
 
 效价文件默认保存到 `repository/uploads/titer_files/`。
+
+## DRM 文件安全模块
+
+`integrations/drm/` 整目录不提交 Git，需在每台机器上手动部署（与 `config/<env>/vita_server.env` 中的 DRM 参数配合使用）。
+
+目录结构：
+
+```text
+integrations/drm/
+  __init__.py          # SDK Python 封装（必需，不是临时文件）
+  lib/
+    DrmEdiC.dll        # Windows
+    libdrmedi.so       # Linux
+    libhttpcomm.so     # Linux，与 libdrmedi.so 同目录
+```
+
+业务代码只依赖已提交的 `integrations/drm_service.py`；未部署 `integrations/drm/` 时，上传/下载会静默跳过 DRM 处理。

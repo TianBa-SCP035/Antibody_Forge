@@ -64,6 +64,16 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "config": {},
     },
     {
+        "code": "feature.drm_file_security",
+        "name": "DRM 文件安全模块",
+        "category": "feature",
+        "description": "控制上传自动解密、下载前加密等 DRM 文件安全能力",
+        "enabled": False,
+        "visible": True,
+        "sort_order": 120,
+        "config": {},
+    },
+    {
         "code": "job.employee_profile_sync",
         "name": "员工资料定时同步",
         "category": "job",

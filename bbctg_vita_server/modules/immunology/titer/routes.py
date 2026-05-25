@@ -1,6 +1,6 @@
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from db.session import get_db
 from models.immunology import SerumElisaPlate, SerumFacsPlate, SerumFile, SerumImmProject
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
+from integrations.drm_service import DrmEncryptError, remove_temp_file
 from modules.immunology.titer import service
 from modules.system.permissions import require_permission
 
@@ -100,6 +101,7 @@ def file_replace(
 
 @router.get("/file/download")
 def file_download(
+    background_tasks: BackgroundTasks,
     id: int = Query(...),
     preview: str | None = None,
     thumb: str | None = None,
@@ -116,14 +118,25 @@ def file_download(
             if thumbnail:
                 output, media_type = thumbnail
                 return StreamingResponse(output, media_type=media_type)
+
+        is_inline_preview = preview == "true"
+        serve_path = file_path
+        temp_path = None
+        if not is_inline_preview:
+            serve_path, temp_path = service.prepare_office_download_file(db, file_path, record.file_name)
+            if temp_path is not None:
+                background_tasks.add_task(remove_temp_file, temp_path)
+
         return FileResponse(
-            file_path,
+            serve_path,
             filename=record.file_name,
             media_type=None,
-            headers={"Content-Disposition": f"{'inline' if preview == 'true' else 'attachment'}; filename*=UTF-8''{quote(record.file_name)}"},
+            headers={"Content-Disposition": f"{'inline' if is_inline_preview else 'attachment'}; filename*=UTF-8''{quote(record.file_name)}"},
         )
     except HTTPException:
         raise
+    except DrmEncryptError as exc:
+        return error(str(exc))
     except Exception as exc:
         return error(str(exc))
 

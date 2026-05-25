@@ -40,29 +40,24 @@ def decrypt_upload_file_if_available(
 
     runtime = _get_drm_runtime(db)
     if runtime is None:
-        logging.info("DRM upload decrypt skipped: %s", _drm_skip_reason(db))
         return False
 
     drm_module = _load_drm_module()
     if drm_module is None:
-        logging.warning("DRM upload decrypt skipped: integrations.drm not importable")
-        return False
-
-    decrypt_func = getattr(drm_module, "decrypt_file_if_needed", None)
-    if decrypt_func is None:
-        logging.warning("DRM module exists but decrypt_file_if_needed is missing")
         return False
 
     applicant_id = (decrypt_user_id or "").strip() or runtime["settings"].drm_user_id
 
-    path = Path(file_path)
     try:
-        decrypted = bool(decrypt_func(path, decrypt_user_id=applicant_id, **runtime["sdk_kwargs"]))
-        if decrypted:
-            logging.info("DRM upload decrypt completed: %s", path)
-        return decrypted
+        return bool(
+            drm_module.decrypt_file_if_needed(
+                Path(file_path),
+                decrypt_user_id=applicant_id,
+                **runtime["sdk_kwargs"],
+            )
+        )
     except Exception:
-        logging.exception("DRM upload decrypt failed, upload continues: %s", path)
+        logging.exception("DRM upload decrypt failed, upload continues: %s", file_path)
         return False
 
 
@@ -86,17 +81,11 @@ def prepare_office_download_file(db: Session, source_path: Path, file_name: str)
     if drm_module is None:
         return source_path, None
 
-    is_encrypted = getattr(drm_module, "is_drm_encrypted_file", None)
-    encrypt_func = getattr(drm_module, "encrypt_file_if_needed", None)
-    if is_encrypted is None or encrypt_func is None:
-        logging.warning("DRM module missing encrypt helpers, download uses plaintext")
-        return source_path, None
-
     settings = runtime["settings"]
     sdk_kwargs = runtime["sdk_kwargs"]
 
     try:
-        if is_encrypted(source_path, **sdk_kwargs):
+        if drm_module.is_drm_encrypted_file(source_path, **sdk_kwargs):
             return source_path, None
 
         temp_dir = settings.repository_root / "tmp" / "drm_download"
@@ -105,12 +94,11 @@ def prepare_office_download_file(db: Session, source_path: Path, file_name: str)
         shutil.copy2(source_path, temp_path)
 
         owner_id = (settings.drm_encrypt_owner_id or "").strip() or settings.drm_user_id
-        secret_level_id = settings.drm_encrypt_secret_level_id
 
-        encrypt_func(
+        drm_module.encrypt_file_if_needed(
             temp_path,
             owner_id=owner_id,
-            secret_level_id=secret_level_id,
+            secret_level_id=settings.drm_encrypt_secret_level_id,
             **sdk_kwargs,
         )
         return temp_path, temp_path
@@ -166,20 +154,6 @@ def _get_drm_runtime(db: Session) -> dict[str, Any] | None:
             "config_path": settings.drm_config_path,
         },
     }
-
-
-def _drm_skip_reason(db: Session) -> str:
-    settings = get_settings()
-    if not is_feature_enabled(db, DRM_FEATURE_CODE, default=False):
-        return "feature.drm_file_security is disabled"
-    if not settings.drm_enabled:
-        return "DRM_ENABLED=false"
-    lib_dir = _resolve_lib_dir(settings.drm_lib_dir)
-    if not _has_native_library(lib_dir):
-        return f"native library missing under {lib_dir}"
-    if not _has_server_config(settings):
-        return "DRM_SERVER_HOST/PORT/USER_ID/PASSWORD incomplete"
-    return "unknown"
 
 
 def _load_drm_module() -> Any | None:

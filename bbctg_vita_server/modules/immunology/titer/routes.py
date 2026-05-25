@@ -10,7 +10,7 @@ from db.session import get_db
 from models.immunology import SerumElisaPlate, SerumFacsPlate, SerumFile, SerumImmProject
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
-from integrations.drm_service import remove_temp_file
+from integrations.drm_service import prepare_office_download_file, remove_temp_file
 from modules.immunology.titer import service
 from modules.system.permissions import require_permission
 
@@ -123,7 +123,7 @@ def file_download(
         serve_path = file_path
         temp_path = None
         if not is_inline_preview:
-            serve_path, temp_path = service.prepare_office_download_file(db, file_path, record.file_name)
+            serve_path, temp_path = prepare_office_download_file(db, file_path, record.file_name)
             if temp_path is not None:
                 background_tasks.add_task(remove_temp_file, temp_path)
 

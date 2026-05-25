@@ -112,11 +112,6 @@ def get_download_record(db: Session, file_id: int) -> tuple[SerumFile, Path]:
     return record, full_path
 
 
-def prepare_office_download_file(db: Session, source_path: Path, file_name: str) -> tuple[Path, Path | None]:
-    """Attachment download: encrypt Office files on a temp copy; preview uses plaintext path."""
-    return drm_service.prepare_office_download_file(db, source_path, file_name)
-
-
 def create_thumbnail(file_path: Path, width: int, height: int) -> tuple[BytesIO, str] | None:
     suffix = file_path.suffix.lower()
     if suffix not in {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}:

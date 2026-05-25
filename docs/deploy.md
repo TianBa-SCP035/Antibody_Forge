@@ -119,14 +119,7 @@ bbctg_vita_server/integrations/drm/
 DRM_LIB_DIR=/srv/antibody-forge/prod/drm_lib
 ```
 
-Linux 下 `libdrmedi.so` 依赖同目录的 `libhttpcomm.so`。`integrations/drm` 会用**绝对路径**先加载 `libhttpcomm.so` 再加载 `libdrmedi.so`（进程启动后再改 `LD_LIBRARY_PATH` 往往无效）。
-
-若仍报 `libhttpcomm.so: cannot open shared object file`，任选其一：
-
-1. **推荐（一次性，不改启动脚本）**：在服务器上对 `libdrmedi.so` 执行  
-   `patchelf --set-rpath '$ORIGIN' /path/to/integrations/drm/lib/libdrmedi.so`
-2. **启动时设置环境变量**：在 `start_dev.sh` 或 systemd 里、**exec python 之前**  
-   `export LD_LIBRARY_PATH="/path/to/integrations/drm/lib:$LD_LIBRARY_PATH"`
+Linux 下 `libdrmedi.so` 依赖 `libhttpcomm.so`，须在 **启动 Python 之前** 把 `integrations/drm/lib` 加入 `LD_LIBRARY_PATH`（`start_dev.sh` 已配置；systemd 需在 `ExecStart` 前设置同等变量）。若不用该脚本，可对 `libdrmedi.so` 一次性执行 `patchelf --set-rpath '$ORIGIN' ...` 代替。
 
 ## 本地启动
 

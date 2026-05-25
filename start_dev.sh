@@ -39,10 +39,12 @@ fi
 mkdir -p "$ROOT/repository/logs"
 LOG="$ROOT/repository/logs/backend.nohup.log"
 
+DRM_LIB="${ROOT}/bbctg_vita_server/integrations/drm/lib"
 echo "Starting backend with nohup. Log: ${LOG}"
 nohup bash -c "
 source \"\$(conda info --base)/etc/profile.d/conda.sh\"
 conda activate \"${CONDA_ENV}\"
+export LD_LIBRARY_PATH=\"${DRM_LIB}:\${LD_LIBRARY_PATH:-}\"
 cd \"${ROOT}/bbctg_vita_server\"
 exec python server.py
 " >>"$LOG" 2>&1 &

@@ -111,7 +111,7 @@ bbctg_vita_server/integrations/drm/
     libhttpcomm.so  # Linux，与 libdrmedi.so 同目录
 ```
 
-未部署该目录时后端仍可启动；系统功能未开启或目录/动态库缺失时，上传与下载会静默跳过 DRM。连接参数写在 `config/<env>/vita_server.env`，勿提交 Git。
+未部署该目录时后端仍可启动；系统功能未开启或目录/动态库缺失时，上传与下载会静默跳过 DRM。单文件加解密失败时也只记日志，上传/下载仍按原文件继续。连接参数写在 `config/<env>/vita_server.env`，勿提交 Git。
 
 生产环境如果不希望把 SO 放在代码目录下，可把文件放到独立目录，并在 `config/prod/vita_server.env` 设置：
 

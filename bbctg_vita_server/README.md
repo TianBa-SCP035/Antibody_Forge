@@ -37,4 +37,4 @@ integrations/drm/
     libhttpcomm.so     # Linux，与 libdrmedi.so 同目录
 ```
 
-业务代码只依赖已提交的 `integrations/drm_service.py`；未部署 `integrations/drm/` 时，上传/下载会静默跳过 DRM 处理。
+业务代码只依赖已提交的 `integrations/drm_service.py`；未部署 `integrations/drm/` 时，上传/下载会静默跳过 DRM 处理；单文件加解密失败也不影响上传/下载成功。

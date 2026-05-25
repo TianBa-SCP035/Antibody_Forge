@@ -10,7 +10,7 @@ from db.session import get_db
 from models.immunology import SerumElisaPlate, SerumFacsPlate, SerumFile, SerumImmProject
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
-from integrations.drm_service import DrmEncryptError, remove_temp_file
+from integrations.drm_service import remove_temp_file
 from modules.immunology.titer import service
 from modules.system.permissions import require_permission
 
@@ -135,8 +135,6 @@ def file_download(
         )
     except HTTPException:
         raise
-    except DrmEncryptError as exc:
-        return error(str(exc))
     except Exception as exc:
         return error(str(exc))
 

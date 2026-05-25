@@ -34,12 +34,7 @@ def get_file_list(db: Session, experiment_id: str) -> list[dict]:
 def _save_upload_content(db: Session, file_obj: UploadFile, file_path: Path) -> None:
     with file_path.open("wb") as target:
         target.write(file_obj.file.read())
-    try:
-        drm_service.decrypt_upload_file_if_available(db, file_path)
-    except Exception:
-        if file_path.exists():
-            file_path.unlink()
-        raise
+    drm_service.decrypt_upload_file_if_available(db, file_path)
 
 
 def save_file(db: Session, file_obj: UploadFile, experiment_id: str, user_name: str = "unknown") -> dict:

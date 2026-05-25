@@ -67,7 +67,7 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "code": "feature.drm_file_security",
         "name": "DRM 文件安全模块",
         "category": "feature",
-        "description": "控制上传自动解密、下载前加密等 DRM 文件安全能力",
+        "description": "控制上传自动解密、下载前加密等 DRM 文件安全能力；失败时不阻断正常上传下载",
         "enabled": False,
         "visible": True,
         "sort_order": 120,

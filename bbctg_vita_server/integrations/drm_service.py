@@ -27,20 +27,16 @@ OFFICE_DOWNLOAD_SUFFIXES = {
 }
 
 
-class DrmDecryptError(RuntimeError):
-    """Raised when DRM is available but decrypting an encrypted file fails."""
-
-
-class DrmEncryptError(RuntimeError):
-    """Raised when DRM is available but encrypting a download file fails."""
-
-
 def decrypt_upload_file_if_available(
     db: Session,
     file_path: str | Path,
     decrypt_user_id: str | None = None,
 ) -> bool:
-    """Decrypt an uploaded file when the DRM module is enabled and available."""
+    """Decrypt an uploaded file when the DRM module is enabled and available.
+
+    Returns True if decrypted, False if skipped or failed. Failures are logged only
+    and never block the upload flow.
+    """
 
     runtime = _get_drm_runtime(db)
     if runtime is None:
@@ -59,8 +55,9 @@ def decrypt_upload_file_if_available(
 
     try:
         return bool(decrypt_func(Path(file_path), decrypt_user_id=applicant_id, **runtime["sdk_kwargs"]))
-    except Exception as exc:
-        raise DrmDecryptError("DRM 文件解密失败") from exc
+    except Exception:
+        logging.exception("DRM upload decrypt failed, upload continues: %s", file_path)
+        return False
 
 
 def prepare_office_download_file(db: Session, source_path: Path, file_name: str) -> tuple[Path, Path | None]:
@@ -69,6 +66,7 @@ def prepare_office_download_file(db: Session, source_path: Path, file_name: str)
     Office files (Word/Excel/PPT) are encrypted on a temp copy when DRM is available.
     Already-encrypted files are sent as-is. Other types and preview flows use the
     original path. Second value is a temp file to delete after response, if any.
+    Encrypt failures are logged and fall back to the original plaintext file.
     """
 
     if not is_office_download_name(file_name):
@@ -110,10 +108,14 @@ def prepare_office_download_file(db: Session, source_path: Path, file_name: str)
             **sdk_kwargs,
         )
         return temp_path, temp_path
-    except Exception as exc:
+    except Exception:
         if "temp_path" in locals() and temp_path.exists():
             temp_path.unlink()
-        raise DrmEncryptError("DRM 文件加密失败") from exc
+        logging.exception(
+            "DRM download encrypt failed, serving plaintext: %s",
+            source_path,
+        )
+        return source_path, None
 
 
 def is_office_download_name(file_name: str) -> bool:

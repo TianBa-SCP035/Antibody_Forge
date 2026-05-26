@@ -334,9 +334,24 @@
                     <el-input v-model="row.vendor" size="small" />
                 </template>
             </el-table-column>
-            <el-table-column label="鼠号列表" min-width="120">
+            <el-table-column label="鼠号列表" min-width="160">
                 <template #default="{ row }">
-                    <el-input v-model="row.mouse_no_list" size="small" />
+                    <el-tooltip
+                      :content="row.mouse_no_list || ''"
+                      placement="top"
+                      :show-after="300"
+                      :disabled="!isMouseNoListTooltipEnabled(row)"
+                    >
+                      <el-input
+                        :model-value="row.mouse_no_list"
+                        readonly
+                        placeholder="点击编辑鼠号"
+                        size="small"
+                        class="mouse-no-list-input"
+                        @click="openMouseRegistryDialog(row)"
+                        @mouseenter="(e) => syncMouseNoListTooltip(row, e)"
+                      />
+                    </el-tooltip>
                 </template>
             </el-table-column>
             <el-table-column label="备注" min-width="100">
@@ -670,6 +685,12 @@
       </div>
     </el-card>
 
+    <MouseRegistryDialog
+      v-model="mouseRegistryDialogVisible"
+      :group="mouseRegistryEditingRow"
+      @confirm="onMouseRegistryConfirm"
+    />
+
   </div>
 </template>
 
@@ -709,6 +730,7 @@ import {
 } from 'element-plus'
 
 import { fetchDetail, saveSerum, fetchNextId, deleteSerum, getSerumFilterOptions } from '#/api/serum'
+import MouseRegistryDialog from './MouseRegistryDialog.vue'
 import {
   canEditAllSerumProjects,
   canCreateSerumProject,
@@ -720,6 +742,7 @@ import {
 export default {
   name: 'SerumEdit',
   components: {
+    MouseRegistryDialog,
     ElButton,
     ElCard,
     ElCheckbox,
@@ -785,6 +808,8 @@ export default {
       copyFromGroup: '',
       copyToGroups: [],
       overwriteSteps: true,
+      mouseRegistryDialogVisible: false,
+      mouseRegistryEditingRow: null,
       rules: {
           project_code: [{ required: true, message: '必填', trigger: 'blur' }],
           owner: [{ required: true, message: '必填', trigger: 'blur' }]
@@ -1330,6 +1355,28 @@ export default {
         if (this.activeGroupTab === oldId) this.activeGroupTab = newId
         row._old_group_id = newId
     },
+    syncMouseNoListTooltip(row, event) {
+        const text = (row.mouse_no_list || '').trim()
+        if (!text) {
+            row._mouseNoListOverflow = false
+            return
+        }
+        const inner = event.currentTarget?.querySelector?.('.el-input__inner')
+        row._mouseNoListOverflow = !!inner && inner.scrollWidth > inner.clientWidth
+    },
+    isMouseNoListTooltipEnabled(row) {
+        return !!(row.mouse_no_list || '').trim() && !!row._mouseNoListOverflow
+    },
+    openMouseRegistryDialog(row) {
+        this.mouseRegistryEditingRow = row
+        this.mouseRegistryDialogVisible = true
+    },
+    onMouseRegistryConfirm({ mouse_registry, mouse_no_list }) {
+        const row = this.mouseRegistryEditingRow
+        if (!row) return
+        row.mouse_registry = mouse_registry
+        row.mouse_no_list = mouse_no_list
+    },
     addMouseGroup() {
         // Smart auto-increment for group_id
         let nextGroupId = 'G1'
@@ -1354,6 +1401,7 @@ export default {
             cage_position: '',
             vendor: '',
             mouse_no_list: '',
+            mouse_registry: null,
             remark: ''
         })
         
@@ -1755,6 +1803,17 @@ export default {
     width: 100%;
     height: 28px;
     overflow: hidden;
+}
+
+.mouse-no-list-input :deep(.el-input__wrapper) {
+    cursor: pointer;
+}
+
+.mouse-no-list-input :deep(.el-input__inner) {
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .antigen-display-text {

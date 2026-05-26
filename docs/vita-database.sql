@@ -222,6 +222,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_mouse (
   sex VARCHAR(32) NULL,
   vendor VARCHAR(128) NULL,
   mouse_no_list VARCHAR(512) NULL,
+  mouse_registry JSON NULL COMMENT '鼠号明细',
   cage_position VARCHAR(64) NULL,
   remark VARCHAR(255) NULL,
   PRIMARY KEY (id),

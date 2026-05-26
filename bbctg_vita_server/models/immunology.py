@@ -66,6 +66,7 @@ class SerumImmMouse(Base):
     sex: Mapped[str | None] = mapped_column(String(32))
     vendor: Mapped[str | None] = mapped_column(String(128))
     mouse_no_list: Mapped[str | None] = mapped_column(String(512))
+    mouse_registry: Mapped[object | None] = mapped_column(JSON)
     cage_position: Mapped[str | None] = mapped_column(String(64))
     remark: Mapped[str | None] = mapped_column(String(255))
 
@@ -81,6 +82,7 @@ class SerumImmMouse(Base):
             "sex": self.sex,
             "vendor": self.vendor,
             "mouse_no_list": self.mouse_no_list,
+            "mouse_registry": self.mouse_registry,
             "cage_position": self.cage_position,
             "remark": self.remark,
         }

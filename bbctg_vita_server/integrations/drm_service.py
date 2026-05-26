@@ -46,7 +46,7 @@ def decrypt_upload_file_if_available(
     if drm_module is None:
         return False
 
-    applicant_id = (decrypt_user_id or "").strip() or runtime["settings"].drm_user_id
+    applicant_id = (decrypt_user_id or "").strip() or runtime["sdk_kwargs"]["user_id"]
 
     try:
         return bool(
@@ -81,7 +81,7 @@ def prepare_office_download_file(db: Session, source_path: Path, file_name: str)
     if drm_module is None:
         return source_path, None
 
-    settings = runtime["settings"]
+    settings = get_settings()
     sdk_kwargs = runtime["sdk_kwargs"]
 
     try:
@@ -143,7 +143,6 @@ def _get_drm_runtime(db: Session) -> dict[str, Any] | None:
         return None
 
     return {
-        "settings": settings,
         "sdk_kwargs": {
             "lib_dir": lib_dir,
             "server_ssl": settings.drm_server_ssl,

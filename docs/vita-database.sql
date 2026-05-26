@@ -1,6 +1,7 @@
--- Antibody Forge：认证与权限表结构 + 种子数据
--- 文档：docs/auth-permissions.md
--- 说明：需在 bbctg_vita 主库手动执行；后端不会自动建表/迁移。
+-- Antibody Forge / Vita 主库：全表 DDL + 权限与功能开关种子
+-- 与 bbctg_vita_server/models（system、immunology、user）中 DATABASE_URL 映射一致；Git 后新建库执行一次即可。
+-- 文档：docs/README.md、docs/auth-permissions.md
+-- 不含 CELL_DB_URL 上的 sam_sample（外部只读细胞库，见 models/cell_inventory.py）。
 
 CREATE TABLE IF NOT EXISTS sys_user (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
@@ -181,6 +182,184 @@ CREATE TABLE IF NOT EXISTS sys_job_run_log (
   KEY idx_sys_job_run_log_started_at (started_at),
   KEY idx_sys_job_run_log_result (result)
 ) COMMENT='定时任务运行日志（起止时间、耗时、结果摘要与结构化详情）';
+
+-- ---------------------------------------------------------------------------
+-- 免疫 / 效价业务（models/immunology.py）
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS serum_imm_project (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  experiment_id VARCHAR(64) NULL COMMENT '实验ID',
+  project_code VARCHAR(64) NULL,
+  project_name VARCHAR(255) NULL,
+  project_purpose VARCHAR(255) NULL,
+  start_date VARCHAR(32) NULL,
+  immunization_interval VARCHAR(32) NULL,
+  target_name VARCHAR(128) NULL,
+  target_type VARCHAR(64) NULL,
+  target_size VARCHAR(64) NULL,
+  owner VARCHAR(64) NULL,
+  pm VARCHAR(64) NULL,
+  study_type VARCHAR(64) NULL,
+  assay_method VARCHAR(64) NULL,
+  project_status VARCHAR(64) NULL,
+  remark VARCHAR(255) NULL,
+  mouse_strain VARCHAR(128) NULL,
+  mouse_strain_category VARCHAR(128) NULL,
+  prep_status VARCHAR(16) NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_serum_imm_project_experiment_id (experiment_id)
+) COMMENT='血清免疫项目';
+
+CREATE TABLE IF NOT EXISTS serum_imm_mouse (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  experiment_id VARCHAR(64) NULL,
+  group_id VARCHAR(32) NULL,
+  mouse_strain VARCHAR(128) NULL,
+  mouse_strain_category VARCHAR(128) NULL,
+  mouse_count VARCHAR(32) NULL,
+  age_weeks VARCHAR(32) NULL,
+  sex VARCHAR(32) NULL,
+  vendor VARCHAR(128) NULL,
+  mouse_no_list VARCHAR(512) NULL,
+  cage_position VARCHAR(64) NULL,
+  remark VARCHAR(255) NULL,
+  PRIMARY KEY (id),
+  KEY idx_serum_imm_mouse_experiment_id (experiment_id)
+) COMMENT='血清分组与小鼠';
+
+CREATE TABLE IF NOT EXISTS serum_file (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  experiment_id VARCHAR(64) NOT NULL,
+  upload_user VARCHAR(64) NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_path VARCHAR(1024) NOT NULL,
+  created_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_serum_file_experiment_id (experiment_id)
+) COMMENT='效价附件';
+
+CREATE TABLE IF NOT EXISTS serum_imm_antigen (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  experiment_id VARCHAR(64) NULL,
+  antigen_id VARCHAR(32) NULL,
+  species VARCHAR(32) NULL,
+  antigen_type VARCHAR(64) NULL,
+  antigen_name VARCHAR(255) NULL,
+  catalog_no VARCHAR(64) NULL,
+  lot_no VARCHAR(64) NULL,
+  stock_conc VARCHAR(64) NULL,
+  vendor VARCHAR(128) NULL,
+  adjuvant_type VARCHAR(64) NULL,
+  adjuvant_source VARCHAR(128) NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_experiment_antigen (experiment_id, antigen_id),
+  KEY idx_serum_imm_antigen_experiment_id (experiment_id)
+) COMMENT='免疫抗原';
+
+CREATE TABLE IF NOT EXISTS serum_imm_step (
+  step_id BIGINT NOT NULL AUTO_INCREMENT,
+  experiment_id VARCHAR(64) NULL,
+  group_id VARCHAR(32) NULL,
+  stage_name VARCHAR(64) NULL,
+  antigen_id VARCHAR(32) NULL,
+  antigen_dose VARCHAR(64) NULL,
+  adjuvant_name VARCHAR(64) NULL,
+  cpg_dose VARCHAR(64) NULL,
+  injection_volume VARCHAR(64) NULL,
+  route VARCHAR(32) NULL,
+  injection_site VARCHAR(64) NULL,
+  day_relative VARCHAR(16) NULL,
+  date_actual VARCHAR(32) NULL,
+  remark VARCHAR(255) NULL,
+  PRIMARY KEY (step_id),
+  KEY idx_serum_imm_step_experiment_id (experiment_id)
+) COMMENT='免疫步骤';
+
+CREATE TABLE IF NOT EXISTS serum_titer_pc (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  experiment_id VARCHAR(64) NULL,
+  pc_name VARCHAR(255) NULL,
+  catalog_batch VARCHAR(128) NULL,
+  source VARCHAR(128) NULL,
+  concentration VARCHAR(64) NULL,
+  PRIMARY KEY (id),
+  KEY idx_serum_titer_pc_experiment_id (experiment_id)
+) COMMENT='效价阳性对照';
+
+CREATE TABLE IF NOT EXISTS serum_titer_target (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  experiment_id VARCHAR(64) NULL,
+  type VARCHAR(32) NULL,
+  name VARCHAR(255) NULL,
+  batch_no VARCHAR(64) NULL,
+  passage VARCHAR(64) NULL,
+  cell_count VARCHAR(64) NULL,
+  catalog_no VARCHAR(64) NULL,
+  source VARCHAR(128) NULL,
+  PRIMARY KEY (id),
+  KEY idx_serum_titer_target_experiment_id (experiment_id)
+) COMMENT='效价标靶/细胞';
+
+CREATE TABLE IF NOT EXISTS serum_facs_plate (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  experiment_id VARCHAR(64) NOT NULL,
+  qr_code VARCHAR(128) NULL,
+  image_file_id BIGINT NULL,
+  excel_file_id BIGINT NULL,
+  immune_stage VARCHAR(64) NULL,
+  x_axis VARCHAR(64) NULL,
+  y_axis VARCHAR(64) NULL,
+  cell_target_id BIGINT NULL,
+  pc_upper_id BIGINT NULL,
+  pc_lower_id BIGINT NULL,
+  upper_group VARCHAR(32) NULL,
+  lower_group VARCHAR(32) NULL,
+  upper_mouse_list JSON NULL,
+  lower_mouse_list JSON NULL,
+  upper_slot_groups JSON NULL,
+  lower_slot_groups JSON NULL,
+  positive_well_list JSON NULL,
+  instrument_type VARCHAR(64) NULL,
+  PRIMARY KEY (id),
+  KEY idx_serum_facs_plate_experiment_id (experiment_id)
+) COMMENT='FACS 效价板';
+
+CREATE TABLE IF NOT EXISTS serum_elisa_plate (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+  experiment_id VARCHAR(64) NOT NULL COMMENT '实验ID',
+  qr_code VARCHAR(128) NULL COMMENT '二维码编号',
+  excel_file_id BIGINT NULL COMMENT 'Excel文件id(serum_file)',
+  immune_stage VARCHAR(64) NOT NULL DEFAULT '' COMMENT '免疫阶段',
+  protein_target_id BIGINT NULL COMMENT '检测标靶id(serum_titer_target)',
+  pc_id BIGINT NULL COMMENT 'PC记录id(serum_titer_pc)',
+  mouse_group VARCHAR(64) NULL COMMENT '组别-品系',
+  antigen_type VARCHAR(64) NULL COMMENT '抗原类型',
+  slot_groups JSON NULL COMMENT '上方分组标题',
+  upper_slot_list JSON NULL COMMENT '上方鼠号槽位{layout,values}',
+  lower_slot_list JSON NULL COMMENT '下方NC/PC槽位{layout,values}',
+  positive_well_list JSON NULL COMMENT '阳性孔列表',
+  absorbance_1 JSON NULL COMMENT '吸光度1:{wavelength,matrix}',
+  PRIMARY KEY (id),
+  KEY idx_serum_elisa_plate_experiment (experiment_id)
+) COMMENT='ELISA效价板配置（含吸光度1读数；吸光度2不入库）';
+
+-- models/user.py（主库 Base；当前业务代码未引用，表结构预留）
+CREATE TABLE IF NOT EXISTS bbctg_user (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  username VARCHAR(50) NULL,
+  `jobNo` VARCHAR(20) NULL,
+  openid VARCHAR(100) NULL,
+  appid VARCHAR(20) NULL,
+  eid VARCHAR(20) NULL,
+  role VARCHAR(100) NULL,
+  role_menu VARCHAR(50) NULL,
+  create_date DATETIME NULL,
+  pro_locked INT NULL,
+  pro_open INT NULL,
+  PRIMARY KEY (id)
+) COMMENT='云之家员工桥接预留';
 
 INSERT IGNORE INTO sys_permission
   (code, name, type, module, resource, action, route_path, ui_key, parent_code, sort_order)
@@ -385,3 +564,40 @@ ALTER TABLE sys_job_run_log
   MODIFY error_message TEXT NULL COMMENT '错误信息',
   MODIFY created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   COMMENT = '定时任务运行日志（起止时间、耗时、结果摘要与结构化详情）';
+
+-- -----------------------------------------------------------------------------
+-- 仅旧库升级（曾存在 mouse_list / pc_column_list 等旧列时）：手工复制执行，新建库勿用。
+-- ALTER TABLE serum_elisa_plate COMMENT = 'ELISA效价板配置（含吸光度1读数；吸光度2不入库）';
+-- ALTER TABLE serum_elisa_plate
+--   MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+--   MODIFY COLUMN experiment_id VARCHAR(64) NOT NULL COMMENT '实验ID',
+--   MODIFY COLUMN qr_code VARCHAR(128) NULL COMMENT '二维码编号',
+--   MODIFY COLUMN excel_file_id BIGINT NULL COMMENT 'Excel文件id(serum_file)',
+--   MODIFY COLUMN immune_stage VARCHAR(64) NOT NULL DEFAULT '' COMMENT '免疫阶段',
+--   MODIFY COLUMN protein_target_id BIGINT NULL COMMENT '检测标靶id(serum_titer_target)',
+--   ADD COLUMN pc_id BIGINT NULL COMMENT 'PC记录id(serum_titer_pc)' AFTER protein_target_id,
+--   MODIFY COLUMN mouse_group VARCHAR(64) NULL COMMENT '组别-品系',
+--   ADD COLUMN antigen_type VARCHAR(64) NULL COMMENT '抗原类型' AFTER mouse_group,
+--   ADD COLUMN slot_groups JSON NULL COMMENT '上方分组标题' AFTER antigen_type,
+--   ADD COLUMN upper_slot_list JSON NULL COMMENT '上方鼠号槽位{layout,values}' AFTER slot_groups,
+--   ADD COLUMN lower_slot_list JSON NULL COMMENT '下方NC/PC槽位{layout,values}' AFTER upper_slot_list,
+--   MODIFY COLUMN positive_well_list JSON NULL COMMENT '阳性孔列表',
+--   ADD COLUMN absorbance_1 JSON NULL COMMENT '吸光度1:{wavelength,matrix}' AFTER positive_well_list;
+-- ALTER TABLE serum_elisa_plate DROP COLUMN mouse_list, DROP COLUMN pc_column_list;
+
+-- ---------------------------------------------------------------------------
+-- 外部细胞库 CELL_DB_URL：sam_sample（ORM models/cell_inventory.py；勿在主库执行，仅备查）
+-- ---------------------------------------------------------------------------
+-- CREATE TABLE IF NOT EXISTS sam_sample (
+--   id BIGINT NOT NULL AUTO_INCREMENT,
+--   sample_no VARCHAR(20) NULL,
+--   samplename VARCHAR(500) NULL,
+--   sample_type VARCHAR(50) NULL,
+--   sample_storage_vol DECIMAL(20,5) NULL,
+--   `organId` VARCHAR(20) NULL,
+--   genus VARCHAR(20) NULL,
+--   target VARCHAR(50) NULL,
+--   generations VARCHAR(20) NULL,
+--   batch_no VARCHAR(50) NULL,
+--   PRIMARY KEY (id)
+-- );

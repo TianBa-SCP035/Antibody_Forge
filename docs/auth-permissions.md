@@ -50,7 +50,7 @@ erDiagram
 | `sys_feature_flag` | 菜单/功能/任务开关（**非** RBAC） |
 | `sys_operation_log` | 写操作审计 |
 
-DDL 与种子数据见 [system-auth-permission-schema.sql](./system-auth-permission-schema.sql)。
+DDL 与种子数据见 [vita-database.sql](./vita-database.sql)（主库全表；外部细胞库 `sam_sample` 仅脚本末尾注释备查）。
 
 ## 2. 权限点编码约定
 
@@ -243,7 +243,7 @@ flowchart LR
 | category | 示例 code | 作用 |
 |----------|-----------|------|
 | `menu` | `menu.serum`、`menu.system` | 侧栏菜单显隐、排序 |
-| `feature` | `feature.yunzhijia_auto_provision` | 与 env 配合的业务开关展示 |
+| `feature` | `feature.drm_file_security`、`feature.yunzhijia_auto_provision` | 业务功能开关（DRM 另需 env 与 SDK） |
 | `job` | `job.serum_auto_update_status` | 定时任务是否启用及 cron 参数 |
 
 有效配置接口：`GET /api/system/features/effective`（前端 `getSystemEffectiveFeaturesApi`）。
@@ -271,12 +271,11 @@ sequenceDiagram
   BE-->>FE: 列表数据
 ```
 
-## 9. 运维与初始化 checklist
+## 9. 初始化
 
-1. 在目标库执行 [system-auth-permission-schema.sql](./system-auth-permission-schema.sql)。
-2. 插入首个超级管理员（脚本末尾注释中的 `password_hash` 生成方式）。
-3. 为用户分配角色；云之家用户需提前绑定 `openid` 或确认 `YUNZHIJIA_AUTO_PROVISION` 策略。
-4. 验证：无权限用户 403、只读用户无写按钮、负责人/非负责人编辑边界、系统管理页仅 `system_admin` 可写。
+1. 执行 [vita-database.sql](./vita-database.sql)，创建超级管理员并分配角色。
+2. 云之家用户绑定 `openid`，或确认 `YUNZHIJIA_AUTO_PROVISION` 策略。
+3. 部署与验收见 [deploy.md](./deploy.md)。
 
 ## 10. 代码索引
 

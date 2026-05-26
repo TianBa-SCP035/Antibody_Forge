@@ -1,27 +1,12 @@
-# Antibody Forge 文档
+# 文档索引
 
-抗体研发业务平台（**Antibody Forge**）的技术文档入口。面向新成员快速了解系统，也供日常维护查阅。
-
-## 阅读顺序
-
-| 文档 | 说明 |
+| 文档 | 内容 |
 |------|------|
-| [项目总览](./overview.md) | 仓库结构、业务模块、技术栈与演进边界 |
-| [认证与权限](./auth-permissions.md) | 登录、RBAC、前后端鉴权与数据归属规则 |
-| [后端结构](./backend-structure.md) | `bbctg_vita_server` 目录与模块职责 |
-| [部署运维](./deploy.md) | 环境、配置、Nginx、定时任务与验收清单 |
+| [overview.md](./overview.md) | 仓库结构、业务模块、技术栈 |
+| [auth-permissions.md](./auth-permissions.md) | 登录、RBAC、血清归属规则 |
+| [backend-structure.md](./backend-structure.md) | 后端目录与 API 约定 |
+| [deploy.md](./deploy.md) | 环境、配置、部署、DRM、验收 |
 
-## 数据库脚本
+**SQL（手动执行）：** [vita-database.sql](./vita-database.sql) — 主库全部表 DDL + 权限/功能开关种子（与 `bbctg_vita_server/models` 一致）；新建库执行一次。
 
-| 文件 | 说明 |
-|------|------|
-| [system-auth-permission-schema.sql](./system-auth-permission-schema.sql) | 用户/角色/权限/功能开关等表 DDL 与种子数据（需**手动**在 MySQL 执行） |
-
-## 子项目入口
-
-| 目录 | 说明 |
-|------|------|
-| `bbctg_vita_server/` | FastAPI 后端，默认端口 local `8888` / test `9527` / prod `8848` |
-| `bbctg_vita_web/apps/antibody_vita/` | Vue 3 + Vben Admin 前端应用 |
-| `config/` | 各环境 `vita_server.env`（不提交密钥） |
-| `repository/` | 上传、导出、日志等运行时目录（不提交） |
+**目录：** `bbctg_vita_server/` 后端 · `bbctg_vita_web/apps/antibody_vita/` 前端 · `config/` 环境配置 · `repository/` 运行时文件（均不提交密钥与上传内容）

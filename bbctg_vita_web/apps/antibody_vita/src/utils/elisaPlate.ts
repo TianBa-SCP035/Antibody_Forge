@@ -194,31 +194,43 @@ function parseWavelength(rows: ExcelRow[]): number | null {
   return null
 }
 
-function parseAbsorbanceMatrix(rows: ExcelRow[]): number[][] | null {
-  let dataStart = -1
+/** 按 A–H、1–12 提取吸光度（允许缺行/缺列；区间 [吸光值, 样品/已计算)） */
+function extractAbsorbanceMatrix(rows: ExcelRow[]): number[][] | null {
+  let fromRow = 0
+  let stopRow = rows.length
   for (let i = 0; i < rows.length; i += 1) {
-    if (cellStr(rows[i]?.[0]) === '吸光值') {
-      dataStart = i + 1
-      break
+    const first = cellStr(rows[i]?.[0])
+    if (first === '吸光值') fromRow = i
+    if (first === '样品' || first === '已计算') stopRow = Math.min(stopRow, i)
+  }
+
+  let cs = 1
+  for (let i = fromRow; i < stopRow; i += 1) {
+    const row = rows[i]
+    if (!row) continue
+    for (let s = 0; s <= 3; s += 1) {
+      if (cellStr(row[s]) === '1' && cellStr(row[s + 11]) === '12') cs = s
     }
   }
-  if (dataStart < 0) return null
 
-  const matrix: number[][] = []
-  for (let r = 0; r < 8; r += 1) {
-    const row = rows[dataStart + r]
-    if (!row || cellStr(row[0]).toUpperCase() !== String.fromCharCode(65 + r)) return null
-    const values: number[] = []
-    for (let c = 0; c < 12; c += 1) values.push(parseOd(row[c + 1]) ?? 0)
-    matrix.push(values)
+  const matrix = Array.from({ length: 8 }, () => Array(12).fill(0))
+  let any = false
+  for (let i = fromRow; i < stopRow; i += 1) {
+    const row = rows[i]
+    if (!row?.length) continue
+    const first = cellStr(row[0])
+    const label = first.toUpperCase()
+    if (label.length !== 1 || label < 'A' || label > 'H') continue
+    const ri = label.charCodeAt(0) - 65
+    for (let c = 0; c < 12; c += 1) {
+      const v = parseOd(row[cs + c])
+      if (v != null) {
+        matrix[ri][c] = v
+        any = true
+      }
+    }
   }
-  return matrix
-}
-
-function parseSheet(rows: ExcelRow[]): AbsorbanceData | null {
-  const matrix = parseAbsorbanceMatrix(rows)
-  if (!matrix) return null
-  return { wavelength: parseWavelength(rows), matrix }
+  return any ? matrix : null
 }
 
 function parseAbsorbanceSheets(wb: XLSX.WorkBook): ElisaAbsorbanceSheet[] {
@@ -227,12 +239,12 @@ function parseAbsorbanceSheets(wb: XLSX.WorkBook): ElisaAbsorbanceSheet[] {
     const m = name.match(/吸光度\s*(\d+)/)
     if (!m?.[1] || !wb.Sheets[name]) continue
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' }) as ExcelRow[]
-    const data = parseSheet(rows)
-    if (!data) continue
+    const matrix = extractAbsorbanceMatrix(rows)
+    if (!matrix) continue
     sheets.push({
       index: Number.parseInt(m[1], 10),
       label: name.trim(),
-      data,
+      data: { wavelength: parseWavelength(rows), matrix },
     })
   }
   sheets.sort((a, b) => a.index - b.index)

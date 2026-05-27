@@ -531,7 +531,7 @@ import {
   normalizeSlotList,
   parseElisaArrayBuffer,
 } from '#/utils/elisaPlate'
-import { parseFacsExcelFromRows } from '#/utils/facsExcelPositive'
+import { parseFacsExcelFromRows, POSITIVE_RATE_THRESHOLD } from '#/utils/facsExcelPositive'
 import {
   canEditSerumTiter,
   canManageSerumTiterFiles,
@@ -1057,7 +1057,7 @@ export default {
         this.handleSavePlate(plate)
 
         ElMessage.success(
-          `已识别为${instrumentType}仪器，自动标注 ${positiveWells.length} 个阳性孔（>10%）`,
+          `已识别为${instrumentType}仪器，自动标注 ${positiveWells.length} 个阳性孔（>${POSITIVE_RATE_THRESHOLD}%）`,
         )
       } catch (error) {
         console.error('解析 Excel 阳性率失败:', error)

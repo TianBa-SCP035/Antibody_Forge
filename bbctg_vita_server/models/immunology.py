@@ -219,6 +219,7 @@ class SerumTiterTarget(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     experiment_id: Mapped[str | None] = mapped_column(String(64))
     type: Mapped[str | None] = mapped_column(String(32))
+    species: Mapped[str | None] = mapped_column(String(32))
     name: Mapped[str | None] = mapped_column(String(255))
     batch_no: Mapped[str | None] = mapped_column(String(64))
     passage: Mapped[str | None] = mapped_column(String(64))
@@ -231,6 +232,7 @@ class SerumTiterTarget(Base):
             "id": self.id,
             "experiment_id": self.experiment_id,
             "type": self.type,
+            "species": self.species,
             "name": self.name,
             "cell_count": self.cell_count,
             "batch_no": self.batch_no,

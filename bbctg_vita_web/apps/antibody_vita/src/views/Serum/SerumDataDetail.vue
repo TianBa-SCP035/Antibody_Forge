@@ -479,6 +479,7 @@
               >
                 <el-table-column prop="name" label="名称" min-width="150" />
                 <el-table-column prop="type" label="类型" min-width="100" />
+                <el-table-column prop="species" label="种属" min-width="80" />
                 <el-table-column prop="batch_no" label="批次" min-width="100" />
                 <el-table-column prop="passage" label="代次" min-width="100" />
                 <el-table-column prop="cell_count" label="细胞量" min-width="100" />

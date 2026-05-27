@@ -293,6 +293,7 @@ CREATE TABLE IF NOT EXISTS serum_titer_target (
   id BIGINT NOT NULL AUTO_INCREMENT,
   experiment_id VARCHAR(64) NULL,
   type VARCHAR(32) NULL,
+  species VARCHAR(32) NULL COMMENT '种属',
   name VARCHAR(255) NULL,
   batch_no VARCHAR(64) NULL,
   passage VARCHAR(64) NULL,

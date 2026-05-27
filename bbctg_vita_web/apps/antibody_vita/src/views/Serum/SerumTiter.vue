@@ -152,12 +152,24 @@
                     <el-input v-model="row.name" size="small" placeholder="必填" @change="autoSaveTargets" />
                   </template>
                 </el-table-column>
-                <el-table-column label="类型" min-width="80">
+                <el-table-column label="类型" min-width="70">
                   <template #default="{row}">
                      <el-select v-model="row.type" size="small" placeholder="选择" @change="autoSaveTargets">
                         <el-option label="细胞" value="细胞" />
                         <el-option label="蛋白" value="蛋白" />
                      </el-select>
+                  </template>
+                </el-table-column>
+                <el-table-column label="种属" min-width="70">
+                  <template #default="{row}">
+                    <el-select v-model="row.species" size="small" placeholder="选择" @change="autoSaveTargets">
+                      <el-option label="人" value="人" />
+                      <el-option label="猴" value="猴" />
+                      <el-option label="鼠" value="鼠" />
+                      <el-option label="狗" value="狗" />
+                      <el-option label="猫" value="猫" />
+                      <el-option label="空白" value="空白" />
+                    </el-select>
                   </template>
                 </el-table-column>
                 <el-table-column label="批次" min-width="80">
@@ -1072,7 +1084,7 @@ export default {
         return
       }
       this.titer_targets.push({
-        name: '', type: '', batch_no: '', passage: '', cell_count: '', catalog_no: '', source: '', isNew: true
+        name: '', type: '', species: '', batch_no: '', passage: '', cell_count: '', catalog_no: '', source: '', isNew: true
       })
       this.autoSaveTargets()
     },

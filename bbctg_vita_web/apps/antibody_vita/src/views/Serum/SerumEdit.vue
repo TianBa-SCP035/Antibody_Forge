@@ -576,16 +576,28 @@
                     </el-button>
                 </div>
                  <el-table :data="postForm.titer_targets" border size="small">
-                    <el-table-column label="名称" min-width="200">
+                    <el-table-column label="名称" min-width="150">
                         <template #default="{ row }">
                             <el-input v-model="row.name" size="small" />
                         </template>
                     </el-table-column>
-                    <el-table-column label="类型" min-width="100">
+                    <el-table-column label="类型" min-width="75">
                         <template #default="{ row }">
                             <el-select v-model="row.type" size="small" filterable allow-create default-first-option placeholder=" " style="width:100%">
                                 <el-option label="细胞" value="细胞" />
                                 <el-option label="蛋白" value="蛋白" />
+                            </el-select>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="种属" min-width="75">
+                        <template #default="{ row }">
+                            <el-select v-model="row.species" size="small" placeholder=" " style="width:100%">
+                                <el-option label="人" value="人" />
+                                <el-option label="猴" value="猴" />
+                                <el-option label="鼠" value="鼠" />
+                                <el-option label="狗" value="狗" />
+                                <el-option label="猫" value="猫" />
+                                <el-option label="空白" value="空白" />
                             </el-select>
                         </template>
                     </el-table-column>
@@ -1276,7 +1288,7 @@ export default {
                      }
                      
                      if (response.data?.new_target_records) {
-                          this.matchAndUpdateIds(this.postForm.titer_targets, response.data.new_target_records, 'id', ['type', 'name', 'batch_no', 'passage', 'cell_count', 'catalog_no', 'source'])
+                          this.matchAndUpdateIds(this.postForm.titer_targets, response.data.new_target_records, 'id', ['type', 'species', 'name', 'batch_no', 'passage', 'cell_count', 'catalog_no', 'source'])
                       }
                       
                       if (response.data?.new_pc_records) {
@@ -1474,7 +1486,7 @@ export default {
         this.postForm.antigens.splice(index, 1)
     },
     addTarget() {
-        this.postForm.titer_targets.push({ name: '', type: '', batch_no: '', passage: '', cell_count: '', catalog_no: '', source: '' })
+        this.postForm.titer_targets.push({ name: '', type: '', species: '', batch_no: '', passage: '', cell_count: '', catalog_no: '', source: '' })
     },
     removeTarget(index) {
         this.postForm.titer_targets.splice(index, 1)
@@ -1576,7 +1588,7 @@ export default {
         }
         
         if (res.data?.new_target_records) {
-          this.matchAndUpdateIds(this.postForm.titer_targets, res.data.new_target_records, 'id', ['type', 'name', 'batch_no', 'passage', 'cell_count', 'catalog_no', 'source'])
+          this.matchAndUpdateIds(this.postForm.titer_targets, res.data.new_target_records, 'id', ['type', 'species', 'name', 'batch_no', 'passage', 'cell_count', 'catalog_no', 'source'])
         }
         
         if (res.data?.new_pc_records) {

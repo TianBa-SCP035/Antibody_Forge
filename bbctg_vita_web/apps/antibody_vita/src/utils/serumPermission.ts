@@ -123,9 +123,6 @@ export function canViewSerumCellInventory(userInfo: any): boolean {
   return hasAccessCode(userInfo, 'serum.cell.view');
 }
 
-export function canUpdateSerumPrepStatus(userInfo: any, project: any): boolean {
-  return (
-    hasAccessCode(userInfo, 'serum.cell.prep_status.update') &&
-    (canEditAllSerumProjects(userInfo) || isProjectOwner(userInfo, project))
-  );
+export function canUpdateSerumPrepStatus(userInfo: any, _project?: any): boolean {
+  return hasAccessCode(userInfo, 'serum.cell.prep_status.update');
 }

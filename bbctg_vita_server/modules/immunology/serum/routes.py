@@ -144,9 +144,6 @@ def update_prep_status(
 ) -> dict:
     try:
         require_permission(db, current_user, "serum.cell.prep_status.update")
-        project = _get_project_by_experiment_id(db, data.get("experiment_id"))
-        if project:
-            _require_project_owner_or_edit_all(db, current_user, int(project.id))
         service.update_prep_status(db, data.get("experiment_id"), data.get("prep_status"))
         return success({"message": "Prep status updated successfully"})
     except HTTPException:
@@ -224,12 +221,6 @@ def _require_project_owner_or_edit_all(db: Session, user: SysUser, project_id: i
     if _is_owner_name(user, project.owner):
         return
     require_permission(db, user, "serum.project.edit_all")
-
-
-def _get_project_by_experiment_id(db: Session, experiment_id: str | None) -> SerumImmProject | None:
-    if not experiment_id:
-        return None
-    return db.query(SerumImmProject).filter(SerumImmProject.experiment_id == experiment_id).first()
 
 
 def _default_owner_name(user: SysUser) -> str:

@@ -3,9 +3,10 @@
     :model-value="modelValue"
     :width="isDualLayout ? '760px' : '520px'"
     class="mouse-registry-dialog"
+    align-center
     destroy-on-close
     @update:model-value="$emit('update:modelValue', $event)"
-    @open="handleOpen"
+    @open="initSections"
   >
     <template #header>
       <div class="dialog-header">
@@ -43,13 +44,23 @@
             <span class="section-count">{{ section.rows.length }} 只</span>
           </div>
 
-          <div v-if="section.rows.length === 0" class="empty-hint">
+          <div
+            v-if="section.rows.length === 0"
+            class="empty-hint paste-target"
+            tabindex="0"
+            @paste="handleSectionPaste($event, section.key)"
+          >
             <span class="empty-icon">—</span>
             <span>暂无鼠号</span>
-            <span class="empty-hint-sub">添加或粘贴</span>
+            <span class="empty-hint-sub">添加或 Ctrl+V 粘贴</span>
           </div>
 
-          <div v-else class="mouse-list">
+          <div
+            v-else
+            class="mouse-list paste-target"
+            tabindex="0"
+            @paste="handleSectionPaste($event, section.key)"
+          >
             <div
               v-for="(row, idx) in section.rows"
               :key="`${section.key}-${idx}`"
@@ -84,8 +95,8 @@
 
           <div class="section-actions">
             <el-button size="small" :icon="Plus" @click="addRow(section.key)">添加</el-button>
-            <el-button size="small" :icon="DocumentCopy" plain @click="pasteToSection(section.key)">
-              粘贴
+            <el-button size="small" :icon="EditPen" plain @click="openBulkEdit(section.key)">
+              批量编辑
             </el-button>
           </div>
         </div>
@@ -97,25 +108,45 @@
       <el-button type="primary" @click="handleConfirm">确定</el-button>
     </template>
   </el-dialog>
+
+  <el-dialog
+    v-model="bulkEditVisible"
+    :title="bulkEditTitle"
+    width="460px"
+    align-center
+    append-to-body
+    destroy-on-close
+  >
+    <div class="bulk-edit-paste-wrap" @paste.capture="handleBulkEditPaste">
+      <el-input v-model="bulkEditText" type="textarea" :rows="12" placeholder="每行一个鼠号；从 Excel 粘贴横向/多格会自动拆成多行" />
+    </div>
+    <template #footer>
+      <el-button @click="copyBulkEditText">横向复制</el-button>
+      <el-button @click="bulkEditVisible = false">取消</el-button>
+      <el-button type="primary" @click="confirmBulkEdit">确定</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script>
-import { Delete, DocumentCopy, Plus } from '@element-plus/icons-vue'
-import { ElButton, ElDialog, ElInput, ElMessage, ElMessageBox, ElSwitch } from 'element-plus'
+import { Delete, EditPen, Plus } from '@element-plus/icons-vue'
+import { ElButton, ElDialog, ElInput, ElMessage, ElSwitch } from 'element-plus'
 
-/** 剪贴板 / 旧 mouse_no_list：按换行、逗号、顿号等拆分 */
+/** 剪贴板 / Excel：每行再按制表符、逗号、顿号拆分后扁平化（多行横向表也能解析） */
 function splitTokens(text) {
   const normalized = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
   if (!normalized) return []
 
   const lines = normalized.split('\n').map((s) => s.trim()).filter(Boolean)
-  if (lines.length > 1) return lines
-
-  const line = lines[0]
-  if (/[\t,;，、]/.test(line)) {
-    return line.split(/[\t,;，、]+/).map((s) => s.trim()).filter(Boolean)
+  const out = []
+  for (const line of lines) {
+    if (/[\t,;，、]/.test(line)) {
+      out.push(...line.split(/[\t,;，、]+/).map((s) => s.trim()).filter(Boolean))
+    } else if (line) {
+      out.push(line)
+    }
   }
-  return [line]
+  return out
 }
 
 function parseSexLayout(sex) {
@@ -162,7 +193,7 @@ function formatMouseNoList(mice, sex) {
 
 function loadMiceFromGroup(group) {
   if (group?.mouse_registry?.mice?.length) {
-    return normalizeMice(group.mouse_registry.mice).map((m) => ({ ...m }))
+    return normalizeMice(group.mouse_registry.mice)
   }
   if ((group?.mouse_no_list || '').trim()) {
     return importLegacyMouseNoList(group.mouse_no_list, group.sex)
@@ -196,12 +227,19 @@ export default {
   data() {
     return {
       sections: [],
+      bulkEditVisible: false,
+      bulkEditSectionKey: '',
+      bulkEditText: '',
       Plus,
-      DocumentCopy,
+      EditPen,
       Delete,
     }
   },
   computed: {
+    bulkEditTitle() {
+      const label = this.sectionOf(this.bulkEditSectionKey)?.label
+      return label ? `批量编辑 — ${label}` : '批量编辑鼠号'
+    },
     groupId() {
       return (this.group?.group_id || '').trim()
     },
@@ -220,8 +258,8 @@ export default {
     },
   },
   methods: {
-    handleOpen() {
-      this.initSections()
+    sectionOf(key) {
+      return this.sections.find((s) => s.key === key)
     },
     initSections() {
       const sex = this.group?.sex
@@ -256,40 +294,88 @@ export default {
       this.sections = [{ key: sectionKey, label, sex: defaultSex, rows }]
     },
     addRow(sectionKey) {
-      const section = this.sections.find((s) => s.key === sectionKey)
+      const section = this.sectionOf(sectionKey)
       if (!section) return
       section.rows.push(emptyRow(section.sex))
     },
     removeRow(sectionKey, idx) {
-      const section = this.sections.find((s) => s.key === sectionKey)
+      const section = this.sectionOf(sectionKey)
       if (!section) return
       section.rows.splice(idx, 1)
     },
-    async pasteToSection(sectionKey) {
-      const section = this.sections.find((s) => s.key === sectionKey)
+    handleSectionPaste(event, sectionKey) {
+      const text = event.clipboardData?.getData('text/plain') || ''
+      if (!text.trim()) return
+      event.preventDefault()
+      this.applyPasteTokens(sectionKey, text)
+    },
+    openBulkEdit(sectionKey) {
+      const section = this.sectionOf(sectionKey)
       if (!section) return
+      this.bulkEditSectionKey = sectionKey
+      this.bulkEditText = section.rows.map((r) => (r.no || '').trim()).filter(Boolean).join('\n')
+      this.bulkEditVisible = true
+    },
+    /** Excel 横向（制表符）或多格区域：粘贴进文本框时拆成一行一个鼠号 */
+    handleBulkEditPaste(e) {
+      if (!this.bulkEditVisible) return
+      const text = e.clipboardData?.getData('text/plain')
+      if (!text?.trim()) return
+      const tokens = splitTokens(text)
+      if (tokens.length <= 1 && !/\t/.test(text)) return
 
-      let text = ''
-      try {
-        if (navigator.clipboard?.readText) {
-          text = await navigator.clipboard.readText()
-        }
-      } catch {
-        /* use prompt fallback */
+      e.preventDefault()
+      e.stopPropagation()
+      const insert = tokens.join('\n')
+      const ta = e.target?.tagName === 'TEXTAREA' ? e.target : e.currentTarget?.querySelector('textarea')
+      if (!ta) {
+        this.bulkEditText = insert
+        return
       }
-
-      if (!text?.trim()) {
-        try {
-          const { value } = await ElMessageBox.prompt('粘贴鼠号（多行或逗号、顿号分隔）', '从剪贴板粘贴', {
-            confirmButtonText: '确定',
-            cancelButtonText: '取消',
-            inputType: 'textarea',
-          })
-          text = value || ''
-        } catch {
-          return
-        }
+      const start = ta.selectionStart
+      const end = ta.selectionEnd
+      const val = this.bulkEditText ?? ''
+      this.bulkEditText = val.slice(0, start) + insert + val.slice(end)
+      this.$nextTick(() => {
+        const pos = start + insert.length
+        ta.focus()
+        ta.setSelectionRange(pos, pos)
+      })
+    },
+    confirmBulkEdit() {
+      const section = this.sectionOf(this.bulkEditSectionKey)
+      if (!section) return
+      const tokens = splitTokens(this.bulkEditText)
+      if (!tokens.length && this.bulkEditText.trim()) {
+        ElMessage.warning('未识别到鼠号')
+        return
       }
+      const aliveMap = {}
+      section.rows.forEach((r) => {
+        const no = (r.no || '').trim()
+        if (no) aliveMap[no] = r.alive !== false
+      })
+      section.rows = tokens.map((no) => ({ no, sex: section.sex, alive: aliveMap[no] ?? true }))
+      this.bulkEditVisible = false
+    },
+    copyBulkEditText() {
+      const tokens = splitTokens(this.bulkEditText)
+      if (!tokens.length) {
+        ElMessage.warning('没有可复制的内容')
+        return
+      }
+      const ta = document.createElement('textarea')
+      ta.value = tokens.join('\t')
+      ta.style.cssText = 'position:fixed;left:-9999px'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(ta)
+      ElMessage[ok ? 'success' : 'warning'](ok ? '已复制' : '请手动全选复制')
+    },
+    applyPasteTokens(sectionKey, text) {
+      const section = this.sectionOf(sectionKey)
+      if (!section) return
 
       const tokens = splitTokens(text)
       if (!tokens.length) {
@@ -513,6 +599,10 @@ export default {
   color: #c0c4cc;
 }
 
+.paste-target {
+  outline: none;
+}
+
 .mouse-list {
   flex: 1;
   max-height: 260px;
@@ -573,7 +663,6 @@ export default {
   flex: 1 1 0;
   min-width: 64px;
 }
-
 
 .mouse-row :deep(.el-switch__core) {
   width: 50px;

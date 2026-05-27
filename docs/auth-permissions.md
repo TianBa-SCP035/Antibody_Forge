@@ -82,7 +82,7 @@ DDL 与种子数据见 [vita-database.sql](./vita-database.sql)（主库全表�
 | `serum.titer.edit_all` | action | 编辑任意项目效价 |
 | `serum.file.manage` | action | 效价附件增删改 |
 | `serum.cell.view` | action | 查看细胞库存 |
-| `serum.cell.prep_status.update` | action | 更新制备状态 |
+| `serum.cell.prep_status.update` | action | 更新任意项目制备状态（细胞库存页） |
 
 ### 2.2 系统模块（`system.*`）
 
@@ -176,7 +176,8 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 |------|------|
 | 保存项目（有 id） | 当前负责人且保持自己为负责人 → 需 `serum.project.edit`；否则需 `serum.project.edit_all` |
 | 新建项目 | 需 `serum.project.create`；普通用户只能把自己设为 `owner` |
-| 改状态 / 笼位 / 制备状态 | 需对应 action 权限，且为项目负责人 **或** 拥有 `serum.project.edit_all` |
+| 改状态 / 笼位 | 需对应 action 权限，且为项目负责人 **或** 拥有 `serum.project.edit_all` |
+| 改制备状态（细胞库存页） | 仅需 `serum.cell.prep_status.update` |
 | 效价写操作 | 需 `serum.titer.edit` 等，且为项目负责人 **或** `serum.titer.edit_all` |
 | 自动更新状态 | 需要 `serum.status.auto_update` |
 
@@ -221,6 +222,7 @@ flowchart LR
 
 - `canEditSerumProject` → `edit_all` 或 (`project.edit` 且为 owner)
 - `canUpdateSerumStatus` → 有 `status.update` 且（`edit_all` 或 owner）
+- `canUpdateSerumPrepStatus` → 有 `serum.cell.prep_status.update` 即可
 
 无权限时多为 `no-permission-btn` 样式，而非路由级 403。
 

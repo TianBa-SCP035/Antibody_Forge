@@ -9,10 +9,13 @@
   >
     <template #header>
       <div class="dialog-header">
-        <div class="dialog-header-row">
-          <h3 class="dialog-header-title">鼠号明细</h3>
-          <span v-if="groupId" class="dialog-header-badge">{{ groupId }}</span>
-          <span v-if="mouseStrain" class="dialog-header-strain" :title="mouseStrain">{{ mouseStrain }}</span>
+        <h3 class="dialog-header-title">鼠号明细</h3>
+        <div v-if="groupId || mouseStrain" class="dialog-header-meta">
+          <span v-if="groupId" class="meta-label">组别</span>
+          <span v-if="groupId" class="meta-group">{{ groupId }}</span>
+          <span v-if="groupId && mouseStrain" class="meta-sep">|</span>
+          <span v-if="mouseStrain" class="meta-label">鼠型</span>
+          <span v-if="mouseStrain" class="meta-strain" :title="mouseStrain">{{ mouseStrain }}</span>
         </div>
       </div>
     </template>
@@ -62,7 +65,6 @@
               />
               <el-switch
                 v-model="row.alive"
-                class="alive-switch"
                 size="small"
                 inline-prompt
                 active-text="存活"
@@ -331,38 +333,48 @@ export default {
 
 <style scoped>
 .dialog-header {
-  padding-right: 28px;
-}
-
-.dialog-header-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 10px 16px;
+  padding-right: 28px;
 }
 
 .dialog-header-title {
   margin: 0;
-  font-size: 17px;
+  flex-shrink: 0;
+  font-size: 16px;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.4;
   color: #303133;
 }
 
-.dialog-header-badge {
-  display: inline-flex;
+.dialog-header-meta {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 3px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #67c23a;
-  background: #f0f9eb;
-  border: 1px solid #e1f3d8;
-  border-radius: 999px;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
-.dialog-header-strain {
-  font-size: 13px;
+.meta-label {
+  color: #a8abb2;
+}
+
+.meta-group {
+  font-weight: 600;
+  color: #67c23a;
+}
+
+.meta-sep {
+  margin: 0 2px;
+  color: #dcdfe6;
+}
+
+.meta-strain {
+  max-width: min(280px, 50vw);
   color: #909399;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -372,30 +384,30 @@ export default {
 .dialog-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 16px;
 }
 
 .summary-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: 5px;
+  padding: 5px 12px;
   font-size: 13px;
-  background: #fff;
-  border: 1px solid #e4e7ed;
+  background: #f5f7fa;
+  border: 1px solid #ebeef5;
   border-radius: 999px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .chip-label {
-  color: #909399;
   font-size: 12px;
+  color: #909399;
 }
 
 .chip-value {
+  font-size: 13px;
+  font-weight: 500;
   color: #303133;
-  font-weight: 600;
 }
 
 .sections-layout {
@@ -562,19 +574,12 @@ export default {
   min-width: 64px;
 }
 
-.alive-switch {
-  flex: 0 0 auto;
+
+.mouse-row :deep(.el-switch__core) {
+  width: 50px;
+  min-width: 50px;
 }
 
-.alive-switch :deep(.el-switch__core) {
-  min-width: 0;
-  width: 54px;
-}
-
-.alive-switch :deep(.el-switch__inner) {
-  padding: 0 4px;
-  font-size: 11px;
-}
 
 .row-delete {
   flex-shrink: 0;

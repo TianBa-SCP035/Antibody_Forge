@@ -2,8 +2,8 @@
   <div class="titer-conclusion-panel">
     <div v-if="!hasData" class="conclusion-empty">
       <el-icon><DataAnalysis /></el-icon>
-      <p>暂无 FACS 结论数据</p>
-      <span class="sub-text">请先在 TITER 板管理中新建 FACS 板并填写鼠号（阳性孔可为空，全阴显示为 -）</span>
+      <p>暂无效价结论数据</p>
+      <span class="sub-text">请先在 TITER 板管理中新建 FACS/ELISA 板并完成阳性孔标注</span>
     </div>
 
     <template v-else>
@@ -19,13 +19,13 @@
 
       <el-tabs v-model="activeStage" type="card" class="stage-tabs">
         <el-tab-pane
-          v-for="stage in stages"
-          :key="stage.stageName"
-          :label="stage.stageName"
-          :name="stage.stageName"
+          v-for="tab in stageMethodTabs"
+          :key="tab.key"
+          :label="tab.label"
+          :name="tab.key"
         >
           <div
-            v-for="table in facsTables(stage)"
+            v-for="table in tab.groupTables"
             :key="table.groupId"
             class="group-table-block"
           >
@@ -127,10 +127,37 @@ export default {
       return this.model?.warnings || []
     },
     hasData() {
-      return this.stages.length > 0
+      return this.stageMethodTabs.length > 0
+    },
+    stageMethodTabs() {
+      const facs = []
+      const elisa = []
+      for (const stage of this.stages) {
+        const facsBlock = stage.methods?.find((m) => m.method === 'FACS')
+        if (facsBlock?.groupTables?.length) {
+          facs.push({
+            key: `FACS::${stage.stageName}`,
+            label: `FACS · ${stage.stageName}`,
+            method: 'FACS',
+            stageName: stage.stageName,
+            groupTables: facsBlock.groupTables,
+          })
+        }
+        const elisaBlock = stage.methods?.find((m) => m.method === 'ELISA')
+        if (elisaBlock?.groupTables?.length) {
+          elisa.push({
+            key: `ELISA::${stage.stageName}`,
+            label: `ELISA · ${stage.stageName}`,
+            method: 'ELISA',
+            stageName: stage.stageName,
+            groupTables: elisaBlock.groupTables,
+          })
+        }
+      }
+      return [...facs, ...elisa]
     },
     stageNamesKey() {
-      return this.stages.map((s) => s.stageName).join('\0')
+      return this.stageMethodTabs.map((t) => t.key).join('||')
     },
   },
   watch: {
@@ -140,7 +167,7 @@ export default {
           this.activeStage = ''
           return
         }
-        const names = key.split('\0')
+        const names = key.split('||')
         if (!names.includes(this.activeStage)) {
           this.activeStage = names[0]
         }
@@ -155,9 +182,6 @@ export default {
     showGroupAntigen(table) {
       const label = (table.antigenLabel || '').trim()
       return label && label !== table.groupId
-    },
-    facsTables(stage) {
-      return stage.methods?.find((m) => m.method === 'FACS')?.groupTables || []
     },
     formatCell(value) {
       if (value === undefined || value === null) return 'N/A'

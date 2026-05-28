@@ -1,9 +1,11 @@
 /**
- * FACS 效价结论聚合：从板 positive_well_list 推导每鼠最高阳性稀释度（不落库）。
+ * FACS / ELISA 效价结论聚合：从板 positive_well_list 推导每鼠最高阳性稀释度（不落库）。
  * 以板槽位鼠号为主；鼠号按免疫方案匹配组别，未匹配归入「未分组小鼠」。
  */
 
 export const FACS_DILUTION_EXPONENTS = [2, 3, 4, 5, 2, 3, 4, 5] as const
+/** ELISA 行稀释度（第 8 行通常为对照，不计入效价） */
+export const ELISA_DILUTION_VALUES = [100, 500, 2500, 12500, 62500, 312500, 1562500, 0] as const
 export const UNKNOWN_TARGET_KEY = '__unknown__'
 export const UNKNOWN_TARGET_LABEL = '未知标靶'
 export const UNGROUPED_GROUP_ID = '__ungrouped__'
@@ -47,6 +49,7 @@ export interface FacsConclusionModel {
 export interface BuildFacsConclusionInput {
   project: ProjectLike | null
   facsPlates: FacsPlateLike[]
+  elisaPlates?: ElisaPlateLike[]
 }
 
 interface ProjectLike {
@@ -93,9 +96,20 @@ export interface FacsPlateLike {
   positive_well_list?: unknown
 }
 
+export interface ElisaPlateLike {
+  id?: number | null
+  tempId?: number | null
+  immune_stage?: string | null
+  protein_target_id?: number | null
+  mouse_group?: string | null
+  upper_slot_list?: unknown
+  lower_slot_list?: unknown
+  positive_well_list?: unknown
+}
+
 interface Observation {
   hasData: boolean
-  maxExponent: number
+  maxValue: number
   plateSortKey: number
 }
 
@@ -282,24 +296,31 @@ function plateSortKey(plate: FacsPlateLike): number {
   return 1_000_000_000 + (Number(plate.tempId) || 0)
 }
 
-function obsKey(stage: string, groupId: string, targetKey: string, mouseNo: string): string {
-  return `${stage}\0${groupId}\0${targetKey}\0${mouseNo}`
-}
-
-function setObservation(
-  map: ObsMap,
+function obsKey(
+  method: 'FACS' | 'ELISA',
   stage: string,
   groupId: string,
   targetKey: string,
   mouseNo: string,
-  maxExponent: number,
+): string {
+  return `${method}\0${stage}\0${groupId}\0${targetKey}\0${mouseNo}`
+}
+
+function setObservation(
+  map: ObsMap,
+  method: 'FACS' | 'ELISA',
+  stage: string,
+  groupId: string,
+  targetKey: string,
+  mouseNo: string,
+  maxValue: number,
   sortKey: number,
 ): void {
   if (!mouseNo) return
-  const key = obsKey(stage, groupId, targetKey, mouseNo)
+  const key = obsKey(method, stage, groupId, targetKey, mouseNo)
   const next: Observation = {
     hasData: true,
-    maxExponent,
+    maxValue,
     plateSortKey: sortKey,
   }
   const prev = map.get(key)
@@ -374,7 +395,75 @@ function processHalf(
     if (!mouseNo || /^NC$/i.test(mouseNo) || /^PC$/i.test(mouseNo)) continue
     const groupId = resolveGroupForMouse(mouseNo, mouseToGroup, halfGroup)
     const maxExp = maxPositiveExponent(positives, rowStart, col)
-    setObservation(map, stage, groupId, targetKey, mouseNo, maxExp, sortKey)
+    setObservation(
+      map,
+      'FACS',
+      stage,
+      groupId,
+      targetKey,
+      mouseNo,
+      maxExp > 0 ? 10 ** maxExp : 0,
+      sortKey,
+    )
+  }
+}
+
+function normalizeElisaUpperSlotList(
+  raw: unknown,
+): { layout: '5pair' | '6pair'; values: string[] } {
+  const layoutRaw =
+    raw && typeof raw === 'object' && (raw as { layout?: unknown }).layout === '6pair'
+      ? '6pair'
+      : '5pair'
+  const src =
+    raw && typeof raw === 'object' && Array.isArray((raw as { values?: unknown[] }).values)
+      ? (raw as { values?: unknown[] }).values || []
+      : []
+  const values = new Array(12).fill('')
+  for (let i = 0; i < Math.min(src.length, 12); i += 1) {
+    const v = src[i]
+    values[i] = v === undefined || v === null ? '' : String(v).trim()
+  }
+  return { layout: layoutRaw, values }
+}
+
+function elisaPairColumns(layout: '5pair' | '6pair'): Array<[number, number]> {
+  // 6组: (1,2)(3,4)...(11,12)；5组: (2,3)(4,5)...(10,11)
+  return layout === '6pair'
+    ? [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9], [10, 11]]
+    : [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]]
+}
+
+function processElisaPlate(
+  map: ObsMap,
+  plate: ElisaPlateLike,
+  stage: string,
+  targetKey: string,
+  sortKey: number,
+  mouseToGroup: Map<string, string>,
+): void {
+  // ELISA 结论按业务仅使用上方槽位字段映射鼠号（下方主要承载 NC/PC 逻辑）
+  const upper = normalizeElisaUpperSlotList(plate.upper_slot_list)
+  const groupFallback = (plate.mouse_group || '').trim()
+  const positives = new Set(
+    (Array.isArray(plate.positive_well_list) ? plate.positive_well_list : [])
+      .filter((w): w is string => typeof w === 'string' && !!w.trim())
+      .map((w) => w.trim().toUpperCase()),
+  )
+  for (const [colA, colB] of elisaPairColumns(upper.layout)) {
+    const labelA = (upper.values[colA] || '').trim()
+    const labelB = (upper.values[colB] || '').trim()
+    const mouseNo = (labelA || labelB).trim()
+    if (!mouseNo || /^NC$/i.test(mouseNo) || /^PC$/i.test(mouseNo) || /^N\/A$/i.test(mouseNo)) continue
+    const groupId = resolveGroupForMouse(mouseNo, mouseToGroup, groupFallback)
+    let maxDilution = 0
+    // 仅第1~7行计效价，且同一稀释度要求两列都阳才算阳性
+    for (let row = 0; row <= 6; row += 1) {
+      if (positives.has(wellCode(row, colA)) && positives.has(wellCode(row, colB))) {
+        maxDilution = ELISA_DILUTION_VALUES[row] ?? maxDilution
+      }
+    }
+    setObservation(map, 'ELISA', stage, groupId, targetKey, mouseNo, maxDilution, sortKey)
   }
 }
 
@@ -403,8 +492,8 @@ function sortTargetKeys(a: string, b: string): number {
 
 function formatCellValue(obs: Observation | undefined): ConclusionCellValue {
   if (!obs?.hasData) return 'N/A'
-  if (obs.maxExponent <= 0) return '-'
-  return 10 ** obs.maxExponent
+  if (obs.maxValue <= 0) return '-'
+  return obs.maxValue
 }
 
 export function formatConclusionCell(value: ConclusionCellValue): string {
@@ -434,10 +523,32 @@ export function fingerprintFacsPlates(plates: FacsPlateLike[] | undefined): stri
     .join(';;')
 }
 
+/** 用于防抖刷新：ELISA 板数据实质变化指纹 */
+export function fingerprintElisaPlates(plates: ElisaPlateLike[] | undefined): string {
+  return (plates || [])
+    .map((p) => {
+      const pos = Array.isArray(p.positive_well_list)
+        ? [...p.positive_well_list].map(String).sort().join(',')
+        : ''
+      return [
+        p.id ?? '',
+        p.tempId ?? '',
+        p.immune_stage ?? '',
+        p.protein_target_id ?? '',
+        p.mouse_group ?? '',
+        JSON.stringify(p.upper_slot_list ?? {}),
+        JSON.stringify(p.lower_slot_list ?? {}),
+        pos,
+      ].join('|')
+    })
+    .join(';;')
+}
+
 export function buildFacsConclusionForPage(
   project: ProjectLike | null | undefined,
   titerTargets: TiterTargetLike[] | undefined,
   facsPlates: FacsPlateLike[],
+  elisaPlates: ElisaPlateLike[] = [],
 ): FacsConclusionModel {
   const targets = titerTargets ?? project?.titer_targets
   return buildFacsConclusion({
@@ -450,18 +561,22 @@ export function buildFacsConclusionForPage(
         }
       : null,
     facsPlates: facsPlates || [],
+    elisaPlates: elisaPlates || [],
   })
 }
 
 export function buildFacsConclusion(input: BuildFacsConclusionInput): FacsConclusionModel {
-  const { project, facsPlates } = input
+  const { project, facsPlates, elisaPlates = [] } = input
   const warnings: string[] = []
   const mouseGroups = project?.mouse_groups || []
   const steps = project?.steps || []
   const antigens = project?.antigens || []
   const targets = project?.titer_targets || []
   const mouseToGroup = buildMouseToGroupMap(mouseGroups)
-  const stageOrder = buildStageAppearanceOrder(steps, facsPlates || [])
+  const stageOrder = buildStageAppearanceOrder(steps, [
+    ...(facsPlates || []),
+    ...(elisaPlates || []),
+  ] as FacsPlateLike[])
   const schemeGroupIds = new Set(
     mouseGroups.map((g) => (g.group_id || '').trim()).filter(Boolean),
   )
@@ -478,70 +593,83 @@ export function buildFacsConclusion(input: BuildFacsConclusionInput): FacsConclu
     processHalf(obsMap, plate, 'lower', stage, targetKey, sortKey, mouseToGroup)
   }
 
-  if (hasEmptyStagePlate) {
-    warnings.push(`部分 FACS 板未填写免疫阶段，已归入「${EMPTY_STAGE_LABEL}」`)
+  for (const plate of elisaPlates || []) {
+    if (!(plate.immune_stage || '').trim()) hasEmptyStagePlate = true
+    const stage = resolveStage(plate as FacsPlateLike)
+    const sortKey = plateSortKey(plate as FacsPlateLike)
+    const targetKey = targetKeyFromId(plate.protein_target_id, targets)
+    processElisaPlate(obsMap, plate, stage, targetKey, sortKey, mouseToGroup)
   }
 
-  const stageNames = [...new Set([...obsMap.keys()].map((k) => k.split('\0')[0]!))].sort(
+  if (hasEmptyStagePlate) {
+    warnings.push(`部分板未填写免疫阶段，已归入「${EMPTY_STAGE_LABEL}」`)
+  }
+
+  const stageNames = [...new Set([...obsMap.keys()].map((k) => k.split('\0')[1]!))].sort(
     (a, b) => (stageOrder.get(a) ?? 0) - (stageOrder.get(b) ?? 0),
   )
 
   const stages: ConclusionStageBlock[] = stageNames.map((stageName) => {
-    const groupIds = new Set<string>()
-    for (const key of obsMap.keys()) {
-      const [st, gid] = key.split('\0')
-      if (st === stageName && gid) groupIds.add(gid)
-    }
-
-    const groupTables: ConclusionGroupTable[] = [...groupIds].sort(sortGroupIds).map((groupId) => {
-      const targetKeys = new Set<string>()
-      const miceSet = new Set<string>()
+    const buildGroupTablesForMethod = (method: 'FACS' | 'ELISA'): ConclusionGroupTable[] => {
+      const groupIds = new Set<string>()
       for (const key of obsMap.keys()) {
-        const [st, gid, tk, mouseNo] = key.split('\0')
-        if (st !== stageName || gid !== groupId) continue
-        if (tk) targetKeys.add(tk)
-        if (mouseNo) miceSet.add(mouseNo)
+        const [m, st, gid] = key.split('\0')
+        if (m === method && st === stageName && gid) groupIds.add(gid)
       }
 
-      const mouseColumns = sortMouseColumns([...miceSet])
-      const rows: ConclusionRow[] = [...targetKeys].sort(sortTargetKeys).map((targetKey) => {
-        const cells: Record<string, ConclusionCellValue> = {}
-        for (const mouseNo of mouseColumns) {
-          cells[mouseNo] = formatCellValue(obsMap.get(obsKey(stageName, groupId, targetKey, mouseNo)))
+      return [...groupIds].sort(sortGroupIds).map((groupId) => {
+        const targetKeys = new Set<string>()
+        const miceSet = new Set<string>()
+        for (const key of obsMap.keys()) {
+          const [m, st, gid, tk, mouseNo] = key.split('\0')
+          if (m !== method || st !== stageName || gid !== groupId) continue
+          if (tk) targetKeys.add(tk)
+          if (mouseNo) miceSet.add(mouseNo)
         }
+
+        const mouseColumns = sortMouseColumns([...miceSet])
+        const rows: ConclusionRow[] = [...targetKeys].sort(sortTargetKeys).map((targetKey) => {
+          const cells: Record<string, ConclusionCellValue> = {}
+          for (const mouseNo of mouseColumns) {
+            cells[mouseNo] = formatCellValue(
+              obsMap.get(obsKey(method, stageName, groupId, targetKey, mouseNo)),
+            )
+          }
+          return {
+            targetKey,
+            ...rowTargetFields(targetKey, targets),
+            cells,
+          }
+        })
+
+        const antigenLabel = resolveGroupAntigenLabel(
+          groupId,
+          steps,
+          antigens,
+          schemeGroupIds,
+        )
+
         return {
-          targetKey,
-          ...rowTargetFields(targetKey, targets),
-          cells,
+          groupId,
+          groupDisplayLabel: buildGroupDisplayLabel(groupId, mouseGroups, schemeGroupIds),
+          antigenLabel,
+          mouseColumns,
+          rows,
         }
       })
+    }
 
-      const antigenLabel = resolveGroupAntigenLabel(
-        groupId,
-        steps,
-        antigens,
-        schemeGroupIds,
-      )
-
-      return {
-        groupId,
-        groupDisplayLabel: buildGroupDisplayLabel(groupId, mouseGroups, schemeGroupIds),
-        antigenLabel,
-        mouseColumns,
-        rows,
-      }
-    })
+    const methods: ConclusionMethodBlock[] = []
+    const facsTables = buildGroupTablesForMethod('FACS')
+    if (facsTables.length) methods.push({ method: 'FACS', groupTables: facsTables })
+    const elisaTables = buildGroupTablesForMethod('ELISA')
+    if (elisaTables.length) methods.push({ method: 'ELISA', groupTables: elisaTables })
 
     return {
       stageName,
-      methods: [
-        {
-          method: 'FACS' as const,
-          groupTables,
-        },
-      ],
+      methods,
     }
-  })
+  }).filter((stage) => stage.methods.length > 0)
 
   return { stages, warnings: [...new Set(warnings)] }
 }

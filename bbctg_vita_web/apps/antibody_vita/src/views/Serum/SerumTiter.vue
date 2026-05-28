@@ -564,6 +564,7 @@ import {
 import { parseFacsExcelFromRows, POSITIVE_RATE_THRESHOLD } from '#/utils/facsExcelPositive'
 import {
   buildFacsConclusionForPage,
+  fingerprintElisaPlates,
   fingerprintFacsPlates,
 } from '#/utils/serumTiterConclusion'
 import {
@@ -748,6 +749,12 @@ export default {
       },
       deep: true,
     },
+    elisaPlates: {
+      handler() {
+        this.scheduleFacsConclusionRefresh()
+      },
+      deep: true,
+    },
     titer_targets: {
       handler() {
         this.scheduleFacsConclusionRefresh()
@@ -803,6 +810,7 @@ export default {
      */
     buildFacsConclusionFingerprint() {
       const plateFp = fingerprintFacsPlates(this.facsPlates)
+      const elisaFp = fingerprintElisaPlates(this.elisaPlates)
       const targetsFp = JSON.stringify(
         (this.titer_targets || []).map((t) => [t?.id ?? '', t?.name ?? '', t?.species ?? '']),
       )
@@ -826,7 +834,7 @@ export default {
           antigen_type: a?.antigen_type ?? '',
         })),
       })
-      return [plateFp, targetsFp, projectFp].join('@@')
+      return [plateFp, elisaFp, targetsFp, projectFp].join('@@')
     },
     refreshFacsConclusion() {
       const fp = this.buildFacsConclusionFingerprint()
@@ -836,6 +844,7 @@ export default {
         this.project,
         this.titer_targets,
         this.facsPlates || [],
+        this.elisaPlates || [],
       )
     },
     clearMemory() {

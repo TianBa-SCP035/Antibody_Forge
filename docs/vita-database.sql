@@ -410,7 +410,7 @@ VALUES
   ('serum.file.manage', 'POST', '/api/serum/titer/file/delete', '删除效价文件'),
   ('serum.file.manage', 'POST', '/api/serum/titer/file/rename', '重命名效价文件'),
   ('serum.file.manage', 'POST', '/api/serum/titer/file/replace', '替换效价文件'),
-  ('serum.titer.edit', 'POST', '/api/serum/titer/target/save', '保存效价靶点'),
+  ('serum.titer.edit', 'POST', '/api/serum/titer/target/save', '保存效价标靶'),
   ('serum.titer.edit', 'POST', '/api/serum/titer/pc/save', '保存效价阳性对照'),
   ('serum.titer.edit', 'POST', '/api/serum/titer/plate/save', '保存FACS板'),
   ('serum.titer.edit', 'POST', '/api/serum/titer/plate/delete', '删除FACS板'),

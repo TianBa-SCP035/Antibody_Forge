@@ -11,7 +11,15 @@ class Base(DeclarativeBase):
 
 
 settings = get_settings()
-engine = create_engine(settings.database_url, pool_pre_ping=True, pool_recycle=1800)
+if settings.database_url.startswith("mysql"):
+    engine = create_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+        pool_recycle=1800,
+        connect_args={"init_command": "SET time_zone = '+08:00'"},
+    )
+else:
+    engine = create_engine(settings.database_url, pool_pre_ping=True, pool_recycle=1800)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 

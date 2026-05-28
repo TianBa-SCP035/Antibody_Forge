@@ -320,6 +320,7 @@ import {
 } from 'element-plus'
 
 import {
+  computeAutoPositiveFromPlate,
   collapseLayout6to5,
   createDefaultLowerSlotList,
   createDefaultUpperSlotList,
@@ -502,6 +503,41 @@ export default {
     if (this.saveTimer) clearTimeout(this.saveTimer)
   },
   methods: {
+    isNcLabel(value) {
+      return /^NC$/i.test(String(value ?? '').trim())
+    },
+    enforceSingleNcInLower(list, keepRange = null) {
+      if (!list || !Array.isArray(list.values)) return
+      const values = list.values
+      if (keepRange && Number.isInteger(keepRange.start) && Number.isInteger(keepRange.end)) {
+        for (let i = 0; i < values.length; i += 1) {
+          if (i >= keepRange.start && i <= keepRange.end) continue
+          if (this.isNcLabel(values[i])) values[i] = ''
+        }
+        return
+      }
+      const ncIndexes = values
+        .map((value, index) => (this.isNcLabel(value) ? index : -1))
+        .filter((index) => index >= 0)
+      if (ncIndexes.length <= 1) return
+      const keep = ncIndexes[ncIndexes.length - 1]
+      for (let i = 0; i < values.length; i += 1) {
+        if (i === keep) continue
+        if (this.isNcLabel(values[i])) values[i] = ''
+      }
+    },
+    recomputeAutoPositiveByLowerSlots() {
+      const matrix = this.plateData.absorbance_1?.matrix
+      if (!Array.isArray(matrix) || !matrix.length) return
+      const lower = normalizeSlotList(this.lowerSlots, 'lower')
+      this.plateData.positive_well_list = computeAutoPositiveFromPlate(matrix, lower)
+    },
+    applySlotList(section, list) {
+      if (section === 'upper') this.upperSlots = list
+      else this.lowerSlots = list
+      this.syncSlots()
+      if (section === 'lower') this.recomputeAutoPositiveByLowerSlots()
+    },
     syncSlots() {
       this.plateData.upper_slot_list = { ...this.upperSlots }
       this.plateData.lower_slot_list = { ...this.lowerSlots }
@@ -642,12 +678,14 @@ export default {
     },
     setSlotValue(section, item, val) {
       if (!this.isEditable || item.disabled) return
-      const v = val?.target?.value ?? val
+      const raw = val?.target?.value ?? val
+      const v = raw === undefined || raw === null ? '' : String(raw)
       const list = { ...this.getSlotList(section), values: [...this.getSlotList(section).values] }
       for (let i = item.start; i <= item.end; i += 1) list.values[i] = v
-      if (section === 'upper') this.upperSlots = list
-      else this.lowerSlots = list
-      this.syncSlots()
+      if (section === 'lower' && this.isNcLabel(v)) {
+        this.enforceSingleNcInLower(list, { start: item.start, end: item.end })
+      }
+      this.applySlotList(section, list)
       this.autoSave()
     },
     onSlotPaste(event, section, startItem) {
@@ -657,15 +695,20 @@ export default {
       event.preventDefault()
       const list = { ...this.getSlotList(section), values: [...this.getSlotList(section).values] }
       let ti = 0
+      let lastNcRange = null
       const items = this.buildSlotItems(section).filter((item) => !item.disabled && item.start >= startItem.start)
       for (const item of items) {
         if (ti >= tokens.length) break
-        const value = tokens[ti++]
+        const value = String(tokens[ti++] ?? '').trim()
         for (let i = item.start; i <= item.end; i += 1) list.values[i] = value
+        if (section === 'lower' && this.isNcLabel(value)) {
+          lastNcRange = { start: item.start, end: item.end }
+        }
       }
-      if (section === 'upper') this.upperSlots = list
-      else this.lowerSlots = list
-      this.syncSlots()
+      if (section === 'lower' && lastNcRange) {
+        this.enforceSingleNcInLower(list, lastNcRange)
+      }
+      this.applySlotList(section, list)
       this.autoSave()
       const next = items[ti] || items[items.length - 1]
       this.$nextTick(() => this.focusSlotInput(section, next))
@@ -704,9 +747,7 @@ export default {
       if (!this.isEditable) return
       const slots = this.getSlotList(section)
       const next = slots.layout === '5pair' ? expandLayout5to6(slots) : collapseLayout6to5(slots)
-      if (section === 'upper') this.upperSlots = next
-      else this.lowerSlots = next
-      this.syncSlots()
+      this.applySlotList(section, next)
       this.autoSave()
     },
     finishSlotDrag() {

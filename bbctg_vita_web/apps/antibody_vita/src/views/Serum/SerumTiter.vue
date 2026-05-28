@@ -274,6 +274,7 @@
             v-for="(plate, index) in sortedAllPlates"
             :key="getPlateKey(plate)"
             :name="getPlateKey(plate)"
+            lazy
           >
             <template #label>
               <span
@@ -325,6 +326,22 @@
             <span class="sub-text">点击上方「新建FACS板」或「新建Elisa板」添加</span>
           </div>
         </div>
+      </div>
+
+      <!-- 6. Titer Conclusion (read-only, computed from plates) -->
+      <div class="titer-conclusion-section" style="margin-top: 8px; margin-bottom: 36px;">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="title-text">
+              <el-icon><Collection /></el-icon>
+              效价结论
+              <small class="eng">Titer Conclusion</small>
+            </span>
+          </h2>
+        </div>
+        <el-card shadow="never" class="conclusion-card">
+          <TiterConclusionPanel :model="facsConclusionModel" />
+        </el-card>
       </div>
     </div>
 
@@ -520,6 +537,7 @@ import {
 import * as XLSX from 'xlsx'
 import FacsPlateCard from './FacsPlateCard.vue'
 import ElisaPlateCard from './ElisaPlateCard.vue'
+import TiterConclusionPanel from './TiterConclusionPanel.vue'
 import {
   deleteElisaPlate,
   deleteFacsPlate,
@@ -545,12 +563,21 @@ import {
 } from '#/utils/elisaPlate'
 import { parseFacsExcelFromRows, POSITIVE_RATE_THRESHOLD } from '#/utils/facsExcelPositive'
 import {
+  buildFacsConclusionForPage,
+  fingerprintFacsPlates,
+} from '#/utils/serumTiterConclusion'
+import {
   canEditSerumTiter,
   canManageSerumTiterFiles,
   getSerumUserName,
 } from '#/utils/serumPermission'
 
 const serumApiBaseUrl = import.meta.env.VITE_SERUM_API_URL || '/serum-api'
+
+/** handleSavePlate 写入后端的防抖 */
+const PLATE_SAVE_DEBOUNCE_MS = 500
+/** 结论刷新固定延迟 */
+const CONCLUSION_REFRESH_DELAY_MS = 300
 
 export default {
   name: 'SerumTiter',
@@ -585,6 +612,7 @@ export default {
     ElUpload,
     ElisaPlateCard,
     FacsPlateCard,
+    TiterConclusionPanel,
     Files,
     FolderOpened,
     Grid,
@@ -644,7 +672,11 @@ export default {
       plateTimers: {},
       plateSaveSeq: {},
       savingPlateKeys: {},
-      fileObjectUrls: {}
+      fileObjectUrls: {},
+
+      facsConclusionModel: null,
+      conclusionRefreshTimer: null,
+      conclusionFingerprint: '',
     }
   },
   computed: {
@@ -709,6 +741,26 @@ export default {
         }))
     },
   },
+  watch: {
+    facsPlates: {
+      handler() {
+        this.scheduleFacsConclusionRefresh()
+      },
+      deep: true,
+    },
+    titer_targets: {
+      handler() {
+        this.scheduleFacsConclusionRefresh()
+      },
+      deep: true,
+    },
+    project: {
+      handler() {
+        this.scheduleFacsConclusionRefresh()
+      },
+      deep: false,
+    },
+  },
   created() {
     this.project_id = this.$route.query.id
     this.experiment_id = this.$route.query.experiment_id
@@ -729,6 +781,63 @@ export default {
     next()
   },
   methods: {
+    scheduleFacsConclusionRefresh(immediate = false) {
+      if (this.conclusionRefreshTimer) {
+        clearTimeout(this.conclusionRefreshTimer)
+        this.conclusionRefreshTimer = null
+      }
+      if (immediate) {
+        this.refreshFacsConclusion()
+        return
+      }
+      this.conclusionRefreshTimer = setTimeout(() => {
+        this.conclusionRefreshTimer = null
+        this.refreshFacsConclusion()
+      }, CONCLUSION_REFRESH_DELAY_MS)
+    },
+    /**
+     * 结论刷新判定指纹（最小依赖集）：
+     * - FACS 板位与阳性孔
+     * - 靶标 id/name/species
+     * - 方案里的分组/步骤/抗原类型
+     */
+    buildFacsConclusionFingerprint() {
+      const plateFp = fingerprintFacsPlates(this.facsPlates)
+      const targetsFp = JSON.stringify(
+        (this.titer_targets || []).map((t) => [t?.id ?? '', t?.name ?? '', t?.species ?? '']),
+      )
+      const projectFp = JSON.stringify({
+        mouse_groups: (this.project?.mouse_groups || []).map((g) => ({
+          group_id: g?.group_id ?? '',
+          mouse_strain: g?.mouse_strain ?? '',
+          mouse_no_list: g?.mouse_no_list ?? '',
+          mice: (g?.mouse_registry?.mice || []).map((m) => ({
+            no: m?.no ?? '',
+            alive: m?.alive !== false,
+          })),
+        })),
+        steps: (this.project?.steps || []).map((s) => ({
+          group_id: s?.group_id ?? '',
+          stage_name: s?.stage_name ?? '',
+          antigen_id: s?.antigen_id ?? '',
+        })),
+        antigens: (this.project?.antigens || []).map((a) => ({
+          antigen_id: a?.antigen_id ?? '',
+          antigen_type: a?.antigen_type ?? '',
+        })),
+      })
+      return [plateFp, targetsFp, projectFp].join('@@')
+    },
+    refreshFacsConclusion() {
+      const fp = this.buildFacsConclusionFingerprint()
+      if (fp === this.conclusionFingerprint && this.facsConclusionModel) return
+      this.conclusionFingerprint = fp
+      this.facsConclusionModel = buildFacsConclusionForPage(
+        this.project,
+        this.titer_targets,
+        this.facsPlates || [],
+      )
+    },
     clearMemory() {
       if (this.targetsTimer) {
         clearTimeout(this.targetsTimer)
@@ -740,8 +849,14 @@ export default {
       }
       Object.values(this.plateTimers).forEach(t => clearTimeout(t))
       this.plateTimers = {}
+      if (this.conclusionRefreshTimer) {
+        clearTimeout(this.conclusionRefreshTimer)
+        this.conclusionRefreshTimer = null
+      }
       
       this.excelData = []
+      this.facsConclusionModel = null
+      this.conclusionFingerprint = ''
       this.currentFile = null
       this.fileList = []
       Object.values(this.fileObjectUrls).forEach(url => URL.revokeObjectURL(url))
@@ -1188,6 +1303,7 @@ export default {
           if (first) this.activePlateName = this.getPlateKey(first)
           this.restoreElisaAbsorbancePreviews()
           this.platesLoading = false
+          this.scheduleFacsConclusionRefresh(true)
         })
         .catch(() => {
           this.platesLoading = false
@@ -1383,6 +1499,7 @@ export default {
           if (isElisa) delete this.elisaAbsPreviewCache[deletedKey]
           this.cleanupPlateState(deletedKey)
           this.activatePlateAfterDelete(deletedKey, deletedIndex)
+          this.scheduleFacsConclusionRefresh(true)
           ElMessage.success(`${label}板已删除`)
         }
         if (plateData.id) {
@@ -1489,8 +1606,11 @@ export default {
           if (finalKey !== myKey && this.plateSaveSeq[finalKey] === mySeq) {
             this.savingPlateKeys[finalKey] = false
           }
+          if (this.plateSaveSeq[myKey] === mySeq || this.plateSaveSeq[finalKey] === mySeq) {
+            this.scheduleFacsConclusionRefresh(true)
+          }
         }
-      }, 500)
+      }, PLATE_SAVE_DEBOUNCE_MS)
     },
     async handleElisaExcelChange({ fileId }, plate) {
       if (!this.canEditTiter() || !plate) return
@@ -2267,7 +2387,7 @@ export default {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
 
     .section-title {
       margin: 0;
@@ -2301,7 +2421,7 @@ export default {
 
   .plates-tabs {
     :deep(.el-tabs__header) {
-      margin: 0 0 16px 0;
+      margin: 0 0 8px 0;
     }
 
     :deep(.el-tabs__nav-wrap) {
@@ -2343,6 +2463,42 @@ export default {
       .el-icon { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
       p { margin: 0; font-size: 16px; color: #909399; font-weight: 500; }
       .sub-text { font-size: 13px; margin-top: 8px; display: block; }
+    }
+  }
+}
+
+.titer-conclusion-section {
+  .section-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+
+    .section-title {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: #333;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      .title-text {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        .el-icon { color: #409EFF; }
+        .eng { font-size: 13px; color: #999; font-weight: 400; }
+      }
+    }
+  }
+
+  .conclusion-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+
+    :deep(.el-card__body) {
+      padding: 16px 18px;
     }
   }
 }

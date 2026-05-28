@@ -1492,7 +1492,7 @@ $plate-legend-gap: 12px;
     align-items: center;
     background: #fafafa;
     border-radius: 8px;
-    padding: 20px;
+    padding: 12px;
     min-height: 0;
     min-width: 0;
     overflow: hidden;
@@ -1503,7 +1503,7 @@ $plate-legend-gap: 12px;
     max-width: 100%;
     grid-template-columns: minmax(0, 808px);
     grid-template-rows: auto auto auto;
-    row-gap: 16px;
+    row-gap: 8px;
 
     &.has-legend {
       grid-template-columns: minmax(0, 808px) #{$plate-legend-gap} #{$plate-legend-width};

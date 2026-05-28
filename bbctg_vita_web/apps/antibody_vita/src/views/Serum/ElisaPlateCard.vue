@@ -222,11 +222,12 @@
                 <div class="plate-main-row">
                   <div class="elisa-grid-column">
                     <div class="elisa-grid-panel" :class="{ 'has-data': !!displayMatrix }">
-                      <div v-if="displayMatrix" class="elisa-grid-toolbar">
-                        <span class="preview-meta">
+                      <div class="elisa-grid-toolbar" :class="{ 'is-placeholder': !displayMatrix }">
+                        <span v-if="displayMatrix" class="preview-meta">
                           {{ activeAbsorbance?.label || '吸光度' }}
                           <template v-if="displayWavelength"> · {{ displayWavelength }} nm</template>
                         </span>
+                        <span v-else class="preview-meta preview-meta--placeholder">未导入吸光度数据</span>
                       </div>
                       <div class="plate-grid-wrap">
                     <div class="col-labels">
@@ -1292,6 +1293,10 @@ $plate-legend-title-h: 28px;
     font-size: 12px;
     color: #909399;
     white-space: nowrap;
+  }
+
+  &.is-placeholder .preview-meta--placeholder {
+    color: #c0c4cc;
   }
 }
 

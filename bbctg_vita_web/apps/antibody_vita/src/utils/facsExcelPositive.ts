@@ -48,6 +48,8 @@ function scanStopRow(rows: ExcelRow[], fromRow: number): number {
   for (let i = fromRow; i < rows.length; i += 1) {
     const first = cellStr(rows[i]?.[0])
     if (first === '样品' || first === '已计算') return i
+    // 国产导出常含多块统计（如 %Parent 后又跟 Mean），只读第一块
+    if (first === '统计项' && i > fromRow) return i
   }
   return rows.length
 }

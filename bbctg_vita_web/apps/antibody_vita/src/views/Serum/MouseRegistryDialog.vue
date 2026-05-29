@@ -73,6 +73,7 @@
                 size="small"
                 placeholder="鼠号"
                 class="mouse-no-input"
+                @keydown.enter="handleMouseNoEnter($event, section.key, idx)"
               />
               <el-switch
                 v-model="row.alive"
@@ -118,7 +119,7 @@
     destroy-on-close
   >
     <div class="bulk-edit-paste-wrap" @paste.capture="handleBulkEditPaste">
-      <el-input v-model="bulkEditText" type="textarea" :rows="12" placeholder="每行一个鼠号；从 Excel 粘贴横向/多格会自动拆成多行" />
+      <el-input v-model="bulkEditText" type="textarea" :rows="12" placeholder="每行一个鼠号；也可用空格、制表符分隔；从 Excel 粘贴会自动拆行" />
     </div>
     <template #footer>
       <el-button @click="copyBulkEditText">横向复制</el-button>
@@ -132,21 +133,13 @@
 import { Delete, EditPen, Plus } from '@element-plus/icons-vue'
 import { ElButton, ElDialog, ElInput, ElMessage, ElSwitch } from 'element-plus'
 
-/** 剪贴板 / Excel：每行再按制表符、逗号、顿号拆分后扁平化（多行横向表也能解析） */
+/** 换行拆行，行内按 Tab/逗号/空格等拆分 */
 function splitTokens(text) {
-  const normalized = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
-  if (!normalized) return []
-
-  const lines = normalized.split('\n').map((s) => s.trim()).filter(Boolean)
-  const out = []
-  for (const line of lines) {
-    if (/[\t,;，、]/.test(line)) {
-      out.push(...line.split(/[\t,;，、]+/).map((s) => s.trim()).filter(Boolean))
-    } else if (line) {
-      out.push(line)
-    }
-  }
-  return out
+  const s = (text || '').replace(/\r\n?/g, '\n').trim()
+  if (!s) return []
+  return s.split('\n').flatMap((line) =>
+    line.trim().split(/[\t,;，、\s]+/).map((x) => x.trim()).filter(Boolean),
+  )
 }
 
 function parseSexLayout(sex) {
@@ -297,6 +290,30 @@ export default {
       const section = this.sectionOf(sectionKey)
       if (!section) return
       section.rows.push(emptyRow(section.sex))
+    },
+    handleMouseNoEnter(event, sectionKey, idx) {
+      event.preventDefault()
+      const section = this.sectionOf(sectionKey)
+      if (!section) return
+
+      const tokens = splitTokens(section.rows[idx].no || '')
+      let nextIdx = idx
+      if (tokens.length > 1) {
+        section.rows[idx].no = tokens[0]
+        section.rows.splice(idx + 1, 0, ...tokens.slice(1).map((no) => ({ no, sex: section.sex, alive: true })))
+        nextIdx = idx + tokens.length - 1
+      } else {
+        section.rows[idx].no = tokens[0] || ''
+        if (idx < section.rows.length - 1) nextIdx = idx + 1
+        else {
+          section.rows.push(emptyRow(section.sex))
+          nextIdx = section.rows.length - 1
+        }
+      }
+
+      this.$nextTick(() => {
+        event.target.closest('.mouse-list')?.querySelectorAll('.mouse-row')[nextIdx]?.querySelector('input')?.focus()
+      })
     },
     removeRow(sectionKey, idx) {
       const section = this.sectionOf(sectionKey)

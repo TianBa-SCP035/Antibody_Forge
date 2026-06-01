@@ -230,6 +230,17 @@ flowchart LR
 
 `/profile` 无 `authority`，凡已登录用户可访问。
 
+### 5.4 系统首页（门户）
+
+- **`/home`** 为系统级默认落地页（`defaultHomePath`、`build_user_info` 的 `homePath`）；用户可在首页快捷导航弹窗中覆盖为本机偏好路径；**不设 `meta.authority`**，凡已登录用户可访问（含零角色账号）。
+- 侧栏「首页」`order: 0`；**门户 Hero** → **三列等宽**：公告中心+站内信 | 快捷导航+好书推荐+暖心便签 | 日历+使用提示。
+- **系统快捷导航** 6 格（3×2）：右上角「自定义配置」弹窗内排布快捷入口；**点击已填入的格子**可勾选为登录后默认页（`HOME_START_PAGE_STORAGE_KEY`），新模块只需加入下方预设列表即可被用户选为默认，无需单独维护默认页清单。配置仅存浏览器 `localStorage`，**不落库**；未勾选时仍用服务端 `homePath`。
+- 公告中心 / 站内信为固定高度列表区，超出滚动；点击查看全部（列表页待接 API）。
+- 静态数据在 `views/Home/home-data.ts`；暖心便签仅存浏览器 `localStorage`。
+- **北京天气**：前端 `useHomeWeather` 直连；优先 **和风 QWeather**（`VITE_QWEATHER_API_KEY`，见 `.env.development`），未配置或失败时回退 **Open-Meteo**。
+
+路由与页面：`apps/antibody_vita/src/router/routes/modules/home.ts`、`views/Home/`。
+
 ## 6. `sys_permission_api` 的真实用途
 
 该表**不用于**请求拦截鉴权。
@@ -289,5 +300,6 @@ sequenceDiagram
 | 效价 API | `bbctg_vita_server/modules/immunology/titer/routes.py` |
 | 认证 | `bbctg_vita_server/modules/auth/` |
 | 路由守卫 | `bbctg_vita_web/apps/antibody_vita/src/router/guard.ts` |
+| 系统首页 | `bbctg_vita_web/apps/antibody_vita/src/views/Home/` |
 | 血清前端权限 | `bbctg_vita_web/apps/antibody_vita/src/utils/serumPermission.ts` |
 | ORM 模型 | `bbctg_vita_server/models/system.py` |

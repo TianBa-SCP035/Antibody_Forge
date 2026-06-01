@@ -7,6 +7,10 @@ import { startProgress, stopProgress } from '@vben/utils';
 
 import { accessRoutes, coreRouteNames } from '#/router/routes';
 import { useAuthStore } from '#/store';
+import {
+  createAccessChecker,
+  resolveUserStartPath,
+} from '#/views/Home/home-data';
 
 import { generateAccess } from './access';
 
@@ -53,10 +57,13 @@ function setupAccessGuard(router: Router) {
     // 基本路由，这些路由不需要进入权限拦截
     if (coreRouteNames.includes(to.name as string)) {
       if (to.path === LOGIN_PATH && accessStore.accessToken) {
+        const hasAccessByCodes = createAccessChecker(accessStore.accessCodes);
+        const startPath = resolveUserStartPath(
+          userStore.userInfo?.homePath,
+          hasAccessByCodes,
+        );
         return decodeURIComponent(
-          (to.query?.redirect as string) ||
-            userStore.userInfo?.homePath ||
-            preferences.app.defaultHomePath,
+          (to.query?.redirect as string) || startPath,
         );
       }
       return true;
@@ -111,10 +118,10 @@ function setupAccessGuard(router: Router) {
     accessStore.setAccessMenus(accessibleMenus);
     accessStore.setAccessRoutes(accessibleRoutes);
     accessStore.setIsAccessChecked(true);
+    const hasAccessByCodes = createAccessChecker(accessStore.accessCodes);
+    const startPath = resolveUserStartPath(userInfo.homePath, hasAccessByCodes);
     const redirectPath = (from.query.redirect ??
-      (to.path === preferences.app.defaultHomePath
-        ? userInfo.homePath || preferences.app.defaultHomePath
-        : to.fullPath)) as string;
+      (to.path === preferences.app.defaultHomePath ? startPath : to.fullPath)) as string;
 
     return {
       ...router.resolve(decodeURIComponent(redirectPath)),

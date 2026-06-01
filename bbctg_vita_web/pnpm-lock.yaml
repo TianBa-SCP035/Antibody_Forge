@@ -519,6 +519,9 @@ importers:
       '@element-plus/icons-vue':
         specifier: ^2.3.2
         version: 2.3.2(vue@3.5.32(typescript@6.0.2))
+      '@iconify/vue':
+        specifier: 'catalog:'
+        version: 5.0.0(vue@3.5.32(typescript@6.0.2))
       '@vben/access':
         specifier: workspace:*
         version: link:../../packages/effects/access

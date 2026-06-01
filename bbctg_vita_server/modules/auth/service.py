@@ -141,7 +141,7 @@ def build_user_info(db: Session, user: SysUser) -> dict:
         "avatar": "https://wpimg.wallstcn.com/f778738c-e4f8-4870-b634-56703b4acafe.gif",
         "realName": context.display_name,
         "username": context.username,
-        "homePath": "/serum/list",
+        "homePath": "/home",
         "isSuperuser": context.is_superuser,
         "department": user.department,
         "groupName": user.group_name,

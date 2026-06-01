@@ -8,7 +8,7 @@ import { defineOverridesPreferences } from '@vben/preferences';
 export const overridesPreferences = defineOverridesPreferences({
   // overrides
   app: {
-    defaultHomePath: '/serum/list',
+    defaultHomePath: '/home',
     defaultAvatar: '/Vita256.ico',
   },
   logo: {

@@ -4,7 +4,6 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { LOGIN_PATH } from '@vben/constants';
-import { preferences } from '@vben/preferences';
 import { resetAllStores, useAccessStore, useUserStore } from '@vben/stores';
 
 import { ElNotification } from 'element-plus';
@@ -18,6 +17,10 @@ import {
   yunzhijiaLoginApi,
 } from '#/api';
 import { $t } from '#/locales';
+import {
+  createAccessChecker,
+  resolveUserStartPath,
+} from '#/views/Home/home-data';
 
 export const useAuthStore = defineStore('auth', () => {
   const accessStore = useAccessStore();
@@ -83,7 +86,12 @@ export const useAuthStore = defineStore('auth', () => {
     } else {
       onSuccess
         ? await onSuccess?.()
-        : await router.push(userInfo.homePath || preferences.app.defaultHomePath);
+        : await router.push(
+            resolveUserStartPath(
+              userInfo.homePath,
+              createAccessChecker(accessStore.accessCodes),
+            ),
+          );
     }
 
     if (userInfo?.realName) {

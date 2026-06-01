@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 import { preferences } from '@vben/preferences';
 import { useUserStore } from '@vben/stores';
-import { Icon } from '@iconify/vue';
-
 import { $t } from '#/locales';
 
 import { useHomeWeather } from '../composables/useHomeWeather';
@@ -44,6 +42,40 @@ const weatherSubline = computed(() => {
   }
   return parts;
 });
+
+/** 背景图渲染 Meteocons，动画不依赖整页 document 就绪（内联 Icon 会冻住数秒） */
+const weatherIconStyle = ref<{ backgroundImage?: string }>({});
+
+async function syncWeatherIconBackground(icon: string) {
+  const sep = icon.indexOf(':');
+  if (sep < 1) {
+    weatherIconStyle.value = {};
+    return;
+  }
+  try {
+    const res = await fetch(
+      `https://api.iconify.design/${icon.slice(0, sep)}/${icon.slice(sep + 1)}.svg`,
+    );
+    if (!res.ok) throw new Error('icon fetch failed');
+    const svg = (await res.text()).replace(
+      '</svg>',
+      `<!--${Date.now()}--></svg>`,
+    );
+    weatherIconStyle.value = {
+      backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`,
+    };
+  } catch {
+    weatherIconStyle.value = {};
+  }
+}
+
+watch(
+  () => (weather.loading ? null : weather.icon),
+  (icon) => {
+    if (icon) void syncWeatherIconBackground(icon);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -78,7 +110,11 @@ const weatherSubline = computed(() => {
         </div>
       </template>
       <template v-else>
-        <Icon :icon="weather.icon" class="size-11 shrink-0" aria-hidden="true" />
+        <span
+          class="inline-block size-11 shrink-0 bg-contain bg-center bg-no-repeat"
+          :style="weatherIconStyle"
+          aria-hidden="true"
+        />
         <div class="min-w-0 flex-1">
           <div class="flex min-w-0 items-center gap-1.5 leading-none">
             <span

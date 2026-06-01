@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 
-import { Icon } from '@iconify/vue';
+import { IconifyIcon as Icon } from '@vben/icons';
 import { ElMessage } from 'element-plus';
 
 import { $t } from '#/locales';

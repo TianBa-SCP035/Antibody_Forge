@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-import { Icon } from '@iconify/vue';
+import { IconifyIcon as Icon } from '@vben/icons';
 
 import { $t } from '#/locales';
 

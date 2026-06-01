@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
-    "@iconify/vue": "catalog:",
     "@vben/access": "workspace:*",
     "@vben/common-ui": "workspace:*",
     "@vben/constants": "workspace:*",

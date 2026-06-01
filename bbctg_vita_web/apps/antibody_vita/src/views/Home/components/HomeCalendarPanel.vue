@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 
 import { preferences } from '@vben/preferences';
-import { Icon } from '@iconify/vue';
+import { IconifyIcon as Icon } from '@vben/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/zh-cn';

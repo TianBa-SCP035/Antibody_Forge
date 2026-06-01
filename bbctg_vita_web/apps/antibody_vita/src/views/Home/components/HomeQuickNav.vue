@@ -5,7 +5,7 @@ import { preferences } from '@vben/preferences';
 import { useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
-import { Icon } from '@iconify/vue';
+import { IconifyIcon as Icon } from '@vben/icons';
 import { ElButton, ElDialog, ElMessage } from 'element-plus';
 
 import { $t } from '#/locales';

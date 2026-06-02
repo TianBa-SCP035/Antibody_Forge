@@ -86,7 +86,7 @@ watch(
     <div class="min-w-0">
       <h1 class="text-lg font-semibold tracking-tight md:text-xl">
         {{ greeting }}，{{ displayName }}
-        <span class="ml-1" aria-hidden="true">👋</span>
+        <span class="home-hero-wave ml-1" aria-hidden="true">👋</span>
       </h1>
       <p class="mt-1 text-sm text-foreground/55">
         {{ $t('page.home.heroStatus') }}
@@ -165,5 +165,21 @@ watch(
     hsl(155 12% 16% / 0.22) 46%,
     hsl(var(--card)) 100%
   );
+}
+
+.home-hero-wave {
+  display: inline-block;
+  animation: home-hero-wave-float 2.2s ease-in-out infinite;
+}
+
+@keyframes home-hero-wave-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
 }
 </style>

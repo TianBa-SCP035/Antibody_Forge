@@ -7,6 +7,7 @@ from typing import Any
 
 from openpyxl import Workbook
 from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -461,6 +462,33 @@ def get_filter_options(db: Session) -> dict:
     }
 
 
+def _cell_display_width(value: Any) -> float:
+    if value is None:
+        return 0.0
+    if hasattr(value, "strftime"):
+        return float(len(value.strftime("%Y-%m-%d")))
+    width = 0.0
+    for ch in str(value):
+        width += 2.0 if ord(ch) > 127 else 1.0
+    return width
+
+
+def _auto_fit_worksheet_columns(
+    ws,
+    *,
+    min_width: float = 8.0,
+    max_width: float = 50.0,
+    padding: float = 2.0,
+) -> None:
+    for col_idx in range(1, ws.max_column + 1):
+        content_width = max(
+            (_cell_display_width(ws.cell(row=row_idx, column=col_idx).value) for row_idx in range(1, ws.max_row + 1)),
+            default=0.0,
+        )
+        letter = get_column_letter(col_idx)
+        ws.column_dimensions[letter].width = min(max(content_width + padding, min_width), max_width)
+
+
 def export_mouse_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, str]:
     stmt = apply_project_filters(select(SerumImmProject), data)
     projects = db.scalars(stmt.order_by(SerumImmProject.id.desc())).all()
@@ -469,7 +497,7 @@ def export_mouse_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, s
     wb = Workbook()
     ws = wb.active
     ws.title = "血清实验数据导出"
-    headers = ["项目编号", "实际日期", "靶点", "鼠型", "组别", "只数", "笼位", "抗原种属", "抗原类型", "抗原名称", "原液浓度", "剂量", "给药途径", "免疫阶段", "免疫备注", "备注"]
+    headers = ["项目编号", "实际日期", "靶点", "鼠型", "组别", "只数", "笼位", "抗原种属", "抗原类型", "抗原名称", "原液浓度", "剂量", "给药途径", "免疫阶段", "免疫备注", "备注", "免疫负责人"]
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(name="微软雅黑", size=11, bold=True)
@@ -517,7 +545,10 @@ def export_mouse_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, s
                         step.stage_name,
                         step.remark,
                         project.remark,
+                        project.owner or "",
                     ])
+
+    _auto_fit_worksheet_columns(ws)
 
     output = BytesIO()
     wb.save(output)

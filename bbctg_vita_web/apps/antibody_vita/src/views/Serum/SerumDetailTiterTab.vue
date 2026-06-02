@@ -15,7 +15,8 @@
       </template>
 
       <div v-if="!experimentId" class="empty-inline">实验 ID 缺失，无法加载文件</div>
-      <div v-else v-loading="filesLoading" class="file-grid">
+      <div v-else v-loading="filesLoading" class="file-preview-panel">
+        <div v-if="fileList.length" class="file-grid">
         <div v-for="file in fileList" :key="file.id" class="file-card-wrapper">
           <div class="file-card" @click="handleFileClick(file)">
             <div class="file-preview-area">
@@ -52,7 +53,14 @@
             </div>
           </div>
         </div>
-        <div v-if="!filesLoading && fileList.length === 0" class="empty-inline">暂无文件数据</div>
+        </div>
+        <div v-if="!filesLoading && fileList.length === 0" class="empty-state">
+          <div class="empty-content">
+            <el-icon><FolderOpened /></el-icon>
+            <p>暂无文件数据</p>
+            <span class="sub-text">请在效价编辑页上传相关实验文件</span>
+          </div>
+        </div>
       </div>
     </el-card>
 
@@ -166,7 +174,13 @@
               />
             </el-tab-pane>
           </el-tabs>
-          <div v-if="!platesLoading && sortedAllPlates.length === 0" class="empty-inline">暂无板卡数据</div>
+          <div v-if="!platesLoading && sortedAllPlates.length === 0" class="empty-plates">
+            <div class="empty-content">
+              <el-icon><FolderOpened /></el-icon>
+              <p>暂无板卡数据</p>
+              <span class="sub-text">请在效价编辑页新建 FACS 或 ELISA 板</span>
+            </div>
+          </div>
         </div>
       </template>
     </el-card>
@@ -270,6 +284,7 @@ import {
   DocumentCopy,
   Download,
   Files,
+  FolderOpened,
   Grid,
   Loading,
   Medal,
@@ -333,6 +348,7 @@ export default {
     ElisaPlateCard,
     FacsPlateCard,
     Files,
+    FolderOpened,
     Grid,
     Loading,
     Medal,
@@ -893,11 +909,54 @@ export default {
   }
 }
 
+.file-preview-panel {
+  min-height: 48px;
+}
+
 .file-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
-  min-height: 80px;
+}
+
+.empty-state,
+.empty-plates {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  .empty-content {
+    text-align: center;
+    color: #c0c4cc;
+
+    .el-icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+      opacity: 0.5;
+    }
+
+    p {
+      margin: 0;
+      font-size: 15px;
+      color: #909399;
+      font-weight: 500;
+    }
+
+    .sub-text {
+      font-size: 12px;
+      margin-top: 6px;
+      display: block;
+    }
+  }
+}
+
+.empty-state {
+  padding: 36px 0;
+}
+
+.empty-plates {
+  padding: 40px 0;
 }
 
 .file-card-wrapper {

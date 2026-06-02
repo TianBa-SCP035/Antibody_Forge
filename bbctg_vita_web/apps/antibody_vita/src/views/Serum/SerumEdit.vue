@@ -1519,7 +1519,9 @@ export default {
       
       if (submitData.mouse_groups) {
         submitData.mouse_groups.forEach(group => {
-          delete group._old_group_id
+          Object.keys(group).forEach((key) => {
+            if (key.startsWith('_')) delete group[key]
+          })
         })
       }
       

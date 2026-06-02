@@ -195,7 +195,7 @@
             <div class="image-display">
               <div
                 class="image-cluster"
-                :class="{ 'has-legend': selectedImageUrl && dilutionLegend }"
+                :class="{ 'has-legend': selectedImageUrl && wellGridRect }"
               >
               <div class="slot-editor upper-slot-editor plate-column">
                 <div class="slot-groups-row" :style="slotTrackStyle">
@@ -237,7 +237,7 @@
                   </div>
                 </div>
 
-                <div class="wells-row top-wells">
+                <div class="wells-row top-wells" :style="slotTrackStyle">
                   <div
                     v-for="i in slotCount"
                     :key="'top-' + i"
@@ -265,8 +265,20 @@
                   <el-icon><Picture /></el-icon>
                   <p>请先选择图片</p>
                 </div>
-                <img v-else :src="selectedImageUrl" class="preview-image" ref="previewImage" @load="handleImageLoad">
-                <div v-if="selectedImageUrl" ref="wellGridOverlay" class="well-grid-overlay" :style="gridStyle" @mousemove="handleWellGridMouseMove">
+                <img
+                  v-else
+                  :src="selectedImageUrl"
+                  class="preview-image"
+                  ref="previewImage"
+                  @load="handleImageLoad"
+                >
+                <div
+                  v-if="selectedImageUrl"
+                  ref="wellGridOverlay"
+                  class="well-grid-overlay"
+                  :style="gridStyle"
+                  @mousemove="handleWellGridMouseMove"
+                >
                   <div
                     v-for="(row, rowIndex) in 8"
                     :key="'row-' + rowIndex"
@@ -315,7 +327,7 @@
               </div>
 
               <div
-                v-if="selectedImageUrl && dilutionLegend"
+                v-if="selectedImageUrl && wellGridRect"
                 class="dilution-legend legend-column"
                 aria-label="行稀释度"
               >
@@ -336,7 +348,7 @@
               </div>
 
               <div class="slot-editor lower-slot-editor plate-column">
-                <div class="wells-row bottom-wells">
+                <div class="wells-row bottom-wells" :style="slotTrackStyle">
                   <div
                     v-for="i in slotCount"
                     :key="'bottom-' + i"
@@ -435,6 +447,11 @@ const GATE_TEMPLATES = {
 const SLOT_COUNT = 12
 const SLOT_WIDTH = 60
 const SLOT_GAP = 8
+const DEFAULT_SLOT_TRACK_STYLE = {
+  width: `${SLOT_COUNT * SLOT_WIDTH + (SLOT_COUNT - 1) * SLOT_GAP}px`,
+  margin: '0 auto',
+  '--slot-well-width': `${SLOT_WIDTH}px`
+}
 const DEFAULT_SLOT_VALUES = ['NC', '', '', '', '', '', '', '', '', '', '', 'PC']
 const X_AXIS_OPTIONS = ['RL1-H', 'BL1-H', 'APC-H']
 const Y_AXIS_OPTIONS = ['SSC-H', 'BL1-H']
@@ -576,9 +593,32 @@ export default {
     slotCount() {
       return SLOT_COUNT
     },
-    slotTrackStyle() {
+    // 图片孔位区域在预览区内的像素矩形（overlay / 鼠号 / 稀释度行共用）
+    wellGridRect() {
+      const { dx, dy, scale, dw, dh } = this.containRect
+      const { x, y, width, height } = this.gridBBox
+      if (!width || !height || !scale || !dw || !dh) return null
+
+      const gridWidth = width * scale
+      const slotWidth = (gridWidth - (SLOT_COUNT - 1) * SLOT_GAP) / SLOT_COUNT
       return {
-        width: `${SLOT_COUNT * SLOT_WIDTH + (SLOT_COUNT - 1) * SLOT_GAP}px`
+        left: dx + x * scale,
+        top: dy + y * scale,
+        width: gridWidth,
+        height: height * scale,
+        imageTop: dy,
+        slotWidth: Number.isFinite(slotWidth) && slotWidth > 0 ? slotWidth : SLOT_WIDTH
+      }
+    },
+    slotTrackStyle() {
+      const rect = this.wellGridRect
+      if (!this.selectedImageUrl || !rect) {
+        return DEFAULT_SLOT_TRACK_STYLE
+      }
+      return {
+        width: `${rect.width}px`,
+        marginLeft: `${rect.left}px`,
+        '--slot-well-width': `${rect.slotWidth}px`
       }
     },
     upperSlotGroups() {
@@ -591,24 +631,22 @@ export default {
       return PLATE_ROWS
     },
     dilutionLegend() {
-      const { dy, scale, dh } = this.containRect
-      const { y, height } = this.gridBBox
-      if (!scale || !dh || !height) return null
+      const rect = this.wellGridRect
+      if (!rect) return null
+      const rowHeightPct = 100 / PLATE_ROWS.length
 
       return {
-        title: {
-          top: `${dy}px`,
-        },
+        title: { top: `${rect.imageTop}px` },
         rows: {
           position: 'absolute',
           left: `${DILUTION_LEGEND_PADDING_X}px`,
           right: `${DILUTION_LEGEND_PADDING_X}px`,
-          top: `${dy + y * scale}px`,
-          height: `${height * scale}px`,
+          top: `${rect.top}px`,
+          height: `${rect.height}px`,
         },
         row: (rowIndex) => ({
-          top: `${rowIndex * 12.5}%`,
-          height: '12.5%',
+          top: `${rowIndex * rowHeightPct}%`,
+          height: `${rowHeightPct}%`,
         }),
       }
     },
@@ -644,19 +682,17 @@ export default {
       return this.getImageUrl(this.selectedImageFile)
     },
     gridStyle() {
-      const { dx, dy, scale } = this.containRect
-      const { x, y, width, height } = this.gridBBox
-
-      if (!width || !height || !scale) {
+      const rect = this.wellGridRect
+      if (!rect) {
         return { display: 'none' }
       }
 
       return {
         position: 'absolute',
-        left: `${dx + x * scale}px`,
-        top: `${dy + y * scale}px`,
-        width: `${width * scale}px`,
-        height: `${height * scale}px`,
+        left: `${rect.left}px`,
+        top: `${rect.top}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
       }
     },
   },
@@ -690,9 +726,12 @@ export default {
       },
       immediate: true
     },
-    selectedImageUrl() {
-      this.imageNaturalSize = { width: 0, height: 0 }
-      this.forceRecalc()
+    'plateData.image_file_id'(fileId, prevId) {
+      if (fileId === prevId) return
+      // 首次挂载已有图片时不要清空，否则缓存图可能不触发 @load
+      if (prevId !== undefined) {
+        this.resetPlateLayoutMetrics()
+      }
     }
   },
   methods: {
@@ -885,12 +924,14 @@ export default {
       return this.plateData[field]
     },
     getGroupStyle(group) {
+      const slotWidth = this.wellGridRect?.slotWidth ?? SLOT_WIDTH
+      const slotStep = slotWidth + SLOT_GAP
       const start = Math.max(0, Math.min(SLOT_COUNT - 1, Number(group.start)))
       const end = Math.max(start, Math.min(SLOT_COUNT - 1, Number(group.end)))
       const count = end - start + 1
       return {
-        left: `${start * (SLOT_WIDTH + SLOT_GAP)}px`,
-        width: `${count * SLOT_WIDTH + (count - 1) * SLOT_GAP}px`
+        left: `${start * slotStep}px`,
+        width: `${count * slotWidth + (count - 1) * SLOT_GAP}px`
       }
     },
     getSelectionLabel(section) {
@@ -1008,25 +1049,21 @@ export default {
       const h0 = ih * (1 - (top + bottom) / 100)
       return { x: x0, y: y0, width: w0, height: h0 }
     },
-    calcContainRect(cw, ch, iw, ih) {
-      const scale = Math.min(cw / iw, ch / ih)
-      const dw = iw * scale
-      const dh = ih * scale
-      const dx = (cw - dw) / 2
-      const dy = (ch - dh) / 2
-      return { dx, dy, scale, dw, dh }
+    resetPlateLayoutMetrics() {
+      this.imageNaturalSize = { width: 0, height: 0 }
+      this.gridBBox = { x: 0, y: 0, width: 0, height: 0 }
+      this.containRect = { dx: 0, dy: 0, scale: 1, dw: 0, dh: 0 }
     },
     handleImageLoad(event) {
       const img = event.target
       this.imageNaturalSize = { width: img.naturalWidth, height: img.naturalHeight }
-      
       this.updateGridBBox(false)
       this.forceRecalc()
     },
     updateGridBBox(shouldSave = true) {
       if (!this.isEditable && shouldSave) return
       if (!this.imageNaturalSize.width) return
-      
+
       const { width: iw, height: ih } = this.imageNaturalSize
       const { top, left, bottom, right } = this.maskOffset
       this.gridBBox = this.calcGridBBoxByMarginPct(iw, ih, { top, left, bottom, right })
@@ -1064,10 +1101,9 @@ export default {
         const { width: iw, height: ih } = this.imageNaturalSize
         
         if (!container || !img || !iw || !ih) return
-        
+
         const c = container.getBoundingClientRect()
         const r = img.getBoundingClientRect()
-        
         const dx = r.left - c.left
         const dy = r.top - c.top
         const scale = r.width / iw
@@ -1527,7 +1563,10 @@ $plate-legend-gap: 12px;
   .slot-editor {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: stretch;
+    width: 100%;
+    max-width: 800px;
+    justify-self: center;
     gap: 8px;
     flex-shrink: 0;
   }
@@ -1596,12 +1635,10 @@ $plate-legend-gap: 12px;
   .wells-row {
     display: flex;
     gap: 8px;
-    width: 100%;
-    justify-content: center;
     flex-shrink: 0;
 
     .well-input {
-      width: 60px;
+      width: var(--slot-well-width, 60px);
       flex-shrink: 0;
 
       :deep(.el-input__inner) {

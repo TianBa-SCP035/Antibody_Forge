@@ -12,9 +12,20 @@ from models.system import SysUser
 from modules.auth.dependencies import get_current_user
 from integrations.drm_service import prepare_office_download_file, remove_temp_file
 from modules.immunology.titer import service
-from modules.system.permissions import require_permission
+from modules.system.permissions import has_permission, require_permission
 
 router = APIRouter()
+
+_TITER_READ_PERMISSIONS = ("serum.page.detail", "serum.page.titer")
+
+
+def _require_titer_read(db: Session, user: SysUser) -> None:
+    if any(has_permission(db, user, code) for code in _TITER_READ_PERMISSIONS):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="Permission denied: serum.page.detail or serum.page.titer required",
+    )
 
 
 @router.post("/file/list")
@@ -23,7 +34,7 @@ def file_list(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.page.titer")
+    _require_titer_read(db, current_user)
     return success({"items": service.get_file_list(db, data.get("experiment_id"))})
 
 
@@ -111,7 +122,7 @@ def file_download(
     current_user: SysUser = Depends(get_current_user),
 ):
     try:
-        require_permission(db, current_user, "serum.page.titer")
+        _require_titer_read(db, current_user)
         record, file_path = service.get_download_record(db, id)
         if thumb and thumb.lower() in {"1", "true"}:
             thumbnail = service.create_thumbnail(file_path, w, h)
@@ -179,7 +190,7 @@ def plate_list(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.page.titer")
+    _require_titer_read(db, current_user)
     return success({"items": service.get_facs_plates(db, data.get("experiment_id"))})
 
 
@@ -224,7 +235,7 @@ def elisa_plate_list(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.page.titer")
+    _require_titer_read(db, current_user)
     return success({"items": service.get_elisa_plates(db, data.get("experiment_id"))})
 
 

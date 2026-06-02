@@ -457,65 +457,10 @@
 
       <!-- Titer -->
       <el-tab-pane label="效价检测" name="titer">
-        <el-row :gutter="16">
-          <el-col :xs="24" :md="12">
-            <el-card class="sub-card">
-              <template #header>
-                <div class="sub-card-header">
-                  <span><el-icon><Aim /></el-icon> 效价检测靶标</span>
-                </div>
-              </template>
-
-              <div v-if="!postForm.titer_targets || !postForm.titer_targets.length" class="empty-inline">
-                暂无靶标数据
-              </div>
-
-              <el-table
-                v-else
-                :data="postForm.titer_targets"
-                border
-                size="small"
-                class="table"
-              >
-                <el-table-column prop="name" label="名称" min-width="150" />
-                <el-table-column prop="type" label="类型" min-width="100" />
-                <el-table-column prop="species" label="种属" min-width="80" />
-                <el-table-column prop="batch_no" label="批次" min-width="100" />
-                <el-table-column prop="passage" label="代次" min-width="100" />
-                <el-table-column prop="cell_count" label="细胞量" min-width="100" />
-                <el-table-column prop="catalog_no" label="货号" min-width="100" />
-                <el-table-column prop="source" label="来源" min-width="100" />
-              </el-table>
-            </el-card>
-          </el-col>
-
-          <el-col :xs="24" :md="12">
-            <el-card class="sub-card">
-              <template #header>
-                <div class="sub-card-header">
-                  <span><el-icon><Medal /></el-icon> 阳性对照（PC）</span>
-                </div>
-              </template>
-
-              <div v-if="!postForm.titer_pcs || !postForm.titer_pcs.length" class="empty-inline">
-                暂无PC数据
-              </div>
-
-              <el-table
-                v-else
-                :data="postForm.titer_pcs"
-                border
-                size="small"
-                class="table"
-              >
-                <el-table-column prop="pc_name" label="PC名称" min-width="150" />
-                <el-table-column prop="catalog_batch" label="货号/批次" min-width="100" />
-                <el-table-column prop="source" label="来源" min-width="100" />
-                <el-table-column prop="concentration" label="浓度" min-width="110" />
-              </el-table>
-            </el-card>
-          </el-col>
-        </el-row>
+        <SerumDetailTiterTab
+          :project="postForm"
+          :active="activeTab === 'titer'"
+        />
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -525,7 +470,6 @@
 import { useUserStore } from '@vben/stores'
 
 import {
-  Aim,
   ArrowLeft,
   Calendar,
   Collection,
@@ -533,7 +477,6 @@ import {
   DocumentCopy,
   Edit,
   InfoFilled,
-  Medal,
   Tickets,
   User,
   Warning,
@@ -561,10 +504,11 @@ import {
   getSerumUserRoles,
 } from '#/utils/serumPermission'
 
+import SerumDetailTiterTab from './SerumDetailTiterTab.vue'
+
 export default {
   name: 'SerumDataDetail',
   components: {
-    Aim,
     ArrowLeft,
     Calendar,
     Collection,
@@ -584,7 +528,7 @@ export default {
     ElTabs,
     ElTag,
     InfoFilled,
-    Medal,
+    SerumDetailTiterTab,
     Tickets,
     User,
     Warning,

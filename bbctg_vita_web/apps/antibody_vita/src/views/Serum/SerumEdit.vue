@@ -8,7 +8,7 @@
               <span v-if="autoSaving" style="margin-right: 10px; color: #409EFF; font-size: 12px;">
                   <el-icon class="is-loading"><Loading /></el-icon> 自动保存中...
               </span>
-              <el-button size="small" type="primary" @click="submitForm" @contextmenu.prevent="submitForm($event, true)" :loading="loading" :disabled="loading || !canSaveForm()">保存</el-button>
+              <el-button size="small" type="primary" @click="submitForm" @contextmenu.prevent="submitForm($event, true)" :loading="loading" :disabled="loading || autoSaving || !canSaveForm()">保存</el-button>
               <el-button size="small" @click="handleCancel">取消</el-button>
           </div>
         </div>
@@ -741,7 +741,7 @@ import {
   ElTooltip,
 } from 'element-plus'
 
-import { fetchDetail, saveSerum, fetchNextId, deleteSerum, getSerumFilterOptions } from '#/api/serum'
+import { fetchDetail, saveSerum, fetchNextId, deleteSerum, getSerumFilterOptions, formatSaveError } from '#/api/serum'
 import MouseRegistryDialog from './MouseRegistryDialog.vue'
 import {
   canEditAllSerumProjects,
@@ -1252,9 +1252,9 @@ export default {
                         ElMessage.error('获取实验ID失败，请检查项目编号')
                     }
                 })
-                .catch(() => {
+                .catch((err) => {
                     this.loading = false
-                    ElMessage.error('获取实验ID失败，请检查网络连接')
+                    ElMessage.error(formatSaveError(err))
                 })
         } else {
             if (!this.postForm.experiment_id && this.postForm.project_code) {
@@ -1273,6 +1273,7 @@ export default {
                  saveSerum(submitData).then(response => {
                      if (response.data && response.data.id) {
                          this.postForm.id = response.data.id
+                         this.syncEditRouteId()
                      }
                      
                      if (response.data?.new_mouse_records) {
@@ -1305,8 +1306,9 @@ export default {
                              this.$router.push('/serum/edit')
                          }, 100)
                      }
-                 }).catch(() => {
+                 }).catch((err) => {
                      this.loading = false
+                     ElMessage.error(formatSaveError(err))
                  })
             } else {
                 this.loading = false
@@ -1497,6 +1499,13 @@ export default {
     removePC(index) {
         this.postForm.titer_pcs.splice(index, 1)
     },
+    syncEditRouteId() {
+      if (!this.postForm.id) return
+      this.$router.replace({
+        path: '/serum/edit',
+        query: { id: this.postForm.id },
+      })
+    },
     prepareSubmitData() {
       const submitData = JSON.parse(JSON.stringify(this.postForm))
       
@@ -1545,34 +1554,36 @@ export default {
     async doAutoSave() {
       if (!this.canSaveForm()) return
       if (this.loading || this.isAutoSaving) return
-      
-      const codeSnapshot = this.postForm.project_code
-      
-      if (codeSnapshot && codeSnapshot !== this.originalProjectCode) {
-        try {
-          const res = await fetchNextId(codeSnapshot)
-          if (this.postForm.project_code === codeSnapshot && res.data?.next_id) {
-            this.postForm.experiment_id = res.data.next_id
-          }
-        } catch (e) {
-          console.error("Failed to fetch next ID", e)
-        }
-      }
-      
-      if (!this.postForm.experiment_id && this.postForm.project_code) {
-        console.warn('自动保存跳过：实验ID为空')
-        return
-      }
-      
+
       this.isAutoSaving = true
       this.autoSaving = true
       try {
+        const codeSnapshot = this.postForm.project_code
+
+        if (codeSnapshot && codeSnapshot !== this.originalProjectCode) {
+          try {
+            const res = await fetchNextId(codeSnapshot)
+            if (this.postForm.project_code === codeSnapshot && res.data?.next_id) {
+              this.postForm.experiment_id = res.data.next_id
+            }
+          } catch (e) {
+            ElMessage.error(formatSaveError(e))
+            return
+          }
+        }
+
+        if (!this.postForm.experiment_id && this.postForm.project_code) {
+          console.warn('自动保存跳过：实验ID为空')
+          return
+        }
+
         const submitData = this.prepareSubmitData()
-        
+
         const res = await saveSerum(submitData)
         if (res.data?.id) {
           this.postForm.id = res.data.id
           this.originalProjectCode = this.postForm.project_code
+          this.syncEditRouteId()
         }
         
         if (res.data?.new_mouse_records) {
@@ -1595,7 +1606,7 @@ export default {
           this.matchAndUpdateIds(this.postForm.titer_pcs, res.data.new_pc_records, 'id', ['pc_name', 'catalog_batch', 'source', 'concentration'])
         }
       } catch (err) {
-        console.error('自动保存失败:', err)
+        ElMessage.error(formatSaveError(err))
       } finally {
         this.isAutoSaving = false
         this.autoSaving = false

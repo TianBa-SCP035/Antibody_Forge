@@ -1,5 +1,15 @@
 import request from '#/utils/request';
 
+const SAVE_TIMEOUT = 5000;
+
+export function formatSaveError(err: unknown): string {
+  const e = err as { code?: string; message?: string };
+  if (e?.code === 'ECONNABORTED' || /timeout/i.test(String(e?.message ?? ''))) {
+    return '保存超时，请重试';
+  }
+  return e?.message || '保存失败';
+}
+
 export function fetchStats() {
   return request({
     method: 'get',
@@ -27,6 +37,7 @@ export function fetchNextId(code: any) {
   return request({
     method: 'get',
     params: { code },
+    timeout: SAVE_TIMEOUT,
     url: '/serum/next_id',
   });
 }
@@ -35,6 +46,7 @@ export function saveSerum(data: any) {
   return request({
     data,
     method: 'post',
+    timeout: SAVE_TIMEOUT,
     url: '/serum/save',
   });
 }

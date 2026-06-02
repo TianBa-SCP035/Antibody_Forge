@@ -1501,10 +1501,16 @@ export default {
     },
     syncEditRouteId() {
       if (!this.postForm.id) return
-      this.$router.replace({
+      const nextId = String(this.postForm.id)
+      const routeId = String(this.$route.query.id ?? '')
+      const urlId = new URLSearchParams(window.location.search).get('id') ?? ''
+      if (routeId === nextId || urlId === nextId) return
+
+      const { href } = this.$router.resolve({
         path: '/serum/edit',
         query: { id: this.postForm.id },
       })
+      window.history.replaceState(window.history.state, '', href)
     },
     prepareSubmitData() {
       const submitData = JSON.parse(JSON.stringify(this.postForm))

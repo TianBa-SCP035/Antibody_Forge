@@ -157,7 +157,7 @@
                 :immune-stage-options="immuneStageOptions"
                 :group-options="groupOptions"
                 :is-active="activePlateName === getPlateKey(plate)"
-                :is-editable="false"
+                read-only
                 @load-image-preview="loadPreviewImage"
               />
               <ElisaPlateCard
@@ -170,7 +170,7 @@
                 :group-options="groupOptions"
                 :antigen-type-options="antigenTypeOptions"
                 :extra-absorbance-sheets="getElisaExtraAbsorbance(plate)"
-                :is-editable="false"
+                read-only
               />
             </el-tab-pane>
           </el-tabs>

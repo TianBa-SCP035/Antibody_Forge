@@ -1,5 +1,5 @@
 <template>
-  <div class="plate-card elisa-plate-card">
+  <div class="plate-card elisa-plate-card" :class="{ 'plate-card--view': readOnly }">
     <div class="plate-content">
       <div class="top-row">
         <div class="left-top-panel">
@@ -13,12 +13,19 @@
               </div>
               <el-form class="plate-form">
                 <el-form-item label="Excel结果">
+                  <el-input
+                    v-if="readOnly"
+                    :model-value="viewText(fileLabel(plateData.excel_file_id))"
+                    readonly
+                    style="width: 100%"
+                  />
                   <el-select
+                    v-else
                     v-model="plateData.excel_file_id"
                     placeholder="请从上方文件列表中选择"
                     filterable
                     clearable
-                    :disabled="!isEditable"
+                    :disabled="fieldDisabled"
                     style="width: 100%"
                     @change="onExcelSelect"
                     @clear="onClearExcel"
@@ -40,21 +47,28 @@
                   <el-icon><EditPen /></el-icon>
                   <span>基本信息</span>
                 </div>
-                <div v-if="isSaving" class="header-right">
+                <div v-if="isSaving && canMutate" class="header-right">
                   <el-icon class="is-loading"><Loading /></el-icon>
                   <span>保存中...</span>
                 </div>
               </div>
               <el-form class="plate-form">
                 <el-form-item label="二维码编号">
-                  <el-input v-model="plateData.qr_code" placeholder="扫描或输入" :disabled="!isEditable" @change="autoSave" />
+                  <el-input v-model="plateData.qr_code" placeholder="扫描或输入" :disabled="fieldDisabled" :readonly="readOnly" @change="autoSave" />
                 </el-form-item>
                 <el-form-item label="免疫阶段">
+                  <el-input
+                    v-if="readOnly"
+                    :model-value="viewText(plateData.immune_stage)"
+                    readonly
+                    style="width: 100%"
+                  />
                   <el-select
+                    v-else
                     v-model="plateData.immune_stage"
                     placeholder="请选择免疫阶段"
                     clearable
-                    :disabled="!isEditable"
+                    :disabled="fieldDisabled"
                     style="width: 100%"
                     @change="autoSave"
                   >
@@ -62,11 +76,18 @@
                   </el-select>
                 </el-form-item>
                 <el-form-item label="检测标靶">
+                  <el-input
+                    v-if="readOnly"
+                    :model-value="viewText(targetLabel(plateData.protein_target_id))"
+                    readonly
+                    style="width: 100%"
+                  />
                   <el-select
+                    v-else
                     v-model="plateData.protein_target_id"
                     placeholder="请选择检测标靶"
                     clearable
-                    :disabled="!isEditable"
+                    :disabled="fieldDisabled"
                     style="width: 100%"
                     @change="autoSave"
                   >
@@ -74,11 +95,18 @@
                   </el-select>
                 </el-form-item>
                 <el-form-item label="PC对照">
+                  <el-input
+                    v-if="readOnly"
+                    :model-value="viewText(pcLabel(plateData.pc_id))"
+                    readonly
+                    style="width: 100%"
+                  />
                   <el-select
+                    v-else
                     v-model="plateData.pc_id"
                     placeholder="请选择PC"
                     clearable
-                    :disabled="!isEditable"
+                    :disabled="fieldDisabled"
                     style="width: 100%"
                     @change="autoSave"
                   >
@@ -86,11 +114,18 @@
                   </el-select>
                 </el-form-item>
                 <el-form-item label="小鼠组别">
+                  <el-input
+                    v-if="readOnly"
+                    :model-value="viewText(plateData.mouse_group)"
+                    readonly
+                    style="width: 100%"
+                  />
                   <el-select
+                    v-else
                     v-model="plateData.mouse_group"
                     placeholder="请选择组别"
                     clearable
-                    :disabled="!isEditable"
+                    :disabled="fieldDisabled"
                     style="width: 100%"
                     @change="autoSave"
                   >
@@ -98,14 +133,21 @@
                   </el-select>
                 </el-form-item>
                 <el-form-item label="抗原类型">
+                  <el-input
+                    v-if="readOnly"
+                    :model-value="viewText(plateData.antigen_type)"
+                    readonly
+                    style="width: 100%"
+                  />
                   <el-select
+                    v-else
                     v-model="plateData.antigen_type"
                     placeholder="请选择或输入"
                     clearable
                     filterable
                     allow-create
                     default-first-option
-                    :disabled="!isEditable"
+                    :disabled="fieldDisabled"
                     style="width: 100%"
                     @change="autoSave"
                   >
@@ -117,7 +159,8 @@
                     :model-value="absorbanceWavelengthInput"
                     placeholder="如 450 nm"
                     class="absorbance-input"
-                    :disabled="!isEditable"
+                    :disabled="fieldDisabled"
+                    :readonly="readOnly"
                     @input="onAbsorbanceWavelengthInput"
                     @change="onAbsorbanceWavelengthChange"
                   />
@@ -149,7 +192,7 @@
                     {{ opt.label }}
                   </el-radio-button>
                 </el-radio-group>
-                <el-button type="text" class="delete-btn" :disabled="!isEditable" @click="handleDelete">
+                <el-button type="text" class="delete-btn" :disabled="!canMutate" @click="handleDelete">
                   <el-icon><Delete /></el-icon>
                   <span>删除此板</span>
                 </el-button>
@@ -178,12 +221,13 @@
                           :model-value="group.label"
                           size="small"
                           placeholder="分组标题"
-                          :disabled="!isEditable"
+                          :disabled="fieldDisabled"
+                          :readonly="readOnly"
                           @input="setGroupLabel(gi, $event)"
                           @change="autoSave"
                         />
                       </el-tooltip>
-                      <span v-if="isEditable" class="slot-group-remove" @click.stop="removeGroup(gi)">×</span>
+                      <span v-if="canMutate" class="slot-group-remove" @click.stop="removeGroup(gi)">×</span>
                     </div>
                     <div
                       v-if="groupDragPreview"
@@ -194,7 +238,11 @@
                     </div>
                   </div>
 
-                  <div class="wells-row top-wells">
+                  <div
+                    class="wells-row top-wells mouse-row-copyable"
+                    :title="canMutate ? '右键复制鼠号；Shift+单击切换 5/6 对模式' : '右键复制本行鼠号'"
+                    @contextmenu.capture.prevent="copyMouseRow('upper')"
+                  >
                     <div
                       v-for="item in upperSlotItems"
                       :key="'top-' + item.key"
@@ -208,10 +256,10 @@
                         :ref="slotInputRef('upper', item)"
                         :model-value="item.value"
                         size="small"
-                        :disabled="!isEditable || item.disabled"
+                        :disabled="fieldDisabled || item.disabled"
+                        :readonly="readOnly && !item.disabled"
                         @input="setSlotValue('upper', item, $event)"
                         @mousedown="onSlotMouseDown($event, 'upper', item)"
-                        @contextmenu.prevent="toggleSlotLayout('upper')"
                         @keydown.enter.prevent="focusNextSlot('upper', item)"
                         @paste="onSlotPaste($event, 'upper', item)"
                       />
@@ -271,7 +319,11 @@
                 </div>
 
                 <div class="slot-editor lower-slot-editor">
-                  <div class="wells-row bottom-wells">
+                  <div
+                    class="wells-row bottom-wells mouse-row-copyable"
+                    :title="canMutate ? '右键复制鼠号；Shift+单击切换 5/6 对模式' : '右键复制本行鼠号'"
+                    @contextmenu.capture.prevent="copyMouseRow('lower')"
+                  >
                     <div
                       v-for="item in lowerSlotItems"
                       :key="'bottom-' + item.key"
@@ -285,10 +337,10 @@
                         :ref="slotInputRef('lower', item)"
                         :model-value="item.value"
                         size="small"
-                        :disabled="!isEditable || item.disabled"
+                        :disabled="fieldDisabled || item.disabled"
+                        :readonly="readOnly && !item.disabled"
                         @input="setSlotValue('lower', item, $event)"
                         @mousedown="onSlotMouseDown($event, 'lower', item)"
-                        @contextmenu.prevent="toggleSlotLayout('lower')"
                         @keydown.enter.prevent="focusNextSlot('lower', item)"
                         @paste="onSlotPaste($event, 'lower', item)"
                       />
@@ -317,6 +369,7 @@ import {
   ElRadioGroup,
   ElSelect,
   ElTooltip,
+  ElMessage,
 } from 'element-plus'
 
 import {
@@ -339,7 +392,7 @@ function splitPasteTokens(text) {
   const lines = normalized.split('\n').map((s) => s.trim()).filter(Boolean)
   if (lines.length > 1) return lines
   const line = lines[0]
-  if (/[\t,;]/.test(line)) return line.split(/[\t,;]+/).map((s) => s.trim()).filter(Boolean)
+  if (/[\t,;，、]/.test(line)) return line.split(/[\t,;，、]+/).map((s) => s.trim()).filter(Boolean)
   return [line]
 }
 
@@ -373,6 +426,7 @@ export default {
     extraAbsorbanceSheets: { type: Array, default: () => [] },
     isSaving: { type: Boolean, default: false },
     isEditable: { type: Boolean, default: true },
+    readOnly: { type: Boolean, default: false },
   },
   emits: ['delete', 'save', 'excel-file-change'],
   data() {
@@ -389,6 +443,12 @@ export default {
     }
   },
   computed: {
+    canMutate() {
+      return this.isEditable && !this.readOnly
+    },
+    fieldDisabled() {
+      return !this.isEditable && !this.readOnly
+    },
     plateRows() {
       return PLATE_ROWS
     },
@@ -503,6 +563,25 @@ export default {
     if (this.saveTimer) clearTimeout(this.saveTimer)
   },
   methods: {
+    viewText(value) {
+      if (value === null || value === undefined || value === '') return '—'
+      return String(value)
+    },
+    fileLabel(fileId) {
+      if (!fileId) return ''
+      const file = (this.fileList || []).find((f) => f.id === fileId)
+      return file ? file.file_name : ''
+    },
+    targetLabel(id) {
+      if (!id) return ''
+      const target = (this.targetOptions || []).find((t) => t.id === id)
+      return target ? target.name : ''
+    },
+    pcLabel(id) {
+      if (!id) return ''
+      const pc = (this.pcOptions || []).find((p) => p.id === id)
+      return pc ? pc.pc_name : ''
+    },
     isNcLabel(value) {
       return /^NC$/i.test(String(value ?? '').trim())
     },
@@ -557,7 +636,7 @@ export default {
       this.absorbanceWavelengthInput = val?.target?.value ?? val
     },
     onAbsorbanceWavelengthChange() {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       const raw = String(this.absorbanceWavelengthInput || '').trim()
       const wavelength = raw === '' ? null : Number.parseInt(raw, 10)
       const matrix = this.plateData.absorbance_1?.matrix ?? null
@@ -565,7 +644,7 @@ export default {
       this.autoSave()
     },
     autoSave() {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       if (this.saveTimer) clearTimeout(this.saveTimer)
       this.saveTimer = setTimeout(() => {
         this.syncSlots()
@@ -636,7 +715,7 @@ export default {
       if (next) this.$nextTick(() => this.focusSlotInput(section, next))
     },
     handleDelete() {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       this.$emit('delete', this.plateData)
     },
     groupStyle(group) {
@@ -677,7 +756,7 @@ export default {
       this.autoSave()
     },
     setSlotValue(section, item, val) {
-      if (!this.isEditable || item.disabled) return
+      if (!this.canMutate || item.disabled) return
       const raw = val?.target?.value ?? val
       const v = raw === undefined || raw === null ? '' : String(raw)
       const list = { ...this.getSlotList(section), values: [...this.getSlotList(section).values] }
@@ -689,7 +768,7 @@ export default {
       this.autoSave()
     },
     onSlotPaste(event, section, startItem) {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       const tokens = splitPasteTokens(event.clipboardData?.getData('text/plain'))
       if (tokens.length <= 1) return
       event.preventDefault()
@@ -714,7 +793,13 @@ export default {
       this.$nextTick(() => this.focusSlotInput(section, next))
     },
     onSlotMouseDown(event, section, item) {
-      if (!this.isEditable) return
+      if (event.shiftKey && event.button === 0) {
+        if (!this.canMutate) return
+        event.preventDefault()
+        this.toggleSlotLayout(section)
+        return
+      }
+      if (!this.canMutate) return
       if (event.altKey) {
         if (section !== 'upper' || item.disabled) return
         event.preventDefault()
@@ -744,11 +829,38 @@ export default {
       }
     },
     toggleSlotLayout(section) {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       const slots = this.getSlotList(section)
       const next = slots.layout === '5pair' ? expandLayout5to6(slots) : collapseLayout6to5(slots)
       this.applySlotList(section, next)
       this.autoSave()
+    },
+    async copyMouseRow(section) {
+      const numbers = this.buildSlotItems(section)
+        .filter((item) => !item.disabled)
+        .map((item) => String(item.value ?? '').trim())
+        .filter((v) => v && !/^(NC|PC|N\/A)$/i.test(v))
+      if (!numbers.length) {
+        ElMessage.warning('没有可复制的鼠号')
+        return
+      }
+      const text = numbers.join('、')
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text)
+        } else {
+          const ta = document.createElement('textarea')
+          ta.value = text
+          ta.style.cssText = 'position:fixed;left:-9999px'
+          document.body.appendChild(ta)
+          ta.select()
+          if (!document.execCommand('copy')) throw new Error('copy failed')
+          document.body.removeChild(ta)
+        }
+        ElMessage.success(`已复制 ${numbers.length} 个鼠号`)
+      } catch {
+        ElMessage.warning('复制失败，请手动复制')
+      }
     },
     finishSlotDrag() {
       if (!this.dragState.active) return
@@ -821,7 +933,7 @@ export default {
       this.wellMatrix = matrix
     },
     onWellMouseDown(event, row, col) {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       this.wellDrag = {
         active: true,
         startRow: row,
@@ -1271,6 +1383,10 @@ $plate-legend-title-h: 28px;
   flex-shrink: 0;
   position: relative;
 
+  &.mouse-row-copyable {
+    cursor: context-menu;
+  }
+
   .well-input {
     min-width: 0;
 
@@ -1468,6 +1584,20 @@ $plate-legend-title-h: 28px;
     color: #409eff;
     text-align: center;
     flex: 1;
+  }
+}
+
+.plate-card--view {
+  :deep(.el-input.is-readonly .el-input__wrapper) {
+    background-color: var(--el-fill-color-blank);
+    box-shadow: 0 0 0 1px var(--el-border-color) inset;
+    cursor: text;
+  }
+
+  :deep(.el-input.is-readonly .el-input__inner) {
+    cursor: text;
+    user-select: text;
+    color: var(--el-text-color-regular);
   }
 }
 

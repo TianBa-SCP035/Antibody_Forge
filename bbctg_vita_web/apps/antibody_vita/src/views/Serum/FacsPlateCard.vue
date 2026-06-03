@@ -1,5 +1,5 @@
 <template>
-  <div class="plate-card">
+  <div class="plate-card" :class="{ 'plate-card--view': readOnly }">
     <div class="plate-content">
       <div class="top-row">
         <div class="left-top-panel">
@@ -13,12 +13,19 @@
             </div>
             <el-form class="plate-form">
               <el-form-item label="96孔板图片">
+                <el-input
+                  v-if="readOnly"
+                  :model-value="viewText(fileLabel(plateData.image_file_id))"
+                  readonly
+                  style="width: 100%"
+                />
                 <el-select
+                  v-else
                   v-model="plateData.image_file_id"
                   placeholder="请从上方文件列表中选择"
                   filterable
                   clearable
-                  :disabled="!isEditable"
+                  :disabled="fieldDisabled"
                   style="width: 100%"
                   @change="autoSave"
                   @clear="onClearFile('image')"
@@ -35,12 +42,19 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="Excel结果">
+                <el-input
+                  v-if="readOnly"
+                  :model-value="viewText(fileLabel(plateData.excel_file_id))"
+                  readonly
+                  style="width: 100%"
+                />
                 <el-select
+                  v-else
                   v-model="plateData.excel_file_id"
                   placeholder="请从上方文件列表中选择"
                   filterable
                   clearable
-                  :disabled="!isEditable"
+                  :disabled="fieldDisabled"
                   style="width: 100%"
                   @change="onExcelFileChange"
                   @clear="onClearExcelFile"
@@ -65,17 +79,23 @@
                 <el-icon><EditPen /></el-icon>
                 <span>基本信息</span>
               </div>
-              <div v-if="isSaving" class="header-right">
+              <div v-if="isSaving && canMutate" class="header-right">
                 <el-icon class="is-loading"><Loading /></el-icon>
                 <span>保存中...</span>
               </div>
             </div>
             <el-form class="plate-form">
               <el-form-item label="二维码编号">
-                <el-input v-model="plateData.qr_code" placeholder="扫描或输入二维码" :disabled="!isEditable" @change="autoSave" />
+                <el-input v-model="plateData.qr_code" placeholder="扫描或输入二维码" :disabled="fieldDisabled" :readonly="readOnly" @change="autoSave" />
               </el-form-item>
               <el-form-item label="免疫阶段">
-                <el-select v-model="plateData.immune_stage" placeholder="请选择免疫阶段" clearable :disabled="!isEditable" style="width: 100%" @change="autoSave" @clear="onClearFile('immune_stage')">
+                <el-input
+                  v-if="readOnly"
+                  :model-value="viewText(plateData.immune_stage)"
+                  readonly
+                  style="width: 100%"
+                />
+                <el-select v-else v-model="plateData.immune_stage" placeholder="请选择免疫阶段" clearable :disabled="fieldDisabled" style="width: 100%" @change="autoSave" @clear="onClearFile('immune_stage')">
                   <el-option
                     v-for="stage in immuneStageOptions"
                     :key="stage"
@@ -85,7 +105,13 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="细胞标靶">
-                <el-select v-model="plateData.cell_target_id" placeholder="请选择细胞标靶" clearable :disabled="!isEditable" style="width: 100%" @change="autoSave" @clear="onClearFile('cell_target_id')">
+                <el-input
+                  v-if="readOnly"
+                  :model-value="viewText(targetLabel(plateData.cell_target_id))"
+                  readonly
+                  style="width: 100%"
+                />
+                <el-select v-else v-model="plateData.cell_target_id" placeholder="请选择细胞标靶" clearable :disabled="fieldDisabled" style="width: 100%" @change="autoSave" @clear="onClearFile('cell_target_id')">
                   <el-option
                     v-for="target in targetOptions"
                     :key="target.id"
@@ -95,11 +121,18 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="纵坐标参数">
+                <el-input
+                  v-if="readOnly"
+                  :model-value="viewText(plateData.y_axis)"
+                  readonly
+                  style="width: 100%"
+                />
                 <el-select
+                  v-else
                   v-model="plateData.y_axis"
                   placeholder="如：SSC-H"
                   clearable
-                  :disabled="!isEditable"
+                  :disabled="fieldDisabled"
                   style="width: 100%"
                   @change="autoSave"
                 >
@@ -112,11 +145,18 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="横坐标参数">
+                <el-input
+                  v-if="readOnly"
+                  :model-value="viewText(plateData.x_axis)"
+                  readonly
+                  style="width: 100%"
+                />
                 <el-select
+                  v-else
                   v-model="plateData.x_axis"
                   placeholder="如：RL1-H"
                   clearable
-                  :disabled="!isEditable"
+                  :disabled="fieldDisabled"
                   style="width: 100%"
                   @change="autoSave"
                 >
@@ -129,7 +169,13 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="上半PC">
-                <el-select v-model="plateData.pc_upper_id" placeholder="请选择上PC" clearable :disabled="!isEditable" style="width: 100%" @change="autoSave" @clear="onClearFile('pc_upper_id')">
+                <el-input
+                  v-if="readOnly"
+                  :model-value="viewText(pcLabel(plateData.pc_upper_id))"
+                  readonly
+                  style="width: 100%"
+                />
+                <el-select v-else v-model="plateData.pc_upper_id" placeholder="请选择上PC" clearable :disabled="fieldDisabled" style="width: 100%" @change="autoSave" @clear="onClearFile('pc_upper_id')">
                   <el-option
                     v-for="pc in pcOptions"
                     :key="pc.id"
@@ -139,7 +185,13 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="下半PC">
-                <el-select v-model="plateData.pc_lower_id" placeholder="请选择下PC" clearable :disabled="!isEditable" style="width: 100%" @change="autoSave" @clear="onClearFile('pc_lower_id')">
+                <el-input
+                  v-if="readOnly"
+                  :model-value="viewText(pcLabel(plateData.pc_lower_id))"
+                  readonly
+                  style="width: 100%"
+                />
+                <el-select v-else v-model="plateData.pc_lower_id" placeholder="请选择下PC" clearable :disabled="fieldDisabled" style="width: 100%" @change="autoSave" @clear="onClearFile('pc_lower_id')">
                   <el-option
                     v-for="pc in pcOptions"
                     :key="pc.id"
@@ -149,7 +201,13 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="上半组别">
-                <el-select v-model="plateData.upper_group" placeholder="请选择上半组别" clearable :disabled="!isEditable" style="width: 100%" @change="autoSave" @clear="onClearFile('upper_group')">
+                <el-input
+                  v-if="readOnly"
+                  :model-value="viewText(plateData.upper_group)"
+                  readonly
+                  style="width: 100%"
+                />
+                <el-select v-else v-model="plateData.upper_group" placeholder="请选择上半组别" clearable :disabled="fieldDisabled" style="width: 100%" @change="autoSave" @clear="onClearFile('upper_group')">
                   <el-option
                     v-for="group in groupOptions"
                     :key="group"
@@ -159,7 +217,13 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="下半组别">
-                <el-select v-model="plateData.lower_group" placeholder="请选择下半组别" clearable :disabled="!isEditable" style="width: 100%" @change="autoSave" @clear="onClearFile('lower_group')">
+                <el-input
+                  v-if="readOnly"
+                  :model-value="viewText(plateData.lower_group)"
+                  readonly
+                  style="width: 100%"
+                />
+                <el-select v-else v-model="plateData.lower_group" placeholder="请选择下半组别" clearable :disabled="fieldDisabled" style="width: 100%" @change="autoSave" @clear="onClearFile('lower_group')">
                   <el-option
                     v-for="group in groupOptions"
                     :key="group"
@@ -181,11 +245,11 @@
                 <span>96孔板图片预览</span>
               </div>
               <div class="header-right">
-                <el-button type="text" class="delete-btn" :disabled="!isEditable" @click="handleDelete">
+                <el-button type="text" class="delete-btn" :disabled="!canMutate" @click="handleDelete">
                   <el-icon><Delete /></el-icon>
                   <span>删除此板</span>
                 </el-button>
-                <el-button type="text" class="mask-toggle-btn" :disabled="!isEditable" @click="handleMaskToggle" @contextmenu.prevent.stop="handleMaskContextMenu">
+                <el-button type="text" class="mask-toggle-btn" :disabled="!canMutate" @click="handleMaskToggle" @contextmenu.prevent.stop="handleMaskContextMenu">
                   <el-icon><Setting /></el-icon>
                   <span>仪器类型: {{ plateData.instrument_type || '国产' }}</span>
                 </el-button>
@@ -217,13 +281,14 @@
                         :model-value="group.label"
                         size="small"
                         placeholder="分组标题"
-                        :disabled="!isEditable"
+                        :disabled="fieldDisabled"
+                        :readonly="readOnly"
                         @input="setSlotGroupLabel('upper', index, $event)"
                         @change="autoSave"
                       />
                     </el-tooltip>
                     <span
-                      v-if="isEditable"
+                      v-if="canMutate"
                       class="slot-group-remove"
                       @click.stop="removeSlotGroup('upper', index)"
                     >×</span>
@@ -237,7 +302,12 @@
                   </div>
                 </div>
 
-                <div class="wells-row top-wells" :style="slotTrackStyle">
+                <div
+                  class="wells-row top-wells mouse-row-copyable"
+                  :style="slotTrackStyle"
+                  title="右键复制本行鼠号"
+                  @contextmenu.capture.prevent="copyMouseRow('upper')"
+                >
                   <div
                     v-for="i in slotCount"
                     :key="'top-' + i"
@@ -250,7 +320,8 @@
                       :ref="'top-' + i"
                       :model-value="getUpperWell(i - 1)"
                       size="small"
-                      :disabled="!isEditable"
+                      :disabled="fieldDisabled"
+                      :readonly="readOnly"
                       @input="setSlotValue('upper', i - 1, $event)"
                       @mousedown="handleSlotMouseDown($event, 'upper', i - 1)"
                       @keydown.enter.prevent="handleWellEnter('top', i)"
@@ -307,20 +378,20 @@
                   <div class="adjuster-content">
                     <div class="adjuster-row">
                         <span>上:</span>
-                        <el-input-number v-model="maskOffset.top" :min="0" :max="50" :step="0.1" size="small" controls-position="right" :disabled="!isEditable" @change="updateGridBBox(false)" />
+                        <el-input-number v-model="maskOffset.top" :min="0" :max="50" :step="0.1" size="small" controls-position="right" :disabled="!canMutate" @change="updateGridBBox(false)" />
                         <span>下:</span>
-                        <el-input-number v-model="maskOffset.bottom" :min="0" :max="50" :step="0.1" size="small" controls-position="right" :disabled="!isEditable" @change="updateGridBBox(false)" />
+                        <el-input-number v-model="maskOffset.bottom" :min="0" :max="50" :step="0.1" size="small" controls-position="right" :disabled="!canMutate" @change="updateGridBBox(false)" />
                       </div>
                       <div class="adjuster-row">
                         <span>左:</span>
-                        <el-input-number v-model="maskOffset.left" :min="0" :max="50" :step="0.1" size="small" controls-position="right" :disabled="!isEditable" @change="updateGridBBox(false)" />
+                        <el-input-number v-model="maskOffset.left" :min="0" :max="50" :step="0.1" size="small" controls-position="right" :disabled="!canMutate" @change="updateGridBBox(false)" />
                         <span>右:</span>
-                        <el-input-number v-model="maskOffset.right" :min="0" :max="50" :step="0.1" size="small" controls-position="right" :disabled="!isEditable" @change="updateGridBBox(false)" />
+                        <el-input-number v-model="maskOffset.right" :min="0" :max="50" :step="0.1" size="small" controls-position="right" :disabled="!canMutate" @change="updateGridBBox(false)" />
                       </div>
                     <div class="adjuster-presets">
                       <span class="preset-label">快速选项:</span>
-                      <el-button size="small" :disabled="!isEditable" @click="setInstrument('国产')">国产</el-button>
-                      <el-button size="small" :disabled="!isEditable" @click="setInstrument('赛多利斯')">赛多利斯</el-button>
+                      <el-button size="small" :disabled="!canMutate" @click="setInstrument('国产')">国产</el-button>
+                      <el-button size="small" :disabled="!canMutate" @click="setInstrument('赛多利斯')">赛多利斯</el-button>
                     </div>
                   </div>
                 </div>
@@ -348,7 +419,12 @@
               </div>
 
               <div class="slot-editor lower-slot-editor plate-column">
-                <div class="wells-row bottom-wells" :style="slotTrackStyle">
+                <div
+                  class="wells-row bottom-wells mouse-row-copyable"
+                  :style="slotTrackStyle"
+                  title="右键复制本行鼠号"
+                  @contextmenu.capture.prevent="copyMouseRow('lower')"
+                >
                   <div
                     v-for="i in slotCount"
                     :key="'bottom-' + i"
@@ -361,7 +437,8 @@
                       :ref="'bottom-' + i"
                       :model-value="getLowerWell(i - 1)"
                       size="small"
-                      :disabled="!isEditable"
+                      :disabled="fieldDisabled"
+                      :readonly="readOnly"
                       @input="setSlotValue('lower', i - 1, $event)"
                       @mousedown="handleSlotMouseDown($event, 'lower', i - 1)"
                       @keydown.enter.prevent="handleWellEnter('bottom', i)"
@@ -389,13 +466,14 @@
                         :model-value="group.label"
                         size="small"
                         placeholder="分组标题"
-                        :disabled="!isEditable"
+                        :disabled="fieldDisabled"
+                        :readonly="readOnly"
                         @input="setSlotGroupLabel('lower', index, $event)"
                         @change="autoSave"
                       />
                     </el-tooltip>
                     <span
-                      v-if="isEditable"
+                      v-if="canMutate"
                       class="slot-group-remove"
                       @click.stop="removeSlotGroup('lower', index)"
                     >×</span>
@@ -438,6 +516,7 @@ import {
   ElOption,
   ElSelect,
   ElTooltip,
+  ElMessage,
 } from 'element-plus'
 
 const GATE_TEMPLATES = {
@@ -459,7 +538,7 @@ const PLATE_ROWS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 const DILUTION_EXPONENTS = [2, 3, 4, 5, 2, 3, 4, 5]
 const DILUTION_SUPERSCRIPT = { 2: '²', 3: '³', 4: '⁴', 5: '⁵' }
 const DILUTION_LEGEND_PADDING_X = 12
-/** 将剪贴板文本拆成多个鼠号：多行、Tab/逗号/分号分隔的单行 */
+/** 将剪贴板文本拆成多个鼠号：多行、Tab/中英文逗号/顿号/分号分隔的单行 */
 function splitPasteTokens(text) {
   const normalized = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
   if (!normalized) return []
@@ -468,8 +547,8 @@ function splitPasteTokens(text) {
   if (lines.length > 1) return lines
 
   const line = lines[0]
-  if (/[\t,;]/.test(line)) {
-    return line.split(/[\t,;]+/).map(s => s.trim()).filter(Boolean)
+  if (/[\t,;，、]/.test(line)) {
+    return line.split(/[\t,;，、]+/).map(s => s.trim()).filter(Boolean)
   }
   return [line]
 }
@@ -551,6 +630,10 @@ export default {
     isEditable: {
       type: Boolean,
       default: true
+    },
+    readOnly: {
+      type: Boolean,
+      default: false
     }
   },
   data() {
@@ -590,6 +673,12 @@ export default {
     }
   },
   computed: {
+    canMutate() {
+      return this.isEditable && !this.readOnly
+    },
+    fieldDisabled() {
+      return !this.isEditable && !this.readOnly
+    },
     slotCount() {
       return SLOT_COUNT
     },
@@ -735,6 +824,25 @@ export default {
     }
   },
   methods: {
+    viewText(value) {
+      if (value === null || value === undefined || value === '') return '—'
+      return String(value)
+    },
+    fileLabel(fileId) {
+      if (!fileId) return ''
+      const file = (this.fileList || []).find((f) => f.id === fileId)
+      return file ? file.file_name : ''
+    },
+    targetLabel(id) {
+      if (!id) return ''
+      const target = (this.targetOptions || []).find((t) => t.id === id)
+      return target ? target.name : ''
+    },
+    pcLabel(id) {
+      if (!id) return ''
+      const pc = (this.pcOptions || []).find((p) => p.id === id)
+      return pc ? pc.pc_name : ''
+    },
     formatRowDilution(rowIndex) {
       const exp = DILUTION_EXPONENTS[rowIndex] ?? 2
       return `10${DILUTION_SUPERSCRIPT[exp] ?? exp}`
@@ -751,7 +859,7 @@ export default {
       return file.preview_object_url || file.thumb_object_url || ''
     },
     autoSave() {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       if (this.saveTimer) clearTimeout(this.saveTimer)
       this.saveTimer = setTimeout(() => {
         this.ensureWellArrays()
@@ -775,19 +883,19 @@ export default {
       }, 200)
     },
     onExcelFileChange() {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       this.$emit('excel-file-change', {
         fileId: this.plateData.excel_file_id,
       })
     },
     onClearExcelFile() {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       this.plateData.excel_file_id = null
       this.plateData.positive_well_list = []
       this.autoSave()
     },
     onClearFile(type) {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       if (type === 'image') this.plateData.image_file_id = null
       if (type === 'immune_stage') this.plateData.immune_stage = null
       if (type === 'cell_target_id') this.plateData.cell_target_id = null
@@ -859,7 +967,7 @@ export default {
       return index === 0 || index === SLOT_COUNT - 1
     },
     setSlotValue(section, idx, val) {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       const v = (val && val.target) ? val.target.value : val
       this.ensureWellArrays()
       this.plateData[this.getMouseListField(section)][idx] = v
@@ -882,7 +990,7 @@ export default {
       }
     },
     handleWellPaste(event, row, index) {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       const values = splitPasteTokens(event.clipboardData?.getData('text/plain'))
       if (values.length <= 1) return
 
@@ -896,6 +1004,34 @@ export default {
       }
       this.autoSave()
       this.$nextTick(() => this.focusWellInput(row, Math.min(startIdx + n + 1, SLOT_COUNT)))
+    },
+    async copyMouseRow(section) {
+      const field = section === 'upper' ? 'upper_mouse_list' : 'lower_mouse_list'
+      this.ensureWellArrays()
+      const numbers = (this.plateData[field] || [])
+        .map((v) => String(v ?? '').trim())
+        .filter((v) => v && !/^(NC|PC|N\/A)$/i.test(v))
+      if (!numbers.length) {
+        ElMessage.warning('没有可复制的鼠号')
+        return
+      }
+      const text = numbers.join('、')
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text)
+        } else {
+          const ta = document.createElement('textarea')
+          ta.value = text
+          ta.style.cssText = 'position:fixed;left:-9999px'
+          document.body.appendChild(ta)
+          ta.select()
+          if (!document.execCommand('copy')) throw new Error('copy failed')
+          document.body.removeChild(ta)
+        }
+        ElMessage.success(`已复制 ${numbers.length} 个鼠号`)
+      } catch {
+        ElMessage.warning('复制失败，请手动复制')
+      }
     },
     handleWellEnter(row, index) {
       const nextIndex = index + 1
@@ -941,7 +1077,7 @@ export default {
       return source && source.label ? source.label : '新分组'
     },
     setSlotGroupLabel(section, index, value) {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       const groups = this.getGroupsForSection(section)
       if (!groups[index]) return
       groups[index].label = value
@@ -966,14 +1102,14 @@ export default {
       this.groupTooltipOverflow = { ...this.groupTooltipOverflow, [section]: next }
     },
     removeSlotGroup(section, index) {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       const groups = [...this.getGroupsForSection(section)]
       groups.splice(index, 1)
       this.plateData[this.getGroupField(section)] = groups
       this.autoSave()
     },
     handleSlotMouseDown(event, section, index) {
-      if (!this.isEditable || !event.altKey) return
+      if (!this.canMutate || !event.altKey) return
       event.preventDefault()
       this.ensureWellArrays()
       this.dragState = {
@@ -1008,7 +1144,7 @@ export default {
       this.applySlotSelection(section, range)
     },
     applySlotSelection(section, range) {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       const groups = this.getGroupsForSection(section)
       const sourceGroup = groups.find(group => range.start >= group.start && range.start <= group.end)
       const nextGroups = []
@@ -1061,7 +1197,7 @@ export default {
       this.forceRecalc()
     },
     updateGridBBox(shouldSave = true) {
-      if (!this.isEditable && shouldSave) return
+      if (!this.canMutate && shouldSave) return
       if (!this.imageNaturalSize.width) return
 
       const { width: iw, height: ih } = this.imageNaturalSize
@@ -1081,7 +1217,7 @@ export default {
       }
     },
     setInstrument(label) {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       this.plateData.instrument_type = label
       const type = label === '赛多利斯' ? 'cytomics' : 'domestic'
       this.applyPreset(type, true)
@@ -1143,7 +1279,7 @@ export default {
       this.wellDragState.endCol = colIndex
     },
     handleWellMouseDown(event, rowIndex, colIndex) {
-      if (!this.isEditable || event.button !== 0) return
+      if (!this.canMutate || event.button !== 0) return
       this.wellDragState = {
         active: true,
         startRow: rowIndex,
@@ -1167,7 +1303,7 @@ export default {
       if (!this.wellDragState.active) return
       const { startRow, startCol, endRow, endCol, applyPositive } = this.wellDragState
       this.resetWellDragState()
-      if (!this.isEditable || startRow === null || endRow === null) return
+      if (!this.canMutate || startRow === null || endRow === null) return
       const r0 = Math.min(startRow, endRow)
       const r1 = Math.max(startRow, endRow)
       const c0 = Math.min(startCol, endCol)
@@ -1175,7 +1311,7 @@ export default {
       this.applyWellRectangle(r0, c0, r1, c1, applyPositive)
     },
     applyWellRectangle(r0, c0, r1, c1, positive) {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       const listSet = new Set(
         (Array.isArray(this.plateData.positive_well_list) ? this.plateData.positive_well_list : [])
           .filter(w => w && typeof w === 'string')
@@ -1196,7 +1332,7 @@ export default {
       this.autoSave()
     },
     handleMaskToggle() {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       if (this.plateData.instrument_type === '国产') {
         this.plateData.instrument_type = '赛多利斯'
       } else {
@@ -1205,11 +1341,11 @@ export default {
       this.autoSave()
     },
     handleMaskContextMenu() {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       this.showMaskAdjuster = !this.showMaskAdjuster
     },
     handleDelete() {
-      if (!this.isEditable) return
+      if (!this.canMutate) return
       this.$emit('delete', this.plateData)
     },
     getPlateData() {
@@ -1637,6 +1773,10 @@ $plate-legend-gap: 12px;
     gap: 8px;
     flex-shrink: 0;
 
+    &.mouse-row-copyable {
+      cursor: context-menu;
+    }
+
     .well-input {
       width: var(--slot-well-width, 60px);
       flex-shrink: 0;
@@ -1923,6 +2063,20 @@ $plate-legend-gap: 12px;
         box-shadow: inset 0 0 0 1px rgba(245, 108, 108, 0.5);
       }
     }
+  }
+}
+
+.plate-card--view {
+  :deep(.el-input.is-readonly .el-input__wrapper) {
+    background-color: var(--el-fill-color-blank);
+    box-shadow: 0 0 0 1px var(--el-border-color) inset;
+    cursor: text;
+  }
+
+  :deep(.el-input.is-readonly .el-input__inner) {
+    cursor: text;
+    user-select: text;
+    color: var(--el-text-color-regular);
   }
 }
 

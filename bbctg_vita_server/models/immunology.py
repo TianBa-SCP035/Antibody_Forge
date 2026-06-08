@@ -23,6 +23,7 @@ class SerumImmProject(Base):
     pm: Mapped[str | None] = mapped_column(String(64))
     study_type: Mapped[str | None] = mapped_column(String(64))
     assay_method: Mapped[str | None] = mapped_column(String(64))
+    assay_method_config: Mapped[object | None] = mapped_column(JSON)
     project_status: Mapped[str | None] = mapped_column(String(64))
     remark: Mapped[str | None] = mapped_column(String(255))
     mouse_strain: Mapped[str | None] = mapped_column(String(128))
@@ -45,6 +46,7 @@ class SerumImmProject(Base):
             "pm": self.pm,
             "study_type": self.study_type,
             "assay_method": self.assay_method,
+            "assay_method_config": self.assay_method_config,
             "project_status": self.project_status,
             "remark": self.remark,
             "mouse_strain": self.mouse_strain,

@@ -221,6 +221,7 @@ PROJECT_FIELDS = [
     "pm",
     "study_type",
     "assay_method",
+    "assay_method_config",
     "project_status",
     "remark",
 ]

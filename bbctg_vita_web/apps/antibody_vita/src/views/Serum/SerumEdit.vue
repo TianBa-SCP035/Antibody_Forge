@@ -105,11 +105,10 @@
           </el-col>
           <el-col :span="8">
             <el-form-item label="检测方法" prop="assay_method">
-              <el-select v-model="postForm.assay_method" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入检测方法">
-                <el-option label="FACS" value="FACS" />
-                <el-option label="ELISA" value="ELISA" />
-                <el-option label="FACS+ELISA" value="FACS+ELISA" />
-              </el-select>
+              <AssayMethodEditor
+                v-model:config="postForm.assay_method_config"
+                v-model:display="postForm.assay_method"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -125,20 +124,12 @@
                 <el-option label="加免中" value="加免中" />
                 <el-option label="待检测" value="待检测" />
                 <el-option label="待上机" value="待上机" />
+                <el-option label="已采血" value="已采血" />
+                <el-option label="已上传" value="已上传" />
+                <el-option label="已检测" value="已检测" />
+                <el-option label="已汇报" value="已汇报" />
                 <el-option label="无效价处死" value="无效价处死" />
                 <el-option label="结题" value="结题" />
-                <el-option label="1月上机" value="1月上机" />
-                <el-option label="2月上机" value="2月上机" />
-                <el-option label="3月上机" value="3月上机" />
-                <el-option label="4月上机" value="4月上机" />
-                <el-option label="5月上机" value="5月上机" />
-                <el-option label="6月上机" value="6月上机" />
-                <el-option label="7月上机" value="7月上机" />
-                <el-option label="8月上机" value="8月上机" />
-                <el-option label="9月上机" value="9月上机" />
-                <el-option label="10月上机" value="10月上机" />
-                <el-option label="11月上机" value="11月上机" />
-                <el-option label="12月上机" value="12月上机" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -743,6 +734,7 @@ import {
 
 import { fetchDetail, saveSerum, fetchNextId, deleteSerum, getSerumFilterOptions, formatSaveError } from '#/api/serum'
 import MouseRegistryDialog from './MouseRegistryDialog.vue'
+import AssayMethodEditor from './AssayMethodEditor.vue'
 import {
   canEditAllSerumProjects,
   canCreateSerumProject,
@@ -755,6 +747,7 @@ export default {
   name: 'SerumEdit',
   components: {
     MouseRegistryDialog,
+    AssayMethodEditor,
     ElButton,
     ElCard,
     ElCheckbox,
@@ -803,6 +796,7 @@ export default {
           pm: '纪鑫',
           study_type: '',
           assay_method: '',
+          assay_method_config: null,
           immunization_interval: '',
           remark: '',
           mouse_groups: [],

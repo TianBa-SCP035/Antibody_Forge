@@ -110,7 +110,6 @@ export interface ElisaPlateLike {
 interface Observation {
   hasData: boolean
   maxValue: number
-  plateSortKey: number
 }
 
 type ObsMap = Map<string, Observation>
@@ -291,11 +290,6 @@ function maxPositiveExponent(
   return max
 }
 
-function plateSortKey(plate: FacsPlateLike): number {
-  if (plate.id != null) return Number(plate.id)
-  return 1_000_000_000 + (Number(plate.tempId) || 0)
-}
-
 function obsKey(
   method: 'FACS' | 'ELISA',
   stage: string,
@@ -306,6 +300,7 @@ function obsKey(
   return `${method}\0${stage}\0${groupId}\0${targetKey}\0${mouseNo}`
 }
 
+/** 同一 method + 阶段 + 组别 + 标靶 + 鼠号 冲突时，保留更高效价 */
 function setObservation(
   map: ObsMap,
   method: 'FACS' | 'ELISA',
@@ -314,17 +309,15 @@ function setObservation(
   targetKey: string,
   mouseNo: string,
   maxValue: number,
-  sortKey: number,
 ): void {
   if (!mouseNo) return
   const key = obsKey(method, stage, groupId, targetKey, mouseNo)
   const next: Observation = {
     hasData: true,
     maxValue,
-    plateSortKey: sortKey,
   }
   const prev = map.get(key)
-  if (!prev || sortKey >= prev.plateSortKey) {
+  if (!prev || maxValue > prev.maxValue) {
     map.set(key, next)
   }
 }
@@ -375,7 +368,6 @@ function processHalf(
   section: 'upper' | 'lower',
   stage: string,
   targetKey: string,
-  sortKey: number,
   mouseToGroup: Map<string, string>,
 ): void {
   const mouseList = normalizeMouseList(
@@ -403,7 +395,6 @@ function processHalf(
       targetKey,
       mouseNo,
       maxExp > 0 ? 10 ** maxExp : 0,
-      sortKey,
     )
   }
 }
@@ -439,7 +430,6 @@ function processElisaPlate(
   plate: ElisaPlateLike,
   stage: string,
   targetKey: string,
-  sortKey: number,
   mouseToGroup: Map<string, string>,
 ): void {
   // ELISA 结论按业务仅使用上方槽位字段映射鼠号（下方主要承载 NC/PC 逻辑）
@@ -463,7 +453,7 @@ function processElisaPlate(
         maxDilution = ELISA_DILUTION_VALUES[row] ?? maxDilution
       }
     }
-    setObservation(map, 'ELISA', stage, groupId, targetKey, mouseNo, maxDilution, sortKey)
+    setObservation(map, 'ELISA', stage, groupId, targetKey, mouseNo, maxDilution)
   }
 }
 
@@ -484,10 +474,34 @@ function sortGroupIds(a: string, b: string): number {
   return a.localeCompare(b, 'zh-CN')
 }
 
-function sortTargetKeys(a: string, b: string): number {
-  const la = targetDisplayName(a)
-  const lb = targetDisplayName(b)
-  return la.localeCompare(lb, 'zh-CN')
+/** 效价结论表格行：有种属时按此固定顺序，其余后排 */
+const CONCLUSION_SPECIES_ORDER = ['人', '猴', '鼠', '狗', '猫'] as const
+
+function speciesSortRank(species: string | undefined | null): number {
+  const s = (species || '').trim()
+  if (!s || s === '空白') return CONCLUSION_SPECIES_ORDER.length + 1
+  const idx = CONCLUSION_SPECIES_ORDER.indexOf(s as (typeof CONCLUSION_SPECIES_ORDER)[number])
+  return idx >= 0 ? idx : CONCLUSION_SPECIES_ORDER.length
+}
+
+function speciesForTargetKey(
+  targetKey: string,
+  targets: TiterTargetLike[] | undefined,
+): string {
+  if (targetKey === UNKNOWN_TARGET_KEY) return ''
+  const t = (targets || []).find((x) => (x.name || '').trim() === targetKey)
+  return (t?.species || '').trim()
+}
+
+function sortTargetKeys(
+  a: string,
+  b: string,
+  targets: TiterTargetLike[] | undefined,
+): number {
+  const rankA = speciesSortRank(speciesForTargetKey(a, targets))
+  const rankB = speciesSortRank(speciesForTargetKey(b, targets))
+  if (rankA !== rankB) return rankA - rankB
+  return targetDisplayName(a).localeCompare(targetDisplayName(b), 'zh-CN')
 }
 
 function formatCellValue(obs: Observation | undefined): ConclusionCellValue {
@@ -587,18 +601,16 @@ export function buildFacsConclusion(input: BuildFacsConclusionInput): FacsConclu
   for (const plate of facsPlates || []) {
     if (!(plate.immune_stage || '').trim()) hasEmptyStagePlate = true
     const stage = resolveStage(plate)
-    const sortKey = plateSortKey(plate)
     const targetKey = targetKeyFromId(plate.cell_target_id, targets)
-    processHalf(obsMap, plate, 'upper', stage, targetKey, sortKey, mouseToGroup)
-    processHalf(obsMap, plate, 'lower', stage, targetKey, sortKey, mouseToGroup)
+    processHalf(obsMap, plate, 'upper', stage, targetKey, mouseToGroup)
+    processHalf(obsMap, plate, 'lower', stage, targetKey, mouseToGroup)
   }
 
   for (const plate of elisaPlates || []) {
     if (!(plate.immune_stage || '').trim()) hasEmptyStagePlate = true
     const stage = resolveStage(plate as FacsPlateLike)
-    const sortKey = plateSortKey(plate as FacsPlateLike)
     const targetKey = targetKeyFromId(plate.protein_target_id, targets)
-    processElisaPlate(obsMap, plate, stage, targetKey, sortKey, mouseToGroup)
+    processElisaPlate(obsMap, plate, stage, targetKey, mouseToGroup)
   }
 
   if (hasEmptyStagePlate) {
@@ -628,7 +640,9 @@ export function buildFacsConclusion(input: BuildFacsConclusionInput): FacsConclu
         }
 
         const mouseColumns = sortMouseColumns([...miceSet])
-        const rows: ConclusionRow[] = [...targetKeys].sort(sortTargetKeys).map((targetKey) => {
+        const rows: ConclusionRow[] = [...targetKeys]
+          .sort((a, b) => sortTargetKeys(a, b, targets))
+          .map((targetKey) => {
           const cells: Record<string, ConclusionCellValue> = {}
           for (const mouseNo of mouseColumns) {
             cells[mouseNo] = formatCellValue(

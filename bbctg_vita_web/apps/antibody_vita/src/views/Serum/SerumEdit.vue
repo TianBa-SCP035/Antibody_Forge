@@ -186,9 +186,9 @@
                 <template #default="{ row }">
                     <el-select v-model="row.species" size="small" filterable allow-create default-first-option placeholder="" style="width:100%">
                         <el-option label="人" value="人" />
+                        <el-option label="猴" value="猴" />
                         <el-option label="鼠" value="鼠" />
                         <el-option label="狗" value="狗" />
-                        <el-option label="猴" value="猴" />
                     </el-select>
                 </template>
             </el-table-column>

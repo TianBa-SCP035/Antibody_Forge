@@ -19,13 +19,15 @@
     <div v-for="method in methodList" :key="method" class="option">
       <span class="method" :class="{ on: items[method].on }" @click="toggle(method)">{{ method }}</span>
       <div class="detail" :class="{ dim: !items[method].on }">
-        <span
-          v-for="s in speciesList"
-          :key="s"
-          class="species"
-          :class="{ on: items[method].species.includes(s) }"
-          @click="toggleSpecies(method, s)"
-        >{{ s }}</span>
+        <div class="species-wrap">
+          <span
+            v-for="s in speciesList"
+            :key="s"
+            class="species"
+            :class="{ on: items[method].species.includes(s) }"
+            @click="toggleSpecies(method, s)"
+          >{{ s }}</span>
+        </div>
         <label class="plate">
           <input
             type="text"
@@ -45,7 +47,7 @@ import { ArrowDown } from '@element-plus/icons-vue'
 import { ElIcon, ElPopover } from 'element-plus'
 
 const METHOD_LIST = ['FACS', 'ELISA']
-const SPECIES_LIST = ['人', '猴', '鼠', '狗', '猫']
+const SPECIES_LIST = ['人', '猴', '鼠', '狗', '猫', 'CHOS', '293']
 const DEFAULT_SPECIES = ['人', '猴']
 
 const sortSpecies = (list) => SPECIES_LIST.filter((s) => (list || []).includes(s))
@@ -175,7 +177,7 @@ export default {
 }
 .trigger.open .arrow { transform: rotate(180deg); }
 
-.option { display: flex; align-items: center; min-height: 34px; padding: 0 12px; }
+.option { display: flex; align-items: flex-start; min-height: 34px; padding: 6px 12px; }
 .option:hover { background: var(--el-fill-color-light); }
 
 .method {
@@ -184,6 +186,7 @@ export default {
   margin-right: 12px;
   padding-right: 12px;
   border-right: 1px solid var(--el-border-color-lighter);
+  line-height: 24px;
   cursor: pointer;
   user-select: none;
 }
@@ -192,7 +195,7 @@ export default {
 .detail {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   min-width: 0;
   transition: opacity 0.2s;
@@ -200,12 +203,21 @@ export default {
 .detail.dim { opacity: 0.4; }
 .option:hover .detail.dim { opacity: 0.65; }
 
+.species-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .species {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
+  min-width: 26px;
   height: 24px;
+  padding: 0 4px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
   background: var(--el-fill-color-blank);

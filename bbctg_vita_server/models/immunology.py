@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 from sqlalchemy import BigInteger, DateTime, JSON, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -109,7 +107,7 @@ class SerumFile(Base):
         def format_time(dt):
             if dt is None:
                 return None
-            return (dt + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
 
         return {
             "id": self.id,

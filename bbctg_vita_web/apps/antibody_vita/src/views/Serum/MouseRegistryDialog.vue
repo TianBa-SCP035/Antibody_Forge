@@ -178,7 +178,7 @@ function formatMouseNoList(mice, sex) {
     const parts = []
     if (fNos.length) parts.push(`F：${fNos.join('、')}`)
     if (mNos.length) parts.push(`M：${mNos.join('、')}`)
-    return parts.join('，')
+    return parts.join('，\n')
   }
 
   return list.map((m) => m.no).join('、')

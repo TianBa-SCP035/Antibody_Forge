@@ -48,14 +48,16 @@ def apply_project_filters(stmt, data: dict[str, Any]):
         stmt = stmt.where(SerumImmProject.owner == owner)
     if status:
         if status == "ongoing":
-            stmt = stmt.where(or_(SerumImmProject.project_status.like("%待%"), SerumImmProject.project_status == "加免中"))
-        elif status == "completed":
             stmt = stmt.where(
                 or_(
-                    SerumImmProject.project_status == "无效价处死",
-                    SerumImmProject.project_status == "结题",
-                    SerumImmProject.project_status.like("%月上机%"),
+                    SerumImmProject.project_status.like("%待%"),
+                    SerumImmProject.project_status.like("%已%"),
+                    SerumImmProject.project_status == "加免中",
                 )
+            )
+        elif status == "completed":
+            stmt = stmt.where(
+                SerumImmProject.project_status.in_(("无效价处死", "结题"))
             )
         else:
             stmt = stmt.where(SerumImmProject.project_status == status)
@@ -80,9 +82,13 @@ def get_stats(db: Session) -> dict:
         .group_by(SerumImmProject.project_status)
     ).all()
     status_dict = {status: count for status, count in status_counts}
-    ongoing_count = sum(count for status, count in status_dict.items() if status and ("待" in status or status == "加免中"))
+    ongoing_count = sum(
+        count
+        for status, count in status_dict.items()
+        if status and ("待" in status or "已" in status or status == "加免中")
+    )
     completed_count = sum(
-        count for status, count in status_dict.items() if status and (status in {"无效价处死", "结题"} or "月上机" in status)
+        count for status, count in status_dict.items() if status in {"无效价处死", "结题"}
     )
     owner_counts = db.execute(
         select(SerumImmProject.owner, func.count(SerumImmProject.id))
@@ -430,7 +436,7 @@ def auto_update_status(db: Session, filters: dict[str, Any] | None = None) -> di
     dry_run = bool(filters.get("dry_run"))
     for project in projects:
         status = project.project_status or ""
-        if status in {"结题", "无效价处死"} or "月上机" in status:
+        if status in {"结题", "无效价处死", "加免中"}:
             continue
         rec = info.get(project.experiment_id)
         if not rec or today >= rec["max_d"]:

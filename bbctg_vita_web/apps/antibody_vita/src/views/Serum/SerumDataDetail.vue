@@ -518,6 +518,7 @@ import {
   getSerumUserName,
   getSerumUserRoles,
 } from '#/utils/serumPermission'
+import { getSerumProjectStatusTagType } from '#/utils/serumProjectStatus'
 
 import SerumDetailTiterTab from './SerumDetailTiterTab.vue'
 
@@ -601,22 +602,7 @@ export default {
       return this.postForm.project_status || '未知'
     },
     statusType() {
-      const status = this.postForm.project_status
-      if (!status) return 'info'
-      
-      if (status === '无效价处死') {
-        return 'danger'
-      }
-      
-      if (status.includes('待') || status === '加免中') {
-        return 'primary'
-      }
-      
-      if (status === '结题' || status.includes('月上机')) {
-        return 'success'
-      }
-      
-      return 'info'
+      return getSerumProjectStatusTagType(this.postForm.project_status)
     },
     antigenCount() {
       return (this.postForm.antigens || []).length

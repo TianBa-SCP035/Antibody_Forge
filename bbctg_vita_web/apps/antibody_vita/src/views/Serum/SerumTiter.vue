@@ -56,7 +56,41 @@
               <el-descriptions :column="2" border>
                 <el-descriptions-item label="项目编号">{{ project.project_code }}</el-descriptions-item>
                 <el-descriptions-item label="实验ID">{{ project.experiment_id }}</el-descriptions-item>
-                <el-descriptions-item label="项目名称" :span="2">{{ project.project_name }}</el-descriptions-item>
+                <el-descriptions-item label="项目名称">{{ project.project_name }}</el-descriptions-item>
+                <el-descriptions-item label="项目状态">
+                  <el-popover
+                    :visible="projectStatusPopoverVisible"
+                    placement="right"
+                    trigger="manual"
+                    transition="el-zoom-in-left"
+                    :width="110"
+                    :teleported="true"
+                    popper-class="serum-status-popper"
+                    @update:visible="handleProjectStatusPopoverVisible"
+                  >
+                    <div class="status-option-list">
+                      <div
+                        v-for="item in titerStatusOptions"
+                        :key="item"
+                        class="status-option"
+                        @click="saveProjectStatus(item)"
+                      >
+                        {{ item }}
+                      </div>
+                    </div>
+                    <template #reference>
+                      <el-tag
+                        class="status-tag"
+                        :type="getSerumProjectStatusTagType(project.project_status)"
+                        effect="plain"
+                        :style="canEditTiter() ? 'cursor: pointer;' : 'cursor: default;'"
+                        @click="canEditTiter() && toggleProjectStatusPopover()"
+                      >
+                        {{ project.project_status || '-' }}
+                      </el-tag>
+                    </template>
+                  </el-popover>
+                </el-descriptions-item>
                 <el-descriptions-item label="归类鼠型">{{ project.mouse_strain || '-' }}</el-descriptions-item>
                 <el-descriptions-item label="负责人">{{ project.owner }}</el-descriptions-item>
                 
@@ -525,9 +559,11 @@ import {
   ElMessage,
   ElMessageBox,
   ElOption,
+  ElPopover,
   ElRow,
   ElSelect,
   ElSkeleton,
+  ElTag,
   ElTabPane,
   ElTable,
   ElTableColumn,
@@ -553,6 +589,7 @@ import {
   deleteIndexFile,
   saveTiterPcs,
   saveTiterTargets,
+  updateSerumStatus,
 } from '#/api/serum'
 import {
   computeAutoPositiveFromPlate,
@@ -572,6 +609,7 @@ import {
   canManageSerumTiterFiles,
   getSerumUserName,
 } from '#/utils/serumPermission'
+import { getSerumProjectStatusTagType } from '#/utils/serumProjectStatus'
 
 const serumApiBaseUrl = import.meta.env.VITE_SERUM_API_URL || '/serum-api'
 
@@ -603,9 +641,11 @@ export default {
     ElImage,
     ElInput,
     ElOption,
+    ElPopover,
     ElRow,
     ElSelect,
     ElSkeleton,
+    ElTag,
     ElTabPane,
     ElTable,
     ElTableColumn,
@@ -641,6 +681,8 @@ export default {
       project_id: null,
       experiment_id: null,
       project: null,
+      projectStatusPopoverVisible: false,
+      titerStatusOptions: ['待采血', '已采血', '已上传', '已检测', '已汇报'],
       fileList: [],
       filesLoading: false,
       
@@ -1673,7 +1715,33 @@ export default {
     },
     canManageFiles() {
       return canManageSerumTiterFiles(this.currentUserInfo, this.project || {})
-    }
+    },
+    getSerumProjectStatusTagType,
+    toggleProjectStatusPopover() {
+      this.projectStatusPopoverVisible = !this.projectStatusPopoverVisible
+    },
+    handleProjectStatusPopoverVisible(visible) {
+      this.projectStatusPopoverVisible = visible
+    },
+    saveProjectStatus(newStatus) {
+      if (!this.canEditTiter()) {
+        ElMessage.warning('您没有权限编辑此项目')
+        return
+      }
+      if (!this.project?.id) {
+        ElMessage.error('项目信息不完整，无法更新状态')
+        return
+      }
+      if (newStatus === this.project.project_status) {
+        this.projectStatusPopoverVisible = false
+        return
+      }
+      updateSerumStatus({ id: this.project.id, project_status: newStatus }).then(() => {
+        this.project.project_status = newStatus
+        ElMessage.success('状态修改成功')
+        this.projectStatusPopoverVisible = false
+      })
+    },
   }
 }
 </script>
@@ -1708,6 +1776,38 @@ export default {
   padding: 10px;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.status-tag {
+  height: 25px;
+  padding: 0 8px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+
+.status-option-list {
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.status-option {
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 18px;
+  transition: background-color .16s ease, color .16s ease;
+}
+
+.status-option:hover {
+  background-color: #f5f7fa;
+  color: #409EFF;
+}
+
+:global(.serum-status-popper) {
+  z-index: 3000 !important;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
 }
 
 .copy-target-row {

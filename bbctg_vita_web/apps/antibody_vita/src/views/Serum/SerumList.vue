@@ -318,6 +318,7 @@
                 :visible="activeStatusRowId === row.id"
                 placement="right"
                 trigger="manual"
+                transition="el-zoom-in-left"
                 :width="110"
                 :teleported="true"
                 popper-class="serum-status-popper"
@@ -329,7 +330,7 @@
                   </div>
                 </div>
                 <template #reference>
-                  <el-tag class="status-tag" :type="statusFilter(row.project_status)" effect="plain" :style="canUpdateStatus(row) ? 'cursor: pointer;' : 'cursor: default;'" @click="canUpdateStatus(row) && handleStatusClick(row)">
+                  <el-tag class="status-tag" :type="getSerumProjectStatusTagType(row.project_status)" effect="plain" :style="canUpdateStatus(row) ? 'cursor: pointer;' : 'cursor: default;'" @click="canUpdateStatus(row) && handleStatusClick(row)">
                     {{ row.project_status }}
                   </el-tag>
                 </template>
@@ -461,6 +462,7 @@ import {
   getSerumUserName,
   getSerumUserRoles,
 } from '#/utils/serumPermission'
+import { getSerumProjectStatusTagType } from '#/utils/serumProjectStatus'
 
 export default {
   name: 'SerumList',
@@ -640,23 +642,7 @@ export default {
         this.showExtraColumns = JSON.parse(savedShowExtraColumns)
       }
     },
-    statusFilter(status) {
-      if (!status) return 'info'
-
-      if (status === '无效价处死') {
-        return 'danger'
-      }
-
-      if (status.includes('待') || status === '加免中') {
-        return 'primary'
-      }
-
-      if (status === '结题' || status.includes('月上机')) {
-        return 'success'
-      }
-
-      return 'info'
-    },
+    getSerumProjectStatusTagType,
     smoothScrollTableToRight() {
       const tableRef = this.$refs.serumTable
       const tableEl = tableRef?.$el

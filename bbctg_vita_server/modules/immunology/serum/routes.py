@@ -122,8 +122,7 @@ def update_status(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     try:
-        require_permission(db, current_user, "serum.status.update")
-        _require_project_owner_or_edit_all(db, current_user, int(data.get("id")))
+        _require_status_update_access(db, current_user, int(data.get("id")))
         service.update_status(db, int(data.get("id")), data.get("project_status"))
         return success({"message": "Status updated successfully"})
     except HTTPException:
@@ -281,6 +280,21 @@ def _require_project_owner_or_edit_all(db: Session, user: SysUser, project_id: i
     if _is_owner_name(user, project.owner):
         return
     require_permission(db, user, "serum.project.edit_all")
+
+
+def _require_status_update_access(db: Session, user: SysUser, project_id: int) -> None:
+    project = db.get(SerumImmProject, project_id)
+    if not project:
+        raise ValueError("Project not found")
+    if _is_owner_name(user, project.owner):
+        if has_permission(db, user, "serum.status.update") or has_permission(db, user, "serum.titer.edit"):
+            return
+        raise HTTPException(status_code=403, detail="Permission denied")
+    if has_permission(db, user, "serum.status.update") and has_permission(db, user, "serum.project.edit_all"):
+        return
+    if has_permission(db, user, "serum.titer.edit") and has_permission(db, user, "serum.titer.edit_all"):
+        return
+    raise HTTPException(status_code=403, detail="Permission denied")
 
 
 def _default_owner_name(user: SysUser) -> str:

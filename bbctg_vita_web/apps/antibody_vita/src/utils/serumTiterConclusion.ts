@@ -135,7 +135,7 @@ function parseLegacyMouseTokens(str: string): string[] {
   const text = (str || '').trim()
   if (!text) return []
   const tokens: string[] = []
-  const dual = text.split('，')
+  const dual = text.split(/[，\n]+/)
   for (const part of dual) {
     const m = part.match(/^[FM]：(.+)$/)
     if (m?.[1]) {

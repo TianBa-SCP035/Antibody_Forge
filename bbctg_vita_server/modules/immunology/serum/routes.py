@@ -1,7 +1,7 @@
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from core.response import error, success
@@ -9,10 +9,25 @@ from db.session import get_db
 from models.immunology import SerumImmProject
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
-from modules.immunology.serum import service
+from modules.immunology.serum import scheme_export, service
 from modules.system.permissions import has_permission, require_permission
 
 router = APIRouter()
+
+
+def _parse_export_ids(data: dict) -> list:
+    ids = data.get("ids") or []
+    if not ids and data.get("id") is not None:
+        ids = [data["id"]]
+    return ids
+
+
+def _attachment_response(content: bytes, filename: str, media_type: str) -> Response:
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @router.get("/stats")
@@ -182,6 +197,51 @@ def export_mouse(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
+
+
+@router.post("/export_scheme")
+def export_scheme(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> Response:
+    require_permission(db, current_user, "serum.page.detail")
+    ids = _parse_export_ids(data)
+    if not ids:
+        raise HTTPException(status_code=400, detail="ids is required")
+    try:
+        output, filename, export_type = scheme_export.export_scheme_response(db, ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    media_type = (
+        "application/zip"
+        if export_type == "zip"
+        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    return _attachment_response(output.getvalue(), filename, media_type)
+
+
+@router.post("/export_scheme_pdf")
+def export_scheme_pdf(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> Response:
+    require_permission(db, current_user, "serum.page.detail")
+    ids = _parse_export_ids(data)
+    if not ids:
+        raise HTTPException(status_code=400, detail="ids is required")
+    try:
+        output, filename = scheme_export.export_scheme_pdf_response(db, ids)
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 404 if detail == scheme_export._SCHEME_PDF_NOT_FOUND else 400
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    except RuntimeError as exc:
+        detail = str(exc)
+        status_code = 503 if "LibreOffice" in detail else 500
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    return _attachment_response(output.getvalue(), filename, "application/pdf")
 
 
 def _require_project_save_permission(db: Session, user: SysUser, data: dict) -> None:

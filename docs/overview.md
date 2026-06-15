@@ -22,7 +22,7 @@ Antibody_Forge/
 
 | 模块 | 前端 | 后端 | 说明 |
 |------|------|------|------|
-| 小鼠免疫 | `/serum/*` | `/api/serum` | 项目、状态、笼位、导出 |
+| 小鼠免疫 | `/serum/*` | `/api/serum` | 项目、状态、笼位、方案导出（xlsx / 右键 pdf 打印） |
 | 效价 | `/serum/titer` | `/api/serum/titer` | 靶点、FACS、附件（可选 DRM 加解密） |
 | 细胞库存 | `/serum/cell` | `/api/serum/cell_inventory` | 外部库只读 |
 | 系统管理 | `/system/*` | `/api/system` | 用户、角色、权限、日志、功能开关 |

@@ -34,7 +34,7 @@ bbctg_vita_server/
 config/<env>/vita_server.env   # 密钥与连接串（不提交）
 repository/
   uploads/titer_files/         # 效价附件
-  exports/ cache/ logs/ tmp/   # 导出、DRM 缓存、日志、临时文件
+  exports/ cache/ logs/ tmp/   # 导出、DRM 缓存、日志、临时文件（tmp/scheme_export 为方案 PDF 转换）
 ```
 
 配置：`APP_ENV` 或 `VITA_SERVER_ENV_FILE` 选择 env 文件（详见 deploy.md）。

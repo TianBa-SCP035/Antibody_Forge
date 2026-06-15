@@ -54,6 +54,20 @@
           <el-icon><ArrowLeft /></el-icon>
           <span>返回</span>
         </el-button>
+        <span
+          title="左键导出 Excel，右键打印"
+          @contextmenu.prevent="handlePrintScheme"
+        >
+          <el-button
+            size="large"
+            :disabled="!postForm.id"
+            :loading="schemeExportLoading"
+            @click="handleExportScheme"
+          >
+            <el-icon><Download /></el-icon>
+            <span>导出方案</span>
+          </el-button>
+        </span>
         <el-button
           size="large"
           type="primary"
@@ -475,6 +489,7 @@ import {
   Collection,
   CollectionTag,
   DocumentCopy,
+  Download,
   Edit,
   InfoFilled,
   Tickets,
@@ -497,7 +512,7 @@ import {
   ElTag,
 } from 'element-plus'
 
-import { fetchDetail } from '#/api/serum'
+import { exportScheme, exportSchemePdf, fetchDetail } from '#/api/serum'
 import {
   canEditSerumProject,
   getSerumUserName,
@@ -514,6 +529,7 @@ export default {
     Collection,
     CollectionTag,
     DocumentCopy,
+    Download,
     Edit,
     ElButton,
     ElCard,
@@ -543,6 +559,7 @@ export default {
   data() {
     return {
       loading: false,
+      schemeExportLoading: false,
       activeTab: 'schedule',
       activeGroupTab: '', // 用于跟踪免疫步骤详情中的分组标签
       postForm: {
@@ -733,6 +750,70 @@ export default {
         path: '/serum/edit',
         query: { id: this.postForm.id }
       }).catch(() => {})
+    },
+    asResponseBlob(response, mimeType) {
+      return response instanceof Blob ? response : new Blob([response], { type: mimeType })
+    },
+    handleExportScheme() {
+      if (!this.postForm.id || this.schemeExportLoading) return
+      this.schemeExportLoading = true
+      exportScheme({ ids: [this.postForm.id] })
+        .then((response) => {
+          const blob = this.asResponseBlob(
+            response,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          )
+          const url = window.URL.createObjectURL(blob)
+          const link = document.createElement('a')
+          link.href = url
+          const code = this.postForm.project_code || this.postForm.id
+          const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
+          link.download = `免疫方案_${code}_${timestamp}.xlsx`
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+          window.URL.revokeObjectURL(url)
+          ElMessage.success('免疫方案已导出')
+        })
+        .catch((err) => {
+          console.error(err)
+          ElMessage.error('导出失败，请稍后重试')
+        })
+        .finally(() => {
+          this.schemeExportLoading = false
+        })
+    },
+    handlePrintScheme() {
+      if (!this.postForm.id || this.schemeExportLoading) return
+      this.schemeExportLoading = true
+      const loadingMsg = ElMessage({
+        message: '正在生成打印预览，请稍候…',
+        type: 'info',
+        duration: 0,
+      })
+      exportSchemePdf({ ids: [this.postForm.id] })
+        .then((response) => {
+          const blob = this.asResponseBlob(response, 'application/pdf')
+          const url = window.URL.createObjectURL(blob)
+          const printWindow = window.open(url, '_blank')
+          if (!printWindow) {
+            window.URL.revokeObjectURL(url)
+            throw new Error('浏览器拦截了弹窗，请允许弹窗后重试')
+          }
+          setTimeout(() => {
+            printWindow.focus()
+            printWindow.print()
+            window.URL.revokeObjectURL(url)
+          }, 1000)
+        })
+        .catch((err) => {
+          console.error(err)
+          ElMessage.error(err?.message || '打印失败，请稍后重试')
+        })
+        .finally(() => {
+          loadingMsg.close()
+          this.schemeExportLoading = false
+        })
     },
     copyText(text) {
       if (!text) return

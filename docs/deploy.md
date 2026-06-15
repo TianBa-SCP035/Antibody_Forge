@@ -48,6 +48,22 @@ Linux 服务器可用根目录 `start_dev.sh`（构建前端 + nohup 后端）�
 
 效价附件：`repository/uploads/titer_files/<experiment_id>/`，库内路径 `/titer_files/...`。运行用户需对 `repository/` 可写。
 
+PDF 转换临时目录：`repository/tmp/scheme_export/`（请求结束自动清理；与 `tmp/drm_download` 同级）。
+
+## 免疫方案 PDF 打印（Linux test/prod）
+
+详情页「导出方案」：**左键** xlsx，**右键** xlsx→pdf 后浏览器打印。依赖 **LibreOffice headless**（非 pip 包）。
+
+```bash
+sudo apt update
+sudo apt install -y libreoffice
+# 可选：sudo apt install -y fonts-wqy-microhei
+```
+
+代码固定路径（`scheme_export.py`）：Linux `/usr/lib/libreoffice/program/soffice`；Windows 开发 `C:\Program Files\LibreOffice\program\soffice.exe`。未安装或路径不符 → 打印接口 503，xlsx 导出不受影响。
+
+验收：详情页右键能弹出打印预览；`repository/tmp/scheme_export/` 无残留堆积。
+
 ## DRM（Linux 生产）
 
 1. 手动部署 `bbctg_vita_server/integrations/drm/`（`__init__.py` + `lib/` 下 SO/DLL），不提交 Git。
@@ -87,3 +103,4 @@ Nginx 参考：`bbctg_vita_web/scripts/deploy/nginx-antibody-forge-sites-active.
 - prod scheduler、云之家/密码登录、血清与系统管理主链路可用
 - Nginx 上传大小与 `/serum-api` 反代正确
 - Linux DRM：上传密文可解密（日志无 `libhttpcomm.so` 错误）
+- 免疫方案：左键导出 xlsx；Linux 已装 LibreOffice 时右键可打印 pdf

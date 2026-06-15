@@ -91,6 +91,23 @@ export function export_mouse(data: any) {
   });
 }
 
+function schemeExportBlob(url: string, data: { id?: number; ids?: number[] }) {
+  return request({
+    data,
+    method: 'post',
+    responseType: 'blob',
+    url,
+  });
+}
+
+export function exportScheme(data: { id?: number; ids?: number[] }) {
+  return schemeExportBlob('/serum/export_scheme', data);
+}
+
+export function exportSchemePdf(data: { id?: number; ids?: number[] }) {
+  return schemeExportBlob('/serum/export_scheme_pdf', data);
+}
+
 export function autoUpdateStatus(data: any) {
   return request({
     data,

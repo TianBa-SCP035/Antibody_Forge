@@ -58,13 +58,13 @@ DEFAULT_ROW_HEIGHT = 20.0
 MIN_COL_WIDTH = 6.0
 MAX_COL_WIDTH = 42.0
 
-# 打印页边距（英寸）：介于 Excel「窄」与「常规」之间（常规左右 0.75 / 上下 1.0）
-PRINT_MARGIN_LEFT = 0.5
-PRINT_MARGIN_RIGHT = 0.5
-PRINT_MARGIN_TOP = 0.8
-PRINT_MARGIN_BOTTOM = 0.8
-PRINT_MARGIN_HEADER = 0.3
-PRINT_MARGIN_FOOTER = 0.3
+# 打印页边距（英寸）：略窄于上一版（原左右 0.5 / 上下 0.8 / 页眉页脚 0.3）
+PRINT_MARGIN_LEFT = 0.35
+PRINT_MARGIN_RIGHT = 0.35
+PRINT_MARGIN_TOP = 0.6
+PRINT_MARGIN_BOTTOM = 0.6
+PRINT_MARGIN_HEADER = 0.2
+PRINT_MARGIN_FOOTER = 0.2
 # Excel 纸张代码：9=A4，13=ISO B5（176×250mm）；写入文件后打印预览默认跟此走
 PRINT_PAPER_SIZE = 13
 
@@ -390,7 +390,6 @@ class _SchemeSheetWriter:
         self._write_gap_row()
         self._write_steps_section(project)
         self._write_gap_row()
-        self._write_footer()
         return self.row - 1
 
     def _antigen_rows(self, antigens: list[dict[str, Any]]) -> list[list[str]]:
@@ -444,10 +443,10 @@ class _SchemeSheetWriter:
             ("靶点名称", _text(project.get("target_name")), "靶点类型", _text(project.get("target_type")), "靶点大小", _text(project.get("target_size"))),
             ("项目名称", _text(project.get("project_name")), "课题类型", _text(project.get("study_type")), "PM", _text(project.get("pm"))),
             ("开始日期", _text(project.get("start_date")), "检测方法", _text(project.get("assay_method")), "项目状态", _text(project.get("project_status"))),
-            ("免疫间隔", interval, "实验备注", _text(project.get("remark")), "", ""),
         ]
         for labels in rows:
             self._write_kv_row(*labels)
+        self._write_kv_row_wide_last("免疫间隔", interval, "实验备注", _text(project.get("remark")))
         self._write_single_kv_row("项目目的", _text(project.get("project_purpose")), wrap=True)
 
     def _write_kv_row(self, label1: str, value1: str, label2: str, value2: str, label3: str, value3: str) -> None:
@@ -460,6 +459,16 @@ class _SchemeSheetWriter:
             self._merge_write(self.row, col, col + 1, label, font=FONT_BOLD, fill=LABEL_FILL, alignment=Alignment(horizontal="center", vertical="center", wrap_text=True))
             self._merge_write(self.row, col + 2, col + 4, value, alignment=Alignment(horizontal="left", vertical="center", wrap_text=True))
             col += 5
+        self.row += 1
+
+    def _write_kv_row_wide_last(self, label1: str, value1: str, label2: str, value2: str) -> None:
+        """两对 label-value；第二对 value 合并至末列（用于实验备注行）。"""
+        col = SECTION_COL
+        self._merge_write(self.row, col, col + 1, label1, font=FONT_BOLD, fill=LABEL_FILL, alignment=Alignment(horizontal="center", vertical="center", wrap_text=True))
+        self._merge_write(self.row, col + 2, col + 4, value1, alignment=Alignment(horizontal="left", vertical="center", wrap_text=True))
+        col += 5
+        self._merge_write(self.row, col, col + 1, label2, font=FONT_BOLD, fill=LABEL_FILL, alignment=Alignment(horizontal="center", vertical="center", wrap_text=True))
+        self._merge_write(self.row, col + 2, LAST_COL, value2, alignment=Alignment(horizontal="left", vertical="center", wrap_text=True))
         self.row += 1
 
     def _write_single_kv_row(self, label: str, value: str, *, wrap: bool = False) -> None:
@@ -566,11 +575,6 @@ class _SchemeSheetWriter:
         cell.font = FONT_SIDEBAR
         cell.fill = LABEL_FILL
         cell.alignment = Alignment(horizontal="center", vertical="center", text_rotation=90)
-
-    def _write_footer(self) -> None:
-        self._merge_write(self.row, SECTION_COL, SECTION_COL + 6, "PM签字 / 日期：", font=FONT_BOLD, height=30)
-        self._merge_write(self.row, SECTION_COL + 7, LAST_COL, "方案复核人签字 / 日期：", font=FONT_BOLD)
-        self.row += 1
 
     def _merge_write(
         self,

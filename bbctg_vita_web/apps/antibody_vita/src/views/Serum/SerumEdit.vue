@@ -1248,7 +1248,8 @@ export default {
                 })
                 .catch((err) => {
                     this.loading = false
-                    ElMessage.error(formatSaveError(err))
+                    const message = formatSaveError(err)
+                    if (message) ElMessage.error(message)
                 })
         } else {
             if (!this.postForm.experiment_id && this.postForm.project_code) {
@@ -1302,7 +1303,8 @@ export default {
                      }
                  }).catch((err) => {
                      this.loading = false
-                     ElMessage.error(formatSaveError(err))
+                     const message = formatSaveError(err)
+                     if (message) ElMessage.error(message)
                  })
             } else {
                 this.loading = false
@@ -1569,7 +1571,8 @@ export default {
               this.postForm.experiment_id = res.data.next_id
             }
           } catch (e) {
-            ElMessage.error(formatSaveError(e))
+            const message = formatSaveError(e)
+            if (message) ElMessage.error(message)
             return
           }
         }
@@ -1608,7 +1611,8 @@ export default {
           this.matchAndUpdateIds(this.postForm.titer_pcs, res.data.new_pc_records, 'id', ['pc_name', 'catalog_batch', 'source', 'concentration'])
         }
       } catch (err) {
-        ElMessage.error(formatSaveError(err))
+        const message = formatSaveError(err)
+        if (message) ElMessage.error(message)
       } finally {
         this.isAutoSaving = false
         this.autoSaving = false

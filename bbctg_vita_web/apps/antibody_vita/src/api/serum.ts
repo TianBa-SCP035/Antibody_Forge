@@ -1,8 +1,12 @@
 import request from '#/utils/request';
+import { isUnauthorizedError } from '#/utils/auth-session';
 
 const SAVE_TIMEOUT = 5000;
 
-export function formatSaveError(err: unknown): string {
+export function formatSaveError(err: unknown): string | null {
+  if (isUnauthorizedError(err)) {
+    return null;
+  }
   const e = err as { code?: string; message?: string };
   if (e?.code === 'ECONNABORTED' || /timeout/i.test(String(e?.message ?? ''))) {
     return '保存超时，请重试';

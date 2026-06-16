@@ -1,6 +1,8 @@
 import { RequestClient } from '@vben/request';
 import { useAccessStore } from '@vben/stores';
 
+import { handleUnauthorizedError } from '#/utils/auth-session';
+
 const serumApiURL = import.meta.env.VITE_SERUM_API_URL || '/serum-api';
 
 const request = new RequestClient({
@@ -22,6 +24,10 @@ request.addRequestInterceptor({
 });
 
 request.addResponseInterceptor({
+  rejected: async (error) => {
+    await handleUnauthorizedError(error);
+    throw error;
+  },
   fulfilled: (response) => {
     const responseType = response.config.responseType;
     const isBinary =

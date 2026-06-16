@@ -31,6 +31,7 @@ watch(
   (val) => {
     modalApi.setState({ isOpen: val });
   },
+  { immediate: true },
 );
 
 const getZIndex = computed(() => {

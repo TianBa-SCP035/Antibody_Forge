@@ -71,6 +71,10 @@ function setupAccessGuard(router: Router) {
 
     // accessToken 检查
     if (!accessStore.accessToken) {
+      if (accessStore.loginExpired) {
+        return true;
+      }
+
       // 明确声明忽略权限访问权限，则可以访问
       if (to.meta.ignoreAccess) {
         return true;
@@ -98,8 +102,22 @@ function setupAccessGuard(router: Router) {
     }
 
     // 生成路由表
-    // 当前登录用户拥有的角色标识列表
-    const userInfo = userStore.userInfo || (await authStore.fetchUserInfo());
+    let userInfo = userStore.userInfo;
+    if (!userInfo) {
+      try {
+        userInfo = await authStore.fetchUserInfo();
+      } catch {
+        // 401 时 request 拦截器会触发弹窗；此处只阻止跳转登录页以保留当前页
+        if (accessStore.loginExpired) {
+          return true;
+        }
+        return {
+          path: LOGIN_PATH,
+          query: { redirect: encodeURIComponent(to.fullPath) },
+          replace: true,
+        };
+      }
+    }
     const userRoles = [
       ...(userInfo.roles ?? []),
       ...((userInfo as any).accessCodes ?? []),

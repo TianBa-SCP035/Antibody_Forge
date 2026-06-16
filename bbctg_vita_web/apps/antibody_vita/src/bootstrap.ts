@@ -13,6 +13,8 @@ import { ElLoading } from 'element-plus';
 
 import { $t, setupI18n } from '#/locales';
 
+import { initSessionExpiryWatcher } from '#/utils/auth-session';
+
 import { initComponentAdapter } from './adapter/component';
 import { initSetupVbenForm } from './adapter/form';
 import App from './app.vue';
@@ -59,6 +61,7 @@ async function bootstrap(namespace: string) {
 
   // 配置路由及路由守卫
   app.use(router);
+  initSessionExpiryWatcher();
 
   // 配置Motion插件
   const { MotionPlugin } = await import('@vben/plugins/motion');

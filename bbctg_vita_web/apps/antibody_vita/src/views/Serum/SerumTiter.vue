@@ -303,7 +303,7 @@
           </div>
         </div>
 
-        <el-tabs v-model="activePlateName" type="card" class="plates-tabs">
+        <el-tabs v-model="activePlateName" type="card" class="plates-tabs" :key="plateTabsKey">
           <el-tab-pane
             v-for="(plate, index) in sortedAllPlates"
             :key="getPlateKey(plate)"
@@ -312,10 +312,11 @@
           >
             <template #label>
               <span
+                :class="{ 'plates-tab--stage-end': isStageGroupEnd(index) }"
                 title="右键复制鼠号和分组标题"
                 @contextmenu.prevent="openPlateCopyDialog(plate)"
               >
-                {{ getPlateTabLabel(plate, index) }}
+                {{ getPlateTabLabel(plate) }}
               </span>
             </template>
             <FacsPlateCard
@@ -759,32 +760,49 @@ export default {
       return [...types]
     },
     sortedAllPlates() {
+      const stages = this.immuneStageOptions
+      const stageIdx = (s) => {
+        const key = (s || '').trim()
+        if (!key) return stages.length + 1
+        const i = stages.indexOf(key)
+        return i >= 0 ? i : stages.length
+      }
       return [...(this.facsPlates || []), ...(this.elisaPlates || [])].sort((a, b) => {
-        const aHas = !!a.id
-        const bHas = !!b.id
-        if (aHas && !bHas) return -1
-        if (!aHas && bHas) return 1
-        if (aHas && bHas) return a.id - b.id
+        const sd = stageIdx(a.immune_stage) - stageIdx(b.immune_stage)
+        if (sd) return sd
+        const skA = (a.immune_stage || '').trim()
+        const skB = (b.immune_stage || '').trim()
+        if (skA !== skB) return skA.localeCompare(skB, 'zh-CN')
+        const td = (a.plate_type === 'elisa' ? 1 : 0) - (b.plate_type === 'elisa' ? 1 : 0)
+        if (td) return td
+        if (a.id && !b.id) return -1
+        if (!a.id && b.id) return 1
+        if (a.id && b.id) return a.id - b.id
         return (a.tempId || 0) - (b.tempId || 0)
       })
+    },
+    /** el-tabs 不随 v-for 顺序自动重排 nav，阶段变更时强制刷新 */
+    plateTabsKey() {
+      return this.sortedAllPlates
+        .map((p) => `${this.getPlateKey(p)}@${(p.immune_stage || '').trim()}`)
+        .join('|')
     },
     copySourcePlate() {
       return this.sortedAllPlates.find((plate) => this.getPlateKey(plate) === this.copySourcePlateKey) || null
     },
     copySourcePlateLabel() {
       if (!this.copySourcePlate) return ''
-      const index = this.sortedAllPlates.findIndex((plate) => this.getPlateKey(plate) === this.copySourcePlateKey)
-      return this.getPlateTabLabel(this.copySourcePlate, index)
+      return this.getPlateTabLabel(this.copySourcePlate)
     },
     copyTargetPlateOptions() {
       const source = this.copySourcePlate
       if (!source) return []
       return this.sortedAllPlates
-        .map((plate, index) => ({ plate, index, key: this.getPlateKey(plate) }))
+        .map((plate) => ({ plate, key: this.getPlateKey(plate) }))
         .filter((item) => item.key !== this.copySourcePlateKey && item.plate.plate_type === source.plate_type)
         .map((item) => ({
           key: item.key,
-          label: this.getPlateTabLabel(item.plate, item.index),
+          label: this.getPlateTabLabel(item.plate),
         }))
     },
   },
@@ -1378,17 +1396,19 @@ export default {
     getPlateKey(plate) {
       return plate.id ? `id_${plate.id}` : `tmp_${plate.tempId}`
     },
-    getPlateName(plate) {
-      if (!plate._uid) {
-        plate._uid = plate.tempId ? `tmp_${plate.tempId}` : `db_${plate.id}`
-      }
-      return plate._uid
-    },
-    getPlateTabLabel(plate, index) {
+    getPlateTabLabel(plate) {
       const type = plate.plate_type === 'elisa' ? 'ELISA' : 'FACS'
-      const sameType = this.sortedAllPlates.filter((p) => p.plate_type === plate.plate_type)
-      const typeIndex = sameType.findIndex((p) => this.getPlateKey(p) === this.getPlateKey(plate)) + 1
-      return `${type}板-${typeIndex || index + 1}`
+      const sk = (plate.immune_stage || '').trim()
+      const n = this.sortedAllPlates.filter(
+        (p) => p.plate_type === plate.plate_type && (p.immune_stage || '').trim() === sk,
+      ).findIndex((p) => this.getPlateKey(p) === this.getPlateKey(plate)) + 1
+      return `${type}板-${n || 1}`
+    },
+    isStageGroupEnd(index) {
+      const plates = this.sortedAllPlates
+      if (index >= plates.length - 1) return false
+      const stage = (s) => (s || '').trim()
+      return stage(plates[index].immune_stage) !== stage(plates[index + 1].immune_stage)
     },
     getElisaExtraAbsorbance(plate) {
       return this.elisaAbsPreviewCache[this.getPlateKey(plate)] || []
@@ -1445,10 +1465,9 @@ export default {
         this.applyPlateSlotPayload(target, payload)
         this.handleSavePlate(target)
       })
-      const targetNames = targets.map((target) => {
-        const index = this.sortedAllPlates.findIndex((plate) => this.getPlateKey(plate) === this.getPlateKey(target))
-        return this.getPlateTabLabel(target, index)
-      })
+      const targetNames = targets.map((target) =>
+        this.getPlateTabLabel(target),
+      )
       ElMessage.success(`已复制到 ${targetNames.join('、')}`)
       this.plateCopyDialogVisible = false
     },
@@ -2549,6 +2568,12 @@ export default {
       margin: 0 0 8px 0;
     }
 
+    :deep(.el-tabs__header),
+    :deep(.el-tabs__nav-wrap),
+    :deep(.el-tabs__nav) {
+      overflow: visible;
+    }
+
     :deep(.el-tabs__nav-wrap) {
       padding: 0 clamp(8px, 1.2vw, 20px);
     }
@@ -2566,6 +2591,25 @@ export default {
       &.is-active {
         color: #409EFF;
         font-weight: 600;
+      }
+    }
+
+    :deep(.el-tabs__item:has(.plates-tab--stage-end)) {
+      position: relative;
+      overflow: visible;
+
+      &::after {
+        content: '';
+        position: absolute;
+        right: 0;
+        top: 50%;
+        z-index: 20;
+        transform: translate(50%, -50%);
+        width: 3px;
+        height: 20px;
+        background: #67c23a;
+        border-radius: 1px;
+        pointer-events: none;
       }
     }
 

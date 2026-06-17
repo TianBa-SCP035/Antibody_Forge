@@ -140,14 +140,18 @@
       <div v-if="!experimentId" class="empty-inline">实验 ID 缺失，无法加载板卡</div>
       <template v-else>
         <div v-loading="platesLoading">
-          <el-tabs v-if="sortedAllPlates.length" v-model="activePlateName" type="card" class="plates-tabs">
+          <el-tabs v-if="sortedAllPlates.length" v-model="activePlateName" type="card" class="plates-tabs" :key="plateTabsKey">
             <el-tab-pane
               v-for="(plate, index) in sortedAllPlates"
               :key="getPlateKey(plate)"
               :name="getPlateKey(plate)"
-              :label="getPlateTabLabel(plate, index)"
               lazy
             >
+              <template #label>
+                <span :class="{ 'plates-tab--stage-end': isStageGroupEnd(index) }">
+                  {{ getPlateTabLabel(plate) }}
+                </span>
+              </template>
               <FacsPlateCard
                 v-if="plate.plate_type === 'facs'"
                 :plate-data="plate"
@@ -428,14 +432,31 @@ export default {
       return [...types]
     },
     sortedAllPlates() {
+      const stages = this.immuneStageOptions
+      const stageIdx = (s) => {
+        const key = (s || '').trim()
+        if (!key) return stages.length + 1
+        const i = stages.indexOf(key)
+        return i >= 0 ? i : stages.length
+      }
       return [...(this.facsPlates || []), ...(this.elisaPlates || [])].sort((a, b) => {
-        const aHas = !!a.id
-        const bHas = !!b.id
-        if (aHas && !bHas) return -1
-        if (!aHas && bHas) return 1
-        if (aHas && bHas) return a.id - b.id
+        const sd = stageIdx(a.immune_stage) - stageIdx(b.immune_stage)
+        if (sd) return sd
+        const skA = (a.immune_stage || '').trim()
+        const skB = (b.immune_stage || '').trim()
+        if (skA !== skB) return skA.localeCompare(skB, 'zh-CN')
+        const td = (a.plate_type === 'elisa' ? 1 : 0) - (b.plate_type === 'elisa' ? 1 : 0)
+        if (td) return td
+        if (a.id && !b.id) return -1
+        if (!a.id && b.id) return 1
+        if (a.id && b.id) return a.id - b.id
         return (a.tempId || 0) - (b.tempId || 0)
       })
+    },
+    plateTabsKey() {
+      return this.sortedAllPlates
+        .map((p) => `${this.getPlateKey(p)}@${(p.immune_stage || '').trim()}`)
+        .join('|')
     },
   },
   watch: {
@@ -547,11 +568,19 @@ export default {
     getPlateKey(plate) {
       return plate.id ? `id_${plate.id}` : `tmp_${plate.tempId}`
     },
-    getPlateTabLabel(plate, index) {
+    getPlateTabLabel(plate) {
       const type = plate.plate_type === 'elisa' ? 'ELISA' : 'FACS'
-      const sameType = this.sortedAllPlates.filter((p) => p.plate_type === plate.plate_type)
-      const typeIndex = sameType.findIndex((p) => this.getPlateKey(p) === this.getPlateKey(plate)) + 1
-      return `${type}板-${typeIndex || index + 1}`
+      const sk = (plate.immune_stage || '').trim()
+      const n = this.sortedAllPlates.filter(
+        (p) => p.plate_type === plate.plate_type && (p.immune_stage || '').trim() === sk,
+      ).findIndex((p) => this.getPlateKey(p) === this.getPlateKey(plate)) + 1
+      return `${type}板-${n || 1}`
+    },
+    isStageGroupEnd(index) {
+      const plates = this.sortedAllPlates
+      if (index >= plates.length - 1) return false
+      const stage = (s) => (s || '').trim()
+      return stage(plates[index].immune_stage) !== stage(plates[index + 1].immune_stage)
     },
     getElisaExtraAbsorbance(plate) {
       return this.elisaAbsPreviewCache[this.getPlateKey(plate)] || []
@@ -1064,6 +1093,31 @@ export default {
 
 .plates-tabs :deep(.el-tabs__header) {
   margin-bottom: 12px;
+}
+
+.plates-tabs :deep(.el-tabs__header),
+.plates-tabs :deep(.el-tabs__nav-wrap),
+.plates-tabs :deep(.el-tabs__nav) {
+  overflow: visible;
+}
+
+.plates-tabs :deep(.el-tabs__item:has(.plates-tab--stage-end)) {
+  position: relative;
+  overflow: visible;
+}
+
+.plates-tabs :deep(.el-tabs__item:has(.plates-tab--stage-end))::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  z-index: 20;
+  transform: translate(50%, -50%);
+  width: 3px;
+  height: 20px;
+  background: #67c23a;
+  border-radius: 1px;
+  pointer-events: none;
 }
 
 /* 文件详情弹窗（与 SerumTiter 同源，右侧只读且无重命名/替换/删除） */

@@ -7,45 +7,35 @@ import { $t } from '#/locales';
 
 const BEIJING_LAT = 39.9042;
 const BEIJING_LON = 116.4074;
-const QWEATHER_LOCATION = '101010100';
+const WEATHER_CACHE_KEY = 'home-weather-beijing-v2';
+const WEATHER_CACHE_TTL_MS = 30 * 60 * 1000;
 
 const WMO_CODES = [
   0, 1, 2, 3, 45, 48, 51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77,
   80, 81, 82, 85, 86, 95, 96, 99,
 ] as const;
 
+type AqiScale = 'eu' | 'us';
+
+interface WeatherSnapshot {
+  aqi: number | null;
+  aqiScale: AqiScale;
+  humidity: number | null;
+  temp: number | null;
+  weatherCode: number;
+  windSpeed: number | null;
+}
+
+interface WeatherCachePayload extends WeatherSnapshot {
+  savedAt: number;
+}
+
 function isNightHour() {
   const h = new Date().getHours();
   return h < 6 || h >= 19;
 }
 
-export function qweatherIconToWmo(icon: string | number): number {
-  const n = Number(icon);
-  if (Number.isNaN(n)) return 3;
-  if ([100, 150].includes(n)) return 0;
-  if ([102, 152].includes(n)) return 1;
-  if ([101, 151, 103, 153].includes(n)) return 2;
-  if ([104, 154].includes(n)) return 3;
-  if ([500, 501, 509, 510, 514, 515, 502, 511, 512, 513, 504, 503, 507, 508].includes(n)) {
-    return 45;
-  }
-  if ([300, 350].includes(n)) return 80;
-  if ([301, 351].includes(n)) return 81;
-  if ([302, 303].includes(n)) return 95;
-  if (n === 304) return 96;
-  if ([305, 309, 314].includes(n)) return 61;
-  if ([306, 315].includes(n)) return 63;
-  if ([307, 308, 310, 311, 312, 316, 317, 318, 399].includes(n)) return 65;
-  if (n === 313) return 66;
-  if ([400, 408, 456, 404, 405].includes(n)) return 71;
-  if ([401, 409].includes(n)) return 73;
-  if ([402, 410].includes(n)) return 75;
-  if (n === 403) return 77;
-  if ([406, 407, 457].includes(n)) return 85;
-  return 3;
-}
-
-export function wmoWeatherIcon(code: number): string {
+function wmoWeatherIcon(code: number): string {
   const night = isNightHour();
 
   if (code === 0) return night ? 'meteocons:clear-night-fill' : 'meteocons:clear-day-fill';
@@ -80,7 +70,16 @@ function wmoLabel(code: number): string {
   return $t('page.home.weatherUnknown');
 }
 
-function chinaAqiLevel(aqi: number | null): string | null {
+function europeanAqiLevel(aqi: number | null): string | null {
+  if (aqi === null || Number.isNaN(aqi)) return null;
+  if (aqi <= 20) return $t('page.home.aqiGood');
+  if (aqi <= 40) return $t('page.home.aqiFair');
+  if (aqi <= 60) return $t('page.home.aqiModerate');
+  if (aqi <= 80) return $t('page.home.aqiPoor');
+  return $t('page.home.aqiVeryPoor');
+}
+
+function usAqiLevel(aqi: number | null): string | null {
   if (aqi === null || Number.isNaN(aqi)) return null;
   if (aqi <= 50) return $t('page.home.aqiGood');
   if (aqi <= 100) return $t('page.home.aqiFair');
@@ -89,13 +88,8 @@ function chinaAqiLevel(aqi: number | null): string | null {
   return $t('page.home.aqiVeryPoor');
 }
 
-function europeanAqiLevel(aqi: number | null): string | null {
-  if (aqi === null || Number.isNaN(aqi)) return null;
-  if (aqi <= 20) return $t('page.home.aqiGood');
-  if (aqi <= 40) return $t('page.home.aqiFair');
-  if (aqi <= 60) return $t('page.home.aqiModerate');
-  if (aqi <= 80) return $t('page.home.aqiPoor');
-  return $t('page.home.aqiVeryPoor');
+function aqiLevelForScale(aqi: number | null, scale: AqiScale): string | null {
+  return scale === 'us' ? usAqiLevel(aqi) : europeanAqiLevel(aqi);
 }
 
 export interface HomeWeatherState {
@@ -109,26 +103,23 @@ export interface HomeWeatherState {
   windSpeed: number | null;
 }
 
-function parseIntField(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  const n = Number(value);
-  return Number.isNaN(n) ? null : Math.round(n);
-}
-
-function applyWeatherCode(
+function applySnapshot(
   weather: HomeWeatherState,
   lastWeatherCode: Ref<number | null>,
   lastAqi: Ref<number | null>,
-  code: number,
-  aqi: number | null,
-  aqiLevelFn: (v: number | null) => string | null,
+  lastAqiScale: Ref<AqiScale>,
+  snapshot: WeatherSnapshot,
 ) {
-  lastWeatherCode.value = code;
-  lastAqi.value = aqi;
-  weather.icon = wmoWeatherIcon(code);
-  weather.aqi = aqi;
-  weather.label = wmoLabel(code);
-  weather.aqiLevel = aqiLevelFn(aqi);
+  lastWeatherCode.value = snapshot.weatherCode;
+  lastAqi.value = snapshot.aqi;
+  lastAqiScale.value = snapshot.aqiScale;
+  weather.temp = snapshot.temp;
+  weather.humidity = snapshot.humidity;
+  weather.windSpeed = snapshot.windSpeed;
+  weather.icon = wmoWeatherIcon(snapshot.weatherCode);
+  weather.aqi = snapshot.aqi;
+  weather.label = wmoLabel(snapshot.weatherCode);
+  weather.aqiLevel = aqiLevelForScale(snapshot.aqi, snapshot.aqiScale);
 }
 
 function unavailableState(): Partial<HomeWeatherState> {
@@ -143,58 +134,36 @@ function unavailableState(): Partial<HomeWeatherState> {
   };
 }
 
-async function loadFromQWeather(
-  weather: HomeWeatherState,
-  lastWeatherCode: Ref<number | null>,
-  lastAqi: Ref<number | null>,
-  key: string,
-) {
-  const host =
-    (import.meta.env.VITE_QWEATHER_API_HOST as string)?.trim() ||
-    'https://devapi.qweather.com';
-  const base = host.replace(/\/$/, '');
-  const qs = `location=${QWEATHER_LOCATION}&key=${encodeURIComponent(key)}`;
-
-  const weatherRes = await fetch(`${base}/v7/weather/now?${qs}`);
-  if (!weatherRes.ok) throw new Error('QWeather now failed');
-  const weatherJson = (await weatherRes.json()) as {
-    code?: string;
-    now?: { temp?: string; humidity?: string; windSpeed?: string; icon?: string };
-  };
-  if (weatherJson.code !== '200' || !weatherJson.now) {
-    throw new Error(`QWeather code=${weatherJson.code}`);
-  }
-
-  const now = weatherJson.now;
-  const code = qweatherIconToWmo(now.icon ?? '');
-  weather.temp = parseIntField(now.temp);
-  weather.humidity = parseIntField(now.humidity);
-  weather.windSpeed = parseIntField(now.windSpeed);
-
-  let aqi: number | null = null;
+function readWeatherCache(): WeatherCachePayload | null {
   try {
-    const airRes = await fetch(`${base}/v7/air/now?${qs}`);
-    if (airRes.ok) {
-      const airJson = (await airRes.json()) as {
-        code?: string;
-        now?: { aqi?: string };
-      };
-      if (airJson.code === '200' && airJson.now) {
-        aqi = parseIntField(airJson.now.aqi);
-      }
+    const raw = localStorage.getItem(WEATHER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as WeatherCachePayload;
+    if (
+      typeof parsed.savedAt !== 'number' ||
+      typeof parsed.weatherCode !== 'number' ||
+      Date.now() - parsed.savedAt > WEATHER_CACHE_TTL_MS
+    ) {
+      return null;
     }
+    return parsed;
   } catch {
-    /* 空气质量可选 */
+    return null;
   }
-
-  applyWeatherCode(weather, lastWeatherCode, lastAqi, code, aqi, chinaAqiLevel);
 }
 
-async function loadFromOpenMeteo(
-  weather: HomeWeatherState,
-  lastWeatherCode: Ref<number | null>,
-  lastAqi: Ref<number | null>,
-) {
+function writeWeatherCache(snapshot: WeatherSnapshot) {
+  try {
+    localStorage.setItem(
+      WEATHER_CACHE_KEY,
+      JSON.stringify({ ...snapshot, savedAt: Date.now() } satisfies WeatherCachePayload),
+    );
+  } catch {
+    /* 隐私模式等场景可能无法写入 */
+  }
+}
+
+async function fetchOpenMeteoSnapshot(): Promise<WeatherSnapshot> {
   const forecastUrl = new URL('https://api.open-meteo.com/v1/forecast');
   forecastUrl.searchParams.set('latitude', String(BEIJING_LAT));
   forecastUrl.searchParams.set('longitude', String(BEIJING_LON));
@@ -214,6 +183,8 @@ async function loadFromOpenMeteo(
     fetch(aqUrl.toString()).catch(() => null),
   ]);
 
+  if (!forecastRes.ok) throw new Error('Open-Meteo forecast failed');
+
   const forecastJson = (await forecastRes.json()) as {
     current?: {
       temperature_2m?: number;
@@ -226,20 +197,6 @@ async function loadFromOpenMeteo(
   const current = forecastJson.current;
   if (!current) throw new Error('Open-Meteo empty');
 
-  const code = current.weather_code ?? 3;
-  weather.temp =
-    current.temperature_2m !== undefined
-      ? Math.round(current.temperature_2m)
-      : null;
-  weather.humidity =
-    current.relative_humidity_2m !== undefined
-      ? Math.round(current.relative_humidity_2m)
-      : null;
-  weather.windSpeed =
-    current.wind_speed_10m !== undefined
-      ? Math.round(current.wind_speed_10m)
-      : null;
-
   let aqi: number | null = null;
   if (aqRes?.ok) {
     const aqJson = (await aqRes.json()) as {
@@ -250,13 +207,105 @@ async function loadFromOpenMeteo(
     }
   }
 
-  applyWeatherCode(weather, lastWeatherCode, lastAqi, code, aqi, europeanAqiLevel);
+  return {
+    aqi,
+    aqiScale: 'eu',
+    humidity:
+      current.relative_humidity_2m !== undefined
+        ? Math.round(current.relative_humidity_2m)
+        : null,
+    temp:
+      current.temperature_2m !== undefined
+        ? Math.round(current.temperature_2m)
+        : null,
+    weatherCode: current.weather_code ?? 3,
+    windSpeed:
+      current.wind_speed_10m !== undefined
+        ? Math.round(current.wind_speed_10m)
+        : null,
+  };
+}
+
+async function fetchWeatherApiSiteSnapshot(): Promise<WeatherSnapshot> {
+  const weatherUrl = `https://weather-api.site/weather?lat=${BEIJING_LAT}&lon=${BEIJING_LON}`;
+  const aqUrl = `https://weather-api.site/air-quality?lat=${BEIJING_LAT}&lon=${BEIJING_LON}`;
+
+  const [weatherRes, aqRes] = await Promise.all([
+    fetch(weatherUrl),
+    fetch(aqUrl).catch(() => null),
+  ]);
+
+  if (!weatherRes.ok) throw new Error('weather-api.site weather failed');
+
+  const weatherJson = (await weatherRes.json()) as {
+    current?: {
+      condition_code?: number;
+      humidity?: number;
+      temperature?: number;
+      wind_speed?: number;
+    };
+  };
+
+  const current = weatherJson.current;
+  if (!current) throw new Error('weather-api.site empty');
+
+  let aqi: number | null = null;
+  if (aqRes?.ok) {
+    const aqJson = (await aqRes.json()) as {
+      current?: { us_aqi?: number };
+    };
+    if (aqJson.current?.us_aqi !== undefined) {
+      aqi = Math.round(aqJson.current.us_aqi);
+    }
+  }
+
+  return {
+    aqi,
+    aqiScale: 'us',
+    humidity:
+      current.humidity !== undefined ? Math.round(current.humidity) : null,
+    temp:
+      current.temperature !== undefined
+        ? Math.round(current.temperature)
+        : null,
+    weatherCode: current.condition_code ?? 3,
+    windSpeed:
+      current.wind_speed !== undefined
+        ? Math.round(current.wind_speed)
+        : null,
+  };
+}
+
+async function raceWeatherProviders(): Promise<WeatherSnapshot> {
+  const providers = [fetchOpenMeteoSnapshot(), fetchWeatherApiSiteSnapshot()];
+
+  return new Promise((resolve, reject) => {
+    let pending = providers.length;
+    let settled = false;
+    const errors: unknown[] = [];
+
+    for (const provider of providers) {
+      void provider
+        .then((snapshot) => {
+          if (settled) return;
+          settled = true;
+          resolve(snapshot);
+        })
+        .catch((error) => {
+          errors.push(error);
+          pending -= 1;
+          if (pending === 0 && !settled) {
+            reject(errors[0] ?? new Error('all weather providers failed'));
+          }
+        });
+    }
+  });
 }
 
 export function useHomeWeather() {
   const lastWeatherCode = ref<number | null>(null);
   const lastAqi = ref<number | null>(null);
-  const aqiLevelFn = ref<(v: number | null) => string | null>(chinaAqiLevel);
+  const lastAqiScale = ref<AqiScale>('eu');
 
   const weather = reactive<HomeWeatherState>({
     aqi: null,
@@ -279,34 +328,28 @@ export function useHomeWeather() {
       return;
     }
     weather.label = wmoLabel(lastWeatherCode.value);
-    weather.aqiLevel = aqiLevelFn.value(lastAqi.value);
+    weather.aqiLevel = aqiLevelForScale(lastAqi.value, lastAqiScale.value);
   }
 
   async function loadWeather() {
-    weather.loading = true;
-    weather.label = $t('page.home.weatherLoading');
+    const cached = readWeatherCache();
+    const hasCache = cached !== null;
 
-    const qKey = (import.meta.env.VITE_QWEATHER_API_KEY as string | undefined)?.trim();
+    if (hasCache) {
+      applySnapshot(weather, lastWeatherCode, lastAqi, lastAqiScale, cached);
+      weather.loading = false;
+      applyLocalizedLabels();
+    } else {
+      weather.loading = true;
+      weather.label = $t('page.home.weatherLoading');
+    }
 
     try {
-      if (qKey) {
-        await loadFromQWeather(weather, lastWeatherCode, lastAqi, qKey);
-        aqiLevelFn.value = chinaAqiLevel;
-      } else {
-        await loadFromOpenMeteo(weather, lastWeatherCode, lastAqi);
-        aqiLevelFn.value = europeanAqiLevel;
-      }
+      const snapshot = await raceWeatherProviders();
+      applySnapshot(weather, lastWeatherCode, lastAqi, lastAqiScale, snapshot);
+      writeWeatherCache(snapshot);
     } catch {
-      if (qKey) {
-        try {
-          await loadFromOpenMeteo(weather, lastWeatherCode, lastAqi);
-          aqiLevelFn.value = europeanAqiLevel;
-        } catch {
-          lastWeatherCode.value = null;
-          lastAqi.value = null;
-          Object.assign(weather, unavailableState());
-        }
-      } else {
+      if (!hasCache) {
         lastWeatherCode.value = null;
         lastAqi.value = null;
         Object.assign(weather, unavailableState());

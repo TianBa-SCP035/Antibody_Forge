@@ -237,7 +237,7 @@ flowchart LR
 - **系统快捷导航** 6 格（3×2）：右上角「自定义配置」弹窗内排布快捷入口；**点击已填入的格子**可勾选为登录后默认页（`HOME_START_PAGE_STORAGE_KEY`），新模块只需加入下方预设列表即可被用户选为默认，无需单独维护默认页清单。配置仅存浏览器 `localStorage`，**不落库**；未勾选时仍用服务端 `homePath`。
 - 公告中心 / 站内信为固定高度列表区，超出滚动；点击查看全部（列表页待接 API）。
 - 静态数据在 `views/Home/home-data.ts`；暖心便签仅存浏览器 `localStorage`。
-- **北京天气**：前端 `useHomeWeather` 直连；优先 **和风 QWeather**（`VITE_QWEATHER_API_KEY`，见 `.env.development`），未配置或失败时回退 **Open-Meteo**。
+- **北京天气**：前端 `useHomeWeather` 直连 **Open-Meteo** 与 **weather-api.site**，并行竞速取先返回者；30 分钟浏览器缓存；均无需注册或 API Key。
 
 路由与页面：`apps/antibody_vita/src/router/routes/modules/home.ts`、`views/Home/`。
 

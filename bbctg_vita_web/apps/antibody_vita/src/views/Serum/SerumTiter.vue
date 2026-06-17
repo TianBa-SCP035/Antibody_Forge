@@ -574,6 +574,7 @@ import * as XLSX from 'xlsx'
 import FacsPlateCard from './FacsPlateCard.vue'
 import ElisaPlateCard from './ElisaPlateCard.vue'
 import TiterConclusionPanel from './TiterConclusionPanel.vue'
+import { ApiFetchError, fetchApiResource, notifyApiError } from '#/api/errors'
 import {
   deleteElisaPlate,
   deleteFacsPlate,
@@ -581,6 +582,7 @@ import {
   fetchElisaPlates,
   fetchFacsPlates,
   fetchIndexFiles,
+  skipGlobalErrorHandler,
   renameIndexFile,
   replaceIndexFile,
   saveElisaPlate,
@@ -591,6 +593,8 @@ import {
   saveTiterTargets,
   updateSerumStatus,
 } from '#/api/serum'
+import { handleUnauthorizedError } from '#/utils/auth-session'
+import { SERUM_ERRORS } from './errors'
 import {
   computeAutoPositiveFromPlate,
   createDefaultLowerSlotList,
@@ -611,7 +615,7 @@ import {
 } from '#/utils/serumPermission'
 import { getSerumProjectStatusTagType } from '#/utils/serumProjectStatus'
 
-const serumApiBaseUrl = import.meta.env.VITE_SERUM_API_URL || '/serum-api'
+const serumApiBaseUrl = '/api'
 
 /** handleSavePlate 写入后端的防抖 */
 const PLATE_SAVE_DEBOUNCE_MS = 500
@@ -917,9 +921,9 @@ export default {
       this.titer_pcs = []
     },
     getProjectInfo() {
-      fetchDetail(this.project_id).then(res => {
-        if (res.data) {
-          this.project = res.data
+      fetchDetail(this.project_id).then((res) => {
+        if (res) {
+          this.project = res
           this.titer_targets = this.project.titer_targets || []
           this.titer_pcs = this.project.titer_pcs || []
           if (!this.experiment_id) {
@@ -928,6 +932,8 @@ export default {
           this.getFiles()
           this.getPlates()
         }
+      }).catch((err) => {
+        notifyApiError(err, { messages: SERUM_ERRORS.edit.loadPage })
       })
     },
     goBack() {
@@ -939,12 +945,16 @@ export default {
       if (!expId) return
       
       this.filesLoading = true
-      fetchIndexFiles({ experiment_id: expId }).then(res => {
-        this.fileList = res.data.items || []
+      fetchIndexFiles({ experiment_id: expId }, skipGlobalErrorHandler).then((res) => {
+        this.fileList = res.items || []
         this.restoreElisaAbsorbancePreviews()
         this.loadImageThumbs()
         this.filesLoading = false
-      }).catch(() => { this.filesLoading = false })
+      }).catch((err) => {
+        this.fileList = []
+        this.filesLoading = false
+        notifyApiError(err, { messages: SERUM_ERRORS.titer.load })
+      })
     },
     handleFileUpload(param) {
       if (!this.canManageFiles()) {
@@ -962,9 +972,8 @@ export default {
       saveIndexFile(formData).then(res => {
         ElMessage.success('上传成功')
         this.getFiles()
-      }).catch(err => {
-        console.error(err)
-        ElMessage.error('上传失败')
+      }).catch((err) => {
+        notifyApiError(err, { messages: SERUM_ERRORS.titer.upload })
       })
     },
     
@@ -998,16 +1007,16 @@ export default {
       }
       if (!this.currentFile || !this.editFileName) return
       if (this.editFileName === this.currentFile.file_name) return
-      
-      renameIndexFile({ 
-        id: this.currentFile.id, 
+
+      renameIndexFile({
+        id: this.currentFile.id,
         new_name: this.editFileName,
-      }).then(res => {
+      }).then(() => {
         ElMessage.success('重命名成功')
-        this.currentFile.file_name = this.editFileName 
-        this.getFiles() 
-      }).catch(() => {
-        ElMessage.error('重命名失败')
+        this.currentFile.file_name = this.editFileName
+        this.getFiles()
+      }).catch((err) => {
+        notifyApiError(err, { messages: SERUM_ERRORS.titer.rename })
       })
     },
     handleReplaceFile(param) {
@@ -1016,42 +1025,41 @@ export default {
         return
       }
       if (!this.currentFile) return
-      
+
       ElMessageBox.confirm('确定要替换当前文件吗? 原文件将被覆盖。', '警告', {
-        type: 'warning'
+        type: 'warning',
       }).then(() => {
         const formData = new FormData()
         formData.append('file', param.file)
         formData.append('id', this.currentFile.id)
-        
-        replaceIndexFile(formData).then(res => {
+
+        replaceIndexFile(formData).then((res) => {
           ElMessage.success('替换成功')
-          
-          const savedFile = res.data || {}
+
+          const savedFile = res || {}
           const uploadUser = savedFile.upload_user || this.currentUserName
           const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
           const newFileName = savedFile.file_name || param.file.name
-          
+
           this.currentFile.file_name = newFileName
           this.currentFile.upload_user = uploadUser
           this.currentFile.updated_time = savedFile.updated_time || now
           this.currentFile._timestamp = Date.now()
           this.editFileName = newFileName
-          
+
           if (this.isExcel(newFileName)) {
             this.loadExcelData(this.currentFile)
           }
-          
-          const fileInList = this.fileList.find(f => f.id === this.currentFile.id)
+
+          const fileInList = this.fileList.find((f) => f.id === this.currentFile.id)
           if (fileInList) {
             fileInList.file_name = newFileName
             fileInList.upload_user = uploadUser
             fileInList.updated_time = savedFile.updated_time || now
             fileInList._timestamp = Date.now()
           }
-        }).catch(err => {
-          console.error('替换文件失败:', err)
-          ElMessage.error('替换失败')
+        }).catch((err) => {
+          notifyApiError(err, { messages: SERUM_ERRORS.titer.replace })
         })
       }).catch(() => {})
     },
@@ -1069,6 +1077,8 @@ export default {
           ElMessage.success('删除成功')
           this.detailDialogVisible = false
           this.getFiles()
+        }).catch((err) => {
+          notifyApiError(err, { messages: SERUM_ERRORS.titer.deleteFile })
         })
       }).catch(() => {})
     },
@@ -1084,8 +1094,7 @@ export default {
         document.body.removeChild(link)
         URL.revokeObjectURL(url)
       } catch (error) {
-        console.error('下载文件失败:', error)
-        ElMessage.error('下载失败')
+        notifyApiError(error, { messages: SERUM_ERRORS.titer.download })
       }
     },
     
@@ -1142,11 +1151,15 @@ export default {
       return token ? { Authorization: `Bearer ${token}` } : {}
     },
     async fetchFileBlob(url) {
-      const response = await fetch(url, { headers: this.authHeaders() })
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+      try {
+        const response = await fetchApiResource(url, { headers: this.authHeaders() })
+        return await response.blob()
+      } catch (error) {
+        if (error instanceof ApiFetchError && error.status === 401) {
+          await handleUnauthorizedError({ response: { status: 401 } })
+        }
+        throw error
       }
-      return await response.blob()
     },
     setFileObjectUrl(file, field, key, blob) {
       const previous = file[field]
@@ -1271,13 +1284,12 @@ export default {
         saveTiterTargets({
           experiment_id: this.experiment_id,
           targets: this.titer_targets
-        }).then(res => {
-          if (res.data && res.data.items) {
-            this.titer_targets = res.data.items
+        }).then((res) => {
+          if (res?.items) {
+            this.titer_targets = res.items
           }
-        }).catch(err => {
-          console.error('保存失败:', err)
-          ElMessage.error('保存失败')
+        }).catch((err) => {
+          notifyApiError(err, { messages: SERUM_ERRORS.titer.savePlate })
         }).finally(() => {
           this.targetsLoading = false
         })
@@ -1311,13 +1323,12 @@ export default {
         saveTiterPcs({
           experiment_id: this.experiment_id,
           pcs: this.titer_pcs
-        }).then(res => {
-          if (res.data && res.data.items) {
-            this.titer_pcs = res.data.items
+        }).then((res) => {
+          if (res?.items) {
+            this.titer_pcs = res.items
           }
-        }).catch(err => {
-          console.error('保存失败:', err)
-          ElMessage.error('保存失败')
+        }).catch((err) => {
+          notifyApiError(err, { messages: SERUM_ERRORS.titer.savePlate })
         }).finally(() => {
           this.pcsLoading = false
         })
@@ -1331,17 +1342,17 @@ export default {
 
       this.platesLoading = true
       Promise.all([
-        fetchFacsPlates({ experiment_id: expId }),
-        fetchElisaPlates({ experiment_id: expId }),
+        fetchFacsPlates({ experiment_id: expId }, skipGlobalErrorHandler),
+        fetchElisaPlates({ experiment_id: expId }, skipGlobalErrorHandler),
       ])
         .then(([facsRes, elisaRes]) => {
-          this.facsPlates = (facsRes.data.items || []).map((p) => ({
+          this.facsPlates = (facsRes.items || []).map((p) => ({
             ...p,
             plate_type: 'facs',
             tempId: p.tempId || null,
             _uid: p.id ? `id_${p.id}` : `tmp_${p.tempId}`,
           }))
-          this.elisaPlates = (elisaRes.data.items || []).map((p) => ({
+          this.elisaPlates = (elisaRes.items || []).map((p) => ({
             ...p,
             plate_type: 'elisa',
             tempId: p.tempId || null,
@@ -1356,8 +1367,12 @@ export default {
           this.platesLoading = false
           this.scheduleFacsConclusionRefresh(true)
         })
-        .catch(() => {
+        .catch((err) => {
+          this.facsPlates = []
+          this.elisaPlates = []
+          this.activePlateName = ''
           this.platesLoading = false
+          notifyApiError(err, { messages: SERUM_ERRORS.titer.load })
         })
     },
     getPlateKey(plate) {
@@ -1555,7 +1570,7 @@ export default {
         }
         if (plateData.id) {
           const req = isElisa ? deleteElisaPlate(plateData.id) : deleteFacsPlate(plateData.id)
-          req.then(removeLocal).catch(() => ElMessage.error('删除失败'))
+          req.then(removeLocal).catch((err) => notifyApiError(err, { messages: SERUM_ERRORS.titer.deletePlate }))
         } else {
           removeLocal()
         }
@@ -1605,8 +1620,8 @@ export default {
 
           if (this.plateSaveSeq[myKey] !== mySeq) return
 
-          if (res.data?.id) {
-            const newId = res.data.id
+          if (res?.id) {
+            const newId = res.id
             const newKey = `id_${newId}`
             const oldKey = plateData.id ? `id_${plateData.id}` : `tmp_${plateData.tempId}`
             const list = isElisa ? this.elisaPlates : this.facsPlates
@@ -1616,9 +1631,9 @@ export default {
             if (isElisa) {
               list[index].id = newId
               list[index]._uid = newKey
-              if (res.data.absorbance_1 !== undefined) list[index].absorbance_1 = res.data.absorbance_1
-              if (res.data.positive_well_list !== undefined) {
-                list[index].positive_well_list = res.data.positive_well_list
+              if (res.absorbance_1 !== undefined) list[index].absorbance_1 = res.absorbance_1
+              if (res.positive_well_list !== undefined) {
+                list[index].positive_well_list = res.positive_well_list
               }
             } else {
               list[index].id = newId
@@ -1648,8 +1663,7 @@ export default {
             }
           }
         } catch (err) {
-          console.error('保存失败:', err)
-          ElMessage.error('保存失败')
+          notifyApiError(err, { messages: SERUM_ERRORS.titer.savePlate })
         } finally {
           if (this.plateSaveSeq[myKey] === mySeq) {
             this.savingPlateKeys[myKey] = false
@@ -1740,6 +1754,8 @@ export default {
         this.project.project_status = newStatus
         ElMessage.success('状态修改成功')
         this.projectStatusPopoverVisible = false
+      }).catch((error) => {
+        notifyApiError(error, { messages: SERUM_ERRORS.list.updateStatus })
       })
     },
   }

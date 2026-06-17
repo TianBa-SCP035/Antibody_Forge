@@ -310,7 +310,10 @@ import {
 } from 'element-plus'
 import * as XLSX from 'xlsx'
 
-import { fetchElisaPlates, fetchFacsPlates, fetchIndexFiles } from '#/api/serum'
+import { ApiFetchError, fetchApiResource, notifyApiError } from '#/api/errors'
+import { fetchElisaPlates, fetchFacsPlates, fetchIndexFiles, skipGlobalErrorHandler } from '#/api/serum'
+import { handleUnauthorizedError } from '#/utils/auth-session'
+import { SERUM_ERRORS } from './errors'
 import {
   createDefaultLowerSlotList,
   createDefaultUpperSlotList,
@@ -324,7 +327,7 @@ import ElisaPlateCard from './ElisaPlateCard.vue'
 import FacsPlateCard from './FacsPlateCard.vue'
 import TiterConclusionPanel from './TiterConclusionPanel.vue'
 
-const serumApiBaseUrl = import.meta.env.VITE_SERUM_API_URL || '/serum-api'
+const serumApiBaseUrl = '/api'
 
 export default {
   name: 'SerumDetailTiterTab',
@@ -481,17 +484,17 @@ export default {
       const expId = this.experimentId
       if (!expId) return
       this.filesLoading = true
-      fetchIndexFiles({ experiment_id: expId })
+      fetchIndexFiles({ experiment_id: expId }, skipGlobalErrorHandler)
         .then((res) => {
           if (this.experimentId !== expId) return
-          this.fileList = res.data?.items || []
+          this.fileList = res?.items || []
           this.restoreElisaAbsorbancePreviews()
           return this.loadImageThumbs()
         })
-        .catch(() => {
+        .catch((err) => {
           if (this.experimentId !== expId) return
           this.fileList = []
-          ElMessage.error('加载效价文件失败')
+          notifyApiError(err, { messages: SERUM_ERRORS.titer.load })
         })
         .finally(() => {
           if (this.experimentId === expId) {
@@ -504,17 +507,17 @@ export default {
       if (!expId) return
       this.platesLoading = true
       Promise.all([
-        fetchFacsPlates({ experiment_id: expId }),
-        fetchElisaPlates({ experiment_id: expId }),
+        fetchFacsPlates({ experiment_id: expId }, skipGlobalErrorHandler),
+        fetchElisaPlates({ experiment_id: expId }, skipGlobalErrorHandler),
       ])
         .then(([facsRes, elisaRes]) => {
           if (this.experimentId !== expId) return
-          this.facsPlates = (facsRes.data.items || []).map((p) => ({
+          this.facsPlates = (facsRes.items || []).map((p) => ({
             ...p,
             plate_type: 'facs',
             tempId: p.tempId || null,
           }))
-          this.elisaPlates = (elisaRes.data.items || []).map((p) => ({
+          this.elisaPlates = (elisaRes.items || []).map((p) => ({
             ...p,
             plate_type: 'elisa',
             tempId: p.tempId || null,
@@ -527,13 +530,13 @@ export default {
           this.restoreElisaAbsorbancePreviews()
           this.updateFacsConclusion()
         })
-        .catch(() => {
+        .catch((err) => {
           if (this.experimentId !== expId) return
           this.facsPlates = []
           this.elisaPlates = []
           this.activePlateName = ''
           this.facsConclusionModel = null
-          ElMessage.error('加载效价板卡失败')
+          notifyApiError(err, { messages: SERUM_ERRORS.titer.load })
         })
         .finally(() => {
           if (this.experimentId === expId) {
@@ -628,12 +631,7 @@ export default {
         document.body.removeChild(link)
         URL.revokeObjectURL(url)
       } catch (error) {
-        console.error('下载文件失败:', error)
-        if (error?.message === 'FORBIDDEN') {
-          ElMessage.error('无权限下载效价文件')
-        } else {
-          ElMessage.error('下载失败')
-        }
+        notifyApiError(error, { messages: SERUM_ERRORS.titer.download })
       }
     },
     getDownloadUrl(file, isPreview = false) {
@@ -682,14 +680,15 @@ export default {
       return token ? { Authorization: `Bearer ${token}` } : {}
     },
     async fetchFileBlob(url) {
-      const response = await fetch(url, { headers: this.authHeaders() })
-      if (!response.ok) {
-        if (response.status === 403) {
-          throw new Error('FORBIDDEN')
+      try {
+        const response = await fetchApiResource(url, { headers: this.authHeaders() })
+        return await response.blob()
+      } catch (error) {
+        if (error instanceof ApiFetchError && error.status === 401) {
+          await handleUnauthorizedError({ response: { status: 401 } })
         }
-        throw new Error(`HTTP ${response.status}`)
+        throw error
       }
-      return await response.blob()
     },
     setFileObjectUrl(file, field, key, blob) {
       const previous = file[field]
@@ -701,7 +700,7 @@ export default {
     },
     async loadImageThumbs() {
       const expId = this.experimentId
-      let forbiddenNotified = false
+      let downloadErrorNotified = false
       await Promise.all(
         this.fileList
           .filter((file) => this.isImage(file.file_name))
@@ -712,13 +711,9 @@ export default {
               if (this.experimentId !== expId) return
               this.setFileObjectUrl(file, 'thumb_object_url', key, blob)
             } catch (error) {
-              if (error?.message === 'FORBIDDEN') {
-                if (!forbiddenNotified) {
-                  forbiddenNotified = true
-                  ElMessage.error('无权限查看效价文件')
-                }
-              } else {
-                console.error('加载缩略图失败:', error)
+              if (!downloadErrorNotified) {
+                downloadErrorNotified = true
+                notifyApiError(error, { messages: SERUM_ERRORS.titer.download })
               }
             }
           }),
@@ -730,12 +725,7 @@ export default {
         const blob = await this.fetchFileBlob(this.getDownloadUrl(file, true))
         this.setFileObjectUrl(file, 'preview_object_url', key, blob)
       } catch (error) {
-        if (error?.message === 'FORBIDDEN') {
-          ElMessage.error('无权限查看效价文件')
-        } else {
-          console.error('加载图片预览失败:', error)
-          ElMessage.error('加载图片预览失败')
-        }
+        notifyApiError(error, { messages: SERUM_ERRORS.titer.download })
         throw error
       }
     },
@@ -757,12 +747,7 @@ export default {
           this.excelData = jsonData
         }
       } catch (error) {
-        if (error?.message === 'FORBIDDEN') {
-          ElMessage.error('无权限查看效价文件')
-        } else {
-          console.error('读取 Excel 文件失败:', error)
-          ElMessage.error('读取 Excel 文件失败')
-        }
+        notifyApiError(error, { messages: SERUM_ERRORS.titer.download })
       } finally {
         this.excelLoading = false
       }

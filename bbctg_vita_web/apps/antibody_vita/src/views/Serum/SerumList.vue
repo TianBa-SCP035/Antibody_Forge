@@ -449,7 +449,10 @@ import {
   ElTag,
 } from 'element-plus'
 
+import { notifyApiError, resolveUserMessage } from '#/api/errors'
 import { fetchList, fetchStats, getSerumFilterOptions, updateSerumStatus, export_mouse, autoUpdateStatus, updateCagePosition } from '#/api/serum'
+import { skipGlobalErrorHandler } from '#/api/request'
+import { SERUM_ERRORS } from './errors'
 import {
   canAutoUpdateSerumStatus,
   canCreateSerumProject,
@@ -586,8 +589,7 @@ export default {
     }
   },
   created() {
-    this.getStats()
-    this.getFilterOptions()
+    this.initListMeta()
   },
   mounted() {
     this.initializeListPage()
@@ -722,26 +724,38 @@ export default {
             limit: this.listQuery.limit
         }
     },
+    async initListMeta() {
+      try {
+        const [stats, filterOptions] = await Promise.all([
+          fetchStats(skipGlobalErrorHandler),
+          getSerumFilterOptions(skipGlobalErrorHandler),
+        ])
+        if (stats) {
+          this.stats = stats
+          if (this.stats.owner_counts && Array.isArray(this.stats.owner_counts)) {
+            this.stats.owner_counts.sort((a, b) => b.value - a.value)
+          }
+        }
+        if (filterOptions) {
+          this.allTargetOptions = filterOptions.targets || []
+          this.allOwnerOptions = filterOptions.owners || []
+          this.allStudyTypeOptions = filterOptions.study_types || []
+          this.allPMOptions = filterOptions.pms || []
+          this.allMouseStrainOptions = filterOptions.mouse_strains || []
+          this.allMouseStrainCategoryOptions = filterOptions.mouse_strain_categories || []
+          this.allStatusOptions = filterOptions.statuses || []
+        }
+      } catch (error) {
+        notifyApiError(error, { messages: SERUM_ERRORS.list.initMeta })
+      }
+    },
     getStats() {
-        fetchStats().then(response => {
-            if (response.data) {
-                this.stats = response.data
+        fetchStats().then((response) => {
+            if (response) {
+                this.stats = response
                 if (this.stats.owner_counts && Array.isArray(this.stats.owner_counts)) {
                     this.stats.owner_counts.sort((a, b) => b.value - a.value)
                 }
-            }
-        })
-    },
-    getFilterOptions() {
-        getSerumFilterOptions().then(response => {
-            if (response.data) {
-                this.allTargetOptions = response.data.targets || [];
-                this.allOwnerOptions = response.data.owners || [];
-                this.allStudyTypeOptions = response.data.study_types || [];
-                this.allPMOptions = response.data.pms || [];
-                this.allMouseStrainOptions = response.data.mouse_strains || [];
-                this.allMouseStrainCategoryOptions = response.data.mouse_strain_categories || [];
-                this.allStatusOptions = response.data.statuses || [];
             }
         })
     },
@@ -757,14 +771,15 @@ export default {
       }
 
       const payload = this.getCurrentFilterPayload()
-      fetchList(payload).then(response => {
-        this.list = Array.isArray(response.data.items) ? response.data.items : []
-        this.total = Number(response.data.total) || 0
+      fetchList(payload, skipGlobalErrorHandler).then((response) => {
+        this.list = Array.isArray(response.items) ? response.items : []
+        this.total = Number(response.total) || 0;
         this.listLoading = false
-      }).catch(() => {
+      }).catch((error) => {
          this.list = []
          this.total = 0
          this.listLoading = false
+         notifyApiError(error, { messages: SERUM_ERRORS.list.loadList })
       })
     },
     toggleAdvanced() {
@@ -939,22 +954,26 @@ export default {
         return
       }
       this.isSaving = true
-      updateCagePosition({ 
-        id: row.id, 
-        cage_position: this.editingValue.trim() 
-      }).then(response => {
-        if (response.data && response.data.message && response.data.message.includes('鼠鼠不存在')) {
-          ElMessage.warning('鼠鼠不存在')
+      updateCagePosition({
+        id: row.id,
+        cage_position: this.editingValue.trim(),
+      }).then(() => {
+        row.cage_position = this.editingValue.trim()
+        row.cage_position_display = this.editingValue.trim()
+        ElMessage.success('笼位更新成功')
+        this.editingRowId = null
+        this.editingValue = ''
+      }).catch((error) => {
+        const resolved = resolveUserMessage(error, {
+          messages: SERUM_ERRORS.list.updateCage,
+        })
+        if (resolved.level === 'warning') {
+          ElMessage.warning(resolved.message)
           row.cage_position = ''
           row.cage_position_display = ''
         } else {
-          row.cage_position = this.editingValue.trim()
-          row.cage_position_display = this.editingValue.trim()
-          ElMessage.success('笼位更新成功')
+          notifyApiError(error, { messages: SERUM_ERRORS.list.updateCage })
         }
-        this.editingRowId = null
-        this.editingValue = ''
-      }).catch(error => {
         this.editingRowId = null
         this.editingValue = ''
       }).finally(() => {
@@ -971,6 +990,8 @@ export default {
         ElMessage.success('状态修改成功')
         this.getStats()
         this.activeStatusRowId = null
+      }).catch((error) => {
+        notifyApiError(error, { messages: SERUM_ERRORS.list.updateStatus })
       })
     },
     handleExport() {
@@ -1024,9 +1045,8 @@ export default {
             document.body.removeChild(link)
             window.URL.revokeObjectURL(url)
             ElMessage.success('导出成功')
-        }).catch(error => {
-            console.error('导出失败:', error)
-            ElMessage.error('导出失败，请重试')
+        }).catch((error) => {
+            notifyApiError(error, { messages: SERUM_ERRORS.list.exportMouse })
         }).finally(() => {
             loading.close()
         })
@@ -1054,9 +1074,8 @@ export default {
                 ElMessage.success('状态更新成功')
                 this.getList()
                 this.getStats()
-            }).catch(error => {
-                console.error('状态更新失败:', error)
-                ElMessage.error('状态更新失败，请重试')
+            }).catch((error) => {
+                notifyApiError(error, { messages: SERUM_ERRORS.list.autoUpdateStatus })
             }).finally(() => {
                 loading.close()
             })

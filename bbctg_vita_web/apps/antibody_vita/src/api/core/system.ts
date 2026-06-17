@@ -1,5 +1,7 @@
 import { requestClient } from '#/api/request';
 
+type RequestConfig = Parameters<typeof requestClient.get>[1];
+
 export interface SystemUser {
   id?: number;
   username: string;
@@ -143,7 +145,10 @@ export interface SystemUserQuery {
   status?: string;
 }
 
-export function getSystemUsersApi(params: string | SystemUserQuery = '') {
+export function getSystemUsersApi(
+  params: string | SystemUserQuery = '',
+  config?: RequestConfig,
+) {
   const query = typeof params === 'string' ? { keyword: params } : params;
   return requestClient.get<{
     active_total?: number;
@@ -153,6 +158,7 @@ export function getSystemUsersApi(params: string | SystemUserQuery = '') {
     total?: number;
   }>('/system/users', {
     params: query,
+    ...config,
   });
 }
 
@@ -170,8 +176,8 @@ export function saveSystemUserApi(data: SystemUser & { password?: string }) {
   return requestClient.post('/system/users/save', data);
 }
 
-export function getSystemFeaturesApi() {
-  return requestClient.get<{ items: SystemFeatureFlag[] }>('/system/features');
+export function getSystemFeaturesApi(config?: RequestConfig) {
+  return requestClient.get<{ items: SystemFeatureFlag[] }>('/system/features', config);
 }
 
 export function getSystemEffectiveFeaturesApi() {
@@ -202,8 +208,11 @@ export function getSystemFeatureStatusApi() {
   }>('/system/features/system_status');
 }
 
-export function saveSystemFeatureApi(data: SystemFeatureFlag) {
-  return requestClient.post<SystemFeatureFlag>('/system/features/save', data);
+export function saveSystemFeatureApi(
+  data: SystemFeatureFlag,
+  config?: Parameters<typeof requestClient.post>[2],
+) {
+  return requestClient.post<SystemFeatureFlag>('/system/features/save', data, config);
 }
 
 export function deleteSystemUserApi(id: number, snapshot: SystemAuditTargetSnapshot = {}) {
@@ -228,9 +237,10 @@ export function batchUpdateSystemUserRolesApi(data: {
   return requestClient.post('/system/users/batch_roles', data);
 }
 
-export function getSystemUserPermissionOverridesApi(id: number) {
+export function getSystemUserPermissionOverridesApi(id: number, config?: RequestConfig) {
   return requestClient.get<SystemUserPermissionOverrides>(
     `/system/users/${id}/permission_overrides`,
+    config,
   );
 }
 
@@ -241,8 +251,8 @@ export function saveSystemUserPermissionOverridesApi(
   return requestClient.post(`/system/users/${id}/permission_overrides`, data);
 }
 
-export function getSystemRolesApi() {
-  return requestClient.get<{ items: SystemRole[] }>('/system/roles');
+export function getSystemRolesApi(config?: RequestConfig) {
+  return requestClient.get<{ items: SystemRole[] }>('/system/roles', config);
 }
 
 export function saveSystemRoleApi(data: SystemRole) {
@@ -253,13 +263,14 @@ export function deleteSystemRoleApi(id: number, snapshot: SystemAuditTargetSnaps
   return requestClient.post('/system/roles/delete', { id, ...snapshot });
 }
 
-export function getSystemPermissionsApi() {
-  return requestClient.get<{ items: SystemPermission[] }>('/system/permissions');
+export function getSystemPermissionsApi(config?: RequestConfig) {
+  return requestClient.get<{ items: SystemPermission[] }>('/system/permissions', config);
 }
 
-export function getSystemPermissionBundlesApi() {
+export function getSystemPermissionBundlesApi(config?: RequestConfig) {
   return requestClient.get<{ items: SystemPermissionBundle[] }>(
     '/system/permission_bundles',
+    config,
   );
 }
 
@@ -284,11 +295,15 @@ export function getSystemOperationLogsApi(params: number | SystemOperationLogQue
   );
 }
 
-export function getSystemOperationLogsByQueryApi(params: SystemOperationLogQuery) {
+export function getSystemOperationLogsByQueryApi(
+  params: SystemOperationLogQuery,
+  config?: RequestConfig,
+) {
   return requestClient.get<{ items: SystemOperationLog[]; page: number; page_size: number; total: number }>(
     '/system/operation_logs',
     {
       params,
+      ...config,
     },
   );
 }

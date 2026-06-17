@@ -512,7 +512,9 @@ import {
   ElTag,
 } from 'element-plus'
 
+import { notifyApiError } from '#/api/errors'
 import { exportScheme, exportSchemePdf, fetchDetail } from '#/api/serum'
+import { SERUM_ERRORS } from './errors'
 import {
   canEditSerumProject,
   getSerumUserName,
@@ -711,8 +713,8 @@ export default {
     fetchData(id) {
       this.loading = true
       fetchDetail(id)
-        .then(res => {
-          this.postForm = { ...this.postForm, ...(res.data || {}) }
+        .then((res) => {
+          this.postForm = { ...this.postForm, ...(res || {}) }
           
           if (this.activeTab === 'plan-details' && this.postForm.mouse_groups && this.postForm.mouse_groups.length > 0) {
             const firstGroup = this.postForm.mouse_groups[0]
@@ -721,8 +723,8 @@ export default {
           
           this.loading = false
         })
-        .catch(err => {
-          console.log(err)
+        .catch((err) => {
+          notifyApiError(err, { messages: SERUM_ERRORS.edit.loadPage })
           this.loading = false
         })
     },
@@ -762,8 +764,7 @@ export default {
           ElMessage.success('免疫方案已导出')
         })
         .catch((err) => {
-          console.error(err)
-          ElMessage.error('导出失败，请稍后重试')
+          notifyApiError(err, { messages: SERUM_ERRORS.detail.exportScheme })
         })
         .finally(() => {
           this.schemeExportLoading = false
@@ -793,8 +794,11 @@ export default {
           }, 1000)
         })
         .catch((err) => {
-          console.error(err)
-          ElMessage.error(err?.message || '打印失败，请稍后重试')
+          if (err instanceof Error && err.message.includes('浏览器拦截')) {
+            ElMessage.error(err.message)
+            return
+          }
+          notifyApiError(err, { messages: SERUM_ERRORS.detail.exportPdf })
         })
         .finally(() => {
           loadingMsg.close()

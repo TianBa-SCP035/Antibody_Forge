@@ -37,11 +37,6 @@ export default defineConfig(async (env) => {
             changeOrigin: true,
             target: devBackend,
           },
-          '/serum-api': {
-            changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/serum-api/, '/api'),
-            target: devBackend,
-          },
         },
       },
     },

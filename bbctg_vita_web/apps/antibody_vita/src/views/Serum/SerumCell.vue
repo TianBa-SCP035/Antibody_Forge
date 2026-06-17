@@ -336,7 +336,9 @@ import {
   ElTooltip,
 } from 'element-plus'
 
-import request from '#/utils/request'
+import { notifyApiError } from '#/api/errors'
+import { fetchCellInventoryData, updateProjectPrepStatus } from '#/api/serum'
+import { SERUM_ERRORS } from './errors'
 import { canUpdateSerumPrepStatus } from '#/utils/serumPermission'
 
 export default {
@@ -651,39 +653,29 @@ export default {
       this.loading = true
       this.error = null
       try {
-        const response = await request({
-          url: '/serum/cell_inventory/data',
-          method: 'get'
-        })
-        
-        if (response.code === 20000) {
-          this.targets = response.data.targets || []
-          this.projects = response.data.projects || {}
-          this.cells = response.data.cells || {}
-          
-          this.preparedProjects = []
-          for (const targetName in this.projects) {
-            this.projects[targetName].forEach(project => {
-              project.prepared = project.prep_status === '已制备'
-              if (project.prepared) {
-                this.preparedProjects.push(project.experiment_id)
-              }
-            })
-          }
-          
-          if (this.targets.length > 0 && !this.selectedTarget) {
-            this.selectedTarget = this.targets[0].name
-          }
-          
-          ElMessage.success('数据加载成功')
-        } else {
-          this.error = '数据加载失败'
-          ElMessage.error('数据加载失败')
+        const data = await fetchCellInventoryData()
+        this.targets = data.targets || []
+        this.projects = data.projects || {}
+        this.cells = data.cells || {}
+
+        this.preparedProjects = []
+        for (const targetName in this.projects) {
+          this.projects[targetName].forEach((project) => {
+            project.prepared = project.prep_status === '已制备'
+            if (project.prepared) {
+              this.preparedProjects.push(project.experiment_id)
+            }
+          })
         }
+
+        if (this.targets.length > 0 && !this.selectedTarget) {
+          this.selectedTarget = this.targets[0].name
+        }
+
+        ElMessage.success('数据加载成功')
       } catch (error) {
-        console.error('加载数据失败:', error)
-        this.error = error.message || '网络请求失败'
-        ElMessage.error('网络请求失败')
+        this.error = error instanceof Error ? error.message : '网络请求失败'
+        notifyApiError(error, { messages: SERUM_ERRORS.cell.load })
       } finally {
         this.loading = false
       }
@@ -698,35 +690,26 @@ export default {
       }
       const newStatus = !project.prepared
       try {
-        const response = await request({
-          url: '/serum/project/prep_status',
-          method: 'post',
-          data: {
-            experiment_id: project.experiment_id,
-            prep_status: newStatus ? '已制备' : ''
-          }
+        await updateProjectPrepStatus({
+          experiment_id: project.experiment_id,
+          prep_status: newStatus ? '已制备' : '',
         })
-        
-        if (response.code === 20000) {
-          project.prepared = newStatus
-          project.prep_status = newStatus ? '已制备' : ''
-          if (newStatus) {
-            if (!this.preparedProjects.includes(project.experiment_id)) {
-              this.preparedProjects.push(project.experiment_id)
-            }
-          } else {
-            const index = this.preparedProjects.indexOf(project.experiment_id)
-            if (index > -1) {
-              this.preparedProjects.splice(index, 1)
-            }
+
+        project.prepared = newStatus
+        project.prep_status = newStatus ? '已制备' : ''
+        if (newStatus) {
+          if (!this.preparedProjects.includes(project.experiment_id)) {
+            this.preparedProjects.push(project.experiment_id)
           }
-          ElMessage.success('制备状态更新成功')
         } else {
-          ElMessage.error('制备状态更新失败')
+          const index = this.preparedProjects.indexOf(project.experiment_id)
+          if (index > -1) {
+            this.preparedProjects.splice(index, 1)
+          }
         }
+        ElMessage.success('制备状态更新成功')
       } catch (error) {
-        console.error('更新制备状态失败:', error)
-        ElMessage.error('网络请求失败')
+        notifyApiError(error, { messages: SERUM_ERRORS.cell.updatePrepStatus })
       }
     },
     getStatusType(status) {

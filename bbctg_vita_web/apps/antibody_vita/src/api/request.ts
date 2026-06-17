@@ -12,8 +12,7 @@ import {
 } from '@vben/request';
 import { useAccessStore } from '@vben/stores';
 
-import { ElMessage } from 'element-plus';
-
+import { toastApiError } from '#/api/errors';
 import {
   handleUnauthorizedError,
   isUnauthorizedError,
@@ -61,9 +60,13 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
       if (isUnauthorizedError(error)) {
         return;
       }
-      const responseData = error?.response?.data ?? {};
-      const errorMessage = responseData?.error ?? responseData?.message ?? '';
-      ElMessage.error(errorMessage || msg);
+      if (
+        (error as { config?: { skipErrorHandler?: boolean } })?.config
+          ?.skipErrorHandler
+      ) {
+        return;
+      }
+      toastApiError(error, msg);
     }),
   );
 
@@ -73,5 +76,9 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
 export const requestClient = createRequestClient(apiURL, {
   responseReturn: 'data',
 });
+
+export const skipGlobalErrorHandler = {
+  skipErrorHandler: true,
+} as Parameters<typeof requestClient.get>[1];
 
 export const baseRequestClient = new RequestClient({ baseURL: apiURL });

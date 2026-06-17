@@ -19,6 +19,9 @@ import {
   getUserInfoApi,
   updateProfileSignatureApi,
 } from '#/api';
+import { notifyApiError } from '#/api/errors';
+import { skipGlobalErrorHandler } from '#/api/request';
+import { SYSTEM_ERRORS } from '#/views/System/errors';
 
 defineOptions({ name: 'ProfilePage' });
 
@@ -107,12 +110,12 @@ async function loadProfile() {
 async function handleSaveSignature() {
   savingSignature.value = true;
   try {
-    const data = await updateProfileSignatureApi(signature.value);
+    const data = await updateProfileSignatureApi(signature.value, skipGlobalErrorHandler);
     profile.value = data;
     userStore.setUserInfo(data);
     ElMessage.success('个性名片已保存');
-  } catch (error: any) {
-    ElMessage.error(error?.message || '保存失败');
+  } catch (error: unknown) {
+    notifyApiError(error, { messages: SYSTEM_ERRORS.saveProfile });
   } finally {
     savingSignature.value = false;
   }
@@ -131,14 +134,14 @@ async function handleSavePassword() {
   const isFirst = !hasPassword.value;
   savingPassword.value = true;
   try {
-    await changePasswordApi({ newPassword });
+    await changePasswordApi({ newPassword }, skipGlobalErrorHandler);
     passwordForm.value = { newPassword: '', confirmPassword: '' };
     await loadProfile();
     ElMessage.success(
       isFirst ? '登录密码已设置' : '密码已更新，下次请使用新密码登录',
     );
-  } catch (error: any) {
-    ElMessage.error(error?.message || '密码保存失败');
+  } catch (error: unknown) {
+    notifyApiError(error, { messages: SYSTEM_ERRORS.savePassword });
   } finally {
     savingPassword.value = false;
   }

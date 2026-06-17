@@ -84,7 +84,7 @@ sudo apt install -y libreoffice
 
 1. `git pull` 到固定目录，维护 `config/prod/vita_server.env`。
 2. `pnpm -F @bbctg/antibody-vita run build`，Nginx 托管 `dist`。
-3. 反代 `/api/` 与 `/serum-api/` → 同一后端（`/serum-api/` 重写为 `/api/`）。
+3. 反代 `/api/` → 后端（保留 HTTP 状态与 `Authorization` 透传）。
 4. systemd 管理 `python server.py`；`WorkingDirectory` 为 `bbctg_vita_server`。
 
 ```ini
@@ -101,6 +101,6 @@ Nginx 参考：`bbctg_vita_web/scripts/deploy/nginx-antibody-forge-sites-active.
 
 - 无密钥、上传文件、`config/local|prod` 误提交
 - prod scheduler、云之家/密码登录、血清与系统管理主链路可用
-- Nginx 上传大小与 `/serum-api` 反代正确
+- Nginx 上传大小与 `/api` 反代正确
 - Linux DRM：上传密文可解密（日志无 `libhttpcomm.so` 错误）
 - 免疫方案：左键导出 xlsx；Linux 已装 LibreOffice 时右键可打印 pdf

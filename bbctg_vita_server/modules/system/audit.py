@@ -340,15 +340,29 @@ def _fill_target_from_response(context: dict, response_body: bytes) -> None:
             context["target_label"] = label
 
 
+def _extract_error_message(data: dict) -> str | None:
+    nested = data.get("data") if isinstance(data.get("data"), dict) else {}
+    message = data.get("message") or nested.get("message") or data.get("detail")
+    return str(message) if message else None
+
+
 def _parse_result(status_code: int, response_body: bytes) -> tuple[str, str | None]:
-    if status_code >= 400:
-        return "failed", f"HTTP {status_code}"
     try:
         data = json.loads(response_body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
+        if status_code >= 400:
+            return "failed", f"HTTP {status_code}"
         return "success", None
+
+    if status_code >= 400:
+        if isinstance(data, dict):
+            message = _extract_error_message(data)
+            if message:
+                return "failed", message
+        return "failed", f"HTTP {status_code}"
+
     code = data.get("code") if isinstance(data, dict) else None
-    if code in (0, 20000, None):
+    if code in (0, None):
         return "success", None
     message = None
     if isinstance(data, dict):

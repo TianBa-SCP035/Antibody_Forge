@@ -39,7 +39,7 @@ def _save_upload_content(db: Session, file_obj: UploadFile, file_path: Path) -> 
 
 def save_file(db: Session, file_obj: UploadFile, experiment_id: str, user_name: str = "unknown") -> dict:
     if not file_obj.filename or not experiment_id:
-        raise ValueError("Missing file or experiment ID")
+        raise ValueError("缺少文件或实验 ID")
 
     exp_dir = _upload_root() / experiment_id
     exp_dir.mkdir(parents=True, exist_ok=True)
@@ -63,7 +63,7 @@ def save_file(db: Session, file_obj: UploadFile, experiment_id: str, user_name: 
 def delete_file(db: Session, file_id: int) -> None:
     record = db.get(SerumFile, file_id)
     if not record:
-        raise ValueError("File not found")
+        raise ValueError("文件不存在")
     full_path = get_full_path(record.file_path)
     if full_path.exists():
         full_path.unlink()
@@ -74,7 +74,7 @@ def delete_file(db: Session, file_id: int) -> None:
 def rename_file(db: Session, file_id: int, new_name: str) -> None:
     record = db.get(SerumFile, file_id)
     if not record:
-        raise ValueError("File not found")
+        raise ValueError("文件不存在")
     record.file_name = new_name
     db.commit()
 
@@ -82,7 +82,7 @@ def rename_file(db: Session, file_id: int, new_name: str) -> None:
 def replace_file(db: Session, file_id: int, file_obj: UploadFile, user_name: str = "unknown") -> dict:
     record = db.get(SerumFile, file_id)
     if not record:
-        raise ValueError("File not found")
+        raise ValueError("文件不存在")
 
     old_path = get_full_path(record.file_path)
     exp_dir = old_path.parent
@@ -105,10 +105,10 @@ def replace_file(db: Session, file_id: int, file_obj: UploadFile, user_name: str
 def get_download_record(db: Session, file_id: int) -> tuple[SerumFile, Path]:
     record = db.get(SerumFile, file_id)
     if not record:
-        raise ValueError("File not found")
+        raise ValueError("文件不存在")
     full_path = get_full_path(record.file_path)
     if not full_path.exists():
-        raise ValueError("File not found on disk")
+        raise ValueError("磁盘上找不到文件")
     return record, full_path
 
 
@@ -192,15 +192,15 @@ PLATE_FIELDS = [
 def save_facs_plate(db: Session, plate_data: dict[str, Any]) -> dict:
     experiment_id = plate_data.get("experiment_id")
     if not experiment_id:
-        raise ValueError("Missing experiment_id")
+        raise ValueError("缺少实验 ID")
 
     plate_id = plate_data.get("id")
     if plate_id:
         plate = db.get(SerumFacsPlate, int(plate_id))
         if not plate:
-            raise ValueError("Plate not found")
+            raise ValueError("板数据不存在")
         if plate.experiment_id != experiment_id:
-            raise ValueError("Plate does not belong to this experiment")
+            raise ValueError("板数据不属于当前实验")
     else:
         plate = SerumFacsPlate(experiment_id=experiment_id)
         db.add(plate)
@@ -215,7 +215,7 @@ def save_facs_plate(db: Session, plate_data: dict[str, Any]) -> dict:
 def delete_facs_plate(db: Session, plate_id: int) -> None:
     plate = db.get(SerumFacsPlate, plate_id)
     if not plate:
-        raise ValueError("Plate not found")
+        raise ValueError("板数据不存在")
     db.delete(plate)
     db.commit()
 
@@ -243,15 +243,15 @@ ELISA_PLATE_FIELDS = [
 def save_elisa_plate(db: Session, plate_data: dict[str, Any]) -> dict:
     experiment_id = plate_data.get("experiment_id")
     if not experiment_id:
-        raise ValueError("Missing experiment_id")
+        raise ValueError("缺少实验 ID")
 
     plate_id = plate_data.get("id")
     if plate_id:
         plate = db.get(SerumElisaPlate, int(plate_id))
         if not plate:
-            raise ValueError("Plate not found")
+            raise ValueError("板数据不存在")
         if plate.experiment_id != experiment_id:
-            raise ValueError("Plate does not belong to this experiment")
+            raise ValueError("板数据不属于当前实验")
     else:
         plate = SerumElisaPlate(experiment_id=experiment_id, immune_stage="")
         db.add(plate)
@@ -268,6 +268,6 @@ def save_elisa_plate(db: Session, plate_data: dict[str, Any]) -> dict:
 def delete_elisa_plate(db: Session, plate_id: int) -> None:
     plate = db.get(SerumElisaPlate, plate_id)
     if not plate:
-        raise ValueError("Plate not found")
+        raise ValueError("板数据不存在")
     db.delete(plate)
     db.commit()

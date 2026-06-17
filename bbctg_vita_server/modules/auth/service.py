@@ -15,8 +15,8 @@ from modules.system.permissions import build_user_context
 
 def login_with_password(db: Session, username: str, password: str) -> dict:
     username = (username or "").strip()
-    user = db.scalar(select(SysUser).where(SysUser.username == username, SysUser.status == "active"))
-    if not user or not verify_password(password, user.password_hash):
+    user = db.scalar(select(SysUser).where(SysUser.username == username))
+    if not user or not verify_password(password, user.password_hash or ""):
         write_operation_log(
             db,
             "auth.password_login",
@@ -33,6 +33,23 @@ def login_with_password(db: Session, username: str, password: str) -> dict:
         )
         db.commit()
         raise HTTPException(status_code=401, detail="用户名或密码错误")
+    if user.status != "active":
+        write_operation_log(
+            db,
+            "auth.password_login",
+            "sys_user",
+            str(user.id),
+            {"username": username},
+            user=user,
+            username=username,
+            operation_name="账号密码登录",
+            operation_type="login",
+            target_label=user.display_name or username,
+            result="failed",
+            error_message="账号已被禁用",
+        )
+        db.commit()
+        raise HTTPException(status_code=401, detail="账号已被禁用，请联系管理员")
     write_operation_log(
         db,
         "auth.password_login",

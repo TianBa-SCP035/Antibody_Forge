@@ -12,6 +12,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
+from core.errors import BusinessError
+
+SERUM_CAGE_NO_MOUSE = "SERUM_CAGE_NO_MOUSE"
 from models.immunology import (
     SerumElisaPlate,
     SerumFacsPlate,
@@ -301,11 +304,11 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
     if project_id:
         project = db.get(SerumImmProject, int(project_id))
         if not project:
-            raise ValueError("Project not found")
+            raise ValueError("项目不存在")
         old_eid = project.experiment_id
         if old_eid != new_eid:
             if not new_eid:
-                raise ValueError("Experiment ID is required")
+                raise ValueError("实验 ID 不能为空")
             existing_project = db.scalar(
                 select(SerumImmProject).where(
                     SerumImmProject.experiment_id == new_eid,
@@ -313,7 +316,7 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
                 )
             )
             if existing_project:
-                raise ValueError("Experiment ID already exists")
+                raise ValueError("实验 ID 已存在")
         for field in PROJECT_FIELDS:
             setattr(project, field, data.get(field))
         if old_eid != new_eid:
@@ -327,7 +330,7 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
         if not new_eid:
             new_eid = generate_next_id(db, data.get("project_code"))
             if not new_eid:
-                raise ValueError("Project Code is required to generate Experiment ID")
+                raise ValueError("项目编号不能为空，无法生成实验 ID")
         project = SerumImmProject(**{field: data.get(field) for field in PROJECT_FIELDS})
         project.experiment_id = new_eid
         db.add(project)
@@ -360,7 +363,7 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
 def delete_serum(db: Session, project_id: int) -> None:
     project = db.get(SerumImmProject, project_id)
     if not project:
-        raise ValueError("Project not found")
+        raise ValueError("项目不存在")
     exp_id = project.experiment_id
     for model in [SerumFacsPlate, SerumElisaPlate, SerumFile, SerumImmMouse, SerumImmAntigen, SerumImmStep, SerumTiterTarget, SerumTiterPc]:
         db.query(model).filter(model.experiment_id == exp_id).delete(synchronize_session=False)
@@ -371,7 +374,7 @@ def delete_serum(db: Session, project_id: int) -> None:
 def update_status(db: Session, project_id: int, project_status: str) -> None:
     project = db.get(SerumImmProject, project_id)
     if not project:
-        raise ValueError("Project not found")
+        raise ValueError("项目不存在")
     project.project_status = project_status
     db.commit()
 
@@ -379,10 +382,10 @@ def update_status(db: Session, project_id: int, project_status: str) -> None:
 def update_cage_position(db: Session, project_id: int, cage_position: str | None) -> None:
     project = db.get(SerumImmProject, project_id)
     if not project:
-        raise ValueError("鼠鼠不存在")
+        raise ValueError("项目不存在")
     count = db.scalar(select(func.count(SerumImmMouse.id)).where(SerumImmMouse.experiment_id == project.experiment_id)) or 0
     if count == 0:
-        raise ValueError("鼠鼠不存在")
+        raise BusinessError("鼠鼠不存在", error_code=SERUM_CAGE_NO_MOUSE)
     db.query(SerumImmMouse).filter(SerumImmMouse.experiment_id == project.experiment_id).update(
         {"cage_position": cage_position},
         synchronize_session=False,
@@ -393,7 +396,7 @@ def update_cage_position(db: Session, project_id: int, cage_position: str | None
 def update_prep_status(db: Session, experiment_id: str, prep_status: str | None) -> None:
     project = db.scalar(select(SerumImmProject).where(SerumImmProject.experiment_id == experiment_id))
     if not project:
-        raise ValueError("Project not found")
+        raise ValueError("项目不存在")
     project.prep_status = prep_status
     db.commit()
 
@@ -408,7 +411,7 @@ def auto_update_status(db: Session, filters: dict[str, Any] | None = None) -> di
     projects = db.scalars(proj_stmt).all()
     exp_ids = [item.experiment_id for item in projects if item.experiment_id]
     if not exp_ids:
-        return {"message": "No projects found", "updated_count": 0}
+        return {"message": "未找到符合条件的项目", "updated_count": 0}
 
     today = datetime.now().strftime("%Y-%m-%d")
     steps = db.execute(
@@ -450,7 +453,7 @@ def auto_update_status(db: Session, filters: dict[str, Any] | None = None) -> di
         db.rollback()
     else:
         db.commit()
-    return {"message": "Success", "updated_count": updated_count}
+    return {"message": "状态更新成功", "updated_count": updated_count}
 
 
 def get_filter_options(db: Session) -> dict:

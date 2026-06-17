@@ -60,6 +60,9 @@ import {
   saveSystemUserApi,
   saveSystemUserPermissionOverridesApi,
 } from '#/api';
+import { notifyApiError, resolveUserMessage } from '#/api/errors';
+import { skipGlobalErrorHandler } from '#/api/request';
+import { SYSTEM_ERRORS } from './errors';
 
 defineOptions({ name: 'SystemUserPermission' });
 
@@ -550,7 +553,7 @@ async function loadData() {
         keyword: userKeyword.value.trim(),
         page: userQuery.page,
         page_size: userQuery.page_size,
-      });
+      }, skipGlobalErrorHandler);
       users.value = userResult?.items || [];
       userTotal.value = userResult?.total || users.value.length;
       activeUserTotal.value = userResult?.active_total || 0;
@@ -562,7 +565,7 @@ async function loadData() {
     }
 
     if (canManageRoles.value) {
-      const roleResult = await getSystemRolesApi();
+      const roleResult = await getSystemRolesApi(skipGlobalErrorHandler);
       roles.value = roleResult?.items || [];
     } else {
       roles.value = [];
@@ -570,8 +573,8 @@ async function loadData() {
 
     if (canManagePermissions.value) {
       const [permissionResult, bundleResult] = await Promise.all([
-        getSystemPermissionsApi(),
-        getSystemPermissionBundlesApi(),
+        getSystemPermissionsApi(skipGlobalErrorHandler),
+        getSystemPermissionBundlesApi(skipGlobalErrorHandler),
       ]);
       permissions.value = permissionResult?.items || [];
       permissionBundles.value = bundleResult?.items || [];
@@ -581,7 +584,7 @@ async function loadData() {
     }
 
     if (canViewLogs.value) {
-      const logResult = await getSystemOperationLogsByQueryApi(logQuery);
+      const logResult = await getSystemOperationLogsByQueryApi(logQuery, skipGlobalErrorHandler);
       logs.value = logResult?.items || [];
       logTotal.value = logResult?.total || logs.value.length;
     } else {
@@ -592,8 +595,10 @@ async function loadData() {
     if (!visibleTabs.value.length) {
       errorMessage.value = '当前账号没有用户权限管理明细权限';
     }
-  } catch (error: any) {
-    errorMessage.value = error?.message || '用户权限数据加载失败';
+  } catch (error: unknown) {
+    errorMessage.value = resolveUserMessage(error, {
+      messages: SYSTEM_ERRORS.loadData,
+    }).message;
   } finally {
     loading.value = false;
   }
@@ -811,7 +816,7 @@ async function openOverrideDialog(user: SystemUser) {
   overrideDialogVisible.value = true;
   overrideLoading.value = true;
   try {
-    const result = await getSystemUserPermissionOverridesApi(user.id);
+    const result = await getSystemUserPermissionOverridesApi(user.id, skipGlobalErrorHandler);
     userOverrideData.value = result;
     overrideForm.allow_codes = result.overrides
       .filter((item) => item.effect === 'allow')
@@ -820,12 +825,12 @@ async function openOverrideDialog(user: SystemUser) {
       .filter((item) => item.effect === 'deny')
       .map((item) => item.permission_code);
     overrideForm.reason = result.overrides[0]?.reason || '';
-  } catch (error: any) {
+  } catch (error: unknown) {
     userOverrideData.value = null;
     overrideForm.allow_codes = [];
     overrideForm.deny_codes = [];
     overrideForm.reason = '';
-    ElMessage.error(error?.message || '个人权限加载失败');
+    notifyApiError(error, { messages: SYSTEM_ERRORS.loadOverride });
   } finally {
     overrideLoading.value = false;
   }

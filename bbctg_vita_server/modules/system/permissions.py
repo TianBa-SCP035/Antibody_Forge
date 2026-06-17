@@ -37,6 +37,39 @@ SERUM_PERMISSION_CODES = {
     "serum.cell.prep_status.update",
 }
 
+DEFAULT_PERMISSION_MESSAGE = "没有权限执行此操作"
+
+PERMISSION_MESSAGES: dict[str, str] = {
+    "serum.page.list": "没有权限查看血清项目列表",
+    "serum.page.detail": "没有权限查看项目详情",
+    "serum.page.edit": "没有权限编辑血清项目",
+    "serum.page.titer": "没有权限查看效价数据",
+    "serum.page.cell": "没有权限查看细胞库存",
+    "serum.project.create": "没有权限新建血清项目",
+    "serum.project.edit": "没有权限编辑此项目",
+    "serum.project.edit_all": "没有权限编辑他人项目",
+    "serum.project.delete": "没有权限删除血清项目",
+    "serum.status.update": "没有权限修改项目状态",
+    "serum.status.auto_update": "没有权限自动更新项目状态",
+    "serum.mouse.export": "没有权限导出小鼠免疫数据",
+    "serum.cage.update": "没有权限更新笼位",
+    "serum.titer.edit": "没有权限编辑效价数据",
+    "serum.titer.edit_all": "没有权限编辑他人效价数据",
+    "serum.file.manage": "没有权限管理效价附件",
+    "serum.cell.view": "没有权限查看细胞库存",
+    "serum.cell.prep_status.update": "没有权限更新制备状态",
+    "system.page.user": "没有权限访问用户管理",
+    "system.page.role": "没有权限访问角色管理",
+    "system.page.permission": "没有权限访问权限管理",
+    "system.page.operation_log": "没有权限查看操作日志",
+    "system.page.feature": "没有权限访问功能开关",
+    "system.user.manage": "没有权限管理用户",
+    "system.role.manage": "没有权限管理角色",
+    "system.permission.manage": "没有权限管理权限",
+    "system.operation_log.view": "没有权限查看操作日志",
+    "system.feature.manage": "没有权限管理功能开关",
+}
+
 ALL_FALLBACK_CODES = sorted(
     SERUM_PERMISSION_CODES
     | {
@@ -79,7 +112,10 @@ def has_permission(db: Session, user: SysUser, code: str) -> bool:
 
 def require_permission(db: Session, user: SysUser, code: str) -> None:
     if not has_permission(db, user, code):
-        raise HTTPException(status_code=403, detail=f"Permission denied: {code}")
+        raise HTTPException(
+            status_code=403,
+            detail=PERMISSION_MESSAGES.get(code, DEFAULT_PERMISSION_MESSAGE),
+        )
 
 
 def _build_sys_user_context(db: Session, user: SysUser) -> UserContext:

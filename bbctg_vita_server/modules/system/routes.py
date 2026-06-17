@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from core.vben_response import vben_success
+from core.response import success
 from db.session import get_db
 from models.system import (
     SysOperationLog,
@@ -39,7 +39,7 @@ def current_permissions(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     context = build_user_context(db, current_user)
-    return vben_success(
+    return success(
         {
             "roles": context.roles,
             "permissions": context.permissions,
@@ -108,7 +108,7 @@ def list_users(
     )
     users = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
     role_map = _get_user_role_map(db, [user.id for user in users])
-    return vben_success(
+    return success(
         {
             "items": [_user_to_dict(user, role_map.get(user.id, [])) for user in users],
             "page": page,
@@ -137,14 +137,14 @@ def user_suggestions(
         if compact_keyword:
             stmt = stmt.where(_compact_column(SysUser.department).like(pattern))
         items = db.scalars(stmt.distinct().order_by(SysUser.department).limit(limit)).all()
-        return vben_success({"items": [item for item in items if item]})
+        return success({"items": [item for item in items if item]})
 
     if field == "group_name":
         stmt = select(SysUser.group_name).where(SysUser.group_name.is_not(None))
         if compact_keyword:
             stmt = stmt.where(_compact_column(SysUser.group_name).like(pattern))
         items = db.scalars(stmt.distinct().order_by(SysUser.group_name).limit(limit)).all()
-        return vben_success({"items": [item for item in items if item]})
+        return success({"items": [item for item in items if item]})
 
     if field == "keyword":
         stmt = select(SysUser).order_by(SysUser.id.desc())
@@ -170,7 +170,7 @@ def user_suggestions(
                     break
             if len(values) >= limit:
                 break
-        return vben_success({"items": values})
+        return success({"items": values})
 
     raise ValueError("不支持的候选字段")
 
@@ -227,7 +227,7 @@ def save_user(
         _ensure_role_ids_exist(db, role_ids)
         _replace_user_roles(db, user.id, role_ids)
     db.commit()
-    return vben_success({"id": user.id})
+    return success({"id": user.id})
 
 
 @router.get("/features")
@@ -236,7 +236,7 @@ def list_features(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, "system.page.feature")
-    return vben_success({"items": list_feature_flags(db)})
+    return success({"items": list_feature_flags(db)})
 
 
 @router.get("/features/job_logs")
@@ -250,7 +250,7 @@ def feature_job_logs(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, "system.page.feature")
-    return vben_success(
+    return success(
         {
             "items": list_job_run_logs(
                 db,
@@ -268,7 +268,7 @@ def feature_job_logs(
 def feature_system_status(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    return vben_success(
+    return success(
         {
             "server_time": datetime.now().isoformat(timespec="seconds"),
             "timezone": "Asia/Shanghai",
@@ -295,7 +295,7 @@ def effective_features(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    return vben_success(
+    return success(
         {
             "items": [
                 {
@@ -318,7 +318,7 @@ def save_feature(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, "system.feature.manage")
-    return vben_success(save_feature_flag(db, data))
+    return success(save_feature_flag(db, data))
 
 
 @router.post("/users/delete")
@@ -337,7 +337,7 @@ def delete_user(
     db.execute(delete(SysUserPermissionOverride).where(SysUserPermissionOverride.user_id == user.id))
     db.delete(user)
     db.commit()
-    return vben_success({"message": "ok"})
+    return success({"message": "ok"})
 
 
 @router.post("/users/batch_roles")
@@ -364,7 +364,7 @@ def batch_update_user_roles(
             existing = set(_get_user_role_map(db, [user_id]).get(user_id, []))
             _replace_user_roles(db, user_id, sorted(existing | set(role_ids)))
     db.commit()
-    return vben_success({"updated": len(user_ids)})
+    return success({"updated": len(user_ids)})
 
 
 @router.post("/users/reset_password")
@@ -382,7 +382,7 @@ def reset_password(
         raise ValueError("密码至少需要 6 位")
     user.password_hash = hash_password(password)
     db.commit()
-    return vben_success({"message": "ok"})
+    return success({"message": "ok"})
 
 
 @router.get("/users/{user_id}/permission_overrides")
@@ -401,7 +401,7 @@ def get_user_permission_overrides(
     overrides = db.scalars(
         select(SysUserPermissionOverride).where(SysUserPermissionOverride.user_id == user.id)
     ).all()
-    return vben_success(
+    return success(
         {
             "user": _user_to_dict(user, _get_user_role_map(db, [user.id]).get(user.id, [])),
             "role_permissions": role_permissions,
@@ -434,7 +434,7 @@ def save_user_permission_overrides(
     for code in sorted(deny_codes):
         db.add(SysUserPermissionOverride(user_id=user.id, permission_code=code, effect="deny", reason=reason))
     db.commit()
-    return vben_success({"message": "ok"})
+    return success({"message": "ok"})
 
 
 @router.get("/roles")
@@ -445,7 +445,7 @@ def list_roles(
     require_permission(db, current_user, "system.role.manage")
     roles = db.scalars(select(SysRole).order_by(SysRole.sort_order, SysRole.id)).all()
     bundle_map = _get_role_bundle_map(db, [role.id for role in roles])
-    return vben_success(
+    return success(
         {"items": [_role_to_dict(role, bundle_map.get(role.id, [])) for role in roles]}
     )
 
@@ -479,7 +479,7 @@ def save_role(
         _ensure_bundle_codes_exist(db, bundle_codes)
         _replace_role_bundles(db, role.id, bundle_codes)
     db.commit()
-    return vben_success({"id": role.id})
+    return success({"id": role.id})
 
 
 @router.post("/roles/delete")
@@ -496,7 +496,7 @@ def delete_role(
     db.execute(delete(SysRolePermissionBundle).where(SysRolePermissionBundle.role_id == role.id))
     db.delete(role)
     db.commit()
-    return vben_success({"message": "ok"})
+    return success({"message": "ok"})
 
 
 @router.get("/permissions")
@@ -506,7 +506,7 @@ def list_permissions(
 ) -> dict:
     require_permission(db, current_user, "system.permission.manage")
     permissions = db.scalars(select(SysPermission).order_by(SysPermission.sort_order, SysPermission.id)).all()
-    return vben_success({"items": [_permission_to_dict(permission) for permission in permissions]})
+    return success({"items": [_permission_to_dict(permission) for permission in permissions]})
 
 
 @router.get("/permission_bundles")
@@ -517,7 +517,7 @@ def list_permission_bundles(
     require_permission(db, current_user, "system.permission.manage")
     bundles = db.scalars(select(SysPermissionBundle).order_by(SysPermissionBundle.sort_order, SysPermissionBundle.id)).all()
     item_map = _get_bundle_item_map(db, [bundle.code for bundle in bundles])
-    return vben_success(
+    return success(
         {"items": [_bundle_to_dict(bundle, item_map.get(bundle.code, [])) for bundle in bundles]}
     )
 
@@ -554,7 +554,7 @@ def save_permission_bundle(
     _ensure_permission_codes_exist(db, permission_codes)
     _replace_bundle_permissions(db, bundle.code, permission_codes)
     db.commit()
-    return vben_success({"id": bundle.id})
+    return success({"id": bundle.id})
 
 
 @router.post("/permission_bundles/delete")
@@ -574,7 +574,7 @@ def delete_permission_bundle(
     db.execute(delete(SysPermissionBundleItem).where(SysPermissionBundleItem.bundle_code == bundle.code))
     db.delete(bundle)
     db.commit()
-    return vben_success({"message": "ok"})
+    return success({"message": "ok"})
 
 
 @router.get("/operation_logs")
@@ -615,7 +615,7 @@ def list_operation_logs(
         )
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     logs = db.scalars(stmt.order_by(SysOperationLog.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
-    return vben_success({"items": [_log_to_dict(log) for log in logs], "total": total, "page": page, "page_size": page_size})
+    return success({"items": [_log_to_dict(log) for log in logs], "total": total, "page": page, "page_size": page_size})
 
 
 def _get_user_role_map(db: Session, user_ids: list[int]) -> dict[int, list[int]]:

@@ -732,7 +732,9 @@ import {
   ElTooltip,
 } from 'element-plus'
 
-import { fetchDetail, saveSerum, fetchNextId, deleteSerum, getSerumFilterOptions, formatSaveError } from '#/api/serum'
+import { notifyApiError } from '#/api/errors'
+import { fetchDetail, saveSerum, fetchNextId, deleteSerum, getSerumFilterOptions } from '#/api/serum'
+import { SERUM_ERRORS } from './errors'
 import MouseRegistryDialog from './MouseRegistryDialog.vue'
 import AssayMethodEditor from './AssayMethodEditor.vue'
 import {
@@ -850,18 +852,8 @@ export default {
     }
   },
   created() {
-    this.getFilterOptions()
     const id = this.$route.query.id
-    if (id) {
-      this.fetchData(id)
-    } else {
-      // 新建项目时，自动填充当前用户为项目负责人
-      const currentUser = this.currentUserName
-      this.postForm.owner = currentUser.split(' ')[0]
-      this.$nextTick(() => {
-        this.initializing = false
-      })
-    }
+    this.initPage(id)
   },
   beforeUnmount() {
     if (this.autoSaveTimer) {
@@ -877,13 +869,51 @@ export default {
     next()
   },
   methods: {
-    getFilterOptions() {
-      getSerumFilterOptions().then(response => {
-        const owners = response.data?.owners || []
+    async initPage(id) {
+      if (id) {
+        this.loading = true
+        this.initializing = true
+      }
+      try {
+        const tasks = [getSerumFilterOptions()]
+        if (id) {
+          tasks.push(fetchDetail(id))
+        }
+        const results = await Promise.all(tasks)
+        const filterOptions = results[0]
+        const owners = filterOptions?.owners || []
         if (owners.length > 0) {
           this.users = [...new Set([...owners, ...this.users])]
         }
-      })
+        if (id) {
+          const detail = results[1]
+          this.postForm = detail
+          this.originalProjectCode = detail.project_code
+          if (this.postForm.steps) {
+            this.postForm.steps.forEach((step) => {
+              if (step.antigen_id && typeof step.antigen_id === 'string') {
+                step.antigen_id = step.antigen_id
+                  .split(',')
+                  .map((item) => item.trim())
+                  .filter(Boolean)
+              }
+            })
+          }
+          if (this.postForm.mouse_groups.length > 0) {
+            this.activeGroupTab = this.postForm.mouse_groups[0].group_id
+          }
+        } else {
+          const currentUser = this.currentUserName
+          this.postForm.owner = currentUser.split(' ')[0]
+        }
+      } catch (err) {
+        notifyApiError(err, { messages: SERUM_ERRORS.edit.loadPage })
+      } finally {
+        this.loading = false
+        this.$nextTick(() => {
+          this.initializing = false
+        })
+      }
     },
     getAntigenDisplay(antigenIds) {
       const ids = Array.isArray(antigenIds) ? antigenIds : []
@@ -897,46 +927,18 @@ export default {
       
       return names.join(' + ')
     },
-    fetchData(id) {
-      this.loading = true
-      this.initializing = true
-      fetchDetail(id).then(response => {
-        this.postForm = response.data
-        this.originalProjectCode = response.data.project_code
-        
-        if (this.postForm.steps) {
-          this.postForm.steps.forEach(step => {
-            if (step.antigen_id && typeof step.antigen_id === 'string') {
-              step.antigen_id = step.antigen_id.split(',').map(id => id.trim()).filter(Boolean)
-            }
-          })
-        }
-        
-        this.loading = false
-        this.$nextTick(() => {
-          this.initializing = false
-        })
-        if (this.postForm.mouse_groups.length > 0) {
-            this.activeGroupTab = this.postForm.mouse_groups[0].group_id
-        }
-      }).catch(err => {
-        console.log(err)
-        this.loading = false
-        this.initializing = false
-      })
-    },
     handleCodeBlur() {
         if (this.postForm.project_code && this.postForm.project_code !== this.originalProjectCode) {
             const reqId = ++this.lastCodeReq
-            fetchNextId(this.postForm.project_code).then(res => {
+            fetchNextId(this.postForm.project_code).then((res) => {
                 if (reqId !== this.lastCodeReq) return
-                if (res.data && res.data.next_id) {
-                    this.postForm.experiment_id = res.data.next_id
+                if (res?.next_id) {
+                    this.postForm.experiment_id = res.next_id
                     this.originalProjectCode = this.postForm.project_code
                 }
-            }).catch(e => {
+            }).catch((e) => {
                 if (reqId !== this.lastCodeReq) return
-                console.error("Failed to fetch next ID", e)
+                notifyApiError(e, { messages: SERUM_ERRORS.edit.nextId })
             })
         } else {
             if (!this.postForm.id && !this.postForm.project_code) {
@@ -1237,9 +1239,9 @@ export default {
         
         if (codeChanged) {
             fetchNextId(this.postForm.project_code)
-                .then(res => {
-                    if (res.data?.next_id) {
-                        this.postForm.experiment_id = res.data.next_id
+                .then((res) => {
+                    if (res?.next_id) {
+                        this.postForm.experiment_id = res.next_id
                         this.doSubmit(isRightClick)
                     } else {
                         this.loading = false
@@ -1248,8 +1250,7 @@ export default {
                 })
                 .catch((err) => {
                     this.loading = false
-                    const message = formatSaveError(err)
-                    if (message) ElMessage.error(message)
+                    notifyApiError(err, { messages: SERUM_ERRORS.edit.nextId })
                 })
         } else {
             if (!this.postForm.experiment_id && this.postForm.project_code) {
@@ -1265,30 +1266,30 @@ export default {
             if (valid) {
                  const submitData = this.prepareSubmitData()
                  
-                 saveSerum(submitData).then(response => {
-                     if (response.data && response.data.id) {
-                         this.postForm.id = response.data.id
+                 saveSerum(submitData).then((response) => {
+                     if (response?.id) {
+                         this.postForm.id = response.id
                          this.syncEditRouteId()
                      }
                      
-                     if (response.data?.new_mouse_records) {
-                          this.matchAndUpdateIds(this.postForm.mouse_groups, response.data.new_mouse_records, 'id', ['group_id', 'mouse_strain', 'mouse_strain_category', 'mouse_count', 'age_weeks', 'sex'])
+                     if (response?.new_mouse_records) {
+                          this.matchAndUpdateIds(this.postForm.mouse_groups, response.new_mouse_records, 'id', ['group_id', 'mouse_strain', 'mouse_strain_category', 'mouse_count', 'age_weeks', 'sex'])
                       }
                      
-                     if (response.data?.new_antigen_records) {
-                         this.matchAndUpdateIds(this.postForm.antigens, response.data.new_antigen_records, 'id', ['antigen_id', 'antigen_name', 'antigen_type', 'species', 'catalog_no', 'lot_no', 'stock_conc', 'vendor', 'adjuvant_type', 'adjuvant_source'])
+                     if (response?.new_antigen_records) {
+                         this.matchAndUpdateIds(this.postForm.antigens, response.new_antigen_records, 'id', ['antigen_id', 'antigen_name', 'antigen_type', 'species', 'catalog_no', 'lot_no', 'stock_conc', 'vendor', 'adjuvant_type', 'adjuvant_source'])
                      }
                      
-                     if (response.data?.new_step_records) {
-                         this.matchAndUpdateIds(this.postForm.steps, response.data.new_step_records, 'step_id', ['group_id', 'stage_name', 'day_relative', 'date_actual', 'antigen_id', 'antigen_dose', 'adjuvant_name', 'cpg_dose', 'injection_volume', 'route', 'injection_site', 'remark'])
+                     if (response?.new_step_records) {
+                         this.matchAndUpdateIds(this.postForm.steps, response.new_step_records, 'step_id', ['group_id', 'stage_name', 'day_relative', 'date_actual', 'antigen_id', 'antigen_dose', 'adjuvant_name', 'cpg_dose', 'injection_volume', 'route', 'injection_site', 'remark'])
                      }
                      
-                     if (response.data?.new_target_records) {
-                          this.matchAndUpdateIds(this.postForm.titer_targets, response.data.new_target_records, 'id', ['type', 'species', 'name', 'batch_no', 'passage', 'cell_count', 'catalog_no', 'source'])
+                     if (response?.new_target_records) {
+                          this.matchAndUpdateIds(this.postForm.titer_targets, response.new_target_records, 'id', ['type', 'species', 'name', 'batch_no', 'passage', 'cell_count', 'catalog_no', 'source'])
                       }
                       
-                      if (response.data?.new_pc_records) {
-                          this.matchAndUpdateIds(this.postForm.titer_pcs, response.data.new_pc_records, 'id', ['pc_name', 'catalog_batch', 'source', 'concentration'])
+                      if (response?.new_pc_records) {
+                          this.matchAndUpdateIds(this.postForm.titer_pcs, response.new_pc_records, 'id', ['pc_name', 'catalog_batch', 'source', 'concentration'])
                       }
                      
                      this.originalProjectCode = this.postForm.project_code
@@ -1303,8 +1304,7 @@ export default {
                      }
                  }).catch((err) => {
                      this.loading = false
-                     const message = formatSaveError(err)
-                     if (message) ElMessage.error(message)
+                     notifyApiError(err, { messages: SERUM_ERRORS.edit.save })
                  })
             } else {
                 this.loading = false
@@ -1329,8 +1329,9 @@ export default {
                 ElNotification({ type: 'success', message: '删除成功' })
                 this.loading = false
                 this.$router.push('/serum/list')
-            }).catch(() => {
+            }).catch((err) => {
                 this.loading = false
+                notifyApiError(err, { messages: SERUM_ERRORS.edit.delete })
             })
         }).catch(() => {
             // User cancelled
@@ -1567,12 +1568,11 @@ export default {
         if (codeSnapshot && codeSnapshot !== this.originalProjectCode) {
           try {
             const res = await fetchNextId(codeSnapshot)
-            if (this.postForm.project_code === codeSnapshot && res.data?.next_id) {
-              this.postForm.experiment_id = res.data.next_id
+            if (this.postForm.project_code === codeSnapshot && res?.next_id) {
+              this.postForm.experiment_id = res.next_id
             }
           } catch (e) {
-            const message = formatSaveError(e)
-            if (message) ElMessage.error(message)
+            notifyApiError(e, { messages: SERUM_ERRORS.edit.nextId })
             return
           }
         }
@@ -1585,34 +1585,33 @@ export default {
         const submitData = this.prepareSubmitData()
 
         const res = await saveSerum(submitData)
-        if (res.data?.id) {
-          this.postForm.id = res.data.id
+        if (res?.id) {
+          this.postForm.id = res.id
           this.originalProjectCode = this.postForm.project_code
           this.syncEditRouteId()
         }
         
-        if (res.data?.new_mouse_records) {
-          this.matchAndUpdateIds(this.postForm.mouse_groups, res.data.new_mouse_records, 'id', ['group_id', 'mouse_strain', 'mouse_strain_category', 'mouse_count', 'age_weeks', 'sex'])
+        if (res?.new_mouse_records) {
+          this.matchAndUpdateIds(this.postForm.mouse_groups, res.new_mouse_records, 'id', ['group_id', 'mouse_strain', 'mouse_strain_category', 'mouse_count', 'age_weeks', 'sex'])
         }
         
-        if (res.data?.new_antigen_records) {
-          this.matchAndUpdateIds(this.postForm.antigens, res.data.new_antigen_records, 'id', ['antigen_id', 'antigen_name', 'antigen_type', 'species', 'catalog_no', 'lot_no', 'stock_conc', 'vendor', 'adjuvant_type', 'adjuvant_source'])
+        if (res?.new_antigen_records) {
+          this.matchAndUpdateIds(this.postForm.antigens, res.new_antigen_records, 'id', ['antigen_id', 'antigen_name', 'antigen_type', 'species', 'catalog_no', 'lot_no', 'stock_conc', 'vendor', 'adjuvant_type', 'adjuvant_source'])
         }
         
-        if (res.data?.new_step_records) {
-          this.matchAndUpdateIds(this.postForm.steps, res.data.new_step_records, 'step_id', ['group_id', 'stage_name', 'day_relative', 'date_actual', 'antigen_id', 'antigen_dose', 'adjuvant_name', 'cpg_dose', 'injection_volume', 'route', 'injection_site', 'remark'])
+        if (res?.new_step_records) {
+          this.matchAndUpdateIds(this.postForm.steps, res.new_step_records, 'step_id', ['group_id', 'stage_name', 'day_relative', 'date_actual', 'antigen_id', 'antigen_dose', 'adjuvant_name', 'cpg_dose', 'injection_volume', 'route', 'injection_site', 'remark'])
         }
         
-        if (res.data?.new_target_records) {
-          this.matchAndUpdateIds(this.postForm.titer_targets, res.data.new_target_records, 'id', ['type', 'species', 'name', 'batch_no', 'passage', 'cell_count', 'catalog_no', 'source'])
+        if (res?.new_target_records) {
+          this.matchAndUpdateIds(this.postForm.titer_targets, res.new_target_records, 'id', ['type', 'species', 'name', 'batch_no', 'passage', 'cell_count', 'catalog_no', 'source'])
         }
         
-        if (res.data?.new_pc_records) {
-          this.matchAndUpdateIds(this.postForm.titer_pcs, res.data.new_pc_records, 'id', ['pc_name', 'catalog_batch', 'source', 'concentration'])
+        if (res?.new_pc_records) {
+          this.matchAndUpdateIds(this.postForm.titer_pcs, res.new_pc_records, 'id', ['pc_name', 'catalog_batch', 'source', 'concentration'])
         }
       } catch (err) {
-        const message = formatSaveError(err)
-        if (message) ElMessage.error(message)
+        notifyApiError(err, { messages: SERUM_ERRORS.edit.autoSave })
       } finally {
         this.isAutoSaving = false
         this.autoSaving = false

@@ -4,13 +4,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from core.errors import BusinessError
 from core.response import error, success
 from db.session import get_db
 from models.immunology import SerumImmProject
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
 from modules.immunology.serum import scheme_export, service
-from modules.system.permissions import has_permission, require_permission
+from modules.system.permissions import (
+    DEFAULT_PERMISSION_MESSAGE,
+    PERMISSION_MESSAGES,
+    has_permission,
+    require_permission,
+)
 
 router = APIRouter()
 
@@ -58,7 +64,7 @@ def detail(
     require_permission(db, current_user, "serum.page.detail")
     data = service.get_detail(db, id)
     if data is None:
-        return error("Project not found", 404)
+        raise HTTPException(status_code=404, detail="项目不存在")
     return success(data)
 
 
@@ -98,7 +104,7 @@ def delete(
     try:
         require_permission(db, current_user, "serum.project.delete")
         service.delete_serum(db, int(data.get("id")))
-        return success({"message": "Deleted successfully"})
+        return success({"message": "删除成功"})
     except HTTPException:
         raise
     except Exception as exc:
@@ -124,7 +130,7 @@ def update_status(
     try:
         _require_status_update_access(db, current_user, int(data.get("id")))
         service.update_status(db, int(data.get("id")), data.get("project_status"))
-        return success({"message": "Status updated successfully"})
+        return success({"message": "状态修改成功"})
     except HTTPException:
         raise
     except Exception as exc:
@@ -145,9 +151,12 @@ def update_cage_position(
         return success({"message": "笼位更新成功"})
     except HTTPException:
         raise
+    except BusinessError as exc:
+        db.rollback()
+        return error(exc.message, exc.code, exc.error_code)
     except Exception as exc:
         db.rollback()
-        return error(str(exc), 20001)
+        return error(str(exc))
 
 
 @router.post("/project/prep_status")
@@ -159,7 +168,7 @@ def update_prep_status(
     try:
         require_permission(db, current_user, "serum.cell.prep_status.update")
         service.update_prep_status(db, data.get("experiment_id"), data.get("prep_status"))
-        return success({"message": "Prep status updated successfully"})
+        return success({"message": "制备状态更新成功"})
     except HTTPException:
         raise
     except Exception as exc:
@@ -207,7 +216,7 @@ def export_scheme(
     require_permission(db, current_user, "serum.page.detail")
     ids = _parse_export_ids(data)
     if not ids:
-        raise HTTPException(status_code=400, detail="ids is required")
+        raise HTTPException(status_code=400, detail="请提供项目 ID")
     try:
         output, filename, export_type = scheme_export.export_scheme_response(db, ids)
     except ValueError as exc:
@@ -229,7 +238,7 @@ def export_scheme_pdf(
     require_permission(db, current_user, "serum.page.detail")
     ids = _parse_export_ids(data)
     if not ids:
-        raise HTTPException(status_code=400, detail="ids is required")
+        raise HTTPException(status_code=400, detail="请提供项目 ID")
     try:
         output, filename = scheme_export.export_scheme_pdf_response(db, ids)
     except ValueError as exc:
@@ -257,7 +266,7 @@ def _require_project_save_permission(db: Session, user: SysUser, data: dict) -> 
 
     project = db.get(SerumImmProject, int(project_id))
     if not project:
-        raise ValueError("Project not found")
+        raise ValueError("项目不存在")
 
     target_owner = str(data.get("owner") or project.owner or "").strip()
     if not target_owner:
@@ -276,7 +285,7 @@ def _require_project_save_permission(db: Session, user: SysUser, data: dict) -> 
 def _require_project_owner_or_edit_all(db: Session, user: SysUser, project_id: int) -> None:
     project = db.get(SerumImmProject, project_id)
     if not project:
-        raise ValueError("Project not found")
+        raise ValueError("项目不存在")
     if _is_owner_name(user, project.owner):
         return
     require_permission(db, user, "serum.project.edit_all")
@@ -285,16 +294,22 @@ def _require_project_owner_or_edit_all(db: Session, user: SysUser, project_id: i
 def _require_status_update_access(db: Session, user: SysUser, project_id: int) -> None:
     project = db.get(SerumImmProject, project_id)
     if not project:
-        raise ValueError("Project not found")
+        raise ValueError("项目不存在")
     if _is_owner_name(user, project.owner):
         if has_permission(db, user, "serum.status.update") or has_permission(db, user, "serum.titer.edit"):
             return
-        raise HTTPException(status_code=403, detail="Permission denied")
+        raise HTTPException(
+            status_code=403,
+            detail=PERMISSION_MESSAGES.get("serum.status.update", DEFAULT_PERMISSION_MESSAGE),
+        )
     if has_permission(db, user, "serum.status.update") and has_permission(db, user, "serum.project.edit_all"):
         return
     if has_permission(db, user, "serum.titer.edit") and has_permission(db, user, "serum.titer.edit_all"):
         return
-    raise HTTPException(status_code=403, detail="Permission denied")
+    raise HTTPException(
+        status_code=403,
+        detail=PERMISSION_MESSAGES.get("serum.status.update", DEFAULT_PERMISSION_MESSAGE),
+    )
 
 
 def _default_owner_name(user: SysUser) -> str:

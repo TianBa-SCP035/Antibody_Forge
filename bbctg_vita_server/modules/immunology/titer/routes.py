@@ -12,7 +12,12 @@ from models.system import SysUser
 from modules.auth.dependencies import get_current_user
 from integrations.drm_service import prepare_office_download_file, remove_temp_file
 from modules.immunology.titer import service
-from modules.system.permissions import has_permission, require_permission
+from modules.system.permissions import (
+    DEFAULT_PERMISSION_MESSAGE,
+    PERMISSION_MESSAGES,
+    has_permission,
+    require_permission,
+)
 
 router = APIRouter()
 
@@ -24,7 +29,7 @@ def _require_titer_read(db: Session, user: SysUser) -> None:
         return
     raise HTTPException(
         status_code=403,
-        detail="Permission denied: serum.page.detail or serum.page.titer required",
+        detail=PERMISSION_MESSAGES.get("serum.page.detail", DEFAULT_PERMISSION_MESSAGE),
     )
 
 
@@ -66,7 +71,7 @@ def file_delete(
         require_permission(db, current_user, "serum.file.manage")
         _require_project_owner_or_edit_all(db, current_user, file_id=int(data.get("id")))
         service.delete_file(db, int(data.get("id")))
-        return success({"message": "Success"})
+        return success({"message": "删除成功"})
     except HTTPException:
         raise
     except Exception as exc:
@@ -84,7 +89,7 @@ def file_rename(
         require_permission(db, current_user, "serum.file.manage")
         _require_project_owner_or_edit_all(db, current_user, file_id=int(data.get("id")))
         service.rename_file(db, int(data.get("id")), data.get("new_name"))
-        return success({"message": "Success"})
+        return success({"message": "重命名成功"})
     except HTTPException:
         raise
     except Exception as exc:
@@ -146,8 +151,10 @@ def file_download(
         )
     except HTTPException:
         raise
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        return error(str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/target/save")
@@ -221,7 +228,7 @@ def plate_delete(
         require_permission(db, current_user, "serum.titer.edit")
         _require_project_owner_or_edit_all(db, current_user, plate_id=int(data.get("id")))
         service.delete_facs_plate(db, int(data.get("id")))
-        return success({"message": "Success"})
+        return success({"message": "删除成功"})
     except HTTPException:
         raise
     except Exception as exc:
@@ -266,7 +273,7 @@ def elisa_plate_delete(
         require_permission(db, current_user, "serum.titer.edit")
         _require_project_owner_or_edit_all(db, current_user, elisa_plate_id=int(data.get("id")))
         service.delete_elisa_plate(db, int(data.get("id")))
-        return success({"message": "Success"})
+        return success({"message": "删除成功"})
     except HTTPException:
         raise
     except Exception as exc:
@@ -291,7 +298,7 @@ def _require_project_owner_or_edit_all(
         elisa_plate_id=elisa_plate_id,
     )
     if not project:
-        raise ValueError("Project not found")
+        raise ValueError("项目不存在")
     if _is_owner_name(user, project.owner):
         return
     require_permission(db, user, "serum.titer.edit_all")
@@ -309,17 +316,17 @@ def _resolve_project(
     if file_id is not None:
         record = db.get(SerumFile, file_id)
         if not record:
-            raise ValueError("File not found")
+            raise ValueError("文件不存在")
         target_experiment_id = record.experiment_id
     if plate_id is not None:
         plate = db.get(SerumFacsPlate, plate_id)
         if not plate:
-            raise ValueError("Plate not found")
+            raise ValueError("板数据不存在")
         target_experiment_id = plate.experiment_id
     if elisa_plate_id is not None:
         plate = db.get(SerumElisaPlate, elisa_plate_id)
         if not plate:
-            raise ValueError("Plate not found")
+            raise ValueError("板数据不存在")
         target_experiment_id = plate.experiment_id
     if not target_experiment_id:
         return None

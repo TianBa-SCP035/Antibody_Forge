@@ -34,6 +34,9 @@ import {
   getSystemJobRunLogsApi,
   saveSystemFeatureApi,
 } from '#/api';
+import { notifyApiError, resolveUserMessage } from '#/api/errors';
+import { skipGlobalErrorHandler } from '#/api/request';
+import { SYSTEM_ERRORS } from './errors';
 
 defineOptions({ name: 'SystemFeatures' });
 
@@ -97,11 +100,13 @@ async function loadFeatures() {
   loading.value = true;
   errorMessage.value = '';
   try {
-    const result = await getSystemFeaturesApi();
+    const result = await getSystemFeaturesApi(skipGlobalErrorHandler);
     features.value = (result?.items || []).map(hydrateFeature);
     await Promise.all([loadJobLogs(), loadSystemStatus()]);
-  } catch (error: any) {
-    errorMessage.value = error?.message || '系统功能配置加载失败';
+  } catch (error: unknown) {
+    errorMessage.value = resolveUserMessage(error, {
+      messages: SYSTEM_ERRORS.loadFeatures,
+    }).message;
   } finally {
     loading.value = false;
   }
@@ -141,13 +146,13 @@ async function saveFeature(feature: SystemFeatureFlag, showMessage = true) {
   savingCode.value = feature.code;
   try {
     normalizeBeforeSave(feature);
-    const saved = await saveSystemFeatureApi(feature);
+    const saved = await saveSystemFeatureApi(feature, skipGlobalErrorHandler);
     replaceFeature(saved);
     if (showMessage) {
       ElMessage.success('系统功能配置已保存');
     }
-  } catch (error: any) {
-    ElMessage.error(error?.message || '系统功能配置保存失败');
+  } catch (error: unknown) {
+    notifyApiError(error, { messages: SYSTEM_ERRORS.saveFeature });
     await loadFeatures();
   } finally {
     savingCode.value = '';

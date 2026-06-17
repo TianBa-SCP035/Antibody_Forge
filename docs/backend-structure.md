@@ -50,9 +50,21 @@ repository/
 | `/api/system` | 系统管理、功能开关 |
 | `/api/user/info` | Vben 用户信息 |
 
-前端开发：Vben 走 `/api`；Serum 业务走 `/serum-api`（Vite 代理到后端 `/api`）。
+前端开发：全部业务走 `/api`（Vite 代理到后端）。
 
 ## 响应格式
 
-- 框架接口：`{ "code": 0, "data": ... }`
-- Serum 业务：`{ "code": 20000, "data": ... }`
+- 成功：`{ "code": 0, "data": ... }`
+- 业务失败（HTTP 200）：`{ "code": 1, "message": "..." }`
+- HTTP 异常（401/403/404/500）：保留 HTTP 状态，body 同为 `{ "code": 1, "message": "..." }`
+
+## 前端错误分层（L0–L3）
+
+| 层 | 位置 | 职责 |
+|----|------|------|
+| L0 | 各页面 | 权限/表单校验，`ElMessage.warning`，不发请求 |
+| L1 | `views/Serum/errors.ts`、`views/System/errors.ts` | 操作级用户文案；`notifyApiError(err, { messages })` |
+| L2 | `api/errors.ts` + `api/request.ts` 全局拦截 | 403/404/500/断网/超时兜底 |
+| L3 | 后端 `message` | 操作日志、开发调试、L1 未配时的 fallback |
+
+需要定制 UX 的请求设 `skipErrorHandler: true`（可在 API 封装或页面调用处），由 `.catch` 调用 `notifyApiError`。

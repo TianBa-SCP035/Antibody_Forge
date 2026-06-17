@@ -16,12 +16,38 @@ function isAuthRoute(path: string) {
   return path === LOGIN_PATH || path.startsWith('/auth/');
 }
 
+function readErrorBody(error: unknown): Record<string, unknown> {
+  const e = error as { response?: { data?: unknown } };
+  const candidates = [e?.response?.data, error];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object') {
+      return candidate as Record<string, unknown>;
+    }
+  }
+  return {};
+}
+
 function get401Detail(error: unknown): string {
-  const data = (error as { response?: { data?: Record<string, unknown> } })
-    ?.response?.data;
-  if (typeof data?.detail === 'string') return data.detail;
-  if (typeof data?.message === 'string') return data.message;
+  const data = readErrorBody(error);
+  if (typeof data.message === 'string') return data.message;
+  if (typeof data.detail === 'string') return data.detail;
   return '';
+}
+
+/** RequestClient 会把 axios 401 剥成 body；仅识别 session/账号状态类，不含登录密码错误 */
+function isUnwrappedAuthSessionError(error: unknown): boolean {
+  const data = readErrorBody(error);
+  const msg =
+    (typeof data.message === 'string' && data.message) ||
+    (typeof data.detail === 'string' && data.detail) ||
+    '';
+  if (!msg) return false;
+  return (
+    msg.includes('登录已失效') ||
+    msg.includes('用户不存在或已禁用') ||
+    msg.includes('账号已被禁用') ||
+    (msg.includes('禁用') && msg.includes('用户'))
+  );
 }
 
 function isTokenExpired(token: string): boolean {
@@ -40,7 +66,10 @@ function isTokenExpired(token: string): boolean {
 
 export function isUnauthorizedError(error: unknown): boolean {
   const err = error as { response?: { status?: number }; status?: number };
-  return err?.response?.status === 401 || err?.status === 401;
+  if (err?.response?.status === 401 || err?.status === 401) {
+    return true;
+  }
+  return isUnwrappedAuthSessionError(error);
 }
 
 /** 业务页弹窗重登（保留表单）；登录页则跳回登录 */

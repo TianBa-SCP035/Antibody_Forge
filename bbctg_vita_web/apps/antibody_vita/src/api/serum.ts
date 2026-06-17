@@ -1,227 +1,165 @@
-import request from '#/utils/request';
-import { isUnauthorizedError } from '#/utils/auth-session';
+import { requestClient, skipGlobalErrorHandler } from '#/api/request';
+
+export { skipGlobalErrorHandler };
 
 const SAVE_TIMEOUT = 5000;
+const LONG_TIMEOUT = 360_000;
 
-export function formatSaveError(err: unknown): string | null {
-  if (isUnauthorizedError(err)) {
-    return null;
-  }
-  const e = err as { code?: string; message?: string };
-  if (e?.code === 'ECONNABORTED' || /timeout/i.test(String(e?.message ?? ''))) {
-    return '保存超时，请重试';
-  }
-  return e?.message || '保存失败';
+type RequestConfig = Parameters<typeof requestClient.get>[1];
+type PostConfig = Parameters<typeof requestClient.post>[2];
+
+const downloadConfig = {
+  skipErrorHandler: true,
+} as Parameters<typeof requestClient.download>[1];
+
+export function fetchStats(config?: RequestConfig) {
+  return requestClient.get('/serum/stats', config);
 }
 
-export function fetchStats() {
-  return request({
-    method: 'get',
-    url: '/serum/stats',
-  });
+export function fetchList(data: any, config?: PostConfig) {
+  return requestClient.post('/serum/list', data, config);
 }
 
-export function fetchList(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/list',
-  });
-}
-
-export function fetchDetail(id: any) {
-  return request({
-    method: 'get',
+export function fetchDetail(id: any, config?: RequestConfig) {
+  return requestClient.get('/serum/detail', {
     params: { id },
-    url: '/serum/detail',
+    ...skipGlobalErrorHandler,
+    ...config,
   });
 }
 
 export function fetchNextId(code: any) {
-  return request({
-    method: 'get',
+  return requestClient.get('/serum/next_id', {
     params: { code },
     timeout: SAVE_TIMEOUT,
-    url: '/serum/next_id',
+    ...skipGlobalErrorHandler,
   });
 }
 
 export function saveSerum(data: any) {
-  return request({
-    data,
-    method: 'post',
+  return requestClient.post('/serum/save', data, {
     timeout: SAVE_TIMEOUT,
-    url: '/serum/save',
+    ...skipGlobalErrorHandler,
   });
 }
 
 export function deleteSerum(id: any) {
-  return request({
-    data: { id },
-    method: 'post',
-    url: '/serum/delete',
-  });
+  return requestClient.post('/serum/delete', { id }, skipGlobalErrorHandler);
 }
 
-export function getSerumFilterOptions() {
-  return request({
-    method: 'get',
-    url: '/serum/filter_options',
+export function getSerumFilterOptions(config?: RequestConfig) {
+  return requestClient.get('/serum/filter_options', {
+    ...skipGlobalErrorHandler,
+    ...config,
   });
 }
 
 export function updateSerumStatus(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/update_status',
-  });
+  return requestClient.post('/serum/update_status', data, skipGlobalErrorHandler);
 }
 
 export function updateCagePosition(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/update_cage_position',
-  });
+  return requestClient.post('/serum/update_cage_position', data, skipGlobalErrorHandler);
 }
 
 export function export_mouse(data: any) {
-  return request({
+  return requestClient.download('/serum/export_mouse', {
     data,
-    method: 'post',
-    responseType: 'blob',
-    url: '/serum/export_mouse',
-  });
-}
-
-function schemeExportBlob(url: string, data: { id?: number; ids?: number[] }) {
-  return request({
-    data,
-    method: 'post',
-    responseType: 'blob',
-    url,
+    method: 'POST',
+    timeout: LONG_TIMEOUT,
+    ...downloadConfig,
   });
 }
 
 export function exportScheme(data: { id?: number; ids?: number[] }) {
-  return schemeExportBlob('/serum/export_scheme', data);
+  return requestClient.download('/serum/export_scheme', {
+    data,
+    method: 'POST',
+    timeout: LONG_TIMEOUT,
+    ...downloadConfig,
+  });
 }
 
 export function exportSchemePdf(data: { id?: number; ids?: number[] }) {
-  return schemeExportBlob('/serum/export_scheme_pdf', data);
+  return requestClient.download('/serum/export_scheme_pdf', {
+    data,
+    method: 'POST',
+    timeout: LONG_TIMEOUT,
+    ...downloadConfig,
+  });
 }
 
 export function autoUpdateStatus(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/auto_update_status',
-  });
+  return requestClient.post('/serum/auto_update_status', data, skipGlobalErrorHandler);
 }
 
-export function fetchIndexFiles(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/titer/file/list',
-  });
+export function fetchCellInventoryData() {
+  return requestClient.get('/serum/cell_inventory/data', skipGlobalErrorHandler);
 }
 
-export function saveIndexFile(data: any) {
-  return request({
-    data,
+export function updateProjectPrepStatus(data: {
+  experiment_id: string;
+  prep_status: string;
+}) {
+  return requestClient.post('/serum/project/prep_status', data, skipGlobalErrorHandler);
+}
+
+export function fetchIndexFiles(data: any, config?: PostConfig) {
+  return requestClient.post('/serum/titer/file/list', data, config);
+}
+
+export function saveIndexFile(data: FormData) {
+  return requestClient.post('/serum/titer/file/save', data, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    method: 'post',
-    url: '/serum/titer/file/save',
+    timeout: LONG_TIMEOUT,
+    ...skipGlobalErrorHandler,
   });
 }
 
 export function deleteIndexFile(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/titer/file/delete',
-  });
+  return requestClient.post('/serum/titer/file/delete', data, skipGlobalErrorHandler);
 }
 
 export function renameIndexFile(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/titer/file/rename',
-  });
+  return requestClient.post('/serum/titer/file/rename', data, skipGlobalErrorHandler);
 }
 
-export function replaceIndexFile(data: any) {
-  return request({
-    data,
+export function replaceIndexFile(data: FormData) {
+  return requestClient.post('/serum/titer/file/replace', data, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    method: 'post',
-    url: '/serum/titer/file/replace',
+    timeout: LONG_TIMEOUT,
+    ...skipGlobalErrorHandler,
   });
 }
 
 export function saveTiterTargets(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/titer/target/save',
-  });
+  return requestClient.post('/serum/titer/target/save', data, skipGlobalErrorHandler);
 }
 
 export function saveTiterPcs(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/titer/pc/save',
-  });
+  return requestClient.post('/serum/titer/pc/save', data, skipGlobalErrorHandler);
 }
 
-export function fetchFacsPlates(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/titer/plate/list',
-  });
+export function fetchFacsPlates(data: any, config?: PostConfig) {
+  return requestClient.post('/serum/titer/plate/list', data, config);
 }
 
 export function saveFacsPlate(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/titer/plate/save',
-  });
+  return requestClient.post('/serum/titer/plate/save', data, skipGlobalErrorHandler);
 }
 
 export function deleteFacsPlate(id: any) {
-  return request({
-    data: { id },
-    method: 'post',
-    url: '/serum/titer/plate/delete',
-  });
+  return requestClient.post('/serum/titer/plate/delete', { id }, skipGlobalErrorHandler);
 }
 
-export function fetchElisaPlates(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/titer/elisa/plate/list',
-  });
+export function fetchElisaPlates(data: any, config?: PostConfig) {
+  return requestClient.post('/serum/titer/elisa/plate/list', data, config);
 }
 
 export function saveElisaPlate(data: any) {
-  return request({
-    data,
-    method: 'post',
-    url: '/serum/titer/elisa/plate/save',
-  });
+  return requestClient.post('/serum/titer/elisa/plate/save', data, skipGlobalErrorHandler);
 }
 
 export function deleteElisaPlate(id: any) {
-  return request({
-    data: { id },
-    method: 'post',
-    url: '/serum/titer/elisa/plate/delete',
-  });
+  return requestClient.post('/serum/titer/elisa/plate/delete', { id }, skipGlobalErrorHandler);
 }

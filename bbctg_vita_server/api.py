@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from core.vben_response import vben_success
+from core.response import success
 from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
@@ -32,4 +32,4 @@ def user_info(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    return vben_success(build_user_info(db, current_user))
+    return success(build_user_info(db, current_user))

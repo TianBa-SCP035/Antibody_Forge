@@ -28,7 +28,7 @@ Antibody_Forge/
 | 系统管理 | `/system/*` | `/api/system` | 用户、角色、权限、日志、功能开关 |
 | 认证 | 登录 | `/api/auth` | 密码 / 云之家 JWT |
 
-前端 Serum 请求走 `/serum-api`（代理到后端 `/api`）。
+前端全部 API 走 `/api`（与后端路由一致）。
 
 ## 刻意未做
 

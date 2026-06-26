@@ -2,9 +2,8 @@
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
+import { VbenButton } from '@vben/common-ui';
 import { LOGIN_PATH } from '@vben/constants';
-
-import { VbenButton } from '@vben-core/shadcn-ui';
 
 import { extractApiError } from '#/api/errors';
 import { useAuthStore } from '#/store';

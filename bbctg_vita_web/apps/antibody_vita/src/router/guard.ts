@@ -1,4 +1,4 @@
-import type { Router } from 'vue-router';
+import type { RouteLocationNormalized, Router } from 'vue-router';
 
 import { LOGIN_PATH } from '@vben/constants';
 import { preferences } from '@vben/preferences';
@@ -13,6 +13,19 @@ import {
 } from '#/views/Home/home-data';
 
 import { generateAccess } from './access';
+
+/** 弹窗重登仅适用于已进入业务布局的页面；冷启动/404 应跳转登录页 */
+function shouldPreservePageForReLogin(
+  to: RouteLocationNormalized,
+  isAccessChecked: boolean,
+  loginExpired: boolean,
+) {
+  return (
+    loginExpired &&
+    isAccessChecked &&
+    to.name !== 'FallbackNotFound'
+  );
+}
 
 /**
  * 通用守卫配置
@@ -71,7 +84,13 @@ function setupAccessGuard(router: Router) {
 
     // accessToken 检查
     if (!accessStore.accessToken) {
-      if (accessStore.loginExpired) {
+      if (
+        shouldPreservePageForReLogin(
+          to,
+          accessStore.isAccessChecked,
+          accessStore.loginExpired,
+        )
+      ) {
         return true;
       }
 
@@ -107,10 +126,8 @@ function setupAccessGuard(router: Router) {
       try {
         userInfo = await authStore.fetchUserInfo();
       } catch {
-        // 401 时 request 拦截器会触发弹窗；此处只阻止跳转登录页以保留当前页
-        if (accessStore.loginExpired) {
-          return true;
-        }
+        // 冷启动鉴权失败：401 拦截器可能已置 loginExpired，此处统一跳登录页
+        accessStore.setLoginExpired(false);
         return {
           path: LOGIN_PATH,
           query: { redirect: encodeURIComponent(to.fullPath) },

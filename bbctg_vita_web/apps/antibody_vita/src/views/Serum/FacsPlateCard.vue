@@ -858,28 +858,39 @@ export default {
     getImageUrl(file) {
       return file.preview_object_url || file.thumb_object_url || ''
     },
+    flushSave() {
+      if (!this.canMutate) return
+      this.ensureWellArrays()
+      const toNullIfEmpty = (v) => (v === '' || v === undefined ? null : v)
+      const payload = {
+        ...this.plateData,
+        image_file_id: toNullIfEmpty(this.plateData.image_file_id),
+        excel_file_id: toNullIfEmpty(this.plateData.excel_file_id),
+        immune_stage: this.plateData.immune_stage === null ? '' : this.plateData.immune_stage,
+        cell_target_id: toNullIfEmpty(this.plateData.cell_target_id),
+        pc_upper_id: toNullIfEmpty(this.plateData.pc_upper_id),
+        pc_lower_id: toNullIfEmpty(this.plateData.pc_lower_id),
+        upper_group: this.plateData.upper_group === null ? '' : this.plateData.upper_group,
+        lower_group: this.plateData.lower_group === null ? '' : this.plateData.lower_group,
+        upper_mouse_list: this.normalizeSlotValues(this.plateData.upper_mouse_list),
+        lower_mouse_list: this.normalizeSlotValues(this.plateData.lower_mouse_list),
+        upper_slot_groups: this.normalizeSlotGroups(this.plateData.upper_slot_groups),
+        lower_slot_groups: this.normalizeSlotGroups(this.plateData.lower_slot_groups),
+      }
+      this.$emit('save', payload)
+    },
+    flushPendingSave() {
+      if (!this.saveTimer) return
+      clearTimeout(this.saveTimer)
+      this.saveTimer = null
+      this.flushSave()
+    },
     autoSave() {
       if (!this.canMutate) return
       if (this.saveTimer) clearTimeout(this.saveTimer)
       this.saveTimer = setTimeout(() => {
-        this.ensureWellArrays()
-        const toNullIfEmpty = (v) => (v === '' || v === undefined ? null : v)
-        const payload = {
-          ...this.plateData,
-          image_file_id: toNullIfEmpty(this.plateData.image_file_id),
-          excel_file_id: toNullIfEmpty(this.plateData.excel_file_id),
-          immune_stage: this.plateData.immune_stage === null ? '' : this.plateData.immune_stage,
-          cell_target_id: toNullIfEmpty(this.plateData.cell_target_id),
-          pc_upper_id: toNullIfEmpty(this.plateData.pc_upper_id),
-          pc_lower_id: toNullIfEmpty(this.plateData.pc_lower_id),
-          upper_group: this.plateData.upper_group === null ? '' : this.plateData.upper_group,
-          lower_group: this.plateData.lower_group === null ? '' : this.plateData.lower_group,
-          upper_mouse_list: this.normalizeSlotValues(this.plateData.upper_mouse_list),
-          lower_mouse_list: this.normalizeSlotValues(this.plateData.lower_mouse_list),
-          upper_slot_groups: this.normalizeSlotGroups(this.plateData.upper_slot_groups),
-          lower_slot_groups: this.normalizeSlotGroups(this.plateData.lower_slot_groups)
-        }
-        this.$emit('save', payload)
+        this.saveTimer = null
+        this.flushSave()
       }, 200)
     },
     onExcelFileChange() {
@@ -1384,7 +1395,7 @@ export default {
   },
   beforeUnmount() {
     if (this._ro) this._ro.disconnect()
-    if (this.saveTimer) clearTimeout(this.saveTimer)
+    this.flushPendingSave()
     document.removeEventListener('mouseup', this.handleDocumentMouseUp)
     if (this.wellDragState.active) this.resetWellDragState()
   }

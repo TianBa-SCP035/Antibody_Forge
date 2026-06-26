@@ -103,8 +103,19 @@ export async function handleUnauthorizedError(error: unknown) {
   await promptReLogin(message, detail.includes('禁用') ? 'error' : 'warning');
 }
 
+/** 冷启动时若本地 token 已过期，清掉后交给路由守卫跳转登录页 */
+function clearExpiredTokenOnBoot() {
+  const accessStore = useAccessStore();
+  if (accessStore.accessToken && isTokenExpired(accessStore.accessToken)) {
+    accessStore.setAccessToken(null);
+    accessStore.setLoginExpired(false);
+  }
+}
+
 /** 切回标签页时若 token 已过期则提前弹窗 */
 export function initSessionExpiryWatcher() {
+  clearExpiredTokenOnBoot();
+
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     const { accessToken, loginExpired } = useAccessStore();

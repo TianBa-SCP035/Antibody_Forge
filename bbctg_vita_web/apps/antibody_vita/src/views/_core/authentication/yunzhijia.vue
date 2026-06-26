@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 
 import { LOGIN_PATH } from '@vben/constants';
 
+import { VbenButton } from '@vben-core/shadcn-ui';
+
 import { extractApiError } from '#/api/errors';
 import { useAuthStore } from '#/store';
 
@@ -64,15 +66,13 @@ function goPasswordLogin() {
     <p v-if="showRetryHint" class="yunzhijia-login__hint">
       若仍无法进入，可关闭本页后从云之家再次打开应用重试。
     </p>
-    <el-button
+    <VbenButton
       v-if="message !== MSG.loading"
       class="yunzhijia-login__fallback"
-      link
-      type="primary"
       @click="goPasswordLogin"
     >
       改用账号密码登录
-    </el-button>
+    </VbenButton>
   </div>
 </template>
 

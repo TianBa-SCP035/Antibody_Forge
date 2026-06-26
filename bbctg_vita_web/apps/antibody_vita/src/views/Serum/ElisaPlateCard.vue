@@ -560,7 +560,7 @@ export default {
   },
   beforeUnmount() {
     document.removeEventListener('mouseup', this.onDocumentMouseUp)
-    if (this.saveTimer) clearTimeout(this.saveTimer)
+    this.flushPendingSave()
   },
   methods: {
     viewText(value) {
@@ -643,27 +643,38 @@ export default {
       this.plateData.absorbance_1 = { wavelength: Number.isNaN(wavelength) ? null : wavelength, matrix }
       this.autoSave()
     },
+    flushSave() {
+      if (!this.canMutate) return
+      this.syncSlots()
+      const toNullIfEmpty = (v) => (v === '' || v === undefined ? null : v)
+      this.$emit('save', {
+        ...this.plateData,
+        plate_type: 'elisa',
+        excel_file_id: toNullIfEmpty(this.plateData.excel_file_id),
+        immune_stage: this.plateData.immune_stage ?? '',
+        protein_target_id: toNullIfEmpty(this.plateData.protein_target_id),
+        pc_id: toNullIfEmpty(this.plateData.pc_id),
+        slot_groups: this.slotGroups,
+        upper_slot_list: this.upperSlots,
+        lower_slot_list: this.lowerSlots,
+        positive_well_list: Array.isArray(this.plateData.positive_well_list)
+          ? this.plateData.positive_well_list
+          : [],
+        absorbance_1: this.plateData.absorbance_1,
+      })
+    },
+    flushPendingSave() {
+      if (!this.saveTimer) return
+      clearTimeout(this.saveTimer)
+      this.saveTimer = null
+      this.flushSave()
+    },
     autoSave() {
       if (!this.canMutate) return
       if (this.saveTimer) clearTimeout(this.saveTimer)
       this.saveTimer = setTimeout(() => {
-        this.syncSlots()
-        const toNullIfEmpty = (v) => (v === '' || v === undefined ? null : v)
-        this.$emit('save', {
-          ...this.plateData,
-          plate_type: 'elisa',
-          excel_file_id: toNullIfEmpty(this.plateData.excel_file_id),
-          immune_stage: this.plateData.immune_stage ?? '',
-          protein_target_id: toNullIfEmpty(this.plateData.protein_target_id),
-          pc_id: toNullIfEmpty(this.plateData.pc_id),
-          slot_groups: this.slotGroups,
-          upper_slot_list: this.upperSlots,
-          lower_slot_list: this.lowerSlots,
-          positive_well_list: Array.isArray(this.plateData.positive_well_list)
-            ? this.plateData.positive_well_list
-            : [],
-          absorbance_1: this.plateData.absorbance_1,
-        })
+        this.saveTimer = null
+        this.flushSave()
       }, 200)
     },
     getSlotList(section) {

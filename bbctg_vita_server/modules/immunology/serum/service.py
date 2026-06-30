@@ -15,6 +15,7 @@ from core.config import get_settings
 from core.errors import BusinessError
 
 SERUM_CAGE_NO_MOUSE = "SERUM_CAGE_NO_MOUSE"
+PENDING_BLOOD_COLLECTION_STATUS = "待采血"
 from models.immunology import (
     SerumElisaPlate,
     SerumFacsPlate,
@@ -23,9 +24,11 @@ from models.immunology import (
     SerumImmMouse,
     SerumImmProject,
     SerumImmStep,
+    SerumTiterOrder,
     SerumTiterPc,
     SerumTiterTarget,
 )
+from modules.immunology.titer.service import create_titer_order_from_immune_if_absent
 
 
 def apply_project_filters(stmt, data: dict[str, Any]):
@@ -293,7 +296,16 @@ def _rename_experiment_related_records(db: Session, old_eid: str | None, new_eid
     for record in db.scalars(select(SerumFile).where(SerumFile.experiment_id == old_eid)).all():
         record.file_path = _rewrite_titer_file_path(record.file_path, old_eid, new_eid, path_map)
         record.experiment_id = new_eid
-    for model in [SerumImmMouse, SerumImmAntigen, SerumImmStep, SerumTiterTarget, SerumTiterPc, SerumFacsPlate, SerumElisaPlate]:
+    for model in [
+        SerumImmMouse,
+        SerumImmAntigen,
+        SerumImmStep,
+        SerumTiterTarget,
+        SerumTiterPc,
+        SerumFacsPlate,
+        SerumElisaPlate,
+        SerumTiterOrder,
+    ]:
         db.query(model).filter(model.experiment_id == old_eid).update({"experiment_id": new_eid}, synchronize_session=False)
 
 
@@ -366,7 +378,17 @@ def delete_serum(db: Session, project_id: int) -> None:
     if not project:
         raise ValueError("项目不存在")
     exp_id = project.experiment_id
-    for model in [SerumFacsPlate, SerumElisaPlate, SerumFile, SerumImmMouse, SerumImmAntigen, SerumImmStep, SerumTiterTarget, SerumTiterPc]:
+    for model in [
+        SerumFacsPlate,
+        SerumElisaPlate,
+        SerumFile,
+        SerumImmMouse,
+        SerumImmAntigen,
+        SerumImmStep,
+        SerumTiterTarget,
+        SerumTiterPc,
+        SerumTiterOrder,
+    ]:
         db.query(model).filter(model.experiment_id == exp_id).delete(synchronize_session=False)
     db.delete(project)
     db.commit()
@@ -412,7 +434,7 @@ def auto_update_status(db: Session, filters: dict[str, Any] | None = None) -> di
     projects = db.scalars(proj_stmt).all()
     exp_ids = [item.experiment_id for item in projects if item.experiment_id]
     if not exp_ids:
-        return {"message": "未找到符合条件的项目", "updated_count": 0}
+        return {"message": "未找到符合条件的项目", "updated_count": 0, "titer_order_created_count": 0}
 
     today = datetime.now().strftime("%Y-%m-%d")
     steps = db.execute(
@@ -437,6 +459,7 @@ def auto_update_status(db: Session, filters: dict[str, Any] | None = None) -> di
             rec["next_d"], rec["next_stage"] = date_value, stage
 
     updated_count = 0
+    titer_order_created_count = 0
     dry_run = bool(filters.get("dry_run"))
     for project in projects:
         status = project.project_status or ""
@@ -449,12 +472,23 @@ def auto_update_status(db: Session, filters: dict[str, Any] | None = None) -> di
         if new_status and project.project_status != new_status:
             if not dry_run:
                 project.project_status = new_status
+                if new_status == PENDING_BLOOD_COLLECTION_STATUS and project.experiment_id:
+                    if create_titer_order_from_immune_if_absent(
+                        db,
+                        project.experiment_id,
+                        serum_status=PENDING_BLOOD_COLLECTION_STATUS,
+                    ):
+                        titer_order_created_count += 1
             updated_count += 1
     if dry_run:
         db.rollback()
     else:
         db.commit()
-    return {"message": "状态更新成功", "updated_count": updated_count}
+    return {
+        "message": "状态更新成功",
+        "updated_count": updated_count,
+        "titer_order_created_count": titer_order_created_count,
+    }
 
 
 def get_filter_options(db: Session) -> dict:

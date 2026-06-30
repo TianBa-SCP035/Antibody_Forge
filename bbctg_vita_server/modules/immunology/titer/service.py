@@ -527,6 +527,34 @@ def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
     }
 
 
+def create_titer_order_from_immune_if_absent(
+    db: Session,
+    experiment_id: str,
+    *,
+    serum_status: str | None = None,
+) -> bool:
+    """从免疫实验复制批次字段新建工单；该 experiment_id 已有任意工单则跳过。不 commit。"""
+    experiment_id = str(experiment_id or "").strip()
+    if not experiment_id:
+        return False
+    exists = db.scalar(
+        select(SerumTiterOrder.id).where(SerumTiterOrder.experiment_id == experiment_id).limit(1)
+    )
+    if exists:
+        return False
+    project, immune_batch = _immune_batch_for_experiment(db, experiment_id)
+    order = SerumTiterOrder(
+        experiment_id=experiment_id,
+        titer_order_id=generate_titer_order_id(db, project.project_code, experiment_id),
+        titer_owners=[],
+        test_dates=[],
+        serum_status=str(serum_status).strip() if serum_status else None,
+    )
+    _apply_batch_fields_to_order(order, immune_batch)
+    db.add(order)
+    return True
+
+
 def save_titer_order(db: Session, data: dict[str, Any]) -> dict:
     order_id = data.get("id")
     if order_id:

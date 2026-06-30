@@ -230,7 +230,8 @@ PROJECT_FIELDS = [
     "pm",
     "study_type",
     "assay_method",
-    "assay_method_config",
+    "facs_plate_count",
+    "elisa_plate_count",
     "project_status",
     "remark",
 ]

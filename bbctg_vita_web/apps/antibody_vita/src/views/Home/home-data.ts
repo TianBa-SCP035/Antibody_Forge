@@ -108,6 +108,14 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
     url: '/serum/list',
   },
   {
+    id: 'titer-order-list',
+    titleKey: 'page.home.presetTiterOrderTitle',
+    subtitleKey: 'page.home.presetTiterOrderSubtitle',
+    icon: 'lucide:clipboard-list',
+    iconClass: 'bg-indigo-500/15 text-indigo-600',
+    url: '/serum/titer-orders',
+  },
+  {
     id: 'profile',
     titleKey: 'page.home.presetProfileTitle',
     subtitleKey: 'page.home.presetProfileSubtitle',
@@ -153,9 +161,9 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
 
 export const defaultQuickNavPresetIds: Array<string | null> = [
   'serum-list',
+  'titer-order-list',
   'profile',
   'system',
-  null,
   null,
   null,
 ];
@@ -286,6 +294,9 @@ export function canAccessStartPath(
 ): boolean {
   if (path === '/serum/list') {
     return hasAccessByCodes(['serum.page.list']);
+  }
+  if (path === '/serum/titer-orders') {
+    return hasAccessByCodes(['serum.page.titer_order']);
   }
   if (path.startsWith('/system')) {
     return hasAccessByCodes([...HOME_SYSTEM_ACCESS_CODES]);

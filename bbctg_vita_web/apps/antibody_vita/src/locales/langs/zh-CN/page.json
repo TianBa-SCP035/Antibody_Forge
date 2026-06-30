@@ -31,6 +31,8 @@
     "actionSave": "保存",
     "presetSerumTitle": "免疫实验列表",
     "presetSerumSubtitle": "全流向跟踪管理",
+    "presetTiterOrderTitle": "效价实验列表",
+    "presetTiterOrderSubtitle": "效价工单与检测安排",
     "presetProfileTitle": "用户中心",
     "presetProfileSubtitle": "平台角色与密钥",
     "presetSystemTitle": "系统管理",

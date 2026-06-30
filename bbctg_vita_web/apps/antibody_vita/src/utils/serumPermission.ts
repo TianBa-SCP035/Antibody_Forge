@@ -126,3 +126,55 @@ export function canViewSerumCellInventory(userInfo: any): boolean {
 export function canUpdateSerumPrepStatus(userInfo: any, _project?: any): boolean {
   return hasAccessCode(userInfo, 'serum.cell.prep_status.update');
 }
+
+function isTiterOwner(userInfo: any, row: any): boolean {
+  const aliases = getUserNameAliases(userInfo);
+  const owners = Array.isArray(row?.titer_owners) ? row.titer_owners : [];
+  return owners.some((owner: unknown) => {
+    const name = normalizeName(owner);
+    return Boolean(name && aliases.includes(name));
+  });
+}
+
+export function canViewTiterOrderPage(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.page.titer_order');
+}
+
+export function canCreateTiterOrder(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.titer_order.create');
+}
+
+export function canEditTiterOrderBatch(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.titer_order.batch.edit');
+}
+
+export function canDeleteTiterOrder(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.titer_order.delete');
+}
+
+export function canEditTiterOrderOwner(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.titer_order.owner.edit');
+}
+
+export function canEditAllTiterOrderRecord(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.titer_order.record.edit_all');
+}
+
+export function canEditTiterOrderRecord(userInfo: any, row: any): boolean {
+  return (
+    hasAccessCode(userInfo, 'serum.titer_order.record.edit') &&
+    (canEditAllTiterOrderRecord(userInfo) || isTiterOwner(userInfo, row))
+  );
+}
+
+export function canEditAllTiterOrderSummary(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.titer_order.summary.edit_all');
+}
+
+export function canEditTiterOrderSummary(userInfo: any, row: any): boolean {
+  return (
+    hasAccessCode(userInfo, 'serum.titer_order.summary.edit') &&
+    (canEditAllTiterOrderSummary(userInfo) ||
+      isProjectOwner(userInfo, { owner: row?.immune_owner }))
+  );
+}

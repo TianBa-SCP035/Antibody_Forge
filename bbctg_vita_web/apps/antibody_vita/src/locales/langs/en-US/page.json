@@ -31,6 +31,8 @@
     "actionSave": "Save",
     "presetSerumTitle": "Serum experiments",
     "presetSerumSubtitle": "End-to-end tracking",
+    "presetTiterOrderTitle": "Titer experiments",
+    "presetTiterOrderSubtitle": "Orders and test scheduling",
     "presetProfileTitle": "Profile",
     "presetProfileSubtitle": "Roles and credentials",
     "presetSystemTitle": "System settings",

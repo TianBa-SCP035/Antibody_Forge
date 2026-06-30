@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, DateTime, JSON, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, DateTime, Integer, JSON, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
@@ -20,8 +20,9 @@ class SerumImmProject(Base):
     owner: Mapped[str | None] = mapped_column(String(64))
     pm: Mapped[str | None] = mapped_column(String(64))
     study_type: Mapped[str | None] = mapped_column(String(64))
-    assay_method: Mapped[str | None] = mapped_column(String(64))
-    assay_method_config: Mapped[object | None] = mapped_column(JSON)
+    assay_method: Mapped[str | None] = mapped_column(String(128))
+    facs_plate_count: Mapped[int | None] = mapped_column(Integer)
+    elisa_plate_count: Mapped[int | None] = mapped_column(Integer)
     project_status: Mapped[str | None] = mapped_column(String(64))
     remark: Mapped[str | None] = mapped_column(String(255))
     mouse_strain: Mapped[str | None] = mapped_column(String(128))
@@ -44,7 +45,8 @@ class SerumImmProject(Base):
             "pm": self.pm,
             "study_type": self.study_type,
             "assay_method": self.assay_method,
-            "assay_method_config": self.assay_method_config,
+            "facs_plate_count": self.facs_plate_count,
+            "elisa_plate_count": self.elisa_plate_count,
             "project_status": self.project_status,
             "remark": self.remark,
             "mouse_strain": self.mouse_strain,
@@ -107,7 +109,7 @@ class SerumFile(Base):
         def format_time(dt):
             if dt is None:
                 return None
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
+            return dt.strftime("%Y-%m-%d")
 
         return {
             "id": self.id,
@@ -325,4 +327,45 @@ class SerumFacsPlate(Base):
             "positive_well_list": self.positive_well_list,
             "instrument_type": self.instrument_type,
             "plate_type": "facs",
+        }
+
+
+class SerumTiterOrder(Base):
+    __tablename__ = "serum_titer_order"
+    __table_args__ = (UniqueConstraint("titer_order_id", name="uk_serum_titer_order_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    titer_order_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    cage_position: Mapped[str | None] = mapped_column(String(64))
+    blood_collection_date: Mapped[str | None] = mapped_column(String(32))
+    mouse_count: Mapped[int | None] = mapped_column(Integer)
+    assay_method: Mapped[str | None] = mapped_column(String(128))
+    facs_plate_count: Mapped[int | None] = mapped_column(Integer)
+    elisa_plate_count: Mapped[int | None] = mapped_column(Integer)
+    titer_owners: Mapped[object | None] = mapped_column(JSON)
+    test_dates: Mapped[object | None] = mapped_column(JSON)
+    serum_status: Mapped[str | None] = mapped_column(String(64))
+    summary: Mapped[str | None] = mapped_column(String(500))
+    remark: Mapped[str | None] = mapped_column(String(500))
+
+    def to_dict(self) -> dict:
+        raw_dates = self.test_dates if isinstance(self.test_dates, list) else []
+        dates = sorted({str(item).strip()[:10] for item in raw_dates if str(item or "").strip()})
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "titer_order_id": self.titer_order_id,
+            "cage_position": self.cage_position or "",
+            "blood_collection_date": self.blood_collection_date or "",
+            "mouse_count": self.mouse_count,
+            "assay_method": self.assay_method or "",
+            "facs_plate_count": self.facs_plate_count,
+            "elisa_plate_count": self.elisa_plate_count,
+            "titer_owners": self.titer_owners or [],
+            "test_dates": dates,
+            "test_dates_display": "、".join(dates),
+            "serum_status": self.serum_status,
+            "summary": self.summary,
+            "remark": self.remark,
         }

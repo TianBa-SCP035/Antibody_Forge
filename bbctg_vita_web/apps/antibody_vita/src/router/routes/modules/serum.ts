@@ -1,6 +1,7 @@
 import type { RouteRecordRaw } from 'vue-router';
 
 const SERUM_TAB_GROUP = '/serum';
+const SERUM_TITER_ORDER_TAB_GROUP = '/serum/titer-orders';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -35,6 +36,17 @@ const routes: RouteRecordRaw[] = [
           icon: 'lucide:file-text',
           tabGroup: SERUM_TAB_GROUP,
           title: '免疫实验详情',
+        },
+      },
+      {
+        name: 'SerumTiterOrderList',
+        path: '/serum/titer-orders',
+        component: () => import('#/views/Serum/SerumTiterOrderList.vue'),
+        meta: {
+          authority: ['serum.page.titer_order'],
+          icon: 'lucide:clipboard-list',
+          tabGroup: SERUM_TITER_ORDER_TAB_GROUP,
+          title: '效价实验列表',
         },
       },
       {

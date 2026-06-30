@@ -7,11 +7,11 @@
     transition="el-zoom-in-top"
     :show-arrow="false"
     :popper-style="{ padding: '6px 0' }"
-    @show="loadConfig"
+    @show="loadFromModel"
   >
     <template #reference>
       <div ref="trigger" class="trigger" :class="{ open }">
-        <span :class="{ placeholder: !display }">{{ display || '请选择检测方法' }}</span>
+        <span :class="{ placeholder: !assayMethod }">{{ assayMethod || '请选择检测方法' }}</span>
         <el-icon class="arrow"><ArrowDown /></el-icon>
       </div>
     </template>
@@ -50,24 +50,69 @@ const METHOD_LIST = ['FACS', 'ELISA']
 const SPECIES_LIST = ['人', '猴', '鼠', '狗', '猫', 'CHOS', '293']
 const DEFAULT_SPECIES = ['人', '猴']
 
-const sortSpecies = (list) => SPECIES_LIST.filter((s) => (list || []).includes(s))
-
 const emptyItems = () => Object.fromEntries(
   METHOD_LIST.map((m) => [m, { on: false, species: [...DEFAULT_SPECIES], plate: '' }]),
 )
 
-const formatEntry = ({ method, species }) => {
-  return `${method}${sortSpecies(species).join('')}`
+function speciesFromSuffix(suffix) {
+  const text = String(suffix || '')
+  const chosen = []
+  const byLength = [...SPECIES_LIST].sort((a, b) => b.length - a.length)
+  let index = 0
+  while (index < text.length) {
+    const matched = byLength.find((s) => text.slice(index).startsWith(s))
+    if (!matched) {
+      index += 1
+      continue
+    }
+    chosen.push(matched)
+    index += matched.length
+  }
+  return SPECIES_LIST.filter((s) => chosen.includes(s))
+}
+
+function parseAssayMethodText(display) {
+  const result = {}
+  for (const part of String(display || '').split(' + ')) {
+    const token = part.trim()
+    if (!token) continue
+    const upper = token.toUpperCase()
+    for (const method of METHOD_LIST) {
+      if (upper.startsWith(method)) {
+        result[method] = speciesFromSuffix(token.slice(method.length))
+        break
+      }
+    }
+  }
+  return result
+}
+
+function formatAssayMethodText(items) {
+  return METHOD_LIST
+    .filter((m) => items[m].on)
+    .map((m) => {
+      const species = SPECIES_LIST.filter((s) => items[m].species.includes(s))
+      return `${m}${species.join('')}`
+    })
+    .join(' + ')
+}
+
+function parsePlate(value) {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return null
+  const n = Number(trimmed)
+  return Number.isNaN(n) ? null : n
 }
 
 export default {
   name: 'AssayMethodEditor',
   components: { ArrowDown, ElIcon, ElPopover },
   props: {
-    config: { type: Object, default: null },
-    display: { type: String, default: '' },
+    assayMethod: { type: String, default: '' },
+    facsPlateCount: { type: Number, default: null },
+    elisaPlateCount: { type: Number, default: null },
   },
-  emits: ['update:config', 'update:display'],
+  emits: ['update:assayMethod', 'update:facsPlateCount', 'update:elisaPlateCount'],
   data() {
     return {
       methodList: METHOD_LIST,
@@ -79,71 +124,91 @@ export default {
     }
   },
   watch: {
-    config: {
-      immediate: true,
-      deep: true,
-      handler() {
-        if (!this.open) this.loadConfig()
-      },
+    assayMethod() {
+      if (!this.open) {
+        this.loadFromModel()
+      }
+    },
+    facsPlateCount() {
+      if (!this.open) {
+        this.loadFromModel()
+      }
+    },
+    elisaPlateCount() {
+      if (!this.open) {
+        this.loadFromModel()
+      }
     },
   },
   mounted() {
     this.$nextTick(() => {
-      if (this.$refs.trigger) this.triggerWidth = this.$refs.trigger.offsetWidth
+      if (this.$refs.trigger) {
+        this.triggerWidth = this.$refs.trigger.offsetWidth
+      }
     })
+    this.loadFromModel()
   },
   methods: {
-    loadConfig() {
+    loadFromModel() {
+      const speciesByMethod = parseAssayMethodText(this.assayMethod)
+      const plates = { FACS: this.facsPlateCount, ELISA: this.elisaPlateCount }
       this.items = emptyItems()
-      this.touched = !!(this.config?.entries?.length)
-      for (const entry of this.config?.entries || []) {
-        if (!this.items[entry.method]) continue
-        this.items[entry.method] = {
+      this.touched = Boolean(this.assayMethod || this.facsPlateCount != null || this.elisaPlateCount != null)
+      for (const method of METHOD_LIST) {
+        const species = speciesByMethod[method]
+        const plate = plates[method]
+        if (!species?.length && plate == null) continue
+        this.items[method] = {
           on: true,
-          species: sortSpecies(entry.species),
-          plate: entry.plate_count != null ? String(entry.plate_count) : '',
+          species: species?.length ? species : [...DEFAULT_SPECIES],
+          plate: plate != null ? String(plate) : '',
         }
       }
     },
     toggle(method) {
       const item = this.items[method]
       item.on = !item.on
-      if (item.on && !item.species.length) item.species = [...DEFAULT_SPECIES]
+      if (item.on && !item.species.length) {
+        item.species = [...DEFAULT_SPECIES]
+      }
       this.commit()
     },
     toggleSpecies(method, species) {
       const item = this.items[method]
-      if (!item.on) item.on = true
+      if (!item.on) {
+        item.on = true
+      }
       const set = new Set(item.species)
-      set.has(species) ? set.delete(species) : set.add(species)
-      item.species = sortSpecies([...set])
+      if (set.has(species)) {
+        set.delete(species)
+      } else {
+        set.add(species)
+      }
+      item.species = SPECIES_LIST.filter((s) => set.has(s))
       this.commit()
     },
     setPlate(method, value) {
       const item = this.items[method]
-      if (!item.on) item.on = true
+      if (!item.on) {
+        item.on = true
+      }
       item.plate = value
       this.commit()
     },
     commit() {
-      const entries = METHOD_LIST.filter((m) => this.items[m].on).map((m) => {
-        const { species, plate } = this.items[m]
-        const trimmed = String(plate || '').trim()
-        const plateNum = trimmed ? Number(trimmed) : null
-        return {
-          method: m,
-          species: sortSpecies(species),
-          plate_count: plateNum != null && !Number.isNaN(plateNum) ? plateNum : null,
+      const active = METHOD_LIST.filter((m) => this.items[m].on)
+      if (!active.length) {
+        if (this.touched) {
+          this.$emit('update:assayMethod', '')
+          this.$emit('update:facsPlateCount', null)
+          this.$emit('update:elisaPlateCount', null)
         }
-      })
-      const config = entries.length ? { entries } : null
-      this.$emit('update:config', config)
-      if (config) {
-        this.touched = true
-        this.$emit('update:display', entries.map(formatEntry).join(' + '))
-      } else if (this.touched) {
-        this.$emit('update:display', '')
+        return
       }
+      this.touched = true
+      this.$emit('update:assayMethod', formatAssayMethodText(this.items))
+      this.$emit('update:facsPlateCount', this.items.FACS.on ? parsePlate(this.items.FACS.plate) : null)
+      this.$emit('update:elisaPlateCount', this.items.ELISA.on ? parsePlate(this.items.ELISA.plate) : null)
     },
   },
 }

@@ -106,8 +106,9 @@
           <el-col :span="8">
             <el-form-item label="检测方法" prop="assay_method">
               <AssayMethodEditor
-                v-model:config="postForm.assay_method_config"
-                v-model:display="postForm.assay_method"
+                v-model:assay-method="postForm.assay_method"
+                v-model:facs-plate-count="postForm.facs_plate_count"
+                v-model:elisa-plate-count="postForm.elisa_plate_count"
               />
             </el-form-item>
           </el-col>
@@ -798,7 +799,8 @@ export default {
           pm: '纪鑫',
           study_type: '',
           assay_method: '',
-          assay_method_config: null,
+          facs_plate_count: null,
+          elisa_plate_count: null,
           immunization_interval: '',
           remark: '',
           mouse_groups: [],

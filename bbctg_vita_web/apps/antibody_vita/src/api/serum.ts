@@ -163,3 +163,63 @@ export function saveElisaPlate(data: any) {
 export function deleteElisaPlate(id: any) {
   return requestClient.post('/serum/titer/elisa/plate/delete', { id }, skipGlobalErrorHandler);
 }
+
+export function fetchTiterOrderMeta(config?: RequestConfig) {
+  return requestClient.get('/serum/titer/order/meta', {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
+export function fetchTiterOrderStats(config?: RequestConfig) {
+  return requestClient.get('/serum/titer/order/stats', {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
+export function fetchTiterOrderOwnerStats(
+  params: { monthStart?: string; monthEnd?: string } = {},
+  config?: RequestConfig,
+) {
+  const query: Record<string, string> = {};
+  if (params.monthStart) {
+    query.month_start = params.monthStart;
+    query.month_end = params.monthEnd ?? params.monthStart;
+  }
+  return requestClient.get('/serum/titer/order/owner_stats', {
+    params: Object.keys(query).length ? query : undefined,
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
+export function fetchTiterOrderProjectOptions(params: {
+  keyword?: string;
+  limit?: number;
+} = {}) {
+  return requestClient.get('/serum/titer/order/project_options', {
+    params,
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function fetchTiterOrderBatchPreview(experimentId: string, config?: RequestConfig) {
+  return requestClient.get('/serum/titer/order/batch_preview', {
+    params: { experiment_id: experimentId },
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
+export function fetchTiterOrderList(data: any, config?: PostConfig) {
+  return requestClient.post('/serum/titer/order/list', data, config);
+}
+
+export function saveTiterOrder(data: any) {
+  return requestClient.post('/serum/titer/order/save', data, skipGlobalErrorHandler);
+}
+
+export function deleteTiterOrder(id: number | string) {
+  return requestClient.post('/serum/titer/order/delete', { id }, skipGlobalErrorHandler);
+}

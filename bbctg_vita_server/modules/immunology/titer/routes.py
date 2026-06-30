@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from core.response import error, success
 from db.session import get_db
-from models.immunology import SerumElisaPlate, SerumFacsPlate, SerumFile, SerumImmProject
+from models.immunology import SerumElisaPlate, SerumFacsPlate, SerumFile, SerumImmProject, SerumTiterOrder
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
 from integrations.drm_service import prepare_office_download_file, remove_temp_file
@@ -281,6 +281,122 @@ def elisa_plate_delete(
         return error(str(exc))
 
 
+_TITER_ORDER_BATCH_FIELD_KEYS = (
+    "cage_position",
+    "blood_collection_date",
+    "mouse_count",
+    "assay_method",
+    "facs_plate_count",
+    "elisa_plate_count",
+)
+_TITER_ORDER_RECORD_FIELD_KEYS = ("test_dates", "serum_status", "remark")
+
+
+@router.get("/order/meta")
+def titer_order_meta(
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "serum.page.titer_order")
+    return success(service.get_titer_order_page_meta(db))
+
+
+@router.get("/order/stats")
+def titer_order_stats(
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "serum.page.titer_order")
+    return success(service.get_titer_order_stats(db))
+
+
+@router.get("/order/owner_stats")
+def titer_order_owner_stats(
+    month_start: str = "",
+    month_end: str = "",
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "serum.page.titer_order")
+    return success(
+        service.get_titer_owner_workload_stats(
+            db,
+            month_start or None,
+            month_end or None,
+        )
+    )
+
+
+@router.get("/order/project_options")
+def titer_order_project_options(
+    keyword: str = "",
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    _require_titer_order_form_access(db, current_user)
+    return success({"items": service.get_project_options(db, keyword, limit)})
+
+
+@router.get("/order/batch_preview")
+def titer_order_batch_preview(
+    experiment_id: str = "",
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    _require_titer_order_form_access(db, current_user)
+    try:
+        return success(service.get_titer_order_batch_preview(db, experiment_id))
+    except ValueError as exc:
+        return error(str(exc))
+
+
+@router.post("/order/list")
+def titer_order_list(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "serum.page.titer_order")
+    return success(service.get_titer_order_list(db, data or {}))
+
+
+@router.post("/order/save")
+def titer_order_save(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    try:
+        _validate_titer_order_save(db, current_user, data or {})
+        return success(service.save_titer_order(db, data or {}))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        return error(str(exc))
+
+
+@router.post("/order/delete")
+def titer_order_delete(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    try:
+        require_permission(db, current_user, "serum.titer_order.delete")
+        order_id = data.get("id")
+        if order_id is None or str(order_id).strip() == "":
+            raise ValueError("缺少工单 ID")
+        service.delete_titer_order(db, int(order_id))
+        return success({"message": "删除成功"})
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        return error(str(exc))
+
+
 def _require_project_owner_or_edit_all(
     db: Session,
     user: SysUser,
@@ -348,3 +464,97 @@ def _owner_aliases(user: SysUser) -> set[str]:
 def _is_owner_name(user: SysUser, owner: str | None) -> bool:
     owner_name = str(owner or "").strip()
     return bool(owner_name and owner_name in _owner_aliases(user))
+
+
+def _has_payload_keys(data: dict, keys: tuple[str, ...]) -> bool:
+    return any(key in data for key in keys)
+
+
+def _require_titer_order_form_access(db: Session, user: SysUser) -> None:
+    if has_permission(db, user, "serum.titer_order.create"):
+        return
+    if has_permission(db, user, "serum.titer_order.batch.edit"):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=PERMISSION_MESSAGES.get("serum.titer_order.create", DEFAULT_PERMISSION_MESSAGE),
+    )
+
+
+def _is_titer_owner(user: SysUser, owners: object) -> bool:
+    aliases = _owner_aliases(user)
+    if not isinstance(owners, list):
+        return False
+    return any(str(owner or "").strip() in aliases for owner in owners)
+
+
+def _require_titer_order_record_edit(db: Session, user: SysUser, order: SerumTiterOrder) -> None:
+    require_permission(db, user, "serum.titer_order.record.edit")
+    if has_permission(db, user, "serum.titer_order.record.edit_all"):
+        return
+    if _is_titer_owner(user, order.titer_owners):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=PERMISSION_MESSAGES.get("serum.titer_order.record.edit", DEFAULT_PERMISSION_MESSAGE),
+    )
+
+
+def _require_titer_order_summary_edit(
+    db: Session,
+    user: SysUser,
+    order: SerumTiterOrder,
+    project: SerumImmProject | None,
+) -> None:
+    require_permission(db, user, "serum.titer_order.summary.edit")
+    if has_permission(db, user, "serum.titer_order.summary.edit_all"):
+        return
+    if project and _is_owner_name(user, project.owner):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=PERMISSION_MESSAGES.get("serum.titer_order.summary.edit", DEFAULT_PERMISSION_MESSAGE),
+    )
+
+
+def _validate_titer_order_save(db: Session, user: SysUser, data: dict) -> None:
+    order_id = data.get("id")
+    order: SerumTiterOrder | None = None
+    project: SerumImmProject | None = None
+
+    if order_id is not None and str(order_id).strip() != "":
+        order = db.get(SerumTiterOrder, int(order_id))
+        if not order:
+            raise ValueError("效价工单不存在")
+        project = db.scalar(
+            select(SerumImmProject).where(SerumImmProject.experiment_id == order.experiment_id)
+        )
+    else:
+        require_permission(db, user, "serum.titer_order.create")
+
+    if order is not None and _has_payload_keys(data, _TITER_ORDER_BATCH_FIELD_KEYS):
+        require_permission(db, user, "serum.titer_order.batch.edit")
+
+    if "titer_owners" in data:
+        if order is None:
+            raise HTTPException(
+                status_code=403,
+                detail=PERMISSION_MESSAGES.get("serum.titer_order.owner.edit", DEFAULT_PERMISSION_MESSAGE),
+            )
+        require_permission(db, user, "serum.titer_order.owner.edit")
+
+    if _has_payload_keys(data, _TITER_ORDER_RECORD_FIELD_KEYS):
+        if order is None:
+            raise HTTPException(
+                status_code=403,
+                detail=PERMISSION_MESSAGES.get("serum.titer_order.record.edit", DEFAULT_PERMISSION_MESSAGE),
+            )
+        _require_titer_order_record_edit(db, user, order)
+
+    if "summary" in data:
+        if order is None:
+            raise HTTPException(
+                status_code=403,
+                detail=PERMISSION_MESSAGES.get("serum.titer_order.summary.edit", DEFAULT_PERMISSION_MESSAGE),
+            )
+        _require_titer_order_summary_edit(db, user, order, project)

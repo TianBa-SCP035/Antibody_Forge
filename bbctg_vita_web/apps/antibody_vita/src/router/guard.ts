@@ -14,6 +14,13 @@ import {
 
 import { generateAccess } from './access';
 
+/** 仅浏览器 F5 冷启动时清空列表筛选暂存（站内 Tab 刷新不走此逻辑） */
+function clearListFilterStorageOnColdStart() {
+  ['serumListFilters', 'titerOrderListFilters'].forEach((key) =>
+    sessionStorage.removeItem(key),
+  );
+}
+
 /** 弹窗重登仅适用于已进入业务布局的页面；冷启动/404 应跳转登录页 */
 function shouldPreservePageForReLogin(
   to: RouteLocationNormalized,
@@ -153,6 +160,8 @@ function setupAccessGuard(router: Router) {
     accessStore.setAccessMenus(accessibleMenus);
     accessStore.setAccessRoutes(accessibleRoutes);
     accessStore.setIsAccessChecked(true);
+    clearListFilterStorageOnColdStart();
+
     const hasAccessByCodes = createAccessChecker(accessStore.accessCodes);
     const startPath = resolveUserStartPath(userInfo.homePath, hasAccessByCodes);
     const redirectPath = (from.query.redirect ??

@@ -642,6 +642,8 @@ import { useUserStore } from '@vben/stores';
 
 import TiterOrderCreateDialog from './TiterOrderCreateDialog.vue';
 
+const TITER_ORDER_LIST_FILTER_KEY = 'titerOrderListFilters';
+
 const DEFAULT_STATS = {
   pending: 0,
   pendingElisaPlates: 0,
@@ -907,6 +909,7 @@ export default {
     };
   },
   mounted() {
+    this.restoreListFilters();
     this.loadPageMeta();
     this.getList();
     this.onPlateDragMouseUp = () => this.finishPlateDrag();
@@ -914,11 +917,54 @@ export default {
     document.addEventListener('mouseup', this.onPlateDragMouseUp);
     this.$nextTick(() => this.bindPlateTableScroll());
   },
+  beforeRouteLeave(_to, _from, next) {
+    this.persistListFilters();
+    next();
+  },
   beforeUnmount() {
+    this.persistListFilters();
     document.removeEventListener('mouseup', this.onPlateDragMouseUp);
     this.unbindPlateTableScroll();
   },
   methods: {
+    persistListFilters() {
+      sessionStorage.setItem(
+        TITER_ORDER_LIST_FILTER_KEY,
+        JSON.stringify({
+          listQuery: this.listQuery,
+          bloodCollectionRange: this.bloodCollectionRange,
+          testDatesRange: this.testDatesRange,
+          statFilterActive: this.statFilterActive,
+          testDateStatScope: this.testDateStatScope,
+        }),
+      );
+    },
+    restoreListFilters() {
+      const raw = sessionStorage.getItem(TITER_ORDER_LIST_FILTER_KEY);
+      if (!raw) {
+        return;
+      }
+      try {
+        const state = JSON.parse(raw);
+        if (state.listQuery) {
+          Object.assign(this.listQuery, state.listQuery);
+        }
+        if (state.bloodCollectionRange) {
+          this.bloodCollectionRange = state.bloodCollectionRange;
+        }
+        if (state.testDatesRange) {
+          this.testDatesRange = state.testDatesRange;
+        }
+        if (state.statFilterActive) {
+          this.statFilterActive = state.statFilterActive;
+        }
+        if (state.testDateStatScope !== undefined) {
+          this.testDateStatScope = state.testDateStatScope;
+        }
+      } catch {
+        /* ignore */
+      }
+    },
     getSerumProjectStatusTagType,
     bindPlateTableScroll() {
       this.unbindPlateTableScroll();
@@ -1612,6 +1658,7 @@ export default {
       this.statFilterActive = createDefaultStatFilterActive();
       this.testDateStatScope = '';
       this.applyingStatDateRange = false;
+      this.persistListFilters();
       this.getList();
     },
     openCreateDialog() {

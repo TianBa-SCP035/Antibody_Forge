@@ -467,6 +467,8 @@ import {
 } from '#/utils/serumPermission'
 import { getSerumProjectStatusTagType } from '#/utils/serumProjectStatus'
 
+const SERUM_LIST_FILTER_KEY = 'serumListFilters'
+
 export default {
   name: 'SerumList',
   components: {
@@ -584,7 +586,6 @@ export default {
       editingValue: '',
       editingOriginalValue: '',
       isSaving: false,
-      listInitialized: false,
       tableScrollAnimationFrame: 0
     }
   },
@@ -592,56 +593,56 @@ export default {
     this.initListMeta()
   },
   mounted() {
-    this.initializeListPage()
-  },
-  activated() {
-    if (!this.list.length && !this.listLoading) {
-      this.initializeListPage(true)
-    }
-  },
-  beforeRouteLeave(to, from, next) {
-    sessionStorage.setItem('serumListQuery', JSON.stringify(this.listQuery))
-    sessionStorage.setItem('serumDateRange', JSON.stringify(this.dateRange))
-    sessionStorage.setItem('serumShowAdvancedFilters', JSON.stringify(this.showAdvancedFilters))
-    sessionStorage.setItem('serumShowExtraColumns', JSON.stringify(this.showExtraColumns))
-    next()
-  },
-  beforeRouteEnter(to, from, next) {
-    next(vm => {
-      vm.initializeListPage()
+    this.paginationReady = false
+    this.restoreListFilters()
+    this.$nextTick(() => {
+      this.paginationReady = true
+      this.getList()
     })
   },
+  beforeRouteLeave(_to, _from, next) {
+    this.persistListFilters()
+    next()
+  },
+  beforeUnmount() {
+    this.persistListFilters()
+    if (this.tableScrollAnimationFrame) {
+      cancelAnimationFrame(this.tableScrollAnimationFrame)
+    }
+  },
   methods: {
-    initializeListPage(force = false) {
-      if (this.listInitialized && !force) {
+    persistListFilters() {
+      sessionStorage.setItem(
+        SERUM_LIST_FILTER_KEY,
+        JSON.stringify({
+          listQuery: this.listQuery,
+          dateRange: this.dateRange,
+          showAdvancedFilters: this.showAdvancedFilters,
+          showExtraColumns: this.showExtraColumns,
+        }),
+      )
+    },
+    restoreListFilters() {
+      const raw = sessionStorage.getItem(SERUM_LIST_FILTER_KEY)
+      if (!raw) {
         return
       }
-
-      this.listInitialized = true
-      this.paginationReady = false
-      this.restoreListState()
-
-      this.$nextTick(() => {
-        this.paginationReady = true
-        this.getList()
-      })
-    },
-    restoreListState() {
-      const savedListQuery = sessionStorage.getItem('serumListQuery')
-      const savedDateRange = sessionStorage.getItem('serumDateRange')
-      const savedShowAdvancedFilters = sessionStorage.getItem('serumShowAdvancedFilters')
-      const savedShowExtraColumns = sessionStorage.getItem('serumShowExtraColumns')
-      if (savedListQuery) {
-        Object.assign(this.listQuery, JSON.parse(savedListQuery))
-      }
-      if (savedDateRange) {
-        this.dateRange = JSON.parse(savedDateRange)
-      }
-      if (savedShowAdvancedFilters) {
-        this.showAdvancedFilters = JSON.parse(savedShowAdvancedFilters)
-      }
-      if (savedShowExtraColumns) {
-        this.showExtraColumns = JSON.parse(savedShowExtraColumns)
+      try {
+        const state = JSON.parse(raw)
+        if (state.listQuery) {
+          Object.assign(this.listQuery, state.listQuery)
+        }
+        if (state.dateRange) {
+          this.dateRange = state.dateRange
+        }
+        if (typeof state.showAdvancedFilters === 'boolean') {
+          this.showAdvancedFilters = state.showAdvancedFilters
+        }
+        if (typeof state.showExtraColumns === 'boolean') {
+          this.showExtraColumns = state.showExtraColumns
+        }
+      } catch {
+        /* ignore */
       }
     },
     getSerumProjectStatusTagType,

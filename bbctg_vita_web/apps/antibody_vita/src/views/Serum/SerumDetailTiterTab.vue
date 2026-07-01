@@ -148,7 +148,7 @@
               lazy
             >
               <template #label>
-                <span :class="{ 'plates-tab--stage-end': isStageGroupEnd(index) }">
+                <span :class="{ 'is-stage-end': isStageGroupEnd(index) }">
                   {{ getPlateTabLabel(plate) }}
                 </span>
               </template>
@@ -1095,29 +1095,8 @@ export default {
   margin-bottom: 12px;
 }
 
-.plates-tabs :deep(.el-tabs__header),
-.plates-tabs :deep(.el-tabs__nav-wrap),
-.plates-tabs :deep(.el-tabs__nav) {
-  overflow: visible;
-}
-
-.plates-tabs :deep(.el-tabs__item:has(.plates-tab--stage-end)) {
-  position: relative;
-  overflow: visible;
-}
-
-.plates-tabs :deep(.el-tabs__item:has(.plates-tab--stage-end))::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: 50%;
-  z-index: 20;
-  transform: translate(50%, -50%);
-  width: 3px;
-  height: 20px;
-  background: #67c23a;
-  border-radius: 1px;
-  pointer-events: none;
+.plates-tabs :deep(.el-tabs__item:has(.is-stage-end)) {
+  border-right: 3px solid #67c23a;
 }
 
 /* 文件详情弹窗（与 SerumTiter 同源，右侧只读且无重命名/替换/删除） */

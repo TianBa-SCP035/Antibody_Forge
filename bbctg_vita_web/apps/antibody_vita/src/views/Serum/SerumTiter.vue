@@ -312,7 +312,7 @@
           >
             <template #label>
               <span
-                :class="{ 'plates-tab--stage-end': isStageGroupEnd(index) }"
+                :class="{ 'is-stage-end': isStageGroupEnd(index) }"
                 title="右键复制鼠号和分组标题"
                 @contextmenu.prevent="openPlateCopyDialog(plate)"
               >
@@ -2568,12 +2568,6 @@ export default {
       margin: 0 0 8px 0;
     }
 
-    :deep(.el-tabs__header),
-    :deep(.el-tabs__nav-wrap),
-    :deep(.el-tabs__nav) {
-      overflow: visible;
-    }
-
     :deep(.el-tabs__nav-wrap) {
       padding: 0 clamp(8px, 1.2vw, 20px);
     }
@@ -2594,23 +2588,8 @@ export default {
       }
     }
 
-    :deep(.el-tabs__item:has(.plates-tab--stage-end)) {
-      position: relative;
-      overflow: visible;
-
-      &::after {
-        content: '';
-        position: absolute;
-        right: 0;
-        top: 50%;
-        z-index: 20;
-        transform: translate(50%, -50%);
-        width: 3px;
-        height: 20px;
-        background: #67c23a;
-        border-radius: 1px;
-        pointer-events: none;
-      }
+    :deep(.el-tabs__item:has(.is-stage-end)) {
+      border-right: 3px solid #67c23a;
     }
 
     :deep(.el-tabs__content) {

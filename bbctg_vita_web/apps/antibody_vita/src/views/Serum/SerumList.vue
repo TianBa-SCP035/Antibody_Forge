@@ -341,7 +341,16 @@
         <el-table-column label="操作" align="center" width="280" fixed="right">
             <template #default="{ row }">
                 <el-button-group>
-                    <el-button class="table-action-btn" size="small" type="primary" plain :icon="View" @click="handleView(row)">
+                    <el-button
+                        class="table-action-btn"
+                        size="small"
+                        type="primary"
+                        plain
+                        :icon="View"
+                        title="左键详情，右键打印"
+                        @click="handleView(row)"
+                        @contextmenu.prevent="handlePrintScheme(row)"
+                    >
                         详情
                     </el-button>
                     <el-button 
@@ -450,7 +459,7 @@ import {
 } from 'element-plus'
 
 import { notifyApiError, resolveUserMessage } from '#/api/errors'
-import { fetchList, fetchStats, getSerumFilterOptions, updateSerumStatus, export_mouse, autoUpdateStatus, updateCagePosition } from '#/api/serum'
+import { fetchList, fetchStats, getSerumFilterOptions, updateSerumStatus, export_mouse, autoUpdateStatus, updateCagePosition, exportSchemePdf } from '#/api/serum'
 import { skipGlobalErrorHandler } from '#/api/request'
 import { SERUM_ERRORS } from './errors'
 import {
@@ -586,6 +595,7 @@ export default {
       editingValue: '',
       editingOriginalValue: '',
       isSaving: false,
+      schemePrintLoading: false,
       tableScrollAnimationFrame: 0
     }
   },
@@ -830,6 +840,41 @@ export default {
     },
     handleView(row) {
         this.$router.push({ path: '/serum/detail', query: { id: row.id } })
+    },
+    handlePrintScheme(row) {
+      if (!row?.id || this.schemePrintLoading) return
+      this.schemePrintLoading = true
+      const loadingMsg = ElMessage({
+        message: '正在生成打印预览，请稍候…',
+        type: 'info',
+        duration: 0,
+      })
+      exportSchemePdf({ ids: [row.id] })
+        .then((response) => {
+          const blob = response instanceof Blob ? response : new Blob([response], { type: 'application/pdf' })
+          const url = window.URL.createObjectURL(blob)
+          const printWindow = window.open(url, '_blank')
+          if (!printWindow) {
+            window.URL.revokeObjectURL(url)
+            throw new Error('浏览器拦截了弹窗，请允许弹窗后重试')
+          }
+          setTimeout(() => {
+            printWindow.focus()
+            printWindow.print()
+            window.URL.revokeObjectURL(url)
+          }, 1000)
+        })
+        .catch((err) => {
+          if (err instanceof Error && err.message.includes('浏览器拦截')) {
+            ElMessage.error(err.message)
+            return
+          }
+          notifyApiError(err, { messages: SERUM_ERRORS.detail.exportPdf })
+        })
+        .finally(() => {
+          loadingMsg.close()
+          this.schemePrintLoading = false
+        })
     },
     handleUpdate(row, type) {
         if (type === 'titer') {

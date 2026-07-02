@@ -50,7 +50,7 @@ erDiagram
 | `sys_feature_flag` | 菜单/功能/任务开关（**非** RBAC） |
 | `sys_operation_log` | 写操作审计 |
 
-DDL 与种子数据见 [vita-database.sql](./vita-database.sql)（主库全表；外部细胞库 `sam_sample` 仅脚本末尾注释备查）。
+DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
 ## 2. 权限点编码约定
 
@@ -69,7 +69,7 @@ DDL 与种子数据见 [vita-database.sql](./vita-database.sql)（主库全表�
 | `serum.page.detail` | page | 详情页 |
 | `serum.page.edit` | page | 编辑页 |
 | `serum.page.titer` | page | 效价数据页 |
-| `serum.page.titer_order` | page | 效价实验列表（工单排期板） |
+| `serum.page.titer_order` | page | 效价实验列表 |
 | `serum.page.cell` | page | 细胞及库存页 |
 | `serum.project.create` | action | 新建项目 |
 | `serum.project.edit` | action | 编辑**本人负责**项目 |
@@ -267,7 +267,7 @@ flowchart LR
 
 | category | 示例 code | 作用 |
 |----------|-----------|------|
-| `menu` | `menu.serum`、`menu.system` | 侧栏菜单显隐、排序 |
+| `menu` | `menu.serum`、`menu.system` 等 | 侧栏菜单显隐、排序 |
 | `feature` | `feature.drm_file_security`、`feature.yunzhijia_auto_provision` | 业务功能开关（DRM 另需 env 与 SDK） |
 | `job` | `job.serum_auto_update_status` | 定时任务是否启用及 cron 参数 |
 

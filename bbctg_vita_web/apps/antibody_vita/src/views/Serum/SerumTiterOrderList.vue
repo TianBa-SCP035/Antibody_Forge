@@ -300,6 +300,7 @@
         <el-table-column label="效价负责人" align="center" min-width="180">
           <template #default="{ row }">
             <el-select
+              :ref="'ownerSelect_' + row.id"
               v-model="row.titer_owners"
               class="owner-select inline-cell-control"
               size="small"
@@ -310,7 +311,7 @@
               :disabled="!canEditTiterOrderOwner()"
               popper-class="titer-select-dropdown"
               placeholder="选择负责人"
-              @change="saveRow(row, '效价负责人')"
+              @change="onTiterOwnerChange(row)"
             >
               <template #tag="{ data, deleteTag, selectDisabled }">
                 <div
@@ -359,11 +360,12 @@
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="血清状态" prop="serum_status" align="center" sortable min-width="140">
+        <el-table-column label="血清状态" prop="serum_status" align="center" sortable min-width="140" class-name="status-column-cell">
           <template #default="{ row }">
             <el-select
               v-model="row.serum_status"
-              class="inline-cell-control"
+              class="inline-cell-control serum-status-select"
+              :class="row.serum_status ? 'status-tone-' + getSerumTiterStatusTagType(row.serum_status) : ''"
               size="small"
               allow-create
               clearable
@@ -627,7 +629,7 @@ import {
   fetchTiterOrderStats,
   saveTiterOrder,
 } from '#/api/serum';
-import { getSerumProjectStatusTagType } from '#/utils/serumProjectStatus';
+import { getSerumProjectStatusTagType, getSerumTiterStatusTagType } from '#/utils/serumProjectStatus';
 import {
   canCreateTiterOrder,
   canDeleteTiterOrder,
@@ -659,7 +661,7 @@ const ASSAY_FILTER_FACS = '__facs__';
 const ASSAY_FILTER_ELISA = '__elisa__';
 const ASSAY_FILTER_FACS_ELISA = '__facs_elisa__';
 
-const SERUM_STATUS_OPTIONS = ['待采血', '已采血', '已检测', '已交接'];
+const SERUM_STATUS_OPTIONS = ['待采血', '已采血', '已检测', '已交接', '已销毁'];
 
 /** 统计「待检测」对应血清状态：已采血、待上机检测 */
 const SERUM_STATUS_PENDING_TEST = '已采血';
@@ -966,6 +968,7 @@ export default {
       }
     },
     getSerumProjectStatusTagType,
+    getSerumTiterStatusTagType,
     bindPlateTableScroll() {
       this.unbindPlateTableScroll();
       const tableEl = this.$refs.orderTable?.$el;
@@ -1715,6 +1718,15 @@ export default {
       row.test_dates_display = (row.test_dates || []).join('、');
       this.saveRow(row, '检测日期');
     },
+    onTiterOwnerChange(row) {
+      this.saveRow(row, '效价负责人');
+      this.$nextTick(() => {
+        const refName = `ownerSelect_${row.id}`;
+        const selectRef = this.$refs[refName];
+        const ins = Array.isArray(selectRef) ? selectRef[0] : selectRef;
+        ins?.blur?.();
+      });
+    },
     saveRow(row, label) {
       const payload = { id: row.id };
       if (label === '效价负责人') {
@@ -2180,6 +2192,47 @@ export default {
   padding: 0 8px;
   font-size: 13px;
   border-radius: 10px;
+}
+
+/* 血清状态：沿用 el-tag 色系，仅给选中项轻量着色 */
+.table-card :deep(.serum-status-select.status-tone-info .el-select__wrapper) {
+  background-color: var(--el-color-info-light-9);
+}
+
+.table-card :deep(.serum-status-select.status-tone-info .el-select__selected-item) {
+  color: var(--el-color-info);
+}
+
+.table-card :deep(.serum-status-select.status-tone-primary .el-select__wrapper) {
+  background-color: var(--el-color-primary-light-9);
+}
+
+.table-card :deep(.serum-status-select.status-tone-primary .el-select__selected-item) {
+  color: var(--el-color-primary);
+}
+
+.table-card :deep(.serum-status-select.status-tone-warning .el-select__wrapper) {
+  background-color: var(--el-color-warning-light-9);
+}
+
+.table-card :deep(.serum-status-select.status-tone-warning .el-select__selected-item) {
+  color: var(--el-color-warning);
+}
+
+.table-card :deep(.serum-status-select.status-tone-success .el-select__wrapper) {
+  background-color: var(--el-color-success-light-9);
+}
+
+.table-card :deep(.serum-status-select.status-tone-success .el-select__selected-item) {
+  color: var(--el-color-success);
+}
+
+.table-card :deep(.serum-status-select.status-tone-danger .el-select__wrapper) {
+  background-color: var(--el-color-danger-light-9);
+}
+
+.table-card :deep(.serum-status-select.status-tone-danger .el-select__selected-item) {
+  color: var(--el-color-danger);
 }
 
 .table-card :deep(.status-column-cell .cell) {

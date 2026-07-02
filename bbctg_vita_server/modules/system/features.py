@@ -34,6 +34,34 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "config": {"path": "/serum", "icon": "lucide:test-tube"},
     },
     {
+        "code": "menu.serum.list",
+        "name": "免疫实验列表",
+        "category": "menu",
+        "description": "控制免疫实验列表菜单显示",
+        "enabled": True,
+        "visible": True,
+        "sort_order": 10,
+        "config": {
+            "path": "/serum/list",
+            "icon": "lucide:list",
+            "parent_code": "menu.serum",
+        },
+    },
+    {
+        "code": "menu.serum.titer_order",
+        "name": "效价实验列表",
+        "category": "menu",
+        "description": "控制效价实验列表菜单显示",
+        "enabled": True,
+        "visible": True,
+        "sort_order": 20,
+        "config": {
+            "path": "/serum/titer-orders",
+            "icon": "lucide:clipboard-list",
+            "parent_code": "menu.serum",
+        },
+    },
+    {
         "code": "menu.system.user_permission",
         "name": "用户权限菜单",
         "category": "menu",
@@ -276,6 +304,8 @@ def summarize_job_result(result: Any) -> str:
         for key, label in [
             ("created", "新增"),
             ("updated", "更新"),
+            ("updated_count", "状态更新"),
+            ("titer_order_created_count", "新增效价工单"),
             ("disabled_on_resignation", "离职禁用"),
         ]:
             if key in result:
@@ -285,6 +315,9 @@ def summarize_job_result(result: Any) -> str:
             parts.append(f"跳过 {sum(int(value or 0) for value in skipped.values())}")
         if parts:
             return "，".join(parts)
+        message = result.get("message")
+        if message:
+            return str(message)[:255]
     return str(result)[:255]
 
 

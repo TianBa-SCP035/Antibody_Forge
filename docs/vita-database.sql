@@ -1,7 +1,7 @@
 -- Antibody Forge / Vita 主库：全表 DDL + 权限与功能开关种子
--- 与 bbctg_vita_server/models（system、immunology、user）中 DATABASE_URL 映射一致；Git 后新建库执行一次即可。
+-- 在 DATABASE_URL 空库执行本文件即可；权限包/角色可在系统管理中调整。
 -- 文档：docs/README.md、docs/auth-permissions.md
--- 不含 CELL_DB_URL 上的 sam_sample（外部只读细胞库，见 models/cell_inventory.py）。
+-- 外部细胞库 sam_sample 结构见文末注释（CELL_DB_URL，models/cell_inventory.py）。
 
 CREATE TABLE IF NOT EXISTS sys_user (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
@@ -483,6 +483,7 @@ INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VAL
   ('serum_readonly', 'serum.page.list'),
   ('serum_readonly', 'serum.page.detail'),
   ('serum_readonly', 'serum.page.titer'),
+  ('serum_readonly', 'serum.page.titer_order'),
   ('serum_readonly', 'serum.page.cell'),
   ('serum_readonly', 'serum.cell.view'),
   ('serum_scheme_edit', 'serum.page.list'),
@@ -496,6 +497,7 @@ INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VAL
   ('serum_titer_edit', 'serum.page.list'),
   ('serum_titer_edit', 'serum.page.detail'),
   ('serum_titer_edit', 'serum.page.titer'),
+  ('serum_titer_edit', 'serum.page.titer_order'),
   ('serum_titer_edit', 'serum.titer.edit'),
   ('serum_titer_edit', 'serum.titer.edit_all'),
   ('serum_titer_edit', 'serum.file.manage'),
@@ -503,6 +505,7 @@ INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VAL
   ('serum_admin', 'serum.page.detail'),
   ('serum_admin', 'serum.page.edit'),
   ('serum_admin', 'serum.page.titer'),
+  ('serum_admin', 'serum.page.titer_order'),
   ('serum_admin', 'serum.page.cell'),
   ('serum_admin', 'serum.project.create'),
   ('serum_admin', 'serum.project.edit'),
@@ -515,6 +518,14 @@ INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VAL
   ('serum_admin', 'serum.titer.edit'),
   ('serum_admin', 'serum.titer.edit_all'),
   ('serum_admin', 'serum.file.manage'),
+  ('serum_admin', 'serum.titer_order.create'),
+  ('serum_admin', 'serum.titer_order.batch.edit'),
+  ('serum_admin', 'serum.titer_order.delete'),
+  ('serum_admin', 'serum.titer_order.owner.edit'),
+  ('serum_admin', 'serum.titer_order.record.edit'),
+  ('serum_admin', 'serum.titer_order.record.edit_all'),
+  ('serum_admin', 'serum.titer_order.summary.edit'),
+  ('serum_admin', 'serum.titer_order.summary.edit_all'),
   ('serum_admin', 'serum.cell.view'),
   ('serum_admin', 'serum.cell.prep_status.update'),
   ('system_admin', 'system.page.user'),
@@ -532,6 +543,8 @@ INSERT IGNORE INTO sys_feature_flag
   (code, name, category, description, enabled, visible, sort_order, config)
 VALUES
   ('menu.serum', '血清实验菜单', 'menu', '控制血清实验模块菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum', 'icon', 'lucide:test-tube')),
+  ('menu.serum.list', '免疫实验列表', 'menu', '控制免疫实验列表菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum/list', 'icon', 'lucide:list', 'parent_code', 'menu.serum')),
+  ('menu.serum.titer_order', '效价实验列表', 'menu', '控制效价实验列表菜单显示', 1, 1, 20, JSON_OBJECT('path', '/serum/titer-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.serum')),
   ('menu.system', '系统管理', 'menu', '控制系统管理父级菜单显示', 1, 1, 90, JSON_OBJECT('path', '/system', 'icon', 'lucide:settings')),
   ('menu.system.user_permission', '用户权限菜单', 'menu', '控制系统管理下用户权限页面显示', 1, 1, 10, JSON_OBJECT('path', '/system/user-permission', 'icon', 'lucide:shield-check', 'parent_code', 'menu.system')),
   ('menu.system.features', '系统功能菜单', 'menu', '控制系统管理下系统功能页面显示', 1, 1, 20, JSON_OBJECT('path', '/system/features', 'icon', 'lucide:sliders-horizontal', 'parent_code', 'menu.system')),
@@ -576,71 +589,19 @@ WHERE r.code = 'readonly' AND b.code = 'serum_readonly';
 -- SELECT u.id, r.id FROM sys_user u JOIN sys_role r
 -- WHERE u.username = 'admin' AND r.code = 'super_admin';
 
--- -----------------------------------------------------------------------------
--- 可选：表已由旧脚本创建且缺少列/表注释时，在 MySQL 上执行一次以与 ORM 及上文 DDL 对齐
--- （新建库执行上方 CREATE TABLE 即可，无需再跑本节）
--- -----------------------------------------------------------------------------
-ALTER TABLE sys_feature_flag
-  MODIFY id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  MODIFY code VARCHAR(128) NOT NULL COMMENT '功能编码',
-  MODIFY name VARCHAR(128) NOT NULL COMMENT '功能名称',
-  MODIFY category VARCHAR(32) NOT NULL COMMENT '功能分类',
-  MODIFY description VARCHAR(255) NULL COMMENT '功能说明',
-  MODIFY enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
-  MODIFY visible TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否显示',
-  MODIFY sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
-  MODIFY config JSON NULL COMMENT '扩展配置',
-  MODIFY created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  MODIFY updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  COMMENT = '运行时功能配置（菜单可见性、功能开关、定时任务参数、站点偏好等）';
-
-ALTER TABLE sys_job_run_log
-  MODIFY id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  MODIFY job_code VARCHAR(128) NOT NULL COMMENT '任务编码',
-  MODIFY job_name VARCHAR(128) NOT NULL COMMENT '任务名称',
-  MODIFY started_at DATETIME NULL COMMENT '开始时间',
-  MODIFY finished_at DATETIME NULL COMMENT '结束时间',
-  MODIFY duration_ms INT NULL COMMENT '耗时毫秒',
-  MODIFY result VARCHAR(16) NOT NULL DEFAULT 'success' COMMENT '执行结果',
-  MODIFY summary VARCHAR(255) NULL COMMENT '结果摘要',
-  MODIFY detail JSON NULL COMMENT '执行详情',
-  MODIFY error_message TEXT NULL COMMENT '错误信息',
-  MODIFY created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  COMMENT = '定时任务运行日志（起止时间、耗时、结果摘要与结构化详情）';
-
--- -----------------------------------------------------------------------------
--- 仅旧库升级（曾存在 mouse_list / pc_column_list 等旧列时）：手工复制执行，新建库勿用。
--- ALTER TABLE serum_elisa_plate COMMENT = 'ELISA效价板配置（含吸光度1读数；吸光度2不入库）';
--- ALTER TABLE serum_elisa_plate
---   MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
---   MODIFY COLUMN experiment_id VARCHAR(64) NOT NULL COMMENT '实验ID',
---   MODIFY COLUMN qr_code VARCHAR(128) NULL COMMENT '二维码编号',
---   MODIFY COLUMN excel_file_id BIGINT NULL COMMENT 'Excel文件id(serum_file)',
---   MODIFY COLUMN immune_stage VARCHAR(64) NOT NULL DEFAULT '' COMMENT '免疫阶段',
---   MODIFY COLUMN protein_target_id BIGINT NULL COMMENT '检测标靶id(serum_titer_target)',
---   ADD COLUMN pc_id BIGINT NULL COMMENT 'PC记录id(serum_titer_pc)' AFTER protein_target_id,
---   MODIFY COLUMN mouse_group VARCHAR(64) NULL COMMENT '组别-品系',
---   ADD COLUMN antigen_type VARCHAR(64) NULL COMMENT '抗原类型' AFTER mouse_group,
---   ADD COLUMN slot_groups JSON NULL COMMENT '上方分组标题' AFTER antigen_type,
---   ADD COLUMN upper_slot_list JSON NULL COMMENT '上方鼠号槽位{layout,values}' AFTER slot_groups,
---   ADD COLUMN lower_slot_list JSON NULL COMMENT '下方NC/PC槽位{layout,values}' AFTER upper_slot_list,
---   MODIFY COLUMN positive_well_list JSON NULL COMMENT '阳性孔列表',
---   ADD COLUMN absorbance_1 JSON NULL COMMENT '吸光度1:{wavelength,matrix}' AFTER positive_well_list;
--- ALTER TABLE serum_elisa_plate DROP COLUMN mouse_list, DROP COLUMN pc_column_list;
-
--- ---------------------------------------------------------------------------
--- 外部细胞库 CELL_DB_URL：sam_sample（ORM models/cell_inventory.py；勿在主库执行，仅备查）
--- ---------------------------------------------------------------------------
+-- =============================================================================
+-- 外部细胞库 CELL_DB_URL：sam_sample（models/cell_inventory.py，勿在主库执行，仅备查）
+-- =============================================================================
 -- CREATE TABLE IF NOT EXISTS sam_sample (
---   id BIGINT NOT NULL AUTO_INCREMENT,
---   sample_no VARCHAR(20) NULL,
---   samplename VARCHAR(500) NULL,
---   sample_type VARCHAR(50) NULL,
---   sample_storage_vol DECIMAL(20,5) NULL,
---   `organId` VARCHAR(20) NULL,
---   genus VARCHAR(20) NULL,
---   target VARCHAR(50) NULL,
---   generations VARCHAR(20) NULL,
---   batch_no VARCHAR(50) NULL,
+--   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+--   sample_no VARCHAR(20) NULL COMMENT '样本编号',
+--   samplename VARCHAR(500) NULL COMMENT '样本名称',
+--   sample_type VARCHAR(50) NULL COMMENT '样本类型',
+--   sample_storage_vol DECIMAL(20,5) NULL COMMENT '库存体积',
+--   organId VARCHAR(20) NULL COMMENT '器官ID',
+--   genus VARCHAR(20) NULL COMMENT '种属',
+--   target VARCHAR(50) NULL COMMENT '靶点',
+--   generations VARCHAR(20) NULL COMMENT '代次',
+--   batch_no VARCHAR(50) NULL COMMENT '批次号',
 --   PRIMARY KEY (id)
--- );
+-- ) COMMENT='细胞样本（外部库，只读）';

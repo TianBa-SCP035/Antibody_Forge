@@ -18,7 +18,7 @@
 
 模板：`config/vita_server.env.example`。`config/local|test|prod/` 不提交 Git。
 
-新建 **DATABASE_URL** 对应主库时，在空库执行一次 [vita-database.sql](./vita-database.sql)（全表 + 种子；见脚本头说明）。
+在 **DATABASE_URL** 空库执行 [vita-database.sql](./vita-database.sql) 即可（全表 + 种子；见脚本头说明）。
 
 | 变量 | 说明 |
 |------|------|

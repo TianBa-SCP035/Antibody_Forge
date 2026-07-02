@@ -302,7 +302,17 @@ def _resolve_operation_name(description: str | None, permission_name: str, path:
         if "permission_bundles/save" in path:
             return "编辑权限包" if is_edit else "新增权限包"
         if path == "/api/serum/save":
-            return "编辑血清项目" if is_edit else "新建血清项目"
+            return "编辑免疫项目" if is_edit else "新建免疫项目"
+        if path == "/api/serum/titer/order/save":
+            if not is_edit:
+                return "新建效价工单"
+            if "summary" in body_data:
+                return "保存效价小结"
+            if "titer_owners" in body_data:
+                return "保存效价负责人"
+            if any(key in body_data for key in ("test_dates", "serum_status", "remark")):
+                return "保存效价工单检测记录"
+            return "保存效价工单批次信息"
     return description or permission_name
 
 

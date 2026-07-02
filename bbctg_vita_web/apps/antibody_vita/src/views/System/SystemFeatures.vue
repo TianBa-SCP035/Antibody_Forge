@@ -250,17 +250,7 @@ function formatDuration(ms?: number) {
 }
 
 function formatJobDetail(log: SystemJobRunLog) {
-  const detail = log.detail || {};
-  if (log.job_code === 'job.employee_profile_sync') {
-    const skipped = detail.skipped && typeof detail.skipped === 'object'
-      ? Object.values(detail.skipped).reduce((sum: number, value: any) => sum + Number(value || 0), 0)
-      : 0;
-    const disabled = detail.disabled_on_resignation || 0;
-    return `新增 ${detail.created || 0}，更新 ${detail.updated || 0}，离职禁用 ${disabled}，跳过 ${skipped}`;
-  }
-  if (log.summary) return log.summary;
-  if (Object.keys(detail).length === 0) return '-';
-  return JSON.stringify(detail);
+  return log.summary?.trim() || '-';
 }
 
 function defaultDateRange() {

@@ -10,6 +10,7 @@ const routes: RouteRecordRaw[] = [
       featureCode: 'menu.serum',
       order: 10,
       title: '小鼠免疫',
+      authority: ['serum.page.list', 'serum.page.titer_order'],
     },
     name: 'Serum',
     path: '/serum',
@@ -21,6 +22,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('#/views/Serum/SerumList.vue'),
         meta: {
           authority: ['serum.page.list'],
+          featureCode: 'menu.serum.list',
           icon: 'lucide:list',
           keepAlive: true,
           tabGroup: SERUM_TAB_GROUP,
@@ -46,6 +48,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('#/views/Serum/SerumTiterOrderList.vue'),
         meta: {
           authority: ['serum.page.titer_order'],
+          featureCode: 'menu.serum.titer_order',
           icon: 'lucide:clipboard-list',
           keepAlive: true,
           tabGroup: SERUM_TITER_ORDER_TAB_GROUP,

@@ -466,11 +466,19 @@ function formatLogTarget(log: SystemOperationLog) {
 function formatLogTargetType(log: SystemOperationLog) {
   const map: Record<string, string> = {
     bundle: '权限包',
+    cage: '笼位',
+    cell: '细胞库存',
+    feature: '系统功能',
     file: '文件',
+    mouse: '小鼠数据',
+    operation_log: '操作日志',
     permission: '权限',
     project: '免疫项目',
+    project_status: '项目状态',
     role: '角色',
+    sys_user: '用户',
     titer: '效价',
+    titer_order: '效价工单',
     user: '用户',
   };
   return log.target_type ? map[log.target_type] || log.target_type : '-';

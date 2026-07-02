@@ -521,6 +521,7 @@ import {
   getSerumUserRoles,
 } from '#/utils/serumPermission'
 import { getSerumProjectStatusTagType } from '#/utils/serumProjectStatus'
+import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
 import SerumDetailTiterTab from './SerumDetailTiterTab.vue'
 
@@ -587,7 +588,8 @@ export default {
         antigens: [],
         titer_targets: [],
         titer_pcs: []
-      }
+      },
+      tabDataFetchedAt: 0,
     }
   },
   computed: {
@@ -677,6 +679,12 @@ export default {
     const id = this.$route.query.id
     if (id) this.fetchData(id)
   },
+  activated() {
+    if (shouldRefreshTabData(this.tabDataFetchedAt)) {
+      const id = this.$route.query.id
+      if (id) this.fetchData(id)
+    }
+  },
   watch: {
     '$route.query.id'(val) {
       if (val) this.fetchData(val)
@@ -720,12 +728,13 @@ export default {
             const firstGroup = this.postForm.mouse_groups[0]
             this.activeGroupTab = this.safeGroupName(firstGroup, 0)
           }
-          
-          this.loading = false
         })
         .catch((err) => {
           notifyApiError(err, { messages: SERUM_ERRORS.edit.loadPage })
+        })
+        .finally(() => {
           this.loading = false
+          this.tabDataFetchedAt = Date.now()
         })
     },
     goBack() {

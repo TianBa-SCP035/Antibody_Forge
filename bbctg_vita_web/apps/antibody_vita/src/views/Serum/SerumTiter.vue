@@ -615,6 +615,7 @@ import {
   getSerumUserName,
 } from '#/utils/serumPermission'
 import { getSerumProjectStatusTagType } from '#/utils/serumProjectStatus'
+import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
 const serumApiBaseUrl = '/api'
 
@@ -725,6 +726,7 @@ export default {
       facsConclusionModel: null,
       conclusionRefreshTimer: null,
       conclusionFingerprint: '',
+      tabDataFetchedAt: 0,
     }
   },
   computed: {
@@ -844,6 +846,11 @@ export default {
       this.getPlates()
     }
   },
+  activated() {
+    if (shouldRefreshTabData(this.tabDataFetchedAt)) {
+      this.refreshTabData()
+    }
+  },
   beforeUnmount() {
     this.clearMemory()
   },
@@ -938,6 +945,19 @@ export default {
       this.titer_targets = []
       this.titer_pcs = []
     },
+    refreshTabData() {
+      const projectId = this.$route.query.id
+      const experimentId = this.$route.query.experiment_id
+      if (projectId) {
+        this.project_id = projectId
+        this.getProjectInfo()
+      } else if (experimentId) {
+        this.experiment_id = experimentId
+        this.project = { experiment_id: experimentId }
+        this.getFiles()
+        this.getPlates()
+      }
+    },
     getProjectInfo() {
       fetchDetail(this.project_id).then((res) => {
         if (res) {
@@ -949,9 +969,12 @@ export default {
           }
           this.getFiles()
           this.getPlates()
+        } else {
+          this.tabDataFetchedAt = Date.now()
         }
       }).catch((err) => {
         notifyApiError(err, { messages: SERUM_ERRORS.edit.loadPage })
+        this.tabDataFetchedAt = Date.now()
       })
     },
     goBack() {
@@ -1356,7 +1379,10 @@ export default {
     // --- Plate Methods ---
     getPlates() {
       const expId = this.experiment_id || (this.project ? this.project.experiment_id : null)
-      if (!expId) return
+      if (!expId) {
+        this.tabDataFetchedAt = Date.now()
+        return
+      }
 
       this.platesLoading = true
       Promise.all([
@@ -1391,6 +1417,9 @@ export default {
           this.activePlateName = ''
           this.platesLoading = false
           notifyApiError(err, { messages: SERUM_ERRORS.titer.load })
+        })
+        .finally(() => {
+          this.tabDataFetchedAt = Date.now()
         })
     },
     getPlateKey(plate) {

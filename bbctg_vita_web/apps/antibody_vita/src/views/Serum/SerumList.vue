@@ -475,6 +475,7 @@ import {
   getSerumUserRoles,
 } from '#/utils/serumPermission'
 import { getSerumProjectStatusTagType } from '#/utils/serumProjectStatus'
+import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
 const SERUM_LIST_FILTER_KEY = 'serumListFilters'
 
@@ -596,7 +597,8 @@ export default {
       editingOriginalValue: '',
       isSaving: false,
       schemePrintLoading: false,
-      tableScrollAnimationFrame: 0
+      tableScrollAnimationFrame: 0,
+      tabDataFetchedAt: 0,
     }
   },
   created() {
@@ -609,6 +611,11 @@ export default {
       this.paginationReady = true
       this.getList()
     })
+  },
+  activated() {
+    if (shouldRefreshTabData(this.tabDataFetchedAt)) {
+      this.refreshTabData()
+    }
   },
   beforeRouteLeave(_to, _from, next) {
     this.persistListFilters()
@@ -770,6 +777,10 @@ export default {
             }
         })
     },
+    refreshTabData() {
+      this.getList()
+      this.getStats()
+    },
     getList() {
       this.listLoading = true
       // Handle Date Range
@@ -785,12 +796,13 @@ export default {
       fetchList(payload, skipGlobalErrorHandler).then((response) => {
         this.list = Array.isArray(response.items) ? response.items : []
         this.total = Number(response.total) || 0;
-        this.listLoading = false
       }).catch((error) => {
          this.list = []
          this.total = 0
-         this.listLoading = false
          notifyApiError(error, { messages: SERUM_ERRORS.list.loadList })
+      }).finally(() => {
+        this.listLoading = false
+        this.tabDataFetchedAt = Date.now()
       })
     },
     toggleAdvanced() {

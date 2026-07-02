@@ -8,7 +8,12 @@
         </div>
         <div class="header-actions">
           <span class="total-count text-secondary">共 {{ total }} 条工单</span>
-          <el-button v-if="canCreateTiterOrder()" type="primary" @click="openCreateDialog">
+          <el-button
+            type="primary"
+            :class="{ 'no-permission-btn': !canCreateTiterOrder() }"
+            :title="!canCreateTiterOrder() ? '您没有权限新建效价工单' : ''"
+            @click="openCreateDialog"
+          >
             <el-icon><Plus /></el-icon>
             新增
           </el-button>
@@ -642,6 +647,7 @@ import {
 } from '#/utils/serumPermission';
 import { useUserStore } from '@vben/stores';
 
+import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
 import TiterOrderCreateDialog from './TiterOrderCreateDialog.vue';
 
 const TITER_ORDER_LIST_FILTER_KEY = 'titerOrderListFilters';
@@ -908,6 +914,7 @@ export default {
       plateDragEndIndex: -1,
       plateBubbleStyle: { top: '0px', left: '0px' },
       plateOverlayRects: [],
+      tabDataFetchedAt: 0,
     };
   },
   mounted() {
@@ -918,6 +925,11 @@ export default {
     this.onPlateTableScroll = () => this.updatePlateSelectionUi();
     document.addEventListener('mouseup', this.onPlateDragMouseUp);
     this.$nextTick(() => this.bindPlateTableScroll());
+  },
+  activated() {
+    if (shouldRefreshTabData(this.tabDataFetchedAt)) {
+      this.refreshTabData();
+    }
   },
   beforeRouteLeave(_to, _from, next) {
     this.persistListFilters();
@@ -1342,6 +1354,10 @@ export default {
       this.getList();
       this.refreshStats();
     },
+    refreshTabData() {
+      this.getList();
+      this.refreshStats();
+    },
     getList() {
       this.listLoading = true;
       fetchTiterOrderList(this.buildQuery(), skipGlobalErrorHandler)
@@ -1363,6 +1379,7 @@ export default {
         })
         .finally(() => {
           this.listLoading = false;
+          this.tabDataFetchedAt = Date.now();
           this.$nextTick(() => {
             this.bindPlateTableScroll();
             this.updatePlateSelectionUi();
@@ -1691,7 +1708,10 @@ export default {
       return canEditTiterOrderSummary(this.currentUserInfo, row);
     },
     canEditTiter(row) {
-      return canEditSerumTiter(this.currentUserInfo, { owner: row.immune_owner });
+      return canEditSerumTiter(this.currentUserInfo, {
+        owner: row.immune_owner,
+        titer_owners: row.titer_owners,
+      });
     },
     ownerTagName(data) {
       if (data == null) {

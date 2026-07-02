@@ -62,6 +62,7 @@ import {
 } from '#/api';
 import { notifyApiError, resolveUserMessage } from '#/api/errors';
 import { skipGlobalErrorHandler } from '#/api/request';
+import { useStaleTabRefresh } from '#/utils/staleTabRefresh';
 import { SYSTEM_ERRORS } from './errors';
 
 defineOptions({ name: 'SystemUserPermission' });
@@ -609,8 +610,11 @@ async function loadData() {
     }).message;
   } finally {
     loading.value = false;
+    markTabDataFetched();
   }
 }
+
+const { markTabDataFetched } = useStaleTabRefresh(loadData);
 
 async function loadLogs() {
   if (!canViewLogs.value) return;

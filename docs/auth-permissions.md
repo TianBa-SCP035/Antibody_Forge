@@ -79,7 +79,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `serum.status.auto_update` | action | 批量自动更新状态 |
 | `serum.mouse.export` | action | 导出小鼠免疫数据 |
 | `serum.cage.update` | action | 更新笼位 |
-| `serum.titer.edit` | action | 编辑效价（负责人或 edit_all） |
+| `serum.titer.edit` | action | 编辑效价（免疫负责人、效价负责人，或 `edit_all`） |
 | `serum.titer.edit_all` | action | 编辑任意项目效价 |
 | `serum.file.manage` | action | 效价附件增删改 |
 | `serum.cell.view` | action | 查看细胞库存 |
@@ -187,7 +187,7 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 | 新建项目 | 需 `serum.project.create`；普通用户只能把自己设为 `owner` |
 | 改状态 / 笼位 | 需对应 action 权限，且为项目负责人 **或** 拥有 `serum.project.edit_all` |
 | 改制备状态（细胞库存页） | 仅需 `serum.cell.prep_status.update` |
-| 效价写操作 | 需 `serum.titer.edit` 等，且为项目负责人 **或** `serum.titer.edit_all` |
+| 效价写操作 | 需 `serum.titer.edit` 等，且为免疫项目负责人、该实验效价工单的效价负责人 **或** `serum.titer.edit_all` |
 | 效价工单新建 / 批次 / 删除 / 效价负责人 | 仅需对应 `serum.titer_order.*` action，无行级归属 |
 | 效价工单检测日期、血清状态、备注 | 需 `serum.titer_order.record.edit`，且为效价负责人（`titer_owners`）或免疫项目负责人 **或** `record.edit_all` |
 | 效价工单效价小结 | 需 `serum.titer_order.summary.edit`，且为免疫项目负责人 **或** `summary.edit_all` |

@@ -28,7 +28,31 @@ from models.immunology import (
     SerumTiterPc,
     SerumTiterTarget,
 )
-from modules.immunology.titer.service import create_titer_order_from_immune_if_absent
+from modules.immunology.titer.service import (
+    _normalize_owner_names,
+    create_titer_order_from_immune_if_absent,
+)
+
+
+def _collect_titer_owners_by_experiment(db: Session, experiment_ids: list[str]) -> dict[str, list[str]]:
+    ids = [str(exp_id).strip() for exp_id in experiment_ids if str(exp_id or "").strip()]
+    if not ids:
+        return {}
+    owners_map: dict[str, list[str]] = {exp_id: [] for exp_id in ids}
+    seen_map: dict[str, set[str]] = {exp_id: set() for exp_id in ids}
+    for exp_id, owners_raw in db.execute(
+        select(SerumTiterOrder.experiment_id, SerumTiterOrder.titer_owners).where(
+            SerumTiterOrder.experiment_id.in_(ids)
+        )
+    ).all():
+        exp = str(exp_id or "").strip()
+        if exp not in owners_map:
+            continue
+        for name in _normalize_owner_names(owners_raw):
+            if name not in seen_map[exp]:
+                seen_map[exp].add(name)
+                owners_map[exp].append(name)
+    return owners_map
 
 
 def apply_project_filters(stmt, data: dict[str, Any]):
@@ -140,10 +164,14 @@ def get_list(db: Session, data: dict[str, Any]) -> dict:
     total_stmt = select(func.count()).select_from(stmt.subquery())
     total = db.scalar(total_stmt) or 0
     projects = db.scalars(stmt.order_by(SerumImmProject.id.desc()).offset((page - 1) * limit).limit(limit)).all()
+    titer_owners_map = _collect_titer_owners_by_experiment(
+        db, [project.experiment_id for project in projects if project.experiment_id]
+    )
 
     items = []
     for project in projects:
         item = project.to_dict()
+        item["titer_owners"] = titer_owners_map.get(project.experiment_id or "", [])
         mouse = db.scalar(
             select(SerumImmMouse)
             .where(SerumImmMouse.experiment_id == project.experiment_id, SerumImmMouse.cage_position.is_not(None))
@@ -166,6 +194,7 @@ def get_detail(db: Session, project_id: int) -> dict | None:
     data["steps"] = [item.to_dict() for item in db.scalars(select(SerumImmStep).where(SerumImmStep.experiment_id == exp_id)).all()]
     data["titer_pcs"] = [item.to_dict() for item in db.scalars(select(SerumTiterPc).where(SerumTiterPc.experiment_id == exp_id)).all()]
     data["titer_targets"] = [item.to_dict() for item in db.scalars(select(SerumTiterTarget).where(SerumTiterTarget.experiment_id == exp_id)).all()]
+    data["titer_owners"] = _collect_titer_owners_by_experiment(db, [exp_id]).get(exp_id, [])
     return data
 
 

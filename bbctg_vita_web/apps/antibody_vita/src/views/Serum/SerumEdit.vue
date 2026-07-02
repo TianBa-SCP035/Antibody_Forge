@@ -745,6 +745,7 @@ import {
   canEditSerumProject,
   getSerumUserName,
 } from '#/utils/serumPermission'
+import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
 export default {
   name: 'SerumEdit',
@@ -830,7 +831,8 @@ export default {
       autoSaveTimer: null,
       isAutoSaving: false,
       autoSaving: false,
-      initializing: true
+      initializing: true,
+      tabDataFetchedAt: 0,
     }
   },
   computed: {
@@ -856,6 +858,14 @@ export default {
   created() {
     const id = this.$route.query.id
     this.initPage(id)
+  },
+  activated() {
+    if (shouldRefreshTabData(this.tabDataFetchedAt)) {
+      const id = this.$route.query.id
+      if (id) {
+        this.initPage(id)
+      }
+    }
   },
   beforeUnmount() {
     if (this.autoSaveTimer) {
@@ -912,6 +922,7 @@ export default {
         notifyApiError(err, { messages: SERUM_ERRORS.edit.loadPage })
       } finally {
         this.loading = false
+        this.tabDataFetchedAt = Date.now()
         this.$nextTick(() => {
           this.initializing = false
         })

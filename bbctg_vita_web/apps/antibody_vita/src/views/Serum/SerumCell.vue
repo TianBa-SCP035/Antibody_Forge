@@ -340,6 +340,7 @@ import { notifyApiError } from '#/api/errors'
 import { fetchCellInventoryData, updateProjectPrepStatus } from '#/api/serum'
 import { SERUM_ERRORS } from './errors'
 import { canUpdateSerumPrepStatus } from '#/utils/serumPermission'
+import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
 export default {
   name: 'SerumCell',
@@ -376,7 +377,8 @@ export default {
       collapseByGenus: false,
       demandPerProject: 60,
       preparedProjects: [],
-      collapseOtherProjects: true
+      collapseOtherProjects: true,
+      tabDataFetchedAt: 0,
     }
   },
   computed: {
@@ -631,6 +633,11 @@ export default {
   mounted() {
     this.fetchData()
   },
+  activated() {
+    if (shouldRefreshTabData(this.tabDataFetchedAt)) {
+      this.fetchData(false)
+    }
+  },
   methods: {
     getTargetEligibleProjectCount(targetName) {
       const projects = this.projects[targetName] || []
@@ -649,7 +656,7 @@ export default {
       const projects = this.projects[targetName] || []
       return projects.length
     },
-    async fetchData() {
+    async fetchData(showMessage = true) {
       this.loading = true
       this.error = null
       try {
@@ -672,12 +679,15 @@ export default {
           this.selectedTarget = this.targets[0].name
         }
 
-        ElMessage.success('数据加载成功')
+        if (showMessage) {
+          ElMessage.success('数据加载成功')
+        }
       } catch (error) {
         this.error = error instanceof Error ? error.message : '网络请求失败'
         notifyApiError(error, { messages: SERUM_ERRORS.cell.load })
       } finally {
         this.loading = false
+        this.tabDataFetchedAt = Date.now()
       }
     },
     selectTarget(targetName) {

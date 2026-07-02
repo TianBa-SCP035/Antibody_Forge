@@ -100,14 +100,18 @@ export function canUpdateSerumCage(userInfo: any, project: any): boolean {
 export function canEditSerumTiter(userInfo: any, project: any): boolean {
   return (
     hasAccessCode(userInfo, 'serum.titer.edit') &&
-    (canEditAllSerumTiter(userInfo) || isProjectOwner(userInfo, project))
+    (canEditAllSerumTiter(userInfo) ||
+      isProjectOwner(userInfo, project) ||
+      isTiterOwner(userInfo, project))
   );
 }
 
 export function canManageSerumTiterFiles(userInfo: any, project: any): boolean {
   return (
     hasAccessCode(userInfo, 'serum.file.manage') &&
-    (canEditAllSerumTiter(userInfo) || isProjectOwner(userInfo, project))
+    (canEditAllSerumTiter(userInfo) ||
+      isProjectOwner(userInfo, project) ||
+      isTiterOwner(userInfo, project))
   );
 }
 

@@ -36,6 +36,7 @@ import {
 } from '#/api';
 import { notifyApiError, resolveUserMessage } from '#/api/errors';
 import { skipGlobalErrorHandler } from '#/api/request';
+import { useStaleTabRefresh } from '#/utils/staleTabRefresh';
 import { SYSTEM_ERRORS } from './errors';
 
 defineOptions({ name: 'SystemFeatures' });
@@ -109,8 +110,11 @@ async function loadFeatures() {
     }).message;
   } finally {
     loading.value = false;
+    markTabDataFetched();
   }
 }
+
+const { markTabDataFetched } = useStaleTabRefresh(loadFeatures);
 
 async function loadSystemStatus() {
   try {

@@ -417,6 +417,13 @@ def _require_project_owner_or_edit_all(
         raise ValueError("项目不存在")
     if _is_owner_name(user, project.owner):
         return
+    exp_id = str(project.experiment_id or "").strip()
+    if exp_id:
+        for owners in db.scalars(
+            select(SerumTiterOrder.titer_owners).where(SerumTiterOrder.experiment_id == exp_id)
+        ).all():
+            if _is_titer_owner(user, owners):
+                return
     require_permission(db, user, "serum.titer.edit_all")
 
 

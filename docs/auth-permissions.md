@@ -88,7 +88,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `serum.titer_order.batch.edit` | action | 编辑工单批次信息（笼位、采血、只数、检测方法） |
 | `serum.titer_order.delete` | action | 删除效价工单 |
 | `serum.titer_order.owner.edit` | action | 编辑效价负责人列 |
-| `serum.titer_order.record.edit` | action | 编辑检测日期、血清状态、备注（需为效价负责人或 `record.edit_all`） |
+| `serum.titer_order.record.edit` | action | 编辑检测日期、血清状态、备注（需为效价或免疫负责人，或 `record.edit_all`） |
 | `serum.titer_order.record.edit_all` | action | 编辑任意工单检测记录字段 |
 | `serum.titer_order.summary.edit` | action | 编辑效价小结（需为免疫负责人或 `summary.edit_all`） |
 | `serum.titer_order.summary.edit_all` | action | 编辑任意工单效价小结 |
@@ -189,7 +189,7 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 | 改制备状态（细胞库存页） | 仅需 `serum.cell.prep_status.update` |
 | 效价写操作 | 需 `serum.titer.edit` 等，且为项目负责人 **或** `serum.titer.edit_all` |
 | 效价工单新建 / 批次 / 删除 / 效价负责人 | 仅需对应 `serum.titer_order.*` action，无行级归属 |
-| 效价工单检测日期、血清状态、备注 | 需 `serum.titer_order.record.edit`，且为效价负责人（`titer_owners`）**或** `record.edit_all` |
+| 效价工单检测日期、血清状态、备注 | 需 `serum.titer_order.record.edit`，且为效价负责人（`titer_owners`）或免疫项目负责人 **或** `record.edit_all` |
 | 效价工单效价小结 | 需 `serum.titer_order.summary.edit`，且为免疫项目负责人 **或** `summary.edit_all` |
 | 自动更新状态 | 需要 `serum.status.auto_update` |
 

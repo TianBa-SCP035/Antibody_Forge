@@ -163,7 +163,9 @@ export function canEditAllTiterOrderRecord(userInfo: any): boolean {
 export function canEditTiterOrderRecord(userInfo: any, row: any): boolean {
   return (
     hasAccessCode(userInfo, 'serum.titer_order.record.edit') &&
-    (canEditAllTiterOrderRecord(userInfo) || isTiterOwner(userInfo, row))
+    (canEditAllTiterOrderRecord(userInfo) ||
+      isTiterOwner(userInfo, row) ||
+      isProjectOwner(userInfo, { owner: row?.immune_owner }))
   );
 }
 

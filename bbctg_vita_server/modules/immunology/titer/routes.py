@@ -488,11 +488,18 @@ def _is_titer_owner(user: SysUser, owners: object) -> bool:
     return any(str(owner or "").strip() in aliases for owner in owners)
 
 
-def _require_titer_order_record_edit(db: Session, user: SysUser, order: SerumTiterOrder) -> None:
+def _require_titer_order_record_edit(
+    db: Session,
+    user: SysUser,
+    order: SerumTiterOrder,
+    project: SerumImmProject | None = None,
+) -> None:
     require_permission(db, user, "serum.titer_order.record.edit")
     if has_permission(db, user, "serum.titer_order.record.edit_all"):
         return
     if _is_titer_owner(user, order.titer_owners):
+        return
+    if project and _is_owner_name(user, project.owner):
         return
     raise HTTPException(
         status_code=403,
@@ -549,7 +556,7 @@ def _validate_titer_order_save(db: Session, user: SysUser, data: dict) -> None:
                 status_code=403,
                 detail=PERMISSION_MESSAGES.get("serum.titer_order.record.edit", DEFAULT_PERMISSION_MESSAGE),
             )
-        _require_titer_order_record_edit(db, user, order)
+        _require_titer_order_record_edit(db, user, order, project)
 
     if "summary" in data:
         if order is None:

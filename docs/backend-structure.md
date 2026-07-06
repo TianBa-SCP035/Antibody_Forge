@@ -16,6 +16,7 @@ bbctg_vita_server/
     auth/            # 登录、JWT
     system/          # 用户/角色/权限、审计、功能开关
     immunology/      # serum、titer、cell
+    order_sync/      # 工单数据回传接收
   integrations/      # 云之家、drm_service（SDK 在 integrations/drm/，gitignore）
   jobs/              # 定时任务
   utils/
@@ -33,8 +34,9 @@ bbctg_vita_server/
 ```text
 config/<env>/vita_server.env   # 密钥与连接串（不提交）
 repository/
+  order_sync/                  # 工单数据回传 JSON 原文
   uploads/titer_files/         # 效价附件
-  exports/ cache/ logs/ tmp/   # 导出、DRM 缓存、日志、临时文件（tmp/scheme_export 为方案 PDF 转换）
+  cache/ logs/ tmp/            # DRM 缓存、日志、临时文件（tmp/scheme_export 为方案 PDF 转换）
 ```
 
 配置：`APP_ENV` 或 `VITA_SERVER_ENV_FILE` 选择 env 文件（详见 deploy.md）。
@@ -47,6 +49,7 @@ repository/
 | `/api/serum` | 血清项目 |
 | `/api/serum/titer` | 效价、FACS、附件 |
 | `/api/serum/cell_inventory` | 细胞库存（只读外部库） |
+| `/api/order-experiment` | 工单数据回传 |
 | `/api/system` | 系统管理、功能开关 |
 | `/api/user/info` | Vben 用户信息 |
 
@@ -57,6 +60,7 @@ repository/
 - 成功：`{ "code": 0, "data": ... }`
 - 业务失败（HTTP 200）：`{ "code": 1, "message": "..." }`
 - HTTP 异常（401/403/404/500）：保留 HTTP 状态，body 同为 `{ "code": 1, "message": "..." }`
+- 外部工单回传 `/api/order-experiment/sync` 使用设备对接格式：`{ "code", "message", "trace_id", "data" }`
 
 ## 前端错误分层（L0–L3）
 

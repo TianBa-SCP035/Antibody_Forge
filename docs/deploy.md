@@ -48,6 +48,8 @@ Linux 服务器可用根目录 `start_dev.sh`（构建前端 + nohup 后端）�
 
 效价附件：`repository/uploads/titer_files/<experiment_id>/`，库内路径 `/titer_files/...`。运行用户需对 `repository/` 可写。
 
+工单数据回传 JSON：`repository/order_sync/<YYYYMMDD>/`，库内路径 `/order_sync/...`；接口 `POST /api/order-experiment/sync`（见 `modules/order_sync/`）。
+
 PDF 转换临时目录：`repository/tmp/scheme_export/`（请求结束自动清理；与 `tmp/drm_download` 同级）。
 
 ## 免疫方案 PDF 打印（Linux test/prod）

@@ -1,3 +1,4 @@
+from models.order_sync import OrderSync
 from models.immunology import (
     SerumElisaPlate,
     SerumFacsPlate,
@@ -23,6 +24,7 @@ from models.system import (
 )
 
 __all__ = [
+    "OrderSync",
     "SerumElisaPlate",
     "SerumFacsPlate",
     "SerumFile",

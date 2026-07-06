@@ -1,0 +1,96 @@
+{
+  "order_infos": [
+    {
+      "order_no": "ORD_POSTMAN_20260706001",
+      "order_name": "Postman测试订单",
+      "project_infos": [
+        {
+          "project_no": "PROJ_TITER_001",
+          "data_type": "TITER",
+          "extend_info": "",
+          "experiment_date": "20260706",
+          "target": "CD33",
+          "secondary_antibody": [
+            "Alexa Fluor 647 Goat Anti-Human IgG 1:4000"
+          ],
+          "cell_board_infos": [
+            {
+              "cell_name": "CHO-S-hCD33",
+              "cell_type": "肿瘤",
+              "batch": "CELL20260706A",
+              "generation": "P18",
+              "detect_board_infos": [
+                {
+                  "barcode": "DETECT_BOARD_CD33_001",
+                  "sample_code": "SAMPLE_BOARD_20260706_001",
+                  "whole_board_img": "/data/images/DETECT_BOARD_CD33_001.png",
+                  "heatmap_csv": "/data/csv/DETECT_BOARD_CD33_001.csv",
+                  "well_infos": [
+                    {
+                      "well_no": "A01",
+                      "img_path": "/data/well/DETECT_BOARD_CD33_001/A01.png",
+                      "sample_name": "Mouse-001",
+                      "pc_name": "",
+                      "batch": "",
+                      "generation": "",
+                      "mfi": 12345.67,
+                      "ppc": 89.45
+                    },
+                    {
+                      "well_no": "H12",
+                      "img_path": "/data/well/DETECT_BOARD_CD33_001/H12.png",
+                      "sample_name": "positive control",
+                      "pc_name": "PC-CD33",
+                      "batch": "PC20260706A",
+                      "generation": "P3",
+                      "mfi": 23456.78,
+                      "ppc": 96.12
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "project_no": "PROJ_TITER_002",
+          "data_type": "TITER",
+          "extend_info": "",
+          "experiment_date": "20260706",
+          "target": "CD19",
+          "secondary_antibody": [
+            "Alexa Fluor 647 Goat Anti-Human IgG 1:4000"
+          ],
+          "cell_board_infos": [
+            {
+              "cell_name": "CHO-S-hCD19",
+              "cell_type": "肿瘤",
+              "batch": "CELL20260706B",
+              "generation": "P16",
+              "detect_board_infos": [
+                {
+                  "barcode": "DETECT_BOARD_CD19_001",
+                  "sample_code": "SAMPLE_BOARD_20260706_001",
+                  "whole_board_img": "/data/images/DETECT_BOARD_CD19_001.png",
+                  "heatmap_csv": "/data/csv/DETECT_BOARD_CD19_001.csv",
+                  "well_infos": [
+                    {
+                      "well_no": "A01",
+                      "img_path": "/data/well/DETECT_BOARD_CD19_001/A01.png",
+                      "sample_name": "Mouse-001",
+                      "pc_name": "",
+                      "batch": "",
+                      "generation": "",
+                      "mfi": 11223.45,
+                      "ppc": 76.89
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

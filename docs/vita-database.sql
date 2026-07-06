@@ -184,6 +184,26 @@ CREATE TABLE IF NOT EXISTS sys_job_run_log (
 ) COMMENT='定时任务运行日志（起止时间、耗时、结果摘要与结构化详情）';
 
 -- ---------------------------------------------------------------------------
+-- 工单数据回传（models/order_sync.py）
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS order_sync (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  trace_id VARCHAR(128) NOT NULL COMMENT '追踪ID',
+  file_path VARCHAR(1024) NOT NULL COMMENT '原始JSON路径',
+  order_count INT NOT NULL DEFAULT 0 COMMENT '订单数',
+  order_nos JSON NULL COMMENT '订单号',
+  project_count INT NOT NULL DEFAULT 0 COMMENT '项目数',
+  project_infos JSON NULL COMMENT '项目摘要',
+  status VARCHAR(64) NOT NULL COMMENT '处理状态',
+  error_message TEXT NULL COMMENT '错误信息',
+  received_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '接收时间',
+  UNIQUE KEY uk_order_sync_trace_id (trace_id),
+  KEY idx_order_sync_received_at (received_at),
+  KEY idx_order_sync_status (status)
+) COMMENT='效价数据回传记录';
+
+-- ---------------------------------------------------------------------------
 -- 免疫 / 效价业务（models/immunology.py）
 -- ---------------------------------------------------------------------------
 

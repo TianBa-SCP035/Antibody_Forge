@@ -204,151 +204,200 @@ CREATE TABLE IF NOT EXISTS order_sync (
 ) COMMENT='效价数据回传记录';
 
 -- ---------------------------------------------------------------------------
+-- 镁伽自动化 / 流式工单（models/mega_automation.py）
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS mega_flow_work_order (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  order_name VARCHAR(255) NULL COMMENT '订单名称',
+  order_no VARCHAR(255) NOT NULL COMMENT '订单编号',
+  data_type VARCHAR(32) NOT NULL DEFAULT 'TITER' COMMENT '检测类型',
+  priority VARCHAR(32) NOT NULL DEFAULT 'normal' COMMENT '优先级',
+  remark TEXT NULL COMMENT '备注',
+  status VARCHAR(64) NOT NULL DEFAULT 'draft' COMMENT '执行状态',
+  created_by VARCHAR(128) NULL COMMENT '创建人',
+  sent_at DATETIME NULL COMMENT '发送时间',
+  project_nos JSON NULL COMMENT '项目号列表',
+  targets JSON NULL COMMENT '靶点列表',
+  sample_plate_barcodes JSON NULL COMMENT '样本板条码列表',
+  cell_plate_barcodes JSON NULL COMMENT '细胞板条码列表',
+  content JSON NULL COMMENT '工单编辑内容',
+  content_hash CHAR(64) NULL COMMENT 'content摘要',
+  error_message TEXT NULL COMMENT '错误信息',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  KEY idx_mega_flow_work_order_status (status),
+  KEY idx_mega_flow_work_order_project_nos ((CAST(project_nos AS CHAR(128) ARRAY))),
+  KEY idx_mega_flow_work_order_targets ((CAST(targets AS CHAR(128) ARRAY))),
+  KEY idx_mega_flow_work_order_sample_plate_barcodes ((CAST(sample_plate_barcodes AS CHAR(128) ARRAY))),
+  KEY idx_mega_flow_work_order_cell_plate_barcodes ((CAST(cell_plate_barcodes AS CHAR(128) ARRAY)))
+) COMMENT='镁伽流式工单';
+
+CREATE TABLE IF NOT EXISTS mega_flow_work_order_dispatch (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  dispatch_id VARCHAR(64) NOT NULL COMMENT '下发编号',
+  work_order_id BIGINT NOT NULL COMMENT '工单ID',
+  payload JSON NOT NULL COMMENT '下发JSON',
+  payload_hash CHAR(64) NOT NULL COMMENT 'payload摘要',
+  content_hash_at_send CHAR(64) NOT NULL COMMENT '发送时content摘要',
+  status VARCHAR(32) NOT NULL DEFAULT 'pending' COMMENT '状态',
+  pause_state VARCHAR(32) NULL COMMENT '暂停状态',
+  sent_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '发送时间',
+  created_by VARCHAR(128) NULL COMMENT '操作人',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_mega_flow_work_order_dispatch_id (dispatch_id),
+  KEY idx_mega_flow_work_order_dispatch_order (work_order_id)
+) COMMENT='镁伽流式工单下发记录';
+
+-- ---------------------------------------------------------------------------
 -- 免疫 / 效价业务（models/immunology.py）
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS serum_imm_project (
-  id BIGINT NOT NULL AUTO_INCREMENT,
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
-  project_code VARCHAR(64) NULL,
-  project_name VARCHAR(255) NULL,
-  project_purpose VARCHAR(255) NULL,
-  start_date VARCHAR(32) NULL,
-  immunization_interval VARCHAR(32) NULL,
-  target_name VARCHAR(128) NULL,
-  target_type VARCHAR(64) NULL,
-  target_size VARCHAR(64) NULL,
-  owner VARCHAR(64) NULL,
-  pm VARCHAR(64) NULL,
-  study_type VARCHAR(64) NULL,
+  project_code VARCHAR(64) NULL COMMENT '项目管理编号',
+  project_name VARCHAR(255) NULL COMMENT '项目名称',
+  project_purpose VARCHAR(255) NULL COMMENT '项目目的',
+  start_date VARCHAR(32) NULL COMMENT '项目开始日期',
+  immunization_interval VARCHAR(32) NULL COMMENT '免疫间隔',
+  target_name VARCHAR(128) NULL COMMENT '靶点名称',
+  target_type VARCHAR(64) NULL COMMENT '靶点类型',
+  target_size VARCHAR(64) NULL COMMENT '靶点大小',
+  owner VARCHAR(64) NULL COMMENT '负责人',
+  pm VARCHAR(64) NULL COMMENT 'PM',
+  study_type VARCHAR(64) NULL COMMENT '课题类型',
   assay_method VARCHAR(128) NULL COMMENT '检测方法',
+  assay_method_config JSON NULL COMMENT '检测明细',
   facs_plate_count INT NULL COMMENT 'FACS板数',
   elisa_plate_count INT NULL COMMENT 'ELISA板数',
-  project_status VARCHAR(64) NULL,
-  remark VARCHAR(255) NULL,
-  mouse_strain VARCHAR(128) NULL,
-  mouse_strain_category VARCHAR(128) NULL,
-  prep_status VARCHAR(16) NULL,
+  project_status VARCHAR(64) NULL COMMENT '项目状态',
+  remark VARCHAR(255) NULL COMMENT '备注',
+  mouse_strain VARCHAR(128) NULL COMMENT '确切鼠型',
+  mouse_strain_category VARCHAR(128) NULL COMMENT '归类鼠型',
+  prep_status VARCHAR(16) NULL COMMENT '制备状态',
   PRIMARY KEY (id),
   UNIQUE KEY uk_serum_imm_project_experiment_id (experiment_id)
-) COMMENT='血清免疫项目';
+) COMMENT='免疫项目表';
 
 CREATE TABLE IF NOT EXISTS serum_imm_mouse (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  experiment_id VARCHAR(64) NULL,
-  group_id VARCHAR(32) NULL,
-  mouse_strain VARCHAR(128) NULL,
-  mouse_strain_category VARCHAR(128) NULL,
-  mouse_count VARCHAR(32) NULL,
-  age_weeks VARCHAR(32) NULL,
-  sex VARCHAR(32) NULL,
-  vendor VARCHAR(128) NULL,
-  mouse_no_list VARCHAR(512) NULL,
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  experiment_id VARCHAR(64) NULL COMMENT '实验ID',
+  group_id VARCHAR(32) NULL COMMENT '组别',
+  mouse_strain VARCHAR(128) NULL COMMENT '小鼠名称/品系',
+  mouse_strain_category VARCHAR(128) NULL COMMENT '归类鼠型',
+  mouse_count VARCHAR(32) NULL COMMENT '免疫数量',
+  age_weeks VARCHAR(32) NULL COMMENT '周龄',
+  sex VARCHAR(32) NULL COMMENT '性别',
+  vendor VARCHAR(128) NULL COMMENT '供应商',
+  mouse_no_list VARCHAR(512) NULL COMMENT '鼠号列表',
   mouse_registry JSON NULL COMMENT '鼠号明细',
-  cage_position VARCHAR(64) NULL,
-  remark VARCHAR(255) NULL,
+  cage_position VARCHAR(64) NULL COMMENT '笼位',
+  remark VARCHAR(255) NULL COMMENT '备注',
   PRIMARY KEY (id),
   KEY idx_serum_imm_mouse_experiment_id (experiment_id)
-) COMMENT='血清分组与小鼠';
+) COMMENT='小鼠信息表';
 
 CREATE TABLE IF NOT EXISTS serum_file (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  experiment_id VARCHAR(64) NOT NULL,
-  upload_user VARCHAR(64) NULL,
-  file_name VARCHAR(255) NOT NULL,
-  file_path VARCHAR(1024) NOT NULL,
-  created_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  experiment_id VARCHAR(64) NOT NULL COMMENT '实验编号',
+  upload_user VARCHAR(64) NULL COMMENT '上传人',
+  file_name VARCHAR(255) NOT NULL COMMENT '文件名',
+  file_path VARCHAR(1024) NOT NULL COMMENT '文件位置',
+  created_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
+  updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间',
   PRIMARY KEY (id),
   KEY idx_serum_file_experiment_id (experiment_id)
-) COMMENT='效价附件';
+) COMMENT='效价实验文件表';
 
 CREATE TABLE IF NOT EXISTS serum_imm_antigen (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  experiment_id VARCHAR(64) NULL,
-  antigen_id VARCHAR(32) NULL,
-  species VARCHAR(32) NULL,
-  antigen_type VARCHAR(64) NULL,
-  antigen_name VARCHAR(255) NULL,
-  catalog_no VARCHAR(64) NULL,
-  lot_no VARCHAR(64) NULL,
-  stock_conc VARCHAR(64) NULL,
-  vendor VARCHAR(128) NULL,
-  adjuvant_type VARCHAR(64) NULL,
-  adjuvant_source VARCHAR(128) NULL,
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  experiment_id VARCHAR(64) NULL COMMENT '实验ID',
+  antigen_id VARCHAR(32) NULL COMMENT '抗原ID',
+  species VARCHAR(32) NULL COMMENT '抗原种属',
+  antigen_type VARCHAR(64) NULL COMMENT '抗原类型',
+  antigen_name VARCHAR(255) NULL COMMENT '抗原名称',
+  catalog_no VARCHAR(64) NULL COMMENT '货号',
+  lot_no VARCHAR(64) NULL COMMENT '批号',
+  stock_conc VARCHAR(64) NULL COMMENT '原液浓度',
+  vendor VARCHAR(128) NULL COMMENT '供应商',
+  adjuvant_type VARCHAR(64) NULL COMMENT '佐剂类型',
+  adjuvant_source VARCHAR(128) NULL COMMENT '佐剂来源',
   PRIMARY KEY (id),
   UNIQUE KEY uq_experiment_antigen (experiment_id, antigen_id),
   KEY idx_serum_imm_antigen_experiment_id (experiment_id)
-) COMMENT='免疫抗原';
+) COMMENT='免疫抗原信息表';
 
 CREATE TABLE IF NOT EXISTS serum_imm_step (
-  step_id BIGINT NOT NULL AUTO_INCREMENT,
-  experiment_id VARCHAR(64) NULL,
-  group_id VARCHAR(32) NULL,
-  stage_name VARCHAR(64) NULL,
-  antigen_id VARCHAR(32) NULL,
-  antigen_dose VARCHAR(64) NULL,
-  adjuvant_name VARCHAR(64) NULL,
-  cpg_dose VARCHAR(64) NULL,
-  injection_volume VARCHAR(64) NULL,
-  route VARCHAR(32) NULL,
-  injection_site VARCHAR(64) NULL,
-  day_relative VARCHAR(16) NULL,
-  date_actual VARCHAR(32) NULL,
-  remark VARCHAR(255) NULL,
+  step_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  experiment_id VARCHAR(64) NULL COMMENT '实验ID',
+  group_id VARCHAR(32) NULL COMMENT '组别',
+  stage_name VARCHAR(64) NULL COMMENT '免疫阶段',
+  antigen_id VARCHAR(32) NULL COMMENT '抗原ID',
+  antigen_dose VARCHAR(64) NULL COMMENT '抗原剂量',
+  adjuvant_name VARCHAR(64) NULL COMMENT '佐剂名称',
+  cpg_dose VARCHAR(64) NULL COMMENT 'CpG剂量',
+  injection_volume VARCHAR(64) NULL COMMENT '注射体积',
+  route VARCHAR(32) NULL COMMENT '给药途径',
+  injection_site VARCHAR(64) NULL COMMENT '给药部位',
+  day_relative VARCHAR(16) NULL COMMENT '相对天数',
+  date_actual VARCHAR(32) NULL COMMENT '实际日期',
+  remark VARCHAR(255) NULL COMMENT '备注',
   PRIMARY KEY (step_id),
   KEY idx_serum_imm_step_experiment_id (experiment_id)
-) COMMENT='免疫步骤';
+) COMMENT='免疫实验步骤表';
 
 CREATE TABLE IF NOT EXISTS serum_titer_pc (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  experiment_id VARCHAR(64) NULL,
-  pc_name VARCHAR(255) NULL,
-  catalog_batch VARCHAR(128) NULL,
-  source VARCHAR(128) NULL,
-  concentration VARCHAR(64) NULL,
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  experiment_id VARCHAR(64) NULL COMMENT '实验ID',
+  pc_name VARCHAR(255) NULL COMMENT 'PC名称',
+  catalog_batch VARCHAR(128) NULL COMMENT '货号/批次',
+  source VARCHAR(128) NULL COMMENT '来源',
+  concentration VARCHAR(64) NULL COMMENT '浓度',
   PRIMARY KEY (id),
   KEY idx_serum_titer_pc_experiment_id (experiment_id)
-) COMMENT='效价阳性对照';
+) COMMENT='效价阳性对照表';
 
 CREATE TABLE IF NOT EXISTS serum_titer_target (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  experiment_id VARCHAR(64) NULL,
-  type VARCHAR(32) NULL,
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  experiment_id VARCHAR(64) NULL COMMENT '实验ID',
+  type VARCHAR(32) NULL COMMENT '类型',
   species VARCHAR(32) NULL COMMENT '种属',
-  name VARCHAR(255) NULL,
-  batch_no VARCHAR(64) NULL,
-  passage VARCHAR(64) NULL,
-  cell_count VARCHAR(64) NULL,
-  catalog_no VARCHAR(64) NULL,
-  source VARCHAR(128) NULL,
+  name VARCHAR(255) NULL COMMENT '名称',
+  batch_no VARCHAR(64) NULL COMMENT '批次',
+  passage VARCHAR(64) NULL COMMENT '代次',
+  cell_count VARCHAR(64) NULL COMMENT '细胞量',
+  catalog_no VARCHAR(64) NULL COMMENT '货号',
+  source VARCHAR(128) NULL COMMENT '来源',
   PRIMARY KEY (id),
   KEY idx_serum_titer_target_experiment_id (experiment_id)
-) COMMENT='效价标靶/细胞';
+) COMMENT='效价检测目标表';
 
 CREATE TABLE IF NOT EXISTS serum_facs_plate (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  experiment_id VARCHAR(64) NOT NULL,
-  qr_code VARCHAR(128) NULL,
-  image_file_id BIGINT NULL,
-  excel_file_id BIGINT NULL,
-  immune_stage VARCHAR(64) NULL,
-  x_axis VARCHAR(64) NULL,
-  y_axis VARCHAR(64) NULL,
-  cell_target_id BIGINT NULL,
-  pc_upper_id BIGINT NULL,
-  pc_lower_id BIGINT NULL,
-  upper_group VARCHAR(32) NULL,
-  lower_group VARCHAR(32) NULL,
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  experiment_id VARCHAR(64) NOT NULL COMMENT '实验编号',
+  qr_code VARCHAR(128) NULL COMMENT '板二维码编号',
+  image_file_id BIGINT NULL COMMENT '图片文件id',
+  excel_file_id BIGINT NULL COMMENT 'Excel文件id',
+  immune_stage VARCHAR(64) NULL COMMENT '免疫阶段',
+  x_axis VARCHAR(64) NULL COMMENT '横坐标参数',
+  y_axis VARCHAR(64) NULL COMMENT '纵坐标参数',
+  cell_target_id BIGINT NULL COMMENT '细胞标靶id',
+  pc_upper_id BIGINT NULL COMMENT '上PC的id',
+  pc_lower_id BIGINT NULL COMMENT '下PC的id',
+  upper_group VARCHAR(32) NULL COMMENT '上半板组别',
+  lower_group VARCHAR(32) NULL COMMENT '下半板组别',
   upper_mouse_list JSON NULL,
   lower_mouse_list JSON NULL,
-  upper_slot_groups JSON NULL,
-  lower_slot_groups JSON NULL,
+  upper_slot_groups JSON NULL COMMENT '上半板孔位分组标题',
+  lower_slot_groups JSON NULL COMMENT '下半板孔位分组标题',
   positive_well_list JSON NULL,
-  instrument_type VARCHAR(64) NULL,
+  instrument_type VARCHAR(64) NULL COMMENT '仪器类型',
   PRIMARY KEY (id),
   KEY idx_serum_facs_plate_experiment_id (experiment_id)
-) COMMENT='FACS 效价板';
+) COMMENT='FACS效价板信息表';
 
 CREATE TABLE IF NOT EXISTS serum_elisa_plate (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -367,7 +416,7 @@ CREATE TABLE IF NOT EXISTS serum_elisa_plate (
   absorbance_1 JSON NULL COMMENT '吸光度1:{wavelength,matrix}',
   PRIMARY KEY (id),
   KEY idx_serum_elisa_plate_experiment (experiment_id)
-) COMMENT='ELISA效价板配置（含吸光度1读数；吸光度2不入库）';
+) COMMENT='ELISA效价板信息表';
 
 CREATE TABLE IF NOT EXISTS serum_titer_order (
   id BIGINT NOT NULL AUTO_INCREMENT,
@@ -388,22 +437,6 @@ CREATE TABLE IF NOT EXISTS serum_titer_order (
   UNIQUE KEY uk_serum_titer_order_id (titer_order_id),
   KEY idx_serum_titer_order_experiment_id (experiment_id)
 ) COMMENT='效价工单';
-
--- models/user.py（主库 Base；当前业务代码未引用，表结构预留）
-CREATE TABLE IF NOT EXISTS bbctg_user (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  username VARCHAR(50) NULL,
-  `jobNo` VARCHAR(20) NULL,
-  openid VARCHAR(100) NULL,
-  appid VARCHAR(20) NULL,
-  eid VARCHAR(20) NULL,
-  role VARCHAR(100) NULL,
-  role_menu VARCHAR(50) NULL,
-  create_date DATETIME NULL,
-  pro_locked INT NULL,
-  pro_open INT NULL,
-  PRIMARY KEY (id)
-) COMMENT='云之家员工桥接预留';
 
 INSERT IGNORE INTO sys_permission
   (code, name, type, module, resource, action, route_path, ui_key, parent_code, sort_order)
@@ -435,6 +468,9 @@ VALUES
   ('serum.titer_order.record.edit_all', '编辑全部工单检测记录', 'action', 'serum', 'titer_order', 'record_edit_all', NULL, 'serum.titer_order.record.edit_all_button', 'serum.page.titer_order', 326),
   ('serum.titer_order.summary.edit', '编辑本人效价小结', 'action', 'serum', 'titer_order', 'summary_edit', NULL, 'serum.titer_order.summary.edit_button', 'serum.page.titer_order', 330),
   ('serum.titer_order.summary.edit_all', '编辑全部效价小结', 'action', 'serum', 'titer_order', 'summary_edit_all', NULL, 'serum.titer_order.summary.edit_all_button', 'serum.page.titer_order', 331),
+  ('mega.page.flow_work_order', '流式工单总览', 'page', 'mega', 'flow_work_order', 'view', '/mega-automation/flow-work-orders', NULL, NULL, 500),
+  ('mega.flow_work_order.edit', '编辑流式工单', 'action', 'mega', 'flow_work_order', 'edit', NULL, 'mega.flow_work_order.edit_button', 'mega.page.flow_work_order', 510),
+  ('mega.flow_work_order.dispatch', '发送流式工单', 'action', 'mega', 'flow_work_order', 'dispatch', NULL, 'mega.flow_work_order.dispatch_button', 'mega.page.flow_work_order', 520),
   ('system.page.user', '用户管理页面', 'page', 'system', 'user', 'view', '/system/user-permission', NULL, NULL, 900),
   ('system.page.role', '角色管理页面', 'page', 'system', 'role', 'view', '/system/user-permission', NULL, NULL, 910),
   ('system.page.permission', '权限管理页面', 'page', 'system', 'permission', 'view', '/system/user-permission', NULL, NULL, 920),
@@ -477,6 +513,14 @@ VALUES
   ('serum.titer_order.create', 'POST', '/api/serum/titer/order/save', '新建效价工单'),
   ('serum.titer_order.batch.edit', 'POST', '/api/serum/titer/order/save', '保存效价工单'),
   ('serum.titer_order.delete', 'POST', '/api/serum/titer/order/delete', '删除效价工单'),
+  ('mega.page.flow_work_order', 'GET', '/api/mega-automation/flow-work-orders/meta', '流式工单页面元数据'),
+  ('mega.page.flow_work_order', 'POST', '/api/mega-automation/flow-work-orders/list', '流式工单列表'),
+  ('mega.page.flow_work_order', 'GET', '/api/mega-automation/flow-work-orders/{order_id}', '流式工单详情'),
+  ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/save', '保存流式工单'),
+  ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/validate', '校验流式工单'),
+  ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/prepare-payload', '生成流式工单下发payload'),
+  ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/mark-sent', '标记流式工单已发送'),
+  ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/cancel', '作废流式工单'),
   ('system.user.manage', 'POST', '/api/system/users/save', '新增或编辑用户'),
   ('system.user.manage', 'POST', '/api/system/users/reset_password', '重置用户密码'),
   ('system.user.manage', 'POST', '/api/system/users/delete', '删除用户'),
@@ -497,6 +541,7 @@ INSERT IGNORE INTO sys_permission_bundle (code, name, module, description, sort_
   ('serum_scheme_edit', '方案编辑', 'serum', '创建和编辑血清方案，维护状态、笼位和细胞制备状态', 110),
   ('serum_titer_edit', '效价编辑', 'serum', '维护效价数据、FACS 板和效价附件', 120),
   ('serum_admin', '血清管理员', 'serum', '包含血清相关全部页面和操作权限', 190),
+  ('mega_flow_order', '镁伽流式工单', 'mega', '查看、编辑和发送镁伽自动化流式工单', 500),
   ('system_admin', '系统管理员', 'system', '管理用户、角色权限、权限点和操作日志', 900);
 
 INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VALUES
@@ -548,6 +593,9 @@ INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VAL
   ('serum_admin', 'serum.titer_order.summary.edit_all'),
   ('serum_admin', 'serum.cell.view'),
   ('serum_admin', 'serum.cell.prep_status.update'),
+  ('mega_flow_order', 'mega.page.flow_work_order'),
+  ('mega_flow_order', 'mega.flow_work_order.edit'),
+  ('mega_flow_order', 'mega.flow_work_order.dispatch'),
   ('system_admin', 'system.page.user'),
   ('system_admin', 'system.page.role'),
   ('system_admin', 'system.page.permission'),
@@ -565,6 +613,8 @@ VALUES
   ('menu.serum', '血清实验菜单', 'menu', '控制血清实验模块菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum', 'icon', 'lucide:test-tube')),
   ('menu.serum.list', '免疫实验列表', 'menu', '控制免疫实验列表菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum/list', 'icon', 'lucide:list', 'parent_code', 'menu.serum')),
   ('menu.serum.titer_order', '效价实验列表', 'menu', '控制效价实验列表菜单显示', 1, 1, 20, JSON_OBJECT('path', '/serum/titer-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.serum')),
+  ('menu.mega_automation', '镁伽自动化菜单', 'menu', '控制镁伽自动化模块菜单显示', 1, 1, 50, JSON_OBJECT('path', '/mega-automation', 'icon', 'lucide:workflow')),
+  ('menu.mega_automation.flow_work_orders', '流式工单总览', 'menu', '控制流式工单总览页面显示', 1, 1, 10, JSON_OBJECT('path', '/mega-automation/flow-work-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.mega_automation')),
   ('menu.system', '系统管理', 'menu', '控制系统管理父级菜单显示', 1, 1, 90, JSON_OBJECT('path', '/system', 'icon', 'lucide:settings')),
   ('menu.system.user_permission', '用户权限菜单', 'menu', '控制系统管理下用户权限页面显示', 1, 1, 10, JSON_OBJECT('path', '/system/user-permission', 'icon', 'lucide:shield-check', 'parent_code', 'menu.system')),
   ('menu.system.features', '系统功能菜单', 'menu', '控制系统管理下系统功能页面显示', 1, 1, 20, JSON_OBJECT('path', '/system/features', 'icon', 'lucide:sliders-horizontal', 'parent_code', 'menu.system')),

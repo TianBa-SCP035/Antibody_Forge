@@ -184,3 +184,16 @@ export function canEditTiterOrderSummary(userInfo: any, row: any): boolean {
       isProjectOwner(userInfo, { owner: row?.immune_owner }))
   );
 }
+
+// TODO: 镁伽模块权限待模块开发完成后统一接入
+export function canViewMegaFlowWorkOrderPage(_userInfo: any): boolean {
+  return true;
+}
+
+export function canEditMegaFlowWorkOrder(_userInfo: any): boolean {
+  return true;
+}
+
+export function canDispatchMegaFlowWorkOrder(_userInfo: any): boolean {
+  return true;
+}

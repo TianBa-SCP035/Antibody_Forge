@@ -46,6 +46,12 @@ SERUM_PERMISSION_CODES = {
     "serum.titer_order.summary.edit_all",
 }
 
+MEGA_PERMISSION_CODES = {
+    "mega.page.flow_work_order",
+    "mega.flow_work_order.edit",
+    "mega.flow_work_order.dispatch",
+}
+
 DEFAULT_PERMISSION_MESSAGE = "没有权限执行此操作"
 
 PERMISSION_MESSAGES: dict[str, str] = {
@@ -76,6 +82,9 @@ PERMISSION_MESSAGES: dict[str, str] = {
     "serum.titer_order.record.edit_all": "没有权限编辑他人效价工单检测记录",
     "serum.titer_order.summary.edit": "没有权限编辑效价小结",
     "serum.titer_order.summary.edit_all": "没有权限编辑他人效价小结",
+    "mega.page.flow_work_order": "没有权限查看流式工单总览",
+    "mega.flow_work_order.edit": "没有权限编辑流式工单",
+    "mega.flow_work_order.dispatch": "没有权限发送流式工单",
     "system.page.user": "没有权限访问用户管理",
     "system.page.role": "没有权限访问角色管理",
     "system.page.permission": "没有权限访问权限管理",
@@ -90,6 +99,7 @@ PERMISSION_MESSAGES: dict[str, str] = {
 
 ALL_FALLBACK_CODES = sorted(
     SERUM_PERMISSION_CODES
+    | MEGA_PERMISSION_CODES
     | {
         "system.page.user",
         "system.page.role",

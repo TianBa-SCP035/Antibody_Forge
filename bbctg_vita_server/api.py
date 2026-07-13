@@ -10,6 +10,7 @@ from modules.auth.service import build_user_info
 from modules.immunology.cell.routes import router as cell_router
 from modules.immunology.serum.routes import router as serum_router
 from modules.immunology.titer.routes import router as titer_router
+from modules.mega_automation.routes import router as mega_automation_router
 from modules.order_sync.routes import router as order_sync_router
 from modules.system.routes import router as system_router
 
@@ -25,6 +26,7 @@ api_router.include_router(auth_router, prefix="/auth", tags=["认证"])
 api_router.include_router(serum_router, prefix="/serum", tags=["免疫部-血清"])
 api_router.include_router(titer_router, prefix="/serum/titer", tags=["免疫部-效价"])
 api_router.include_router(cell_router, prefix="/serum/cell_inventory", tags=["免疫部-细胞"])
+api_router.include_router(mega_automation_router, prefix="/mega-automation", tags=["镁伽自动化"])
 api_router.include_router(order_sync_router, prefix="/order-experiment", tags=["工单数据回传"])
 api_router.include_router(system_router, prefix="/system", tags=["系统管理"])
 

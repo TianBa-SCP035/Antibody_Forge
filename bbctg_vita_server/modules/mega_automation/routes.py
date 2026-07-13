@@ -10,6 +10,7 @@ from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
 from modules.mega_automation import service
+from modules.system.permissions import require_permission
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ def flow_work_order_meta(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.page.flow_work_order")
     return _run(db, service.get_meta)
 
 
@@ -41,6 +43,7 @@ def flow_work_order_list(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.page.flow_work_order")
     return _run(db, lambda: service.get_work_order_list(db, data or {}))
 
 
@@ -50,6 +53,7 @@ def flow_work_order_detail(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.page.flow_work_order")
     return _run(db, lambda: service.get_work_order_detail(db, order_id))
 
 
@@ -59,6 +63,7 @@ def flow_work_order_save(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.edit")
     return _run(db, lambda: service.save_work_order(db, data or {}, current_user))
 
 
@@ -69,6 +74,7 @@ def flow_work_order_validate(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.edit")
     return _run(db, lambda: service.validate_work_order(db, order_id, data))
 
 
@@ -78,6 +84,7 @@ def flow_work_order_dispatch(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.dispatch")
     return _run(db, lambda: service.dispatch_work_order(db, order_id, current_user))
 
 
@@ -87,6 +94,7 @@ def flow_work_order_pause(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.dispatch")
     return _run(db, lambda: service.pause_work_order(db, order_id))
 
 
@@ -96,6 +104,7 @@ def flow_work_order_resume(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.dispatch")
     return _run(db, lambda: service.resume_work_order(db, order_id))
 
 
@@ -105,6 +114,7 @@ def flow_work_order_pause_ack(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.dispatch")
     return _run(db, lambda: service.acknowledge_pause_work_order(db, order_id))
 
 
@@ -114,6 +124,7 @@ def flow_work_order_resume_ack(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.dispatch")
     return _run(db, lambda: service.acknowledge_resume_work_order(db, order_id))
 
 
@@ -123,6 +134,7 @@ def flow_work_order_confirm_execution(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.dispatch")
     return _run(db, lambda: service.confirm_dispatch_execution(db, order_id))
 
 
@@ -132,6 +144,7 @@ def flow_work_order_complete(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.dispatch")
     return _run(db, lambda: service.complete_work_order(db, order_id))
 
 
@@ -142,6 +155,7 @@ def flow_work_order_fail(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.dispatch")
     return _run(
         db,
         lambda: service.fail_work_order(
@@ -158,6 +172,7 @@ def flow_work_order_delete(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.edit")
     return _run(db, lambda: service.delete_work_order(db, order_id))
 
 
@@ -167,4 +182,5 @@ def flow_work_order_cancel(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.edit")
     return _run(db, lambda: service.cancel_work_order(db, order_id))

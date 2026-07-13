@@ -283,6 +283,7 @@ export default {
         { value: 'low', label: '低' },
       ],
       backendUnavailable: false,
+      fetchSequence: 0,
       listLoaded: false,
     };
   },
@@ -314,21 +315,24 @@ export default {
       }
     },
     async fetchList() {
+      const requestId = ++this.fetchSequence;
       this.listLoading = true;
       try {
         const data = await fetchFlowWorkOrderList(this.listQuery);
+        if (requestId !== this.fetchSequence) return;
         this.list = data?.items || [];
         this.total = data?.total || 0;
         this.stats = data?.stats || {};
         this.backendUnavailable = false;
       } catch (error) {
+        if (requestId !== this.fetchSequence) return;
         this.list = [];
         this.total = 0;
         this.stats = {};
         this.backendUnavailable = true;
         ElMessage.error(error?.message || '工单列表加载失败');
       } finally {
-        this.listLoading = false;
+        if (requestId === this.fetchSequence) this.listLoading = false;
       }
     },
     handleFilter() {

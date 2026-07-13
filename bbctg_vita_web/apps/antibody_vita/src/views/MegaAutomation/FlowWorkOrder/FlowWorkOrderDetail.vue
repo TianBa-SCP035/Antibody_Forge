@@ -38,6 +38,7 @@
           v-if="showDispatchButton"
           type="warning"
           plain
+          :loading="actionLoading"
           :disabled="!canDispatch()"
           @click="dispatchOrder"
         >
@@ -47,7 +48,7 @@
           v-if="showConfirmExecutionButton"
           type="success"
           plain
-          :disabled="!canEdit()"
+          :disabled="!canDispatch()"
           @click="confirmExecution"
         >
           确认执行
@@ -56,7 +57,7 @@
           v-if="showCompleteButton"
           type="success"
           plain
-          :disabled="!canEdit()"
+          :disabled="!canDispatch()"
           @click="completeOrder"
         >
           完成
@@ -65,7 +66,7 @@
           v-if="showFailButton"
           type="danger"
           plain
-          :disabled="!canEdit()"
+          :disabled="!canDispatch()"
           @click="failOrder"
         >
           执行失败
@@ -74,7 +75,8 @@
           v-if="showPauseAckButton"
           type="warning"
           plain
-          :disabled="!canEdit()"
+          :loading="actionLoading"
+          :disabled="!canDispatch()"
           @click="acknowledgePause"
         >
           设备已暂停
@@ -83,7 +85,8 @@
           v-if="showResumeAckButton"
           type="primary"
           plain
-          :disabled="!canEdit()"
+          :loading="actionLoading"
+          :disabled="!canDispatch()"
           @click="acknowledgeResume"
         >
           设备已恢复
@@ -92,7 +95,7 @@
           v-if="showPauseButton"
           type="warning"
           plain
-          :disabled="!canEdit()"
+          :disabled="!canDispatch()"
           @click="pauseOrder"
         >
           停止
@@ -101,7 +104,8 @@
           v-if="showResumeButton"
           type="primary"
           plain
-          :disabled="!canEdit()"
+          :loading="actionLoading"
+          :disabled="!canDispatch()"
           @click="resumeOrder"
         >
           继续
@@ -143,6 +147,12 @@
           {{ item.message }}
         </li>
       </ul>
+    </div>
+    <div
+      v-if="!loading && order.status === 'validated' && optionalWellWarnings.total"
+      class="optional-warning-banner"
+    >
+      校验已通过，但{{ optionalWellWarnings.text }}。这些内容为可选项，可直接发送；跟随提示可继续补充。
     </div>
 
     <div v-if="!loading && loadError" class="validation-banner">
@@ -372,138 +382,20 @@
               </el-table>
             </section>
 
-            <!-- 细胞板信息 -->
-            <section class="panel">
-              <div class="panel-head">
-                <div class="panel-head-left">
-                  <el-icon class="head-icon"><Menu /></el-icon>
-                  <span class="panel-title">细胞板信息</span>
-                  <span class="panel-hint">每块细胞板按 12 列维护，一列一份细胞</span>
-                </div>
-                <div class="panel-head-right">
-                  <el-checkbox v-model="showExtraCellFields" size="small">更多字段</el-checkbox>
-                  <el-button size="small" :disabled="fieldDisabled" @click="addCellPlate">
-                    <el-icon><Plus /></el-icon>新增细胞板
-                  </el-button>
-                </div>
-              </div>
-              <el-tabs v-model="activeCellPlate" type="card" class="inner-tabs">
-                <el-tab-pane
-                  v-for="(plate, index) in order.cell_plates"
-                  :key="'cell-tab-' + index"
-                  :name="String(index)"
-                >
-                  <template #label>
-                    <span class="tab-label">
-                      细胞板-{{ index + 1 }}
-                      <el-icon
-                        v-if="order.cell_plates.length > 1 && !fieldDisabled"
-                        class="tab-close"
-                        @click.stop="removeCellPlate(index)"
-                      ><Close /></el-icon>
-                    </span>
-                  </template>
-                  <div class="cell-plate-barcode">
-                    <span class="field-label">细胞板条码</span>
-                    <el-input
-                      v-model="plate.barcode"
-                      size="small"
-                      :disabled="fieldDisabled"
-                      :class="{ 'is-invalid-control': hasFieldError(`cell_plates.${index}.barcode`) }"
-                      placeholder="扫描/输入细胞板条码"
-                      @focus="rememberCellBarcode(index, plate.barcode)"
-                      @change="remapCellBarcode(index, plate.barcode)"
-                    />
-                  </div>
-                  <el-table
-                    ref="cellColumnsTable"
-                    :data="plate.columns"
-                    border
-                    size="small"
-                    class="info-table cell-columns-table"
-                    row-key="column_no"
-                  >
-                    <el-table-column label="列" width="48" align="center" class-name="drag-cell">
-                      <template #default="{ row }">
-                        <div
-                          class="row-drag-handle"
-                          :class="{ 'is-disabled': fieldDisabled }"
-                          title="拖动调整位置"
-                          @click.stop
-                        >
-                          {{ row.column_no }}
-                        </div>
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="类型" min-width="80">
-                      <template #default="{ row }">
-                        <el-select
-                          v-model="row.cell_type"
-                          size="small"
-                          :disabled="fieldDisabled"
-                          :class="{
-                            'is-invalid-control': hasFieldError(
-                              `cell_plates.${index}.columns.${row.column_no}.cell_type`,
-                            ),
-                          }"
-                        >
-                          <el-option v-for="t in cellTypeOptions" :key="t" :label="t" :value="t" />
-                        </el-select>
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="细胞名称" min-width="150">
-                      <template #default="{ row }">
-                        <el-input
-                          v-model="row.cell_name"
-                          size="small"
-                          :disabled="fieldDisabled"
-                          :class="{
-                            'is-invalid-control': hasFieldError(
-                              `cell_plates.${index}.columns.${row.column_no}.cell_name`,
-                            ),
-                          }"
-                          placeholder="细胞名称"
-                        />
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="种属" min-width="70">
-                      <template #default="{ row }">
-                        <el-select v-model="row.species" size="small" clearable placeholder="" :disabled="fieldDisabled">
-                          <el-option v-for="s in speciesOptions" :key="s" :label="s" :value="s" />
-                        </el-select>
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="批次" min-width="80">
-                      <template #default="{ row }">
-                        <el-input v-model="row.batch" size="small" :disabled="fieldDisabled" />
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="代次" min-width="80">
-                      <template #default="{ row }">
-                        <el-input v-model="row.generation" size="small" :disabled="fieldDisabled" />
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="细胞量" min-width="80">
-                      <template #default="{ row }">
-                        <el-input v-model="row.cell_count" size="small" :disabled="fieldDisabled" />
-                      </template>
-                    </el-table-column>
-                    <template v-if="showExtraCellFields">
-                      <el-table-column label="货号" min-width="80">
-                        <template #default="{ row }">
-                          <el-input v-model="row.catalog_no" size="small" :disabled="fieldDisabled" />
-                        </template>
-                      </el-table-column>
-                      <el-table-column label="来源" min-width="80">
-                        <template #default="{ row }">
-                          <el-input v-model="row.source" size="small" :disabled="fieldDisabled" />
-                        </template>
-                      </el-table-column>
-                    </template>
-                  </el-table>
-                </el-tab-pane>
-              </el-tabs>
-            </section>
+            <CellPlateEditor
+              v-model="activeCellPlate"
+              class="panel flow-editor-panel"
+              :plates="order.cell_plates"
+              :disabled="fieldDisabled"
+              :cell-type-options="cellTypeOptions"
+              :species-options="speciesOptions"
+              :has-field-error="hasFieldError"
+              @add="addCellPlate"
+              @remove="removeCellPlate"
+              @barcode-focus="rememberCellBarcode"
+              @barcode-change="remapCellBarcode"
+              @reordered="handleCellColumnsReordered"
+            />
 
             <!-- PC 信息 -->
             <section class="panel">
@@ -559,109 +451,16 @@
 
           <!-- 右侧：孔位 / 板可视化 -->
           <div class="editor-col editor-col--right">
-            <!-- 样本板布局 -->
-            <section class="panel viz-panel">
-              <div class="panel-head">
-                <div class="panel-head-left">
-                  <el-icon class="head-icon"><Files /></el-icon>
-                  <span class="panel-title">样本板布局</span>
-                </div>
-                <PlateTabSwitch
-                  v-model="activeSamplePlate"
-                  :count="order.sample_plates.length"
-                  prefix="样本板"
-                />
-              </div>
-
-              <div class="plate-current-bar">
-                <span class="current-code">{{ selectedSamplePlate.barcode || `样本板 ${Number(activeSamplePlate) + 1}` }}</span>
-                <div class="legend">
-                  <span v-for="t in wellTypeCycle" :key="'lg-' + t" class="legend-item">
-                    <i class="legend-dot" :class="'well-' + t.toLowerCase()"></i>{{ wellTypeLabel(t) }}
-                  </span>
-                </div>
-              </div>
-
-              <!-- 孔位编辑条：未选中时回退 A01；选中后批量编辑 -->
-              <div class="well-editor">
-                <span class="well-editor-no">{{ editorWellLabel }}</span>
-                <el-select
-                  v-model="wellDraft.content_type"
-                  size="small"
-                  class="well-type-select"
-                  :disabled="fieldDisabled || wellDragActive"
-                  :placeholder="wellDraft.content_type ? undefined : '多种类型'"
-                  @change="applyWellDraft"
-                >
-                  <el-option v-for="t in wellTypeCycle" :key="'wt-' + t" :label="wellTypeLabel(t)" :value="t" />
-                </el-select>
-                <el-select
-                  v-if="isPcRefType(wellDraft.content_type)"
-                  v-model="wellDraft.pc_id"
-                  size="small"
-                  clearable
-                  filterable
-                  class="well-value-input"
-                  :disabled="fieldDisabled || wellDragActive"
-                  placeholder="选择 PC"
-                  @change="applyWellDraft"
-                >
-                  <el-option
-                    v-for="pc in pcInfosForWellType(wellDraft.content_type)"
-                    :key="pc.pc_id"
-                    :label="pc.pc_name || '未命名'"
-                    :value="pc.pc_id"
-                  />
-                </el-select>
-                <el-input
-                  v-else-if="isSampleType(wellDraft.content_type)"
-                  v-model="wellDraft.sample_code"
-                  size="small"
-                  class="well-value-input"
-                  :disabled="fieldDisabled || wellDragActive"
-                  placeholder="样本编码（批量同步）"
-                  @change="applyWellDraft"
-                />
-                <span v-else-if="wellDraft.content_type" class="well-editor-static">
-                  {{ wellTypeLabel(wellDraft.content_type) }} 孔无需编码
-                </span>
-                <span class="well-editor-tip">提示：拖拽划选；右键批量切换类型</span>
-              </div>
-
-              <div class="plate-grid-wrap">
-                <table class="plate-grid">
-                  <thead>
-                    <tr>
-                      <th class="corner"></th>
-                      <th v-for="col in 12" :key="'col-' + col">{{ col }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="rowLabel in plateRows" :key="'row-' + rowLabel">
-                      <th class="row-head">{{ rowLabel }}</th>
-                      <td
-                        v-for="well in rowWells(selectedSamplePlate, rowLabel)"
-                        :key="well.well_no"
-                        class="well-cell"
-                        :class="[
-                          'well-' + String(well.content_type || 'sample').toLowerCase(),
-                          {
-                            'is-selected': selectedWellSet.has(well.well_no),
-                            'is-drag-preview': wellDragPreviewSet.has(well.well_no),
-                          },
-                        ]"
-                        :title="wellTooltip(well)"
-                        @mousedown.prevent="onWellMouseDown(well, $event)"
-                        @mouseenter="onWellMouseEnter(well)"
-                        @contextmenu.prevent="cycleWellType(well)"
-                      >
-                        <span class="well-text">{{ wellCellText(well) }}</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </section>
+            <SamplePlateLayout
+              ref="samplePlateLayout"
+              v-model="activeSamplePlate"
+              class="panel viz-panel flow-editor-panel"
+              :plate="selectedSamplePlate"
+              :plate-count="order.sample_plates.length"
+              :pc-infos="pcInfos"
+              :disabled="fieldDisabled"
+              :warning-well-nos="activeOptionalWarningWells"
+            />
 
             <!-- 细胞板视图（长条板转 90°：12 横向泳道） -->
             <section class="panel viz-panel">
@@ -725,16 +524,13 @@ import {
   ArrowRight,
   Check,
   CircleCheck,
-  Close,
   Delete,
-  Files,
   Grid,
   Menu,
   Plus,
 } from '@element-plus/icons-vue';
 import {
   ElButton,
-  ElCheckbox,
   ElIcon,
   ElInput,
   ElMessage,
@@ -777,116 +573,26 @@ import {
   resolveOrderDisplayLabel,
   resolveOrderDisplayStatus,
 } from '#/utils/megaFlowWorkOrderStatus';
-import PlateTabSwitch from './PlateTabSwitch.vue';
-
-const PLATE_ROWS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-const SECONDARY_ANTIBODY_OPTIONS = ['人', '猴', '鼠', '狗'];
-const SPECIES_OPTIONS = ['人', '猴', '鼠', '狗', '猫', '空白'];
-const CELL_TYPE_OPTIONS = ['正常', '肿瘤'];
-const WELL_TYPE_CYCLE = ['SAMPLE', 'PC', 'NC', 'ISO', 'TAG', 'BLANK'];
-const WELL_PC_REF_TYPES = ['PC', 'ISO', 'TAG'];
-const PC_INFO_TYPE_OPTIONS = ['SERUM', 'ISO', 'TAG'];
-const WELL_TYPE_LABELS = {
-  SAMPLE: '样本',
-  PC: 'PC',
-  NC: 'NC',
-  ISO: 'ISO',
-  TAG: 'TAG',
-  BLANK: '空孔',
-};
-const EDITABLE_STATUSES = ['draft', 'validated', 'failed', 'execution_failed'];
-
-function wellNo(row, col) {
-  return `${row}${String(col).padStart(2, '0')}`;
-}
-
-function parseWellNo(no) {
-  const match = String(no || '').match(/^([A-H])(\d{1,2})$/i);
-  if (!match) return null;
-  const rowIndex = PLATE_ROWS.indexOf(match[1].toUpperCase());
-  const col = Number.parseInt(match[2], 10);
-  if (rowIndex < 0 || col < 1 || col > 12) return null;
-  return { rowIndex, col };
-}
-
-function wellsInRect(startNo, endNo) {
-  const start = parseWellNo(startNo);
-  const end = parseWellNo(endNo);
-  if (!start || !end) return [];
-  const minRow = Math.min(start.rowIndex, end.rowIndex);
-  const maxRow = Math.max(start.rowIndex, end.rowIndex);
-  const minCol = Math.min(start.col, end.col);
-  const maxCol = Math.max(start.col, end.col);
-  const result = [];
-  for (let rowIndex = minRow; rowIndex <= maxRow; rowIndex += 1) {
-    for (let col = minCol; col <= maxCol; col += 1) {
-      result.push(wellNo(PLATE_ROWS[rowIndex], col));
-    }
-  }
-  return result;
-}
-
-function formatWellSelectionLabel(nos) {
-  if (!nos.length) return '';
-  if (nos.length === 1) return nos[0];
-  const parsed = nos
-    .map((no) => {
-      const pos = parseWellNo(no);
-      return pos ? { no, ...pos } : null;
-    })
-    .filter(Boolean);
-  if (parsed.length !== nos.length) return `已选 ${nos.length} 孔`;
-  parsed.sort((a, b) => a.rowIndex - b.rowIndex || a.col - b.col);
-  const first = parsed[0];
-  const last = parsed[parsed.length - 1];
-  const minRow = first.rowIndex;
-  const maxRow = last.rowIndex;
-  const minCol = first.col;
-  const maxCol = last.col;
-  const expectedCount = (maxRow - minRow + 1) * (maxCol - minCol + 1);
-  if (parsed.length === expectedCount) {
-    const startLabel = wellNo(PLATE_ROWS[minRow], minCol);
-    const endLabel = wellNo(PLATE_ROWS[maxRow], maxCol);
-    return startLabel === endLabel ? startLabel : `${startLabel}–${endLabel}`;
-  }
-  return `已选 ${nos.length} 孔`;
-}
-
-function wellPcInfoType(wellType) {
-  const type = String(wellType || '').toUpperCase();
-  if (type === 'PC') return 'SERUM';
-  if (type === 'ISO' || type === 'TAG') return type;
-  return '';
-}
-
-let samplePlateRowSeed = 0;
-let localPcIdSeed = 0;
-
-function createSamplePlateRowKey() {
-  samplePlateRowSeed += 1;
-  return `sp-${samplePlateRowSeed}`;
-}
-
-function createLocalPcId() {
-  localPcIdSeed += 1;
-  return `tmp-${localPcIdSeed}`;
-}
-
-function defaultOrder() {
-  return {
-    id: null,
-    order_no: '',
-    order_name: '',
-    data_type: 'TITER',
-    priority: 'normal',
-    status: 'draft',
-    base_info: { order_name: '', remark: '', pc_infos: [] },
-    sample_plates: [],
-    cell_plates: [],
-    dispatches: [],
-    content_hash: '',
-  };
-}
+import CellPlateEditor from './components/CellPlateEditor.vue';
+import PlateTabSwitch from './components/PlateTabSwitch.vue';
+import SamplePlateLayout from './components/SamplePlateLayout.vue';
+import {
+  buildFlowWorkOrderSavePayload,
+  cellKey,
+  cellPlateBarcode,
+  CELL_TYPE_OPTIONS,
+  createDefaultColumns,
+  createDefaultFlowWorkOrder,
+  createDefaultSamplePlate,
+  createLocalPcId,
+  EDITABLE_STATUSES,
+  isCellSelected,
+  normalizeFlowWorkOrder,
+  PC_INFO_TYPE_OPTIONS,
+  SECONDARY_ANTIBODY_OPTIONS,
+  selectedCountInPlate,
+  SPECIES_OPTIONS,
+} from './flowWorkOrderModel';
 
 export default {
   name: 'MegaFlowWorkOrderDetail',
@@ -896,10 +602,9 @@ export default {
     ArrowRight,
     Check,
     CircleCheck,
-    Close,
+    CellPlateEditor,
     Delete,
     ElButton,
-    ElCheckbox,
     ElIcon,
     ElInput,
     ElOption,
@@ -910,39 +615,35 @@ export default {
     ElTableColumn,
     ElTabs,
     ElTag,
-    Files,
     Grid,
     Menu,
     Plus,
     PlateTabSwitch,
+    SamplePlateLayout,
   },
   setup() {
     const userStore = useUserStore();
-    return { userStore };
+    return {
+      cellKey,
+      cellPlateBarcode,
+      isCellSelected,
+      selectedCountInPlate,
+      userStore,
+    };
   },
   data() {
     return {
       loading: true,
       loadError: false,
+      loadedRouteIdentity: '',
       saving: false,
+      actionLoading: false,
       activeTab: 'editor',
       activeSamplePlate: '0',
       activeCellPlate: '0',
       cellPickerExpanded: {},
       activeCellPickerRowKey: '',
-      selectedWellNos: [],
-      wellDraft: {
-        content_type: '',
-        pc_id: null,
-        sample_code: '',
-      },
-      wellDragActive: false,
-      wellDragStart: '',
-      wellDragEnd: '',
-      wellClickToggle: false,
-      wellDragFrozenLabel: null,
-      showExtraCellFields: false,
-      order: defaultOrder(),
+      order: createDefaultFlowWorkOrder(),
       defaultSampleWells: [],
       defaultCellColumns: [],
       dataTypeOptions: [
@@ -959,14 +660,13 @@ export default {
       speciesOptions: SPECIES_OPTIONS,
       cellTypeOptions: CELL_TYPE_OPTIONS,
       pcInfoTypeOptions: PC_INFO_TYPE_OPTIONS,
-      wellTypeCycle: WELL_TYPE_CYCLE,
-      plateRows: PLATE_ROWS,
       samplePlateSortable: null,
-      cellColumnsSortable: null,
+      samplePlateSortableInitToken: 0,
       validationIssues: [],
       cellBarcodeFocusCache: {},
       pausedLocalDirty: false,
       pausedDirtyInit: false,
+      pausedDirtyUnwatch: null,
       resumeBlocked: false,
     };
   },
@@ -1031,7 +731,12 @@ export default {
       return !this.isViewMode && this.order.id && this.order.status === 'running';
     },
     showFailButton() {
-      return !this.isViewMode && this.order.id && ['sent', 'running'].includes(this.order.status);
+      if (this.isViewMode || !this.order.id) return false;
+      if (['sent', 'running'].includes(this.order.status)) return true;
+      return (
+        this.order.status === 'paused'
+        && ['pending', 'running'].includes(this.latestDispatch?.status)
+      );
     },
     showResumeButton() {
       if (this.isViewMode) return false;
@@ -1091,32 +796,6 @@ export default {
       const index = Math.max(0, Number(this.activeCellPlate) || 0);
       return this.order.cell_plates[index] || this.order.cell_plates[0] || { columns: [] };
     },
-    /** 当前样本板已选孔位对象列表 */
-    selectedWells() {
-      if (!this.selectedWellNos.length) return [];
-      const selected = this.selectedWellSet;
-      return this.normalizedWells(this.selectedSamplePlate).filter((well) => selected.has(well.well_no));
-    },
-    selectedWellSet() {
-      return new Set(this.selectedWellNos);
-    },
-    /** 拖拽预览孔位集合 */
-    wellDragPreviewSet() {
-      if (!this.wellDragActive || !this.wellDragStart) return new Set();
-      return new Set(wellsInRect(this.wellDragStart, this.wellDragEnd || this.wellDragStart));
-    },
-    /** 编辑目标：有选中用选中孔，否则回退 A01（板面不高亮） */
-    editorWells() {
-      if (this.selectedWellNos.length) return this.selectedWells;
-      const a01 = this.normalizedWells(this.selectedSamplePlate).find((well) => well.well_no === 'A01');
-      return a01 ? [a01] : [];
-    },
-    editorWellLabel() {
-      if (this.wellDragFrozenLabel != null) return this.wellDragFrozenLabel;
-      return this.selectedWellNos.length
-        ? formatWellSelectionLabel(this.selectedWellNos)
-        : 'A01';
-    },
     compactEvents() {
       return (this.order.dispatches || []).slice(0, 5);
     },
@@ -1154,44 +833,66 @@ export default {
     hasSelectableCells() {
       return this.cellPickerOptions.some((group) => group.children.length);
     },
+    optionalWellWarnings() {
+      const byPlate = {};
+      let pcCount = 0;
+      let sampleCount = 0;
+      (this.order.sample_plates || []).forEach((plate, plateIndex) => {
+        const wellNos = [];
+        (plate.wells || []).forEach((well) => {
+          const type = String(well.content_type || '').toUpperCase();
+          if (type === 'PC' && (well.pc_id == null || well.pc_id === '')) {
+            pcCount += 1;
+            wellNos.push(well.well_no);
+          } else if (type === 'SAMPLE' && !String(well.sample_code || '').trim()) {
+            sampleCount += 1;
+            wellNos.push(well.well_no);
+          }
+        });
+        byPlate[String(plateIndex)] = wellNos;
+      });
+      return {
+        byPlate,
+        text: [
+          pcCount && `${pcCount} 个 PC 孔未关联信息`,
+          sampleCount && `${sampleCount} 个样本孔未填写编码`,
+        ]
+          .filter(Boolean)
+          .join('、'),
+        total: pcCount + sampleCount,
+      };
+    },
+    activeOptionalWarningWells() {
+      if (this.order.status !== 'validated') return [];
+      return this.optionalWellWarnings.byPlate[this.activeSamplePlate] || [];
+    },
   },
   async created() {
     await this.loadMeta();
     await this.loadDetail();
   },
+  activated() {
+    if (!this.loading && this.loadedRouteIdentity !== this.detailRouteIdentity()) {
+      this.loadDetail();
+    }
+  },
   beforeUnmount() {
+    this.stopPausedDirtyWatch();
+    this.samplePlateSortableInitToken += 1;
     this.destroySamplePlateSortable();
-    this.destroyCellColumnsSortable();
-    this.teardownWellDragListeners();
   },
   watch: {
-    '$route.fullPath'() {
-      if (this.$route.name !== 'MegaFlowWorkOrderDetail') return;
-      const id = this.$route.query.id;
-      if (id && String(id) === String(this.order.id) && !this.$route.query.copyFrom) return;
-      this.loadDetail();
-    },
-    activeCellPlate() {
-      this.scheduleCellColumnsSortableInit();
-    },
-    activeSamplePlate() {
-      this.clearWellSelection();
-    },
     fieldDisabled(value) {
       if (this.samplePlateSortable) {
         this.samplePlateSortable.option('disabled', value);
       }
-      if (this.cellColumnsSortable) {
-        this.cellColumnsSortable.option('disabled', value);
-      }
     },
-    order: {
-      deep: true,
-      handler() {
-        if (this.order.status === 'paused' && !this.pausedDirtyInit) {
-          this.pausedLocalDirty = true;
-        }
-      },
+    'order.status'(status) {
+      if (status === 'paused') {
+        this.startPausedDirtyWatch();
+      } else {
+        this.stopPausedDirtyWatch();
+      }
     },
   },
   methods: {
@@ -1200,6 +901,13 @@ export default {
     },
     clearValidationIssues() {
       this.validationIssues = [];
+    },
+    notifyValidationPassed(message) {
+      if (this.optionalWellWarnings.total) {
+        ElMessage.warning(`${message}，但${this.optionalWellWarnings.text}`);
+      } else {
+        ElMessage.success(message);
+      }
     },
     applyValidationResult(data) {
       const issues = Array.isArray(data?.issues) ? data.issues : [];
@@ -1257,18 +965,41 @@ export default {
       this.pausedLocalDirty = false;
       this.resumeBlocked = false;
     },
+    startPausedDirtyWatch() {
+      if (this.pausedDirtyUnwatch) return;
+      this.pausedDirtyUnwatch = this.$watch(
+        () => this.order,
+        () => {
+          if (this.order.status === 'paused' && !this.pausedDirtyInit) {
+            this.pausedLocalDirty = true;
+          }
+        },
+        { deep: true },
+      );
+    },
+    stopPausedDirtyWatch() {
+      this.pausedDirtyUnwatch?.();
+      this.pausedDirtyUnwatch = null;
+    },
+    detailRouteIdentity() {
+      const id = this.$route.query.id;
+      const copyFrom = this.$route.query.copyFrom;
+      if (id) return `id:${id}`;
+      if (copyFrom) return `copy:${copyFrom}`;
+      return 'new';
+    },
     async loadDetail() {
       this.clearValidationIssues();
       this.loading = true;
+      const routeIdentity = this.detailRouteIdentity();
       const id = this.$route.query.id;
       const copyFrom = this.$route.query.copyFrom;
       if (!id && !copyFrom) {
         this.loadError = false;
-        this.order = this.normalizeOrder(defaultOrder());
+        this.order = this.normalizeOrder(createDefaultFlowWorkOrder());
         this.resetPausedTracking();
-        this.clearWellSelection();
+        this.loadedRouteIdentity = routeIdentity;
         this.scheduleSamplePlateSortableInit();
-        this.scheduleCellColumnsSortableInit();
         this.loading = false;
         return;
       }
@@ -1294,180 +1025,38 @@ export default {
           this.order = this.normalizeOrder(data);
         }
         this.loadError = false;
+        this.loadedRouteIdentity = routeIdentity;
         this.resetPausedTracking();
       } catch (error) {
         this.loadError = true;
-        this.order = this.normalizeOrder(defaultOrder());
+        this.order = this.normalizeOrder(createDefaultFlowWorkOrder());
         this.resetPausedTracking();
         ElMessage.error(error?.message || '工单加载失败，请返回列表后重试');
       } finally {
         this.loading = false;
-        this.clearWellSelection();
         this.$nextTick(() => {
           this.pausedDirtyInit = false;
         });
         this.scheduleSamplePlateSortableInit();
-        this.scheduleCellColumnsSortableInit();
       }
     },
     normalizeOrder(data) {
-      const order = {
-        ...defaultOrder(),
-        ...data,
-        base_info: data?.base_info || { order_name: '', remark: '', pc_infos: [] },
-        sample_plates: Array.isArray(data?.sample_plates) ? data.sample_plates : [],
-        cell_plates: Array.isArray(data?.cell_plates) ? data.cell_plates : [],
-        dispatches: Array.isArray(data?.dispatches) ? data.dispatches : [],
-      };
-      order.base_info.order_name = data?.order_name || order.base_info.order_name || '';
-      order.base_info.remark = data?.remark ?? order.base_info.remark ?? '';
-      if (!Array.isArray(order.base_info.pc_infos)) {
-        order.base_info.pc_infos = [];
-      }
-      order.base_info.pc_infos = this.normalizePcInfos(order.base_info.pc_infos);
-      if (!order.priority) {
-        order.priority = 'normal';
-      }
-      if (!order.sample_plates.length) {
-        order.sample_plates.push(this.defaultSamplePlate());
-      }
-      if (!order.cell_plates.length) {
-        order.cell_plates.push({ barcode: '', columns: this.defaultColumns() });
-      }
-      order.sample_plates.forEach((plate) => {
-        if (!plate._rowKey) {
-          plate._rowKey = createSamplePlateRowKey();
-        }
-        plate.wells = (Array.isArray(plate.wells) && plate.wells.length)
-          ? this.buildFullWells(plate.wells)
-          : this.defaultWells();
-        if (plate.project_no == null) plate.project_no = '';
-        if (plate.target == null) plate.target = '';
-        if (!plate.secondary_antibody) plate.secondary_antibody = '人';
-        plate.cell_keys = this.normalizeCellKeys(plate);
+      return normalizeFlowWorkOrder(data, {
+        cellColumns: this.defaultCellColumns,
+        sampleWells: this.defaultSampleWells,
       });
-      order.cell_plates.forEach((plate) => {
-        plate.columns = this.normalizeColumns(plate.columns);
-      });
-      return order;
-    },
-    defaultWells() {
-      if (this.defaultSampleWells.length) {
-        return JSON.parse(JSON.stringify(this.defaultSampleWells));
-      }
-      return PLATE_ROWS.flatMap((row) =>
-        Array.from({ length: 12 }, (_, index) => ({
-          well_no: wellNo(row, index + 1),
-          content_type: index === 11 ? 'PC' : 'SAMPLE',
-          sample_code: index === 11 ? '' : wellNo(row, index + 1),
-          pc_id: null,
-          batch: '',
-          generation: '',
-        })),
-      );
-    },
-    normalizePcInfos(pcInfos) {
-      return (Array.isArray(pcInfos) ? pcInfos : []).map((pc) => {
-        const pcId = pc.pc_id || createLocalPcId();
-        return {
-          pc_id: pcId,
-          pc_type: String(pc.pc_type || 'SERUM').toUpperCase(),
-          pc_name: pc.pc_name || '',
-          catalog_batch: pc.catalog_batch || '',
-          source: pc.source || '',
-          concentration: pc.concentration || '',
-        };
-      });
-    },
-    normalizeWell(well) {
-      const normalized = { ...(well || {}) };
-      const type = String(normalized.content_type || 'SAMPLE').toUpperCase();
-      let pcId = normalized.pc_id;
-      if (pcId != null && pcId !== '') {
-        pcId = String(pcId);
-      } else {
-        pcId = null;
-      }
-      if (!WELL_PC_REF_TYPES.includes(type)) {
-        pcId = null;
-      }
-      return {
-        well_no: normalized.well_no,
-        content_type: type,
-        sample_code: normalized.sample_code || '',
-        pc_id: pcId,
-        batch: normalized.batch || '',
-        generation: normalized.generation || '',
-      };
     },
     defaultSamplePlate() {
-      return {
-        _rowKey: createSamplePlateRowKey(),
-        barcode: '',
-        project_no: '',
-        target: '',
-        secondary_antibody: '人',
-        cell_keys: [],
-        wells: this.defaultWells(),
-      };
-    },
-    defaultColumns() {
-      return this.normalizeColumns(
-        this.defaultCellColumns.length ? JSON.parse(JSON.stringify(this.defaultCellColumns)) : [],
-      );
-    },
-    normalizeColumns(columns) {
-      const byNo = new Map(
-        (Array.isArray(columns) ? columns : []).map((col, index) => [
-          Number(col.column_no) || index + 1,
-          col,
-        ]),
-      );
-      return Array.from({ length: 12 }, (_, index) => {
-        const columnNo = index + 1;
-        return {
-          cell_type: '正常',
-          cell_name: '',
-          generation: '',
-          batch: '',
-          species: '',
-          cell_count: '',
-          catalog_no: '',
-          source: '',
-          ...(byNo.get(columnNo) || {}),
-          column_no: columnNo,
-        };
+      return createDefaultSamplePlate({
+        cellColumns: this.defaultCellColumns,
+        sampleWells: this.defaultSampleWells,
       });
     },
-    buildFullWells(existing) {
-      const wells = Array.isArray(existing) ? existing : [];
-      const byNo = new Map(wells.map((well) => [well.well_no, well]));
-      return PLATE_ROWS.flatMap((row) =>
-        Array.from({ length: 12 }, (_, index) => {
-          const no = wellNo(row, index + 1);
-          const base = byNo.get(no) || {
-            well_no: no,
-            content_type: 'BLANK',
-            sample_code: '',
-            pc_id: null,
-            batch: '',
-            generation: '',
-          };
-          return this.normalizeWell({ ...base, well_no: no });
-        }),
-      );
-    },
-    normalizedWells(plate) {
-      return Array.isArray(plate?.wells) ? plate.wells : [];
-    },
-    rowWells(plate, rowLabel) {
-      return this.normalizedWells(plate).filter((well) => String(well.well_no).startsWith(rowLabel));
-    },
-    cellKey(barcode, columnNo) {
-      return `${barcode || ''}|${columnNo || ''}`;
-    },
-    cellPlateBarcode(plate, index) {
-      return plate.barcode || `细胞板${index + 1}`;
+    defaultColumns() {
+      return createDefaultColumns({
+        cellColumns: this.defaultCellColumns,
+        sampleWells: this.defaultSampleWells,
+      });
     },
     rememberCellBarcode(index, value) {
       if (!this.cellBarcodeFocusCache) this.cellBarcodeFocusCache = {};
@@ -1487,8 +1076,36 @@ export default {
       });
       this.pruneEmptyCellRefs();
     },
-    normalizeCellKeys(plate) {
-      return Array.isArray(plate.cell_keys) ? plate.cell_keys.filter(Boolean) : [];
+    handleCellColumnsReordered({ plateIndex, oldIndex, newIndex }) {
+      const plate = this.order.cell_plates[plateIndex];
+      const columnCount = plate?.columns?.length || 0;
+      if (
+        !columnCount
+        || oldIndex < 0
+        || newIndex < 0
+        || oldIndex >= columnCount
+        || newIndex >= columnCount
+      ) {
+        return;
+      }
+      // 列拖动等同于剪切粘贴：内容移动到新列，所有受位移影响的细胞引用也随内容改写。
+      const oldColumnAtNewIndex = Array.from({ length: columnCount }, (_, index) => index + 1);
+      const [movedColumn] = oldColumnAtNewIndex.splice(oldIndex, 1);
+      oldColumnAtNewIndex.splice(newIndex, 0, movedColumn);
+      const newColumnByOldColumn = new Map(
+        oldColumnAtNewIndex.map((oldColumn, index) => [oldColumn, index + 1]),
+      );
+      const prefix = `${this.cellPlateBarcode(plate, plateIndex)}|`;
+      this.order.sample_plates.forEach((samplePlate) => {
+        const keys = Array.isArray(samplePlate.cell_keys) ? samplePlate.cell_keys : [];
+        samplePlate.cell_keys = keys.map((key) => {
+          if (!key.startsWith(prefix)) return key;
+          const oldColumn = Number(key.slice(prefix.length));
+          const newColumn = newColumnByOldColumn.get(oldColumn);
+          return newColumn ? `${prefix}${newColumn}` : key;
+        });
+      });
+      this.pruneEmptyCellRefs();
     },
     applyCellSelection(plate, value) {
       plate.cell_keys = Array.isArray(value) ? value : [];
@@ -1507,9 +1124,6 @@ export default {
       });
       return tokens.join('、');
     },
-    isCellSelected(plate, key) {
-      return Array.isArray(plate.cell_keys) && plate.cell_keys.includes(key);
-    },
     toggleCell(plate, key) {
       const keys = Array.isArray(plate.cell_keys) ? [...plate.cell_keys] : [];
       const idx = keys.indexOf(key);
@@ -1519,11 +1133,6 @@ export default {
         keys.push(key);
       }
       plate.cell_keys = keys;
-    },
-    selectedCountInPlate(plate, plateOption) {
-      if (!Array.isArray(plate.cell_keys) || !plate.cell_keys.length) return 0;
-      const live = new Set((plateOption.children || []).map((cell) => cell.value));
-      return plate.cell_keys.filter((key) => live.has(key)).length;
     },
     /** 清除指向「无细胞名称」列的样本板引用 */
     pruneEmptyCellRefs() {
@@ -1567,7 +1176,7 @@ export default {
       const index = this.order.sample_plates.indexOf(row);
       if (index >= 0) {
         this.activeSamplePlate = String(index);
-        this.clearWellSelection();
+        this.$refs.samplePlateLayout?.clearWellSelection();
       }
     },
     samplePlateRowClass({ row }) {
@@ -1577,7 +1186,6 @@ export default {
     addSamplePlate() {
       this.order.sample_plates.push(this.defaultSamplePlate());
       this.activeSamplePlate = String(this.order.sample_plates.length - 1);
-      this.clearWellSelection();
     },
     removeSamplePlate(index) {
       this.order.sample_plates.splice(index, 1);
@@ -1586,6 +1194,7 @@ export default {
       }
     },
     async initSamplePlateSortable() {
+      const initToken = ++this.samplePlateSortableInitToken;
       this.destroySamplePlateSortable();
       await this.$nextTick();
       const table = this.$refs.samplePlateTable;
@@ -1594,6 +1203,7 @@ export default {
       if (!tbody) return;
 
       const SortableModule = await import('sortablejs/modular/sortable.complete.esm.js');
+      if (initToken !== this.samplePlateSortableInitToken || !tbody.isConnected) return;
       const Sortable = SortableModule.default;
       this.samplePlateSortable = Sortable.create(tbody, {
         handle: '.row-drag-handle',
@@ -1644,90 +1254,38 @@ export default {
     addCellPlate() {
       this.order.cell_plates.push({ barcode: '', columns: this.defaultColumns() });
       this.activeCellPlate = String(this.order.cell_plates.length - 1);
-      this.scheduleCellColumnsSortableInit();
     },
     removeCellPlate(index) {
-      this.order.cell_plates.splice(index, 1);
-      if (Number(this.activeCellPlate) >= this.order.cell_plates.length) {
-        this.activeCellPlate = String(Math.max(0, this.order.cell_plates.length - 1));
-      }
-      this.scheduleCellColumnsSortableInit();
-    },
-    resolveCellColumnsTable() {
-      const ref = this.$refs.cellColumnsTable;
-      if (!ref) return null;
-      if (Array.isArray(ref)) {
-        return ref[Number(this.activeCellPlate)] || ref[0] || null;
-      }
-      return ref;
-    },
-    async initCellColumnsSortable() {
-      this.destroyCellColumnsSortable();
-      await this.$nextTick();
-      const table = this.resolveCellColumnsTable();
-      if (!table) return;
-      const tbody = table.$el?.querySelector('.el-table__body-wrapper tbody');
-      if (!tbody) return;
+      const plates = this.order.cell_plates;
+      const oldAliasByPlate = new Map(
+        plates.map((plate, plateIndex) => [plate, this.cellPlateBarcode(plate, plateIndex)]),
+      );
+      const [removedPlate] = plates.splice(index, 1);
+      const removedAlias = oldAliasByPlate.get(removedPlate);
+      const aliasRemaps = plates
+        .map((plate, plateIndex) => ({
+          from: oldAliasByPlate.get(plate),
+          to: this.cellPlateBarcode(plate, plateIndex),
+        }))
+        .filter(({ from, to }) => from && from !== to);
+      const survivingAliases = new Set(plates.map((plate, plateIndex) =>
+        this.cellPlateBarcode(plate, plateIndex)));
 
-      const SortableModule = await import('sortablejs/modular/sortable.complete.esm.js');
-      const Sortable = SortableModule.default;
-      this.cellColumnsSortable = Sortable.create(tbody, {
-        handle: '.row-drag-handle',
-        animation: 200,
-        disabled: this.fieldDisabled,
-        ghostClass: 'sortable-ghost',
-        onEnd: (evt) => this.handleCellColumnsDragEnd(evt),
-      });
-    },
-    handleCellColumnsDragEnd(evt) {
-      const { oldIndex, newIndex, item } = evt;
-      if (oldIndex == null || newIndex == null || oldIndex === newIndex) return;
-      // 撤销 SortableJS 对 DOM 的搬动，交回 Vue 按数据渲染
-      const parent = item?.parentNode;
-      if (parent) {
-        const anchor =
-          newIndex > oldIndex ? parent.children[oldIndex] : parent.children[oldIndex + 1];
-        parent.insertBefore(item, anchor || null);
-      }
-      // 固定 1-12 列槽：只重排内容字段，column_no / 对象身份 / cell_keys 都不动
-      const contentFields = [
-        'cell_type',
-        'cell_name',
-        'species',
-        'batch',
-        'generation',
-        'cell_count',
-        'catalog_no',
-        'source',
-      ];
-      const columns = this.selectedCellPlate.columns;
-      const snapshots = columns.map((col) => {
-        const snap = {};
-        contentFields.forEach((field) => {
-          snap[field] = col[field];
-        });
-        return snap;
-      });
-      const [moved] = snapshots.splice(oldIndex, 1);
-      snapshots.splice(newIndex, 0, moved);
-      columns.forEach((col, index) => {
-        contentFields.forEach((field) => {
-          col[field] = snapshots[index][field];
+      this.order.sample_plates.forEach((samplePlate) => {
+        const keys = Array.isArray(samplePlate.cell_keys) ? samplePlate.cell_keys : [];
+        samplePlate.cell_keys = keys.flatMap((key) => {
+          const remap = aliasRemaps.find(({ from }) => key.startsWith(`${from}|`));
+          if (remap) return [`${remap.to}|${key.slice(remap.from.length + 1)}`];
+          if (removedAlias && !survivingAliases.has(removedAlias) && key.startsWith(`${removedAlias}|`)) {
+            return [];
+          }
+          return [key];
         });
       });
-      // 原引用列变空后直接清掉，不保留失效残留
       this.pruneEmptyCellRefs();
-    },
-    destroyCellColumnsSortable() {
-      if (this.cellColumnsSortable) {
-        this.cellColumnsSortable.destroy();
-        this.cellColumnsSortable = null;
+      if (Number(this.activeCellPlate) >= plates.length) {
+        this.activeCellPlate = String(Math.max(0, plates.length - 1));
       }
-    },
-    scheduleCellColumnsSortableInit() {
-      this.$nextTick(() => {
-        this.initCellColumnsSortable();
-      });
     },
     addPcInfo() {
       this.pcInfos.push({
@@ -1751,174 +1309,8 @@ export default {
         });
       });
     },
-    clearWellSelection() {
-      this.selectedWellNos = [];
-      this.resetWellDrag();
-      this.syncWellDraftFromEditor();
-    },
-    setWellSelection(nos) {
-      this.selectedWellNos = nos;
-      this.syncWellDraftFromEditor();
-    },
-    resetWellDrag() {
-      this.wellDragActive = false;
-      this.wellDragStart = '';
-      this.wellDragEnd = '';
-      this.wellDragFrozenLabel = null;
-    },
-    teardownWellDragListeners() {
-      document.removeEventListener('mouseup', this.onWellDragEnd);
-    },
-    syncWellDraftFromEditor() {
-      const wells = this.editorWells;
-      if (!wells.length) {
-        this.wellDraft = { content_type: '', pc_id: null, sample_code: '' };
-        return;
-      }
-      const types = [...new Set(wells.map((well) => String(well.content_type || 'SAMPLE').toUpperCase()))];
-      const contentType = types.length === 1 ? types[0] : '';
-      let pcId = null;
-      if (contentType && this.isPcRefType(contentType)) {
-        const pcIds = [
-          ...new Set(
-            wells
-              .map((well) => (well.pc_id == null || well.pc_id === '' ? null : String(well.pc_id)))
-              .filter(Boolean),
-          ),
-        ];
-        pcId = pcIds.length === 1 ? pcIds[0] : null;
-      }
-      let sampleCode = '';
-      if (contentType === 'SAMPLE') {
-        const codes = [...new Set(wells.map((well) => String(well.sample_code || '').trim()).filter(Boolean))];
-        sampleCode = codes.length === 1 ? codes[0] : '';
-      }
-      this.wellDraft = {
-        content_type: contentType,
-        pc_id: pcId,
-        sample_code: sampleCode,
-      };
-    },
-    applyWellDraft() {
-      const wells = this.editorWells;
-      if (!wells.length || !this.wellDraft.content_type) return;
-      const { content_type: contentType, pc_id: pcId, sample_code: sampleCode } = this.wellDraft;
-      wells.forEach((well) => {
-        well.content_type = contentType;
-        this.onWellTypeChange(well);
-        if (this.isPcRefType(contentType)) {
-          well.pc_id = pcId ?? null;
-        } else if (this.isSampleType(contentType)) {
-          well.sample_code = sampleCode || '';
-        }
-      });
-    },
-    onWellMouseDown(well, event) {
-      if (this.fieldDisabled || event.button !== 0) return;
-      this.teardownWellDragListeners();
-      this.wellDragFrozenLabel = this.editorWellLabel;
-      this.wellClickToggle =
-        this.selectedWellNos.length === 1 && this.selectedWellNos[0] === well.well_no;
-      this.selectedWellNos = [];
-      this.wellDragActive = true;
-      this.wellDragStart = well.well_no;
-      this.wellDragEnd = well.well_no;
-      document.addEventListener('mouseup', this.onWellDragEnd);
-    },
-    onWellMouseEnter(well) {
-      if (!this.wellDragActive) return;
-      this.wellDragEnd = well.well_no;
-    },
-    onWellDragEnd() {
-      if (!this.wellDragActive) return;
-      const start = this.wellDragStart;
-      const end = this.wellDragEnd || start;
-      const toggleOff = this.wellClickToggle;
-      this.wellClickToggle = false;
-      this.teardownWellDragListeners();
-      this.resetWellDrag();
-      if (!start) return;
-      if (start === end && toggleOff) {
-        this.clearWellSelection();
-        return;
-      }
-      this.setWellSelection(start === end ? [start] : wellsInRect(start, end));
-    },
-    cycleWellType(well) {
-      if (this.fieldDisabled) return;
-      if (!this.selectedWellSet.has(well.well_no)) {
-        this.selectedWellNos = [well.well_no];
-      }
-      const targets = this.selectedWells;
-      if (!targets.length) return;
-      const current = String(targets[0].content_type || 'SAMPLE').toUpperCase();
-      const index = WELL_TYPE_CYCLE.indexOf(current);
-      this.wellDraft.content_type = WELL_TYPE_CYCLE[(index + 1) % WELL_TYPE_CYCLE.length];
-      this.applyWellDraft();
-      this.syncWellDraftFromEditor();
-    },
-    onWellTypeChange(well) {
-      const type = String(well.content_type || 'SAMPLE').toUpperCase();
-      if (!this.isPcRefType(type)) {
-        well.pc_id = null;
-      } else if (well.pc_id != null) {
-        const pc = this.pcInfoById(well.pc_id);
-        if (!pc || pc.pc_type !== wellPcInfoType(type)) {
-          well.pc_id = null;
-        }
-      }
-      if (type !== 'SAMPLE') {
-        well.sample_code = '';
-      }
-    },
-    isPcRefType(type) {
-      return WELL_PC_REF_TYPES.includes(String(type || '').toUpperCase());
-    },
-    isSampleType(type) {
-      return String(type || '').toUpperCase() === 'SAMPLE';
-    },
-    pcInfoById(pcId) {
-      if (pcId == null || pcId === '') return null;
-      return this.pcInfos.find((pc) => pc.pc_id === String(pcId)) || null;
-    },
-    pcInfosForWellType(wellType) {
-      const pcType = wellPcInfoType(wellType);
-      if (!pcType) return [];
-      return this.pcInfos.filter((pc) => pc.pc_type === pcType);
-    },
-    wellTypeLabel(type) {
-      return WELL_TYPE_LABELS[String(type || 'SAMPLE').toUpperCase()] || '样本';
-    },
-    wellCellText(well) {
-      const type = String(well.content_type || 'SAMPLE').toUpperCase();
-      if (type === 'SAMPLE') return well.sample_code || '';
-      if (type === 'BLANK') return '';
-      return this.wellTypeLabel(type);
-    },
-    wellTooltip(well) {
-      const contentType = String(well.content_type || 'SAMPLE').toUpperCase();
-      const parts = [well.well_no, this.wellTypeLabel(contentType)];
-      if (contentType === 'SAMPLE' && well.sample_code) {
-        parts.push(well.sample_code);
-      } else if (this.isPcRefType(contentType)) {
-        const pcName = this.pcInfoById(well.pc_id)?.pc_name;
-        if (pcName) parts.push(pcName);
-      }
-      return `${parts.join(' · ')} · 拖拽划选 · 右键切换类型`;
-    },
     buildSavePayload() {
-      return {
-        id: this.order.id,
-        order_name: this.order.base_info.order_name,
-        order_no: this.order.order_no || '',
-        remark: this.order.base_info.remark,
-        data_type: this.order.data_type,
-        priority: this.order.priority,
-        expected_content_hash: this.order.content_hash || '',
-        base_info: this.order.base_info,
-        sample_plates: this.order.sample_plates,
-        cell_plates: this.order.cell_plates,
-      };
+      return buildFlowWorkOrderSavePayload(this.order);
     },
     async save() {
       if (this.loadError) return false;
@@ -1962,7 +1354,7 @@ export default {
         }
         if (data.valid) {
           this.clearValidationIssues();
-          ElMessage.success('校验通过');
+          this.notifyValidationPassed('校验通过');
         } else {
           this.applyValidationResult(data);
           this.focusFirstValidationIssue();
@@ -2011,14 +1403,14 @@ export default {
         }
         this.clearValidationIssues();
         if (data.saved) {
-          ElMessage.success('校验通过，修改已保存，此前下发记录已失效');
+          this.notifyValidationPassed('校验通过，修改已保存，此前下发记录已失效');
           return;
         }
         if (data.can_resume) {
-          ElMessage.success('校验通过，内容未变化，可点击继续恢复发送状态');
+          this.notifyValidationPassed('校验通过，内容未变化，可点击继续恢复发送状态');
           return;
         }
-        ElMessage.success('校验通过');
+        this.notifyValidationPassed('校验通过');
       } catch (error) {
         if (error !== 'cancel' && error?.message !== 'cancel') {
           this.applyValidationResult({
@@ -2028,14 +1420,30 @@ export default {
       }
     },
     async dispatchOrder() {
-      if (!this.order.id) return;
+      if (!this.order.id || this.actionLoading) return;
+      this.actionLoading = true;
       try {
+        if (this.optionalWellWarnings.total) {
+          await ElMessageBox.confirm(
+            `当前仍有${this.optionalWellWarnings.text}。这些内容为可选项，确认继续发送？`,
+            '可选内容未填写',
+            {
+              confirmButtonText: '继续发送',
+              cancelButtonText: '返回补充',
+              type: 'warning',
+            },
+          );
+        }
         const data = await dispatchFlowWorkOrder(this.order.id);
         this.order = this.normalizeOrder(data);
         this.activeTab = 'payload';
         ElMessage.success('已发送');
       } catch (error) {
-        ElMessage.warning(error?.message || '发送失败，请确认已校验通过');
+        if (error !== 'cancel' && error?.message !== 'cancel') {
+          ElMessage.warning(error?.message || '发送失败，请确认已校验通过');
+        }
+      } finally {
+        this.actionLoading = false;
       }
     },
     async confirmExecution() {
@@ -2086,7 +1494,8 @@ export default {
       }
     },
     async acknowledgePause() {
-      if (!this.order.id) return;
+      if (!this.order.id || this.actionLoading) return;
+      this.actionLoading = true;
       try {
         const data = await acknowledgePauseFlowWorkOrder(this.order.id);
         this.pausedDirtyInit = true;
@@ -2098,28 +1507,41 @@ export default {
         ElMessage.success('设备已确认暂停，可编辑或继续');
       } catch (error) {
         ElMessage.warning(error?.message || '确认设备暂停失败');
+      } finally {
+        this.actionLoading = false;
       }
     },
     async acknowledgeResume() {
-      if (!this.order.id) return;
+      if (!this.order.id || this.actionLoading) return;
+      this.actionLoading = true;
       try {
         const data = await acknowledgeResumeFlowWorkOrder(this.order.id);
         this.order = this.normalizeOrder(data);
+        this.resetPausedTracking();
         ElMessage.success(
           data?.status === 'running' ? '设备已恢复，工单继续执行' : '设备已恢复，工单回到已发送状态',
         );
       } catch (error) {
         ElMessage.warning(error?.message || '确认设备恢复失败');
+      } finally {
+        this.actionLoading = false;
       }
     },
     async resumeOrder() {
-      if (!this.order.id) return;
+      if (!this.order.id || this.actionLoading) return;
+      this.actionLoading = true;
       try {
         const data = await resumeFlowWorkOrder(this.order.id);
+        this.pausedDirtyInit = true;
         this.order = this.normalizeOrder(data);
+        this.$nextTick(() => {
+          this.pausedDirtyInit = false;
+        });
         ElMessage.success('已请求恢复，等待设备确认');
       } catch (error) {
         ElMessage.warning(error?.message || '无法继续，请先校验确认修改');
+      } finally {
+        this.actionLoading = false;
       }
     },
     async completeOrder() {
@@ -2309,6 +1731,16 @@ $radius: 8px;
   border-radius: $radius;
 }
 
+.optional-warning-banner {
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #8a5a00;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: $radius;
+}
+
 .validation-banner-head {
   display: flex;
   align-items: center;
@@ -2325,7 +1757,9 @@ $radius: 8px;
 
 .is-invalid :deep(.el-input__wrapper),
 .is-invalid-control :deep(.el-input__wrapper),
-.is-invalid-control.el-select :deep(.el-select__wrapper) {
+.is-invalid-control.el-select :deep(.el-select__wrapper),
+.flow-editor-panel :deep(.is-invalid-control .el-input__wrapper),
+.flow-editor-panel :deep(.is-invalid-control.el-select .el-select__wrapper) {
   box-shadow: 0 0 0 1px #f56c6c inset !important;
 }
 
@@ -2344,7 +1778,8 @@ $radius: 8px;
   box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
 }
 
-.panel-head {
+.panel-head,
+.flow-editor-panel :deep(.panel-head) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2353,36 +1788,41 @@ $radius: 8px;
   flex-wrap: wrap;
 }
 
-.panel-head-left {
+.panel-head-left,
+.flow-editor-panel :deep(.panel-head-left) {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
-.panel-head-right {
+.flow-editor-panel :deep(.panel-head-right) {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.head-icon {
+.head-icon,
+.flow-editor-panel :deep(.head-icon) {
   font-size: 16px;
   color: $primary;
 }
 
-.panel-title {
+.panel-title,
+.flow-editor-panel :deep(.panel-title) {
   font-size: 15px;
   font-weight: 700;
   color: $title-color;
 }
 
-.panel-hint {
+.panel-hint,
+.flow-editor-panel :deep(.panel-hint) {
   font-size: 12px;
   color: $muted-color;
 }
 
-.field-label {
+.field-label,
+.flow-editor-panel :deep(.field-label) {
   font-size: 13px;
   color: $label-color;
   white-space: nowrap;
@@ -2421,7 +1861,8 @@ $radius: 8px;
   padding: 0;
 }
 
-.row-drag-handle {
+.row-drag-handle,
+.flow-editor-panel :deep(.row-drag-handle) {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2588,221 +2029,9 @@ $radius: 8px;
   color: $muted-color;
 }
 
-.cell-plate-barcode {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  max-width: 320px;
-}
-
-.inner-tabs {
-  :deep(.el-tabs__header) {
-    margin-bottom: 10px;
-  }
-
-  :deep(.el-tabs__item) {
-    padding: 0 12px;
-    font-size: 13px;
-  }
-
-  :deep(.el-tabs__item.is-active) {
-    border-bottom-color: $border-color;
-  }
-}
-
-.tab-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.tab-close {
-  font-size: 12px;
-  color: $muted-color;
-
-  &:hover {
-    color: #f56c6c;
-  }
-}
-
 /* 可视化面板 */
 .viz-panel {
   background: #fff;
-}
-
-.plate-current-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-
-.current-code {
-  font-size: 13px;
-  font-weight: 600;
-  color: $title-color;
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: $muted-color;
-}
-
-.legend-dot {
-  width: 10px;
-  height: 10px;
-  border: 1px solid #d0d5dd;
-  border-radius: 3px;
-
-  &.well-sample { background: #eef5ff; }
-  &.well-pc { background: #fff2e6; }
-  &.well-nc { background: #eef2ff; }
-  &.well-iso { background: #eafbf1; }
-  &.well-tag { background: #f3effe; }
-  &.well-blank { background: #f8fafc; }
-}
-
-/* 当前孔编辑条 */
-.well-editor {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  min-height: 40px;
-  padding: 8px 10px;
-  margin-bottom: 10px;
-  background: #f7f9fc;
-  border: 1px solid #e8ebf1;
-  border-radius: 6px;
-}
-
-.well-editor-no {
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-  background: $primary;
-  border-radius: 4px;
-}
-
-.well-type-select {
-  width: 96px;
-}
-
-.well-value-input {
-  width: 220px;
-  max-width: 60%;
-}
-
-.well-editor-static {
-  font-size: 12px;
-  color: $muted-color;
-}
-
-.well-editor-tip {
-  margin-left: auto;
-  font-size: 12px;
-  color: $muted-color;
-}
-
-/* 96 孔板 */
-.plate-grid-wrap {
-  width: 100%;
-  overflow-x: auto;
-  border: 1px solid #dcdfe6;
-  border-radius: 6px;
-  user-select: none;
-}
-
-.plate-grid {
-  width: 100%;
-  min-width: 560px;
-  border-collapse: collapse;
-  table-layout: fixed;
-  background: #fff;
-
-  th,
-  td {
-    border: 1px solid #e6e9ef;
-  }
-
-  thead th {
-    height: 26px;
-    font-size: 11px;
-    font-weight: 600;
-    color: $label-color;
-    background: #f5f7fa;
-  }
-
-  .corner {
-    width: 26px;
-  }
-
-  .row-head {
-    width: 26px;
-    font-size: 11px;
-    font-weight: 600;
-    color: $label-color;
-    background: #f5f7fa;
-  }
-}
-
-.well-cell {
-  height: 40px;
-  padding: 2px;
-  text-align: center;
-  vertical-align: middle;
-  cursor: pointer;
-  transition: box-shadow 0.12s ease;
-
-  .well-text {
-    display: block;
-    overflow: hidden;
-    font-size: 10px;
-    line-height: 1.2;
-    color: #475569;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &.well-sample { background: #f4f9ff; }
-  &.well-pc { background: #fff2e6; }
-  &.well-nc { background: #eef2ff; }
-  &.well-iso { background: #eafbf1; }
-  &.well-tag { background: #f3effe; }
-  &.well-blank { background: #fbfcfe; }
-
-  &.well-pc .well-text,
-  &.well-nc .well-text,
-  &.well-iso .well-text,
-  &.well-tag .well-text {
-    font-weight: 700;
-    color: $title-color;
-  }
-
-  /* 孔位交互态：拖选预览 / 正式选中 */
-  $well-hover-border:rgba(111, 183, 255, 0.8);
-  $well-selected-border:rgba(62, 158, 255, 0.8);
-
-  &.is-drag-preview:not(.is-selected) {
-    box-shadow: inset 0 0 0 1px $well-hover-border;
-  }
-
-  &.is-selected {
-    box-shadow: inset 0 0 0 1px $well-selected-border;
-  }
 }
 
 /* 细胞板列视图（横向泳道） */

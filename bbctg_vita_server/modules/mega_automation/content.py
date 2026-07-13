@@ -19,6 +19,18 @@ def clean_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def build_cell_key(barcode: Any, column_no: Any) -> str:
+    return f"{clean_text(barcode)}|{clean_text(column_no)}"
+
+
+def split_cell_key(value: Any) -> tuple[str, str] | None:
+    key = clean_text(value)
+    if "|" not in key:
+        return None
+    barcode, column_no = key.split("|", 1)
+    return barcode, column_no
+
+
 def safe_list(value: Any) -> list:
     return value if isinstance(value, list) else []
 
@@ -238,11 +250,12 @@ def canonicalize_sample_cell_keys(
             continue
         remapped: list[str] = []
         for key in selected_cell_keys(plate):
-            if "|" not in key:
+            parts = split_cell_key(key)
+            if not parts:
                 continue
-            barcode, column_no = key.split("|", 1)
+            barcode, column_no = parts
             canonical = alias_to_canonical.get(barcode, barcode)
-            remapped.append(f"{canonical}|{column_no}")
+            remapped.append(build_cell_key(canonical, column_no))
         # 去重且保序
         seen: set[str] = set()
         unique_keys: list[str] = []
@@ -523,7 +536,7 @@ def validate_pc_refs(content: dict[str, Any]) -> list[dict[str, str]]:
 def validate_sample_cell_refs(sample_plates: list[Any], cell_plates: list[Any]) -> list[dict[str, str]]:
     """样本板必须选择至少一个有效细胞列。"""
     named_cells = {
-        f"{clean_text(cell.get('cell_plate_barcode'))}|{cell.get('column_no')}"
+        build_cell_key(cell.get("cell_plate_barcode"), cell.get("column_no"))
         for cell in iter_cell_columns(cell_plates)
     }
     issues: list[dict[str, str]] = []

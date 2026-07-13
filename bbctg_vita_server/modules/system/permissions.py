@@ -151,7 +151,7 @@ def _build_sys_user_context(db: Session, user: SysUser) -> UserContext:
     # Effective permissions must stay limited to roles, permission bundles, and user overrides.
     roles = _get_user_role_codes(db, user.id)
     if user.is_superuser:
-        permissions = _get_all_permission_codes(db) or ALL_FALLBACK_CODES
+        permissions = sorted(set(_get_all_permission_codes(db)) | set(ALL_FALLBACK_CODES))
     else:
         permissions = _get_role_permissions(db, user.id)
         allow_codes, deny_codes = _get_user_overrides(db, user.id)

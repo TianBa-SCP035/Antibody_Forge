@@ -90,14 +90,14 @@ paused
 
 ## 5. Payload
 
-Payload 在发送时从当前 `content` 动态生成：
+Payload 沿用工单的平级数据结构：
 
-1. 按项目号和靶点分组样本板；
-2. 根据每块样本板的 `cell_keys` 找到对应细胞列；
-3. 生成 `cell_board_infos` 和 `detect_board_infos`；
-4. 写入样本板条码、孔位信息、PC 信息和工单优先级。
+- `pc_infos`、`sample_plates`、`cell_plates` 各保存一次；
+- 样本板通过 `cell_keys` 引用需要使用的细胞板列；
+- 发送时补充 `dispatch_id`、订单编号、名称、检测类型和优先级；
+- 不提前展开重复的“样本板 × 细胞列”任务，设备可按 `cell_keys` 生成执行任务。
 
-当前阶段不生成或持久化检测板条码。
+当前阶段不生成或持久化检测板条码，也不发送仅供系统内部使用的状态、摘要和数据库 ID。
 
 ## 6. API
 

@@ -8,6 +8,8 @@ const routes: RouteRecordRaw[] = [
     path: '/mega-automation',
     redirect: '/mega-automation/flow-work-orders',
     meta: {
+      authority: ['mega.page.flow_work_order'],
+      featureCode: 'menu.mega_automation',
       icon: 'lucide:workflow',
       order: 50,
       title: '镁伽自动化',
@@ -17,8 +19,10 @@ const routes: RouteRecordRaw[] = [
         name: 'MegaFlowWorkOrderList',
         path: '/mega-automation/flow-work-orders',
         component: () =>
-          import('#/views/MegaAutomation/FlowWorkOrderList.vue'),
+          import('#/views/MegaAutomation/FlowWorkOrder/FlowWorkOrderList.vue'),
         meta: {
+          authority: ['mega.page.flow_work_order'],
+          featureCode: 'menu.mega_automation.flow_work_orders',
           icon: 'lucide:clipboard-list',
           keepAlive: true,
           tabGroup: MEGA_FLOW_ORDER_TAB_GROUP,
@@ -29,8 +33,9 @@ const routes: RouteRecordRaw[] = [
         name: 'MegaFlowWorkOrderDetail',
         path: '/mega-automation/flow-work-orders/detail',
         component: () =>
-          import('#/views/MegaAutomation/FlowWorkOrderDetail.vue'),
+          import('#/views/MegaAutomation/FlowWorkOrder/FlowWorkOrderDetail.vue'),
         meta: {
+          authority: ['mega.page.flow_work_order'],
           hideInMenu: true,
           icon: 'lucide:file-text',
           keepAlive: true,

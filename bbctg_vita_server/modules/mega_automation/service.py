@@ -5,7 +5,7 @@ import json
 from typing import Any
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
 
@@ -64,6 +64,7 @@ PRIORITIES = [
 PRIORITY_VALUES = {item["value"] for item in PRIORITIES}
 
 EDITABLE_STATUSES = frozenset({"draft", "validated", "failed", "execution_failed"})
+ACTIVE_EXECUTION_STATUSES = frozenset({"sent", "running"})
 PAUSED_CHANGE_CONFIRM_MESSAGE = (
     "工单内容已变更。确认后将使此前有效的下发记录失效，且无法再通过「继续」恢复为原发送状态。"
 )
@@ -94,9 +95,24 @@ def _ensure_not_cancelled(order: MegaFlowWorkOrder) -> None:
         raise ValueError("工单已完成，不可再操作")
 
 
+def _get_confirmed_paused_dispatch(
+    db: Session,
+    order: MegaFlowWorkOrder,
+    *,
+    error_message: str,
+    missing_message: str | None = None,
+) -> MegaFlowWorkOrderDispatch:
+    current = get_current_dispatch(db, order.id)
+    if not current:
+        raise ValueError(missing_message or error_message)
+    if normalize_pause_state(current.pause_state) != "paused":
+        raise ValueError(error_message)
+    return current
+
+
 def _ensure_editable(order: MegaFlowWorkOrder) -> None:
     _ensure_not_cancelled(order)
-    if order.status in {"sent", "running"}:
+    if order.status in ACTIVE_EXECUTION_STATUSES:
         raise ValueError("已发送工单请先停止后再修改")
     if order.status == "paused":
         raise ValueError("已暂停工单请使用校验确认修改，不能直接保存")
@@ -271,9 +287,12 @@ def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     if cell_plate_barcode:
         stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.cell_plate_barcodes, cell_plate_barcode))
 
-    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    total = db.scalar(
+        stmt.with_only_columns(func.count(), maintain_column_froms=True).order_by(None)
+    ) or 0
     rows = db.scalars(
-        stmt.order_by(MegaFlowWorkOrder.updated_at.desc(), MegaFlowWorkOrder.id.desc())
+        stmt.options(defer(MegaFlowWorkOrder.content))
+        .order_by(MegaFlowWorkOrder.updated_at.desc(), MegaFlowWorkOrder.id.desc())
         .offset((page - 1) * limit)
         .limit(limit)
     ).all()
@@ -316,14 +335,43 @@ def _validate_from_db(order: MegaFlowWorkOrder) -> dict[str, Any]:
     return {"valid": not errors, "errors": errors, "issues": issues}
 
 
+def _paused_validation_result(
+    *,
+    valid: bool,
+    errors: list[str] | None = None,
+    issues: list[dict[str, str]] | None = None,
+    needs_confirm: bool = False,
+    content_changed: bool = False,
+    can_resume: bool = False,
+    saved: bool = False,
+    message: str = "",
+    item: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "valid": valid,
+        "errors": errors or [],
+        "issues": issues or [],
+        "needs_confirm": needs_confirm,
+        "content_changed": content_changed,
+        "can_resume": can_resume,
+        "saved": saved,
+        "message": message,
+    }
+    if item is not None:
+        result["item"] = item
+    return result
+
+
 def _validate_paused(
     db: Session,
     order: MegaFlowWorkOrder,
     data: dict[str, Any],
 ) -> dict[str, Any]:
-    current = get_current_dispatch(db, order.id)
-    if not current or normalize_pause_state(current.pause_state) != "paused":
-        raise ValueError("设备尚未完成暂停，暂不可编辑或校验")
+    current = _get_confirmed_paused_dispatch(
+        db,
+        order,
+        error_message="设备尚未完成暂停，暂不可编辑或校验",
+    )
     payload = safe_dict(data.get("payload"))
     if not payload:
         raise ValueError("暂停校验需要提交当前编辑内容")
@@ -333,61 +381,37 @@ def _validate_paused(
     issues = collect_validation_issues(payload, order)
     errors = [item["message"] for item in issues]
     if errors:
-        return {
-            "valid": False,
-            "errors": errors,
-            "issues": issues,
-            "needs_confirm": False,
-            "content_changed": False,
-            "can_resume": False,
-            "saved": False,
-            "message": "",
-        }
+        return _paused_validation_result(valid=False, errors=errors, issues=issues)
 
     local_hash = compute_hash_from_payload(payload, order)
     baseline_hash = current.content_hash_at_send
 
     if local_hash == baseline_hash:
-        return {
-            "valid": True,
-            "errors": [],
-            "issues": [],
-            "needs_confirm": False,
-            "content_changed": False,
-            "can_resume": True,
-            "saved": False,
-            "message": "",
-            "item": get_work_order_detail(db, order.id),
-        }
+        return _paused_validation_result(
+            valid=True,
+            can_resume=True,
+            item=get_work_order_detail(db, order.id),
+        )
 
     if not confirm_revoke:
-        return {
-            "valid": True,
-            "errors": [],
-            "issues": [],
-            "needs_confirm": True,
-            "content_changed": True,
-            "can_resume": False,
-            "saved": False,
-            "message": PAUSED_CHANGE_CONFIRM_MESSAGE,
-        }
+        return _paused_validation_result(
+            valid=True,
+            needs_confirm=True,
+            content_changed=True,
+            message=PAUSED_CHANGE_CONFIRM_MESSAGE,
+        )
 
     _apply_payload_to_order(order, payload)
     void_open_dispatches(db, order.id)
     order.status = "validated"
     order.error_message = None
     db.commit()
-    return {
-        "valid": True,
-        "errors": [],
-        "issues": [],
-        "needs_confirm": False,
-        "content_changed": True,
-        "can_resume": False,
-        "saved": True,
-        "message": "",
-        "item": get_work_order_detail(db, order.id),
-    }
+    return _paused_validation_result(
+        valid=True,
+        content_changed=True,
+        saved=True,
+        item=get_work_order_detail(db, order.id),
+    )
 
 
 def validate_work_order(db: Session, order_id: int, data: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -399,7 +423,7 @@ def validate_work_order(db: Session, order_id: int, data: dict[str, Any] | None 
         return _validate_paused(db, order, data)
 
     _check_expected_content_hash(order, data)
-    if order.status in {"sent", "running"}:
+    if order.status in ACTIVE_EXECUTION_STATUSES:
         raise ValueError("已发送工单请先停止后再校验")
     if order.status not in EDITABLE_STATUSES:
         raise ValueError(f"当前状态（{order.status}）不可校验")
@@ -432,7 +456,7 @@ def dispatch_work_order(db: Session, order_id: int, user: Any) -> dict[str, Any]
 def pause_work_order(db: Session, order_id: int) -> dict[str, Any]:
     order = _get_order_or_raise(db, int(order_id), for_update=True)
     _ensure_not_cancelled(order)
-    if order.status not in {"sent", "running"}:
+    if order.status not in ACTIVE_EXECUTION_STATUSES:
         raise ValueError("仅已发送或执行中的工单可以停止")
     request_pause_current_dispatch(db, order.id)
     order.status = "paused"
@@ -457,11 +481,12 @@ def resume_work_order(db: Session, order_id: int) -> dict[str, Any]:
     if order.status != "paused":
         raise ValueError("仅已暂停工单可以继续")
 
-    current = get_current_dispatch(db, order.id)
-    if not current:
-        raise ValueError("没有可继续的下发记录")
-    if normalize_pause_state(current.pause_state) != "paused":
-        raise ValueError("设备尚未完成暂停，暂不可继续")
+    current = _get_confirmed_paused_dispatch(
+        db,
+        order,
+        error_message="设备尚未完成暂停，暂不可继续",
+        missing_message="没有可继续的下发记录",
+    )
 
     if (order.content_hash or "") != current.content_hash_at_send:
         raise ValueError("工单内容已变更，无法继续，请使用校验确认修改")
@@ -514,8 +539,8 @@ def fail_work_order(
 ) -> dict[str, Any]:
     order = _get_order_or_raise(db, int(order_id), for_update=True)
     _ensure_not_cancelled(order)
-    if order.status not in {"sent", "running"}:
-        raise ValueError("仅已发送或执行中的工单可以标记执行失败")
+    if order.status not in {"sent", "running", "paused"}:
+        raise ValueError("仅已发送、执行中或已暂停的工单可以标记执行失败")
     error = clean_text(error_message)
     fail_current_dispatch(db, order.id)
     order.status = "execution_failed"
@@ -543,14 +568,16 @@ def cancel_work_order(db: Session, order_id: int) -> dict[str, Any]:
         raise ValueError("工单已作废")
     if order.status == "completed":
         raise ValueError("已完成工单不可作废")
-    if order.status in {"sent", "running"}:
+    if order.status in ACTIVE_EXECUTION_STATUSES:
         raise ValueError("已发送或执行中的工单请先停止后再作废")
     if not has_dispatches(db, order.id):
         raise ValueError("未发送的工单请使用删除")
     if order.status == "paused":
-        current = get_current_dispatch(db, order.id)
-        if not current or normalize_pause_state(current.pause_state) != "paused":
-            raise ValueError("设备尚未完成暂停，暂不可作废")
+        _get_confirmed_paused_dispatch(
+            db,
+            order,
+            error_message="设备尚未完成暂停，暂不可作废",
+        )
 
     void_open_dispatches(db, order.id)
     order.status = "cancelled"

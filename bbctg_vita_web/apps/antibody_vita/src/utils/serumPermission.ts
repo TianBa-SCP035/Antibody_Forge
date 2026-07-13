@@ -185,15 +185,14 @@ export function canEditTiterOrderSummary(userInfo: any, row: any): boolean {
   );
 }
 
-// TODO: 镁伽模块权限待模块开发完成后统一接入
-export function canViewMegaFlowWorkOrderPage(_userInfo: any): boolean {
-  return true;
+export function canViewMegaFlowWorkOrderPage(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'mega.page.flow_work_order');
 }
 
-export function canEditMegaFlowWorkOrder(_userInfo: any): boolean {
-  return true;
+export function canEditMegaFlowWorkOrder(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'mega.flow_work_order.edit');
 }
 
-export function canDispatchMegaFlowWorkOrder(_userInfo: any): boolean {
-  return true;
+export function canDispatchMegaFlowWorkOrder(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'mega.flow_work_order.dispatch');
 }

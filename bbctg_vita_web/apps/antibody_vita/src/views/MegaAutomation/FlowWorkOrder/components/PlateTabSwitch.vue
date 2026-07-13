@@ -78,6 +78,13 @@ export default {
     this.scheduleLayout();
     window.addEventListener('resize', this.scheduleLayout);
   },
+  activated() {
+    window.addEventListener('resize', this.scheduleLayout);
+    this.scheduleLayout();
+  },
+  deactivated() {
+    window.removeEventListener('resize', this.scheduleLayout);
+  },
   beforeUnmount() {
     window.removeEventListener('resize', this.scheduleLayout);
   },
@@ -131,9 +138,10 @@ $border-color: #e4e7ed;
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 1 1 260px;
+  flex: 0 1 auto;
+  width: max-content;
   min-width: 0;
-  max-width: 520px;
+  max-width: 513px;
   margin-left: auto;
 }
 
@@ -168,7 +176,8 @@ $border-color: #e4e7ed;
 }
 
 .plate-switch-scroll {
-  flex: 1;
+  flex: 0 1 auto;
+  width: max-content;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;

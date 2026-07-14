@@ -160,10 +160,7 @@ CREATE TABLE IF NOT EXISTS sys_feature_flag (
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
   config JSON NULL COMMENT '扩展配置',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  KEY idx_sys_feature_flag_category (category),
-  KEY idx_sys_feature_flag_enabled (enabled),
-  KEY idx_sys_feature_flag_visible (visible)
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) COMMENT='运行时功能配置（菜单可见性、功能开关、定时任务参数、站点偏好等）';
 
 CREATE TABLE IF NOT EXISTS sys_job_run_log (
@@ -485,9 +482,9 @@ VALUES
 INSERT IGNORE INTO sys_permission_api
   (permission_code, method, path_pattern, description)
 VALUES
-  ('serum.project.create', 'POST', '/api/serum/save', '新建血清项目'),
-  ('serum.project.edit', 'POST', '/api/serum/save', '编辑血清项目'),
-  ('serum.project.delete', 'POST', '/api/serum/delete', '删除血清项目'),
+  ('serum.project.create', 'POST', '/api/serum/save', '新建免疫项目'),
+  ('serum.project.edit', 'POST', '/api/serum/save', '编辑免疫项目'),
+  ('serum.project.delete', 'POST', '/api/serum/delete', '删除免疫项目'),
   ('serum.status.update', 'POST', '/api/serum/update_status', '快速修改状态'),
   ('serum.cage.update', 'POST', '/api/serum/update_cage_position', '更新笼位信息'),
   ('serum.cell.prep_status.update', 'POST', '/api/serum/project/prep_status', '更新细胞制备状态'),

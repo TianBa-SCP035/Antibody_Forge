@@ -79,6 +79,20 @@
           placeholder="靶点"
           @keyup.enter="handleFilter"
         />
+        <el-input
+          v-model="listQuery.sample_plate_barcode"
+          class="filter-item"
+          clearable
+          placeholder="样本板条码"
+          @keyup.enter="handleFilter"
+        />
+        <el-input
+          v-model="listQuery.cell_plate_barcode"
+          class="filter-item"
+          clearable
+          placeholder="细胞板条码"
+          @keyup.enter="handleFilter"
+        />
         <div class="filter-actions">
           <el-button type="primary" :icon="Search" @click="handleFilter">查询</el-button>
           <el-button :icon="Refresh" @click="resetFilter">重置</el-button>
@@ -218,7 +232,7 @@ import {
 } from '#/api/megaAutomation';
 import {
   canEditMegaFlowWorkOrder,
-} from '#/utils/serumPermission';
+} from '#/utils/megaPermission';
 import {
   orderStatusTagType,
   resolveOrderDisplayLabel,
@@ -246,6 +260,8 @@ function emptyQuery() {
     status: '',
     project_no: '',
     target: '',
+    sample_plate_barcode: '',
+    cell_plate_barcode: '',
   };
 }
 

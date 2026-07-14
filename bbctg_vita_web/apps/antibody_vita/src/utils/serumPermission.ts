@@ -184,15 +184,3 @@ export function canEditTiterOrderSummary(userInfo: any, row: any): boolean {
       isProjectOwner(userInfo, { owner: row?.immune_owner }))
   );
 }
-
-export function canViewMegaFlowWorkOrderPage(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'mega.page.flow_work_order');
-}
-
-export function canEditMegaFlowWorkOrder(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'mega.flow_work_order.edit');
-}
-
-export function canDispatchMegaFlowWorkOrder(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'mega.flow_work_order.dispatch');
-}

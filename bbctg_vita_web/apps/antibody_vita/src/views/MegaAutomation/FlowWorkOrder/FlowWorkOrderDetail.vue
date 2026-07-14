@@ -697,7 +697,7 @@ import {
 import {
   canDispatchMegaFlowWorkOrder,
   canEditMegaFlowWorkOrder,
-} from '#/utils/serumPermission';
+} from '#/utils/megaPermission';
 import {
   buildDispatchChipLabel,
   normalizePauseState,

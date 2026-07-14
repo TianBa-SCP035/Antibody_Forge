@@ -104,11 +104,13 @@ export interface FlowWorkOrderMeta {
 }
 
 export interface FlowWorkOrderListQuery {
+  cell_plate_barcode: string;
   data_type: string;
   keyword: string;
   limit: number;
   page: number;
   project_no: string;
+  sample_plate_barcode: string;
   status: string;
   target: string;
 }

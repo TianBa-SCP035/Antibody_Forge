@@ -481,7 +481,7 @@ $namespace: vben;
     // --menu-submenu-opened-background-color: hsl(var(--menu-opened));
     --menu-item-color: hsl(var(--accent-foreground));
     --menu-item-background-color: var(--menu-background-color);
-    --menu-item-hover-color: var(--menu-item-color);
+    --menu-item-hover-color: hsl(var(--primary));
     --menu-item-hover-background-color: hsl(var(--accent));
     --menu-item-active-color: hsl(var(--primary));
     --menu-item-active-background-color: hsl(var(--primary) / 15%);
@@ -536,7 +536,7 @@ $namespace: vben;
       --menu-background-color: hsl(var(--menu));
       --menu-item-color: hsl(var(--accent-foreground));
       --menu-item-background-color: var(--menu-background-color);
-      --menu-item-hover-color: var(--menu-item-color);
+      --menu-item-hover-color: hsl(var(--primary));
       --menu-item-hover-background-color: hsl(var(--accent));
       --menu-item-active-color: hsl(var(--primary));
       --menu-item-active-background-color: hsl(var(--primary) / 15%);
@@ -777,6 +777,7 @@ $namespace: vben;
 
   &:not(.is-active):hover {
     color: var(--menu-item-hover-color);
+    fill: var(--menu-item-hover-color);
     text-decoration: none;
     cursor: pointer;
     background: var(--menu-item-hover-background-color) !important;
@@ -871,14 +872,16 @@ $namespace: vben;
   }
 
   &:not(.is-active):hover {
-    //color: var(--menu-submenu-hover-color);
+    color: var(--menu-submenu-hover-color);
     text-decoration: none;
     cursor: pointer;
     background: var(--menu-submenu-hover-background-color) !important;
 
-    // svg {
-    //   fill: var(--menu-submenu-hover-color);
-    // }
+    // 只着色左侧菜单图标；勿对三角箭头设 fill（Lucide 用 stroke，fill 会填成实心色块）
+    .#{$namespace}-menu__icon {
+      color: var(--menu-submenu-hover-color);
+      fill: var(--menu-submenu-hover-color);
+    }
   }
 }
 </style>

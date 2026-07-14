@@ -100,8 +100,8 @@
       </div>
     </section>
 
-    <div v-if="backendUnavailable" class="preview-banner">
-      当前数据库尚未初始化镁伽流式工单表或权限，页面已进入预览模式。可以先查看界面结构，保存和发送需建表后使用。
+    <div v-if="listLoadError" class="preview-banner">
+      工单列表加载失败，请稍后重试或联系管理员确认接口与权限。
     </div>
 
     <el-card shadow="never" class="table-card">
@@ -298,7 +298,7 @@ export default {
         { value: 'normal', label: '普通' },
         { value: 'low', label: '低' },
       ],
-      backendUnavailable: false,
+      listLoadError: false,
       fetchSequence: 0,
       listLoaded: false,
     };
@@ -339,13 +339,13 @@ export default {
         this.list = data?.items || [];
         this.total = data?.total || 0;
         this.stats = data?.stats || {};
-        this.backendUnavailable = false;
+        this.listLoadError = false;
       } catch (error) {
         if (requestId !== this.fetchSequence) return;
         this.list = [];
         this.total = 0;
         this.stats = {};
-        this.backendUnavailable = true;
+        this.listLoadError = true;
         ElMessage.error(error?.message || '工单列表加载失败');
       } finally {
         if (requestId === this.fetchSequence) this.listLoading = false;
@@ -384,7 +384,7 @@ export default {
       return Array.isArray(value) && value.length ? value.join(', ') : '—';
     },
     canEdit() {
-      return this.backendUnavailable || canEditMegaFlowWorkOrder(this.currentUserInfo);
+      return canEditMegaFlowWorkOrder(this.currentUserInfo);
     },
     createDraft() {
       if (!this.canEdit()) {

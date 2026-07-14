@@ -38,6 +38,9 @@ const routes: RouteRecordRaw[] = [
           authority: ['mega.page.flow_work_order'],
           hideInMenu: true,
           icon: 'lucide:file-text',
+          // 同一详情页 query.id 变化不应拆成多个 KeepAlive 实例，否则首次保存
+          // replace 写入 id 会整页重挂载并再次全屏 loadDetail。
+          fullPathKey: false,
           keepAlive: true,
           tabGroup: MEGA_FLOW_ORDER_TAB_GROUP,
           title: '流式工单详情',

@@ -22,10 +22,6 @@ function hasAccessCode(userInfo: any, code: string): boolean {
   return codes.includes('*') || codes.includes(code);
 }
 
-export function canViewMegaFlowWorkOrderPage(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'mega.page.flow_work_order');
-}
-
 export function canEditMegaFlowWorkOrder(userInfo: any): boolean {
   return hasAccessCode(userInfo, 'mega.flow_work_order.edit');
 }

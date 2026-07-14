@@ -9,6 +9,8 @@
 *.sql.gz
 *.dump
 *.bak
+.ruff_cache/
+.pytest_cache/
 
 # === 2. 后端规则 ===
 

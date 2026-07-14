@@ -4,7 +4,7 @@
       <div class="page-header-band">
         <div>
           <h1 class="page-title">流式工单总览</h1>
-          <p class="page-subtitle">维护样本板、细胞板与检测计划，在列表中查看工单状态与摘要信息。</p>
+          <p class="page-subtitle">维护样本板、细胞板与下发状态，在列表中查看工单摘要。</p>
         </div>
         <div class="header-actions">
           <span class="total-count">共 {{ total }} 条工单</span>

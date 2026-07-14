@@ -57,6 +57,16 @@ def flow_work_order_detail(
     return _run(db, lambda: service.get_work_order_detail(db, order_id))
 
 
+@router.get("/flow-work-orders/{order_id}/active-payload")
+def flow_work_order_active_payload(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "mega.page.flow_work_order")
+    return _run(db, lambda: service.get_active_dispatch_payload(db, order_id))
+
+
 @router.post("/flow-work-orders/save")
 def flow_work_order_save(
     data: dict,

@@ -173,6 +173,16 @@ export function fetchFlowWorkOrderDetail(id: number | string, config?: RequestCo
   });
 }
 
+export function fetchActiveFlowWorkOrderPayload(id: number | string, config?: RequestConfig) {
+  return requestClient.get<{
+    dispatch: FlowWorkOrderDispatch | null;
+    payload: null | Record<string, unknown>;
+  }>(`/mega-automation/flow-work-orders/${id}/active-payload`, {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
 export function saveFlowWorkOrder(data: FlowWorkOrderSavePayload) {
   return requestClient.post<FlowWorkOrder & { unchanged?: boolean }>(
     '/mega-automation/flow-work-orders/save',

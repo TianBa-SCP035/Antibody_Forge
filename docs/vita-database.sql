@@ -516,6 +516,7 @@ VALUES
   ('mega.page.flow_work_order', 'GET', '/api/mega-automation/flow-work-orders/meta', '流式工单页面元数据'),
   ('mega.page.flow_work_order', 'POST', '/api/mega-automation/flow-work-orders/list', '流式工单列表'),
   ('mega.page.flow_work_order', 'GET', '/api/mega-automation/flow-work-orders/{order_id}', '流式工单详情'),
+  ('mega.page.flow_work_order', 'GET', '/api/mega-automation/flow-work-orders/{order_id}/active-payload', '查询当前生效下发Payload'),
   ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/save', '保存流式工单'),
   ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/validate', '校验流式工单'),
   ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/dispatch', '发送流式工单'),

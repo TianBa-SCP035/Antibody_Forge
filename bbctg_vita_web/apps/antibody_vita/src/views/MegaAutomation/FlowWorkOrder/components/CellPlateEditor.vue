@@ -298,6 +298,8 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+$border-color: #e4e7ed;
+
 .cell-plate-barcode,
 .tab-label {
   display: flex;
@@ -344,6 +346,11 @@ export default {
   :deep(.el-tabs__item) {
     padding: 0 12px;
     font-size: 13px;
+  }
+
+  /* card 选中项默认去掉底边；与拆分前 Detail 页样式一致，补回底边线 */
+  :deep(.el-tabs__item.is-active) {
+    border-bottom-color: $border-color;
   }
 }
 

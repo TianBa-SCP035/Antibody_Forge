@@ -105,6 +105,7 @@ Payload 沿用工单的平级数据结构：
 GET  /api/mega-automation/flow-work-orders/meta
 POST /api/mega-automation/flow-work-orders/list
 GET  /api/mega-automation/flow-work-orders/{order_id}
+GET  /api/mega-automation/flow-work-orders/{order_id}/active-payload
 POST /api/mega-automation/flow-work-orders/save
 POST /api/mega-automation/flow-work-orders/{order_id}/validate
 POST /api/mega-automation/flow-work-orders/{order_id}/dispatch
@@ -405,43 +406,21 @@ DSP260710482913
 
 ## 13. Payload 组织
 
-Payload 顶层包含：
+Payload 与工单 `content` 保持同一套平级结构（见第 5 节），发送时在顶层补充下发元数据：
 
 ```text
 dispatch_id
-order_infos
-```
-
-当前一次下发对应一个 `order_infos` 项，其中包含：
-
-```text
 order_no
 order_name
-priority
-project_infos
-```
-
-`project_infos` 按“项目号 + 靶点”分组。每个项目内包含二抗列表和细胞信息：
-
-```text
-project_no
 data_type
-target
-secondary_antibody
-cell_board_infos
+priority
+pc_infos
+sample_plates
+cell_plates
 ```
 
-每个细胞板列生成一个 `cell_board_infos` 项，其中的 `detect_board_infos` 来自选择了该细胞列的样本板。
-
-当前 `detect_board_infos` 只表达设备要执行的样本板与细胞列组合，包含：
-
-- 样本板条码；
-- 二抗；
-- 细胞板条码；
-- 细胞列号；
-- 96 孔信息。
-
-当前不下发检测板条码。将来如果设备协议明确要求该字段，应根据真实协议新增，不能把尚未产生的检测板条码提前持久化到工单中。
+- `sample_plates[].cell_keys` 表达「样本板 × 细胞列」任务；设备可按需自行展开，服务端不预生成嵌套的 `project_infos` / `cell_board_infos` / `detect_board_infos`。
+- 当前不下发检测板条码；若设备协议后续明确要求，再按协议新增字段，勿提前持久化到工单。
 
 ## 14. 前端页面设计
 

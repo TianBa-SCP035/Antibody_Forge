@@ -3,9 +3,10 @@
     <div class="panel-head">
       <div class="panel-head-left">
         <el-icon class="head-icon"><Files /></el-icon>
-        <span class="panel-title">样本板布局</span>
+        <span class="panel-title">{{ standalone ? (plateTitle || '样本板') : '样本板布局' }}</span>
       </div>
       <PlateTabSwitch
+        v-if="!standalone"
         :model-value="modelValue"
         :count="plateCount"
         prefix="样本板"
@@ -14,7 +15,20 @@
     </div>
 
     <div class="plate-current-bar">
-      <span class="current-code">{{ plate.barcode || `样本板 ${Number(modelValue) + 1}` }}</span>
+      <!-- 工单编辑：只展示；铺板解锁后与细胞板一致，条码可录入 -->
+      <span
+        v-if="!standalone || disabled"
+        class="current-info"
+        :class="{ 'is-empty': !hasBarcode }"
+        :title="currentBarcode"
+      >{{ currentBarcode }}</span>
+      <el-input
+        v-else
+        v-model="plate.barcode"
+        size="small"
+        class="barcode-input"
+        placeholder="请输入样本板条码"
+      />
       <div class="legend">
         <span v-for="type in wellTypeCycle" :key="'lg-' + type" class="legend-item">
           <i class="legend-dot" :class="'well-' + type.toLowerCase()"></i>
@@ -70,7 +84,7 @@
       <span v-else-if="wellDraft.content_type" class="well-editor-static">
         {{ wellTypeLabel(wellDraft.content_type) }} 孔无需编码
       </span>
-      <span class="well-editor-tip">提示：拖拽划选；右键批量切换类型</span>
+      <span v-if="!standalone" class="well-editor-tip">提示：拖拽划选；右键批量切换类型</span>
     </div>
 
     <div class="plate-grid-wrap">
@@ -156,6 +170,8 @@ export default {
     pcInfos: { type: Array, default: () => [] },
     plate: { type: Object, required: true },
     plateCount: { type: Number, default: 0 },
+    plateTitle: { type: String, default: '' },
+    standalone: Boolean,
     warningWellNos: { type: Array, default: () => [] },
   },
   emits: ['update:modelValue'],
@@ -173,6 +189,12 @@ export default {
     };
   },
   computed: {
+    hasBarcode() {
+      return !!String(this.plate?.barcode || '').trim();
+    },
+    currentBarcode() {
+      return this.hasBarcode ? String(this.plate.barcode).trim() : '请输入样本板条码';
+    },
     selectedWellSet() {
       return new Set(this.selectedWellNos);
     },
@@ -367,19 +389,35 @@ $muted-color: #909399;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   margin-bottom: 10px;
 }
 
-.current-code {
+.current-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
   font-size: 13px;
   font-weight: 600;
   color: $title-color;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &.is-empty {
+    font-weight: 400;
+    color: $muted-color;
+  }
+}
+
+.barcode-input {
+  flex: 1;
+  max-width: 280px;
 }
 
 .legend {
   display: flex;
-  flex-wrap: wrap;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
   gap: 10px;
 }
 

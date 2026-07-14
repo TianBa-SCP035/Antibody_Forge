@@ -5,7 +5,7 @@ import random
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
 
@@ -17,6 +17,8 @@ TERMINAL_DISPATCH_STATUSES = frozenset({"voided", "completed", "failed"})
 DISPATCH_ID_PREFIX = "DSP"
 DISPATCH_ID_RANDOM_DIGITS = 6
 DISPATCH_ID_RETRY_LIMIT = 30
+# 列表/状态查询不需要完整下发 JSON，默认跳过加载。
+_DISPATCH_META_DEFER = (defer(MegaFlowWorkOrderDispatch.payload),)
 
 
 def normalize_pause_state(pause_state: str | None) -> str:
@@ -27,15 +29,23 @@ def is_pause_state_idle(pause_state: str | None) -> bool:
     return normalize_pause_state(pause_state) == ""
 
 
-def get_current_dispatch(db: Session, work_order_id: int) -> MegaFlowWorkOrderDispatch | None:
-    return db.scalars(
+def get_current_dispatch(
+    db: Session,
+    work_order_id: int,
+    *,
+    include_payload: bool = False,
+) -> MegaFlowWorkOrderDispatch | None:
+    stmt = (
         select(MegaFlowWorkOrderDispatch)
         .where(
             MegaFlowWorkOrderDispatch.work_order_id == work_order_id,
             MegaFlowWorkOrderDispatch.status.notin_(TERMINAL_DISPATCH_STATUSES),
         )
         .order_by(MegaFlowWorkOrderDispatch.id.desc())
-    ).first()
+    )
+    if not include_payload:
+        stmt = stmt.options(*_DISPATCH_META_DEFER)
+    return db.scalars(stmt).first()
 
 
 def batch_current_dispatches(db: Session, work_order_ids: list[int]) -> dict[int, MegaFlowWorkOrderDispatch]:
@@ -43,6 +53,7 @@ def batch_current_dispatches(db: Session, work_order_ids: list[int]) -> dict[int
         return {}
     rows = db.scalars(
         select(MegaFlowWorkOrderDispatch)
+        .options(*_DISPATCH_META_DEFER)
         .where(
             MegaFlowWorkOrderDispatch.work_order_id.in_(work_order_ids),
             MegaFlowWorkOrderDispatch.status.notin_(TERMINAL_DISPATCH_STATUSES),
@@ -74,7 +85,9 @@ def has_dispatches(db: Session, work_order_id: int) -> bool:
 
 def void_open_dispatches(db: Session, work_order_id: int) -> None:
     rows = db.scalars(
-        select(MegaFlowWorkOrderDispatch).where(
+        select(MegaFlowWorkOrderDispatch)
+        .options(*_DISPATCH_META_DEFER)
+        .where(
             MegaFlowWorkOrderDispatch.work_order_id == work_order_id,
             MegaFlowWorkOrderDispatch.status.notin_(TERMINAL_DISPATCH_STATUSES),
         )

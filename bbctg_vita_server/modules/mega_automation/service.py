@@ -22,6 +22,7 @@ from modules.mega_automation.content import (
     safe_dict,
 )
 from modules.mega_automation.dispatch import (
+    TERMINAL_DISPATCH_STATUSES,
     acknowledge_pause_current_dispatch,
     acknowledge_resume_current_dispatch,
     batch_current_dispatches,
@@ -157,7 +158,8 @@ def _apply_content(order: MegaFlowWorkOrder, data: dict[str, Any]) -> str:
     return new_hash
 
 
-def _apply_payload_to_order(order: MegaFlowWorkOrder, data: dict[str, Any]) -> str:
+def _apply_order_data(order: MegaFlowWorkOrder, data: dict[str, Any]) -> str:
+    """写入工单列字段与 content（及派生检索字段、content_hash）。"""
     _apply_order_columns(order, data)
     return _apply_content(order, data)
 
@@ -178,19 +180,28 @@ def _apply_order_display(
     item: dict[str, Any],
     *,
     status: str,
-    current_dispatch: MegaFlowWorkOrderDispatch | None,
+    pause_state: str | None = None,
 ) -> dict[str, Any]:
-    pause_state = normalize_pause_state(current_dispatch.pause_state if current_dispatch else None)
-    item["pause_state"] = pause_state
-    item.update(_resolve_order_display(status, pause_state))
+    normalized = normalize_pause_state(pause_state)
+    item["pause_state"] = normalized
+    item.update(_resolve_order_display(status, normalized))
     return item
 
 
-def _enrich_detail(db: Session, data: dict[str, Any], order: MegaFlowWorkOrder) -> dict[str, Any]:
+def _enrich_detail(data: dict[str, Any], order: MegaFlowWorkOrder) -> dict[str, Any]:
+    """详情补充：是否有下发历史、以及当前未终止下发的 pause 显示态。"""
     dispatches = data.get("dispatches") or []
     data["has_dispatches"] = bool(dispatches)
-    latest = get_current_dispatch(db, order.id)
-    return _apply_order_display(data, status=order.status, current_dispatch=latest)
+    # dispatches 已按 id desc；与 get_current_dispatch 相同，无需再查库
+    current = next(
+        (item for item in dispatches if item.get("status") not in TERMINAL_DISPATCH_STATUSES),
+        None,
+    )
+    return _apply_order_display(
+        data,
+        status=order.status,
+        pause_state=current.get("pause_state") if current else None,
+    )
 
 
 def get_meta() -> dict[str, Any]:
@@ -217,7 +228,7 @@ def save_work_order(db: Session, data: dict[str, Any], user: Any) -> dict[str, A
             return detail
 
         previous_hash = order.content_hash
-        _apply_payload_to_order(order, data)
+        _apply_order_data(order, data)
 
         if order.status in {"validated", "execution_failed"} and previous_hash != order.content_hash:
             order.status = "draft"
@@ -227,7 +238,7 @@ def save_work_order(db: Session, data: dict[str, Any], user: Any) -> dict[str, A
         return get_work_order_detail(db, order.id)
 
     order = MegaFlowWorkOrder(status="draft", created_by=_operator_name(user))
-    _apply_payload_to_order(order, data)
+    _apply_order_data(order, data)
     db.add(order)
     order.error_message = None
     db.commit()
@@ -237,17 +248,29 @@ def save_work_order(db: Session, data: dict[str, Any], user: Any) -> dict[str, A
 def _load_dispatches(db: Session, order_id: int) -> list[dict[str, Any]]:
     rows = db.scalars(
         select(MegaFlowWorkOrderDispatch)
+        .options(defer(MegaFlowWorkOrderDispatch.payload))
         .where(MegaFlowWorkOrderDispatch.work_order_id == order_id)
         .order_by(MegaFlowWorkOrderDispatch.id.desc())
     ).all()
-    return [row.to_dict(include_payload=index == 0) for index, row in enumerate(rows)]
+    return [row.to_dict(include_payload=False) for row in rows]
 
 
 def get_work_order_detail(db: Session, order_id: int) -> dict[str, Any]:
     order = _get_order_or_raise(db, order_id)
     data = order.to_dict(include_detail=True)
     data["dispatches"] = _load_dispatches(db, order.id)
-    return _enrich_detail(db, data, order)
+    return _enrich_detail(data, order)
+
+
+def get_active_dispatch_payload(db: Session, order_id: int) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id))
+    current = get_current_dispatch(db, order.id, include_payload=True)
+    if not current:
+        return {"dispatch": None, "payload": None}
+    return {
+        "dispatch": current.to_dict(include_payload=False),
+        "payload": current.payload,
+    }
 
 
 def _json_overlaps(column, value: str):
@@ -300,7 +323,12 @@ def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     items = []
     for row in rows:
         item = row.to_dict(include_detail=False)
-        _apply_order_display(item, status=row.status, current_dispatch=current_dispatches.get(row.id))
+        current = current_dispatches.get(row.id)
+        _apply_order_display(
+            item,
+            status=row.status,
+            pause_state=current.pause_state if current else None,
+        )
         items.append(item)
     return {
         "items": items,
@@ -401,7 +429,7 @@ def _validate_paused(
             message=PAUSED_CHANGE_CONFIRM_MESSAGE,
         )
 
-    _apply_payload_to_order(order, payload)
+    _apply_order_data(order, payload)
     void_open_dispatches(db, order.id)
     order.status = "validated"
     order.error_message = None

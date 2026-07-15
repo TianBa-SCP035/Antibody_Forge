@@ -472,6 +472,7 @@ function formatLogTargetType(log: SystemOperationLog) {
     cell: '细胞库存',
     feature: '系统功能',
     file: '文件',
+    flow_work_order: '工单',
     mouse: '小鼠数据',
     operation_log: '操作日志',
     permission: '权限',

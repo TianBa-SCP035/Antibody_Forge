@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db.session import SessionLocal
+from models.mega_automation import MegaFlowWorkOrder
 from models.system import SysOperationLog, SysPermission, SysPermissionApi, SysPermissionBundle, SysRole, SysUser
 from modules.auth.security import decode_access_token
 
@@ -16,6 +17,7 @@ WRITE_METHODS = {"DELETE", "PATCH", "POST", "PUT"}
 SKIP_PATHS = {"/api/system/operation_logs"}
 TARGET_ID_KEYS = (
     "id",
+    "order_id",
     "project_id",
     "experiment_id",
     "file_id",
@@ -30,6 +32,7 @@ TARGET_LABEL_KEYS = (
     "name",
     "username",
     "code",
+    "order_no",
     "project_name",
     "experiment_id",
     "file_name",
@@ -178,12 +181,20 @@ def _build_audit_context(request: Request, body_data: dict) -> dict | None:
         )
         if not permission:
             return None
+        # 仅记录写操作意图；page/view 权限挂在 POST list 上时不要进操作日志
+        if permission.action in {"view", "page"} or permission.type == "page":
+            return None
         user = _get_request_user(db, request)
         path_params = _extract_path_params(mapping.path_pattern, request.url.path)
         operation_name = _resolve_operation_name(mapping.description, permission.name, request.url.path, body_data)
         operation_type = _resolve_operation_type(request.url.path, permission.action, body_data)
         target_id = _extract_target_id(body_data, dict(request.query_params), path_params)
-        target_label = _resolve_target_label(db, permission.resource, target_id, _extract_target_label(body_data))
+        # 流式工单目标只记订单编号，不记订单名称
+        if permission.resource == "flow_work_order":
+            label_fallback = str(body_data["order_no"]) if body_data.get("order_no") else None
+        else:
+            label_fallback = _extract_target_label(body_data)
+        target_label = _resolve_target_label(db, permission.resource, target_id, label_fallback)
         return {
             "action": permission.code,
             "operation_name": operation_name,
@@ -289,6 +300,10 @@ def _resolve_target_label(db: Session, resource: str | None, target_id: str | No
             bundle = db.scalar(select(SysPermissionBundle).where(SysPermissionBundle.code == target_id))
         if bundle:
             return bundle.name or bundle.code
+    if resource == "flow_work_order" and target_id and target_id.isdigit():
+        order = db.get(MegaFlowWorkOrder, int(target_id))
+        if order and order.order_no:
+            return order.order_no
     return fallback
 
 
@@ -313,12 +328,16 @@ def _resolve_operation_name(description: str | None, permission_name: str, path:
             if any(key in body_data for key in ("test_dates", "serum_status", "remark")):
                 return "保存效价工单检测记录"
             return "保存效价工单批次信息"
+        if path == "/api/mega-automation/flow-work-orders/save":
+            return "编辑流式工单" if is_edit else "新建流式工单"
     return description or permission_name
 
 
 def _resolve_operation_type(path: str, permission_action: str | None, body_data: dict) -> str:
     if path.endswith("/delete"):
         return "delete"
+    if path.endswith("/cancel"):
+        return "cancel"
     if path.endswith("/save"):
         return "update" if body_data.get("id") else "create"
     if "reset_password" in path:
@@ -345,9 +364,14 @@ def _fill_target_from_response(context: dict, response_body: bytes) -> None:
         if value not in (None, ""):
             context["target_id"] = str(value)
     if not context.get("target_label"):
-        label = _extract_target_label(payload)
-        if label:
-            context["target_label"] = label
+        if context.get("target_type") == "flow_work_order":
+            order_no = payload.get("order_no")
+            if order_no not in (None, ""):
+                context["target_label"] = str(order_no)
+        if not context.get("target_label"):
+            label = _extract_target_label(payload)
+            if label:
+                context["target_label"] = label
 
 
 def _extract_error_message(data: dict) -> str | None:

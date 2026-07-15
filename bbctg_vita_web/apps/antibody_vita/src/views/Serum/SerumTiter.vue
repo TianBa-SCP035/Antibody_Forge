@@ -177,7 +177,7 @@
               <template #header>
                 <div class="card-header space-between">
                   <span class="table-title"><el-icon><Aim /></el-icon> 效价检测靶标</span>
-                  <el-button type="text" class="add-btn" :disabled="!canEditTiter()" @click="handleAddTarget">+ 新增</el-button>
+                  <el-button link class="add-btn" :disabled="!canEditTiter()" @click="handleAddTarget">+ 新增</el-button>
                 </div>
               </template>
               <el-table :data="titer_targets" size="small" border class="refined-table" style="width: 100%">
@@ -233,7 +233,7 @@
                 </el-table-column>
                 <el-table-column label="操作" width="50px" align="center">
                   <template #default="scope">
-                    <el-button type="text" class="danger-text" :disabled="!canEditTiter()" @click="handleDeleteTarget(scope.$index)">
+                    <el-button link class="danger-text" :disabled="!canEditTiter()" @click="handleDeleteTarget(scope.$index)">
                       <el-icon><Delete /></el-icon>
                     </el-button>
                   </template>
@@ -248,7 +248,7 @@
               <template #header>
                 <div class="card-header space-between">
                   <span class="table-title"><el-icon><Medal /></el-icon> 阳性对照</span>
-                  <el-button type="text" class="add-btn" :disabled="!canEditTiter()" @click="handleAddPc">+ 新增</el-button>
+                  <el-button link class="add-btn" :disabled="!canEditTiter()" @click="handleAddPc">+ 新增</el-button>
                 </div>
               </template>
               <el-table :data="titer_pcs" size="small" border class="refined-table" style="width: 100%">
@@ -274,7 +274,7 @@
                 </el-table-column>
                 <el-table-column label="操作" width="50px" align="center">
                   <template #default="scope">
-                     <el-button type="text" class="danger-text" :disabled="!canEditTiter()" @click="handleDeletePc(scope.$index)">
+                     <el-button link class="danger-text" :disabled="!canEditTiter()" @click="handleDeletePc(scope.$index)">
                        <el-icon><Delete /></el-icon>
                      </el-button>
                   </template>

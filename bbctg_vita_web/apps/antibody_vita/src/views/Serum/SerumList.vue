@@ -9,7 +9,7 @@
             高级操作
           </div>
 
-          <el-button type="text" :icon="Close" @click="showAdvancedOps = false" />
+          <el-button link :icon="Close" @click="showAdvancedOps = false" />
         </div>
 
         <div class="ops-actions">

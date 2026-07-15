@@ -168,7 +168,7 @@
         <template #header>
           <div class="clearfix small-header">
             <span>2. 抗原信息 (Antigens)</span>
-                <el-button style="float: right; padding: 3px 0" type="text" @click="addAntigen">添加抗原</el-button>
+                <el-button style="float: right; padding: 3px 0" link @click="addAntigen">添加抗原</el-button>
           </div>
         </template>
         <el-table :data="postForm.antigens" border size="small" style="width: 100%">
@@ -265,7 +265,7 @@
         <template #header>
           <div class="clearfix small-header">
             <span>3. 小鼠分组 (Mouse Groups)</span>
-            <el-button style="float: right; padding: 3px 0" type="text" @click="addMouseGroup">添加分组</el-button>
+            <el-button style="float: right; padding: 3px 0" link @click="addMouseGroup">添加分组</el-button>
           </div>
         </template>
         <el-table :data="postForm.mouse_groups" border size="small" style="width: 100%">
@@ -364,7 +364,7 @@
       <template #header>
         <div class="clearfix small-header">
           <span>4. 免疫方案 (Immunization Scheme)</span>
-          <el-button v-if="postForm.mouse_groups.length > 0" style="float: right; padding: 3px 0" type="text" @click="addStepToGroup(activeGroupTab)">添加步骤</el-button>
+          <el-button v-if="postForm.mouse_groups.length > 0" style="float: right; padding: 3px 0" link @click="addStepToGroup(activeGroupTab)">添加步骤</el-button>
         </div>
       </template>
       
@@ -565,7 +565,7 @@
             <el-col :span="24" style="margin-bottom: 20px;">
                 <div class="sub-header">
                     <span>检测标靶</span>
-                    <el-button type="text" @click="addTarget">
+                    <el-button link @click="addTarget">
                       <el-icon><Plus /></el-icon>
                     </el-button>
                 </div>
@@ -631,7 +631,7 @@
             <el-col :span="24">
                  <div class="sub-header">
                     <span>阳性对照</span>
-                    <el-button type="text" @click="addPC">
+                    <el-button link @click="addPC">
                       <el-icon><Plus /></el-icon>
                     </el-button>
                 </div>

@@ -18,7 +18,7 @@
         <el-radio-button
           v-for="index in count"
           :key="prefix + '-' + index"
-          :label="String(index - 1)"
+          :value="String(index - 1)"
         >{{ prefix }}-{{ index }}</el-radio-button>
       </el-radio-group>
     </div>

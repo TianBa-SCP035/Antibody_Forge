@@ -187,12 +187,12 @@
                   <el-radio-button
                     v-for="opt in absorbanceViewOptions"
                     :key="opt.index"
-                    :label="opt.index"
+                    :value="opt.index"
                   >
                     {{ opt.label }}
                   </el-radio-button>
                 </el-radio-group>
-                <el-button type="text" class="delete-btn" :disabled="!canMutate" @click="handleDelete">
+                <el-button link class="delete-btn" :disabled="!canMutate" @click="handleDelete">
                   <el-icon><Delete /></el-icon>
                   <span>删除此板</span>
                 </el-button>

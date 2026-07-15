@@ -32,7 +32,7 @@
           </span>
           <el-button
             class="copy-btn"
-            type="text"
+            link
             :disabled="!postForm.project_code"
             @click="copyText(postForm.project_code)"
           >

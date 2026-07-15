@@ -606,6 +606,7 @@
 
 <script>
 import { DataAnalysis, Document, Download, Plus, Refresh, Search, TrendCharts } from '@element-plus/icons-vue';
+import { markRaw } from 'vue';
 import * as XLSX from 'xlsx';
 import {
   ElButton,
@@ -861,12 +862,13 @@ export default {
       ASSAY_FILTER_ELISA,
       ASSAY_FILTER_FACS_ELISA,
       SERUM_STATUS_OPTIONS,
-      DataAnalysis,
-      Document,
-      Download,
-      Refresh,
-      Search,
-      TrendCharts,
+      DataAnalysis: markRaw(DataAnalysis),
+      Document: markRaw(Document),
+      Download: markRaw(Download),
+      Refresh: markRaw(Refresh),
+      Search: markRaw(Search),
+      TrendCharts: markRaw(TrendCharts),
+      _filterMethodCache: Object.create(null),
       createDialogVisible: false,
       dialogEditOrder: null,
       list: [],
@@ -1256,9 +1258,6 @@ export default {
       return { project_code: value };
     },
     filterMethodFor(queryKey) {
-      if (!this._filterMethodCache) {
-        this._filterMethodCache = {};
-      }
       if (!this._filterMethodCache[queryKey]) {
         this._filterMethodCache[queryKey] = (query) => {
           this[queryKey] = query;

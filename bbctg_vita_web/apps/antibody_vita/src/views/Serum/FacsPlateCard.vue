@@ -245,11 +245,11 @@
                 <span>96孔板图片预览</span>
               </div>
               <div class="header-right">
-                <el-button type="text" class="delete-btn" :disabled="!canMutate" @click="handleDelete">
+                <el-button link class="delete-btn" :disabled="!canMutate" @click="handleDelete">
                   <el-icon><Delete /></el-icon>
                   <span>删除此板</span>
                 </el-button>
-                <el-button type="text" class="mask-toggle-btn" :disabled="!canMutate" @click="handleMaskToggle" @contextmenu.prevent.stop="handleMaskContextMenu">
+                <el-button link class="mask-toggle-btn" :disabled="!canMutate" @click="handleMaskToggle" @contextmenu.prevent.stop="handleMaskContextMenu">
                   <el-icon><Setting /></el-icon>
                   <span>仪器类型: {{ plateData.instrument_type || '国产' }}</span>
                 </el-button>

@@ -282,10 +282,11 @@ export default {
     ElTable,
     ElTableColumn,
     ElTag,
+    Plus,
   },
   setup() {
     const userStore = useUserStore();
-    return { userStore, Plus, Refresh, Search };
+    return { userStore, Refresh, Search };
   },
   data() {
     return {

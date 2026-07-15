@@ -253,7 +253,7 @@ export default {
       await this.$nextTick();
       const tbody = this.resolveTable()?.$el?.querySelector('.el-table__body-wrapper tbody');
       if (!tbody) return;
-      const Sortable = (await import('sortablejs/modular/sortable.complete.esm.js')).default;
+      const Sortable = (await import('sortablejs')).default;
       if (initToken !== this.sortableInitToken || !tbody.isConnected) return;
       this.sortable = Sortable.create(tbody, {
         animation: 200,

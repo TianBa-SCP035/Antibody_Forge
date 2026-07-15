@@ -555,7 +555,7 @@ export default {
       const tbody = table.$el?.querySelector('.el-table__body-wrapper tbody');
       if (!tbody) return;
 
-      const SortableModule = await import('sortablejs/modular/sortable.complete.esm.js');
+      const SortableModule = await import('sortablejs');
       if (initToken !== this.samplePlateSortableInitToken || !tbody.isConnected) return;
       const Sortable = SortableModule.default;
       this.samplePlateSortable = Sortable.create(tbody, {

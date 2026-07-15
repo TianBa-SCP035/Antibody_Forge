@@ -195,7 +195,7 @@
             </el-table-column>
             <el-table-column label="抗原类型" width="100">
                 <template #default="{ row }">
-                    <el-select v-model="row.antigen_type" size="small" filterable allow-create default-first-option placeholder="" style="width:100%">
+                    <el-select v-model="row.antigen_type" size="small" filterable allow-create default-first-option placeholder="" style="width:100%" @change="handleAntigenTypeChange(row)">
                         <el-option label="四聚体" value="四聚体" />
                         <el-option label="细胞" value="细胞" />
                         <el-option label="DNA" value="DNA" />
@@ -399,6 +399,8 @@
                             <el-option label="六免" value="六免" />
                             <el-option label="七免" value="七免" />
                             <el-option label="八免" value="八免" />
+                            <el-option label="九免" value="九免" />
+                            <el-option label="十免" value="十免" />
                             <el-option label="采血" value="采血" />
                             <el-option label="冲击" value="冲击" />
                         </el-select>
@@ -747,6 +749,79 @@ import {
 } from '#/utils/serumPermission'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
+const MIAN_NUMERALS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
+
+function mianNumber(stageName) {
+  const name = (stageName || '').trim()
+  const idx = MIAN_NUMERALS.findIndex((n) => name === `${n}免`)
+  return idx >= 0 ? idx + 1 : null
+}
+
+function isMianStage(stageName) {
+  return mianNumber(stageName) !== null
+}
+
+function mianStageName(n) {
+  if (n < 1 || n > 10) return ''
+  return `${MIAN_NUMERALS[n - 1]}免`
+}
+
+function pickStepsForGroup(steps, groupId) {
+  if (!steps || !groupId) return []
+  return steps
+    .filter((s) => s.group_id === groupId)
+    .slice()
+    .sort((a, b) => {
+      const orderDiff = (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0)
+      if (orderDiff !== 0) return orderDiff
+      const aid = Number(a.step_id)
+      const bid = Number(b.step_id)
+      if (Number.isFinite(aid) && Number.isFinite(bid) && aid !== bid) return aid - bid
+      return 0
+    })
+}
+
+function reindexGroupSortOrder(steps, groupId) {
+  pickStepsForGroup(steps, groupId).forEach((step, index) => {
+    step.sort_order = index
+  })
+}
+
+function nextAppendStage(groupSteps) {
+  const names = groupSteps.map((s) => (s.stage_name || '').trim())
+  const mianNums = names.map((name) => mianNumber(name)).filter((n) => n !== null)
+  const maxMian = mianNums.length ? Math.max(...mianNums) : 0
+
+  if (maxMian === 0) return '一免'
+
+  const readyForBlood =
+    maxMian === 4 &&
+    !names.includes('采血') &&
+    [1, 2, 3, 4].every((n) => mianNums.includes(n))
+  if (readyForBlood) return '采血'
+
+  if (maxMian >= 10) return ''
+
+  return mianStageName(maxMian + 1)
+}
+
+function resortMianStepsInGroup(steps, groupId) {
+  const ordered = pickStepsForGroup(steps, groupId)
+  const sortedMian = ordered
+    .filter((s) => isMianStage(s.stage_name))
+    .sort((a, b) => (mianNumber(a.stage_name) || 0) - (mianNumber(b.stage_name) || 0))
+
+  let mianIdx = 0
+  const rearranged = ordered.map((step) => {
+    if (!isMianStage(step.stage_name)) return step
+    return sortedMian[mianIdx++] ?? step
+  })
+
+  rearranged.forEach((step, index) => {
+    step.sort_order = index
+  })
+}
+
 export default {
   name: 'SerumEdit',
   components: {
@@ -960,22 +1035,20 @@ export default {
         }
     },
     getStepsForGroup(groupId) {
-        if (!this.postForm.steps) return []
-        return this.postForm.steps.filter(s => s.group_id === groupId)
+        return pickStepsForGroup(this.postForm.steps, groupId)
     },
     addStepToGroup(groupId) {
         if (!groupId) {
             ElMessage.warning('请先选择一个分组')
             return
         }
-        
-        const groupSteps = this.postForm.steps.filter(s => s.group_id === groupId)
-        const stageSequence = ['一免', '二免', '三免', '四免', '采血', '冲击']
-        
-        const nextStageName = stageSequence[groupSteps.length] || ''
-        
+
+        const groupSteps = this.getStepsForGroup(groupId)
+        const nextStageName = nextAppendStage(groupSteps)
+
         const newStep = {
             group_id: groupId,
+            sort_order: groupSteps.length,
             stage_name: nextStageName,
             day_relative: '',
             date_actual: '',
@@ -988,7 +1061,7 @@ export default {
             injection_site: '颈部+尾根部',
             remark: ''
         }
-        
+
         if (nextStageName === '采血') {
             newStep.antigen_id = ['N/A']
             newStep.antigen_dose = '-'
@@ -998,8 +1071,9 @@ export default {
             newStep.route = '-'
             newStep.injection_site = '-'
         }
-        
+
         this.postForm.steps.push(newStep)
+        reindexGroupSortOrder(this.postForm.steps, groupId)
         this.recalculateGroupDates(groupId, groupSteps.length)
     },
     openRemarkDialog(row) {
@@ -1029,7 +1103,7 @@ export default {
         if (targets.length === 0) return ElMessage.warning('请选择至少一个目标分组')
         if (targets.includes(from)) return ElMessage.warning('目标分组不能包含来源分组')
 
-        const fromSteps = this.postForm.steps.filter(s => s.group_id === from)
+        const fromSteps = this.getStepsForGroup(from)
         if (fromSteps.length === 0) return ElMessage.warning(`来源分组 ${from} 没有步骤可复制`)
 
         if (this.overwriteSteps) {
@@ -1039,18 +1113,19 @@ export default {
 
         const clonedAll = []
         for (const to of targets) {
-            const cloned = fromSteps.map(s => {
-                const { step_id, ...rest } = s || {}
-                return { 
-                    ...JSON.parse(JSON.stringify(rest)), 
+            const cloned = fromSteps.map((s) => {
+                const { step_id, sort_order, ...rest } = s || {}
+                return {
+                    ...JSON.parse(JSON.stringify(rest)),
                     step_id: null,
-                    group_id: to 
+                    group_id: to
                 }
             })
             clonedAll.push(...cloned)
         }
 
         this.postForm.steps.push(...clonedAll)
+        targets.forEach((to) => reindexGroupSortOrder(this.postForm.steps, to))
         ElMessage.success(`已将 ${from} 的方案复制到 ${targets.join(', ')}`)
         this.copyDialogVisible = false
     },
@@ -1060,6 +1135,7 @@ export default {
         const index = this.postForm.steps.indexOf(row)
         if (index > -1) {
             this.postForm.steps.splice(index, 1)
+            reindexGroupSortOrder(this.postForm.steps, row.group_id)
             this.recalculateGroupDates(row.group_id, groupIndex > -1 ? groupIndex : 0)
         }
     },
@@ -1070,6 +1146,17 @@ export default {
         } else if (antigen.adjuvant_type === 'ADDAVAX') {
             step.adjuvant_name = 'ADDAVAX'
         }
+    },
+    applyAntigenRouteByType(step, antigen) {
+        if (!antigen || step.route === '-') return
+        if (antigen.antigen_type === 'LNP') {
+            step.route = 'i.m.'
+        } else if (antigen.antigen_type === 'DNA') {
+            step.route = 'DNA'
+        } else {
+            return
+        }
+        this.handleRouteChange(step)
     },
     handleAntigenChange(row, groupId, rowIndex) {
         let antigenIds = Array.isArray(row.antigen_id) ? [...row.antigen_id] : []
@@ -1102,11 +1189,7 @@ export default {
             if (firstAntigenId) {
                 const antigen = this.postForm.antigens.find(a => String(a.antigen_id) === String(firstAntigenId))
                 this.updateStepAdjuvant(row, antigen)
-                
-                if (antigen && antigen.antigen_type === 'LNP') {
-                    row.route = 'i.m.'
-                    row.injection_site = '大腿肌肉'
-                }
+                this.applyAntigenRouteByType(row, antigen)
             }
         }
         
@@ -1137,11 +1220,17 @@ export default {
             if (firstAntigenId) {
                 const antigen = this.postForm.antigens.find(a => String(a.antigen_id) === String(firstAntigenId))
                 this.updateStepAdjuvant(row, antigen)
+                this.applyAntigenRouteByType(row, antigen)
             }
         }
+        if (isMianStage(row.stage_name)) {
+            resortMianStepsInGroup(this.postForm.steps, row.group_id)
+        }
         const groupSteps = this.getStepsForGroup(row.group_id)
-        const currentIndex = groupSteps.findIndex(s => s === row)
-        this.recalculateGroupDates(row.group_id, currentIndex > -1 ? currentIndex : 0)
+        const startIndex = isMianStage(row.stage_name)
+            ? 0
+            : groupSteps.findIndex(s => s === row)
+        this.recalculateGroupDates(row.group_id, startIndex > -1 ? startIndex : 0)
     },
     handleAntigenAdjuvantTypeChange(antigenRow) {
         if (!antigenRow.antigen_id || !antigenRow.adjuvant_type || antigenRow.adjuvant_type === '无') return
@@ -1151,6 +1240,17 @@ export default {
             if (ids.includes(String(antigenRow.antigen_id))) {
                 this.updateStepAdjuvant(step, antigenRow)
             }
+        })
+    },
+    handleAntigenTypeChange(antigenRow) {
+        if (!antigenRow.antigen_id) return
+
+        this.postForm.steps.forEach((step) => {
+            const ids = Array.isArray(step.antigen_id) ? step.antigen_id.map(String) : []
+            if (!ids.includes(String(antigenRow.antigen_id))) return
+            const firstAntigenId = ids.find((id) => id !== 'N/A')
+            if (firstAntigenId !== String(antigenRow.antigen_id)) return
+            this.applyAntigenRouteByType(step, antigenRow)
         })
     },
     handleRouteChange(row) {
@@ -1196,7 +1296,7 @@ export default {
         const startDate = this.parseDateOnly(this.postForm.start_date)
         if (!startDate) return
         
-        const groupSteps = this.postForm.steps.filter(s => s.group_id === row.group_id)
+        const groupSteps = this.getStepsForGroup(row.group_id)
         const currentIndex = groupSteps.findIndex(s => s === row)
         
         const lastStep = currentIndex > 0 ? groupSteps[currentIndex - 1] : null
@@ -1524,15 +1624,17 @@ export default {
     },
     prepareSubmitData() {
       const submitData = JSON.parse(JSON.stringify(this.postForm))
-      
+
       if (submitData.steps) {
+        const groupIds = [...new Set(submitData.steps.map((s) => s.group_id).filter(Boolean))]
+        groupIds.forEach((gid) => reindexGroupSortOrder(submitData.steps, gid))
         submitData.steps.forEach(step => {
           if (Array.isArray(step.antigen_id)) {
             step.antigen_id = step.antigen_id.join(',')
           }
         })
       }
-      
+
       if (submitData.mouse_groups) {
         submitData.mouse_groups.forEach(group => {
           Object.keys(group).forEach((key) => {
@@ -1540,7 +1642,7 @@ export default {
           })
         })
       }
-      
+
       return submitData
     },
     triggerAutoSave() {

@@ -20,7 +20,10 @@
           v-for="item in statusOptions"
           :key="item.value"
           class="stat-tile"
-          :class="{ 'stat-tile-active': listQuery.status === item.value }"
+          :class="[
+            `stat-tone-${item.value}`,
+            { 'stat-tile-active': listQuery.status === item.value },
+          ]"
           @click="toggleStatus(item.value)"
         >
           <span class="stat-label">{{ item.label }}</span>
@@ -112,7 +115,7 @@
         stripe
         highlight-current-row
         style="width: 100%"
-        :header-cell-style="{ background: '#F5F7FA', color: '#606266', fontWeight: 'bold' }"
+        :header-cell-style="{ background: '#F8FAFC', color: '#606266', fontWeight: '600' }"
       >
         <!-- 列宽：全部用 min-width，表格会按这些最小值动态分配剩余空间；总宽不够则横向滚动 -->
         <el-table-column label="订单编号" prop="order_no" fixed min-width="120" show-overflow-tooltip>
@@ -428,41 +431,54 @@ export default {
 
 <style scoped>
 .mega-flow-order-page {
+  min-height: 100%;
   padding: 16px;
   font-size: 14px;
   color: #303133;
+  background: #f0f2f5;
 }
 
-.workbench-panel,
+/* 标题 + 统计 + 筛选同一白底，表格单独；比两两组合更不散 */
+.workbench-panel {
+  padding: 4px 16px 14px;
+  margin-bottom: 12px;
+  background: #fff;
+  border: 1px solid #e6e8ee;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 4%);
+}
+
 .table-card {
-  border-radius: 8px;
+  border-radius: 12px;
+  border: 1px solid #e6e8ee;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 4%);
 }
 
 .page-header-band {
   display: flex;
+  gap: 16px;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+  padding: 14px 2px 12px;
 }
 
 .page-title {
   margin: 0;
   font-size: 18px;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .page-subtitle {
   margin: 4px 0 0;
   font-size: 12px;
+  line-height: 1.5;
   color: #909399;
 }
 
 .header-actions {
   display: flex;
+  flex-shrink: 0;
   gap: 12px;
   align-items: center;
 }
@@ -470,69 +486,141 @@ export default {
 .total-count {
   font-size: 13px;
   color: #909399;
+  white-space: nowrap;
 }
 
 .preview-banner {
   padding: 10px 14px;
-  margin: 12px 0 0;
+  margin: 0 0 12px;
   font-size: 13px;
   color: #8a5a00;
   background: #fff7e6;
   border: 1px solid #ffd591;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .stats-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
-  gap: 12px;
-  margin: 12px 0;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+  padding: 12px 0;
+  margin: 0;
+  border-top: 1px solid #eef0f4;
+  border-bottom: 1px solid #eef0f4;
 }
 
 .stat-tile {
-  padding: 12px 16px;
+  position: relative;
+  padding: 11px 12px 11px 16px;
+  overflow: hidden;
   cursor: pointer;
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
-  transition: all 0.15s ease;
+  background: #fafbfd;
+  border: 1px solid #e8ebf0;
+  border-radius: 10px;
+  box-shadow: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.15s ease;
+  --stat-accent: #5b9ef0;
 }
 
-.stat-tile-active,
+.stat-tile::before {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 4px;
+  content: '';
+  background: var(--stat-accent);
+  border-radius: 0 4px 4px 0;
+}
+
 .stat-tile:hover {
-  border-color: #409eff;
-  box-shadow: 0 4px 12px rgb(64 158 255 / 12%);
+  background: #fff;
+  border-color: color-mix(in srgb, var(--stat-accent) 38%, #fff);
+  box-shadow: 0 4px 12px rgb(15 23 42 / 6%);
+  transform: translateY(-1px);
+}
+
+.stat-tile-active {
+  background: color-mix(in srgb, var(--stat-accent) 14%, #fff);
+  border-color: color-mix(in srgb, var(--stat-accent) 42%, #fff);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--stat-accent) 28%, #fff),
+    0 4px 12px rgb(15 23 42 / 6%);
+}
+
+.stat-tile-active:hover {
+  transform: translateY(-1px);
+}
+
+/* 状态色条：按 status value 绑 class */
+.stat-tone-draft {
+  --stat-accent: #5b9ef0;
+}
+
+.stat-tone-validated {
+  --stat-accent: #9b85f0;
+}
+
+.stat-tone-sent {
+  --stat-accent: #2fc4b2;
+}
+
+.stat-tone-running {
+  --stat-accent: #f08a3a;
+}
+
+.stat-tone-paused {
+  --stat-accent: #ecc94b;
+}
+
+.stat-tone-execution_failed {
+  --stat-accent: #ef7878;
+}
+
+.stat-tone-completed {
+  --stat-accent: #45c97a;
+}
+
+.stat-tone-failed {
+  --stat-accent: #ec6aad;
+}
+
+.stat-tone-cancelled {
+  --stat-accent: #8b97a8;
 }
 
 .stat-label {
   display: block;
-  font-size: 13px;
+  font-size: 12px;
   color: #909399;
+}
+
+.stat-tile-active .stat-label {
+  font-weight: 600;
+  color: #606266;
 }
 
 .stat-value {
   display: block;
-  margin-top: 6px;
+  margin-top: 5px;
   font-size: 22px;
   font-weight: 700;
+  line-height: 1.15;
+  color: #303133;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 .filter-strip {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  padding: 14px;
-  margin-bottom: 12px;
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
-}
-
-.table-card {
-  border: 1px solid #ebeef5;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+  align-items: center;
+  padding: 12px 2px 2px;
 }
 
 .filter-item {
@@ -546,14 +634,17 @@ export default {
 .filter-actions {
   display: flex;
   gap: 8px;
+  margin-left: auto;
 }
 
 .link-text {
+  font-weight: 600;
   color: #409eff;
   cursor: pointer;
 }
 
 .link-text:hover {
+  color: #66b1ff;
   text-decoration: underline;
 }
 
@@ -562,11 +653,37 @@ export default {
   justify-content: flex-end;
 }
 
-/* 与效价工单列表操作按钮一致：small 语义 + 自定义 28px 高度 */
 .table-card :deep(.table-action-btn) {
   height: 28px;
   min-height: 26px;
   padding: 0 12px;
   font-size: 13px;
+}
+
+@media (max-width: 960px) {
+  .page-header-band {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .filter-actions {
+    margin-left: 0;
+  }
+
+  .filter-keyword {
+    width: 100%;
+    max-width: 360px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stat-tile {
+    transition: none;
+  }
+
+  .stat-tile:hover,
+  .stat-tile-active:hover {
+    transform: none;
+  }
 }
 </style>

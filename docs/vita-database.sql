@@ -331,6 +331,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_step (
   step_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
   group_id VARCHAR(32) NULL COMMENT '组别',
+  sort_order INT NOT NULL DEFAULT 0 COMMENT '组内排序',
   stage_name VARCHAR(64) NULL COMMENT '免疫阶段',
   antigen_id VARCHAR(32) NULL COMMENT '抗原ID',
   antigen_dose VARCHAR(64) NULL COMMENT '抗原剂量',

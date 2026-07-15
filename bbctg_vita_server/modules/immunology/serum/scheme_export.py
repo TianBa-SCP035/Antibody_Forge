@@ -133,7 +133,11 @@ def load_scheme_data(db: Session, project_id: int) -> dict[str, Any] | None:
         ],
         "steps": [
             item.to_dict()
-            for item in db.scalars(select(SerumImmStep).where(SerumImmStep.experiment_id == exp_id)).all()
+            for item in db.scalars(
+                select(SerumImmStep)
+                .where(SerumImmStep.experiment_id == exp_id)
+                .order_by(SerumImmStep.group_id.asc(), SerumImmStep.sort_order.asc(), SerumImmStep.step_id.asc())
+            ).all()
         ],
     }
 
@@ -362,13 +366,16 @@ def _resolve_antigen_display(antigen_map: dict[str, dict], antigen_id: str | Non
 
 
 def _sort_steps(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    def sort_key(step: dict[str, Any]) -> tuple[int, str]:
-        day = step.get("day_relative")
+    def sort_key(step: dict[str, Any]) -> tuple[int, int]:
         try:
-            day_num = int(day)
+            order_num = int(step.get("sort_order"))
         except (TypeError, ValueError):
-            day_num = 10**9
-        return day_num, _text(step.get("date_actual"), empty="")
+            order_num = 0
+        try:
+            step_id = int(step.get("step_id"))
+        except (TypeError, ValueError):
+            step_id = 0
+        return order_num, step_id
 
     return sorted(steps, key=sort_key)
 

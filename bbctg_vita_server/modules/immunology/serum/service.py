@@ -34,6 +34,14 @@ from modules.immunology.titer.service import (
 )
 
 
+def _steps_query(experiment_id: str):
+    return (
+        select(SerumImmStep)
+        .where(SerumImmStep.experiment_id == experiment_id)
+        .order_by(SerumImmStep.group_id.asc(), SerumImmStep.sort_order.asc(), SerumImmStep.step_id.asc())
+    )
+
+
 def _collect_titer_owners_by_experiment(db: Session, experiment_ids: list[str]) -> dict[str, list[str]]:
     ids = [str(exp_id).strip() for exp_id in experiment_ids if str(exp_id or "").strip()]
     if not ids:
@@ -191,7 +199,7 @@ def get_detail(db: Session, project_id: int) -> dict | None:
     data = project.to_dict()
     data["mouse_groups"] = [item.to_dict() for item in db.scalars(select(SerumImmMouse).where(SerumImmMouse.experiment_id == exp_id)).all()]
     data["antigens"] = [item.to_dict() for item in db.scalars(select(SerumImmAntigen).where(SerumImmAntigen.experiment_id == exp_id)).all()]
-    data["steps"] = [item.to_dict() for item in db.scalars(select(SerumImmStep).where(SerumImmStep.experiment_id == exp_id)).all()]
+    data["steps"] = [item.to_dict() for item in db.scalars(_steps_query(exp_id)).all()]
     data["titer_pcs"] = [item.to_dict() for item in db.scalars(select(SerumTiterPc).where(SerumTiterPc.experiment_id == exp_id)).all()]
     data["titer_targets"] = [item.to_dict() for item in db.scalars(select(SerumTiterTarget).where(SerumTiterTarget.experiment_id == exp_id)).all()]
     data["titer_owners"] = _collect_titer_owners_by_experiment(db, [exp_id]).get(exp_id, [])

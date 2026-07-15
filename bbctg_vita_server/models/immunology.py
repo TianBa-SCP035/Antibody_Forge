@@ -163,6 +163,7 @@ class SerumImmStep(Base):
     step_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     experiment_id: Mapped[str | None] = mapped_column(String(64))
     group_id: Mapped[str | None] = mapped_column(String(32))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     stage_name: Mapped[str | None] = mapped_column(String(64))
     antigen_id: Mapped[str | None] = mapped_column(String(32))
     antigen_dose: Mapped[str | None] = mapped_column(String(64))
@@ -180,6 +181,7 @@ class SerumImmStep(Base):
             "step_id": self.step_id,
             "experiment_id": self.experiment_id,
             "group_id": self.group_id,
+            "sort_order": self.sort_order if self.sort_order is not None else 0,
             "stage_name": self.stage_name,
             "antigen_id": self.antigen_id,
             "antigen_dose": self.antigen_dose,

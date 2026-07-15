@@ -42,6 +42,8 @@ const routes: RouteRecordRaw[] = [
           // replace 写入 id 会整页重挂载并再次全屏 loadDetail。
           fullPathKey: false,
           keepAlive: true,
+          // 侧栏继续高亮列表入口；tabGroup 只合并页签，不负责菜单激活
+          activePath: MEGA_FLOW_ORDER_TAB_GROUP,
           tabGroup: MEGA_FLOW_ORDER_TAB_GROUP,
           title: '流式工单详情',
         },

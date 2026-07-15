@@ -525,6 +525,15 @@ import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
 import SerumDetailTiterTab from './SerumDetailTiterTab.vue'
 
+function compareImmStepOrder(a, b) {
+  const orderDiff = (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0)
+  if (orderDiff !== 0) return orderDiff
+  const aid = Number(a.step_id)
+  const bid = Number(b.step_id)
+  if (Number.isFinite(aid) && Number.isFinite(bid) && aid !== bid) return aid - bid
+  return 0
+}
+
 export default {
   name: 'SerumDataDetail',
   components: {
@@ -655,22 +664,13 @@ export default {
     stepsByGroup() {
       const res = {}
       const steps = this.processedSteps || []
-      steps.forEach(s => {
+      steps.forEach((s) => {
         const gid = s.group_id || 'UNKNOWN'
         if (!res[gid]) res[gid] = []
         res[gid].push(s)
       })
-
-      // sort by day_relative then date_actual (best effort)
-      Object.keys(res).forEach(gid => {
-        res[gid].sort((a, b) => {
-          const da = parseInt(a.day_relative, 10)
-          const db = parseInt(b.day_relative, 10)
-          if (!isNaN(da) && !isNaN(db) && da !== db) return da - db
-          const ta = a.date_actual || ''
-          const tb = b.date_actual || ''
-          return ta.localeCompare(tb)
-        })
+      Object.keys(res).forEach((gid) => {
+        res[gid].sort(compareImmStepOrder)
       })
       return res
     }

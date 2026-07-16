@@ -3,6 +3,7 @@ import { requestClient, skipGlobalErrorHandler } from '#/api/request';
 export { skipGlobalErrorHandler };
 
 const SAVE_TIMEOUT = 5000;
+const AUTO_UPDATE_STATUS_TIMEOUT = 20_000;
 const LONG_TIMEOUT = 360_000;
 
 type RequestConfig = Parameters<typeof requestClient.get>[1];
@@ -90,7 +91,10 @@ export function exportSchemePdf(data: { id?: number; ids?: number[] }) {
 }
 
 export function autoUpdateStatus(data: any) {
-  return requestClient.post('/serum/auto_update_status', data, skipGlobalErrorHandler);
+  return requestClient.post('/serum/auto_update_status', data, {
+    timeout: AUTO_UPDATE_STATUS_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
 }
 
 export function fetchCellInventoryData() {

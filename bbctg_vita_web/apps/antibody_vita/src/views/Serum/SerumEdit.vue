@@ -1380,10 +1380,7 @@ export default {
                  const submitData = this.prepareSubmitData()
                  
                  saveSerum(submitData).then((response) => {
-                     if (response?.id) {
-                         this.postForm.id = response.id
-                         this.syncEditRouteId()
-                     }
+                     this.applySaveResponse(response)
                      
                      if (response?.new_mouse_records) {
                           this.matchAndUpdateIds(this.postForm.mouse_groups, response.new_mouse_records, 'id', ['group_id', 'mouse_strain', 'mouse_strain_category', 'mouse_count', 'age_weeks', 'sex'])
@@ -1405,7 +1402,6 @@ export default {
                           this.matchAndUpdateIds(this.postForm.titer_pcs, response.new_pc_records, 'id', ['pc_name', 'catalog_batch', 'source', 'concentration'])
                       }
                      
-                     this.originalProjectCode = this.postForm.project_code
                      ElNotification({ type: 'success', message: '保存成功' })
                      this.loading = false
                      
@@ -1671,6 +1667,20 @@ export default {
         if (item) item[idField] = record[idField]
       })
     },
+    applySaveResponse(response) {
+      if (!response) return
+      if (response.id) {
+        this.postForm.id = response.id
+        this.syncEditRouteId()
+      }
+      if (response.project_code) {
+        this.postForm.project_code = response.project_code
+        this.originalProjectCode = response.project_code
+      }
+      if (response.experiment_id) {
+        this.postForm.experiment_id = response.experiment_id
+      }
+    },
     async doAutoSave() {
       if (!this.canSaveForm()) return
       if (this.loading || this.isAutoSaving) return
@@ -1700,11 +1710,7 @@ export default {
         const submitData = this.prepareSubmitData()
 
         const res = await saveSerum(submitData)
-        if (res?.id) {
-          this.postForm.id = res.id
-          this.originalProjectCode = this.postForm.project_code
-          this.syncEditRouteId()
-        }
+        this.applySaveResponse(res)
         
         if (res?.new_mouse_records) {
           this.matchAndUpdateIds(this.postForm.mouse_groups, res.new_mouse_records, 'id', ['group_id', 'mouse_strain', 'mouse_strain_category', 'mouse_count', 'age_weeks', 'sex'])

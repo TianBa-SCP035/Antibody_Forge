@@ -21,18 +21,11 @@ export function getSerumProjectStatusTagType(
 export function getSerumTiterStatusTagType(
   status: string | null | undefined,
 ): SerumProjectStatusTagType {
-  switch (status) {
-    case '待采血':
-      return 'info';
-    case '已采血':
-      return 'primary';
-    case '已检测':
-      return 'warning';
-    case '已交接':
-      return 'success';
-    case '已销毁':
-      return 'danger';
-    default:
-      return 'info';
-  }
+  if (!status) return 'info';
+  if (status === '已销毁') return 'danger';
+  if (status === '已交接') return 'success';
+  if (status === '已检测') return 'warning';
+  if (status === '已采血') return 'primary';
+  if (status.startsWith('待采血')) return 'info';
+  return 'info';
 }

@@ -15,7 +15,8 @@ from core.config import get_settings
 from core.errors import BusinessError
 
 SERUM_CAGE_NO_MOUSE = "SERUM_CAGE_NO_MOUSE"
-PENDING_BLOOD_COLLECTION_STATUS = "待采血"
+TERMINAL_PROJECT_STATUSES = frozenset({"结题", "无效价处死"})
+STATUS_AUTO_UPDATE_SKIP_STATUSES = TERMINAL_PROJECT_STATUSES | {"加免中"}
 from models.immunology import (
     SerumElisaPlate,
     SerumFacsPlate,
@@ -29,9 +30,23 @@ from models.immunology import (
     SerumTiterTarget,
 )
 from modules.immunology.titer.service import (
+    PENDING_BLOOD_COLLECTION_STATUS,
     _normalize_owner_names,
-    create_titer_order_from_immune_if_absent,
+    create_titer_order_for_blood_collection_if_absent,
 )
+
+
+def _compact_identifier(raw: Any) -> str:
+    return "".join(str(raw or "").split())
+
+
+def _normalize_project_identifiers(data: dict[str, Any]) -> None:
+    project_code = _compact_identifier(data.get("project_code"))
+    if project_code:
+        data["project_code"] = project_code
+    experiment_id = _compact_identifier(data.get("experiment_id"))
+    if experiment_id:
+        data["experiment_id"] = experiment_id
 
 
 def _steps_query(experiment_id: str):
@@ -141,6 +156,7 @@ def get_stats(db: Session) -> dict:
 
 
 def generate_next_id(db: Session, project_code: str) -> str | None:
+    project_code = _compact_identifier(project_code)
     if not project_code:
         return None
     projects = db.scalars(
@@ -347,6 +363,7 @@ def _rename_experiment_related_records(db: Session, old_eid: str | None, new_eid
 
 
 def save_serum(db: Session, data: dict[str, Any]) -> dict:
+    _normalize_project_identifiers(data)
     project_id = data.get("id")
     new_eid = data.get("experiment_id")
     new_mice = new_antigens = new_steps = new_targets = new_pcs = []
@@ -396,7 +413,11 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
     project.mouse_strain_category = "+".join(sorted({m.get("mouse_strain_category", "").strip() for m in mouse_groups if m.get("mouse_strain_category")}))
     db.commit()
 
-    response = {"id": project.id, "experiment_id": project.experiment_id}
+    response = {
+        "id": project.id,
+        "experiment_id": project.experiment_id,
+        "project_code": project.project_code,
+    }
     if new_mice:
         response["new_mouse_records"] = [item.to_dict() for item in new_mice]
     if new_antigens:
@@ -461,6 +482,43 @@ def update_prep_status(db: Session, experiment_id: str, prep_status: str | None)
     db.commit()
 
 
+def _next_scheduled_status(rec: dict[str, Any], today: str) -> str | None:
+    if today < rec["min_d"]:
+        return f"待{rec['min_stage']}"
+    if rec.get("next_stage"):
+        return f"待{rec['next_stage']}"
+    return None
+
+
+def _build_immunization_schedule(db: Session, experiment_ids: list[str], today: str) -> dict[str, dict[str, Any]]:
+    if not experiment_ids:
+        return {}
+    steps = db.execute(
+        select(SerumImmStep.experiment_id, SerumImmStep.date_actual, SerumImmStep.stage_name).where(
+            SerumImmStep.experiment_id.in_(experiment_ids),
+            SerumImmStep.date_actual.is_not(None),
+            SerumImmStep.date_actual != "",
+            SerumImmStep.stage_name.is_not(None),
+            SerumImmStep.stage_name != "",
+        )
+    )
+    info: dict[str, dict[str, Any]] = {}
+    for exp, date_value, stage in steps:
+        date_value = (date_value or "").strip()
+        stage = (stage or "").strip()
+        rec = info.setdefault(
+            exp,
+            {"min_d": date_value, "min_stage": stage, "max_d": date_value, "next_d": None, "next_stage": None},
+        )
+        if date_value < rec["min_d"]:
+            rec["min_d"], rec["min_stage"] = date_value, stage
+        if date_value > rec["max_d"]:
+            rec["max_d"] = date_value
+        if date_value > today and (rec["next_d"] is None or date_value < rec["next_d"]):
+            rec["next_d"], rec["next_stage"] = date_value, stage
+    return info
+
+
 def auto_update_status(db: Session, filters: dict[str, Any] | None = None) -> dict:
     filters = filters or {}
     proj_stmt = apply_project_filters(select(SerumImmProject), filters)
@@ -469,53 +527,40 @@ def auto_update_status(db: Session, filters: dict[str, Any] | None = None) -> di
     if filters.get("end_date"):
         proj_stmt = proj_stmt.where(SerumImmProject.start_date <= filters["end_date"])
     projects = db.scalars(proj_stmt).all()
-    exp_ids = [item.experiment_id for item in projects if item.experiment_id]
-    if not exp_ids:
+    if not projects:
         return {"message": "未找到符合条件的项目", "updated_count": 0, "titer_order_created_count": 0}
 
     today = datetime.now().strftime("%Y-%m-%d")
-    steps = db.execute(
-        select(SerumImmStep.experiment_id, SerumImmStep.date_actual, SerumImmStep.stage_name).where(
-            SerumImmStep.experiment_id.in_(exp_ids),
-            SerumImmStep.date_actual.is_not(None),
-            SerumImmStep.date_actual != "",
-            SerumImmStep.stage_name.is_not(None),
-            SerumImmStep.stage_name != "",
-        )
-    )
-    info = {}
-    for exp, date_value, stage in steps:
-        date_value = (date_value or "").strip()
-        stage = (stage or "").strip()
-        rec = info.setdefault(exp, {"min_d": date_value, "min_stage": stage, "max_d": date_value, "next_d": None, "next_stage": None})
-        if date_value < rec["min_d"]:
-            rec["min_d"], rec["min_stage"] = date_value, stage
-        if date_value > rec["max_d"]:
-            rec["max_d"] = date_value
-        if date_value > today and (rec["next_d"] is None or date_value < rec["next_d"]):
-            rec["next_d"], rec["next_stage"] = date_value, stage
+    schedule_exp_ids = [
+        project.experiment_id
+        for project in projects
+        if project.experiment_id and (project.project_status or "") not in TERMINAL_PROJECT_STATUSES
+    ]
+    schedule = _build_immunization_schedule(db, schedule_exp_ids, today)
 
     updated_count = 0
     titer_order_created_count = 0
     dry_run = bool(filters.get("dry_run"))
     for project in projects:
-        status = project.project_status or ""
-        if status in {"结题", "无效价处死", "加免中"}:
+        if not project.experiment_id:
             continue
-        rec = info.get(project.experiment_id)
+        status = project.project_status or ""
+        rec = schedule.get(project.experiment_id)
         if not rec or today >= rec["max_d"]:
             continue
-        new_status = f"待{rec['min_stage']}" if today < rec["min_d"] else (f"待{rec['next_stage']}" if rec["next_stage"] else None)
-        if new_status and project.project_status != new_status:
+
+        next_status = _next_scheduled_status(rec, today)
+
+        if status not in TERMINAL_PROJECT_STATUSES:
+            if not dry_run and next_status == PENDING_BLOOD_COLLECTION_STATUS and rec.get("next_d"):
+                if create_titer_order_for_blood_collection_if_absent(db, project, rec["next_d"]):
+                    titer_order_created_count += 1
+
+        if status in STATUS_AUTO_UPDATE_SKIP_STATUSES:
+            continue
+        if next_status and project.project_status != next_status:
             if not dry_run:
-                project.project_status = new_status
-                if new_status == PENDING_BLOOD_COLLECTION_STATUS and project.experiment_id:
-                    if create_titer_order_from_immune_if_absent(
-                        db,
-                        project.experiment_id,
-                        serum_status=PENDING_BLOOD_COLLECTION_STATUS,
-                    ):
-                        titer_order_created_count += 1
+                project.project_status = next_status
             updated_count += 1
     if dry_run:
         db.rollback()

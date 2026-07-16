@@ -210,7 +210,7 @@
           @change="handleSerumStatusFilterChange"
         >
           <el-option
-            v-for="item in SERUM_STATUS_OPTIONS"
+            v-for="item in allSerumStatusOptions"
             :key="item"
             :label="item"
             :value="item"
@@ -380,7 +380,7 @@
               @change="saveRow(row, '血清状态')"
             >
               <el-option
-                v-for="item in SERUM_STATUS_OPTIONS"
+                v-for="item in allSerumStatusOptions"
                 :key="item"
                 :label="item"
                 :value="item"
@@ -668,9 +668,6 @@ const ASSAY_FILTER_FACS = '__facs__';
 const ASSAY_FILTER_ELISA = '__elisa__';
 const ASSAY_FILTER_FACS_ELISA = '__facs_elisa__';
 
-const SERUM_STATUS_OPTIONS = ['待采血', '已采血', '已检测', '已交接', '已销毁'];
-
-/** 统计「待检测」对应血清状态：已采血、待上机检测 */
 const SERUM_STATUS_PENDING_TEST = '已采血';
 
 /** 统计「待汇报」：已检测且效价小结为空 */
@@ -861,7 +858,6 @@ export default {
       ASSAY_FILTER_FACS,
       ASSAY_FILTER_ELISA,
       ASSAY_FILTER_FACS_ELISA,
-      SERUM_STATUS_OPTIONS,
       DataAnalysis: markRaw(DataAnalysis),
       Document: markRaw(Document),
       Download: markRaw(Download),
@@ -890,6 +886,7 @@ export default {
       allAssayMethodOptions: [],
       allImmuneOwnerOptions: [],
       allImmuneStatusOptions: [],
+      allSerumStatusOptions: [],
       ownerFilterQuery: '',
       targetFilterQuery: '',
       assayMethodFilterQuery: '',
@@ -1324,6 +1321,7 @@ export default {
         this.allAssayMethodOptions = meta.assay_methods || [];
         this.allImmuneOwnerOptions = meta.immune_owners || [];
         this.allImmuneStatusOptions = meta.immune_statuses || [];
+        this.allSerumStatusOptions = meta.serum_statuses || [];
       } catch (error) {
         notifyApiError(error, { messages: { default: '加载效价列表信息失败' } });
       }

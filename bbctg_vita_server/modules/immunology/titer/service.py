@@ -310,6 +310,61 @@ def _mode_cage_position(mice: list[SerumImmMouse]) -> str:
     return max(counts, key=lambda cage: (counts[cage], cage))
 
 
+BLOOD_COLLECTION_STAGE_NAME = "采血"
+PENDING_BLOOD_COLLECTION_STATUS = "待采血"
+PENDING_BLOOD_COLLECTION_BOOST_STATUS = "待采血-加免"
+
+
+def _normalize_blood_collection_date(raw: Any) -> str | None:
+    value = str(raw or "").strip()[:10]
+    return value if len(value) == 10 else None
+
+
+def _upcoming_blood_collection_dates(steps: list[SerumImmStep], today: str) -> list[str]:
+    dates: list[str] = []
+    seen: set[str] = set()
+    for step in steps:
+        if str(step.stage_name or "").strip() != BLOOD_COLLECTION_STAGE_NAME:
+            continue
+        blood_date = _normalize_blood_collection_date(step.date_actual)
+        if not blood_date or blood_date < today:
+            continue
+        if blood_date in seen:
+            continue
+        seen.add(blood_date)
+        dates.append(blood_date)
+    return sorted(dates)
+
+
+def _known_titer_order_blood_dates(db: Session, experiment_id: str) -> set[str]:
+    rows = db.scalars(
+        select(SerumTiterOrder.blood_collection_date).where(
+            SerumTiterOrder.experiment_id == experiment_id
+        )
+    ).all()
+    return {
+        normalized
+        for item in rows
+        if (normalized := _normalize_blood_collection_date(item))
+    }
+
+
+def _manual_default_blood_collection_date(
+    db: Session,
+    experiment_id: str,
+    steps: list[SerumImmStep],
+    *,
+    today: str | None = None,
+) -> str | None:
+    """手动新建预览：今天及以后、尚无工单的最近采血日。"""
+    today = today or datetime.now().strftime("%Y-%m-%d")
+    known_dates = _known_titer_order_blood_dates(db, experiment_id)
+    for blood_date in _upcoming_blood_collection_dates(steps, today):
+        if blood_date not in known_dates:
+            return blood_date
+    return None
+
+
 def _blood_collection_date(steps: list[SerumImmStep]) -> str | None:
     dates = [
         str(step.date_actual).strip()
@@ -334,16 +389,26 @@ def _immune_batch_fields(
     }
 
 
-def _immune_batch_for_experiment(db: Session, experiment_id: str) -> tuple[SerumImmProject, dict[str, Any]]:
-    experiment_id = str(experiment_id or "").strip()
-    if not experiment_id:
-        raise ValueError("请选择免疫实验")
-    project = db.scalar(select(SerumImmProject).where(SerumImmProject.experiment_id == experiment_id))
-    if not project:
-        raise ValueError("免疫实验不存在")
+def _immune_batch_for_experiment(
+    db: Session,
+    experiment_id: str,
+    *,
+    project: SerumImmProject | None = None,
+) -> tuple[SerumImmProject, dict[str, Any]]:
+    if project is None:
+        experiment_id = str(experiment_id or "").strip()
+        if not experiment_id:
+            raise ValueError("请选择免疫实验")
+        project = db.scalar(select(SerumImmProject).where(SerumImmProject.experiment_id == experiment_id))
+        if not project:
+            raise ValueError("免疫实验不存在")
+    else:
+        experiment_id = project.experiment_id
+        if not experiment_id:
+            raise ValueError("免疫实验不存在")
     mice = list(db.scalars(select(SerumImmMouse).where(SerumImmMouse.experiment_id == experiment_id)).all())
     steps = list(db.scalars(select(SerumImmStep).where(SerumImmStep.experiment_id == experiment_id)).all())
-    return project, _immune_batch_fields(project, mice, steps)
+    return project, _immune_batch_fields(project, mice, steps), steps
 
 
 def _apply_batch_fields_to_order(order: SerumTiterOrder, batch: dict[str, Any]) -> None:
@@ -421,12 +486,16 @@ def _apply_batch_overrides(order: SerumTiterOrder, overrides: dict[str, Any]) ->
 
 
 def get_titer_order_batch_preview(db: Session, experiment_id: str) -> dict[str, Any]:
-    project, batch = _immune_batch_for_experiment(db, experiment_id)
+    project, batch, steps = _immune_batch_for_experiment(db, experiment_id)
+    preview = _batch_fields_to_preview(batch)
+    preview["blood_collection_date"] = (
+        _manual_default_blood_collection_date(db, project.experiment_id, steps) or ""
+    )
     return {
         "experiment_id": project.experiment_id,
         "project_code": project.project_code or "",
         "target_name": project.target_name or "",
-        **_batch_fields_to_preview(batch),
+        **preview,
     }
 
 
@@ -527,30 +596,38 @@ def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
     }
 
 
-def create_titer_order_from_immune_if_absent(
+def create_titer_order_for_blood_collection_if_absent(
     db: Session,
-    experiment_id: str,
-    *,
-    serum_status: str | None = None,
+    project: SerumImmProject,
+    blood_collection_date: str,
 ) -> bool:
-    """从免疫实验复制批次字段新建工单；该 experiment_id 已有任意工单则跳过。不 commit。"""
-    experiment_id = str(experiment_id or "").strip()
-    if not experiment_id:
+    """当前采血批次尚无工单时，从免疫实验复制字段并创建。不 commit。"""
+    experiment_id = project.experiment_id
+    blood_date = _normalize_blood_collection_date(blood_collection_date)
+    if not experiment_id or not blood_date:
         return False
-    exists = db.scalar(
+
+    known_dates = _known_titer_order_blood_dates(db, experiment_id)
+    if blood_date in known_dates:
+        return False
+
+    has_prior_order = db.scalar(
         select(SerumTiterOrder.id).where(SerumTiterOrder.experiment_id == experiment_id).limit(1)
     )
-    if exists:
-        return False
-    project, immune_batch = _immune_batch_for_experiment(db, experiment_id)
+    _, immune_batch, _ = _immune_batch_for_experiment(db, experiment_id, project=project)
     order = SerumTiterOrder(
         experiment_id=experiment_id,
         titer_order_id=generate_titer_order_id(db, project.project_code, experiment_id),
         titer_owners=[],
         test_dates=[],
-        serum_status=str(serum_status).strip() if serum_status else None,
+        serum_status=(
+            PENDING_BLOOD_COLLECTION_STATUS
+            if not has_prior_order
+            else PENDING_BLOOD_COLLECTION_BOOST_STATUS
+        ),
     )
     _apply_batch_fields_to_order(order, immune_batch)
+    order.blood_collection_date = blood_date
     db.add(order)
     return True
 
@@ -565,7 +642,7 @@ def save_titer_order(db: Session, data: dict[str, Any]) -> dict:
         experiment_id = str(data.get("experiment_id") or "").strip()
         if not experiment_id:
             raise ValueError("请选择免疫实验")
-        project, immune_batch = _immune_batch_for_experiment(db, experiment_id)
+        project, immune_batch, _ = _immune_batch_for_experiment(db, experiment_id)
         order = SerumTiterOrder(
             experiment_id=experiment_id,
             titer_order_id=generate_titer_order_id(db, project.project_code, experiment_id),
@@ -688,6 +765,21 @@ def _collect_titer_immune_status_names(db: Session) -> list[str]:
     return [row[0] for row in rows if row[0]]
 
 
+def _collect_titer_serum_status_names(db: Session) -> list[str]:
+    rows = db.execute(
+        select(SerumTiterOrder.serum_status)
+        .join(SerumImmProject, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
+        .where(
+            or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"),
+            SerumTiterOrder.serum_status.is_not(None),
+            SerumTiterOrder.serum_status != "",
+        )
+        .distinct()
+        .order_by(SerumTiterOrder.serum_status)
+    ).all()
+    return [row[0] for row in rows if row[0]]
+
+
 def get_titer_order_page_meta(db: Session) -> dict:
     return {
         "owners": _collect_titer_owner_names(db),
@@ -695,6 +787,7 @@ def get_titer_order_page_meta(db: Session) -> dict:
         "assay_methods": _collect_titer_assay_method_names(db),
         "immune_owners": _collect_titer_immune_owner_names(db),
         "immune_statuses": _collect_titer_immune_status_names(db),
+        "serum_statuses": _collect_titer_serum_status_names(db),
         "stats": get_titer_order_stats(db),
     }
 

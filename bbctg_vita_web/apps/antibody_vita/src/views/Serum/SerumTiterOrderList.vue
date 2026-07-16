@@ -635,7 +635,7 @@ import {
   fetchTiterOrderStats,
   saveTiterOrder,
 } from '#/api/serum';
-import { getSerumProjectStatusTagType, getSerumTiterStatusTagType } from '#/utils/serumProjectStatus';
+import { getSerumProjectStatusTagType, getSerumTiterStatusTagType, mergeTiterSerumStatusOptions } from '#/utils/serumProjectStatus';
 import {
   canCreateTiterOrder,
   canDeleteTiterOrder,
@@ -886,7 +886,7 @@ export default {
       allAssayMethodOptions: [],
       allImmuneOwnerOptions: [],
       allImmuneStatusOptions: [],
-      allSerumStatusOptions: [],
+      allSerumStatusOptions: mergeTiterSerumStatusOptions(),
       ownerFilterQuery: '',
       targetFilterQuery: '',
       assayMethodFilterQuery: '',
@@ -1321,7 +1321,7 @@ export default {
         this.allAssayMethodOptions = meta.assay_methods || [];
         this.allImmuneOwnerOptions = meta.immune_owners || [];
         this.allImmuneStatusOptions = meta.immune_statuses || [];
-        this.allSerumStatusOptions = meta.serum_statuses || [];
+        this.allSerumStatusOptions = mergeTiterSerumStatusOptions(meta.serum_statuses);
       } catch (error) {
         notifyApiError(error, { messages: { default: '加载效价列表信息失败' } });
       }

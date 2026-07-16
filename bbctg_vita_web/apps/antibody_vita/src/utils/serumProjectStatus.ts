@@ -5,6 +5,37 @@ export type SerumProjectStatusTagType =
   | 'success'
   | 'warning';
 
+/** 效价工单血清状态下拉默认选项（筛选 + 行内编辑）。 */
+export const TITER_SERUM_STATUS_OPTIONS = [
+  '待采血',
+  '已采血',
+  '已检测',
+  '已交接',
+  '已销毁',
+] as const;
+
+/** 固定默认项在前，再按字母序追加接口返回的其它状态。 */
+export function mergeTiterSerumStatusOptions(
+  fromApi: string[] | null | undefined,
+): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const status of TITER_SERUM_STATUS_OPTIONS) {
+    if (!seen.has(status)) {
+      merged.push(status);
+      seen.add(status);
+    }
+  }
+  for (const status of [...(fromApi || [])].sort()) {
+    const value = String(status || '').trim();
+    if (value && !seen.has(value)) {
+      merged.push(value);
+      seen.add(value);
+    }
+  }
+  return merged;
+}
+
 /** Element Plus el-tag type for serum project_status display. */
 export function getSerumProjectStatusTagType(
   status: string | null | undefined,

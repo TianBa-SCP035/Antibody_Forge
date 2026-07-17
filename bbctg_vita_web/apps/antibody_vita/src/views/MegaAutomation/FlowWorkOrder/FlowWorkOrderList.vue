@@ -8,7 +8,12 @@
         </div>
         <div class="header-actions">
           <span class="total-count">共 {{ total }} 条工单</span>
-          <el-button type="primary" :disabled="!canEdit()" @click="createDraft">
+          <el-button
+            type="primary"
+            :class="{ 'no-permission-btn': !canEdit() }"
+            :title="!canEdit() ? '您没有权限新建流式工单' : ''"
+            @click="createDraft"
+          >
             <el-icon><Plus /></el-icon>
             新建工单
           </el-button>
@@ -172,7 +177,8 @@
                 size="small"
                 type="warning"
                 plain
-                :disabled="!canEdit()"
+                :class="{ 'no-permission-btn': !canEdit() }"
+                :title="!canEdit() ? '您没有权限操作流式工单' : ''"
                 @click="goOperate(row)"
               >
                 操作
@@ -182,7 +188,8 @@
                 size="small"
                 type="success"
                 plain
-                :disabled="!canEdit()"
+                :class="{ 'no-permission-btn': !canEdit() }"
+                :title="!canEdit() ? '您没有权限复制流式工单' : ''"
                 @click="copyRow(row)"
               >
                 复制
@@ -673,6 +680,10 @@ export default {
   min-height: 26px;
   padding: 0 12px;
   font-size: 13px;
+}
+
+.no-permission-btn {
+  cursor: not-allowed;
 }
 
 @media (max-width: 960px) {

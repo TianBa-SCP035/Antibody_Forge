@@ -280,7 +280,11 @@ import {
 
 import MouseRegistryDialog from '../shared/MouseRegistryDialog.vue';
 
-const WIZARD_DRAFT_KEY = 'titer-instrument-wizard-draft';
+import {
+  TITER_INSTRUMENT_WIZARD_DRAFT_KEY,
+  TITER_UPSTREAM_PREFILL_QUERY,
+} from '#/views/MegaAutomation/FlowWorkOrder/flowWorkOrderTiterUpstream';
+
 const PLATE_COLUMNS = 10;
 const PLATE_COLUMN_LIST = Array.from({ length: PLATE_COLUMNS }, (_, i) => i + 1);
 const ROW_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -359,28 +363,37 @@ function layoutPlateRows(mice) {
   if (!mice.length) return [];
   const rows = [];
   for (let index = 0; index < mice.length; index += PLATE_COLUMNS) {
-    const slice = mice.slice(index, index + PLATE_COLUMNS);
     const rowIndex = Math.floor(index / PLATE_COLUMNS);
     const rowLabel = ROW_LABELS[rowIndex] || String(rowIndex + 1);
-    while (slice.length < PLATE_COLUMNS) {
-      slice.push({ no: '', alive: false });
+    const cells = [];
+    for (let column = 1; column <= PLATE_COLUMNS; column += 1) {
+      const mouseIndex = index + column - 1;
+      const slotNo = mouseSlotNo(rowLabel, column);
+      if (mouseIndex < mice.length) {
+        const mouse = mice[mouseIndex];
+        cells.push({
+          ...mouse,
+          mouseIndex,
+          slotNo,
+          key: `m-${mouseIndex}`,
+        });
+      } else {
+        cells.push({
+          no: '',
+          alive: false,
+          mouseIndex: -1,
+          slotNo,
+          key: `empty-${rowIndex}-${column}`,
+        });
+      }
     }
-    rows.push({
-      rowLabel,
-      cells: slice.map((cell, cellIndex) => ({
-        ...cell,
-        slotNo: mouseSlotNo(rowLabel, cellIndex + 1),
-        key: cell.no
-          ? `${cell.no}-${rowIndex}-${cellIndex}`
-          : `empty-${rowIndex}-${cellIndex}`,
-      })),
-    });
+    rows.push({ rowLabel, cells });
   }
   return rows;
 }
 
-function selectionKey(groupId, mouseNo) {
-  return `${groupId}::${mouseNo}`;
+function selectionKey(groupId, mouseIndex) {
+  return `${groupId}::${mouseIndex}`;
 }
 
 function buildPlateGroup(group, selectedKeys) {
@@ -400,14 +413,14 @@ function buildPlateGroup(group, selectedKeys) {
   let aliveCount = 0;
   let deadCount = 0;
   let selectedCount = 0;
-  for (const mouse of mice) {
+  mice.forEach((mouse, mouseIndex) => {
     if (mouse.alive) {
       aliveCount += 1;
-      if (selectedKeys.has(selectionKey(groupId, mouse.no))) selectedCount += 1;
+      if (selectedKeys.has(selectionKey(groupId, mouseIndex))) selectedCount += 1;
     } else {
       deadCount += 1;
     }
-  }
+  });
 
   return {
     groupId,
@@ -638,17 +651,17 @@ export default {
       for (const group of this.mouseGroups) {
         const groupId = (group.group_id || '').trim();
         if (!groupId) continue;
-        for (const mouse of miceInGroup(group)) {
-          if (mouse.alive) next.add(selectionKey(groupId, mouse.no));
-        }
+        miceInGroup(group).forEach((mouse, mouseIndex) => {
+          if (mouse.alive) next.add(selectionKey(groupId, mouseIndex));
+        });
       }
       this.selectedKeys = next;
     },
-    isSelected(groupId, mouseNo) {
-      return this.selectedKeys.has(selectionKey(groupId, mouseNo));
+    isSelected(groupId, mouseIndex) {
+      return mouseIndex >= 0 && this.selectedKeys.has(selectionKey(groupId, mouseIndex));
     },
     wellCellClass(groupId, cell) {
-      const selected = !!(cell.no && cell.alive && this.isSelected(groupId, cell.no));
+      const selected = !!(cell.no && cell.alive && this.isSelected(groupId, cell.mouseIndex));
       const preview = !!(
         cell.slotNo
         && this.cellDragActive
@@ -689,7 +702,7 @@ export default {
       this.cellDragStart = cell.slotNo;
       this.cellDragEnd = cell.slotNo;
       // 起点已选 → 本次划选取消；起点未选 → 本次划选选中
-      this.cellDragSelectMode = !this.isSelected(groupId, cell.no);
+      this.cellDragSelectMode = !this.isSelected(groupId, cell.mouseIndex);
       this.cellDragActive = true;
       document.addEventListener('mouseup', this.onCellDragEnd);
     },
@@ -710,8 +723,8 @@ export default {
       const next = new Set(this.selectedKeys);
       for (const slot of mouseSlotsInRect(start, end)) {
         const cell = this.findCellBySlot(groupId, slot);
-        if (!cell?.no || !cell.alive) continue;
-        const key = selectionKey(groupId, cell.no);
+        if (!cell?.no || !cell.alive || cell.mouseIndex < 0) continue;
+        const key = selectionKey(groupId, cell.mouseIndex);
         if (selectMode) next.add(key);
         else next.delete(key);
       }
@@ -731,11 +744,11 @@ export default {
         return;
       }
       this.savingRegistry = true;
-      const previousMouseNos = new Map();
+      const previousCounts = new Map();
       for (const group of this.mouseGroups) {
         const groupId = (group.group_id || '').trim();
         if (!groupId) continue;
-        previousMouseNos.set(groupId, new Set(miceInGroup(group).map((mouse) => mouse.no)));
+        previousCounts.set(groupId, miceInGroup(group).length);
       }
       saveMouseRegistry({
         experiment_id: experimentId,
@@ -749,7 +762,7 @@ export default {
           if (index >= 0) {
             this.mouseGroups.splice(index, 1, { ...this.mouseGroups[index], ...updated });
           }
-          this.reconcileSelectionAfterRegistryChange(previousMouseNos);
+          this.reconcileSelectionAfterRegistryChange(previousCounts);
           ElMessage.success('鼠号信息已保存');
         })
         .catch((error) => notifyApiError(error, { messages: { default: '保存鼠号信息失败' } }))
@@ -757,20 +770,20 @@ export default {
           this.savingRegistry = false;
         });
     },
-    reconcileSelectionAfterRegistryChange(previousMouseNos = new Map()) {
+    reconcileSelectionAfterRegistryChange(previousCounts = new Map()) {
       const next = new Set();
       for (const group of this.mouseGroups) {
         const groupId = (group.group_id || '').trim();
         if (!groupId) continue;
-        const previous = previousMouseNos.get(groupId) || new Set();
-        for (const mouse of miceInGroup(group)) {
-          if (!mouse.alive) continue;
-          const key = selectionKey(groupId, mouse.no);
-          // 保留原已选；新出现的存活鼠默认勾选
-          if (this.selectedKeys.has(key) || !previous.has(mouse.no)) {
+        const prevCount = previousCounts.get(groupId) || 0;
+        miceInGroup(group).forEach((mouse, mouseIndex) => {
+          if (!mouse.alive) return;
+          const key = selectionKey(groupId, mouseIndex);
+          // 保留原位已选；新增序号默认勾选
+          if (this.selectedKeys.has(key) || mouseIndex >= prevCount) {
             next.add(key);
           }
-        }
+        });
       }
       this.selectedKeys = next;
     },
@@ -780,7 +793,9 @@ export default {
         const groupId = (group.group_id || '').trim();
         if (!groupId) continue;
         const selected = miceInGroup(group)
-          .filter((mouse) => mouse.alive && this.selectedKeys.has(selectionKey(groupId, mouse.no)))
+          .filter((mouse, mouseIndex) => (
+            mouse.alive && this.selectedKeys.has(selectionKey(groupId, mouseIndex))
+          ))
           .map((mouse) => mouse.no);
         if (selected.length) {
           groups.push({ group_id: groupId, selected_mouse_nos: selected });
@@ -809,13 +824,31 @@ export default {
       }
       this.confirming = true;
       try {
-        sessionStorage.setItem(WIZARD_DRAFT_KEY, JSON.stringify(this.buildSelectionPayload()));
+        sessionStorage.setItem(
+          TITER_INSTRUMENT_WIZARD_DRAFT_KEY,
+          JSON.stringify(this.buildSelectionPayload()),
+        );
       } catch {
-        /* ignore quota */
+        this.confirming = false;
+        ElMessage.error('无法暂存选鼠结果，请清理浏览器缓存后重试');
+        return;
       }
-      ElMessage.info('跳转流式工单预填功能待接入');
-      this.confirming = false;
-      this.wizardVisible = false;
+      try {
+        this.wizardVisible = false;
+        await this.$router.push({
+          name: 'MegaFlowWorkOrderDetail',
+          query: {
+            mode: 'edit',
+            prefill: TITER_UPSTREAM_PREFILL_QUERY,
+            // KeepAlive 下同 prefill 需换 identity，否则不会重新灌板
+            n: String(Date.now()),
+          },
+        });
+      } catch (error) {
+        ElMessage.error(error?.message || '无法打开流式工单编辑页');
+      } finally {
+        this.confirming = false;
+      }
     },
   },
 };

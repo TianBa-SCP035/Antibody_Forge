@@ -5,7 +5,7 @@
 > 状态说明（截至文档编写时）  
 > - 流式工单 CRUD / 校验 / 模拟下发：**已实现**（见 `mega-automation-flow-work-order.md`）  
 > - 效价列表「工单」左键/右键 + 新建向导（鼠号入库 / 选鼠矩阵）：**已实现**  
-> - 向导点「确定」后跳转流式新建并预填：**待开发**  
+> - 向导点「确定」后跳转流式新建并预填样本板 / `source_id` / 订单号名称：**已实现**  
 > - 回传接口接收 JSON：**已实现**；解析入库效价业务表：**待开发**
 
 ---
@@ -20,10 +20,10 @@
   ├─① 新建向导：小鼠分组表 + 鼠号死活确认（写回 serum_imm_mouse）
   ├─② 新建向导：按组矩阵勾选待检测个体（默认存活全选；不落效价表）
   │
-  └─③ 点「确定」→ 跳转流式工单新建页，预填样本板 + 项目号/靶点（后续）
+  └─③ 点「确定」→ sessionStorage 草稿 → 跳转流式工单新建页并预填
         │
         ├─ 用户补充：细胞板、PC 表、铺板细节、条码等
-        ├─ 保存时写入 source_id = titer_order_id，data_type = TITER
+        ├─ 预填已含 source_id = titer_order_id，data_type = TITER（保存时一并提交）
         ├─ 保存 → 校验 → 发送 Payload（dispatch_id）
         │
         └─④ 设备执行（真实通信待接入；当前为模拟确认）
@@ -40,8 +40,8 @@
 **核心原则**
 
 - 上游唯一入口：**效价实验列表**每行右侧「工单」按钮（左键 / 右键行为不同，见 §5）。
-- 能自动带来的字段尽量少而准：**项目号、靶点、样本编号（鼠号）、样本板布局**。
-- 细胞板、PC、对照孔位等仍由用户在流式工单页手工完善。
+- 能自动带来的字段尽量少而准：**实验 ID（作板级 project_no）、靶点、样本编号（鼠号）、样本板布局、订单号/名称、source_id**。
+- 细胞板、PC 表、条码、`cell_keys` 等仍由用户在流式工单页手工完善（样本板对照列 NC/PC 已由效价路径预填）。
 - **单一数据源**：同一业务事实只存一处，避免效价表与流式工单双写导致回传对不齐。
 - 流式工单与效价工单的关联：**流式表记 `source_id`**（效价侧为 `titer_order_id`），用已有 **`data_type`** 区分来源大类（见 §4.6）。
 - 回传以 **`dispatch_id`（优先）** 定位下发快照，与回传 JSON 核对后 **一次性** 写入效价业务表；`order_no` 不唯一，不能单独作主键。
@@ -74,6 +74,7 @@
 |------|------|
 | 列表 / 详情 | `FlowWorkOrderList.vue`、`FlowWorkOrderDetail.vue` |
 | 数据模型与默认板 | `flowWorkOrderModel.ts` |
+| 效价→流式预填（专用布局） | `flowWorkOrderTiterUpstream.ts` |
 | API 客户端 | `api/megaAutomation.ts` |
 | 后端 | `bbctg_vita_server/modules/mega_automation/` |
 | 设计文档 | `docs/temp_text/mega-automation-flow-work-order.md` |
@@ -117,16 +118,17 @@ serum_titer_order.experiment_id
 无 `project_code` 时用 `experiment_id`，再没有则用 `NO_PROJECT`。库内唯一。  
 流式工单 `source_id` 存此业务字符串，**不用**表自增 `id`。
 
-**映射到流式工单（后续阶段）**
+**映射到流式工单（已实现）**
 
 | 免疫/效价字段 | 流式工单字段 |
 |---------------|--------------|
-| `project_code` | `sample_plates[].project_no` |
+| `experiment_id` | `sample_plates[].project_no`（**不是** `project_code`） |
 | `target_name` | `sample_plates[].target` |
-| 选中鼠号 | `wells[].sample_code`（`content_type=SAMPLE`） |
+| 选中鼠号（组序 × 组内原序） | `wells[].sample_code`（`content_type=SAMPLE`） |
 | — | `data_type` = `TITER` |
-| `titer_order_id` | `source_id` |
-| — | `order_no` / `order_name` 规则 **待定** |
+| `titer_order_id` | `source_id`（保存 payload 带上；后端写一次锁定） |
+| `titer_order_id` + 随机后缀 | `order_no`（不要求库唯一，便于人工区分） |
+| `project_code`-`target_name`-效价检测 | `order_name` / `base_info.order_name`（缺项目编号时用 `experiment_id`） |
 
 ---
 
@@ -154,7 +156,7 @@ serum_titer_order.experiment_id
 | 鼠号、死活 | `serum_imm_mouse.mouse_registry` | 向导上半点开 `MouseRegistryDialog` 确认后 **立刻入库** |
 | 本次测哪些鼠 | **不落效价表** | 下半矩阵勾选；点「确定」后通过会话传给流式新建页 |
 | 实际上机样本编号 | `mega_flow_work_order.content` → `sample_plates[].wells[].sample_code` | 选中鼠号填入 SAMPLE 孔；保存工单后即持久化；**权威来源** |
-| 项目号、靶点（板级） | 同上 → `sample_plates[].project_no` / `target` | 从 `project_code` / `target_name` 预填 |
+| 项目号、靶点（板级） | 同上 → `sample_plates[].project_no` / `target` | **`project_no` ← `experiment_id`**；`target` ← `target_name` |
 | PC 信息、细胞板、对照孔 | 同上 → `pc_infos` / `cell_plates` / wells | 用户在流式工单页补齐 |
 | 来源业务单 | `mega_flow_work_order.source_id` + `data_type` | 见 §4.6 |
 | 发送时完整内容 | `mega_flow_work_order_dispatch.payload` | 回传核对基准 |
@@ -310,11 +312,11 @@ dispatch_id → mega_flow_work_order_dispatch
 
 | 情况 | 行为 |
 |------|------|
-| 已选 ≥1 只 | 通过（后续：跳转流式新建并预填） |
-| 无鼠号 / 全死 / 0 选中 | **仍可点确定**，但 **提示用户**（允许只补做对照组等场景） |
+| 已选 ≥1 只 | 写入草稿 → 跳转流式工单编辑页并预填 |
+| 无鼠号 / 全死 / 0 选中 | **仍可点确定**，先 **提示确认**（允许只补做对照组），再同上 |
 
-本阶段实现目标：**做到点「确定」之前**（弹窗、上表、入库、下表选鼠、确定时提示）。  
-点「确定」后暂存 `sessionStorage` 键 `titer-instrument-wizard-draft`，跳转与样本板预填属 **后续阶段**（§7）。
+草稿键：`sessionStorage` → `titer-instrument-wizard-draft`（进入详情后立即消费并清除）。  
+跳转：`MegaFlowWorkOrderDetail`，`query = { mode: edit, prefill: titer-wizard, n: <timestamp> }`（`n` 保证 KeepAlive 下重复进入会重新灌板）。
 
 ### 6.4 向导输出（会话，不落效价表）
 
@@ -333,19 +335,32 @@ dispatch_id → mega_flow_work_order_dispatch
 }
 ```
 
+- `groups` 顺序 = 向导上表组顺序；组内 `selected_mouse_nos` = 该组原鼠序过滤已选（**不重排、不去重**；选鼠键为 `groupId::mouseIndex`，同鼠号可重复勾选）。
+- 实现：`TiterInstrumentOrderDialogs.vue` → `buildSelectionPayload` / `handleConfirm`。
+
 ---
 
-## 7. 点「确定」之后（后续阶段，本阶段不实现）
+## 7. 点「确定」之后（已实现）
 
-**跳转**：`/mega-automation/flow-work-orders/detail`（无 `id`，本地草稿模式）。
+**实现文件**：`flowWorkOrderTiterUpstream.ts`（灌板与字段预填）、`FlowWorkOrderDetail.vue`（消费草稿）、`flowWorkOrderModel.ts`（保存 payload 含 `source_id`）。
 
-**自动预填（计划）**
+**跳转**：`/mega-automation/flow-work-orders/detail?mode=edit&prefill=titer-wizard&n=…`（无 `id`，本地草稿模式）。
 
-1. 按选中鼠生成样本板，`sample_code` = 鼠号；切块规则 **待定**。  
-2. `project_no` ← `project_code`，`target` ← `target_name`。  
-3. `data_type` = `TITER`；保存时写入 `source_id` = `titer_order_id`。  
-4. 细胞板、PC、`cell_keys`、条码由用户手工补。  
-5. `order_no` / 对照孔默认布局 **待定**。
+### 7.1 自动预填
+
+1. **样本板布局（仅效价→流式路径，不是流式工单全局默认布局）**
+   - 每板第 **1 列全 NC**、第 **12 列全 PC**（A–H）。
+   - 样本孔仅 **A02–A11、E02–E11**（每板 20 孔）；其余孔 **BLANK**。
+   - 鼠号按草稿顺序连续装填：同组相邻、装满一板再开下一板；**不**按组拆板、**不**插组间空位。
+   - 0 只鼠仍生成 **1** 板（仅 NC/PC + 空孔，便于只补对照）。
+2. **板级字段**：`project_no` ← `experiment_id`；`target` ← `target_name`。
+3. **工单字段**：`data_type = TITER`；`source_id = titer_order_id`；`order_no = {titer_order_id}-{4位随机}`；`order_name = {project_code}-{target_name}-效价检测`（缺项目编号用 `experiment_id`）。
+4. **不预填**：细胞板内容、PC 表、`cell_keys`、条码等，由用户在流式页手工补。
+
+### 7.2 保存与关联
+
+- `buildFlowWorkOrderSavePayload` 携带 `source_id`；后端对已有 `source_id` **写一次锁定**（不可改成别的来源）。
+- 复制工单时清空 `source_id`，避免误挂到同一效价单。
 
 用户完成后走现有流程：**保存 → 校验 → 发送 → 模拟/真实设备执行**。
 
@@ -410,8 +425,7 @@ sequenceDiagram
     W->>Imm: 确认后立刻入库
     U->>W: 矩阵选鼠（默认可存活全选）
     U->>W: 确定（0 选中可点但提示）
-    Note over W,FW: 本阶段止于确定前；之后跳转预填
-    W->>FW: 预填样本板 + source_id
+    W->>FW: sessionStorage 草稿 + 跳转预填样本板 / source_id
     U->>FW: 补细胞板/PC，保存校验发送
     FW->>D: Payload + dispatch_id
     D->>API: 回传 order_json
@@ -439,31 +453,34 @@ sequenceDiagram
 | 9 | 0 选中确定 | **可点**，但提示（可只补对照） |
 | 10 | PC/标靶提前写入效价表 | **不**；回传核对快照后一次性入库 |
 | 11 | 权限 | 第一版先简单实现 / 暂不考虑，功能后再完善 |
-| 12 | 本阶段范围 | 做到新建向导点「确定」之前 |
+| 12 | 选鼠键 | `groupId::mouseIndex`（同鼠号可独立勾选；payload 可含重复鼠号） |
+| 13 | 样本板布局 | 列1 NC、列12 PC；样本仅 A02–A11 / E02–E11；连续装填、同组相邻 |
+| 14 | `project_no` | ← **`experiment_id`**（不是 `project_code`） |
+| 15 | `order_no` | `{titer_order_id}-{随机}`；库不强制唯一 |
+| 16 | `order_name` | `{project_code}-{target_name}-效价检测` |
+| 17 | 预填传递 | `sessionStorage` 草稿 + `prefill=titer-wizard`；进详情即消费清除 |
 
 ### 10.2 仍待定（后续）
 
 | # | 问题 | 影响 |
 |---|------|------|
-| 1 | 样本板切块规则 | 确定后预填 |
-| 2 | 对照孔默认布局 | 预填 wells |
-| 3 | 流式 `order_no` 生成规则 | 工单标识 |
-| 4 | 死亡鼠在矩阵中是否允许手动选中 | **已决：不可选，灰显** |
-| 5 | 回传 JSON 是否含 `dispatch_id` | 设备协议 |
-| 6 | `secondary_antibody` 默认值 | 样本板字段 |
-| 7 | 上游相关权限点细化 | 系统管理 |
+| 1 | 回传 JSON 是否含 `dispatch_id` | 设备协议 |
+| 2 | `secondary_antibody` 默认值 | 样本板字段（当前创建默认「人」） |
+| 3 | 上游相关权限点细化 | 系统管理 |
+| 4 | 死亡鼠在矩阵中是否允许手动选中 | **已决：不可选，灰显**（保留备查） |
 
 ---
 
 ## 11. 建议实施顺序
 
-### 本阶段（做到「确定」前）
+### 已完成
 
-1. ~~**`mega_flow_work_order` 增加 `source_id`**~~（已完成）  
-2. ~~**效价列表「工单」左键 / 右键**~~（已完成）  
-3. ~~**新建向导大弹窗**~~（已完成）  
-4. ~~**`GET /api/serum/mouse-groups`、`POST /api/serum/mouse-registry/save`**~~（已完成）  
-5. ~~**`POST /api/mega-automation/flow-work-orders/by-source`**~~（已完成）
+1. ~~**`mega_flow_work_order` 增加 `source_id`**~~  
+2. ~~**效价列表「工单」左键 / 右键**~~  
+3. ~~**新建向导大弹窗**~~  
+4. ~~**`GET /api/serum/mouse-groups`、`POST /api/serum/mouse-registry/save`**~~  
+5. ~~**`POST /api/mega-automation/flow-work-orders/by-source`**~~  
+6. ~~**点「确定」→ 跳转流式新建并预填**~~（布局 / 字段 / `source_id`，见 §7）
 
 已有库升级 SQL：
 
@@ -473,11 +490,10 @@ ALTER TABLE mega_flow_work_order
   ADD KEY idx_mega_flow_work_order_source (data_type, source_id);
 ```
 
-### 后续阶段
+### 后续
 
-5. 点「确定」→ 跳转流式新建，预填样本板 / `project_no` / `target`，保存时写 `source_id`。  
-6. 回传处理：快照核对 → 一次性写效价表。  
-7. 真实设备发送；权限细化。
+7. 回传处理：快照核对 → 一次性写效价表。  
+8. 真实设备发送；权限细化。
 
 ---
 
@@ -485,4 +501,4 @@ ALTER TABLE mega_flow_work_order
 
 - 流式工单领域模型与 API：`mega-automation-flow-work-order.md`  
 - 回传接口格式：`order-experiment-sync-api.md`  
-- **本文**：跨模块业务流程、关联字段、列表入口交互、新建向导与数据权威约定，作为下一阶段开发依据。
+- **本文**：跨模块业务流程、关联字段、列表入口交互、新建向导与预填约定、数据权威约定。

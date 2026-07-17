@@ -326,6 +326,12 @@ import {
   EDITABLE_STATUSES,
   normalizeFlowWorkOrder,
 } from './flowWorkOrderModel';
+import {
+  buildFlowWorkOrderFromTiterWizardDraft,
+  clearTiterInstrumentWizardDraft,
+  readTiterInstrumentWizardDraft,
+  TITER_UPSTREAM_PREFILL_QUERY,
+} from './flowWorkOrderTiterUpstream';
 
 export default {
   name: 'MegaFlowWorkOrderDetail',
@@ -703,8 +709,11 @@ export default {
     detailRouteIdentity() {
       const id = this.$route.query.id;
       const copyFrom = this.$route.query.copyFrom;
+      const prefill = this.$route.query.prefill;
+      const prefillNonce = this.$route.query.n;
       if (id) return `id:${id}`;
       if (copyFrom) return `copy:${copyFrom}`;
+      if (prefill) return `prefill:${prefill}:${prefillNonce || ''}`;
       return 'new';
     },
     reloadIfRouteIdentityChanged() {
@@ -721,9 +730,21 @@ export default {
       const routeIdentity = this.detailRouteIdentity();
       const id = this.$route.query.id;
       const copyFrom = this.$route.query.copyFrom;
+      const prefill = this.$route.query.prefill;
       if (!id && !copyFrom) {
         this.loadError = false;
-        this.order = this.normalizeOrder(createDefaultFlowWorkOrder());
+        if (prefill === TITER_UPSTREAM_PREFILL_QUERY) {
+          const draft = readTiterInstrumentWizardDraft();
+          clearTiterInstrumentWizardDraft();
+          if (draft?.titer_order_id) {
+            this.order = this.normalizeOrder(buildFlowWorkOrderFromTiterWizardDraft(draft));
+          } else {
+            this.order = this.normalizeOrder(createDefaultFlowWorkOrder());
+            ElMessage.warning('预填数据已失效，请从效价工单重新发起');
+          }
+        } else {
+          this.order = this.normalizeOrder(createDefaultFlowWorkOrder());
+        }
         this.resetPausedTracking();
         this.loadedRouteIdentity = routeIdentity;
         this.loading = false;
@@ -749,6 +770,7 @@ export default {
             pause_state: '',
             display_status: '',
             display_status_label: '',
+            source_id: undefined,
           });
         } else {
           this.order = this.normalizeOrder(data);

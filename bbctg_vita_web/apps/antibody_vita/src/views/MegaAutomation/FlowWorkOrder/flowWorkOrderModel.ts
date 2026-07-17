@@ -178,6 +178,7 @@ export function createDefaultFlowWorkOrder(): FlowWorkOrder {
     order_no: '',
     priority: 'normal',
     sample_plates: [],
+    source_id: undefined,
     status: 'draft',
   };
 }
@@ -324,5 +325,6 @@ export function buildFlowWorkOrderSavePayload(
     priority: order.priority,
     remark: order.base_info.remark,
     sample_plates: order.sample_plates,
+    source_id: order.source_id || undefined,
   };
 }

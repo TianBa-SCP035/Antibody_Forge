@@ -89,6 +89,7 @@ export interface FlowWorkOrder {
   sample_plates: FlowWorkOrderSamplePlate[];
   sample_plate_barcodes?: string[];
   sent_at?: null | string;
+  source_id?: string;
   status: string;
   targets?: string[];
   updated_at?: null | string;
@@ -119,8 +120,8 @@ export type FlowWorkOrderListItem = Pick<
   FlowWorkOrder,
   'cell_plate_barcodes' | 'created_at' | 'created_by' | 'data_type' | 'display_status'
   | 'display_status_label' | 'error_message' | 'id' | 'order_name' | 'order_no' | 'priority'
-  | 'project_nos' | 'remark' | 'sample_plate_barcodes' | 'sent_at' | 'status' | 'targets'
-  | 'updated_at'
+  | 'project_nos' | 'remark' | 'sample_plate_barcodes' | 'sent_at' | 'source_id' | 'status'
+  | 'targets' | 'updated_at'
 >;
 
 export interface FlowWorkOrderListResult {
@@ -140,6 +141,7 @@ export interface FlowWorkOrderSavePayload {
   priority: string;
   remark: string;
   sample_plates: FlowWorkOrderSamplePlate[];
+  source_id?: string;
 }
 
 export interface FlowWorkOrderValidationResult {
@@ -166,6 +168,20 @@ export function fetchFlowWorkOrderList(data: FlowWorkOrderListQuery, config?: Po
     ...skipGlobalErrorHandler,
     ...config,
   });
+}
+
+export function fetchFlowWorkOrdersBySource(
+  data: { data_type: string; exclude_cancelled?: boolean; source_id: string },
+  config?: PostConfig,
+) {
+  return requestClient.post<{ items: FlowWorkOrderListItem[] }>(
+    '/mega-automation/flow-work-orders/by-source',
+    data,
+    {
+      ...skipGlobalErrorHandler,
+      ...config,
+    },
+  );
 }
 
 export function fetchFlowWorkOrderDetail(id: number | string, config?: RequestConfig) {

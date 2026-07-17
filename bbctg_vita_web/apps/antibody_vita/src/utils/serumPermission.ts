@@ -144,12 +144,8 @@ export function canViewTiterOrderPage(userInfo: any): boolean {
   return hasAccessCode(userInfo, 'serum.page.titer_order');
 }
 
-export function canCreateTiterOrder(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.titer_order.create');
-}
-
-export function canEditTiterOrderBatch(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.titer_order.batch.edit');
+export function canEditTiterOrder(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.titer_order.edit');
 }
 
 export function canDeleteTiterOrder(userInfo: any): boolean {
@@ -169,18 +165,6 @@ export function canEditTiterOrderRecord(userInfo: any, row: any): boolean {
     hasAccessCode(userInfo, 'serum.titer_order.record.edit') &&
     (canEditAllTiterOrderRecord(userInfo) ||
       isTiterOwner(userInfo, row) ||
-      isProjectOwner(userInfo, { owner: row?.immune_owner }))
-  );
-}
-
-export function canEditAllTiterOrderSummary(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.titer_order.summary.edit_all');
-}
-
-export function canEditTiterOrderSummary(userInfo: any, row: any): boolean {
-  return (
-    hasAccessCode(userInfo, 'serum.titer_order.summary.edit') &&
-    (canEditAllTiterOrderSummary(userInfo) ||
       isProjectOwner(userInfo, { owner: row?.immune_owner }))
   );
 }

@@ -222,6 +222,54 @@ def get_detail(db: Session, project_id: int) -> dict | None:
     return data
 
 
+def get_mouse_groups(db: Session, experiment_id: str) -> list[dict]:
+    normalized = str(experiment_id or "").strip()
+    if not normalized:
+        raise ValueError("experiment_id 不能为空")
+    rows = db.scalars(
+        select(SerumImmMouse)
+        .where(SerumImmMouse.experiment_id == normalized)
+        .order_by(SerumImmMouse.id.asc())
+    ).all()
+    return [item.to_dict() for item in rows]
+
+
+def save_mouse_registry(db: Session, data: dict[str, Any]) -> dict:
+    experiment_id = str(data.get("experiment_id") or "").strip()
+    if not experiment_id:
+        raise ValueError("experiment_id 不能为空")
+
+    row = None
+    raw_id = data.get("id")
+    if raw_id not in (None, ""):
+        row = db.scalar(
+            select(SerumImmMouse).where(
+                SerumImmMouse.id == int(raw_id),
+                SerumImmMouse.experiment_id == experiment_id,
+            )
+        )
+    if row is None:
+        group_id = str(data.get("group_id") or "").strip()
+        if not group_id:
+            raise ValueError("缺少 id 或 group_id")
+        row = db.scalar(
+            select(SerumImmMouse).where(
+                SerumImmMouse.experiment_id == experiment_id,
+                SerumImmMouse.group_id == group_id,
+            )
+        )
+    if not row:
+        raise ValueError("小鼠分组不存在")
+
+    if "mouse_registry" in data:
+        row.mouse_registry = data.get("mouse_registry")
+    if "mouse_no_list" in data:
+        row.mouse_no_list = str(data.get("mouse_no_list") or "")
+    db.commit()
+    db.refresh(row)
+    return row.to_dict()
+
+
 def _update_fields(obj, item: dict[str, Any], skip: set[str]) -> None:
     for key, value in item.items():
         if key not in skip and hasattr(obj, key):

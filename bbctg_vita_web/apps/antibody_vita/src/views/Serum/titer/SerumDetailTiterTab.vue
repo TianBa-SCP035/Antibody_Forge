@@ -317,7 +317,7 @@ import * as XLSX from 'xlsx'
 import { ApiFetchError, fetchApiResource, notifyApiError } from '#/api/errors'
 import { fetchElisaPlates, fetchFacsPlates, fetchIndexFiles, skipGlobalErrorHandler } from '#/api/serum'
 import { handleUnauthorizedError } from '#/utils/auth-session'
-import { SERUM_ERRORS } from './errors'
+import { SERUM_ERRORS } from '../shared/errors'
 import {
   createDefaultLowerSlotList,
   createDefaultUpperSlotList,

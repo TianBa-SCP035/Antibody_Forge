@@ -737,9 +737,9 @@ import {
 
 import { notifyApiError } from '#/api/errors'
 import { fetchDetail, saveSerum, fetchNextId, deleteSerum, getSerumFilterOptions } from '#/api/serum'
-import { SERUM_ERRORS } from './errors'
-import MouseRegistryDialog from './MouseRegistryDialog.vue'
-import AssayMethodEditor from './AssayMethodEditor.vue'
+import { SERUM_ERRORS } from '../shared/errors'
+import MouseRegistryDialog from '../shared/MouseRegistryDialog.vue'
+import AssayMethodEditor from '../shared/AssayMethodEditor.vue'
 import {
   canEditAllSerumProjects,
   canCreateSerumProject,

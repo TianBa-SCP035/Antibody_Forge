@@ -1,7 +1,13 @@
--- Antibody Forge / Vita 主库：全表 DDL + 权限与功能开关种子
--- 在 DATABASE_URL 空库执行本文件即可；权限包/角色可在系统管理中调整。
+-- Antibody Forge / Vita 主库：全表 DDL + 权限点 / 接口审计映射 / 功能开关种子
+-- 在 DATABASE_URL 空库执行本文件即可。
+--
+-- 说明：
+--   - sys_permission / sys_permission_api / sys_feature_flag：与代码约定对齐，建议保持完整。
+--   - 文末「权限包 / 角色」仅为克隆空库时的示例种子，方便快速生效；生产环境完全自定义，
+--     不必与现网或示例一致，可删改或在系统管理中调整。
+--   - 外部细胞库 sam_sample 见文末注释（CELL_DB_URL，models/cell_inventory.py），勿在主库执行。
+--
 -- 文档：docs/README.md、docs/auth-permissions.md
--- 外部细胞库 sam_sample 结构见文末注释（CELL_DB_URL，models/cell_inventory.py）。
 
 CREATE TABLE IF NOT EXISTS sys_user (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
@@ -209,6 +215,7 @@ CREATE TABLE IF NOT EXISTS mega_flow_work_order (
   order_name VARCHAR(255) NULL COMMENT '订单名称',
   order_no VARCHAR(255) NOT NULL COMMENT '订单编号',
   data_type VARCHAR(32) NOT NULL DEFAULT 'TITER' COMMENT '检测类型',
+  source_id VARCHAR(128) NULL COMMENT '来源业务主键',
   priority VARCHAR(32) NOT NULL DEFAULT 'normal' COMMENT '优先级',
   remark TEXT NULL COMMENT '备注',
   status VARCHAR(64) NOT NULL DEFAULT 'draft' COMMENT '执行状态',
@@ -225,6 +232,7 @@ CREATE TABLE IF NOT EXISTS mega_flow_work_order (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_mega_flow_work_order_status (status),
+  KEY idx_mega_flow_work_order_source (data_type, source_id),
   KEY idx_mega_flow_work_order_project_nos ((CAST(project_nos AS CHAR(128) ARRAY))),
   KEY idx_mega_flow_work_order_targets ((CAST(targets AS CHAR(128) ARRAY))),
   KEY idx_mega_flow_work_order_sample_plate_barcodes ((CAST(sample_plate_barcodes AS CHAR(128) ARRAY))),
@@ -458,14 +466,11 @@ VALUES
   ('serum.file.manage', '管理效价文件', 'action', 'serum', 'file', 'manage', NULL, 'serum.file.manage_button', 'serum.page.titer', 280),
   ('serum.cell.view', '查看细胞库存', 'action', 'serum', 'cell', 'view_inventory', NULL, 'serum.cell.view_button', 'serum.page.cell', 290),
   ('serum.cell.prep_status.update', '更新细胞制备状态', 'action', 'serum', 'cell', 'update_prep_status', NULL, 'serum.cell.prep_status.update_button', 'serum.page.cell', 300),
-  ('serum.titer_order.create', '新建效价工单', 'action', 'serum', 'titer_order', 'create', NULL, 'serum.titer_order.create_button', 'serum.page.titer_order', 305),
-  ('serum.titer_order.batch.edit', '编辑效价工单批次信息', 'action', 'serum', 'titer_order', 'batch_edit', NULL, 'serum.titer_order.batch.edit_button', 'serum.page.titer_order', 310),
+  ('serum.titer_order.edit', '编辑效价工单', 'action', 'serum', 'titer_order', 'edit', NULL, 'serum.titer_order.edit_button', 'serum.page.titer_order', 305),
   ('serum.titer_order.delete', '删除效价工单', 'action', 'serum', 'titer_order', 'delete', NULL, 'serum.titer_order.delete_button', 'serum.page.titer_order', 315),
   ('serum.titer_order.owner.edit', '编辑效价负责人', 'action', 'serum', 'titer_order', 'owner_edit', NULL, 'serum.titer_order.owner.edit_button', 'serum.page.titer_order', 320),
   ('serum.titer_order.record.edit', '编辑本人工单检测记录', 'action', 'serum', 'titer_order', 'record_edit', NULL, 'serum.titer_order.record.edit_button', 'serum.page.titer_order', 325),
   ('serum.titer_order.record.edit_all', '编辑全部工单检测记录', 'action', 'serum', 'titer_order', 'record_edit_all', NULL, 'serum.titer_order.record.edit_all_button', 'serum.page.titer_order', 326),
-  ('serum.titer_order.summary.edit', '编辑本人效价小结', 'action', 'serum', 'titer_order', 'summary_edit', NULL, 'serum.titer_order.summary.edit_button', 'serum.page.titer_order', 330),
-  ('serum.titer_order.summary.edit_all', '编辑全部效价小结', 'action', 'serum', 'titer_order', 'summary_edit_all', NULL, 'serum.titer_order.summary.edit_all_button', 'serum.page.titer_order', 331),
   ('mega.page.flow_work_order', '流式工单总览', 'page', 'mega', 'flow_work_order', 'view', '/mega-automation/flow-work-orders', NULL, NULL, 500),
   ('mega.flow_work_order.edit', '编辑流式工单', 'action', 'mega', 'flow_work_order', 'edit', NULL, 'mega.flow_work_order.edit_button', 'mega.page.flow_work_order', 510),
   ('mega.flow_work_order.dispatch', '发送流式工单', 'action', 'mega', 'flow_work_order', 'dispatch', NULL, 'mega.flow_work_order.dispatch_button', 'mega.page.flow_work_order', 520),
@@ -480,6 +485,8 @@ VALUES
   ('system.operation_log.view', '查看操作日志', 'action', 'system', 'operation_log', 'view', NULL, 'system.operation_log.view_button', 'system.page.operation_log', 1030),
   ('system.feature.manage', '管理系统功能', 'action', 'system', 'feature', 'manage', NULL, 'system.feature.manage_button', 'system.page.feature', 1040);
 
+-- 仅登记「会写操作日志」的写接口（POST/PUT/PATCH/DELETE + 非 page/view 权限）。
+-- GET / 列表查询即使登记也不会被审计中间件记录，故不写入本表。
 INSERT IGNORE INTO sys_permission_api
   (permission_code, method, path_pattern, description)
 VALUES
@@ -501,20 +508,9 @@ VALUES
   ('serum.titer.edit', 'POST', '/api/serum/titer/plate/delete', '删除FACS板'),
   ('serum.titer.edit', 'POST', '/api/serum/titer/elisa/plate/save', '保存ELISA板'),
   ('serum.titer.edit', 'POST', '/api/serum/titer/elisa/plate/delete', '删除ELISA板'),
-  ('serum.page.titer_order', 'GET', '/api/serum/titer/order/meta', '效价工单页面元数据'),
-  ('serum.page.titer_order', 'GET', '/api/serum/titer/order/stats', '效价工单统计'),
-  ('serum.page.titer_order', 'GET', '/api/serum/titer/order/owner_stats', '效价负责人工作量统计'),
-  ('serum.titer_order.create', 'GET', '/api/serum/titer/order/project_options', '效价工单创建项目选项'),
-  ('serum.titer_order.batch.edit', 'GET', '/api/serum/titer/order/project_options', '效价工单编辑项目选项'),
-  ('serum.titer_order.create', 'GET', '/api/serum/titer/order/batch_preview', '效价工单批次预览'),
-  ('serum.titer_order.batch.edit', 'GET', '/api/serum/titer/order/batch_preview', '效价工单批次预览'),
-  ('serum.titer_order.create', 'POST', '/api/serum/titer/order/save', '新建效价工单'),
-  ('serum.titer_order.batch.edit', 'POST', '/api/serum/titer/order/save', '保存效价工单'),
+  ('serum.titer_order.edit', 'POST', '/api/serum/titer/order/save', '保存效价工单'),
   ('serum.titer_order.delete', 'POST', '/api/serum/titer/order/delete', '删除效价工单'),
-  ('mega.page.flow_work_order', 'GET', '/api/mega-automation/flow-work-orders/meta', '流式工单页面元数据'),
-  ('mega.page.flow_work_order', 'POST', '/api/mega-automation/flow-work-orders/list', '流式工单列表'),
-  ('mega.page.flow_work_order', 'GET', '/api/mega-automation/flow-work-orders/{order_id}', '流式工单详情'),
-  ('mega.page.flow_work_order', 'GET', '/api/mega-automation/flow-work-orders/{order_id}/active-payload', '查询当前生效下发Payload'),
+  ('serum.project.edit', 'POST', '/api/serum/mouse-registry/save', '保存小鼠鼠号明细'),
   ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/save', '保存流式工单'),
   ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/validate', '校验流式工单'),
   ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/dispatch', '发送流式工单'),
@@ -536,19 +532,33 @@ VALUES
   ('system.permission.manage', 'POST', '/api/system/permission_bundles/save', '新增或编辑权限包'),
   ('system.permission.manage', 'POST', '/api/system/permission_bundles/delete', '删除权限包'),
   ('system.permission.manage', 'POST', '/api/system/users/{user_id}/permission_overrides', '保存用户个人权限覆盖'),
-  ('system.operation_log.view', 'GET', '/api/system/operation_logs', '查看操作日志'),
-  ('system.feature.manage', 'GET', '/api/system/features', '查看系统功能配置'),
-  ('system.feature.manage', 'GET', '/api/system/features/job_logs', '查看定时任务运行日志'),
-  ('system.feature.manage', 'GET', '/api/system/features/system_status', '查看系统基础状态'),
   ('system.feature.manage', 'POST', '/api/system/features/save', '保存系统功能配置');
 
+INSERT IGNORE INTO sys_feature_flag
+  (code, name, category, description, enabled, visible, sort_order, config)
+VALUES
+  ('menu.serum', '免疫实验菜单', 'menu', '控制免疫实验模块菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum', 'icon', 'lucide:test-tube')),
+  ('menu.serum.list', '免疫实验列表', 'menu', '控制免疫实验列表菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum/list', 'icon', 'lucide:list', 'parent_code', 'menu.serum')),
+  ('menu.serum.titer_order', '效价实验列表', 'menu', '控制效价实验列表菜单显示', 1, 1, 20, JSON_OBJECT('path', '/serum/titer-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.serum')),
+  ('menu.mega_automation', '镁伽自动化菜单', 'menu', '控制镁伽自动化模块菜单显示', 1, 1, 50, JSON_OBJECT('path', '/mega-automation', 'icon', 'lucide:workflow')),
+  ('menu.mega_automation.flow_work_orders', '流式工单总览', 'menu', '控制流式工单总览页面显示', 1, 1, 10, JSON_OBJECT('path', '/mega-automation/flow-work-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.mega_automation')),
+  ('menu.system', '系统管理', 'menu', '控制系统管理父级菜单显示', 1, 1, 90, JSON_OBJECT('path', '/system', 'icon', 'lucide:settings')),
+  ('menu.system.user_permission', '用户权限菜单', 'menu', '控制系统管理下用户权限页面显示', 1, 1, 10, JSON_OBJECT('path', '/system/user-permission', 'icon', 'lucide:shield-check', 'parent_code', 'menu.system')),
+  ('menu.system.features', '系统功能菜单', 'menu', '控制系统管理下系统功能页面显示', 1, 1, 20, JSON_OBJECT('path', '/system/features', 'icon', 'lucide:sliders-horizontal', 'parent_code', 'menu.system')),
+  ('feature.yunzhijia_auto_provision', '云之家自动创建用户', 'feature', '允许云之家登录时自动创建未绑定用户', 0, 1, 110, JSON_OBJECT()),
+  ('feature.drm_file_security', 'DRM 文件安全模块', 'feature', '控制上传自动解密、下载前加密等 DRM 文件安全能力', 0, 1, 120, JSON_OBJECT()),
+  ('job.employee_profile_sync', '员工资料定时同步', 'job', '每天 00:30 同步外部员工基础资料', 1, 1, 200, JSON_OBJECT('hour', 0, 'minute', 30, 'cron', '30 0 * * *', 'restart_required', true)),
+  ('job.serum_auto_update_status', '免疫状态自动更新', 'job', '每天 01:00 自动更新免疫实验状态', 1, 1, 210, JSON_OBJECT('hour', 1, 'minute', 0, 'cron', '0 1 * * *', 'restart_required', true));
+
+-- =============================================================================
+-- 权限包 / 角色（仅示例，方便克隆空库快速生效；生产环境请完全自定义）
+-- =============================================================================
+
 INSERT IGNORE INTO sys_permission_bundle (code, name, module, description, sort_order) VALUES
-  ('serum_readonly', '查看', 'serum', '查看血清列表、详情、效价和细胞库存', 100),
-  ('serum_scheme_edit', '方案编辑', 'serum', '创建和编辑血清方案，维护状态、笼位和细胞制备状态', 110),
-  ('serum_titer_edit', '效价编辑', 'serum', '维护效价数据、FACS 板和效价附件', 120),
-  ('serum_admin', '血清管理员', 'serum', '包含血清相关全部页面和操作权限', 190),
-  ('mega_flow_order', '镁伽流式工单', 'mega', '查看、编辑和发送镁伽自动化流式工单', 500),
-  ('system_admin', '系统管理员', 'system', '管理用户、角色权限、权限点和操作日志', 900);
+  ('serum_readonly', '血清只读', 'serum', '示例：查看列表/详情/效价/工单/细胞库存', 100),
+  ('serum_admin', '血清全部', 'serum', '示例：血清模块全部页面与操作权限', 190),
+  ('mega_flow_order', '镁伽流式工单', 'mega', '示例：查看、编辑和发送流式工单', 500),
+  ('system_admin', '系统管理', 'system', '示例：用户/角色/权限包/操作日志/功能开关', 900);
 
 INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VALUES
   ('serum_readonly', 'serum.page.list'),
@@ -557,21 +567,6 @@ INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VAL
   ('serum_readonly', 'serum.page.titer_order'),
   ('serum_readonly', 'serum.page.cell'),
   ('serum_readonly', 'serum.cell.view'),
-  ('serum_scheme_edit', 'serum.page.list'),
-  ('serum_scheme_edit', 'serum.page.detail'),
-  ('serum_scheme_edit', 'serum.page.edit'),
-  ('serum_scheme_edit', 'serum.project.create'),
-  ('serum_scheme_edit', 'serum.project.edit'),
-  ('serum_scheme_edit', 'serum.status.update'),
-  ('serum_scheme_edit', 'serum.cage.update'),
-  ('serum_scheme_edit', 'serum.cell.prep_status.update'),
-  ('serum_titer_edit', 'serum.page.list'),
-  ('serum_titer_edit', 'serum.page.detail'),
-  ('serum_titer_edit', 'serum.page.titer'),
-  ('serum_titer_edit', 'serum.page.titer_order'),
-  ('serum_titer_edit', 'serum.titer.edit'),
-  ('serum_titer_edit', 'serum.titer.edit_all'),
-  ('serum_titer_edit', 'serum.file.manage'),
   ('serum_admin', 'serum.page.list'),
   ('serum_admin', 'serum.page.detail'),
   ('serum_admin', 'serum.page.edit'),
@@ -589,14 +584,11 @@ INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VAL
   ('serum_admin', 'serum.titer.edit'),
   ('serum_admin', 'serum.titer.edit_all'),
   ('serum_admin', 'serum.file.manage'),
-  ('serum_admin', 'serum.titer_order.create'),
-  ('serum_admin', 'serum.titer_order.batch.edit'),
+  ('serum_admin', 'serum.titer_order.edit'),
   ('serum_admin', 'serum.titer_order.delete'),
   ('serum_admin', 'serum.titer_order.owner.edit'),
   ('serum_admin', 'serum.titer_order.record.edit'),
   ('serum_admin', 'serum.titer_order.record.edit_all'),
-  ('serum_admin', 'serum.titer_order.summary.edit'),
-  ('serum_admin', 'serum.titer_order.summary.edit_all'),
   ('serum_admin', 'serum.cell.view'),
   ('serum_admin', 'serum.cell.prep_status.update'),
   ('mega_flow_order', 'mega.page.flow_work_order'),
@@ -613,27 +605,10 @@ INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VAL
   ('system_admin', 'system.operation_log.view'),
   ('system_admin', 'system.feature.manage');
 
-INSERT IGNORE INTO sys_feature_flag
-  (code, name, category, description, enabled, visible, sort_order, config)
-VALUES
-  ('menu.serum', '血清实验菜单', 'menu', '控制血清实验模块菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum', 'icon', 'lucide:test-tube')),
-  ('menu.serum.list', '免疫实验列表', 'menu', '控制免疫实验列表菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum/list', 'icon', 'lucide:list', 'parent_code', 'menu.serum')),
-  ('menu.serum.titer_order', '效价实验列表', 'menu', '控制效价实验列表菜单显示', 1, 1, 20, JSON_OBJECT('path', '/serum/titer-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.serum')),
-  ('menu.mega_automation', '镁伽自动化菜单', 'menu', '控制镁伽自动化模块菜单显示', 1, 1, 50, JSON_OBJECT('path', '/mega-automation', 'icon', 'lucide:workflow')),
-  ('menu.mega_automation.flow_work_orders', '流式工单总览', 'menu', '控制流式工单总览页面显示', 1, 1, 10, JSON_OBJECT('path', '/mega-automation/flow-work-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.mega_automation')),
-  ('menu.system', '系统管理', 'menu', '控制系统管理父级菜单显示', 1, 1, 90, JSON_OBJECT('path', '/system', 'icon', 'lucide:settings')),
-  ('menu.system.user_permission', '用户权限菜单', 'menu', '控制系统管理下用户权限页面显示', 1, 1, 10, JSON_OBJECT('path', '/system/user-permission', 'icon', 'lucide:shield-check', 'parent_code', 'menu.system')),
-  ('menu.system.features', '系统功能菜单', 'menu', '控制系统管理下系统功能页面显示', 1, 1, 20, JSON_OBJECT('path', '/system/features', 'icon', 'lucide:sliders-horizontal', 'parent_code', 'menu.system')),
-  ('feature.yunzhijia_auto_provision', '云之家自动创建用户', 'feature', '允许云之家登录时自动创建未绑定用户', 0, 1, 110, JSON_OBJECT()),
-  ('feature.drm_file_security', 'DRM 文件安全模块', 'feature', '控制上传自动解密、下载前加密等 DRM 文件安全能力', 0, 1, 120, JSON_OBJECT()),
-  ('job.employee_profile_sync', '员工资料定时同步', 'job', '每天 00:30 同步外部员工基础资料', 1, 1, 200, JSON_OBJECT('hour', 0, 'minute', 30, 'cron', '30 0 * * *', 'restart_required', true)),
-  ('job.serum_auto_update_status', '血清状态自动更新', 'job', '每天 01:00 自动更新血清实验状态', 1, 1, 210, JSON_OBJECT('hour', 1, 'minute', 0, 'cron', '0 1 * * *', 'restart_required', true));
-
 INSERT IGNORE INTO sys_role (code, name, description, sort_order) VALUES
-  ('super_admin', '超级管理员', '拥有系统所有权限', 1),
-  ('serum_admin', '血清管理员', '管理血清实验相关功能', 10),
-  ('serum_user', '血清实验用户', '可创建和编辑本人负责项目', 20),
-  ('readonly', '只读用户', '仅可查看数据', 90);
+  ('super_admin', '超级管理员', '示例：绑定全部权限包', 1),
+  ('operator', '业务操作员', '示例：血清全部 + 镁伽流式工单', 10),
+  ('readonly', '只读用户', '示例：仅血清只读', 90);
 
 INSERT IGNORE INTO sys_role_permission_bundle (role_id, bundle_code)
 SELECT r.id, b.code FROM sys_role r JOIN sys_permission_bundle b WHERE r.code = 'super_admin';
@@ -642,13 +617,7 @@ INSERT IGNORE INTO sys_role_permission_bundle (role_id, bundle_code)
 SELECT r.id, b.code
 FROM sys_role r
 JOIN sys_permission_bundle b
-WHERE r.code = 'serum_admin' AND b.code = 'serum_admin';
-
-INSERT IGNORE INTO sys_role_permission_bundle (role_id, bundle_code)
-SELECT r.id, b.code
-FROM sys_role r
-JOIN sys_permission_bundle b
-WHERE r.code = 'serum_user' AND b.code IN ('serum_scheme_edit', 'serum_titer_edit');
+WHERE r.code = 'operator' AND b.code IN ('serum_admin', 'mega_flow_order');
 
 INSERT IGNORE INTO sys_role_permission_bundle (role_id, bundle_code)
 SELECT r.id, b.code

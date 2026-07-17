@@ -10,8 +10,8 @@
           <span class="total-count text-secondary">共 {{ total }} 条工单</span>
           <el-button
             type="primary"
-            :class="{ 'no-permission-btn': !canCreateTiterOrder() }"
-            :title="!canCreateTiterOrder() ? '您没有权限新建效价工单' : ''"
+            :class="{ 'no-permission-btn': !canEditTiterOrder() }"
+            :title="!canEditTiterOrder() ? '您没有权限编辑效价工单' : ''"
             @click="openCreateDialog"
           >
             <el-icon><Plus /></el-icon>
@@ -431,7 +431,7 @@
                   size="small"
                   maxlength="500"
                   placeholder="填写小结"
-                  :disabled="!canEditTiterOrderSummary(row)"
+                  :disabled="!canEditTiterOrderRecord(row)"
                   @change="saveRow(row, '效价小结')"
                 />
               </div>
@@ -463,7 +463,15 @@
         <el-table-column label="操作" fixed="right" min-width="236" align="center">
           <template #default="{ row }">
             <el-button-group>
-              <el-button class="table-action-btn" size="small" type="primary" plain :icon="Document" @click="goInstrumentOrder">
+              <el-button
+                class="table-action-btn"
+                size="small"
+                type="primary"
+                plain
+                :icon="Document"
+                @click="goInstrumentOrder(row)"
+                @contextmenu.prevent="openInstrumentFlowList(row)"
+              >
                 工单
               </el-button>
               <el-button class="table-action-btn" size="small" type="warning" plain :icon="DataAnalysis" @click="goSequencing(row)">
@@ -530,11 +538,13 @@
     <TiterOrderCreateDialog
       v-model="createDialogVisible"
       :edit-order="dialogEditOrder"
-      :can-save-batch="canEditTiterOrderBatch()"
+      :can-save-batch="canEditTiterOrder()"
       :can-delete="canDeleteTiterOrder()"
       @changed="onTiterOrderChanged"
       @closed="dialogEditOrder = null"
     />
+
+    <TiterInstrumentOrderDialogs ref="instrumentOrderDialogsRef" />
 
     <el-dialog
       v-model="ownerStatsVisible"
@@ -637,18 +647,17 @@ import {
 } from '#/api/serum';
 import { getSerumProjectStatusTagType, getSerumTiterStatusTagType, mergeTiterSerumStatusOptions } from '#/utils/serumProjectStatus';
 import {
-  canCreateTiterOrder,
   canDeleteTiterOrder,
   canEditSerumTiter,
-  canEditTiterOrderBatch,
+  canEditTiterOrder,
   canEditTiterOrderOwner,
   canEditTiterOrderRecord,
-  canEditTiterOrderSummary,
   getSerumUserName,
 } from '#/utils/serumPermission';
 import { useUserStore } from '@vben/stores';
 
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
+import TiterInstrumentOrderDialogs from './TiterInstrumentOrderDialogs.vue';
 import TiterOrderCreateDialog from './TiterOrderCreateDialog.vue';
 
 const TITER_ORDER_LIST_FILTER_KEY = 'titerOrderListFilters';
@@ -791,6 +800,7 @@ export default {
     ElTag,
     ElTooltip,
     Plus,
+    TiterInstrumentOrderDialogs,
     TiterOrderCreateDialog,
   },
   setup() {
@@ -1390,15 +1400,22 @@ export default {
       if (!row?.id) {
         return;
       }
-      if (!this.canEditTiterOrderBatch()) {
+      if (!this.canEditTiterOrder()) {
         ElMessage.warning('您没有权限编辑此工单');
         return;
       }
       this.dialogEditOrder = row;
       this.createDialogVisible = true;
     },
-    goInstrumentOrder() {
-      ElMessage.info('上机工单功能待接入');
+    goInstrumentOrder(row) {
+      this.$refs.instrumentOrderDialogsRef?.handleLeftClick(row, {
+        canEdit: this.canEditTiterOrderRecord(row),
+      });
+    },
+    openInstrumentFlowList(row) {
+      this.$refs.instrumentOrderDialogsRef?.handleRightClick(row, {
+        canEdit: this.canEditTiterOrderRecord(row),
+      });
     },
     goSequencing(_row) {
       ElMessage.info('测序功能待接入');
@@ -1679,18 +1696,15 @@ export default {
       this.getList();
     },
     openCreateDialog() {
-      if (!this.canCreateTiterOrder()) {
-        ElMessage.warning('您没有权限新建效价工单');
+      if (!this.canEditTiterOrder()) {
+        ElMessage.warning('您没有权限编辑效价工单');
         return;
       }
       this.dialogEditOrder = null;
       this.createDialogVisible = true;
     },
-    canCreateTiterOrder() {
-      return canCreateTiterOrder(this.currentUserInfo);
-    },
-    canEditTiterOrderBatch() {
-      return canEditTiterOrderBatch(this.currentUserInfo);
+    canEditTiterOrder() {
+      return canEditTiterOrder(this.currentUserInfo);
     },
     canDeleteTiterOrder() {
       return canDeleteTiterOrder(this.currentUserInfo);
@@ -1700,9 +1714,6 @@ export default {
     },
     canEditTiterOrderRecord(row) {
       return canEditTiterOrderRecord(this.currentUserInfo, row);
-    },
-    canEditTiterOrderSummary(row) {
-      return canEditTiterOrderSummary(this.currentUserInfo, row);
     },
     canEditTiter(row) {
       return canEditSerumTiter(this.currentUserInfo, {
@@ -1771,7 +1782,7 @@ export default {
         }
         payload.remark = row.remark;
       } else if (label === '效价小结') {
-        if (!this.canEditTiterOrderSummary(row)) {
+        if (!this.canEditTiterOrderRecord(row)) {
           ElMessage.warning('您没有权限编辑效价小结');
           return;
         }

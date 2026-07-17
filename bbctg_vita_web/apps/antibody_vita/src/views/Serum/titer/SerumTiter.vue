@@ -595,7 +595,7 @@ import {
   updateSerumStatus,
 } from '#/api/serum'
 import { handleUnauthorizedError } from '#/utils/auth-session'
-import { SERUM_ERRORS } from './errors'
+import { SERUM_ERRORS } from '../shared/errors'
 import {
   computeAutoPositiveFromPlate,
   createDefaultLowerSlotList,

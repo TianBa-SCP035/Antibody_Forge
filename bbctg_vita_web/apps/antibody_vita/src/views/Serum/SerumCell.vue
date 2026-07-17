@@ -338,7 +338,7 @@ import {
 
 import { notifyApiError } from '#/api/errors'
 import { fetchCellInventoryData, updateProjectPrepStatus } from '#/api/serum'
-import { SERUM_ERRORS } from './errors'
+import { SERUM_ERRORS } from './shared/errors'
 import { canUpdateSerumPrepStatus } from '#/utils/serumPermission'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 

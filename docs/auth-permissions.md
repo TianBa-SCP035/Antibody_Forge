@@ -39,7 +39,7 @@ erDiagram
 | 表 | 作用 |
 |----|------|
 | `sys_user` | 账号；`is_superuser`  bypass 常规权限汇总 |
-| `sys_role` | 角色（如 `serum_user`、`system_admin`） |
+| `sys_role` | 角色（如 `operator`、`readonly`；生产可完全自定义） |
 | `sys_permission` | 原子权限点，`code` 全局唯一 |
 | `sys_permission_bundle` | 权限包，便于按岗位批量授权 |
 | `sys_permission_bundle_item` | 包 ↔ 权限点多对多 |
@@ -84,14 +84,11 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `serum.file.manage` | action | 效价附件增删改 |
 | `serum.cell.view` | action | 查看细胞库存 |
 | `serum.cell.prep_status.update` | action | 更新任意项目制备状态（细胞库存页） |
-| `serum.titer_order.create` | action | 新建效价工单 |
-| `serum.titer_order.batch.edit` | action | 编辑工单批次信息（笼位、采血、只数、检测方法） |
+| `serum.titer_order.edit` | action | 新建/编辑效价工单（含批次信息：笼位、采血、只数、检测方法等） |
 | `serum.titer_order.delete` | action | 删除效价工单 |
 | `serum.titer_order.owner.edit` | action | 编辑效价负责人列 |
-| `serum.titer_order.record.edit` | action | 编辑检测日期、血清状态、备注（需为效价或免疫负责人，或 `record.edit_all`） |
-| `serum.titer_order.record.edit_all` | action | 编辑任意工单检测记录字段 |
-| `serum.titer_order.summary.edit` | action | 编辑效价小结（需为免疫负责人或 `summary.edit_all`） |
-| `serum.titer_order.summary.edit_all` | action | 编辑任意工单效价小结 |
+| `serum.titer_order.record.edit` | action | 编辑检测日期、血清状态、备注、效价小结（需为效价或免疫负责人，或 `record.edit_all`） |
+| `serum.titer_order.record.edit_all` | action | 编辑任意工单检测记录字段（含效价小结） |
 
 ### 2.2 系统模块（`system.*`）
 
@@ -105,25 +102,25 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `system.operation_log.view` | action | 查看操作日志 |
 | `system.feature.manage` | action | 功能开关与任务日志 |
 
-### 2.3 预置权限包与角色
+### 2.3 权限包与角色（示例种子）
 
-**权限包**（节选）：
+`docs/vita-database.sql` 文末的权限包 / 角色**仅为克隆空库示例**，生产环境完全自定义，不必与文档或现网一致。
+
+示例包：
 
 | 包 code | 面向 |
 |---------|------|
-| `serum_readonly` | 只读查看 |
-| `serum_scheme_edit` | 方案与状态、笼位、制备状态 |
-| `serum_titer_edit` | 效价与附件 |
-| `serum_admin` | 血清全部权限 |
-| `system_admin` | 系统管理全部权限 |
+| `serum_readonly` | 血清只读 |
+| `serum_admin` | 血清全部 |
+| `mega_flow_order` | 镁伽流式工单 |
+| `system_admin` | 系统管理 |
 
-**预置角色 → 权限包**：
+示例角色 → 包：
 
 | 角色 code | 绑定权限包 |
 |-----------|------------|
-| `super_admin` | 全部包 |
-| `serum_admin` | `serum_admin` |
-| `serum_user` | `serum_scheme_edit` + `serum_titer_edit` |
+| `super_admin` | 全部示例包 |
+| `operator` | `serum_admin` + `mega_flow_order` |
 | `readonly` | `serum_readonly` |
 
 实际授权流程：**给用户分配角色**；角色通过权限包展开为权限点列表。另可对单用户设置 `allow`/`deny` 覆盖。
@@ -188,9 +185,8 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 | 改状态 / 笼位 | 需对应 action 权限，且为项目负责人 **或** 拥有 `serum.project.edit_all` |
 | 改制备状态（细胞库存页） | 仅需 `serum.cell.prep_status.update` |
 | 效价写操作 | 需 `serum.titer.edit` 等，且为免疫项目负责人、该实验效价工单的效价负责人 **或** `serum.titer.edit_all` |
-| 效价工单新建 / 批次 / 删除 / 效价负责人 | 仅需对应 `serum.titer_order.*` action，无行级归属 |
-| 效价工单检测日期、血清状态、备注 | 需 `serum.titer_order.record.edit`，且为效价负责人（`titer_owners`）或免疫项目负责人 **或** `record.edit_all` |
-| 效价工单效价小结 | 需 `serum.titer_order.summary.edit`，且为免疫项目负责人 **或** `summary.edit_all` |
+| 效价工单新建/编辑（含批次）/ 删除 / 效价负责人 | 仅需对应 `serum.titer_order.*` action，无行级归属 |
+| 效价工单检测日期、血清状态、备注、效价小结 | 需 `serum.titer_order.record.edit`，且为效价负责人（`titer_owners`）或免疫项目负责人 **或** `record.edit_all` |
 | 自动更新状态 | 需要 `serum.status.auto_update` |
 
 负责人匹配：用户 `display_name` / `realName` / `username` 与项目 `owner` 字符串比对（含首段别名）。
@@ -257,7 +253,9 @@ flowchart LR
 
 该表**不用于**请求拦截鉴权。
 
-用途：HTTP 写请求审计中间件（`modules/system/audit.py`）根据 `method + path` 匹配映射，写入 `sys_operation_log`（动作名、资源类型、目标 id 等）。未在表中登记的写接口**不会**自动记审计日志。
+用途：HTTP **写请求**审计中间件（`modules/system/audit.py`）根据 `method + path` 匹配映射，写入 `sys_operation_log`。未登记的写接口不会自动记日志。本表**只应登记会实际落日志的写接口**；`GET` 以及挂在 `page`/`view` 上的查询类接口不要写入（即使写了也不会记）。
+
+同一 path 何时需要多行：仅当审计文案需区分时（例如 `/save` 同时挂 `*.create` 与 `*.edit`，按 body 是否有 `id` 选型）。`edit` 与 `edit_all`（或多权限 OR 鉴权）**不必**各写一行，登记一条代表性写映射即可。
 
 权限校验始终在业务路由中显式调用 `require_permission`。
 

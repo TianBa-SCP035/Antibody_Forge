@@ -514,7 +514,7 @@ import {
 
 import { notifyApiError } from '#/api/errors'
 import { exportScheme, exportSchemePdf, fetchDetail } from '#/api/serum'
-import { SERUM_ERRORS } from './errors'
+import { SERUM_ERRORS } from '../shared/errors'
 import {
   canEditSerumProject,
   getSerumUserName,
@@ -523,7 +523,7 @@ import {
 import { getSerumProjectStatusTagType } from '#/utils/serumProjectStatus'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
-import SerumDetailTiterTab from './SerumDetailTiterTab.vue'
+import SerumDetailTiterTab from '../titer/SerumDetailTiterTab.vue'
 
 function compareImmStepOrder(a, b) {
   const orderDiff = (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0)

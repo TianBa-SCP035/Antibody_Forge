@@ -37,6 +37,16 @@ def flow_work_order_meta(
     return _run(db, service.get_meta)
 
 
+@router.post("/flow-work-orders/by-source")
+def flow_work_orders_by_source(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "mega.page.flow_work_order")
+    return _run(db, lambda: service.get_work_orders_by_source(db, data or {}))
+
+
 @router.post("/flow-work-orders/list")
 def flow_work_order_list(
     data: dict,

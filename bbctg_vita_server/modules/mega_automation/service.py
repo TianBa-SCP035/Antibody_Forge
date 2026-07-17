@@ -136,6 +136,12 @@ def _apply_order_columns(order: MegaFlowWorkOrder, data: dict[str, Any]) -> None
     if priority not in PRIORITY_VALUES:
         raise ValueError(f"不支持的优先级：{priority}")
     order.priority = priority
+    if "source_id" in data:
+        incoming = clean_text(data.get("source_id"))
+        if not order.source_id:
+            order.source_id = incoming or None
+        elif incoming and incoming != (order.source_id or ""):
+            raise ValueError("来源业务单不可修改")
 
 
 def _check_expected_content_hash(order: MegaFlowWorkOrder, data: dict[str, Any]) -> None:
@@ -335,6 +341,38 @@ def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
         "total": total,
         "stats": get_work_order_stats(db),
     }
+
+
+def get_work_orders_by_source(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    data_type = clean_text(data.get("data_type"))
+    source_id = clean_text(data.get("source_id"))
+    if not data_type or not source_id:
+        raise ValueError("data_type 与 source_id 不能为空")
+    if data_type not in DATA_TYPE_VALUES:
+        raise ValueError(f"不支持的检测类型：{data_type}")
+
+    stmt = select(MegaFlowWorkOrder).where(
+        MegaFlowWorkOrder.data_type == data_type,
+        MegaFlowWorkOrder.source_id == source_id,
+    )
+    if data.get("exclude_cancelled"):
+        stmt = stmt.where(MegaFlowWorkOrder.status != "cancelled")
+
+    rows = db.scalars(
+        stmt.options(defer(MegaFlowWorkOrder.content)).order_by(MegaFlowWorkOrder.id.desc())
+    ).all()
+    current_dispatches = batch_current_dispatches(db, [row.id for row in rows])
+    items = []
+    for row in rows:
+        item = row.to_dict(include_detail=False)
+        current = current_dispatches.get(row.id)
+        _apply_order_display(
+            item,
+            status=row.status,
+            pause_state=current.pause_state if current else None,
+        )
+        items.append(item)
+    return {"items": items}
 
 
 def get_work_order_stats(db: Session) -> dict[str, int]:

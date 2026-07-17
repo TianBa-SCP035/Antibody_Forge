@@ -78,6 +78,36 @@ def next_id(
     return success({"next_id": service.generate_next_id(db, code)})
 
 
+@router.get("/mouse-groups")
+def mouse_groups(
+    experiment_id: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    _require_mouse_registry_access(db, current_user)
+    try:
+        return success({"items": service.get_mouse_groups(db, experiment_id)})
+    except ValueError as exc:
+        return error(str(exc))
+
+
+@router.post("/mouse-registry/save")
+def mouse_registry_save(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    _require_mouse_registry_access(db, current_user)
+    try:
+        return success(service.save_mouse_registry(db, data or {}))
+    except ValueError as exc:
+        db.rollback()
+        return error(str(exc))
+    except Exception as exc:
+        db.rollback()
+        return error(str(exc))
+
+
 @router.post("/save")
 def save(
     data: dict,
@@ -250,6 +280,21 @@ def export_scheme_pdf(
         status_code = 503 if "LibreOffice" in detail else 500
         raise HTTPException(status_code=status_code, detail=detail) from exc
     return _attachment_response(output.getvalue(), filename, "application/pdf")
+
+
+def _require_mouse_registry_access(db: Session, user: SysUser) -> None:
+    """鼠号分组查询 / 鼠号明细保存：免疫方案编辑或效价编辑任一即可（含对应 edit_all）。"""
+    if (
+        has_permission(db, user, "serum.project.edit")
+        or has_permission(db, user, "serum.project.edit_all")
+        or has_permission(db, user, "serum.titer.edit")
+        or has_permission(db, user, "serum.titer.edit_all")
+    ):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=PERMISSION_MESSAGES.get("serum.project.edit", DEFAULT_PERMISSION_MESSAGE),
+    )
 
 
 def _require_project_save_permission(db: Session, user: SysUser, data: dict) -> None:

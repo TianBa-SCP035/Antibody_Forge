@@ -227,3 +227,37 @@ export function saveTiterOrder(data: any) {
 export function deleteTiterOrder(id: number | string) {
   return requestClient.post('/serum/titer/order/delete', { id }, skipGlobalErrorHandler);
 }
+
+export interface SerumMouseGroup {
+  age_weeks?: string;
+  cage_position?: string;
+  experiment_id?: string;
+  group_id?: string;
+  id?: number;
+  mouse_count?: string;
+  mouse_no_list?: string;
+  mouse_registry?: { mice?: Array<{ alive?: boolean; no?: string; sex?: string }> } | null;
+  mouse_strain?: string;
+  mouse_strain_category?: string;
+  remark?: string;
+  sex?: string;
+  vendor?: string;
+}
+
+export function fetchMouseGroups(experimentId: string, config?: RequestConfig) {
+  return requestClient.get<{ items: SerumMouseGroup[] }>('/serum/mouse-groups', {
+    params: { experiment_id: experimentId },
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
+export function saveMouseRegistry(data: {
+  experiment_id: string;
+  group_id?: string;
+  id?: number;
+  mouse_no_list?: string;
+  mouse_registry?: SerumMouseGroup['mouse_registry'];
+}) {
+  return requestClient.post<SerumMouseGroup>('/serum/mouse-registry/save', data, skipGlobalErrorHandler);
+}

@@ -461,7 +461,7 @@ import {
 import { notifyApiError, resolveUserMessage } from '#/api/errors'
 import { fetchList, fetchStats, getSerumFilterOptions, updateSerumStatus, export_mouse, autoUpdateStatus, updateCagePosition, exportSchemePdf } from '#/api/serum'
 import { skipGlobalErrorHandler } from '#/api/request'
-import { SERUM_ERRORS } from './errors'
+import { SERUM_ERRORS } from '../shared/errors'
 import {
   canAutoUpdateSerumStatus,
   canCreateSerumProject,

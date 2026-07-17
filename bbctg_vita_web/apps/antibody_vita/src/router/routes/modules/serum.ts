@@ -19,7 +19,7 @@ const routes: RouteRecordRaw[] = [
       {
         name: 'SerumList',
         path: '/serum/list',
-        component: () => import('#/views/Serum/SerumList.vue'),
+        component: () => import('#/views/Serum/immune/SerumList.vue'),
         meta: {
           authority: ['serum.page.list'],
           featureCode: 'menu.serum.list',
@@ -32,7 +32,7 @@ const routes: RouteRecordRaw[] = [
       {
         name: 'SerumDataDetail',
         path: '/serum/detail',
-        component: () => import('#/views/Serum/SerumDataDetail.vue'),
+        component: () => import('#/views/Serum/immune/SerumDataDetail.vue'),
         meta: {
           authority: ['serum.page.detail'],
           hideInMenu: true,
@@ -46,7 +46,7 @@ const routes: RouteRecordRaw[] = [
       {
         name: 'SerumTiterOrderList',
         path: '/serum/titer-orders',
-        component: () => import('#/views/Serum/SerumTiterOrderList.vue'),
+        component: () => import('#/views/Serum/titer/SerumTiterOrderList.vue'),
         meta: {
           authority: ['serum.page.titer_order'],
           featureCode: 'menu.serum.titer_order',
@@ -59,7 +59,7 @@ const routes: RouteRecordRaw[] = [
       {
         name: 'SerumEdit',
         path: '/serum/edit',
-        component: () => import('#/views/Serum/SerumEdit.vue'),
+        component: () => import('#/views/Serum/immune/SerumEdit.vue'),
         meta: {
           authority: ['serum.page.edit'],
           hideInMenu: true,
@@ -73,7 +73,7 @@ const routes: RouteRecordRaw[] = [
       {
         name: 'SerumTiter',
         path: '/serum/titer',
-        component: () => import('#/views/Serum/SerumTiter.vue'),
+        component: () => import('#/views/Serum/titer/SerumTiter.vue'),
         meta: {
           authority: ['serum.page.titer'],
           hideInMenu: true,

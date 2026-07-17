@@ -20,12 +20,14 @@ class MegaFlowWorkOrder(Base):
             "idx_mega_flow_work_order_cell_plate_barcodes",
             text("(CAST(cell_plate_barcodes AS CHAR(128) ARRAY))"),
         ),
+        Index("idx_mega_flow_work_order_source", "data_type", "source_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     order_name: Mapped[str | None] = mapped_column(String(255))
     order_no: Mapped[str] = mapped_column(String(255), nullable=False)
     data_type: Mapped[str] = mapped_column(String(32), nullable=False, server_default="TITER")
+    source_id: Mapped[str | None] = mapped_column(String(128))
     priority: Mapped[str] = mapped_column(String(32), nullable=False, server_default="normal")
     remark: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(64), nullable=False, server_default="draft")
@@ -51,6 +53,7 @@ class MegaFlowWorkOrder(Base):
             "order_name": self.order_name or "",
             "order_no": self.order_no or "",
             "data_type": self.data_type,
+            "source_id": self.source_id or "",
             "priority": self.priority or "normal",
             "remark": self.remark or "",
             "status": self.status,

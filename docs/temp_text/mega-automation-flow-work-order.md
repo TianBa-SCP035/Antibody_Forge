@@ -8,13 +8,17 @@
 - 模拟设备确认执行、暂停、恢复、完成与失败；
 - 详情提供「工单编辑 / 铺板 / Payload」三个页签。
 
-尚未接入：上游自动建单、真实设备通信、检测结果回传与跨模块同步。
+尚未接入：上游跳转预填流式新建、真实设备通信、检测结果回传与跨模块同步。
+
+效价列表「工单」入口（鼠号确认 / 选鼠向导）已实现；点「确定」后跳转预填待下一阶段。
 
 ## 2. 数据模型
 
 ### `mega_flow_work_order`
 
 - `order_no` 必填，不要求唯一；
+- `data_type`：样品来源大类（`TITER` / `PLAS` / `PCR`），工单均为流式实验；
+- `source_id`：来源业务主键，可空。效价上游创建时写入 `serum_titer_order.titer_order_id`；手工新建通常为空。同一 `data_type` 下可有多条工单共享同一 `source_id`（1:N）；
 - `content` 仅存 `pc_infos`、`sample_plates`、`cell_plates`；
 - `project_nos`、`targets`、样本板/细胞板条码数组用于列表筛选；
 - `content_hash` 用于并发编辑冲突检测。
@@ -107,6 +111,7 @@ cell_plates
 ```text
 GET  /api/mega-automation/flow-work-orders/meta
 POST /api/mega-automation/flow-work-orders/list
+POST /api/mega-automation/flow-work-orders/by-source
 GET  /api/mega-automation/flow-work-orders/{order_id}
 GET  /api/mega-automation/flow-work-orders/{order_id}/active-payload
 POST /api/mega-automation/flow-work-orders/save

@@ -289,7 +289,7 @@ _TITER_ORDER_BATCH_FIELD_KEYS = (
     "facs_plate_count",
     "elisa_plate_count",
 )
-_TITER_ORDER_RECORD_FIELD_KEYS = ("test_dates", "serum_status", "remark")
+_TITER_ORDER_RECORD_FIELD_KEYS = ("test_dates", "serum_status", "remark", "summary")
 
 
 @router.get("/order/meta")
@@ -478,14 +478,7 @@ def _has_payload_keys(data: dict, keys: tuple[str, ...]) -> bool:
 
 
 def _require_titer_order_form_access(db: Session, user: SysUser) -> None:
-    if has_permission(db, user, "serum.titer_order.create"):
-        return
-    if has_permission(db, user, "serum.titer_order.batch.edit"):
-        return
-    raise HTTPException(
-        status_code=403,
-        detail=PERMISSION_MESSAGES.get("serum.titer_order.create", DEFAULT_PERMISSION_MESSAGE),
-    )
+    require_permission(db, user, "serum.titer_order.edit")
 
 
 def _is_titer_owner(user: SysUser, owners: object) -> bool:
@@ -514,23 +507,6 @@ def _require_titer_order_record_edit(
     )
 
 
-def _require_titer_order_summary_edit(
-    db: Session,
-    user: SysUser,
-    order: SerumTiterOrder,
-    project: SerumImmProject | None,
-) -> None:
-    require_permission(db, user, "serum.titer_order.summary.edit")
-    if has_permission(db, user, "serum.titer_order.summary.edit_all"):
-        return
-    if project and _is_owner_name(user, project.owner):
-        return
-    raise HTTPException(
-        status_code=403,
-        detail=PERMISSION_MESSAGES.get("serum.titer_order.summary.edit", DEFAULT_PERMISSION_MESSAGE),
-    )
-
-
 def _validate_titer_order_save(db: Session, user: SysUser, data: dict) -> None:
     order_id = data.get("id")
     order: SerumTiterOrder | None = None
@@ -544,10 +520,10 @@ def _validate_titer_order_save(db: Session, user: SysUser, data: dict) -> None:
             select(SerumImmProject).where(SerumImmProject.experiment_id == order.experiment_id)
         )
     else:
-        require_permission(db, user, "serum.titer_order.create")
+        require_permission(db, user, "serum.titer_order.edit")
 
     if order is not None and _has_payload_keys(data, _TITER_ORDER_BATCH_FIELD_KEYS):
-        require_permission(db, user, "serum.titer_order.batch.edit")
+        require_permission(db, user, "serum.titer_order.edit")
 
     if "titer_owners" in data:
         if order is None:
@@ -564,11 +540,3 @@ def _validate_titer_order_save(db: Session, user: SysUser, data: dict) -> None:
                 detail=PERMISSION_MESSAGES.get("serum.titer_order.record.edit", DEFAULT_PERMISSION_MESSAGE),
             )
         _require_titer_order_record_edit(db, user, order, project)
-
-    if "summary" in data:
-        if order is None:
-            raise HTTPException(
-                status_code=403,
-                detail=PERMISSION_MESSAGES.get("serum.titer_order.summary.edit", DEFAULT_PERMISSION_MESSAGE),
-            )
-        _require_titer_order_summary_edit(db, user, order, project)

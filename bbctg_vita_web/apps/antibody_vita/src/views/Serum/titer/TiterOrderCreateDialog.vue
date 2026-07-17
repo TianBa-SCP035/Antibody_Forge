@@ -182,7 +182,7 @@ import {
   saveTiterOrder,
 } from '#/api/serum';
 
-import AssayMethodEditor from './AssayMethodEditor.vue';
+import AssayMethodEditor from '../shared/AssayMethodEditor.vue';
 
 function emptyBatchForm() {
   return {

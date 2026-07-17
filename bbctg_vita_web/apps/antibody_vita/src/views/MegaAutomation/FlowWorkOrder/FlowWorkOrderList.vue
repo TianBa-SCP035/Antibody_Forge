@@ -545,6 +545,10 @@ export default {
   transform: translateY(-1px);
 }
 
+.stat-tile:active {
+  transform: scale(0.98);
+}
+
 .stat-tile-active {
   background: color-mix(in srgb, var(--stat-accent) 14%, #fff);
   border-color: color-mix(in srgb, var(--stat-accent) 42%, #fff);
@@ -554,6 +558,11 @@ export default {
 }
 
 .stat-tile-active:hover {
+  background: color-mix(in srgb, var(--stat-accent) 14%, #fff);
+  border-color: color-mix(in srgb, var(--stat-accent) 42%, #fff);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--stat-accent) 28%, #fff),
+    0 4px 12px rgb(15 23 42 / 6%);
   transform: translateY(-1px);
 }
 

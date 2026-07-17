@@ -566,6 +566,11 @@ export default {
   transform: translateY(-1px);
 }
 
+.stat-tile-active:active,
+.stat-tile-active:hover:active {
+  transform: scale(0.98);
+}
+
 /* 状态色条：按 status value 绑 class */
 .stat-tone-draft {
   --stat-accent: #5b9ef0;

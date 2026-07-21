@@ -8,6 +8,8 @@ import '@vben/styles';
 // Temporarily disable Vben's Element Plus-specific style overrides.
 // import '@vben/styles/ele';
 
+import './styles/list-page-surface.css';
+
 import { useTitle } from '@vueuse/core';
 import { ElLoading } from 'element-plus';
 

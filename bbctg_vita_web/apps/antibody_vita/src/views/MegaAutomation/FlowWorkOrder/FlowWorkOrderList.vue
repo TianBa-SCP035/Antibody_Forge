@@ -440,26 +440,26 @@ export default {
 <style scoped>
 .mega-flow-order-page {
   min-height: 100%;
-  padding: 16px;
+  padding: var(--list-page-padding);
   font-size: 14px;
   color: #303133;
-  background: #f0f2f5;
+  background: var(--list-page-bg);
 }
 
 /* 标题 + 统计 + 筛选同一白底，表格单独；比两两组合更不散 */
 .workbench-panel {
-  padding: 4px 16px 14px;
-  margin-bottom: 12px;
-  background: #fff;
-  border: 1px solid #e6e8ee;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgb(15 23 42 / 4%);
+  padding: 4px var(--list-surface-padding-x) var(--list-surface-padding-y);
+  margin-bottom: var(--list-page-gap);
+  background: var(--list-surface-bg);
+  border: var(--list-surface-border);
+  border-radius: var(--list-surface-radius);
+  box-shadow: var(--list-surface-shadow);
 }
 
 .table-card {
-  border-radius: 12px;
-  border: 1px solid #e6e8ee;
-  box-shadow: 0 1px 3px rgb(15 23 42 / 4%);
+  border-radius: var(--list-surface-radius);
+  border: var(--list-surface-border);
+  box-shadow: var(--list-surface-shadow);
 }
 
 .page-header-band {
@@ -504,7 +504,7 @@ export default {
   color: #8a5a00;
   background: #fff7e6;
   border: 1px solid #ffd591;
-  border-radius: 10px;
+  border-radius: var(--list-mid-radius);
 }
 
 .stats-strip {
@@ -522,9 +522,9 @@ export default {
   padding: 11px 12px 11px 16px;
   overflow: hidden;
   cursor: pointer;
-  background: #fafbfd;
-  border: 1px solid #e8ebf0;
-  border-radius: 10px;
+  background: var(--list-mid-bg);
+  border: var(--list-mid-border);
+  border-radius: var(--list-mid-radius);
   box-shadow: none;
   transition:
     border-color 0.15s ease,

@@ -1148,16 +1148,17 @@ export default {
 <style scoped>
 .app-container {
     position: relative;
-    padding: 20px;
-    background-color: #f5f7fa;
+    padding: var(--list-page-padding);
+    background-color: var(--list-page-bg);
     min-height: 100vh;
 }
 .filter-wrapper {
-    background: #fff;
-    padding: 15px 20px;
-    border-radius: 4px;
-    margin-bottom: 20px;
-    box-shadow: 0 1px 4px rgba(0,21,41,0.08);
+    background: var(--list-surface-bg);
+    padding: var(--list-surface-padding-y) var(--list-surface-padding-x);
+    border: var(--list-surface-border);
+    border-radius: var(--list-surface-radius);
+    margin-bottom: var(--list-page-gap);
+    box-shadow: var(--list-surface-shadow);
 }
 .app-container :deep(.el-input:not(.el-input--small):not(.el-input--large)),
 .app-container :deep(.el-select:not(.el-select--small):not(.el-select--large)),
@@ -1189,16 +1190,16 @@ export default {
     height: 25px;
     padding: 0 8px;
     font-size: 13px;
-    border-radius: 10px;
+    border-radius: var(--list-chip-radius);
 }
 .app-container :deep(.status-column-cell .cell) {
     padding-left: 5px;
     padding-right: 5px;
 }
 .table-card {
-    border-radius: 4px;
-    border: none;
-    box-shadow: 0 1px 4px rgba(0,21,41,0.08);
+    border-radius: var(--list-surface-radius);
+    border: var(--list-surface-border);
+    box-shadow: var(--list-surface-shadow);
 }
 .filter-item {
     width: 100%;
@@ -1253,7 +1254,7 @@ export default {
   margin-bottom: 20px;
 }
 .card-panel-col {
-  margin-bottom: 20px;
+  margin-bottom: var(--list-page-gap);
 }
 .card-panel {
   height: 100px;
@@ -1264,7 +1265,7 @@ export default {
   color: #fff;
   background: #fff;
   box-shadow: 4px 4px 40px rgba(0, 0, 0, .05);
-  border-radius: 6px;
+  border-radius: var(--list-mid-radius);
   display: flex;
   align-items: center;
   padding: 0 20px; 
@@ -1283,7 +1284,7 @@ export default {
 .card-panel-icon-wrapper {
   margin: 0; 
   padding: 10px;
-  border-radius: 6px;
+  border-radius: var(--list-inner-radius);
   background: rgba(255,255,255,0.2);
   display: flex;
   align-items: center;
@@ -1329,7 +1330,7 @@ export default {
 }
 .status-option {
     padding: 8px 12px;
-    border-radius: 6px;
+    border-radius: var(--list-inner-radius);
     cursor: pointer;
     line-height: 18px;
     transition: background-color .16s ease, color .16s ease;
@@ -1341,7 +1342,7 @@ export default {
 
 :global(.serum-status-popper) {
     z-index: 3000 !important;
-    border-radius: 8px;
+    border-radius: var(--list-mid-radius);
     box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
 }
 
@@ -1354,7 +1355,7 @@ export default {
 
   height: 140px;
   padding: 12px 16px;
-  border-radius: 6px;
+  border-radius: var(--list-mid-radius);
 
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 10px 30px rgba(0,0,0,0.12);

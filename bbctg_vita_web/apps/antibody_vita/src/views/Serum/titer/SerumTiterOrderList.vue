@@ -1815,12 +1815,13 @@ export default {
  * 4. 表格内勿用 :deep 覆盖 font-size
  * 5. 数据行边距 → 只改 .table-card :deep(.el-table__body .cell)，勿改表头
  * 6. 负责人标签色 → 只改 OWNER_TAG_COLORS
+ * 7. 表面圆角/边框/阴影 → 用 --list-* token（见 list-page-surface.css）
  */
 
 .titer-order-page {
   min-height: 100%;
-  padding: 20px;
-  background: #f5f7fa;
+  padding: var(--list-page-padding);
+  background: var(--list-page-bg);
 }
 
 .page-title {
@@ -1865,12 +1866,12 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
-  background: #ffffff;
-  border: none;
-  border-radius: 4px;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  padding: var(--list-surface-padding-y) var(--list-surface-padding-x);
+  margin-bottom: var(--list-page-gap);
+  background: var(--list-surface-bg);
+  border: var(--list-surface-border);
+  border-radius: var(--list-surface-radius);
+  box-shadow: var(--list-surface-shadow);
 }
 
 .page-header-band {
@@ -1880,9 +1881,9 @@ export default {
   gap: 16px;
   min-width: 0;
   padding: 12px 16px;
-  margin: -2px -2px 4px;
+  margin: 0;
   border: 1px solid rgba(64, 158, 255, 0.12);
-  border-radius: 8px;
+  border-radius: var(--list-mid-radius);
   background: linear-gradient(135deg, rgba(64, 158, 255, 0.10), rgba(103, 194, 58, 0.06));
 }
 
@@ -1924,9 +1925,9 @@ export default {
   min-height: 54px;
   padding: 8px 10px 8px 14px;
   text-align: left;
-  background: #f8fafc;
-  border: 1px solid #edf1f7;
-  border-radius: 8px;
+  background: var(--list-mid-bg);
+  border: var(--list-mid-border);
+  border-radius: var(--list-mid-radius);
   --stat-ring: rgba(64, 158, 255, 0.32);
   --stat-glow: rgba(64, 158, 255, 0.12);
 }
@@ -2093,9 +2094,9 @@ export default {
 
 .table-card {
   overflow: hidden;
-  border: none;
-  border-radius: 4px;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  border: var(--list-surface-border);
+  border-radius: var(--list-surface-radius);
+  box-shadow: var(--list-surface-shadow);
 }
 
 .table-plate-wrap {
@@ -2168,7 +2169,7 @@ export default {
   pointer-events: none;
   background: rgba(236, 245, 255, 0.94);
   border: 1px solid #b3d8ff;
-  border-radius: 12px;
+  border-radius: var(--list-mid-radius);
   box-shadow: 0 2px 8px rgba(64, 158, 255, 0.18);
   transition: top 0.16s ease, left 0.16s ease;
 }
@@ -2219,7 +2220,7 @@ export default {
   height: 25px;
   padding: 0 8px;
   font-size: 13px;
-  border-radius: 10px;
+  border-radius: var(--list-chip-radius);
 }
 
 /* 血清状态：沿用 el-tag 色系，仅给选中项轻量着色 */
@@ -2352,9 +2353,9 @@ export default {
   gap: 12px;
   margin-bottom: 12px;
   padding: 10px 12px;
-  background: #f8fafc;
-  border: 1px solid #edf1f7;
-  border-radius: 8px;
+  background: var(--list-mid-bg);
+  border: var(--list-mid-border);
+  border-radius: var(--list-mid-radius);
 }
 
 .owner-stats-filter {

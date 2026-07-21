@@ -1,0 +1,27 @@
+/**
+ * 列表 / 管理页表面规范（以流式工单页为视觉基准）
+ *
+ * 圆角层级：外圈 8 → 中层 6 → 内层 4 → 标签 6
+ * 面板内边距：水平 ≥ 外圈圆角，避免圆角贴内容发挤
+ * 页面壳：浅灰底 + 白底描边面板 + 轻阴影
+ */
+:root {
+  --list-page-bg: #f5f7fa;
+  --list-page-padding: 16px;
+  --list-page-gap: 12px;
+
+  --list-surface-bg: #fff;
+  --list-surface-border: 1px solid #e6e8ee;
+  --list-surface-radius: 8px;
+  --list-surface-shadow: 0 1px 3px rgb(15 23 42 / 4%);
+  /* 外圈面板统一内边距：上下 / 左右 */
+  --list-surface-padding-y: 12px;
+  --list-surface-padding-x: 16px;
+
+  --list-mid-bg: #fafbfd;
+  --list-mid-border: 1px solid #e8ebf0;
+  --list-mid-radius: 6px;
+
+  --list-inner-radius: 4px;
+  --list-chip-radius: 6px;
+}

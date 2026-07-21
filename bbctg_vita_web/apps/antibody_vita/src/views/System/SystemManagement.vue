@@ -1850,7 +1850,9 @@ onMounted(loadData);
 
 <style scoped>
 .system-page {
-  padding: 16px;
+  padding: var(--list-page-padding);
+  background: var(--list-page-bg);
+  min-height: 100%;
 }
 
 .system-header {
@@ -1858,11 +1860,12 @@ onMounted(loadData);
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 18px;
-  margin-bottom: 12px;
-  background: #fff;
-  border: 1px solid #e8eef7;
-  border-radius: 12px;
+  padding: var(--list-surface-padding-y) var(--list-surface-padding-x);
+  margin-bottom: var(--list-page-gap);
+  background: var(--list-surface-bg);
+  border: var(--list-surface-border);
+  border-radius: var(--list-surface-radius);
+  box-shadow: var(--list-surface-shadow);
 }
 
 .system-header h2 {
@@ -1883,7 +1886,7 @@ onMounted(loadData);
 
 .summary-card {
   margin-bottom: 12px;
-  border-radius: 12px;
+  border-radius: var(--list-surface-radius);
 }
 
 .summary-card :deep(.el-card__body) {
@@ -1903,7 +1906,7 @@ onMounted(loadData);
 }
 
 .main-card {
-  border-radius: 12px;
+  border-radius: var(--list-surface-radius);
 }
 
 .section-gap {
@@ -1915,7 +1918,7 @@ onMounted(loadData);
   margin-bottom: 12px;
   background: #f8fafc;
   border: 1px solid #eef2f7;
-  border-radius: 10px;
+  border-radius: var(--list-mid-radius);
 }
 
 .dialog-section-title {
@@ -1975,7 +1978,7 @@ onMounted(loadData);
   margin-bottom: 12px;
   background: #f8fafc;
   border: 1px solid #eef2f7;
-  border-radius: 10px;
+  border-radius: var(--list-mid-radius);
 }
 
 .bundle-group-title {
@@ -1992,7 +1995,7 @@ onMounted(loadData);
   vertical-align: top;
   background: #fff;
   border: 1px solid #e5eaf3;
-  border-radius: 10px;
+  border-radius: var(--list-mid-radius);
 }
 
 .bundle-card :deep(.el-checkbox__label) {
@@ -2026,7 +2029,7 @@ onMounted(loadData);
   color: #475569;
   background: #f8fafc;
   border: 1px dashed #cbd5e1;
-  border-radius: 10px;
+  border-radius: var(--list-mid-radius);
 }
 
 .permission-table-group {
@@ -2034,7 +2037,7 @@ onMounted(loadData);
   margin-bottom: 12px;
   background: #f8fafc;
   border: 1px solid #eef2f7;
-  border-radius: 10px;
+  border-radius: var(--list-mid-radius);
 }
 
 .permission-table-title {
@@ -2061,7 +2064,7 @@ onMounted(loadData);
   margin-bottom: 12px;
   background: #f8fafc;
   border: 1px solid #eef2f7;
-  border-radius: 10px;
+  border-radius: var(--list-mid-radius);
 }
 
 .permission-group-title {

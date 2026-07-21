@@ -1196,6 +1196,14 @@ export default {
     padding-left: 5px;
     padding-right: 5px;
 }
+/*
+ * 「状态」与右侧 fixed「操作」之间的硬分割线。
+ * 表格 border 模式下单元格只有 border-right；sticky 固定列会盖住上一列右边框，
+ * 圆角统一后页宽变化更容易触发该遮挡。给首个右侧固定列补左边框，与其他列竖线一致。
+ */
+.app-container :deep(.el-table--border .el-table-fixed-column--right.is-first-column.el-table__cell) {
+    border-left: var(--el-table-border);
+}
 .table-card {
     border-radius: var(--list-surface-radius);
     border: var(--list-surface-border);

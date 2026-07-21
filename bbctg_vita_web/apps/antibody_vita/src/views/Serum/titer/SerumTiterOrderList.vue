@@ -454,12 +454,6 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column
-          label=""
-          width="1"
-          fixed="right"
-          class-name="table-fixed-spacer-column"
-        />
         <el-table-column label="操作" fixed="right" min-width="236" align="center">
           <template #default="{ row }">
             <el-button-group>
@@ -2269,9 +2263,9 @@ export default {
   padding-right: 5px;
 }
 
-.table-card :deep(.table-fixed-spacer-column .cell) {
-  padding: 0;
-  overflow: hidden;
+/* 与免疫列表一致：右侧 fixed「操作」左侧硬分割线（不占布局，避免拖列宽错位） */
+.table-card :deep(.el-table--border .el-table-fixed-column--right.is-first-column.el-table__cell) {
+  box-shadow: -1px 0 0 0 var(--el-table-border-color);
 }
 
 /* 效价负责人多选：标签胶囊样式 */

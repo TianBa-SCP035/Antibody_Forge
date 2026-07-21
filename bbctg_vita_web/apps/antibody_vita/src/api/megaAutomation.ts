@@ -18,9 +18,7 @@ export interface FlowWorkOrderPcInfo {
 }
 
 export interface FlowWorkOrderWell {
-  batch: string;
   content_type: string;
-  generation: string;
   pc_id: null | string;
   sample_code: string;
   well_no: string;

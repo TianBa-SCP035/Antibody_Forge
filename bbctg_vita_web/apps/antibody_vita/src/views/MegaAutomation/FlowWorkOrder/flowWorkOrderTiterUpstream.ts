@@ -31,9 +31,7 @@ const TITER_UPSTREAM_SAMPLE_SLOTS: string[] = [
 
 function emptyWell(well_no: string, content_type: string, sample_code = ''): FlowWorkOrderWell {
   return {
-    batch: '',
     content_type,
-    generation: '',
     pc_id: null,
     sample_code,
     well_no,

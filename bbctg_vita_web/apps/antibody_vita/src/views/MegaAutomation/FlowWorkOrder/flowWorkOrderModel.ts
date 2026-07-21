@@ -199,9 +199,7 @@ function normalizeWell(value: unknown): FlowWorkOrderWell {
   const contentType = String(well.content_type || 'SAMPLE').toUpperCase();
   const pcId = well.pc_id == null || well.pc_id === '' ? null : String(well.pc_id);
   return {
-    batch: well.batch || '',
     content_type: contentType,
-    generation: well.generation || '',
     pc_id: WELL_PC_REF_TYPES.includes(contentType) ? pcId : null,
     sample_code: well.sample_code || '',
     well_no: String(well.well_no || ''),

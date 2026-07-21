@@ -68,8 +68,6 @@ def default_sample_wells() -> list[dict[str, Any]]:
                     "content_type": content_type,
                     "sample_code": "" if content_type == "PC" else well_no,
                     "pc_id": None,
-                    "batch": "",
-                    "generation": "",
                 }
             )
     return wells
@@ -142,8 +140,6 @@ def normalize_well(well: dict[str, Any]) -> dict[str, Any]:
         "content_type": well_type,
         "sample_code": clean_text(normalized.get("sample_code")),
         "pc_id": pc_id,
-        "batch": clean_text(normalized.get("batch")),
-        "generation": clean_text(normalized.get("generation")),
     }
 
 
@@ -379,9 +375,8 @@ def _issue(field: str, message: str) -> dict[str, str]:
     return {"field": field, "message": message}
 
 
-def validate_sample_plates(sample_plates: list[Any], data_type: str = "") -> list[dict[str, str]]:
+def validate_sample_plates(sample_plates: list[Any]) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
-    require_project_no = data_type == "TITER"
     barcodes = [clean_text(item.get("barcode")) for item in sample_plates if isinstance(item, dict)]
     if not any(barcodes):
         issues.append(_issue("sample_plates", "至少需要一个样本板条码"))
@@ -397,7 +392,7 @@ def validate_sample_plates(sample_plates: list[Any], data_type: str = "") -> lis
             continue
         if not clean_text(plate.get("barcode")):
             issues.append(_issue(f"{prefix}.barcode", f"样本板[{plate_index}]缺少条码"))
-        if require_project_no and not clean_text(plate.get("project_no")):
+        if not clean_text(plate.get("project_no")):
             issues.append(_issue(f"{prefix}.project_no", f"样本板[{plate_index}]缺少项目号"))
         if not clean_text(plate.get("target")):
             issues.append(_issue(f"{prefix}.target", f"样本板[{plate_index}]缺少靶点"))
@@ -578,16 +573,13 @@ def collect_validation_issues(
             content = existing_content or {}
 
     order_no = clean_text(payload.get("order_no") or (order.order_no if order else ""))
-    data_type = clean_text(
-        payload.get("data_type") or (order.data_type if order else "TITER")
-    ) or "TITER"
     sample_plates = safe_list(content.get("sample_plates"))
     cell_plates = safe_list(content.get("cell_plates"))
 
     issues: list[dict[str, str]] = []
     if not order_no:
         issues.append(_issue("order_no", "缺少订单编号"))
-    issues.extend(validate_sample_plates(sample_plates, data_type))
+    issues.extend(validate_sample_plates(sample_plates))
     issues.extend(validate_cell_plates(cell_plates))
     issues.extend(validate_plate_barcodes(sample_plates, cell_plates))
     issues.extend(validate_pc_refs(content))

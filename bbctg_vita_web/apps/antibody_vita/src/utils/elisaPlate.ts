@@ -222,10 +222,12 @@ function extractAbsorbanceMatrix(rows: ExcelRow[]): number[][] | null {
     const label = first.toUpperCase()
     if (label.length !== 1 || label < 'A' || label > 'H') continue
     const ri = label.charCodeAt(0) - 65
+    const targetRow = matrix[ri]
+    if (!targetRow) continue
     for (let c = 0; c < 12; c += 1) {
       const v = parseOd(row[cs + c])
       if (v != null) {
-        matrix[ri][c] = v
+        targetRow[c] = v
         any = true
       }
     }
@@ -281,12 +283,14 @@ export function computeAutoPositiveFromPlate(matrix: number[][], lower: ElisaSlo
     })
     .filter((v): v is number => v !== null && !Number.isNaN(v))
   if (!vals.length) return []
+  // 阳性：> NC 最小值的 2 倍，且吸光度 > 0.12
+  const OD_FLOOR = 0.12
   const threshold = Math.min(...vals) * 2
   const wells: string[] = []
   for (let r = 0; r < 8; r += 1) {
     for (let c = 0; c < 12; c += 1) {
       const v = matrix[r]?.[c]
-      if (v !== undefined && v > threshold) wells.push(wellId(r, c + 1))
+      if (v !== undefined && v > threshold && v > OD_FLOOR) wells.push(wellId(r, c + 1))
     }
   }
   return wells

@@ -341,6 +341,7 @@ class SerumTiterOrder(Base):
     titer_order_id: Mapped[str] = mapped_column(String(128), nullable=False)
     cage_position: Mapped[str | None] = mapped_column(String(64))
     blood_collection_date: Mapped[str | None] = mapped_column(String(32))
+    blood_collection_seq: Mapped[int | None] = mapped_column(Integer)
     mouse_count: Mapped[int | None] = mapped_column(Integer)
     assay_method: Mapped[str | None] = mapped_column(String(128))
     facs_plate_count: Mapped[int | None] = mapped_column(Integer)
@@ -360,6 +361,7 @@ class SerumTiterOrder(Base):
             "titer_order_id": self.titer_order_id,
             "cage_position": self.cage_position or "",
             "blood_collection_date": self.blood_collection_date or "",
+            "blood_collection_seq": self.blood_collection_seq,
             "mouse_count": self.mouse_count,
             "assay_method": self.assay_method or "",
             "facs_plate_count": self.facs_plate_count,

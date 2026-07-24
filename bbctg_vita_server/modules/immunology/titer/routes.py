@@ -284,6 +284,7 @@ def elisa_plate_delete(
 _TITER_ORDER_BATCH_FIELD_KEYS = (
     "cage_position",
     "blood_collection_date",
+    "blood_collection_seq",
     "mouse_count",
     "assay_method",
     "facs_plate_count",

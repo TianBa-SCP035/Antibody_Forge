@@ -33,6 +33,8 @@
     "presetSerumSubtitle": "End-to-end tracking",
     "presetTiterOrderTitle": "Titer experiments",
     "presetTiterOrderSubtitle": "Orders and test scheduling",
+    "presetFlowWorkOrderTitle": "Flow work orders",
+    "presetFlowWorkOrderSubtitle": "Mega automation flow orders",
     "presetProfileTitle": "Profile",
     "presetProfileSubtitle": "Roles and credentials",
     "presetSystemTitle": "System settings",

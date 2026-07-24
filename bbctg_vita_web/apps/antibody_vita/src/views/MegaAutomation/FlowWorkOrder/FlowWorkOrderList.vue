@@ -156,19 +156,19 @@
         <el-table-column label="备注" prop="remark" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">{{ row.remark || '—' }}</template>
         </el-table-column>
-        <el-table-column label="状态" prop="status" align="center" min-width="80">
+        <el-table-column label="状态" prop="status" align="center" min-width="90">
           <template #default="{ row }">
             <el-tag :type="statusTagType(row)" effect="plain">
               {{ statusLabel(row) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="创建人" prop="created_by" min-width="80" align="center" />
+        <el-table-column label="创建人" prop="created_by" min-width="90" align="center" />
         <el-table-column label="发送时间" prop="sent_at" min-width="150" align="center">
           <template #default="{ row }">{{ row.sent_at || '—' }}</template>
         </el-table-column>
         <el-table-column label="更新时间" prop="updated_at" min-width="150" align="center" />
-        <el-table-column label="操作" fixed="right" min-width="170" align="center">
+        <el-table-column label="操作" fixed="right" min-width="180" align="center">
           <template #default="{ row }">
             <el-button-group>
               <el-button class="table-action-btn" size="small" type="primary" plain @click="goView(row)">详情</el-button>

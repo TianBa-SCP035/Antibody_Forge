@@ -3,7 +3,7 @@
     :model-value="modelValue"
     class="titer-order-create-dialog"
     :title="dialogTitle"
-    width="760px"
+    width="820px"
     append-to-body
     destroy-on-close
     @update:model-value="$emit('update:modelValue', $event)"
@@ -66,7 +66,7 @@
             class="batch-table"
             style="width: 100%"
           >
-            <el-table-column label="检测方法" min-width="240" align="center" class-name="assay-method-col">
+            <el-table-column label="检测方法" min-width="200" align="center" class-name="assay-method-col">
               <template #default>
                 <AssayMethodEditor
                   v-model:assay-method="batchForm.assay_method"
@@ -79,10 +79,11 @@
             <el-table-column label="FACS" min-width="60" align="center">
               <template #default>
                 <el-input-number
-                  :model-value="facsPlateCount"
+                  :model-value="batchForm.facs_plate_count"
                   :min="0"
                   :controls="false"
                   size="small"
+                  :value-on-clear="null"
                   @update:model-value="updatePlateCount('FACS', $event)"
                 />
               </template>
@@ -90,29 +91,51 @@
             <el-table-column label="ELISA" min-width="60" align="center">
               <template #default>
                 <el-input-number
-                  :model-value="elisaPlateCount"
+                  :model-value="batchForm.elisa_plate_count"
                   :min="0"
                   :controls="false"
                   size="small"
+                  :value-on-clear="null"
                   @update:model-value="updatePlateCount('ELISA', $event)"
                 />
               </template>
             </el-table-column>
-            <el-table-column label="笼位" min-width="100" align="center">
-              <template #default="{ row }">
-                <el-input v-model="row.cage_position" size="small" clearable />
-              </template>
-            </el-table-column>
-            <el-table-column label="采血日期" min-width="110" align="center">
+            <el-table-column label="采血日期" min-width="120" align="center">
               <template #default="{ row }">
                 <el-date-picker
                   v-model="row.blood_collection_date"
                   type="date"
                   value-format="YYYY-MM-DD"
-                  placeholder="日期"
+                  placeholder="跟随方案"
                   clearable
                   size="small"
                 />
+              </template>
+            </el-table-column>
+            <el-table-column label="采血次数" min-width="80" align="center">
+              <template #default>
+                <el-select
+                  v-model="batchForm.blood_collection_seq"
+                  clearable
+                  placeholder="选择"
+                  size="small"
+                  style="width: 100%"
+                  @change="onBloodSeqChange"
+                >
+                  <el-option
+                    v-for="item in bloodCollections"
+                    :key="item.seq"
+                    :label="`第${item.seq}次`"
+                    :value="item.seq"
+                  >
+                    第{{ item.seq }}次（{{ item.date }}）
+                  </el-option>
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column label="笼位" min-width="100" align="center">
+              <template #default="{ row }">
+                <el-input v-model="row.cage_position" size="small" clearable />
               </template>
             </el-table-column>
             <el-table-column label="只数" min-width="60" align="center">
@@ -122,6 +145,7 @@
                   :min="0"
                   :controls="false"
                   size="small"
+                  :value-on-clear="null"
                 />
               </template>
             </el-table-column>
@@ -187,6 +211,7 @@ import AssayMethodEditor from '../shared/AssayMethodEditor.vue';
 function emptyBatchForm() {
   return {
     cage_position: '',
+    blood_collection_seq: null,
     blood_collection_date: '',
     mouse_count: null,
     assay_method: '',
@@ -239,6 +264,7 @@ export default {
       selectedProject: null,
       batchPreviewLoading: false,
       batchForm: emptyBatchForm(),
+      bloodCollections: [],
       submitLoading: false,
       deleteLoading: false,
     };
@@ -251,15 +277,7 @@ export default {
       return this.isEditMode ? '效价实验' : '新增效价实验';
     },
     batchHint() {
-      return this.isEditMode
-        ? '可修改下列批次信息后保存。'
-        : '批次信息默认来自免疫实验，可在下表修改后创建。';
-    },
-    facsPlateCount() {
-      return this.batchForm.facs_plate_count ?? 0;
-    },
-    elisaPlateCount() {
-      return this.batchForm.elisa_plate_count ?? 0;
+      return '未填写的字段自动同步免疫方案，采血日按采血次数映射；填写后将固定为当前值。';
     },
     isBatchReadonly() {
       return this.isEditMode && !this.canSaveBatch;
@@ -291,15 +309,22 @@ export default {
         target_name: row.target_name,
       };
       this.projectOptions = this.experimentId ? [this.selectedProject] : [];
+      this.bloodCollections = Array.isArray(row.blood_collections) ? row.blood_collections : [];
+      // 跟随字段不带入推导值，避免保存时被写成覆盖；仅展示表内已固定的值
+      const following = row.following || {};
       this.batchForm = {
-        cage_position: row.cage_position || '',
-        blood_collection_date: row.blood_collection_date || '',
-        mouse_count: row.mouse_count ?? null,
-        assay_method: row.assay_method || '',
-        facs_plate_count: row.facs_plate_count ?? null,
-        elisa_plate_count: row.elisa_plate_count ?? null,
+        cage_position: following.cage_position ? '' : (row.cage_position || ''),
+        blood_collection_seq: row.blood_collection_seq ?? null,
+        blood_collection_date: following.blood_collection_date ? '' : (row.blood_collection_date || ''),
+        mouse_count: following.mouse_count ? null : (row.mouse_count ?? null),
+        assay_method: following.assay_method ? '' : (row.assay_method || ''),
+        facs_plate_count: following.facs_plate_count ? null : (row.facs_plate_count ?? null),
+        elisa_plate_count: following.elisa_plate_count ? null : (row.elisa_plate_count ?? null),
       };
       this.batchPreviewLoading = false;
+      if (this.experimentId && !this.bloodCollections.length) {
+        this.loadBloodCollections(this.experimentId);
+      }
     },
     resetForm() {
       this.orderId = null;
@@ -308,9 +333,24 @@ export default {
       this.selectedProject = null;
       this.batchPreviewLoading = false;
       this.batchForm = emptyBatchForm();
+      this.bloodCollections = [];
       this.submitLoading = false;
       this.deleteLoading = false;
       this.$emit('closed');
+    },
+    onBloodSeqChange() {
+      this.batchForm.blood_collection_date = '';
+    },
+    loadBloodCollections(experimentId) {
+      fetchTiterOrderBatchPreview(experimentId)
+        .then((preview) => {
+          this.bloodCollections = Array.isArray(preview.blood_collections)
+            ? preview.blood_collections
+            : [];
+        })
+        .catch(() => {
+          this.bloodCollections = [];
+        });
     },
     closeDialog() {
       this.$emit('update:modelValue', false);
@@ -347,9 +387,13 @@ export default {
       this.batchPreviewLoading = true;
       fetchTiterOrderBatchPreview(experimentId)
         .then((preview) => {
+          this.bloodCollections = Array.isArray(preview.blood_collections)
+            ? preview.blood_collections
+            : [];
           this.batchForm = {
             cage_position: preview.cage_position || '',
-            blood_collection_date: preview.blood_collection_date || '',
+            blood_collection_seq: preview.blood_collection_seq ?? null,
+            blood_collection_date: '',
             mouse_count: preview.mouse_count ?? null,
             assay_method: preview.assay_method || '',
             facs_plate_count: preview.facs_plate_count ?? null,
@@ -365,6 +409,7 @@ export default {
         })
         .catch((error) => {
           this.batchForm = emptyBatchForm();
+          this.bloodCollections = [];
           notifyApiError(error, { messages: { default: '加载批次信息失败' } });
         })
         .finally(() => {
@@ -395,6 +440,7 @@ export default {
       saveTiterOrder({
         experiment_id: this.experimentId,
         ...this.batchForm,
+        blood_collection_seq: this.batchForm.blood_collection_seq ?? null,
         blood_collection_date: this.batchForm.blood_collection_date || null,
       })
         .then(() => {
@@ -419,6 +465,7 @@ export default {
       saveTiterOrder({
         id: this.orderId,
         ...this.batchForm,
+        blood_collection_seq: this.batchForm.blood_collection_seq ?? null,
         blood_collection_date: this.batchForm.blood_collection_date || null,
       })
         .then(() => {

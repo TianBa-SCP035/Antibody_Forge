@@ -116,6 +116,14 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
     url: '/serum/titer-orders',
   },
   {
+    id: 'flow-work-order-list',
+    titleKey: 'page.home.presetFlowWorkOrderTitle',
+    subtitleKey: 'page.home.presetFlowWorkOrderSubtitle',
+    icon: 'lucide:workflow',
+    iconClass: 'bg-orange-500/15 text-orange-600',
+    url: '/mega-automation/flow-work-orders',
+  },
+  {
     id: 'profile',
     titleKey: 'page.home.presetProfileTitle',
     subtitleKey: 'page.home.presetProfileSubtitle',
@@ -162,9 +170,9 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
 export const defaultQuickNavPresetIds: Array<string | null> = [
   'serum-list',
   'titer-order-list',
+  'flow-work-order-list',
   'profile',
   'system',
-  null,
   null,
 ];
 
@@ -297,6 +305,9 @@ export function canAccessStartPath(
   }
   if (path === '/serum/titer-orders') {
     return hasAccessByCodes(['serum.page.titer_order']);
+  }
+  if (path === '/mega-automation/flow-work-orders') {
+    return hasAccessByCodes(['mega.page.flow_work_order']);
   }
   if (path.startsWith('/system')) {
     return hasAccessByCodes([...HOME_SYSTEM_ACCESS_CODES]);

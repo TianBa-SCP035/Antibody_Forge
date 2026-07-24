@@ -430,6 +430,7 @@ CREATE TABLE IF NOT EXISTS serum_titer_order (
   titer_order_id VARCHAR(128) NOT NULL COMMENT '效价工单ID',
   cage_position VARCHAR(64) NULL COMMENT '笼位',
   blood_collection_date VARCHAR(32) NULL COMMENT '采血日期',
+  blood_collection_seq INT NULL COMMENT '第N次采血',
   mouse_count INT NULL COMMENT '只数',
   assay_method VARCHAR(128) NULL COMMENT '检测方法',
   facs_plate_count INT NULL COMMENT 'FACS板数',

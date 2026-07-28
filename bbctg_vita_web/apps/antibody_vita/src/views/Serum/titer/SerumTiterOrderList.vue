@@ -764,16 +764,25 @@ function formatMonthRangeLabel(startMonth, endMonth) {
   return `${formatMonthLabel(startMonth)} - ${formatMonthLabel(endMonth)}`;
 }
 
-/** 效价负责人标签：8 色法式马卡龙（清透 pastel，色相拉开） */
+/** 效价负责人标签：17 色法式马卡龙（清透 pastel，色相拉开） */
 const OWNER_TAG_COLORS = [
-  { bg: '#ffeff4', color: '#e888a8' }, // 玫瑰（暖粉）
-  { bg: '#fff0e6', color: '#e07850' }, // 蜜桃（偏橙）
-  { bg: '#fff8dc', color: '#d8b820' }, // 柠檬
+  { bg: '#eef4fc', color: '#70b0e8' }, // 天蓝
+  { bg: '#ffe6e4', color: '#e06058' }, // 珊瑚
   { bg: '#e6f8ec', color: '#38b068' }, // 翠绿
+  { bg: '#f6eaf6', color: '#b068b0' }, // 丁香
+  { bg: '#fff8dc', color: '#d8b820' }, // 柠檬
+  { bg: '#e8ecfc', color: '#5c78d0' }, // 矢车菊
+  { bg: '#fff0e6', color: '#e07850' }, // 蜜桃
+  { bg: '#eee6f8', color: '#7860b8' }, // 靛紫
   { bg: '#daf0f0', color: '#28a0a0' }, // 青碧
-  { bg: '#eef4fc', color: '#70b0e8' }, // 天蓝（浅亮晴空）
-  { bg: '#f0e6f6', color: '#9a60c0' }, // 薰衣草（偏紫）
-  { bg: '#e8ecf6', color: '#5c6cc4' }, // 蓝莓（柔和浆果蓝）
+  { bg: '#ffe8f0', color: '#d85890' }, // 浅樱
+  { bg: '#e8ecf6', color: '#5c6cc4' }, // 蓝莓
+  { bg: '#fff8e0', color: '#c8a828' }, // 香草
+  { bg: '#f0e6f6', color: '#9a60c0' }, // 薰衣草
+  { bg: '#e6faf4', color: '#34b898' }, // 薄荷
+  { bg: '#ffeff4', color: '#e888a8' }, // 玫瑰
+  { bg: '#e8f6fc', color: '#50a8d8' }, // 冰蓝
+  { bg: '#f4eef6', color: '#a878a0' }, // 香芋
 ];
 
 export default {

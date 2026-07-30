@@ -240,7 +240,11 @@
     </section>
 
     <el-card shadow="never" class="table-card" :body-style="{ padding: '15px' }">
-      <div class="table-plate-wrap" ref="tablePlateWrap">
+      <div
+        ref="tablePlateWrap"
+        class="table-plate-wrap"
+        :class="{ 'is-plate-dragging': plateDragging }"
+      >
         <el-table
           ref="orderTable"
           v-loading="listLoading"
@@ -302,90 +306,125 @@
           </template>
         </el-table-column>
         <el-table-column label="免疫负责人" prop="immune_owner" align="center" min-width="100" show-overflow-tooltip />
-        <el-table-column label="效价负责人" align="center" min-width="180">
-          <template #default="{ row }">
-            <el-select
-              :ref="'ownerSelect_' + row.id"
-              v-model="row.titer_owners"
-              class="owner-select inline-cell-control"
-              size="small"
-              multiple
-              allow-create
-              filterable
-              :reserve-keyword="false"
-              :disabled="!canEditTiterOrderOwner()"
-              popper-class="titer-select-dropdown"
-              placeholder="选择负责人"
-              @change="onTiterOwnerChange(row)"
+        <el-table-column label="效价负责人" align="center" min-width="180" class-name="plate-col-owner">
+          <template #default="{ row, $index }">
+            <div
+              class="plate-select-cell plate-select-cell--field"
+              @mousedown="onFieldCellMouseDown('owner', $index, $event)"
+              @mouseenter="onPlateCellMouseEnter('owner', $index)"
+              @contextmenu.prevent="onPlateCellContextMenu('owner')"
             >
-              <template #tag="{ data, deleteTag, selectDisabled }">
-                <div
-                  v-for="item in data"
-                  :key="ownerTagName(item)"
-                  class="el-select__selected-item"
-                >
-                  <el-tag
-                    class="owner-tag"
-                    :style="ownerTagStyle(item)"
-                    :closable="!selectDisabled"
-                    disable-transitions
-                    @close="(event) => deleteTag(event, item)"
-                  >
-                    {{ ownerTagName(item) }}
-                  </el-tag>
-                </div>
-              </template>
-              <el-option v-for="name in allOwnerOptions" :key="name" :label="name" :value="name" />
-            </el-select>
-          </template>
-        </el-table-column>
-        <el-table-column label="检测日期" prop="test_dates_display" align="center" sortable min-width="180">
-          <template #default="{ row }">
-            <el-tooltip
-              :content="row.test_dates_display"
-              placement="top"
-              :disabled="!isOverflowTooltip(row.id, 'test_dates')"
-            >
-              <div
-                class="cell-tooltip-target"
-                @mouseenter="handleOverflowMouseEnter($event, row.id, 'test_dates', row.test_dates_display)"
-                @mouseleave="handleOverflowMouseLeave(row.id, 'test_dates')"
+              <el-select
+                :ref="'ownerSelect_' + row.id"
+                v-model="row.titer_owners"
+                class="owner-select inline-cell-control"
+                size="small"
+                multiple
+                allow-create
+                filterable
+                :reserve-keyword="false"
+                :disabled="!canEditTiterOrderOwner()"
+                popper-class="titer-select-dropdown"
+                placeholder="选择负责人"
+                @change="onTiterOwnerChange(row)"
               >
-                <el-date-picker
-                  v-model="row.test_dates"
-                  class="test-dates-picker inline-cell-control"
-                  size="small"
-                  type="dates"
-                  value-format="YYYY-MM-DD"
-                  placeholder="选择检测日"
-                  :disabled="!canEditTiterOrderRecord(row)"
-                  @change="onTestDatesChange(row)"
-                />
-              </div>
-            </el-tooltip>
+                <template #tag="{ data, deleteTag, selectDisabled }">
+                  <div
+                    v-for="item in data"
+                    :key="ownerTagName(item)"
+                    class="el-select__selected-item"
+                  >
+                    <el-tag
+                      class="owner-tag"
+                      :style="ownerTagStyle(item)"
+                      :closable="!selectDisabled"
+                      disable-transitions
+                      @close="(event) => deleteTag(event, item)"
+                    >
+                      {{ ownerTagName(item) }}
+                    </el-tag>
+                  </div>
+                </template>
+                <el-option v-for="name in allOwnerOptions" :key="name" :label="name" :value="name" />
+              </el-select>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="血清状态" prop="serum_status" align="center" sortable min-width="140" class-name="status-column-cell">
-          <template #default="{ row }">
-            <el-select
-              v-model="row.serum_status"
-              class="inline-cell-control serum-status-select"
-              :class="row.serum_status ? 'status-tone-' + getSerumTiterStatusTagType(row.serum_status) : ''"
-              size="small"
-              allow-create
-              clearable
-              filterable
-              :disabled="!canEditTiterOrderRecord(row)"
-              placeholder="选择或输入"
-              @change="saveRow(row, '血清状态')"
+        <el-table-column
+          label="检测日期"
+          prop="test_dates_display"
+          align="center"
+          sortable
+          min-width="180"
+          class-name="plate-col-test-dates"
+        >
+          <template #default="{ row, $index }">
+            <div
+              class="plate-select-cell plate-select-cell--field"
+              @mousedown="onFieldCellMouseDown('test_dates', $index, $event)"
+              @mouseenter="onPlateCellMouseEnter('test_dates', $index)"
+              @contextmenu.prevent="onPlateCellContextMenu('test_dates')"
             >
-              <el-option
-                v-for="item in allSerumStatusOptions"
-                :key="item"
-                :label="item"
-                :value="item"
-              />
-            </el-select>
+              <el-tooltip
+                :content="row.test_dates_display"
+                placement="top"
+                :disabled="!isOverflowTooltip(row.id, 'test_dates')"
+              >
+                <div
+                  class="cell-tooltip-target"
+                  @mouseenter="handleOverflowMouseEnter($event, row.id, 'test_dates', row.test_dates_display)"
+                  @mouseleave="handleOverflowMouseLeave(row.id, 'test_dates')"
+                >
+                  <el-date-picker
+                    v-model="row.test_dates"
+                    class="test-dates-picker inline-cell-control"
+                    size="small"
+                    type="dates"
+                    value-format="YYYY-MM-DD"
+                    placeholder="选择检测日"
+                    :disabled="!canEditTiterOrderRecord(row)"
+                    @change="onTestDatesChange(row)"
+                  />
+                </div>
+              </el-tooltip>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="血清状态"
+          prop="serum_status"
+          align="center"
+          sortable
+          min-width="140"
+          class-name="status-column-cell plate-col-serum-status"
+        >
+          <template #default="{ row, $index }">
+            <div
+              class="plate-select-cell plate-select-cell--field"
+              @mousedown="onFieldCellMouseDown('serum_status', $index, $event)"
+              @mouseenter="onPlateCellMouseEnter('serum_status', $index)"
+              @contextmenu.prevent="onPlateCellContextMenu('serum_status')"
+            >
+              <el-select
+                v-model="row.serum_status"
+                class="inline-cell-control serum-status-select"
+                :class="row.serum_status ? 'status-tone-' + getSerumTiterStatusTagType(row.serum_status) : ''"
+                size="small"
+                allow-create
+                clearable
+                filterable
+                :disabled="!canEditTiterOrderRecord(row)"
+                placeholder="选择或输入"
+                @change="onSerumStatusChange(row)"
+              >
+                <el-option
+                  v-for="item in allSerumStatusOptions"
+                  :key="item"
+                  :label="item"
+                  :value="item"
+                />
+              </el-select>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="备注" align="center" min-width="180">
@@ -667,6 +706,9 @@ const DEFAULT_STATS = {
 
 const STATS_AFFECTING_LABELS = new Set(['效价负责人', '检测日期', '血清状态', '效价小结']);
 
+/** 可划选后改一处同步的列；值仅用于选区计数，无板数含义 */
+const FIELD_SELECT_COLUMNS = new Set(['owner', 'test_dates', 'serum_status']);
+
 const ASSAY_FILTER_FACS = '__facs__';
 const ASSAY_FILTER_ELISA = '__elisa__';
 const ASSAY_FILTER_FACS_ELISA = '__facs_elisa__';
@@ -859,6 +901,9 @@ export default {
         return '';
       }
       const { sum, count } = this.getPlateSelectionSummary(column, this.plateDragging);
+      if (FIELD_SELECT_COLUMNS.has(column)) {
+        return count > 0 ? `已选 ${count} 条 · 改一处同步` : '划选多行后改一处同步';
+      }
       if (column === 'mouse') {
         return `鼠鼠共计 ${sum} 只`;
       }
@@ -922,9 +967,15 @@ export default {
       plateSelectColumn: null,
       plateSelectedCounts: {},
       plateDragging: false,
+      plateDragPending: null,
       plateDragStartIndex: -1,
       plateDragEndIndex: -1,
-      plateBubbleStyle: { top: '0px', left: '0px' },
+      plateBubbleStyle: {
+        top: '0px',
+        left: '0px',
+        transform: 'translate3d(0px, 0px, 0) translateX(-50%)',
+      },
+      plateBubblePos: null,
       plateOverlayRects: [],
       tabDataFetchedAt: 0,
     };
@@ -1020,6 +1071,9 @@ export default {
       return this.list;
     },
     getPlateSelectValue(row, column) {
+      if (FIELD_SELECT_COLUMNS.has(column)) {
+        return 1;
+      }
       if (column === 'mouse') {
         return Number(row.mouse_count) || 0;
       }
@@ -1027,8 +1081,77 @@ export default {
       return Number(value) || 0;
     },
     getPlateColClass(column) {
-      const map = { facs: 'plate-col-facs', elisa: 'plate-col-elisa', mouse: 'plate-col-mouse' };
+      const map = {
+        facs: 'plate-col-facs',
+        elisa: 'plate-col-elisa',
+        mouse: 'plate-col-mouse',
+        owner: 'plate-col-owner',
+        test_dates: 'plate-col-test-dates',
+        serum_status: 'plate-col-serum-status',
+      };
       return map[column] || '';
+    },
+    /** 点在下拉/日期上先挂起，拖到其他行再亮选区，避免单击闪框 */
+    onFieldCellMouseDown(column, index, event) {
+      if (event.button !== 0) {
+        return;
+      }
+      if (event.target.closest?.('.el-select, .el-date-editor, .el-input, .el-tag')) {
+        this.plateDragPending = { column, index };
+        return;
+      }
+      this.plateDragPending = null;
+      this.onPlateCellMouseDown(column, index, event);
+    },
+    canEditFieldForRow(row, label) {
+      if (label === '效价负责人') {
+        return this.canEditTiterOrderOwner();
+      }
+      if (label === '检测日期' || label === '血清状态' || label === '备注' || label === '效价小结') {
+        return this.canEditTiterOrderRecord(row);
+      }
+      return false;
+    },
+    async syncSelectedField(sourceRow, column, label, assignFn) {
+      const keys = this.plateSelectColumn === column
+        ? Object.keys(this.plateSelectedCounts)
+        : [];
+      const inSelection = keys.some((id) => String(id) === String(sourceRow.id));
+      const selected = inSelection && keys.length > 1
+        ? this.getTableDisplayRows().filter((row) => keys.includes(String(row.id)))
+        : [sourceRow];
+      // 赋值前跳过无权限行，界面也不改
+      const targets = selected.filter((row) => this.canEditFieldForRow(row, label));
+      const skipped = selected.length - targets.length;
+      if (!targets.length) {
+        ElMessage.warning(`您没有权限编辑${label}`);
+        return;
+      }
+      if (targets.length === 1) {
+        await this.saveRow(targets[0], label);
+        if (skipped > 0) {
+          ElMessage.warning(`${label}：已跳过 ${skipped} 条无权限`);
+        }
+        return;
+      }
+      for (const target of targets) {
+        if (String(target.id) !== String(sourceRow.id)) {
+          assignFn(target, sourceRow);
+        }
+      }
+      const results = await Promise.all(
+        targets.map((target) => this.saveRow(target, label, { silent: true })),
+      );
+      const ok = results.filter(Boolean).length;
+      if (ok > 0) {
+        ElMessage.success(`${label}已保存 ${ok} 条`);
+        if (STATS_AFFECTING_LABELS.has(label)) {
+          this.refreshStats();
+        }
+      }
+      if (skipped > 0) {
+        ElMessage.warning(`${label}：已跳过 ${skipped} 条无权限`);
+      }
     },
     getPlateSelectSegments(column) {
       const sorted = this.getPlateSelectRowIndices(column);
@@ -1103,7 +1226,7 @@ export default {
           const topRect = topCell.getBoundingClientRect();
           const bottomRect = bottomCell.getBoundingClientRect();
           rects.push({
-            key: `${start}-${end}`,
+            key: this.plateDragging ? `drag-${rects.length}` : `${start}-${end}`,
             style: {
               top: `${topRect.top - wrapRect.top}px`,
               left: `${topRect.left - wrapRect.left}px`,
@@ -1117,12 +1240,21 @@ export default {
 
         if (rects.length) {
           const last = rects[rects.length - 1];
-          const centerX = parseFloat(last.style.left) + parseFloat(last.style.width) / 2;
-          const bottomY = parseFloat(last.style.top) + parseFloat(last.style.height);
+          const x = parseFloat(last.style.left) + parseFloat(last.style.width) / 2;
+          const y = parseFloat(last.style.top) + parseFloat(last.style.height) + 6;
+          // 短时长 + 按距微调；用 transform 走合成层，才能接近显示器刷新率
+          const prev = this.plateBubblePos;
+          let duration = 0.12;
+          if (prev) {
+            const dist = Math.hypot(x - prev.x, y - prev.y);
+            duration = Math.min(0.2, Math.max(0.08, dist / 1400));
+          }
+          this.plateBubblePos = { x, y };
           this.plateBubbleStyle = {
-            top: `${bottomY + 6}px`,
-            left: `${centerX}px`,
-            transform: 'translateX(-50%)',
+            top: '0px',
+            left: '0px',
+            transform: `translate3d(${x}px, ${y}px, 0) translateX(-50%)`,
+            transitionDuration: `${duration.toFixed(3)}s`,
           };
         }
       });
@@ -1162,8 +1294,13 @@ export default {
         return;
       }
       event.preventDefault();
+      this.plateDragPending = null;
+      // 换列：立刻清选区，不做淡出，避免和左右滑动叠在一起发卡
       if (this.plateSelectColumn && this.plateSelectColumn !== column) {
-        this.clearPlateSelection();
+        this.plateSelectedCounts = {};
+        this.plateOverlayRects = [];
+        this.plateDragStartIndex = -1;
+        this.plateDragEndIndex = -1;
       }
       this.plateSelectColumn = column;
       this.plateDragging = true;
@@ -1172,13 +1309,38 @@ export default {
       this.updatePlateSelectionUi();
     },
     onPlateCellMouseEnter(column, index) {
+      const pending = this.plateDragPending;
+      if (pending) {
+        if (pending.column !== column || pending.index === index) {
+          return;
+        }
+        this.plateDragPending = null;
+        if (this.plateSelectColumn && this.plateSelectColumn !== column) {
+          this.plateSelectedCounts = {};
+          this.plateOverlayRects = [];
+        }
+        this.plateSelectColumn = column;
+        this.plateDragging = true;
+        this.plateDragStartIndex = pending.index;
+        this.plateDragEndIndex = index;
+        document.activeElement?.blur?.();
+        this.updatePlateSelectionUi();
+        return;
+      }
       if (!this.plateDragging || column !== this.plateSelectColumn) {
+        return;
+      }
+      if (this.plateDragEndIndex === index) {
         return;
       }
       this.plateDragEndIndex = index;
       this.updatePlateSelectionUi();
     },
     finishPlateDrag() {
+      if (this.plateDragPending) {
+        this.plateDragPending = null;
+        return;
+      }
       if (!this.plateDragging) {
         return;
       }
@@ -1230,9 +1392,11 @@ export default {
       this.plateSelectColumn = null;
       this.plateSelectedCounts = {};
       this.plateDragging = false;
+      this.plateDragPending = null;
       this.plateDragStartIndex = -1;
       this.plateDragEndIndex = -1;
       this.plateOverlayRects = [];
+      this.plateBubblePos = null;
     },
     buildQuery() {
       const { summary_status, project_code, ...rest } = this.listQuery;
@@ -1313,6 +1477,9 @@ export default {
       return element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight;
     },
     handleOverflowMouseEnter(event, rowId, field, content) {
+      if (this.plateDragging || this.plateDragPending) {
+        return;
+      }
       const key = this.cellOverflowKey(rowId, field);
       if (!content) {
         this.overflowCellKeys = { ...this.overflowCellKeys, [key]: false };
@@ -1322,6 +1489,9 @@ export default {
       this.overflowCellKeys = { ...this.overflowCellKeys, [key]: this.isElementOverflow(target) };
     },
     handleOverflowMouseLeave(rowId, field) {
+      if (this.plateDragging || this.plateDragPending) {
+        return;
+      }
       const key = this.cellOverflowKey(rowId, field);
       this.overflowCellKeys = { ...this.overflowCellKeys, [key]: false };
     },
@@ -1747,63 +1917,79 @@ export default {
     },
     onTestDatesChange(row) {
       row.test_dates_display = (row.test_dates || []).join('、');
-      this.saveRow(row, '检测日期');
+      this.syncSelectedField(row, 'test_dates', '检测日期', (target, source) => {
+        target.test_dates = [...(source.test_dates || [])];
+        target.test_dates_display = source.test_dates_display;
+      });
     },
     onTiterOwnerChange(row) {
-      this.saveRow(row, '效价负责人');
+      this.syncSelectedField(row, 'owner', '效价负责人', (target, source) => {
+        target.titer_owners = [...(source.titer_owners || [])];
+      });
       this.$nextTick(() => {
-        const refName = `ownerSelect_${row.id}`;
-        const selectRef = this.$refs[refName];
+        const selectRef = this.$refs[`ownerSelect_${row.id}`];
         const ins = Array.isArray(selectRef) ? selectRef[0] : selectRef;
         ins?.blur?.();
       });
     },
-    saveRow(row, label) {
+    onSerumStatusChange(row) {
+      this.syncSelectedField(row, 'serum_status', '血清状态', (target, source) => {
+        target.serum_status = source.serum_status;
+      });
+    },
+    saveRow(row, label, options = {}) {
+      const silent = Boolean(options.silent);
       const payload = { id: row.id };
       if (label === '效价负责人') {
         if (!this.canEditTiterOrderOwner()) {
           ElMessage.warning('您没有权限编辑效价负责人');
-          return;
+          return Promise.resolve(false);
         }
         payload.titer_owners = row.titer_owners;
       } else if (label === '检测日期') {
         if (!this.canEditTiterOrderRecord(row)) {
           ElMessage.warning('您没有权限编辑检测日期');
-          return;
+          return Promise.resolve(false);
         }
         payload.test_dates = row.test_dates;
       } else if (label === '血清状态') {
         if (!this.canEditTiterOrderRecord(row)) {
           ElMessage.warning('您没有权限编辑血清状态');
-          return;
+          return Promise.resolve(false);
         }
         payload.serum_status = row.serum_status ?? null;
       } else if (label === '备注') {
         if (!this.canEditTiterOrderRecord(row)) {
           ElMessage.warning('您没有权限编辑备注');
-          return;
+          return Promise.resolve(false);
         }
         payload.remark = row.remark;
       } else if (label === '效价小结') {
         if (!this.canEditTiterOrderRecord(row)) {
           ElMessage.warning('您没有权限编辑效价小结');
-          return;
+          return Promise.resolve(false);
         }
         payload.summary = row.summary;
       } else {
-        return;
+        return Promise.resolve(false);
       }
-      saveTiterOrder(payload)
+      return saveTiterOrder(payload)
         .then(() => {
-          ElMessage.success(`${label}已保存`);
+          if (!silent) {
+            ElMessage.success(`${label}已保存`);
+          }
           if (label === '效价负责人') {
             this.mergeOwnerOptions(row.titer_owners);
           }
-          if (STATS_AFFECTING_LABELS.has(label)) {
+          if (!silent && STATS_AFFECTING_LABELS.has(label)) {
             this.refreshStats();
           }
+          return true;
         })
-        .catch((error) => notifyApiError(error, { messages: { default: `${label}保存失败` } }));
+        .catch((error) => {
+          notifyApiError(error, { messages: { default: `${label}保存失败` } });
+          return false;
+        });
     },
   },
 };
@@ -2108,14 +2294,20 @@ export default {
 
 .table-card :deep(td.plate-col-facs),
 .table-card :deep(td.plate-col-elisa),
-.table-card :deep(td.plate-col-mouse) {
+.table-card :deep(td.plate-col-mouse),
+.table-card :deep(td.plate-col-owner),
+.table-card :deep(td.plate-col-test-dates),
+.table-card :deep(td.plate-col-serum-status) {
   height: 1px;
   padding: 0;
 }
 
 .table-card :deep(td.plate-col-facs .cell),
 .table-card :deep(td.plate-col-elisa .cell),
-.table-card :deep(td.plate-col-mouse .cell) {
+.table-card :deep(td.plate-col-mouse .cell),
+.table-card :deep(td.plate-col-owner .cell),
+.table-card :deep(td.plate-col-test-dates .cell),
+.table-card :deep(td.plate-col-serum-status .cell) {
   position: relative;
   height: 100%;
   padding: 0;
@@ -2139,12 +2331,30 @@ export default {
   user-select: none;
 }
 
+.plate-select-cell--field {
+  justify-content: stretch;
+  padding: 6px 8px;
+}
+
+.plate-select-cell--field .inline-cell-control,
+.plate-select-cell--field .cell-tooltip-target {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+.table-plate-wrap.is-plate-dragging .plate-select-cell--field .inline-cell-control {
+  pointer-events: none;
+}
+
 .plate-select-region {
   position: absolute;
   box-sizing: border-box;
   pointer-events: none;
   background: rgba(64, 158, 255, 0.16);
   border: 1px solid rgba(64, 158, 255, 0.45);
+  /* 只过渡纵向拉伸；左右/宽度瞬切，换列不会横滑卡顿 */
+  transition: top 0.12s ease, height 0.12s ease;
 }
 
 .plate-region-enter-active {
@@ -2162,6 +2372,8 @@ export default {
 
 .plate-select-bubble {
   position: absolute;
+  top: 0;
+  left: 0;
   z-index: 6;
   padding: 4px 10px;
   font-size: 12px;
@@ -2174,21 +2386,24 @@ export default {
   border: 1px solid #b3d8ff;
   border-radius: var(--list-mid-radius);
   box-shadow: 0 2px 8px rgba(64, 158, 255, 0.18);
-  transition: top 0.16s ease, left 0.16s ease;
+  will-change: transform;
+  /* transform 合成层插值才跟得上刷新率；时长由 JS 写入，默认偏短 */
+  transition-property: transform;
+  transition-duration: 0.12s;
+  transition-timing-function: linear;
 }
 
 .plate-bubble-enter-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition: opacity 0.18s ease;
 }
 
 .plate-bubble-leave-active {
-  transition: opacity 0.14s ease, transform 0.14s ease;
+  transition: opacity 0.14s ease;
 }
 
 .plate-bubble-enter-from,
 .plate-bubble-leave-to {
   opacity: 0;
-  transform: translateX(-50%) translateY(5px);
 }
 
 .table-card :deep(.el-table__body .cell) {

@@ -46,14 +46,14 @@
           @keyup.enter="handleFilter"
         />
         <el-select
-          v-model="listQuery.data_type"
+          v-model="listQuery.orderType"
           class="filter-item"
           clearable
           placeholder="检测类型"
           @change="handleFilter"
         >
           <el-option
-            v-for="item in dataTypeOptions"
+            v-for="item in orderTypeOptions"
             :key="item.value"
             :label="item.label"
             :value="item.value"
@@ -123,16 +123,16 @@
         :header-cell-style="{ background: '#F8FAFC', color: '#606266', fontWeight: '600' }"
       >
         <!-- 列宽：全部用 min-width，表格会按这些最小值动态分配剩余空间；总宽不够则横向滚动 -->
-        <el-table-column label="订单编号" prop="order_no" fixed min-width="120" show-overflow-tooltip>
+        <el-table-column label="订单编号" prop="orderNum" fixed min-width="120" show-overflow-tooltip>
           <template #default="{ row }">
-            <span class="link-text" @click="goView(row)">{{ row.order_no || '—' }}</span>
+            <span class="link-text" @click="goView(row)">{{ row.orderNum || '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="订单名称" prop="order_name" min-width="120" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.order_name || '—' }}</template>
+        <el-table-column label="订单名称" prop="orderName" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.orderName || '—' }}</template>
         </el-table-column>
         <el-table-column label="检测类型" min-width="80" align="center">
-          <template #default="{ row }">{{ dataTypeLabel(row.data_type) }}</template>
+          <template #default="{ row }">{{ orderTypeLabel(row.orderType) }}</template>
         </el-table-column>
         <el-table-column label="优先级" min-width="80" align="center">
           <template #default="{ row }">
@@ -266,7 +266,7 @@ function emptyQuery() {
     page: 1,
     limit: 20,
     keyword: '',
-    data_type: '',
+    orderType: '',
     status: '',
     project_no: '',
     target: '',
@@ -303,7 +303,7 @@ export default {
       listLoading: false,
       listQuery: emptyQuery(),
       statusOptions: DEFAULT_STATUS_OPTIONS,
-      dataTypeOptions: [{ value: 'TITER', label: '效价' }],
+      orderTypeOptions: [{ value: 'TITER', label: '效价' }],
       priorityOptions: [
         { value: 'high', label: '高' },
         { value: 'normal', label: '普通' },
@@ -335,7 +335,7 @@ export default {
       try {
         const data = await fetchFlowWorkOrderMeta();
         this.statusOptions = data?.statuses?.length ? data.statuses : DEFAULT_STATUS_OPTIONS;
-        this.dataTypeOptions = data?.data_types?.length ? data.data_types : this.dataTypeOptions;
+        this.orderTypeOptions = data?.orderTypes?.length ? data.orderTypes : this.orderTypeOptions;
         this.priorityOptions = data?.priorities?.length ? data.priorities : this.priorityOptions;
       } catch {
         // 列表仍可用，元数据失败时使用本地默认值。
@@ -380,8 +380,8 @@ export default {
     statusTagType(row) {
       return orderStatusTagType(resolveOrderDisplayStatus(row));
     },
-    dataTypeLabel(value) {
-      return this.dataTypeOptions.find((item) => item.value === value)?.label || value || '-';
+    orderTypeLabel(value) {
+      return this.orderTypeOptions.find((item) => item.value === value)?.label || value || '-';
     },
     priorityLabel(value) {
       return this.priorityOptions.find((item) => item.value === value)?.label || '普通';

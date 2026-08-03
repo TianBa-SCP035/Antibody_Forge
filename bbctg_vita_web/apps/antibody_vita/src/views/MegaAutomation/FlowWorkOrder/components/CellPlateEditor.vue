@@ -74,7 +74,8 @@
               <el-select
                 v-model="row.cell_type"
                 size="small"
-                :disabled="disabled"
+                placeholder="空列"
+                :disabled="disabled || !String(row.cell_name || '').trim()"
                 :class="{
                   'is-invalid-control': hasFieldError(
                     `cell_plates.${index}.columns.${$index}.cell_type`,
@@ -97,12 +98,13 @@
                   ),
                 }"
                 placeholder="细胞名称"
+                @input="onCellNameInput(row)"
               />
             </template>
           </el-table-column>
           <el-table-column label="种属" min-width="70">
             <template #default="{ row }">
-              <el-select v-model="row.species" size="small" clearable :disabled="disabled">
+              <el-select v-model="row.species" size="small" clearable placeholder="选择" :disabled="disabled">
                 <el-option v-for="species in speciesOptions" :key="species" :label="species" :value="species" />
               </el-select>
             </template>
@@ -231,6 +233,10 @@ export default {
     this.destroySortable();
   },
   methods: {
+    onCellNameInput(row) {
+      const named = String(row.cell_name || '').trim();
+      row.cell_type = named ? (row.cell_type || '正常') : '';
+    },
     requestAdd() {
       this.$emit('add');
       this.scheduleSortableInit();

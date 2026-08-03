@@ -16,18 +16,18 @@
 
 ### `mega_flow_work_order`
 
-- `order_no` 必填，不要求唯一；
-- `data_type`：样品来源大类（`TITER` / `PLAS` / `PCR`），工单均为流式实验；
-- `source_id`：来源业务主键，可空。效价上游创建时写入 `serum_titer_order.titer_order_id`；手工新建通常为空。同一 `data_type` 下可有多条工单共享同一 `source_id`（1:N）；
+- `orderNum` 必填，不要求唯一；
+- `orderType`：样品来源大类（`TITER` / `PLAS` / `PCR`），工单均为流式实验；
+- `source_id`：来源业务主键，可空。效价上游创建时写入 `serum_titer_order.titer_order_id`；手工新建通常为空。同一 `orderType` 下可有多条工单共享同一 `source_id`（1:N）；
 - `content` 仅存 `pc_infos`、`sample_plates`、`cell_plates`；
 - `project_nos`、`targets`、样本板/细胞板条码数组用于列表筛选；
 - `content_hash` 用于并发编辑冲突检测。
 
-检测板条码与 `detect_plan` 不属于工单编辑模型。样本板用 `cell_keys`（`板条码|列号`）引用细胞列，Payload 原样携带，服务端不展开嵌套任务树。
+检测板条码与 `detect_plan` 不属于工单编辑模型。样本板用 `cell_keys`（`{ barcode, column_no }` 对象数组）引用细胞列；下发 Payload 将其放在 `orderDetail` 内原样携带，服务端不展开嵌套任务树。
 
 ### `mega_flow_work_order_dispatch`
 
-- `dispatch_id`：下发唯一编号；
+- `dispatchId`：下发唯一编号；
 - `payload` / `payload_hash`：当次发送快照（hash 供完整性预留）；
 - `content_hash_at_send`：发送时的工单版本，用于暂停后“内容是否变更”；
 - `status`：`pending` | `running` | `completed` | `failed` | `voided`；
@@ -40,7 +40,7 @@
 保存要求：
 
 - 订单编号非空；
-- `data_type` 和 `priority` 必须是元数据中声明的值；
+- `orderType` 和 `priority` 必须是元数据中声明的值；
 - 编辑已有工单时必须提交 `expected_content_hash`。
 
 业务校验要求：
@@ -90,20 +90,21 @@ paused
 
 ## 5. Payload
 
-与工单 `content` 同构的平级 JSON，发送时补充下发元数据：
+发送时补充下发元数据，板数据放在 `orderDetail` 下（与编辑态 `content` 字段同名）：
 
 ```text
-dispatch_id
-order_no
-order_name
-data_type
+dispatchId
+orderNum
+orderName
+orderType
 priority
-pc_infos
-sample_plates
-cell_plates
+orderDetail
+  pc_infos
+  sample_plates
+  cell_plates
 ```
 
-- `sample_plates[].cell_keys` 表达「样本板 × 细胞列」组合；不下发系统内部状态、摘要或数据库 ID。
+- `sample_plates[].cell_keys` 为 `{ barcode, column_no }` 对象数组，表达「样本板 × 细胞列」组合；不下发系统内部状态、摘要或数据库 ID。
 - 不生成、不持久化检测板条码。
 - 详情「Payload」页签通过 `GET .../active-payload` 读取当前未终止下发的快照（懒加载）。
 
@@ -159,15 +160,15 @@ POST /api/mega-automation/flow-work-orders/{order_id}/cancel
 
 主表基础字段包括：
 
-- `order_no`：订单编号，必填但允许重复；
-- `order_name`：订单名称，可选；
-- `data_type`：检测类型，目前元数据包括 `TITER`、`PLAS`、`PCR`；
+- `orderNum`：订单编号，必填但允许重复；
+- `orderName`：订单名称，可选；
+- `orderType`：检测类型，目前元数据包括 `TITER`、`PLAS`、`PCR`；
 - `priority`：设备优先级，包括 `high`、`normal`、`low`；
 - `remark`：备注；
 - `status`：工单状态；
 - `created_by`、`created_at`、`updated_at`、`sent_at`：操作与时间信息。
 
-订单编号不加唯一约束。业务上可以存在编号相同的工单，系统使用主键 `id` 区分工单，使用 `dispatch_id` 区分下发记录。
+订单编号不加唯一约束。业务上可以存在编号相同的工单，系统使用主键 `id` 区分工单，使用 `dispatchId` 区分下发记录。
 
 ### 10.2 `pc_infos`
 
@@ -210,16 +211,10 @@ cell_keys
 wells
 ```
 
-`cell_keys` 表示这块样本板选择的细胞列。键格式为：
+`cell_keys` 表示这块样本板选择的细胞列，为对象数组：
 
-```text
-细胞板条码|列号
-```
-
-例如：
-
-```text
-CELL-20260710-01|3
+```json
+{ "barcode": "CELL-20260710-01", "column_no": 3 }
 ```
 
 前端允许先添加细胞板再填写真实条码。保存时会把“细胞板1”之类的页面占位引用归一成当前细胞板条码。
@@ -271,7 +266,7 @@ catalog_no
 source
 ```
 
-未填写 `cell_name` 的列不作为可选择的检测细胞。工单至少需要一个已命名的细胞列，每块样本板至少选择一个有效细胞列。
+未填写 `cell_name` 的列视为空列（不可选为检测细胞），保存时 `cell_type` 置为空串；有名称时 `cell_type` 默认为 `正常`（可选 `肿瘤`）。工单至少需要一个已命名的细胞列，每块样本板至少选择一个有效细胞列。
 
 ### 10.6 搜索冗余字段
 
@@ -347,13 +342,13 @@ expected_content_hash
 
 ### 12.1 下发编号
 
-每次发送生成独立 `dispatch_id`，格式由后端生成，例如：
+每次发送生成独立 `dispatchId`，格式由后端生成，例如：
 
 ```text
 DSP260710482913
 ```
 
-数据库对 `dispatch_id` 保持唯一约束。工单编号是否重复与下发编号唯一性无关。
+数据库对 `dispatchId` 保持唯一约束。工单编号是否重复与下发编号唯一性无关。
 
 ### 12.2 为什么保留下发 Payload
 
@@ -419,7 +414,7 @@ DSP260710482913
 
 ### `modules/mega_automation/dispatch.py`
 
-`dispatch_id`、当前下发查询、快照创建、暂停/恢复/完成/失败/作废。
+`dispatchId`、当前下发查询、快照创建、暂停/恢复/完成/失败/作废。
 
 ### `modules/mega_automation/service.py`
 
@@ -431,7 +426,7 @@ FastAPI 入口、`require_permission`、统一响应；业务规则不放路由�
 
 ## 15. 结果回传（后续）
 
-回传至少携带 `dispatch_id`、`status`、结果 payload；以 `dispatch_id` 匹配下发，不用可能重复的 `order_no`。
+回传至少携带 `dispatchId`、`status`、结果 payload；以 `dispatchId` 匹配下发，不用可能重复的 `orderNum`。
 
 检测板条码若来自设备，作为结果数据保存；是否回写工单待协议确定。协议未明前不扩展工单表假设字段。
 

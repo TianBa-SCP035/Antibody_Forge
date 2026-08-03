@@ -1,0 +1,112 @@
+{
+  "dispatchId": "DSP260721482913",
+  "orderNum": "CN2605030000526",
+  "orderName": "CN2605030000526-GPC3",
+  "orderType": "TITER",
+  "replyAddress": "http://192.168.1.204:30080/api/order-experiment/瞎填的还没做",
+  "priority": "normal",
+  "orderDetail": {
+    "pc_infos": [
+      {
+        "pc_id": "482913001",
+        "pc_type": "SERUM",
+        "pc_name": "TNFR2-BI1910-hIgG1",
+        "catalog_batch": "P220826S01",
+        "source": "",
+        "concentration": ""
+      }
+    ],
+    "sample_plates": [
+      {
+        "barcode": "CN2605030000526-20R168-RMBW-1",
+        "project_no": "CN2605030000526",
+        "target": "GPC3",
+        "secondary_antibody": "人",
+        "cell_keys": [
+          { "barcode": "GPC3-H-1", "column_no": 2 },
+          { "barcode": "GPC3-H-1", "column_no": 3 },
+          { "barcode": "GPC3-H-1", "column_no": 4 }
+        ],
+        "wells": [
+          {
+            "well_no": "A01",
+            "content_type": "SAMPLE",
+            "sample_code": "01AAA23G",
+            "pc_id": null
+          },
+          {
+            "well_no": "A02",
+            "content_type": "SAMPLE",
+            "sample_code": "01AAAMUT",
+            "pc_id": null
+          },
+          {
+            "well_no": "A03",
+            "content_type": "SAMPLE",
+            "sample_code": "A03",
+            "pc_id": null
+          },
+          "_comment: A04-H11 省略，正式下发为完整 A01-H12 共 96 孔",
+          {
+            "well_no": "H12",
+            "content_type": "PC",
+            "sample_code": "",
+            "pc_id": "482913001"
+          }
+        ]
+      }
+    ],
+    "cell_plates": [
+      {
+        "barcode": "GPC3-H-1",
+        "columns": [
+          {
+            "column_no": 1,
+            "cell_type": "",
+            "cell_name": "",
+            "species": "",
+            "batch": "",
+            "generation": "",
+            "cell_count": "",
+            "catalog_no": "",
+            "source": ""
+          },
+          {
+            "column_no": 2,
+            "cell_type": "正常",
+            "cell_name": "CHO-S-huGPC3-V5-PDGFR",
+            "species": "人",
+            "batch": "C260410B01",
+            "generation": "P14",
+            "cell_count": "",
+            "catalog_no": "",
+            "source": ""
+          },
+          {
+            "column_no": 3,
+            "cell_type": "正常",
+            "cell_name": "CHO-S-mGPC3-V5",
+            "species": "人",
+            "batch": "C260414B01",
+            "generation": "P14",
+            "cell_count": "",
+            "catalog_no": "",
+            "source": ""
+          },
+          {
+            "column_no": 4,
+            "cell_type": "正常",
+            "cell_name": "CHO-S-dogGPC3-V5",
+            "species": "人",
+            "batch": "C260414B01",
+            "generation": "P14",
+            "cell_count": "",
+            "catalog_no": "",
+            "source": ""
+          },
+          "_comment: column_no 5-12 省略，正式下发固定 12 列；未填 cell_name 的列不可作为检测细胞，例如第一列视为空列"
+        ]
+      }
+    ]
+  }
+}

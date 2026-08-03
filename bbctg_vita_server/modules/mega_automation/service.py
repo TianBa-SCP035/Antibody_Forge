@@ -51,12 +51,12 @@ WORK_ORDER_STATUSES = [
     {"value": "cancelled", "label": "已作废"},
 ]
 ORDER_STATUS_LABELS = {item["value"]: item["label"] for item in WORK_ORDER_STATUSES}
-DATA_TYPES = [
+ORDER_TYPES = [
     {"value": "TITER", "label": "效价"},
     {"value": "PLAS", "label": "质粒"},
     {"value": "PCR", "label": "PCR"},
 ]
-DATA_TYPE_VALUES = {item["value"] for item in DATA_TYPES}
+ORDER_TYPE_VALUES = {item["value"] for item in ORDER_TYPES}
 PRIORITIES = [
     {"value": "high", "label": "高"},
     {"value": "normal", "label": "普通"},
@@ -123,15 +123,15 @@ def _ensure_editable(order: MegaFlowWorkOrder) -> None:
 
 def _apply_order_columns(order: MegaFlowWorkOrder, data: dict[str, Any]) -> None:
     base_info = safe_dict(data.get("base_info"))
-    order.order_name = clean_text(data.get("order_name") or base_info.get("order_name"))
-    order.order_no = clean_text(data.get("order_no"))
-    if not order.order_no:
+    order.orderName = clean_text(data.get("orderName") or base_info.get("orderName"))
+    order.orderNum = clean_text(data.get("orderNum"))
+    if not order.orderNum:
         raise ValueError("订单编号不能为空")
     order.remark = clean_text(data.get("remark") or base_info.get("remark"))
-    data_type = clean_text(data.get("data_type") or order.data_type or "TITER")
-    if data_type not in DATA_TYPE_VALUES:
-        raise ValueError(f"不支持的检测类型：{data_type}")
-    order.data_type = data_type
+    orderType = clean_text(data.get("orderType") or order.orderType or "TITER")
+    if orderType not in ORDER_TYPE_VALUES:
+        raise ValueError(f"不支持的检测类型：{orderType}")
+    order.orderType = orderType
     priority = clean_text(data.get("priority") or order.priority or "normal")
     if priority not in PRIORITY_VALUES:
         raise ValueError(f"不支持的优先级：{priority}")
@@ -213,7 +213,7 @@ def _enrich_detail(data: dict[str, Any], order: MegaFlowWorkOrder) -> dict[str, 
 def get_meta() -> dict[str, Any]:
     return {
         "statuses": WORK_ORDER_STATUSES,
-        "data_types": DATA_TYPES,
+        "orderTypes": ORDER_TYPES,
         "priorities": PRIORITIES,
         "default_sample_wells": default_sample_wells(),
         "default_cell_columns": default_cell_columns(),
@@ -293,16 +293,16 @@ def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
         pattern = f"%{keyword}%"
         stmt = stmt.where(
             or_(
-                MegaFlowWorkOrder.order_no.like(pattern),
-                MegaFlowWorkOrder.order_name.like(pattern),
+                MegaFlowWorkOrder.orderNum.like(pattern),
+                MegaFlowWorkOrder.orderName.like(pattern),
             )
         )
     status = clean_text(data.get("status"))
     if status:
         stmt = stmt.where(MegaFlowWorkOrder.status == status)
-    data_type = clean_text(data.get("data_type"))
-    if data_type:
-        stmt = stmt.where(MegaFlowWorkOrder.data_type == data_type)
+    orderType = clean_text(data.get("orderType"))
+    if orderType:
+        stmt = stmt.where(MegaFlowWorkOrder.orderType == orderType)
     project_no = clean_text(data.get("project_no"))
     if project_no:
         stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.project_nos, project_no))
@@ -344,15 +344,15 @@ def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_work_orders_by_source(db: Session, data: dict[str, Any]) -> dict[str, Any]:
-    data_type = clean_text(data.get("data_type"))
+    orderType = clean_text(data.get("orderType"))
     source_id = clean_text(data.get("source_id"))
-    if not data_type or not source_id:
-        raise ValueError("data_type 与 source_id 不能为空")
-    if data_type not in DATA_TYPE_VALUES:
-        raise ValueError(f"不支持的检测类型：{data_type}")
+    if not orderType or not source_id:
+        raise ValueError("orderType 与 source_id 不能为空")
+    if orderType not in ORDER_TYPE_VALUES:
+        raise ValueError(f"不支持的检测类型：{orderType}")
 
     stmt = select(MegaFlowWorkOrder).where(
-        MegaFlowWorkOrder.data_type == data_type,
+        MegaFlowWorkOrder.orderType == orderType,
         MegaFlowWorkOrder.source_id == source_id,
     )
     if data.get("exclude_cancelled"):

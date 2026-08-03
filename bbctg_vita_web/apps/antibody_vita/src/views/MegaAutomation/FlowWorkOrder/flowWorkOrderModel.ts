@@ -30,7 +30,7 @@ const EMPTY_COLUMN = {
   catalog_no: '',
   cell_count: '',
   cell_name: '',
-  cell_type: '正常',
+  cell_type: '',
   generation: '',
   source: '',
   species: '',
@@ -132,6 +132,7 @@ export function rowWells(
   return normalizedWells(plate).filter((well) => well.well_no.startsWith(rowLabel));
 }
 
+/** 仅作 Vue map / :key 用，不落库。 */
 export function cellKey(barcode: unknown, columnNo: unknown) {
   return `${barcode || ''}|${columnNo || ''}`;
 }
@@ -140,18 +141,22 @@ export function cellPlateBarcode(plate: Partial<FlowWorkOrderCellPlate>, index: 
   return plate.barcode || `细胞板${index + 1}`;
 }
 
-export function isCellSelected(plate: Partial<FlowWorkOrderSamplePlate>, key: string) {
-  return Array.isArray(plate.cell_keys) && plate.cell_keys.includes(key);
+export function isCellSelected(
+  plate: Partial<FlowWorkOrderSamplePlate>,
+  barcode: string,
+  columnNo: number,
+) {
+  return Array.isArray(plate.cell_keys)
+    && plate.cell_keys.some((item) => item.barcode === barcode && item.column_no === columnNo);
 }
 
 export function selectedCountInPlate(
   plate: Partial<FlowWorkOrderSamplePlate>,
-  option: { children?: Array<{ value: string }> },
+  option: { children?: Array<{ barcode: string; columnNo: number }> },
 ) {
-  const live = new Set((option.children || []).map((cell) => cell.value));
-  return Array.isArray(plate.cell_keys)
-    ? plate.cell_keys.filter((key) => live.has(key)).length
-    : 0;
+  return (option.children || []).filter((cell) =>
+    isCellSelected(plate, cell.barcode, cell.columnNo),
+  ).length;
 }
 
 export function isPcRefType(value: unknown) {
@@ -168,14 +173,14 @@ export function wellTypeLabel(value: unknown) {
 
 export function createDefaultFlowWorkOrder(): FlowWorkOrder {
   return {
-    base_info: { order_name: '', pc_infos: [], remark: '' },
+    base_info: { orderName: '', pc_infos: [], remark: '' },
     cell_plates: [],
     content_hash: '',
-    data_type: 'TITER',
+    orderType: 'TITER',
     dispatches: [],
     id: null,
-    order_name: '',
-    order_no: '',
+    orderName: '',
+    orderNum: '',
     priority: 'normal',
     sample_plates: [],
     source_id: undefined,
@@ -238,7 +243,15 @@ function normalizeColumns(value: unknown): FlowWorkOrderCellColumn[] {
   );
   return Array.from({ length: 12 }, (_, index) => {
     const columnNo = index + 1;
-    return { ...EMPTY_COLUMN, ...byNo.get(columnNo), column_no: columnNo };
+    const merged = { ...EMPTY_COLUMN, ...byNo.get(columnNo), column_no: columnNo };
+    const cellName = String(merged.cell_name || '').trim();
+    if (!cellName) {
+      merged.cell_name = '';
+      merged.cell_type = '';
+    } else if (!String(merged.cell_type || '').trim()) {
+      merged.cell_type = '正常';
+    }
+    return merged;
   });
 }
 
@@ -269,7 +282,12 @@ function normalizeSamplePlate(
     ...plate,
     _rowKey: plate._rowKey || createSamplePlateRowKey(),
     barcode: plate.barcode || '',
-    cell_keys: Array.isArray(plate.cell_keys) ? plate.cell_keys.filter(Boolean) : [],
+    cell_keys: records(plate.cell_keys)
+      .map((item) => ({
+        barcode: String(item.barcode || '').trim(),
+        column_no: Number(item.column_no),
+      }))
+      .filter((item) => item.barcode && Number.isInteger(item.column_no) && item.column_no > 0),
     project_no: plate.project_no || '',
     secondary_antibody: plate.secondary_antibody || '人',
     target: plate.target || '',
@@ -295,7 +313,7 @@ export function normalizeFlowWorkOrder(
     ...createDefaultFlowWorkOrder(),
     ...source,
     base_info: {
-      order_name: source.order_name || baseInfo.order_name || '',
+      orderName: source.orderName || baseInfo.orderName || '',
       pc_infos: normalizePcInfos(baseInfo.pc_infos),
       remark: source.remark ?? baseInfo.remark ?? '',
     },
@@ -303,7 +321,7 @@ export function normalizeFlowWorkOrder(
       ? cellPlates
       : [{ barcode: '', columns: createDefaultColumns(defaults) }],
     dispatches: Array.isArray(source.dispatches) ? source.dispatches : [],
-    order_name: source.order_name || baseInfo.order_name || '',
+    orderName: source.orderName || baseInfo.orderName || '',
     priority: source.priority || 'normal',
     sample_plates: samplePlates.length ? samplePlates : [createDefaultSamplePlate(defaults)],
   };
@@ -315,11 +333,11 @@ export function buildFlowWorkOrderSavePayload(
   return {
     base_info: order.base_info,
     cell_plates: order.cell_plates,
-    data_type: order.data_type,
+    orderType: order.orderType,
     expected_content_hash: order.content_hash || '',
     id: order.id,
-    order_name: order.base_info.order_name,
-    order_no: order.order_no || '',
+    orderName: order.base_info.orderName,
+    orderNum: order.orderNum || '',
     priority: order.priority,
     remark: order.base_info.remark,
     sample_plates: order.sample_plates,

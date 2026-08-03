@@ -78,11 +78,11 @@ function dispatchPauseStateLabel(pauseState?: string) {
 }
 
 export function buildDispatchChipLabel(item: {
-  dispatch_id?: string;
+  dispatchId?: string;
   status?: string;
   pause_state?: string;
 }) {
-  const parts = [item.dispatch_id, dispatchStatusLabel(item.status)];
+  const parts = [item.dispatchId, dispatchStatusLabel(item.status)];
   const pauseLabel = dispatchPauseStateLabel(item.pause_state);
   if (pauseLabel) parts.push(pauseLabel);
   return parts.filter(Boolean).join(' · ');

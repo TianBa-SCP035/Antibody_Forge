@@ -24,10 +24,15 @@ export interface FlowWorkOrderWell {
   well_no: string;
 }
 
+export interface FlowWorkOrderCellKey {
+  barcode: string;
+  column_no: number;
+}
+
 export interface FlowWorkOrderSamplePlate {
   _rowKey?: string;
   barcode: string;
-  cell_keys: string[];
+  cell_keys: FlowWorkOrderCellKey[];
   project_no: string;
   secondary_antibody: string;
   target: string;
@@ -53,7 +58,7 @@ export interface FlowWorkOrderCellPlate {
 
 export interface FlowWorkOrderDispatch {
   created_by?: string;
-  dispatch_id: string;
+  dispatchId: string;
   id: number;
   pause_state?: string;
   payload?: Record<string, unknown>;
@@ -63,7 +68,7 @@ export interface FlowWorkOrderDispatch {
 
 export interface FlowWorkOrder {
   base_info: {
-    order_name: string;
+    orderName: string;
     pc_infos: FlowWorkOrderPcInfo[];
     remark: string;
   };
@@ -71,15 +76,15 @@ export interface FlowWorkOrder {
   content_hash: string;
   created_at?: null | string;
   created_by?: string;
-  data_type: string;
+  orderType: string;
   dispatches: FlowWorkOrderDispatch[];
   display_status?: string;
   display_status_label?: string;
   error_message?: null | string;
   has_dispatches?: boolean;
   id: null | number;
-  order_name: string;
-  order_no: string;
+  orderName: string;
+  orderNum: string;
   pause_state?: string;
   priority: string;
   project_nos?: string[];
@@ -95,7 +100,7 @@ export interface FlowWorkOrder {
 }
 
 export interface FlowWorkOrderMeta {
-  data_types: FlowWorkOrderOption[];
+  orderTypes: FlowWorkOrderOption[];
   default_cell_columns: FlowWorkOrderCellColumn[];
   default_sample_wells: FlowWorkOrderWell[];
   priorities: FlowWorkOrderOption[];
@@ -104,7 +109,7 @@ export interface FlowWorkOrderMeta {
 
 export interface FlowWorkOrderListQuery {
   cell_plate_barcode: string;
-  data_type: string;
+  orderType: string;
   keyword: string;
   limit: number;
   page: number;
@@ -116,8 +121,8 @@ export interface FlowWorkOrderListQuery {
 
 export type FlowWorkOrderListItem = Pick<
   FlowWorkOrder,
-  'cell_plate_barcodes' | 'created_at' | 'created_by' | 'data_type' | 'display_status'
-  | 'display_status_label' | 'error_message' | 'id' | 'order_name' | 'order_no' | 'priority'
+  'cell_plate_barcodes' | 'created_at' | 'created_by' | 'orderType' | 'display_status'
+  | 'display_status_label' | 'error_message' | 'id' | 'orderName' | 'orderNum' | 'priority'
   | 'project_nos' | 'remark' | 'sample_plate_barcodes' | 'sent_at' | 'source_id' | 'status'
   | 'targets' | 'updated_at'
 >;
@@ -131,11 +136,11 @@ export interface FlowWorkOrderListResult {
 export interface FlowWorkOrderSavePayload {
   base_info: FlowWorkOrder['base_info'];
   cell_plates: FlowWorkOrderCellPlate[];
-  data_type: string;
+  orderType: string;
   expected_content_hash: string;
   id: null | number;
-  order_name: string;
-  order_no: string;
+  orderName: string;
+  orderNum: string;
   priority: string;
   remark: string;
   sample_plates: FlowWorkOrderSamplePlate[];
@@ -169,7 +174,7 @@ export function fetchFlowWorkOrderList(data: FlowWorkOrderListQuery, config?: Po
 }
 
 export function fetchFlowWorkOrdersBySource(
-  data: { data_type: string; exclude_cancelled?: boolean; source_id: string },
+  data: { orderType: string; exclude_cancelled?: boolean; source_id: string },
   config?: PostConfig,
 ) {
   return requestClient.post<{ items: FlowWorkOrderListItem[] }>(

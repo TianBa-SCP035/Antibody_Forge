@@ -110,12 +110,12 @@ export function buildFlowWorkOrderFromTiterWizardDraft(
   const orderNo = buildTiterUpstreamOrderNo(draft.titer_order_id);
   return {
     ...createDefaultFlowWorkOrder(),
-    data_type: 'TITER',
-    order_name: orderName,
-    order_no: orderNo,
+    orderType: 'TITER',
+    orderName: orderName,
+    orderNum: orderNo,
     source_id: String(draft.titer_order_id || '').trim() || undefined,
     base_info: {
-      order_name: orderName,
+      orderName: orderName,
       pc_infos: [],
       remark: '',
     },

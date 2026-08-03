@@ -174,18 +174,18 @@
           </div>
         </div>
         <div class="base-grid">
-          <label class="base-field" :class="{ 'is-invalid': hasFieldError('order_no') }">
+          <label class="base-field" :class="{ 'is-invalid': hasFieldError('orderNum') }">
             <span class="field-label">订单编号</span>
-            <el-input v-model="order.order_no" :disabled="fieldDisabled" placeholder="请输入订单编号" />
+            <el-input v-model="order.orderNum" :disabled="fieldDisabled" placeholder="请输入订单编号" />
           </label>
           <label class="base-field">
             <span class="field-label">订单名称</span>
-            <el-input v-model="order.base_info.order_name" :disabled="fieldDisabled" placeholder="请输入订单名称" />
+            <el-input v-model="order.base_info.orderName" :disabled="fieldDisabled" placeholder="请输入订单名称" />
           </label>
           <label class="base-field">
             <span class="field-label">检测类型</span>
-            <el-select v-model="order.data_type" :disabled="fieldDisabled" class="field-control" placeholder="选择类型">
-              <el-option v-for="item in dataTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+            <el-select v-model="order.orderType" :disabled="fieldDisabled" class="field-control" placeholder="选择类型">
+              <el-option v-for="item in orderTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </label>
           <label class="base-field">
@@ -204,7 +204,7 @@
           <div class="timeline-chips">
             <span
               v-for="item in compactEvents"
-              :key="item.id || item.dispatch_id"
+              :key="item.id || item.dispatchId"
               class="timeline-chip"
               :title="item.sent_at"
             >
@@ -250,7 +250,7 @@
                 <div class="panel-head-left">
                   <span class="panel-title">当前生效下发</span>
                   <span v-if="activePayloadDispatch" class="panel-hint">
-                    {{ activePayloadDispatch.dispatch_id }} · {{ activePayloadDispatch.sent_at }}
+                    {{ activePayloadDispatch.dispatchId }} · {{ activePayloadDispatch.sent_at }}
                   </span>
                   <span v-else class="panel-hint">仅显示未结束的下发记录</span>
                 </div>
@@ -373,7 +373,7 @@ export default {
       order: createDefaultFlowWorkOrder(),
       defaultSampleWells: [],
       defaultCellColumns: [],
-      dataTypeOptions: [
+      orderTypeOptions: [
         { value: 'TITER', label: '效价' },
         { value: 'PLAS', label: '质粒' },
         { value: 'PCR', label: 'PCR' },
@@ -502,9 +502,9 @@ export default {
     },
     pageSubtitle() {
       if (this.isViewMode) {
-        return this.order.base_info?.order_name || this.order.order_no || '查看工单';
+        return this.order.base_info?.orderName || this.order.orderNum || '查看工单';
       }
-      return this.order.base_info?.order_name || this.order.order_no || '新建工单（未保存）';
+      return this.order.base_info?.orderName || this.order.orderNum || '新建工单（未保存）';
     },
     pcInfos() {
       return this.order.base_info.pc_infos;
@@ -675,8 +675,8 @@ export default {
         const data = await fetchFlowWorkOrderMeta();
         this.defaultSampleWells = data?.default_sample_wells || [];
         this.defaultCellColumns = data?.default_cell_columns || [];
-        if (data?.data_types?.length) {
-          this.dataTypeOptions = data.data_types;
+        if (data?.orderTypes?.length) {
+          this.orderTypeOptions = data.orderTypes;
         }
         if (data?.priorities?.length) {
           this.priorityOptions = data.priorities;
@@ -760,7 +760,7 @@ export default {
           this.order = this.normalizeOrder({
             ...data,
             id: null,
-            order_no: '',
+            orderNum: '',
             status: 'draft',
             content_hash: '',
             error_message: null,
@@ -806,11 +806,10 @@ export default {
       const from = this.cellBarcodeFocusCache?.[index];
       const to = String(value || '').trim() || `细胞板${index + 1}`;
       if (!from || from === to) return;
-      const fromPrefix = `${from}|`;
       this.order.sample_plates.forEach((plate) => {
         const keys = Array.isArray(plate.cell_keys) ? plate.cell_keys : [];
         plate.cell_keys = keys.map((key) =>
-          key.startsWith(fromPrefix) ? `${to}|${key.slice(fromPrefix.length)}` : key,
+          key.barcode === from ? { barcode: to, column_no: key.column_no } : key,
         );
       });
       this.pruneEmptyCellRefs();
@@ -834,14 +833,13 @@ export default {
       const newColumnByOldColumn = new Map(
         oldColumnAtNewIndex.map((oldColumn, index) => [oldColumn, index + 1]),
       );
-      const prefix = `${this.cellPlateBarcode(plate, plateIndex)}|`;
+      const plateBarcode = this.cellPlateBarcode(plate, plateIndex);
       this.order.sample_plates.forEach((samplePlate) => {
         const keys = Array.isArray(samplePlate.cell_keys) ? samplePlate.cell_keys : [];
-        samplePlate.cell_keys = keys.map((key) => {
-          if (!key.startsWith(prefix)) return key;
-          const oldColumn = Number(key.slice(prefix.length));
-          const newColumn = newColumnByOldColumn.get(oldColumn);
-          return newColumn ? `${prefix}${newColumn}` : key;
+        samplePlate.cell_keys = keys.flatMap((key) => {
+          if (key.barcode !== plateBarcode) return [key];
+          const newColumn = newColumnByOldColumn.get(key.column_no);
+          return newColumn ? [{ barcode: plateBarcode, column_no: newColumn }] : [];
         });
       });
       this.pruneEmptyCellRefs();
@@ -855,7 +853,9 @@ export default {
       );
       this.order.sample_plates.forEach((plate) => {
         const keys = Array.isArray(plate.cell_keys) ? plate.cell_keys : [];
-        plate.cell_keys = keys.filter((key) => named.has(key));
+        plate.cell_keys = keys.filter((key) =>
+          named.has(this.cellKey(key.barcode, key.column_no)),
+        );
       });
     },
     buildSavePayload() {
@@ -863,7 +863,7 @@ export default {
     },
     async save() {
       if (this.loadError) return false;
-      if (!String(this.order.order_no || '').trim()) {
+      if (!String(this.order.orderNum || '').trim()) {
         ElMessage.warning('请先填写订单编号');
         return false;
       }
@@ -1140,7 +1140,7 @@ export default {
     },
     async deleteOrder() {
       if (!this.order.id) return;
-      const label = this.order.order_no || `#${this.order.id}`;
+      const label = this.order.orderNum || `#${this.order.id}`;
       try {
         await ElMessageBox.confirm(`确认删除工单 ${label}？删除后不可恢复。`, '删除确认', {
           confirmButtonText: '删除',
@@ -1158,7 +1158,7 @@ export default {
     },
     async voidOrder() {
       if (!this.order.id) return;
-      const label = this.order.order_no || `#${this.order.id}`;
+      const label = this.order.orderNum || `#${this.order.id}`;
       try {
         await ElMessageBox.confirm(
           `确认作废工单 ${label}？\n作废后不可再编辑或发送，历史下发记录仍保留。`,

@@ -20,13 +20,13 @@ class MegaFlowWorkOrder(Base):
             "idx_mega_flow_work_order_cell_plate_barcodes",
             text("(CAST(cell_plate_barcodes AS CHAR(128) ARRAY))"),
         ),
-        Index("idx_mega_flow_work_order_source", "data_type", "source_id"),
+        Index("idx_mega_flow_work_order_source", "orderType", "source_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    order_name: Mapped[str | None] = mapped_column(String(255))
-    order_no: Mapped[str] = mapped_column(String(255), nullable=False)
-    data_type: Mapped[str] = mapped_column(String(32), nullable=False, server_default="TITER")
+    orderName: Mapped[str | None] = mapped_column(String(255))
+    orderNum: Mapped[str] = mapped_column(String(255), nullable=False)
+    orderType: Mapped[str] = mapped_column(String(32), nullable=False, server_default="TITER")
     source_id: Mapped[str | None] = mapped_column(String(128))
     priority: Mapped[str] = mapped_column(String(32), nullable=False, server_default="normal")
     remark: Mapped[str | None] = mapped_column(Text)
@@ -50,9 +50,9 @@ class MegaFlowWorkOrder(Base):
     def to_dict(self, *, include_detail: bool = False) -> dict:
         data = {
             "id": self.id,
-            "order_name": self.order_name or "",
-            "order_no": self.order_no or "",
-            "data_type": self.data_type,
+            "orderName": self.orderName or "",
+            "orderNum": self.orderNum or "",
+            "orderType": self.orderType,
             "source_id": self.source_id or "",
             "priority": self.priority or "normal",
             "remark": self.remark or "",
@@ -75,7 +75,7 @@ class MegaFlowWorkOrder(Base):
                     "sample_plates": content.get("sample_plates") or [],
                     "cell_plates": content.get("cell_plates") or [],
                     "base_info": {
-                        "order_name": self.order_name or "",
+                        "orderName": self.orderName or "",
                         "remark": self.remark or "",
                         "pc_infos": content.get("pc_infos") or [],
                     },
@@ -87,12 +87,12 @@ class MegaFlowWorkOrder(Base):
 class MegaFlowWorkOrderDispatch(Base):
     __tablename__ = "mega_flow_work_order_dispatch"
     __table_args__ = (
-        UniqueConstraint("dispatch_id", name="uk_mega_flow_work_order_dispatch_id"),
+        UniqueConstraint("dispatchId", name="uk_mega_flow_work_order_dispatch_id"),
         Index("idx_mega_flow_work_order_dispatch_order", "work_order_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    dispatch_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    dispatchId: Mapped[str] = mapped_column(String(64), nullable=False)
     work_order_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     payload: Mapped[object] = mapped_column(JSON, nullable=False)
     payload_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
@@ -106,7 +106,7 @@ class MegaFlowWorkOrderDispatch(Base):
     def to_dict(self, *, include_payload: bool = False) -> dict:
         data = {
             "id": self.id,
-            "dispatch_id": self.dispatch_id,
+            "dispatchId": self.dispatchId,
             "status": self.status,
             "pause_state": self.pause_state or "",
             "sent_at": self.sent_at.strftime("%Y-%m-%d %H:%M:%S") if self.sent_at else None,

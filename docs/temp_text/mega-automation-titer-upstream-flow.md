@@ -23,14 +23,14 @@
   └─③ 点「确定」→ sessionStorage 草稿 → 跳转流式工单新建页并预填
         │
         ├─ 用户补充：细胞板、PC 表、铺板细节、条码等
-        ├─ 预填已含 source_id = titer_order_id，data_type = TITER（保存时一并提交）
-        ├─ 保存 → 校验 → 发送 Payload（dispatch_id）
+        ├─ 预填已含 source_id = titer_order_id，orderType = TITER（保存时一并提交）
+        ├─ 保存 → 校验 → 发送 Payload（dispatchId）
         │
         └─④ 设备执行（真实通信待接入；当前为模拟确认）
               │
               └─⑤ POST /api/order-experiment/sync 回传 JSON
                     │
-                    └─⑥ 匹配 dispatch_id → 读下发快照 → 核对 → 一次性写入效价表
+                    └─⑥ 匹配 dispatchId → 读下发快照 → 核对 → 一次性写入效价表
                           · 效价文件归档
                           · 标靶表（serum_titer_target）
                           · PC 表（serum_titer_pc）
@@ -43,8 +43,8 @@
 - 能自动带来的字段尽量少而准：**实验 ID（作板级 project_no）、靶点、样本编号（鼠号）、样本板布局、订单号/名称、source_id**。
 - 细胞板、PC 表、条码、`cell_keys` 等仍由用户在流式工单页手工完善（样本板对照列 NC/PC 已由效价路径预填）。
 - **单一数据源**：同一业务事实只存一处，避免效价表与流式工单双写导致回传对不齐。
-- 流式工单与效价工单的关联：**流式表记 `source_id`**（效价侧为 `titer_order_id`），用已有 **`data_type`** 区分来源大类（见 §4.6）。
-- 回传以 **`dispatch_id`（优先）** 定位下发快照，与回传 JSON 核对后 **一次性** 写入效价业务表；`order_no` 不唯一，不能单独作主键。
+- 流式工单与效价工单的关联：**流式表记 `source_id`**（效价侧为 `titer_order_id`），用已有 **`orderType`** 区分来源大类（见 §4.6）。
+- 回传以 **`dispatchId`（优先）** 定位下发快照，与回传 JSON 核对后 **一次性** 写入效价业务表；`orderNum` 不唯一，不能单独作主键。
 
 ---
 
@@ -125,10 +125,10 @@ serum_titer_order.experiment_id
 | `experiment_id` | `sample_plates[].project_no`（**不是** `project_code`） |
 | `target_name` | `sample_plates[].target` |
 | 选中鼠号（组序 × 组内原序） | `wells[].sample_code`（`content_type=SAMPLE`） |
-| — | `data_type` = `TITER` |
+| — | `orderType` = `TITER` |
 | `titer_order_id` | `source_id`（保存 payload 带上；后端写一次锁定） |
-| `titer_order_id` + 随机后缀 | `order_no`（不要求库唯一，便于人工区分） |
-| `project_code`-`target_name`-效价检测 | `order_name` / `base_info.order_name`（缺项目编号时用 `experiment_id`） |
+| `titer_order_id` + 随机后缀 | `orderNum`（不要求库唯一，便于人工区分） |
+| `project_code`-`target_name`-效价检测 | `orderName` / `base_info.orderName`（缺项目编号时用 `experiment_id`） |
 
 ---
 
@@ -142,7 +142,7 @@ serum_titer_order.experiment_id
 免疫小鼠表（serum_imm_mouse）     → 鼠号个体档案 + 死活（已有，继续维护；向导改完立刻入库）
 上游向导选鼠（会话内）            → 仅用于生成流式工单草稿，不落效价业务表
 流式工单 content（mega_flow_work_order） → 上机前的可编辑真相（样本/细胞/PC）
-流式工单 source_id + data_type     → 指回来源业务单（1:N，见 §4.6）
+流式工单 source_id + orderType     → 指回来源业务单（1:N，见 §4.6）
 下发快照（mega_flow_work_order_dispatch.payload） → 发送时刻的不可变真相
 回传处理                          → 快照 + 回传 JSON 核对通过后，一次性写入效价表
 ```
@@ -158,7 +158,7 @@ serum_titer_order.experiment_id
 | 实际上机样本编号 | `mega_flow_work_order.content` → `sample_plates[].wells[].sample_code` | 选中鼠号填入 SAMPLE 孔；保存工单后即持久化；**权威来源** |
 | 项目号、靶点（板级） | 同上 → `sample_plates[].project_no` / `target` | **`project_no` ← `experiment_id`**；`target` ← `target_name` |
 | PC 信息、细胞板、对照孔 | 同上 → `pc_infos` / `cell_plates` / wells | 用户在流式工单页补齐 |
-| 来源业务单 | `mega_flow_work_order.source_id` + `data_type` | 见 §4.6 |
+| 来源业务单 | `mega_flow_work_order.source_id` + `orderType` | 见 §4.6 |
 | 发送时完整内容 | `mega_flow_work_order_dispatch.payload` | 回传核对基准 |
 | 标靶表、PC 表、FACS 板、附件 | `serum_titer_*` / `serum_file` 等 | **回传入库时一次性写入**，不提前占位 |
 
@@ -182,7 +182,7 @@ serum_titer_order.experiment_id
 
 ```text
 POST /api/order-experiment/sync 收到 order_json
-  → 用 dispatch_id 定位 mega_flow_work_order_dispatch
+  → 用 dispatchId 定位 mega_flow_work_order_dispatch
   → 读取该次 payload 快照（发送时内容）
   → 与回传 JSON 核对关键字段（见 §8.3）
   → 核对通过：在同一业务事务中一次性写入
@@ -206,18 +206,18 @@ POST /api/order-experiment/sync 收到 order_json
 | 字段 | 说明 |
 |------|------|
 | `source_id` | 来源业务主键，可空。效价上游创建时写入 `titer_order_id` |
-| `data_type` | **已有**。在本系统中表示 **样品来源大类**（`TITER` / `PLAS` / `PCR`），工单本身都是流式实验 |
+| `orderType` | **已有**。在本系统中表示 **样品来源大类**（`TITER` / `PLAS` / `PCR`），工单本身都是流式实验 |
 
 **不另加** `source_type`、`source_experiment_id`：
 
-- `data_type` 已承担「来源大类」语义，无需重复字段。
+- `orderType` 已承担「来源大类」语义，无需重复字段。
 - `experiment_id` 可经 `source_id` → `serum_titer_order` → `experiment_id` 顺链路查到。
 
 **查询约定**
 
 ```text
 查某效价下全部流式工单：
-  data_type = 'TITER' AND source_id = :titer_order_id
+  orderType = 'TITER' AND source_id = :titer_order_id
 
 查「最近一条」（左键跳转用）：
   同上，且 status != 'cancelled'
@@ -225,16 +225,16 @@ POST /api/order-experiment/sync 收到 order_json
   LIMIT 1
 
 手工新建（非上游）：
-  data_type = 'TITER'，source_id 为空
+  orderType = 'TITER'，source_id 为空
 ```
 
-**未来扩展**：其他来源（如质粒）用各自 `data_type` + 各自业务主键写入 `source_id`；同一 `data_type` 下 `source_id` 含义在文档中约定清楚即可。
+**未来扩展**：其他来源（如质粒）用各自 `orderType` + 各自业务主键写入 `source_id`；同一 `orderType` 下 `source_id` 含义在文档中约定清楚即可。
 
 **回传追溯链**
 
 ```text
-dispatch_id → mega_flow_work_order_dispatch
-  → mega_flow_work_order（source_id, data_type）
+dispatchId → mega_flow_work_order_dispatch
+  → mega_flow_work_order（source_id, orderType）
   → serum_titer_order（titer_order_id = source_id）
   → experiment_id → 效价/免疫项目
 ```
@@ -248,7 +248,7 @@ dispatch_id → mega_flow_work_order_dispatch
 ### 5.1 左键
 
 ```text
-查询：data_type=TITER AND source_id=本行 titer_order_id AND status != 'cancelled'
+查询：orderType=TITER AND source_id=本行 titer_order_id AND status != 'cancelled'
 按 id 降序取最近一条
 
 ├─ 0 条 → 打开「新建向导」大弹窗（§6）
@@ -264,7 +264,7 @@ dispatch_id → mega_flow_work_order_dispatch
 
 | 行为 | 说明 |
 |------|------|
-| 列表内容 | 该效价工单对应的 **全部** 流式工单（`data_type=TITER` 且 `source_id=titer_order_id`） |
+| 列表内容 | 该效价工单对应的 **全部** 流式工单（`orderType=TITER` 且 `source_id=titer_order_id`） |
 | 状态过滤 | **不过滤**；含 draft / sent / running / paused / completed / cancelled / failed 等，用状态标签区分 |
 | 排序 | 建议 `id` 降序 |
 | 左键点某一行 | 跳转该流式工单详情 |
@@ -354,7 +354,7 @@ dispatch_id → mega_flow_work_order_dispatch
    - 鼠号按草稿顺序连续装填：同组相邻、装满一板再开下一板；**不**按组拆板、**不**插组间空位。
    - 0 只鼠仍生成 **1** 板（仅 NC/PC + 空孔，便于只补对照）。
 2. **板级字段**：`project_no` ← `experiment_id`；`target` ← `target_name`。
-3. **工单字段**：`data_type = TITER`；`source_id = titer_order_id`；`order_no = {titer_order_id}-{4位随机}`；`order_name = {project_code}-{target_name}-效价检测`（缺项目编号用 `experiment_id`）。
+3. **工单字段**：`orderType = TITER`；`source_id = titer_order_id`；`orderNum = {titer_order_id}-{4位随机}`；`orderName = {project_code}-{target_name}-效价检测`（缺项目编号用 `experiment_id`）。
 4. **不预填**：细胞板内容、PC 表、`cell_keys`、条码等，由用户在流式页手工补。
 
 ### 7.2 保存与关联
@@ -378,7 +378,7 @@ dispatch_id → mega_flow_work_order_dispatch
 
 与 §4.5 一致：以 **下发快照为主、回传为辅**，核对通过后 **一次性** 写入效价业务表。
 
-1. 用 **`dispatch_id`** 定位下发记录。  
+1. 用 **`dispatchId`** 定位下发记录。  
 2. 读 `payload` 快照并与回传 JSON 核对；失败则不写效价表。  
 3. 合并后一次性写入标靶 / PC / FACS / 文件；`order_sync` → `processed`。  
 4. 经 `source_id` → `serum_titer_order` → `experiment_id` 定位免疫实验。
@@ -387,10 +387,10 @@ dispatch_id → mega_flow_work_order_dispatch
 
 | 下发（Payload 快照） | 回传（order_json） | 核对说明 |
 |---------------------|-------------------|----------|
-| `dispatch_id` | 回传内字段（**协议待约定**） | 主键匹配 |
-| `order_no` | `order_infos[].order_no` | 辅助核对 |
+| `dispatchId` | 回传内字段（**协议待约定**） | 主键匹配 |
+| `orderNum` | `order_infos[].order_no` | 辅助核对（回传接口仍用其自身字段名） |
 | `project_no` / `target` | `project_infos[].project_no` / `target` | 必须一致 |
-| `data_type: TITER` | `project_infos[].data_type` | 必须一致 |
+| `orderType: TITER` | `project_infos[].data_type` | 必须一致（回传接口仍用其自身字段名） |
 | `sample_code`（鼠号） | `detect_board_infos[].sample_code` / `well_infos[].sample_name` | 映射层统一命名 |
 | `cell_plates` | `cell_board_infos[]` | 结构对照 |
 | （下发不含） | `detect_board_infos[].barcode` | 设备产生 |
@@ -427,7 +427,7 @@ sequenceDiagram
     U->>W: 确定（0 选中可点但提示）
     W->>FW: sessionStorage 草稿 + 跳转预填样本板 / source_id
     U->>FW: 补细胞板/PC，保存校验发送
-    FW->>D: Payload + dispatch_id
+    FW->>D: Payload + dispatchId
     D->>API: 回传 order_json
     API->>API: 匹配 dispatch，读快照核对
     API->>ST: 一次性写入效价表与文件
@@ -443,7 +443,7 @@ sequenceDiagram
 | # | 议题 | 结论 |
 |---|------|------|
 | 1 | 谁记关联 | 流式表记 `source_id`；效价上游写 `titer_order_id` |
-| 2 | 来源大类 | 用已有 `data_type`（样品来源）；不加 `source_type` |
+| 2 | 来源大类 | 用已有 `orderType`（样品来源）；不加 `source_type` |
 | 3 | experiment_id 冗余 | **不加** `source_experiment_id`，顺链路查 |
 | 4 | 1:N | 一条效价可对应多条流式工单 |
 | 5 | 「最近一个」 | `id` 降序；排除 `cancelled` |
@@ -456,15 +456,15 @@ sequenceDiagram
 | 12 | 选鼠键 | `groupId::mouseIndex`（同鼠号可独立勾选；payload 可含重复鼠号） |
 | 13 | 样本板布局 | 列1 NC、列12 PC；样本仅 A02–A11 / E02–E11；连续装填、同组相邻 |
 | 14 | `project_no` | ← **`experiment_id`**（不是 `project_code`） |
-| 15 | `order_no` | `{titer_order_id}-{随机}`；库不强制唯一 |
-| 16 | `order_name` | `{project_code}-{target_name}-效价检测` |
+| 15 | `orderNum` | `{titer_order_id}-{随机}`；库不强制唯一 |
+| 16 | `orderName` | `{project_code}-{target_name}-效价检测` |
 | 17 | 预填传递 | `sessionStorage` 草稿 + `prefill=titer-wizard`；进详情即消费清除 |
 
 ### 10.2 仍待定（后续）
 
 | # | 问题 | 影响 |
 |---|------|------|
-| 1 | 回传 JSON 是否含 `dispatch_id` | 设备协议 |
+| 1 | 回传 JSON 是否含 `dispatchId` | 设备协议 |
 | 2 | `secondary_antibody` 默认值 | 样本板字段（当前创建默认「人」） |
 | 3 | 上游相关权限点细化 | 系统管理 |
 | 4 | 死亡鼠在矩阵中是否允许手动选中 | **已决：不可选，灰显**（保留备查） |
@@ -486,8 +486,8 @@ sequenceDiagram
 
 ```sql
 ALTER TABLE mega_flow_work_order
-  ADD COLUMN source_id VARCHAR(128) NULL COMMENT '来源业务主键' AFTER data_type,
-  ADD KEY idx_mega_flow_work_order_source (data_type, source_id);
+  ADD COLUMN source_id VARCHAR(128) NULL COMMENT '来源业务主键' AFTER orderType,
+  ADD KEY idx_mega_flow_work_order_source (orderType, source_id);
 ```
 
 ### 后续

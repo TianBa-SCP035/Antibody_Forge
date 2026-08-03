@@ -19,16 +19,15 @@ def clean_text(value: Any) -> str:
     return str(value or "").strip()
 
 
-def build_cell_key(barcode: Any, column_no: Any) -> str:
-    return f"{clean_text(barcode)}|{clean_text(column_no)}"
-
-
-def split_cell_key(value: Any) -> tuple[str, str] | None:
-    key = clean_text(value)
-    if "|" not in key:
+def build_cell_key(barcode: Any, column_no: Any) -> dict[str, Any] | None:
+    barcode_text = clean_text(barcode)
+    try:
+        parsed_column = int(column_no)
+    except (TypeError, ValueError):
         return None
-    barcode, column_no = key.split("|", 1)
-    return barcode, column_no
+    if not barcode_text or parsed_column <= 0:
+        return None
+    return {"barcode": barcode_text, "column_no": parsed_column}
 
 
 def safe_list(value: Any) -> list:
@@ -78,7 +77,7 @@ def default_cell_columns() -> list[dict[str, Any]]:
         {
             "column_no": index,
             "cell_name": "",
-            "cell_type": "正常",
+            "cell_type": "",
             "batch": "",
             "generation": "",
             "species": "",
@@ -171,7 +170,19 @@ def normalize_sample_plates(sample_plates: list[Any]) -> list[dict[str, Any]]:
         if not isinstance(plate, dict):
             continue
         plate_data = {key: value for key, value in plate.items() if key != "_rowKey"}
-        cell_keys = [clean_text(key) for key in safe_list(plate_data.get("cell_keys")) if clean_text(key)]
+        cell_keys: list[dict[str, Any]] = []
+        seen_keys: set[tuple[str, int]] = set()
+        for raw_key in safe_list(plate_data.get("cell_keys")):
+            if not isinstance(raw_key, dict):
+                continue
+            key = build_cell_key(raw_key.get("barcode"), raw_key.get("column_no"))
+            if not key:
+                continue
+            identity = (key["barcode"], key["column_no"])
+            if identity in seen_keys:
+                continue
+            seen_keys.add(identity)
+            cell_keys.append(key)
         wells = [
             normalize_well(well)
             for well in safe_list(plate_data.get("wells"))
@@ -203,11 +214,17 @@ def normalize_cell_plates(cell_plates: list[Any]) -> list[dict[str, Any]]:
                 column_no = int(column.get("column_no") or 0)
             except (TypeError, ValueError):
                 column_no = 0
+            cell_name = clean_text(column.get("cell_name"))
+            cell_type = clean_text(column.get("cell_type"))
+            if cell_name:
+                cell_type = cell_type or "正常"
+            else:
+                cell_type = ""
             columns.append(
                 {
                     "column_no": column_no,
-                    "cell_type": clean_text(column.get("cell_type")) or "正常",
-                    "cell_name": clean_text(column.get("cell_name")),
+                    "cell_type": cell_type,
+                    "cell_name": cell_name,
                     "species": clean_text(column.get("species")),
                     "batch": clean_text(column.get("batch")),
                     "generation": clean_text(column.get("generation")),
@@ -244,23 +261,23 @@ def canonicalize_sample_cell_keys(
     for plate in sample_plates:
         if not isinstance(plate, dict):
             continue
-        remapped: list[str] = []
-        for key in selected_cell_keys(plate):
-            parts = split_cell_key(key)
-            if not parts:
+        remapped: list[dict[str, Any]] = []
+        seen: set[tuple[str, int]] = set()
+        for key in safe_list(plate.get("cell_keys")):
+            if not isinstance(key, dict):
                 continue
-            barcode, column_no = parts
-            canonical = alias_to_canonical.get(barcode, barcode)
-            remapped.append(build_cell_key(canonical, column_no))
-        # 去重且保序
-        seen: set[str] = set()
-        unique_keys: list[str] = []
-        for key in remapped:
-            if key in seen:
+            remapped_key = build_cell_key(
+                alias_to_canonical.get(key.get("barcode"), key.get("barcode")),
+                key.get("column_no"),
+            )
+            if not remapped_key:
                 continue
-            seen.add(key)
-            unique_keys.append(key)
-        plate["cell_keys"] = unique_keys
+            identity = (remapped_key["barcode"], remapped_key["column_no"])
+            if identity in seen:
+                continue
+            seen.add(identity)
+            remapped.append(remapped_key)
+        plate["cell_keys"] = remapped
 
 
 def cell_plate_display_barcode(plate: dict[str, Any], index: int) -> str:
@@ -288,8 +305,15 @@ def iter_cell_columns(cell_plates: list[Any]) -> list[dict[str, Any]]:
     return columns
 
 
-def selected_cell_keys(sample_plate: dict[str, Any]) -> list[str]:
-    return [clean_text(key) for key in safe_list(sample_plate.get("cell_keys")) if clean_text(key)]
+def selected_cell_keys(sample_plate: dict[str, Any]) -> list[dict[str, Any]]:
+    keys: list[dict[str, Any]] = []
+    for raw_key in safe_list(sample_plate.get("cell_keys")):
+        if not isinstance(raw_key, dict):
+            continue
+        key = build_cell_key(raw_key.get("barcode"), raw_key.get("column_no"))
+        if key:
+            keys.append(key)
+    return keys
 
 
 def build_content_body(data: dict[str, Any]) -> dict[str, Any]:
@@ -340,9 +364,9 @@ def hash_dict(data: dict[str, Any]) -> str:
 
 def build_content_hash(order: MegaFlowWorkOrder, content: dict[str, Any]) -> str:
     canonical = {
-        "order_name": order.order_name or "",
-        "order_no": order.order_no or "",
-        "data_type": order.data_type or "TITER",
+        "orderName": order.orderName or "",
+        "orderNum": order.orderNum or "",
+        "orderType": order.orderType or "TITER",
         "priority": order.priority or "normal",
         "remark": order.remark or "",
         "content": content,
@@ -359,12 +383,12 @@ def compute_hash_from_payload(data: dict[str, Any], order: MegaFlowWorkOrder | N
     content = build_content_body(data)
     from types import SimpleNamespace
 
-    data_type = clean_text(data.get("data_type") or (order.data_type if order else "TITER")) or "TITER"
+    orderType = clean_text(data.get("orderType") or (order.orderType if order else "TITER")) or "TITER"
     priority = clean_text(data.get("priority") or (order.priority if order else "normal")) or "normal"
     carrier = SimpleNamespace(
-        order_name=clean_text(data.get("order_name") or base_info.get("order_name")),
-        order_no=clean_text(data.get("order_no")),
-        data_type=data_type,
+        orderName=clean_text(data.get("orderName") or base_info.get("orderName")),
+        orderNum=clean_text(data.get("orderNum")),
+        orderType=orderType,
         priority=priority,
         remark=clean_text(data.get("remark") or base_info.get("remark")),
     )
@@ -531,8 +555,9 @@ def validate_pc_refs(content: dict[str, Any]) -> list[dict[str, str]]:
 def validate_sample_cell_refs(sample_plates: list[Any], cell_plates: list[Any]) -> list[dict[str, str]]:
     """样本板必须选择至少一个有效细胞列。"""
     named_cells = {
-        build_cell_key(cell.get("cell_plate_barcode"), cell.get("column_no"))
+        (key["barcode"], key["column_no"])
         for cell in iter_cell_columns(cell_plates)
+        if (key := build_cell_key(cell.get("cell_plate_barcode"), cell.get("column_no")))
     }
     issues: list[dict[str, str]] = []
     for plate_index, plate in enumerate(sample_plates, start=1):
@@ -543,7 +568,7 @@ def validate_sample_cell_refs(sample_plates: list[Any], cell_plates: list[Any]) 
         if not keys:
             issues.append(_issue(f"sample_plates.{idx}.cell_keys", f"样本板[{plate_index}]未选择检测细胞"))
             continue
-        invalid_keys = [key for key in keys if key not in named_cells]
+        invalid_keys = [key for key in keys if (key["barcode"], key["column_no"]) not in named_cells]
         if len(invalid_keys) == len(keys):
             issues.append(_issue(f"sample_plates.{idx}.cell_keys", f"样本板[{plate_index}]没有有效的检测细胞"))
             continue
@@ -551,7 +576,8 @@ def validate_sample_cell_refs(sample_plates: list[Any], cell_plates: list[Any]) 
             issues.append(
                 _issue(
                     f"sample_plates.{idx}.cell_keys",
-                    f"样本板[{plate_index}]引用的细胞列无效：{cell_key}",
+                    f"样本板[{plate_index}]引用的细胞列无效："
+                    f"{cell_key['barcode']} 列{cell_key['column_no']}",
                 )
             )
     return issues
@@ -572,13 +598,13 @@ def collect_validation_issues(
         else:
             content = existing_content or {}
 
-    order_no = clean_text(payload.get("order_no") or (order.order_no if order else ""))
+    orderNum = clean_text(payload.get("orderNum") or (order.orderNum if order else ""))
     sample_plates = safe_list(content.get("sample_plates"))
     cell_plates = safe_list(content.get("cell_plates"))
 
     issues: list[dict[str, str]] = []
-    if not order_no:
-        issues.append(_issue("order_no", "缺少订单编号"))
+    if not orderNum:
+        issues.append(_issue("orderNum", "缺少订单编号"))
     issues.extend(validate_sample_plates(sample_plates))
     issues.extend(validate_cell_plates(cell_plates))
     issues.extend(validate_plate_barcodes(sample_plates, cell_plates))

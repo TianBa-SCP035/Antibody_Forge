@@ -118,17 +118,17 @@
                         <div v-show="isCellPlateExpanded(gIdx)" class="cell-picker-group-body">
                           <div
                             v-for="cell in group.children"
-                            :key="cell.value"
+                            :key="cellKey(cell.barcode, cell.columnNo)"
                             class="cell-picker-option"
-                            :class="{ 'is-selected': isCellSelected(row, cell.value) }"
-                            @click="toggleCell(row, cell.value)"
+                            :class="{ 'is-selected': isCellSelected(row, cell.barcode, cell.columnNo) }"
+                            @click="toggleCell(row, cell.barcode, cell.columnNo)"
                           >
                             <span class="cell-picker-option-name">
                               {{ cell.cellName || '未命名细胞' }}
                             </span>
                             <span class="cell-picker-option-col">列{{ cell.columnNo }}</span>
                             <el-icon
-                              v-if="isCellSelected(row, cell.value)"
+                              v-if="isCellSelected(row, cell.barcode, cell.columnNo)"
                               class="cell-picker-option-check"
                             ><Check /></el-icon>
                           </div>
@@ -408,9 +408,9 @@ export default {
           children: (plate.columns || [])
             .filter((column) => column.cell_name)
             .map((column) => ({
+              barcode,
               cellName: column.cell_name || '',
               columnNo: column.column_no,
-              value: this.cellKey(barcode, column.column_no),
             })),
         };
       });
@@ -470,7 +470,7 @@ export default {
       const map = this.cellByKey;
       const tokens = [];
       keys.forEach((key) => {
-        const col = map[key];
+        const col = map[this.cellKey(key.barcode, key.column_no)];
         const name = String(col?.cell_name || '').trim();
         if (!name) return;
         const token = String(col?.species || '').trim() || name;
@@ -478,13 +478,15 @@ export default {
       });
       return tokens.join('、');
     },
-    toggleCell(plate, key) {
+    toggleCell(plate, barcode, columnNo) {
       const keys = Array.isArray(plate.cell_keys) ? [...plate.cell_keys] : [];
-      const idx = keys.indexOf(key);
+      const idx = keys.findIndex(
+        (item) => item.barcode === barcode && item.column_no === columnNo,
+      );
       if (idx >= 0) {
         keys.splice(idx, 1);
       } else {
-        keys.push(key);
+        keys.push({ barcode, column_no: columnNo });
       }
       plate.cell_keys = keys;
     },
@@ -496,15 +498,18 @@ export default {
       );
       this.order.sample_plates.forEach((plate) => {
         const keys = Array.isArray(plate.cell_keys) ? plate.cell_keys : [];
-        plate.cell_keys = keys.filter((key) => named.has(key));
+        plate.cell_keys = keys.filter((key) =>
+          named.has(this.cellKey(key.barcode, key.column_no)),
+        );
       });
     },
     onCellPickerShow(plate) {
       this.activeCellPickerRowKey = plate._rowKey || '';
-      const selected = Array.isArray(plate.cell_keys) ? plate.cell_keys : [];
       const expanded = {};
       this.cellPickerOptions.forEach((group, index) => {
-        expanded[index] = group.children.some((cell) => selected.includes(cell.value));
+        expanded[index] = group.children.some((cell) =>
+          isCellSelected(plate, cell.barcode, cell.columnNo),
+        );
       });
       if (!Object.values(expanded).some(Boolean)) {
         const firstIdx = this.cellPickerOptions.findIndex((group) => group.children.length);
@@ -628,16 +633,19 @@ export default {
       this.order.sample_plates.forEach((samplePlate) => {
         const keys = Array.isArray(samplePlate.cell_keys) ? samplePlate.cell_keys : [];
         samplePlate.cell_keys = keys.flatMap((key) => {
-          const remap = aliasRemaps.find(({ from }) => key.startsWith(`${from}|`));
-          if (remap) return [`${remap.to}|${key.slice(remap.from.length + 1)}`];
+          const barcode = String(key?.barcode || '').trim();
+          const columnNo = Number(key?.column_no);
+          if (!barcode || !Number.isInteger(columnNo) || columnNo <= 0) return [];
+          const remap = aliasRemaps.find(({ from }) => from === barcode);
+          if (remap) return [{ barcode: remap.to, column_no: columnNo }];
           if (
             removedAlias
             && !survivingAliases.has(removedAlias)
-            && key.startsWith(`${removedAlias}|`)
+            && barcode === removedAlias
           ) {
             return [];
           }
-          return [key];
+          return [{ barcode, column_no: columnNo }];
         });
       });
       this.pruneEmptyCellRefs();

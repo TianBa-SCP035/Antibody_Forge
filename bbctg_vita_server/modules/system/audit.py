@@ -32,7 +32,7 @@ TARGET_LABEL_KEYS = (
     "name",
     "username",
     "code",
-    "order_no",
+    "orderNum",
     "project_name",
     "experiment_id",
     "file_name",
@@ -191,7 +191,7 @@ def _build_audit_context(request: Request, body_data: dict) -> dict | None:
         target_id = _extract_target_id(body_data, dict(request.query_params), path_params)
         # 流式工单目标只记订单编号，不记订单名称
         if permission.resource == "flow_work_order":
-            label_fallback = str(body_data["order_no"]) if body_data.get("order_no") else None
+            label_fallback = str(body_data["orderNum"]) if body_data.get("orderNum") else None
         else:
             label_fallback = _extract_target_label(body_data)
         target_label = _resolve_target_label(db, permission.resource, target_id, label_fallback)
@@ -302,8 +302,8 @@ def _resolve_target_label(db: Session, resource: str | None, target_id: str | No
             return bundle.name or bundle.code
     if resource == "flow_work_order" and target_id and target_id.isdigit():
         order = db.get(MegaFlowWorkOrder, int(target_id))
-        if order and order.order_no:
-            return order.order_no
+        if order and order.orderNum:
+            return order.orderNum
     return fallback
 
 
@@ -365,9 +365,9 @@ def _fill_target_from_response(context: dict, response_body: bytes) -> None:
             context["target_id"] = str(value)
     if not context.get("target_label"):
         if context.get("target_type") == "flow_work_order":
-            order_no = payload.get("order_no")
-            if order_no not in (None, ""):
-                context["target_label"] = str(order_no)
+            orderNum = payload.get("orderNum")
+            if orderNum not in (None, ""):
+                context["target_label"] = str(orderNum)
         if not context.get("target_label"):
             label = _extract_target_label(payload)
             if label:

@@ -180,7 +180,7 @@ export default {
       const species = [];
       let hasNamed = false;
       keys.forEach((key) => {
-        const col = this.cellByKey[key];
+        const col = this.cellByKey[cellKey(key.barcode, key.column_no)];
         if (!String(col?.cell_name || '').trim()) return;
         hasNamed = true;
         const token = String(col?.species || '').trim();

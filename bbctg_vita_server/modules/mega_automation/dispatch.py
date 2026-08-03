@@ -157,10 +157,10 @@ def create_dispatch_record(
     if get_current_dispatch(db, order.id):
         raise ValueError("上一条下发记录尚未结束，不能重复发送")
     for _ in range(DISPATCH_ID_RETRY_LIMIT):
-        dispatch_id = generate_dispatch_id()
-        payload = build_dispatch_payload(order, dispatch_id)
+        dispatchId = generate_dispatch_id()
+        payload = build_dispatch_payload(order, dispatchId)
         record = MegaFlowWorkOrderDispatch(
-            dispatch_id=dispatch_id,
+            dispatchId=dispatchId,
             work_order_id=order.id,
             payload=payload,
             payload_hash=hash_dict(payload),

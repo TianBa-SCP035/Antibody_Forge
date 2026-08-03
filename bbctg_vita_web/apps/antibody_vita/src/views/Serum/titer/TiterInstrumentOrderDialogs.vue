@@ -45,8 +45,8 @@
         @row-click="onFlowOrderRowClick"
       >
         <el-table-column label="ID" prop="id" width="64" align="center" />
-        <el-table-column label="订单编号" prop="order_no" min-width="124" show-overflow-tooltip />
-        <el-table-column label="订单名称" prop="order_name" min-width="100" show-overflow-tooltip />
+        <el-table-column label="订单编号" prop="orderNum" min-width="124" show-overflow-tooltip />
+        <el-table-column label="订单名称" prop="orderName" min-width="100" show-overflow-tooltip />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="flowOrderStatusTagType(row)" effect="plain" size="small">
@@ -288,7 +288,7 @@ import {
 const PLATE_COLUMNS = 10;
 const PLATE_COLUMN_LIST = Array.from({ length: PLATE_COLUMNS }, (_, i) => i + 1);
 const ROW_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-const FLOW_DATA_TYPE = 'TITER';
+const FLOW_ORDER_TYPE = 'TITER';
 
 const IDENTITY_FIELDS = [
   { key: 'project_code', label: '项目编号', kind: 'text' },
@@ -526,7 +526,7 @@ export default {
       this.titerOrder = row;
       this.canEditInstrument = !!options.canEdit;
       fetchFlowWorkOrdersBySource({
-        data_type: FLOW_DATA_TYPE,
+        orderType: FLOW_ORDER_TYPE,
         source_id: row.titer_order_id,
         exclude_cancelled: true,
       })
@@ -565,7 +565,7 @@ export default {
       }
       this.flowListLoading = true;
       fetchFlowWorkOrdersBySource({
-        data_type: FLOW_DATA_TYPE,
+        orderType: FLOW_ORDER_TYPE,
         source_id: sourceId,
         exclude_cancelled: false,
       })

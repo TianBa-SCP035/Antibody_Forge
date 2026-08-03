@@ -212,9 +212,9 @@ CREATE TABLE IF NOT EXISTS order_sync (
 
 CREATE TABLE IF NOT EXISTS mega_flow_work_order (
   id BIGINT NOT NULL AUTO_INCREMENT,
-  order_name VARCHAR(255) NULL COMMENT '订单名称',
-  order_no VARCHAR(255) NOT NULL COMMENT '订单编号',
-  data_type VARCHAR(32) NOT NULL DEFAULT 'TITER' COMMENT '检测类型',
+  orderName VARCHAR(255) NULL COMMENT '订单名称',
+  orderNum VARCHAR(255) NOT NULL COMMENT '订单编号',
+  orderType VARCHAR(32) NOT NULL DEFAULT 'TITER' COMMENT '检测类型',
   source_id VARCHAR(128) NULL COMMENT '来源业务主键',
   priority VARCHAR(32) NOT NULL DEFAULT 'normal' COMMENT '优先级',
   remark TEXT NULL COMMENT '备注',
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS mega_flow_work_order (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_mega_flow_work_order_status (status),
-  KEY idx_mega_flow_work_order_source (data_type, source_id),
+  KEY idx_mega_flow_work_order_source (orderType, source_id),
   KEY idx_mega_flow_work_order_project_nos ((CAST(project_nos AS CHAR(128) ARRAY))),
   KEY idx_mega_flow_work_order_targets ((CAST(targets AS CHAR(128) ARRAY))),
   KEY idx_mega_flow_work_order_sample_plate_barcodes ((CAST(sample_plate_barcodes AS CHAR(128) ARRAY))),
@@ -241,7 +241,7 @@ CREATE TABLE IF NOT EXISTS mega_flow_work_order (
 
 CREATE TABLE IF NOT EXISTS mega_flow_work_order_dispatch (
   id BIGINT NOT NULL AUTO_INCREMENT,
-  dispatch_id VARCHAR(64) NOT NULL COMMENT '下发编号',
+  dispatchId VARCHAR(64) NOT NULL COMMENT '下发编号',
   work_order_id BIGINT NOT NULL COMMENT '工单ID',
   payload JSON NOT NULL COMMENT '下发JSON',
   payload_hash CHAR(64) NOT NULL COMMENT 'payload摘要',
@@ -252,7 +252,7 @@ CREATE TABLE IF NOT EXISTS mega_flow_work_order_dispatch (
   created_by VARCHAR(128) NULL COMMENT '操作人',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_mega_flow_work_order_dispatch_id (dispatch_id),
+  UNIQUE KEY uk_mega_flow_work_order_dispatch_id (dispatchId),
   KEY idx_mega_flow_work_order_dispatch_order (work_order_id)
 ) COMMENT='镁伽流式工单下发记录';
 

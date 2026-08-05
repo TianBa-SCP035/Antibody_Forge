@@ -676,17 +676,18 @@ export default {
     }
   },
   created() {
-    const id = this.$route.query.id
+    const id = this.resolveRouteProjectId()
     if (id) this.fetchData(id)
   },
   activated() {
     if (shouldRefreshTabData(this.tabDataFetchedAt)) {
-      const id = this.$route.query.id
+      const id = this.resolveRouteProjectId()
       if (id) this.fetchData(id)
     }
   },
   watch: {
     '$route.query.id'(val) {
+      if (this.$route.name !== 'SerumDataDetail') return
       if (val) this.fetchData(val)
     },
     activeTab(newVal) {
@@ -697,6 +698,11 @@ export default {
     }
   },
   methods: {
+    resolveRouteProjectId() {
+      if (this.$route.name !== 'SerumDataDetail') return null
+      const id = this.$route.query.id
+      return id ? String(id) : null
+    },
     safeGroupName(group, idx) {
       const safe = encodeURIComponent(group.group_id || idx)
       return `group-${safe}`

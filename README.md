@@ -1,14 +1,20 @@
 <!-- Showcase only. Implementation status & ops → docs/README.md -->
 
 <p align="center">
-  <img src="./docs/assets/biocytogen-logo.png" alt="百奥赛图 Biocytogen" height="56" />
+  <img src="./docs/assets/biocytogen-logo.png" alt="百奥赛图 Biocytogen" height="48" />
+  &nbsp;&nbsp;&nbsp;
+  <img src="./docs/assets/vita-icon-sm.png" alt="Antibody Forge / Vita" height="52" />
 </p>
 
 <p align="center">
   <strong>Antibody Forge</strong><br/>
+  <sub>抗体发现全流程实验协作平台</sub>
+</p>
+
+<p align="center">
   <img
-    src="https://readme-typing-svg.demolab.com?font=IBM+Plex+Sans&weight=500&size=20&duration=3800&pause=900&color=57606A&center=true&vCenter=true&width=780&height=44&lines=%E6%8A%97%E4%BD%93%E5%8F%91%E7%8E%B0%E5%85%A8%E6%B5%81%E7%A8%8B%E5%AE%9E%E9%AA%8C%E5%B9%B3%E5%8F%B0;%E5%85%8D%E7%96%AB+%C2%B7+%E7%AD%9B%E9%80%89+%C2%B7+%E6%B5%8B%E5%BA%8F+%C2%B7+%E8%A1%A8%E8%BE%BE+%C2%B7+%E8%AF%84%E4%BB%B7"
-    alt="tagline"
+    src="https://readme-typing-svg.demolab.com?font=Segoe+UI&weight=600&size=18&duration=4200&pause=1100&color=1F2328&center=true&vCenter=true&width=640&height=36&lines=Immunity+%C2%B7+Screening+%C2%B7+Sequencing+%C2%B7+Expression+%C2%B7+Evaluation;From+titer+to+automation+work+orders"
+    alt="Antibody Forge tagline"
   />
 </p>
 
@@ -48,19 +54,9 @@
 
 ## 全流程示意
 
-```mermaid
-%%{init: {"theme": "neutral", "flowchart": {"curve": "basis", "htmlLabels": false}, "themeVariables": {"fontSize": "13px"}}}%%
-flowchart LR
-  A[免疫] --> B[效价]
-  B --> C[筛选分流]
-  C --> D[单B / 噬菌体]
-  D --> E[文库]
-  E --> F[测序]
-  F --> G[表达纯化]
-  G --> H[抗体评价]
-  B -.-> X[模组自动化]
-  X -.-> D
-```
+<p align="center">
+  <img src="./docs/assets/pipeline.svg" alt="Antibody Forge 全流程示意" width="920" />
+</p>
 
 主链：免疫 → 效价 → 筛选（单 B / 噬菌体）→ 文库 → 测序 → 分子与细胞（质粒 / 转染 / 表达纯化 / LNP 等）→ 结合 · 亲和力 · 功能 · 理化评价。自动化工单贯穿需要上机的环节。
 

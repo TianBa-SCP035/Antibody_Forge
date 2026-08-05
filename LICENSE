@@ -1,0 +1,62 @@
+Antibody Forge Proprietary Software License
+
+Copyright (c) 2024-2026 百奥赛图（北京）医药科技股份有限公司
+Copyright (c) 2024-2026 Biocytogen Pharmaceuticals (Beijing) Co., Ltd.
+
+All Rights Reserved. 保留所有权利。
+
+--------------------------------------------------------------------------------
+中文
+--------------------------------------------------------------------------------
+
+本仓库所含 Antibody Forge（亦称 Vita）软件、文档及其它材料（合称「本软件」）
+的版权及其它知识产权，归 百奥赛图（北京）医药科技股份有限公司
+（Biocytogen Pharmaceuticals (Beijing) Co., Ltd.，下称「版权方」）所有。
+
+未经版权方事先书面许可，任何单位或个人不得：
+
+  1. 复制、修改、合并、发布、再分发、再授权、出借、出租、出售本软件的
+     全部或部分；
+  2. 将本软件用于任何对外商业服务、开源再发布或向第三方披露源代码；
+  3. 去除或篡改本软件中的版权、商标或其它权利声明。
+
+经版权方授权的内部人员，仅可在授权范围内为履行本职工作而使用本软件。
+授权或使用许可的具体条件，以书面协议或公司制度为准。
+
+本软件按「现状」提供，在适用法律允许的最大范围内，版权方不作任何明示或
+默示担保，亦不就使用本软件所产生的任何直接或间接损失承担责任。
+
+本仓库中引用或捆绑的第三方开源组件，仍按其各自开源许可证授权；本文件
+不改变该等第三方软件的许可条款。与本软件原创部分相关的权利主张，以
+本声明为准。
+
+如需授权、合作或其它许可事宜，请通过公司正式渠道联系版权方。
+
+--------------------------------------------------------------------------------
+English
+--------------------------------------------------------------------------------
+
+The Antibody Forge (also known as Vita) software, documentation, and other
+materials in this repository (the "Software") are the exclusive property of
+Biocytogen Pharmaceuticals (Beijing) Co., Ltd. ("Copyright Holder").
+
+Without prior written permission from the Copyright Holder, no person or entity
+may copy, modify, merge, publish, distribute, sublicense, lend, rent, sell, or
+otherwise use the Software (in whole or in part) for external commercial
+services, public redistribution, or disclosure of source code to third parties,
+or remove any copyright, trademark, or other notices.
+
+Authorized personnel may use the Software only within the scope of their
+employment and company policy. Additional terms, if any, are governed by
+written agreements or internal policies of the Copyright Holder.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. TO THE MAXIMUM
+EXTENT PERMITTED BY APPLICABLE LAW, THE COPYRIGHT HOLDER DISCLAIMS ALL
+LIABILITY ARISING FROM USE OF THE SOFTWARE.
+
+Third-party open-source components included or referenced in this repository
+remain subject to their own licenses. This file does not alter those licenses.
+Rights in the original portions of the Software are governed by this notice.
+
+For licensing or collaboration inquiries, contact the Copyright Holder through
+official corporate channels.

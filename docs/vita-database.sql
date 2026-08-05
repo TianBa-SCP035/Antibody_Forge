@@ -6,6 +6,7 @@
 --   - 文末「权限包 / 角色」仅为克隆空库时的示例种子，方便快速生效；生产环境完全自定义，
 --     不必与现网或示例一致，可删改或在系统管理中调整。
 --   - 外部细胞库 sam_sample 见文末注释（CELL_DB_URL，models/cell_inventory.py），勿在主库执行。
+--   - 外部员工库 org_emp / org_depart 见文末注释（EMPLOYEE_DB_URL，modules/system/employee_sync.py），勿在主库执行。
 --
 -- 文档：docs/README.md、docs/auth-permissions.md
 
@@ -275,7 +276,6 @@ CREATE TABLE IF NOT EXISTS serum_imm_project (
   pm VARCHAR(64) NULL COMMENT 'PM',
   study_type VARCHAR(64) NULL COMMENT '课题类型',
   assay_method VARCHAR(128) NULL COMMENT '检测方法',
-  assay_method_config JSON NULL COMMENT '检测明细',
   facs_plate_count INT NULL COMMENT 'FACS板数',
   elisa_plate_count INT NULL COMMENT 'ELISA板数',
   project_status VARCHAR(64) NULL COMMENT '项目状态',
@@ -552,49 +552,49 @@ VALUES
   ('job.serum_auto_update_status', '免疫状态自动更新', 'job', '每天 01:00 自动更新免疫实验状态', 1, 1, 210, JSON_OBJECT('hour', 1, 'minute', 0, 'cron', '0 1 * * *', 'restart_required', true));
 
 -- =============================================================================
--- 权限包 / 角色（仅示例，方便克隆空库快速生效；生产环境请完全自定义）
+-- 权限包 / 角色（仅示例三档：访客、业务员、系统管理；生产环境完全自定义）
 -- =============================================================================
 
 INSERT IGNORE INTO sys_permission_bundle (code, name, module, description, sort_order) VALUES
-  ('serum_readonly', '血清只读', 'serum', '示例：查看列表/详情/效价/工单/细胞库存', 100),
-  ('serum_admin', '血清全部', 'serum', '示例：血清模块全部页面与操作权限', 190),
-  ('mega_flow_order', '镁伽流式工单', 'mega', '示例：查看、编辑和发送流式工单', 500),
-  ('system_admin', '系统管理', 'system', '示例：用户/角色/权限包/操作日志/功能开关', 900);
+  ('guest', '访客', 'common', '示例：各业务模块页面只读', 10),
+  ('operator', '业务员', 'business', '示例：血清与镁伽常用编辑权限', 100),
+  ('system_admin', '系统管理', 'system', '示例：系统管理模块全部权限', 900);
 
 INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VALUES
-  ('serum_readonly', 'serum.page.list'),
-  ('serum_readonly', 'serum.page.detail'),
-  ('serum_readonly', 'serum.page.titer'),
-  ('serum_readonly', 'serum.page.titer_order'),
-  ('serum_readonly', 'serum.page.cell'),
-  ('serum_readonly', 'serum.cell.view'),
-  ('serum_admin', 'serum.page.list'),
-  ('serum_admin', 'serum.page.detail'),
-  ('serum_admin', 'serum.page.edit'),
-  ('serum_admin', 'serum.page.titer'),
-  ('serum_admin', 'serum.page.titer_order'),
-  ('serum_admin', 'serum.page.cell'),
-  ('serum_admin', 'serum.project.create'),
-  ('serum_admin', 'serum.project.edit'),
-  ('serum_admin', 'serum.project.edit_all'),
-  ('serum_admin', 'serum.project.delete'),
-  ('serum_admin', 'serum.status.update'),
-  ('serum_admin', 'serum.status.auto_update'),
-  ('serum_admin', 'serum.mouse.export'),
-  ('serum_admin', 'serum.cage.update'),
-  ('serum_admin', 'serum.titer.edit'),
-  ('serum_admin', 'serum.titer.edit_all'),
-  ('serum_admin', 'serum.file.manage'),
-  ('serum_admin', 'serum.titer_order.edit'),
-  ('serum_admin', 'serum.titer_order.delete'),
-  ('serum_admin', 'serum.titer_order.owner.edit'),
-  ('serum_admin', 'serum.titer_order.record.edit'),
-  ('serum_admin', 'serum.titer_order.record.edit_all'),
-  ('serum_admin', 'serum.cell.view'),
-  ('serum_admin', 'serum.cell.prep_status.update'),
-  ('mega_flow_order', 'mega.page.flow_work_order'),
-  ('mega_flow_order', 'mega.flow_work_order.edit'),
-  ('mega_flow_order', 'mega.flow_work_order.dispatch'),
+  ('guest', 'serum.page.list'),
+  ('guest', 'serum.page.detail'),
+  ('guest', 'serum.page.titer'),
+  ('guest', 'serum.page.titer_order'),
+  ('guest', 'serum.page.cell'),
+  ('guest', 'serum.cell.view'),
+  ('guest', 'mega.page.flow_work_order'),
+  ('guest', 'system.page.user'),
+  ('guest', 'system.page.role'),
+  ('guest', 'system.page.permission'),
+  ('guest', 'system.page.operation_log'),
+  ('guest', 'system.page.feature'),
+  ('guest', 'system.operation_log.view'),
+  ('operator', 'serum.page.list'),
+  ('operator', 'serum.page.detail'),
+  ('operator', 'serum.page.edit'),
+  ('operator', 'serum.page.titer'),
+  ('operator', 'serum.page.titer_order'),
+  ('operator', 'serum.page.cell'),
+  ('operator', 'serum.project.create'),
+  ('operator', 'serum.project.edit'),
+  ('operator', 'serum.project.delete'),
+  ('operator', 'serum.status.update'),
+  ('operator', 'serum.cage.update'),
+  ('operator', 'serum.mouse.export'),
+  ('operator', 'serum.titer.edit'),
+  ('operator', 'serum.file.manage'),
+  ('operator', 'serum.titer_order.edit'),
+  ('operator', 'serum.titer_order.record.edit'),
+  ('operator', 'serum.cell.view'),
+  ('operator', 'serum.cell.prep_status.update'),
+  ('operator', 'mega.page.flow_work_order'),
+  ('operator', 'mega.flow_work_order.edit'),
+  ('operator', 'mega.flow_work_order.dispatch'),
   ('system_admin', 'system.page.user'),
   ('system_admin', 'system.page.role'),
   ('system_admin', 'system.page.permission'),
@@ -607,33 +607,18 @@ INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VAL
   ('system_admin', 'system.feature.manage');
 
 INSERT IGNORE INTO sys_role (code, name, description, sort_order) VALUES
-  ('super_admin', '超级管理员', '示例：绑定全部权限包', 1),
-  ('operator', '业务操作员', '示例：血清全部 + 镁伽流式工单', 10),
-  ('readonly', '只读用户', '示例：仅血清只读', 90);
+  ('guest', '访客', '示例：各模块只读', 90),
+  ('operator', '业务员', '示例：血清与镁伽业务编辑', 10),
+  ('system_admin', '系统管理', '示例：系统管理模块', 20);
 
 INSERT IGNORE INTO sys_role_permission_bundle (role_id, bundle_code)
-SELECT r.id, b.code FROM sys_role r JOIN sys_permission_bundle b WHERE r.code = 'super_admin';
+SELECT r.id, r.code FROM sys_role r WHERE r.code IN ('guest', 'operator', 'system_admin');
 
-INSERT IGNORE INTO sys_role_permission_bundle (role_id, bundle_code)
-SELECT r.id, b.code
-FROM sys_role r
-JOIN sys_permission_bundle b
-WHERE r.code = 'operator' AND b.code IN ('serum_admin', 'mega_flow_order');
-
-INSERT IGNORE INTO sys_role_permission_bundle (role_id, bundle_code)
-SELECT r.id, b.code
-FROM sys_role r
-JOIN sys_permission_bundle b
-WHERE r.code = 'readonly' AND b.code = 'serum_readonly';
-
--- 首个超级管理员需要先生成 password_hash，再替换下面的占位符执行。
--- 生成方式：
+-- 首个超级管理员：is_superuser=TRUE 即拥有全部权限，无需绑定角色。
+-- 在 bbctg_vita_server 目录下生成 password_hash 后执行：
 --   python -c "from modules.auth.security import hash_password; print(hash_password('你的密码'))"
 -- INSERT INTO sys_user (username, display_name, password_hash, status, is_superuser)
 -- VALUES ('admin', '系统管理员', '替换为生成的 password_hash', 'active', TRUE);
--- INSERT INTO sys_user_role (user_id, role_id)
--- SELECT u.id, r.id FROM sys_user u JOIN sys_role r
--- WHERE u.username = 'admin' AND r.code = 'super_admin';
 
 -- =============================================================================
 -- 外部细胞库 CELL_DB_URL：sam_sample（models/cell_inventory.py，勿在主库执行，仅备查）
@@ -651,3 +636,30 @@ WHERE r.code = 'readonly' AND b.code = 'serum_readonly';
 --   batch_no VARCHAR(50) NULL COMMENT '批次号',
 --   PRIMARY KEY (id)
 -- ) COMMENT='细胞样本（外部库，只读）';
+
+-- =============================================================================
+-- 外部员工库 EMPLOYEE_DB_URL：org_emp / org_depart（employee_sync.py，勿在主库执行，仅备查）
+-- =============================================================================
+-- CREATE TABLE IF NOT EXISTS org_depart (
+--   id BIGINT NOT NULL COMMENT '部门ID',
+--   sname VARCHAR(255) NULL COMMENT '部门名称',
+--   top_id BIGINT NULL COMMENT '上级部门ID',
+--   PRIMARY KEY (id)
+-- ) COMMENT='部门（外部库，只读）';
+--
+-- CREATE TABLE IF NOT EXISTS org_emp (
+--   id BIGINT NOT NULL COMMENT '员工ID',
+--   sname VARCHAR(255) NULL COMMENT '姓名',
+--   snum VARCHAR(64) NULL COMMENT '工号',
+--   sex TINYINT NULL COMMENT '性别',
+--   mobile VARCHAR(32) NULL COMMENT '手机号',
+--   email VARCHAR(128) NULL COMMENT '邮箱',
+--   leave_date DATE NULL COMMENT '离职日期',
+--   is_locked TINYINT(1) NULL COMMENT '是否锁定',
+--   post VARCHAR(128) NULL COMMENT '职位',
+--   cloud_open_id VARCHAR(100) NULL COMMENT '云之家OpenID',
+--   depart_id BIGINT NULL COMMENT '部门ID(org_depart.id)',
+--   PRIMARY KEY (id),
+--   KEY idx_org_emp_depart (depart_id),
+--   KEY idx_org_emp_openid (cloud_open_id)
+-- ) COMMENT='员工（外部库，只读）';

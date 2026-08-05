@@ -4,13 +4,17 @@
   <img src="./docs/assets/biocytogen-logo.png" alt="百奥赛图 Biocytogen" height="52" />
 </p>
 
-<p>
-  <img align="left" src="./docs/assets/vita-icon-sm.png" alt="Antibody Vita" width="72" height="72" />
-  &nbsp;&nbsp;<strong>Antibody Vita</strong><br/>
-  &nbsp;&nbsp;抗体发现全流程实验协作平台<br/>
-  &nbsp;&nbsp;<sub>Immunity · Screening · Sequencing · Expression · Evaluation</sub>
+<p align="center">
+  <strong>Antibody Vita</strong><br/>
+  <sub>抗体发现全流程实验协作平台</sub>
 </p>
-<br clear="all"/>
+
+<p align="center">
+  <img
+    src="https://readme-typing-svg.demolab.com?font=Segoe+UI&weight=600&size=18&duration=4000&pause=1000&color=1F2328&center=true&vCenter=true&width=720&height=40&lines=Immunity+%C2%B7+Screening+%C2%B7+Sequencing+%C2%B7+Expression+%C2%B7+Evaluation;Titer+%C2%B7+Work+Orders+%C2%B7+Automation+%C2%B7+Discovery"
+    alt="tagline"
+  />
+</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
@@ -27,7 +31,7 @@
 
 ---
 
-## 项目简介
+## <img src="./docs/assets/vita-icon-sm.png" alt="" height="28" /> 项目简介
 
 治疗性抗体发现通常不是一条直线，而是一套互相咬合的实验网络：先用动物免疫激发应答，用血清效价与多类检测（如 ELISA、流式）判断是否进入下一阶段；随后可走 **单 B 细胞筛选** 或 **噬菌体展示** 等路径，搭配文库构建与一代 / 二代测序拿到序列；再经质粒与细胞制备、转染、表达纯化乃至 LNP 等递送相关准备，进入结合、亲和力 / 分子互作、功能与理化成药性等评价。业内常见的高通量单细胞与展示类流程，也正是围绕「应答 → 筛选 → 序列 → 表达 → 表征」这条主链组织起来的。
 
@@ -49,56 +53,60 @@
 ## 全流程示意
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Segoe UI, system-ui, sans-serif','fontSize':'13px','primaryColor':'#f6f8fa','primaryTextColor':'#1f2328','primaryBorderColor':'#d0d7de','lineColor':'#656d76','secondaryColor':'#ffffff','tertiaryColor':'#eef6ff','clusterBkg':'#fafbfc','clusterBorder':'#d0d7de'}}}%%
 flowchart TB
-  subgraph immune["小鼠免疫"]
-    I1[免疫实验] --> I2["效价检测<br/>ELISA / 流式等"]
+  subgraph MAIN["发现主链"]
+    direction LR
+    I1["免疫实验列表"] --> I2["效价实验列表\nFACS · ELISA"]
+    I2 -->|"达标"| Q["千鼠万抗\n路线登记"]
+    Q --> SB["单 B 细胞筛选"]
+    Q --> PD["噬菌体展示筛选"]
+    SB --> LQ["文库构建 · 质检"]
+    PD --> LQ
+    LQ --> SEQ["Sanger / NGS 测序"]
+    SEQ --> SA["序列分析"]
+    SA --> E1["结合检测"] --> E2["分子互作"] --> E3["功能评价"] --> E4["成药性评价"]
   end
 
-  subgraph discover["筛选与发现"]
-    D0[千鼠万抗 · 路线分流]
-    D0 --> D1[单 B 细胞筛选]
-    D0 --> D2[噬菌体展示筛选]
+  subgraph MOL["分子与细胞 · 共享支撑"]
+    direction LR
+    M1["质粒构建"] --> M2["质粒制备"] --> M3["细胞制备"] --> M4["细胞转染"] --> M5["抗体表达"] --> M6["抗体纯化"]
   end
 
-  subgraph library["文库构建"]
-    L1[NGS 文库]
-    L2[噬菌体展示文库]
-    L3[文库质检]
-    L1 --> L3
-    L2 --> L3
+  subgraph AUTO["模组自动化 · 共享支撑"]
+    direction LR
+    A1["工单创建 / 校验"] --> A2["设备执行"] --> A3["数据回传"]
   end
 
-  subgraph seq["测序分析"]
-    S1[Sanger] --> S3[序列分析]
-    S2[NGS] --> S3
-  end
+  SB -.->|"细胞制备"| M3
+  SA -.->|"克隆表达"| M1
+  E1 -.->|"蛋白样品"| M6
+  E2 -.->|"蛋白样品"| M6
 
-  subgraph mol["分子与细胞"]
-    M1[质粒构建 / 制备] --> M2[细胞制备 / 转染]
-    M2 --> M3[抗体表达 / 纯化]
-    M3 --> M4[LNP 等递送制备]
-  end
+  I2 <-.->|"流式上机"| A2
+  SB -.->|"筛选上机"| A1
+  E1 -.->|"检测上机"| A1
+  E2 -.->|"检测上机"| A1
+  A3 -.->|"回写效价等"| I2
 
-  subgraph eval["抗体评价"]
-    E1[结合检测]
-    E2[分子互作 · 亲和力]
-    E3[功能评价]
-    E4[成药性 · 理化]
-  end
+  classDef immune fill:#dafbe1,stroke:#1a7f37,color:#1f2328
+  classDef discover fill:#ddf4ff,stroke:#0969da,color:#1f2328
+  classDef library fill:#ede9fe,stroke:#6639ba,color:#1f2328
+  classDef seq fill:#eef6ff,stroke:#0550ae,color:#1f2328
+  classDef eval fill:#fbefff,stroke:#8250df,color:#1f2328
+  classDef mol fill:#fff8e6,stroke:#bf8700,color:#1f2328
+  classDef auto fill:#f6f8fa,stroke:#656d76,color:#57606a
 
-  auto["模组自动化<br/>工单下发 · 设备执行 · 数据回传"]
-
-  I2 --> D0
-  D1 --> library
-  D2 --> library
-  L3 --> seq
-  S3 --> mol
-  M4 --> eval
-  I2 -.-> auto
-  auto -.-> D0
+  class I1,I2 immune
+  class Q,SB,PD discover
+  class LQ library
+  class SEQ,SA seq
+  class E1,E2,E3,E4 eval
+  class M1,M2,M3,M4,M5,M6 mol
+  class A1,A2,A3 auto
 ```
 
-实线为主链；虚线表示自动化工单可贯穿效价、筛选等上机环节。
+三层结构：**发现主链**（横向实线）贯穿免疫 → 筛选 → 测序 → 评价；**分子与细胞**、**模组自动化**为按需调用的共享支撑（虚线接入），效价流式、单 B 筛选、重组表达、评价上机等环节均可复用，不占用主链顺序。
 
 ## 界面预览
 

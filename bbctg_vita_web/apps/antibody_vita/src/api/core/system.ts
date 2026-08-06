@@ -215,6 +215,14 @@ export function saveSystemFeatureApi(
   return requestClient.post<SystemFeatureFlag>('/system/features/save', data, config);
 }
 
+export function runSystemJobApi(jobCode: string, config?: RequestConfig) {
+  return requestClient.post<{ job_code: string; started: boolean }>(
+    '/system/features/jobs/run',
+    { job_code: jobCode },
+    config,
+  );
+}
+
 export function deleteSystemUserApi(id: number, snapshot: SystemAuditTargetSnapshot = {}) {
   return requestClient.post('/system/users/delete', { id, ...snapshot });
 }

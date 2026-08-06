@@ -21,6 +21,7 @@ from modules.auth.dependencies import get_current_user
 from modules.auth.security import hash_password
 from modules.system.features import list_feature_flags, list_job_run_logs, save_feature_flag
 from modules.system.permissions import build_user_context, require_permission
+from jobs.registry import run_scheduled_job_now
 
 router = APIRouter()
 
@@ -319,6 +320,20 @@ def save_feature(
 ) -> dict:
     require_permission(db, current_user, "system.feature.manage")
     return success(save_feature_flag(db, data))
+
+
+@router.post("/features/jobs/run")
+def run_feature_job(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "system.feature.manage")
+    job_code = str(data.get("job_code") or "").strip()
+    if not job_code:
+        raise ValueError("任务编码不能为空")
+    run_scheduled_job_now(job_code)
+    return success({"job_code": job_code, "started": True})
 
 
 @router.post("/users/delete")

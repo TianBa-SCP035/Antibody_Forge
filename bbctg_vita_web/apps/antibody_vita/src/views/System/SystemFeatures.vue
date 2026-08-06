@@ -32,6 +32,7 @@ import {
   getSystemFeaturesApi,
   getSystemFeatureStatusApi,
   getSystemJobRunLogsApi,
+  runSystemJobApi,
   saveSystemFeatureApi,
 } from '#/api';
 import { notifyApiError, resolveUserMessage } from '#/api/errors';
@@ -51,6 +52,7 @@ const activeTab = ref('menu');
 const loading = ref(false);
 const logLoading = ref(false);
 const savingCode = ref('');
+const runningJobCode = ref('');
 const errorMessage = ref('');
 const features = ref<SystemFeatureFlag[]>([]);
 const jobLogs = ref<SystemJobRunLog[]>([]);
@@ -160,6 +162,29 @@ async function saveFeature(feature: SystemFeatureFlag, showMessage = true) {
     await loadFeatures();
   } finally {
     savingCode.value = '';
+  }
+}
+
+async function saveJobFeature(feature: SystemFeatureFlag) {
+  await saveFeature(feature, false);
+}
+
+async function runJobNow(feature: SystemFeatureFlag) {
+  if (!canManageFeatures.value) {
+    ElMessage.warning('当前账号没有系统功能管理权限');
+    return;
+  }
+  runningJobCode.value = feature.code;
+  try {
+    await runSystemJobApi(feature.code, skipGlobalErrorHandler);
+    ElMessage.success('任务已开始执行，请稍后在运行结果中查看');
+    window.setTimeout(() => {
+      loadJobLogs();
+    }, 1200);
+  } catch (error: unknown) {
+    notifyApiError(error, { messages: { default: '任务触发失败' } });
+  } finally {
+    runningJobCode.value = '';
   }
 }
 
@@ -440,18 +465,24 @@ onMounted(loadFeatures);
                   <el-time-picker
                     v-model="row.config.run_time"
                     :clearable="false"
-                    :disabled="!canManageFeatures"
+                    :disabled="!canManageFeatures || savingCode === row.code"
                     format="HH:mm"
                     placeholder="选择时间"
                     size="small"
                     style="width: 120px"
                     value-format="HH:mm"
+                    @change="saveJobFeature(row)"
                   />
                 </template>
               </el-table-column>
               <el-table-column label="启用" width="100">
                 <template #default="{ row }">
-                  <el-switch v-model="row.enabled" :disabled="!canManageFeatures" />
+                  <el-switch
+                    v-model="row.enabled"
+                    :disabled="!canManageFeatures"
+                    :loading="savingCode === row.code"
+                    @change="saveJobFeature(row)"
+                  />
                 </template>
               </el-table-column>
               <el-table-column label="生效方式" width="110">
@@ -465,10 +496,10 @@ onMounted(loadFeatures);
                     link
                     type="primary"
                     :disabled="!canManageFeatures"
-                    :loading="savingCode === row.code"
-                    @click="saveFeature(row)"
+                    :loading="runningJobCode === row.code"
+                    @click="runJobNow(row)"
                   >
-                    保存
+                    立即执行
                   </el-button>
                 </template>
               </el-table-column>

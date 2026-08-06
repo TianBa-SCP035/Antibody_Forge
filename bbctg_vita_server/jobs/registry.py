@@ -1,5 +1,6 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+import threading
 
 from db.session import SessionLocal
 from jobs.employee_profile_sync import employee_profile_sync_job
@@ -68,6 +69,31 @@ def start_scheduler() -> None:
     scheduler = get_scheduler()
     if not scheduler.running:
         scheduler.start()
+
+
+def get_scheduled_job(job_code: str) -> dict | None:
+    code = str(job_code or "").strip()
+    if not code:
+        return None
+    for job in SCHEDULED_JOBS:
+        if job.get("feature_code") == code:
+            return job
+    return None
+
+
+def run_scheduled_job_now(job_code: str) -> None:
+    job = get_scheduled_job(job_code)
+    if not job:
+        raise ValueError("未知定时任务")
+    func = job.get("func")
+    if not callable(func):
+        raise ValueError("定时任务未配置执行函数")
+    thread = threading.Thread(
+        target=func,
+        name=f"manual-{job['id']}",
+        daemon=True,
+    )
+    thread.start()
 
 
 def _scheduled_job_config(feature_code: str, default_hour: int, default_minute: int) -> tuple[bool, int, int]:

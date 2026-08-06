@@ -533,7 +533,8 @@ VALUES
   ('system.permission.manage', 'POST', '/api/system/permission_bundles/save', '新增或编辑权限包'),
   ('system.permission.manage', 'POST', '/api/system/permission_bundles/delete', '删除权限包'),
   ('system.permission.manage', 'POST', '/api/system/users/{user_id}/permission_overrides', '保存用户个人权限覆盖'),
-  ('system.feature.manage', 'POST', '/api/system/features/save', '保存系统功能配置');
+  ('system.feature.manage', 'POST', '/api/system/features/save', '保存系统功能配置'),
+  ('system.feature.manage', 'POST', '/api/system/features/jobs/run', '手动执行定时任务');
 
 INSERT IGNORE INTO sys_feature_flag
   (code, name, category, description, enabled, visible, sort_order, config)

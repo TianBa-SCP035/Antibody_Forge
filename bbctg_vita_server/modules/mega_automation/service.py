@@ -19,9 +19,16 @@ from modules.mega_automation.content import (
     default_sample_wells,
     extract_search_arrays,
     get_order_content,
+    hash_dict,
     safe_dict,
 )
+from integrations.labillion import (
+    LabillionError,
+    delete_orders,
+    push_flow_work_order,
+)
 from modules.mega_automation.dispatch import (
+    PAUSE_STATE_WITHDRAWN,
     TERMINAL_DISPATCH_STATUSES,
     acknowledge_pause_current_dispatch,
     acknowledge_resume_current_dispatch,
@@ -32,11 +39,13 @@ from modules.mega_automation.dispatch import (
     fail_current_dispatch,
     get_current_dispatch,
     has_dispatches,
+    is_pause_ready_for_edit,
     normalize_pause_state,
     request_pause_current_dispatch,
     request_resume_current_dispatch,
     void_open_dispatches,
 )
+from modules.mega_automation.payload import build_dispatch_payload
 
 
 WORK_ORDER_STATUSES = [
@@ -111,6 +120,60 @@ def _get_confirmed_paused_dispatch(
     return current
 
 
+def _get_pause_ready_dispatch(
+    db: Session,
+    order: MegaFlowWorkOrder,
+    *,
+    error_message: str,
+    missing_message: str | None = None,
+) -> MegaFlowWorkOrderDispatch:
+    current = get_current_dispatch(db, order.id)
+    if not current:
+        raise ValueError(missing_message or error_message)
+    if not is_pause_ready_for_edit(current.pause_state):
+        raise ValueError(error_message)
+    return current
+
+
+def _labillion_withdraw_pause(db: Session, order: MegaFlowWorkOrder) -> None:
+    current = get_current_dispatch(db, order.id)
+    if not current:
+        raise ValueError("没有可撤回的下发记录")
+    if current.status != "pending":
+        raise ValueError("设备已开始执行，无法撤回")
+    if normalize_pause_state(current.pause_state) == PAUSE_STATE_WITHDRAWN:
+        return
+    try:
+        delete_orders([current.dispatchId])
+    except LabillionError as exc:
+        raise ValueError(f"Labillion 订单删除失败：{exc}") from exc
+    current.pause_state = PAUSE_STATE_WITHDRAWN
+    order.status = "paused"
+    order.error_message = None
+
+
+def _labillion_withdraw_resume(db: Session, order: MegaFlowWorkOrder) -> None:
+    current = get_current_dispatch(db, order.id, include_payload=True)
+    if not current:
+        raise ValueError("没有可继续的下发记录")
+    if normalize_pause_state(current.pause_state) != PAUSE_STATE_WITHDRAWN:
+        raise ValueError("仅已撤回的工单可以继续发送")
+
+    payload = build_dispatch_payload(order, current.dispatchId)
+    current.payload = payload
+    current.payload_hash = hash_dict(payload)
+    current.content_hash_at_send = order.content_hash or ""
+    try:
+        push_flow_work_order(payload)
+    except LabillionError as exc:
+        db.rollback()
+        raise ValueError(f"Labillion 订单导入失败：{exc}") from exc
+
+    current.pause_state = None
+    order.status = "sent"
+    order.error_message = None
+
+
 def _ensure_editable(order: MegaFlowWorkOrder) -> None:
     _ensure_not_cancelled(order)
     if order.status in ACTIVE_EXECUTION_STATUSES:
@@ -177,6 +240,8 @@ def _resolve_order_display(status: str, pause_state: str | None) -> dict[str, st
             return {"display_status": "pausing", "display_status_label": "暂停中"}
         if pause == "resuming":
             return {"display_status": "resuming", "display_status_label": "恢复中"}
+        if pause == PAUSE_STATE_WITHDRAWN:
+            return {"display_status": "withdrawn", "display_status_label": "已撤回"}
         return {"display_status": "paused", "display_status_label": "已暂停"}
     label = ORDER_STATUS_LABELS.get(status, status or "-")
     return {"display_status": status, "display_status_label": label}
@@ -433,10 +498,10 @@ def _validate_paused(
     order: MegaFlowWorkOrder,
     data: dict[str, Any],
 ) -> dict[str, Any]:
-    current = _get_confirmed_paused_dispatch(
+    current = _get_pause_ready_dispatch(
         db,
         order,
-        error_message="设备尚未完成暂停，暂不可编辑或校验",
+        error_message="设备尚未完成暂停或撤回，暂不可编辑或校验",
     )
     payload = safe_dict(data.get("payload"))
     if not payload:
@@ -511,7 +576,13 @@ def dispatch_work_order(db: Session, order_id: int, user: Any) -> dict[str, Any]
     if order.status != "validated":
         raise ValueError("请先校验通过后再发送")
 
-    create_dispatch_record(db, order, operator_name=_operator_name(user))
+    dispatch = create_dispatch_record(db, order, operator_name=_operator_name(user))
+    try:
+        push_flow_work_order(dispatch.payload if isinstance(dispatch.payload, dict) else {})
+    except LabillionError as exc:
+        db.rollback()
+        raise ValueError(f"Labillion 订单导入失败：{exc}") from exc
+
     order.status = "sent"
     order.sent_at = datetime.now()
     order.error_message = None
@@ -524,6 +595,13 @@ def pause_work_order(db: Session, order_id: int) -> dict[str, Any]:
     _ensure_not_cancelled(order)
     if order.status not in ACTIVE_EXECUTION_STATUSES:
         raise ValueError("仅已发送或执行中的工单可以停止")
+
+    current = get_current_dispatch(db, order.id)
+    if order.status == "sent" and current and current.status == "pending":
+        _labillion_withdraw_pause(db, order)
+        db.commit()
+        return get_work_order_detail(db, order.id)
+
     request_pause_current_dispatch(db, order.id)
     order.status = "paused"
     order.error_message = None
@@ -546,6 +624,12 @@ def resume_work_order(db: Session, order_id: int) -> dict[str, Any]:
     _ensure_not_cancelled(order)
     if order.status != "paused":
         raise ValueError("仅已暂停工单可以继续")
+
+    current = get_current_dispatch(db, order.id, include_payload=True)
+    if current and normalize_pause_state(current.pause_state) == PAUSE_STATE_WITHDRAWN:
+        _labillion_withdraw_resume(db, order)
+        db.commit()
+        return get_work_order_detail(db, order.id)
 
     current = _get_confirmed_paused_dispatch(
         db,
@@ -639,10 +723,10 @@ def cancel_work_order(db: Session, order_id: int) -> dict[str, Any]:
     if not has_dispatches(db, order.id):
         raise ValueError("未发送的工单请使用删除")
     if order.status == "paused":
-        _get_confirmed_paused_dispatch(
+        _get_pause_ready_dispatch(
             db,
             order,
-            error_message="设备尚未完成暂停，暂不可作废",
+            error_message="设备尚未完成暂停或撤回，暂不可作废",
         )
 
     void_open_dispatches(db, order.id)
@@ -650,3 +734,9 @@ def cancel_work_order(db: Session, order_id: int) -> dict[str, Any]:
     order.error_message = None
     db.commit()
     return get_work_order_detail(db, order.id)
+
+
+def sync_work_order_labillion_status(db: Session, order_id: int) -> dict[str, Any]:
+    from modules.mega_automation.labillion_sync import sync_work_order_labillion_status as sync_status
+
+    return sync_status(db, order_id)

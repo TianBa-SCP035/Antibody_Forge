@@ -98,6 +98,10 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `mega.flow_work_order.edit` | action | 保存、校验、删除、作废工单 |
 | `mega.flow_work_order.dispatch` | action | 发送、暂停/恢复、确认执行、完成/失败等调度操作 |
 
+**Labillion 回调** `POST /api/mega-automation/labillion/callback` **无需登录**（镁伽服务器推送）；路由层不调用 `require_permission`，响应恒为 HTTP 200。
+
+**主动状态同步** `POST .../sync-labillion-status` 使用 `mega.page.flow_work_order`（与详情只读同级），供详情页进入时拉取镁伽最新状态。
+
 镁伽接口**无**项目负责人式行级归属，仅按上述权限点鉴权。
 
 ### 2.3 系统模块（`system.*`）
@@ -290,6 +294,7 @@ flowchart LR
 | `feature` | `feature.yunzhijia_auto_provision` | 后台展示项；实际由 env `YUNZHIJIA_AUTO_PROVISION` 控制 |
 | `job` | `job.employee_profile_sync` | 员工资料定时同步（默认 00:30） |
 | `job` | `job.serum_auto_update_status` | 免疫状态定时更新（默认 01:00） |
+| `job` | `job.mega_labillion_status_sync` | 镁伽工单状态同步（默认 02:00；未配 Labillion 地址时 skip） |
 
 有效配置接口：`GET /api/system/features/effective`（前端 `getSystemEffectiveFeaturesApi`）。
 

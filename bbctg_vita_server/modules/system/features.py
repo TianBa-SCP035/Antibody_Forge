@@ -121,6 +121,16 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "sort_order": 210,
         "config": {"hour": 1, "minute": 0, "cron": "0 1 * * *", "restart_required": True},
     },
+    {
+        "code": "job.mega_labillion_status_sync",
+        "name": "镁伽工单状态同步",
+        "category": "job",
+        "description": "每天 02:00 同步镁伽非终态工单状态",
+        "enabled": True,
+        "visible": True,
+        "sort_order": 220,
+        "config": {"hour": 2, "minute": 0, "cron": "0 2 * * *", "restart_required": True},
+    },
 ]
 
 DEFAULT_FEATURE_INDEX = {item["code"]: item for item in DEFAULT_FEATURE_FLAGS}
@@ -307,6 +317,10 @@ def summarize_job_result(result: Any) -> str:
             ("updated_count", "状态更新"),
             ("titer_order_created_count", "新增效价工单"),
             ("disabled_on_resignation", "离职禁用"),
+            ("total", "查询工单"),
+            ("applied", "状态更新"),
+            ("not_found", "未找到"),
+            ("failed", "失败"),
         ]:
             if key in result:
                 parts.append(f"{label} {result.get(key) or 0}")

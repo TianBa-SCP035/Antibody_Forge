@@ -14,6 +14,7 @@
         <el-tag v-if="!loading" :type="statusTagType(orderDisplayStatus)" effect="light" round>
           {{ orderDisplayLabel }}
         </el-tag>
+        <span v-if="showExecutionProgress" class="execution-progress-hint">{{ executionProgressLabel }}</span>
       </div>
       <div v-if="!loading" class="header-actions">
         <el-button
@@ -95,10 +96,11 @@
           v-if="showPauseButton"
           type="warning"
           plain
+          :loading="actionLoading"
           :disabled="!canDispatch()"
           @click="pauseOrder"
         >
-          停止
+          {{ pauseButtonLabel }}
         </el-button>
         <el-button
           v-if="showResumeButton"
@@ -299,6 +301,7 @@ import {
   fetchActiveFlowWorkOrderPayload,
   fetchFlowWorkOrderDetail,
   fetchFlowWorkOrderMeta,
+  syncFlowWorkOrderLabillionStatus,
   failFlowWorkOrder,
   pauseFlowWorkOrder,
   resumeFlowWorkOrder,
@@ -389,9 +392,17 @@ export default {
       pausedDirtyInit: false,
       pausedDirtyUnwatch: null,
       resumeBlocked: false,
+      labillionExecutionProgress: '',
     };
   },
   computed: {
+    isWithdrawnPause() {
+      return normalizePauseState(this.latestDispatch?.pause_state) === 'withdrawn';
+    },
+    isPauseReadyForEdit() {
+      const pause = normalizePauseState(this.latestDispatch?.pause_state);
+      return pause === 'paused' || pause === 'withdrawn';
+    },
     currentUserInfo() {
       return this.userStore.userInfo || {};
     },
@@ -408,10 +419,7 @@ export default {
     },
     showValidateButton() {
       if (this.isViewMode) return false;
-      const pausedAndReady = (
-        this.order.status === 'paused'
-        && normalizePauseState(this.latestDispatch?.pause_state) === 'paused'
-      );
+      const pausedAndReady = this.order.status === 'paused' && this.isPauseReadyForEdit;
       return (
         this.order.id
         && (EDITABLE_STATUSES.includes(this.order.status) || pausedAndReady)
@@ -428,6 +436,10 @@ export default {
       if (!latest) return false;
       if (!['pending', 'running'].includes(latest.status)) return false;
       return !normalizePauseState(latest.pause_state);
+    },
+    pauseButtonLabel() {
+      const latest = this.latestDispatch;
+      return this.order.status === 'sent' && latest?.status === 'pending' ? '撤回' : '停止';
     },
     showPauseAckButton() {
       if (this.isViewMode) return false;
@@ -465,7 +477,9 @@ export default {
         return false;
       }
       const latest = this.latestDispatch;
-      return latest && normalizePauseState(latest.pause_state) === 'paused';
+      if (!latest) return false;
+      const pause = normalizePauseState(latest.pause_state);
+      return pause === 'paused' || pause === 'withdrawn';
     },
     showDeleteButton() {
       if (this.isViewMode) return false;
@@ -483,19 +497,25 @@ export default {
         && !['cancelled', 'completed', 'sent', 'running'].includes(this.order.status)
         && (
           this.order.status !== 'paused'
-          || normalizePauseState(this.latestDispatch?.pause_state) === 'paused'
+          || this.isPauseReadyForEdit
         )
       );
     },
     fieldDisabled() {
       if (this.loadError || !this.canEdit()) return true;
       if (this.order.status === 'paused') {
-        return normalizePauseState(this.latestDispatch?.pause_state) !== 'paused';
+        return !this.isPauseReadyForEdit;
       }
       return !EDITABLE_STATUSES.includes(this.order.status);
     },
     orderDisplayLabel() {
       return resolveOrderDisplayLabel(this.order);
+    },
+    showExecutionProgress() {
+      return this.order.status === 'running' && Boolean(this.labillionExecutionProgress);
+    },
+    executionProgressLabel() {
+      return this.labillionExecutionProgress ? `${this.labillionExecutionProgress}%` : '';
     },
     orderDisplayStatus() {
       return resolveOrderDisplayStatus(this.order);
@@ -726,6 +746,7 @@ export default {
     async loadDetail() {
       this.clearValidationIssues();
       this.clearActivePayload();
+      this.labillionExecutionProgress = '';
       this.loading = true;
       const routeIdentity = this.detailRouteIdentity();
       const id = this.$route.query.id;
@@ -778,6 +799,9 @@ export default {
         this.loadError = false;
         this.loadedRouteIdentity = routeIdentity;
         this.resetPausedTracking();
+        if (id && this.order?.id) {
+          this.triggerLabillionSync();
+        }
       } catch (error) {
         this.loadError = true;
         this.order = this.normalizeOrder(createDefaultFlowWorkOrder());
@@ -796,6 +820,21 @@ export default {
         cellColumns: this.defaultCellColumns,
         sampleWells: this.defaultSampleWells,
       });
+    },
+    triggerLabillionSync() {
+      if (!this.order.id || !['sent', 'running', 'paused'].includes(this.order.status)) {
+        return;
+      }
+      syncFlowWorkOrderLabillionStatus(this.order.id)
+        .then((data) => {
+          if (data?.item) {
+            this.order = this.normalizeOrder(data.item);
+          }
+          const progress = String(data?.execution_progress || '').trim();
+          this.labillionExecutionProgress =
+            this.order.status === 'running' && progress ? progress : '';
+        })
+        .catch(() => {});
     },
     rememberCellBarcode(index, value) {
       if (!this.cellBarcodeFocusCache) this.cellBarcodeFocusCache = {};
@@ -1024,16 +1063,20 @@ export default {
     },
     async pauseOrder() {
       if (!this.order.id) return;
+      const isWithdraw = this.order.status === 'sent' && this.latestDispatch?.status === 'pending';
       try {
         await ElMessageBox.confirm(
-          '确认停止该工单？\n停止后可编辑，内容未实质修改时可恢复继续。',
-          '停止确认',
+          isWithdraw
+            ? '确认撤回该工单？\n撤回后可编辑，继续时将重新发送。'
+            : '确认停止该工单？\n停止后可编辑，内容未实质修改时可恢复继续。',
+          isWithdraw ? '撤回确认' : '停止确认',
           {
-            confirmButtonText: '停止',
+            confirmButtonText: isWithdraw ? '撤回' : '停止',
             cancelButtonText: '取消',
             type: 'warning',
           },
         );
+        this.actionLoading = true;
         const data = await pauseFlowWorkOrder(this.order.id);
         this.pausedDirtyInit = true;
         this.order = this.normalizeOrder(data);
@@ -1041,11 +1084,13 @@ export default {
         this.$nextTick(() => {
           this.pausedDirtyInit = false;
         });
-        ElMessage.success('已请求暂停，等待设备确认');
+        ElMessage.success(isWithdraw ? '已撤回' : '已请求暂停，等待设备确认');
       } catch (error) {
         if (error !== 'cancel' && error?.message !== 'cancel') {
-          ElMessage.warning(error?.message || '停止失败');
+          ElMessage.warning(error?.message || (isWithdraw ? '撤回失败' : '停止失败'));
         }
+      } finally {
+        this.actionLoading = false;
       }
     },
     async acknowledgePause() {
@@ -1084,6 +1129,7 @@ export default {
     },
     async resumeOrder() {
       if (!this.order.id || this.actionLoading) return;
+      const wasWithdrawn = this.isWithdrawnPause;
       this.actionLoading = true;
       try {
         const data = await resumeFlowWorkOrder(this.order.id);
@@ -1092,7 +1138,7 @@ export default {
         this.$nextTick(() => {
           this.pausedDirtyInit = false;
         });
-        ElMessage.success('已请求恢复，等待设备确认');
+        ElMessage.success(wasWithdrawn ? '已重新发送' : '已请求恢复，等待设备确认');
       } catch (error) {
         ElMessage.warning(error?.message || '无法继续，请先校验确认修改');
       } finally {
@@ -1257,6 +1303,12 @@ $radius: 8px;
   align-items: center;
   gap: 12px;
   min-width: 0;
+}
+
+.execution-progress-hint {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .back-btn {

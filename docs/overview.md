@@ -30,7 +30,7 @@ Antibody_Forge/
 | 小鼠免疫 | `/serum/list`、`/serum/detail`、`/serum/edit` 等 | `/api/serum` | 项目、笼位、方案导出（xlsx / PDF） |
 | 效价数据 | `/serum/titer` | `/api/serum/titer` | 靶点、FACS、ELISA、附件（可选 DRM） |
 | 效价实验列表 | `/serum/titer-orders` | `/api/serum/titer/order/*` | 效价工单；「工单」→ 镁伽流式 |
-| 镁伽流式工单 | `/mega-automation/flow-work-orders`（含 `/detail`） | `/api/mega-automation` | 铺板、校验、下发与模拟执行 |
+| 镁伽流式工单 | `/mega-automation/flow-work-orders`（含 `/detail`） | `/api/mega-automation` | 铺板、校验、下发；Labillion 集成见 flow-work-order 文档 |
 | 工单数据回传 | 无前端 | `/api/order-experiment` | 设备 JSON → 落盘并记 `order_sync` |
 | 细胞库存 | `/serum/cell` | `/api/serum/cell_inventory` | 外部库只读 |
 | 系统管理 | `/system/user-permission`、`/system/features` | `/api/system` | 用户、角色、权限、日志、功能开关 |
@@ -49,5 +49,6 @@ Antibody_Forge/
 |------|----------|------|
 | `employee_profile_sync` | 00:30 | 同步外部员工资料 |
 | `serum_auto_update_status` | 01:00 | 自动更新免疫实验状态 |
+| `labillion_status_sync` | 02:00 | 镁伽非终态工单状态批量同步（未配 `LABILLION_BASE_URL` 时 skip） |
 
 启用条件与运维见 [deploy.md](./deploy.md)；实现位于 `bbctg_vita_server/jobs/`。具体时间还受 `sys_feature_flag` 中 `job.*` 开关约束。

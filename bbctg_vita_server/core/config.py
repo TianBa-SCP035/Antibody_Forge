@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     employee_db_url: str = ""
     dev_user_openid: str = ""
     dev_user_name: str = "周科钢 Kegang Zhou"
+    labillion_base_url: str = ""
+    labillion_username: str = ""
+    labillion_password: str = ""
+    public_api_base_url: str = ""
 
     model_config = SettingsConfigDict(
         env_file=DEFAULT_ENV_FILE,

@@ -24,6 +24,7 @@ const DISPATCH_PAUSE_STATE_LABELS: Record<string, string> = {
   pausing: '暂停中',
   paused: '已暂停',
   resuming: '恢复中',
+  withdrawn: '已撤回',
 };
 
 export function resolveOrderDisplayLabel(order: {
@@ -36,6 +37,7 @@ export function resolveOrderDisplayLabel(order: {
     const pause = String(order.pause_state || '').trim();
     if (pause === 'pausing') return '暂停中';
     if (pause === 'resuming') return '恢复中';
+    if (pause === 'withdrawn') return '已撤回';
     return '已暂停';
   }
   return ORDER_STATUS_LABELS[order.status || ''] || order.status || '-';
@@ -51,6 +53,7 @@ export function resolveOrderDisplayStatus(order: {
     const pause = String(order.pause_state || '').trim();
     if (pause === 'pausing') return 'pausing';
     if (pause === 'resuming') return 'resuming';
+    if (pause === 'withdrawn') return 'withdrawn';
     return 'paused';
   }
   return order.status || '';
@@ -61,7 +64,7 @@ export function orderStatusTagType(displayStatus: string) {
   if (displayStatus === 'sent' || displayStatus === 'running' || displayStatus === 'completed') {
     return 'success';
   }
-  if (displayStatus === 'pausing' || displayStatus === 'paused' || displayStatus === 'resuming') {
+  if (displayStatus === 'pausing' || displayStatus === 'paused' || displayStatus === 'resuming' || displayStatus === 'withdrawn') {
     return 'warning';
   }
   if (displayStatus === 'cancelled') return 'info';

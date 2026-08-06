@@ -3,6 +3,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from db.session import SessionLocal
 from jobs.employee_profile_sync import employee_profile_sync_job
+from jobs.labillion_status_sync import labillion_status_sync_job
 from jobs.serum_status import auto_update_status_job
 from modules.system.features import get_job_schedule
 
@@ -23,6 +24,14 @@ SCHEDULED_JOBS = [
         "default_hour": 0,
         "default_minute": 30,
         "func": employee_profile_sync_job,
+    },
+    {
+        "id": "labillion_status_sync",
+        "description": "每天 02:00 同步镁伽非终态工单状态",
+        "feature_code": "job.mega_labillion_status_sync",
+        "default_hour": 2,
+        "default_minute": 0,
+        "func": labillion_status_sync_job,
     },
 ]
 

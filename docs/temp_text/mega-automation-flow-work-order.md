@@ -4,13 +4,15 @@
 
 - 手工新建、编辑、校验流式工单；
 - 维护样本板、细胞板与 PC 信息；
-- 生成并保存设备下发 Payload；
-- 模拟设备确认执行、暂停、恢复、完成与失败；
+- 生成并保存设备下发 Payload，向 Labillion（镁伽）推送订单；
+- 接收 Labillion 状态回调、主动查询状态；详情页展示 Running 进度（不入库）；
+- 撤回（`sent` + 待确认）与继续（已撤回后重推）；
+- 保留手动「确认执行 / 设备已暂停 / 设备已恢复 / 完成 / 执行失败」作 fallback；
 - 详情提供「工单编辑 / 铺板 / Payload」三个页签。
 
-尚未接入：上游跳转预填流式新建、真实设备通信、检测结果回传与跨模块同步。
+尚未接入：检测结果业务解析入库、跨模块自动同步。
 
-效价列表「工单」入口（鼠号确认 / 选鼠向导）已实现；点「确定」后跳转预填待下一阶段。
+效价列表「工单」入口（鼠号确认 / 选鼠向导）已实现；点「确定」后跳转预填。
 
 ## 2. 数据模型
 
@@ -31,7 +33,7 @@
 - `payload` / `payload_hash`：当次发送快照（hash 供完整性预留）；
 - `content_hash_at_send`：发送时的工单版本，用于暂停后“内容是否变更”；
 - `status`：`pending` | `running` | `completed` | `failed` | `voided`；
-- `pause_state`：`pausing` | `paused` | `resuming`（空表示无暂停流程）。
+- `pause_state`：`pausing` | `paused` | `resuming` | `withdrawn`（空表示无暂停流程）。
 
 无 `active_key`。工单行锁后，存在未终止下发时不可再次发送。
 
@@ -60,29 +62,48 @@
 
 ## 4. 状态流转
 
+### 4.1 本地操作（手动 fallback）
+
 ```text
 draft / failed / execution_failed
   └─ 校验通过 → validated
 
 validated
-  └─ 发送 → sent（下发记录 pending）
+  └─ 发送 → sent（下发记录 pending；若已配 Labillion 则同步推送）
 
 sent
   ├─ 确认执行 → running（下发记录 running）
+  ├─ 撤回（仅 pending）→ paused + withdrawn（调 Labillion 删除）
+  ├─ 停止（running）→ paused + pausing
   ├─ 执行失败 → execution_failed
-  └─ 请求暂停 → paused + pausing
+  └─ Labillion 回调/查询 → 见 §4.2
 
 running
   ├─ 完成 → completed
+  ├─ 停止 → paused + pausing
   ├─ 执行失败 → execution_failed
-  └─ 请求暂停 → paused + pausing
+  └─ Labillion 回调/查询 → 见 §4.2
 
 paused
   ├─ 设备确认暂停 → paused + paused
+  ├─ 已撤回后继续 → sent（重建 payload 并重推 Labillion）
   ├─ 内容未变化时请求恢复 → paused + resuming
   ├─ 设备确认恢复 → sent 或 running
   └─ 确认保存修改 → validated，原下发记录 voided
 ```
+
+### 4.2 Labillion 驱动（回调与主动查询共用 `apply_labillion_status`）
+
+| Labillion | 工单 status | 下发 status | pause_state |
+|-----------|-------------|-------------|-------------|
+| Pending | sent | pending | （清空） |
+| Running | running | running | （清空） |
+| Paused | paused | running | paused |
+| Finished | completed | completed | （清空） |
+| Aborted | execution_failed | failed | （清空） |
+
+- 以镁伽状态为准；本地 `withdrawn` 等不拦截回调。
+- Running 时的执行进度仅由主动查询返回给前端展示，**不入库**。
 
 只有设备已确认暂停（`pause_state=paused`）后才允许编辑和暂停校验。`pausing`、`resuming` 期间禁止修改。
 
@@ -98,12 +119,14 @@ orderNum
 orderName
 orderType
 priority
+replyAddress
 orderDetail
   pc_infos
   sample_plates
   cell_plates
 ```
 
+- `replyAddress` 由 `PUBLIC_API_BASE_URL` + `/mega-automation/labillion/callback` 生成；未配置时 Payload 中为空，发送仍可在本地落库，但不会调 Labillion HTTP。
 - `sample_plates[].cell_keys` 为 `{ barcode, column_no }` 对象数组，表达「样本板 × 细胞列」组合；不下发系统内部状态、摘要或数据库 ID。
 - 不生成、不持久化检测板条码。
 - 详情「Payload」页签通过 `GET .../active-payload` 读取当前未终止下发的快照（懒加载）。
@@ -128,7 +151,27 @@ POST /api/mega-automation/flow-work-orders/{order_id}/complete
 POST /api/mega-automation/flow-work-orders/{order_id}/fail
 POST /api/mega-automation/flow-work-orders/{order_id}/delete
 POST /api/mega-automation/flow-work-orders/{order_id}/cancel
+POST /api/mega-automation/flow-work-orders/{order_id}/sync-labillion-status
+POST /api/mega-automation/labillion/callback          # 镁伽推送，无需登录，恒 200
 ```
+
+`sync-labillion-status`：详情页进入时对 `sent/running/paused` 工单异步调用；单工单 10 分钟节流；返回 `execution_progress`（仅 Running 且有值时，供页面展示）。
+
+## 6.1 Labillion 集成（环境变量）
+
+| 变量 | 说明 |
+|------|------|
+| `LABILLION_BASE_URL` | 镁伽 API 根；留空则不发起任何 Labillion HTTP |
+| `LABILLION_USERNAME` / `LABILLION_PASSWORD` | 登录凭据 |
+| `PUBLIC_API_BASE_URL` | 本系统对外 API 根，用于 `replyAddress` |
+
+实现：`integrations/labillion.py`（登录、导入、删除、查询）；HTTP 超时 5s。
+
+## 6.2 定时任务
+
+- 功能码：`job.mega_labillion_status_sync`，默认每天 02:00。
+- 批量查询非终态工单并应用状态；未配 `LABILLION_BASE_URL` 时 skip 并记日志。
+- 开关与时间见系统功能页；修改后需重启服务（`restart_required`）。
 
 ## 7. 权限
 
@@ -136,7 +179,7 @@ POST /api/mega-automation/flow-work-orders/{order_id}/cancel
 
 | code | 作用 |
 |---|---|
-| `mega.page.flow_work_order` | 进菜单与页；meta / list / detail / active-payload |
+| `mega.page.flow_work_order` | 进菜单与页；meta / list / detail / active-payload / sync-labillion-status |
 | `mega.flow_work_order.edit` | 保存、校验、删除、作废；表单与铺板解锁编辑 |
 | `mega.flow_work_order.dispatch` | 发送及停止/继续/设备已暂停/设备已恢复/确认执行/完成/执行失败 |
 
@@ -149,6 +192,8 @@ POST /api/mega-automation/flow-work-orders/{order_id}/cancel
 - 详情三个页签：工单编辑、铺板（默认锁定，可解锁改孔与条码）、Payload。
 - 列表支持关键字、类型、状态、项目号、靶点、样本板/细胞板条码筛选；返回列表时刷新。
 - 列表不展示下发次数与失败摘要。
+- 详情加载后对 `sent/running/paused` 异步 sync 镁伽状态；Running 时在状态标签旁显示查询到的进度百分比（无则不显示）。
+- `sent + pending` 显示「撤回」；`running` 显示「停止」；`withdrawn` 显示「已撤回」。
 
 ## 9. 数据库
 
@@ -408,6 +453,18 @@ DSP260710482913
 
 默认结构、归一化、PC/细胞引用、搜索数组、content 哈希、业务校验。
 
+### `integrations/labillion.py`
+
+Labillion HTTP 客户端：登录、订单导入/删除、状态查询；URL 空则跳过。
+
+### `modules/mega_automation/callback.py`
+
+Labillion 状态归一化、`apply_labillion_status`、回调入口 `handle_labillion_status_push`。
+
+### `modules/mega_automation/labillion_sync.py`
+
+主动单工单 sync（节流）、定时批量 sync；查询结果经同一套 apply 落库。
+
 ### `modules/mega_automation/payload.py`
 
 按当前 content 组装下发 Payload，不写库。
@@ -426,15 +483,16 @@ FastAPI 入口、`require_permission`、统一响应；业务规则不放路由�
 
 ## 15. 结果回传（后续）
 
-回传至少携带 `dispatchId`、`status`、结果 payload；以 `dispatchId` 匹配下发，不用可能重复的 `orderNum`。
+实验结果 JSON 仍走 `POST /api/order-experiment/sync`（与 Labillion **状态**回调分离）。
 
-检测板条码若来自设备，作为结果数据保存；是否回写工单待协议确定。协议未明前不扩展工单表假设字段。
+回传至少携带 `dispatchId`、结果 payload；以 `dispatchId` 匹配下发，不用可能重复的 `orderNum`。
+
+检测板条码若来自设备，作为结果数据保存；是否回写工单待协议确定。
 
 ## 16. 后续待办
 
-1. 设备发送、鉴权、超时与重试；
+1. 检测结果业务解析入库与效价/免疫联动；
 2. Payload 字段命名 / 空值 / 版本与设备对齐；
-3. 暂停、恢复、完成、失败的设备回调定义；
-4. 检测板条码产生时机与结果表；
-5. 上游自动建单字段来源；
-6. 操作审计与长时间无回调兜底。
+3. 检测板条码产生时机与结果表；
+4. 操作审计与长时间无回调兜底（定时 sync 已覆盖状态）；
+5. 向 Labillion 主动暂停（协议未提供）。

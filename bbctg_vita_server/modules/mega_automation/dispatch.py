@@ -14,6 +14,8 @@ from modules.mega_automation.payload import build_dispatch_payload
 
 PAUSABLE_STATUSES = frozenset({"pending", "running"})
 TERMINAL_DISPATCH_STATUSES = frozenset({"voided", "completed", "failed"})
+PAUSE_STATE_WITHDRAWN = "withdrawn"
+PAUSE_STATE_READY_FOR_EDIT = frozenset({"paused", PAUSE_STATE_WITHDRAWN})
 DISPATCH_ID_PREFIX = "DSP"
 DISPATCH_ID_RANDOM_DIGITS = 6
 DISPATCH_ID_RETRY_LIMIT = 30
@@ -27,6 +29,10 @@ def normalize_pause_state(pause_state: str | None) -> str:
 
 def is_pause_state_idle(pause_state: str | None) -> bool:
     return normalize_pause_state(pause_state) == ""
+
+
+def is_pause_ready_for_edit(pause_state: str | None) -> bool:
+    return normalize_pause_state(pause_state) in PAUSE_STATE_READY_FOR_EDIT
 
 
 def get_current_dispatch(

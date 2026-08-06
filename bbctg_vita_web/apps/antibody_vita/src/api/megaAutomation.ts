@@ -194,6 +194,24 @@ export function fetchFlowWorkOrderDetail(id: number | string, config?: RequestCo
   });
 }
 
+export interface FlowWorkOrderLabillionSyncResult {
+  applied?: boolean;
+  dispatchId?: string;
+  execution_progress?: string;
+  item?: FlowWorkOrder;
+  labillion_status?: string;
+  message?: string;
+  reason?: string;
+}
+
+export function syncFlowWorkOrderLabillionStatus(id: number | string) {
+  return requestClient.post<FlowWorkOrderLabillionSyncResult>(
+    `/mega-automation/flow-work-orders/${id}/sync-labillion-status`,
+    {},
+    skipGlobalErrorHandler,
+  );
+}
+
 export function fetchActiveFlowWorkOrderPayload(id: number | string, config?: RequestConfig) {
   return requestClient.get<{
     dispatch: FlowWorkOrderDispatch | null;

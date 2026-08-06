@@ -456,12 +456,11 @@ function formatLogAction(log: SystemOperationLog) {
 function formatLogTarget(log: SystemOperationLog) {
   const detail = getLogDetail(log);
   const label = log.target_label || detail.target_label;
-  const type = formatLogTargetType(log);
   if (label && log.target_id && String(label) !== String(log.target_id)) {
-    return `${type}：${label} / ID ${log.target_id}`;
+    return `${label} / ID ${log.target_id}`;
   }
-  if (label) return `${type}：${label}`;
-  if (log.target_id) return `${type}：ID ${log.target_id}`;
+  if (label) return label;
+  if (log.target_id) return String(log.target_id);
   return '-';
 }
 

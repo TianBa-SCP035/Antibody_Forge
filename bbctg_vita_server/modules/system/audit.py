@@ -12,6 +12,7 @@ from db.session import SessionLocal
 from models.mega_automation import MegaFlowWorkOrder
 from models.system import SysOperationLog, SysPermission, SysPermissionApi, SysPermissionBundle, SysRole, SysUser
 from modules.auth.security import decode_access_token
+from modules.system.features import DEFAULT_FEATURE_INDEX
 
 WRITE_METHODS = {"DELETE", "PATCH", "POST", "PUT"}
 SKIP_PATHS = {"/api/system/operation_logs"}
@@ -25,6 +26,7 @@ TARGET_ID_KEYS = (
     "user_id",
     "role_id",
     "bundle_code",
+    "job_code",
 )
 TARGET_LABEL_KEYS = (
     "target_label",
@@ -195,6 +197,11 @@ def _build_audit_context(request: Request, body_data: dict) -> dict | None:
         else:
             label_fallback = _extract_target_label(body_data)
         target_label = _resolve_target_label(db, permission.resource, target_id, label_fallback)
+        if request.url.path.endswith("/features/jobs/run"):
+            job_code = str(body_data.get("job_code") or "").strip()
+            if job_code:
+                default = DEFAULT_FEATURE_INDEX.get(job_code)
+                target_label = str((default or {}).get("name") or job_code)
         return {
             "action": permission.code,
             "operation_name": operation_name,

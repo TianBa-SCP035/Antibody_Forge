@@ -17,17 +17,19 @@ bbctg_vita_server/
   modules/
     auth/              # 登录、JWT、当前用户
     immunology/        # serum / titer / cell
-    mega_automation/   # 镁伽流式工单
+    mega_automation/   # 镁伽流式工单（含 callback、labillion_sync）
     order_sync/        # 工单数据回传
     system/            # 用户角色权限、审计、功能开关
-  integrations/        # 云之家、drm_service（SDK 在 drm/，gitignore）
-  jobs/                # 定时任务实现
+  integrations/        # 云之家、Labillion、drm_service（SDK 在 drm/，gitignore）
+  jobs/                # 定时任务实现与 registry（含手动触发入口）
   utils/               # 预留：通用工具
   scripts/             # 预留：一次性脚本
   tests/
 ```
 
 DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Office 附件下载加密，失败不阻断传输。Linux 需配置 `LD_LIBRARY_PATH`（见 deploy.md）。
+
+镁伽 Labillion：`integrations/labillion.py`（HTTP 客户端）；`modules/mega_automation/callback.py`（状态回调与 `apply_labillion_status`）；`modules/mega_automation/labillion_sync.py`（主动查询与定时批量同步）。`LABILLION_BASE_URL` 留空时不发起对外 HTTP，本地工单状态仍可用。细节见 [modules/mega-automation/flow-work-order.md](./modules/mega-automation/flow-work-order.md)。
 
 ## API 前缀
 

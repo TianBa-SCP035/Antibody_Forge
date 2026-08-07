@@ -132,8 +132,9 @@ sudo apt install -y libreoffice
 |----|----------|------|
 | `employee_profile_sync` | 00:30 | 外部员工库 → 用户资料；**不改**已有用户的密码/角色/权限覆盖/超管；新建账号会写入随机初始密码 |
 | `serum_auto_update_status` | 01:00 | 自动更新免疫实验状态 |
+| `labillion_status_sync` | 02:00 | 镁伽非终态流式工单状态批量同步；未配 `LABILLION_BASE_URL` 时 skip 并记日志 |
 
-应用日志：`repository/logs/app.log`。`start_dev.sh` 另写 `repository/logs/backend.nohup.log`。调度开关/时间可读 `sys_feature_flag` 中 `job.*`。
+应用日志：`repository/logs/app.log`。`start_dev.sh` 另写 `repository/logs/backend.nohup.log`。调度开关/时间见 `sys_feature_flag` 中 `job.*`（**改完即写库**；cron **重启后端生效**）。系统功能页可对任一 job **立即执行**（不依赖 scheduler 是否启动），见 [auth-permissions.md](./auth-permissions.md)。
 
 ## 验收清单
 

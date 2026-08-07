@@ -1,17 +1,13 @@
-# 效价实验 → 镁伽流式工单：全流程说明
+# 效价实验 → 镁伽流式工单 · 跨模块流程
 
-本文描述从 **效价实验列表** 发起上机、创建 **镁伽流式工单**、设备执行、到 **效价数据回传** 并入免疫实验业务的完整链路。
+> **本文**：从效价实验列表发起上机，到设备回传写入效价表的**业务链路**——入口交互、向导、字段映射、`source_id` 关联、数据权威约定、回传入库规划。  
+> **流式工单模块**（校验、状态机、Labillion、API、页面）：见 [flow-work-order.md](./flow-work-order.md)。
 
-> 状态说明（截至文档编写时）  
-> - 流式工单 CRUD / 校验 / 模拟下发：**已实现**（见 `mega-automation-flow-work-order.md`）  
-> - 效价列表「工单」左键/右键 + 新建向导（鼠号入库 / 选鼠矩阵）：**已实现**  
-> - 向导点「确定」后跳转流式新建并预填样本板 / `source_id` / 订单号名称：**已实现**  
-> - 回传接口接收 JSON：**已实现**；解析入库效价业务表：**待开发**
+**实现状态（摘要）**：向导与预填、流式 CRUD / 下发 / Labillion 状态同步均已落地；`order-experiment/sync` 接收 JSON 已落地，解析入库效价业务表待开发。
 
 ---
 
 ## 1. 业务全景
-
 ```text
 效价实验列表（serum_titer_order）
   │
@@ -24,11 +20,10 @@
         │
         ├─ 用户补充：细胞板、PC 表、铺板细节、条码等
         ├─ 预填已含 source_id = titer_order_id，orderType = TITER（保存时一并提交）
-        ├─ 保存 → 校验 → 发送 Payload（dispatchId）
+        ├─ 保存 → 校验 → 发送 Payload（dispatchId；Labillion 推送与状态同步见 flow-work-order 文档）
         │
-        └─④ 设备执行（真实通信待接入；当前为模拟确认）
-              │
-              └─⑤ POST /api/order-experiment/sync 回传 JSON
+        └─④ 设备执行（Labillion 回调 / 主动查询 / 定时同步；页面保留手动 fallback）              │
+              └─⑤ POST /api/order-experiment/sync 回传实验结果 JSON
                     │
                     └─⑥ 匹配 dispatchId → 读下发快照 → 核对 → 一次性写入效价表
                           · 效价文件归档
@@ -73,18 +68,16 @@
 | 用途 | 路径 |
 |------|------|
 | 列表 / 详情 | `FlowWorkOrderList.vue`、`FlowWorkOrderDetail.vue` |
-| 数据模型与默认板 | `flowWorkOrderModel.ts` |
-| 效价→流式预填（专用布局） | `flowWorkOrderTiterUpstream.ts` |
-| API 客户端 | `api/megaAutomation.ts` |
+| 效价→流式预填 | `flowWorkOrderTiterUpstream.ts` |
 | 后端 | `bbctg_vita_server/modules/mega_automation/` |
-| 设计文档 | `docs/temp_text/mega-automation-flow-work-order.md` |
 
+模块行为（校验、状态、Payload、Labillion）：[flow-work-order.md](./flow-work-order.md)。
 ### 2.3 下游（回传）
 
 | 用途 | 路径 |
 |------|------|
 | 接收接口 | `POST /api/order-experiment/sync` |
-| 文档 | `docs/temp_text/order-experiment-sync-api.md` |
+| 文档 | [order-experiment-sync-api.md](../../temp_text/order-experiment-sync-api.md) |
 | 实现 | `bbctg_vita_server/modules/order_sync/` |
 | 记录表 | `order_sync`（`status=pending` 表示已接收未业务入库） |
 
@@ -362,8 +355,7 @@ dispatchId → mega_flow_work_order_dispatch
 - `buildFlowWorkOrderSavePayload` 携带 `source_id`；后端对已有 `source_id` **写一次锁定**（不可改成别的来源）。
 - 复制工单时清空 `source_id`，避免误挂到同一效价单。
 
-用户完成后走现有流程：**保存 → 校验 → 发送 → 模拟/真实设备执行**。
-
+用户完成后进入流式工单标准流程（保存 → 校验 → 发送 → 设备执行）。
 ---
 
 ## 8. 下游：效价数据回传（接收已实现，业务处理待开发）
@@ -407,7 +399,7 @@ sequenceDiagram
   participant W as 新建向导
   participant Imm as serum_imm_mouse
   participant FW as 流式工单
-  participant D as 设备/模拟
+  participant D as Labillion/设备
   participant API as order-experiment/sync
   participant ST as 效价业务表
 
@@ -492,13 +484,4 @@ ALTER TABLE mega_flow_work_order
 
 ### 后续
 
-7. 回传处理：快照核对 → 一次性写效价表。  
-8. 真实设备发送；权限细化。
-
----
-
-## 12. 与现有文档关系
-
-- 流式工单领域模型与 API：`mega-automation-flow-work-order.md`  
-- 回传接口格式：`order-experiment-sync-api.md`  
-- **本文**：跨模块业务流程、关联字段、列表入口交互、新建向导与预填约定、数据权威约定。
+7. 回传处理：快照核对 → 一次性写效价表。

@@ -10,21 +10,72 @@
 | [backend-structure.md](./backend-structure.md) | 后端目录、API 前缀、响应与错误约定 |
 | [deploy.md](./deploy.md) | 环境与端口、配置、启动、Nginx、DRM、验收 |
 | [vita-database.sql](./vita-database.sql) | 主库 DDL + 权限/功能开关种子（空库执行一次） |
-| [temp_text/](./temp_text/) | 设计稿、对接样例（未定稿） |
+| [modules/](./modules/) | 各业务模块详细说明（按模块分子目录） |
+| [temp_text/](./temp_text/) | 临时草稿、对接样例 JSON、外部协议 PDF（未定稿，非正式入口） |
 
 `overview` / `auth-permissions` / `backend-structure` / `deploy` 只写**当前已实现**的行为；路线图只在本文维护。
 
+**文档分层**：根目录文档 = 全景与运维概要；`modules/` = 已成型模块的详细设计；`temp_text/` = 开发过程中沉淀的**临时**材料（协议附件、样例数据、尚未定稿的说明）。后者不保证与代码同步，模块定型后应迁入 `modules/` 或合并进概要文档，避免长期堆在临时目录。
+
 代码：`bbctg_vita_server/` 后端 · `bbctg_vita_web/apps/antibody_vita/` 前端 · `config/` 环境配置 · `repository/` 运行时文件。
+
+## 开发约定
+
+以下约定适用于多人协作与 AI 辅助开发；有冲突时以**现有代码风格**为准，改动前先读同模块邻近文件。
+
+### 代码
+
+- **最小有效改动**：只解决当前需求，不顺手重构无关模块，不扩大 diff。
+- **拒绝幽灵代码**：不提交未使用的函数/变量、大段注释掉的旧逻辑、仅为「以后可能用到」的占位实现；临时调试代码不入库。
+- **不为未开工功能建壳**：空菜单、空路由、空表、假数据接口等一律不做（路线图见下文「开发计划」）。
+- **单一数据源**：同一业务事实只存一处；跨模块用已有主键关联，避免双写与「两边各改一半」。
+- **分层清晰**：业务规则放 service / 领域模块；路由与页面只做参数、权限与展示；对外集成（如 Labillion）独立在 `integrations/`。
+- **权限与审计**：新增写接口须对照 [auth-permissions.md](./auth-permissions.md) 登记权限点与 `sys_permission_api`（若需记操作日志）。
+
+### 数据库
+
+- **全表登记**：主库涉及的所有表（含权限/功能开关种子）须维护在 [vita-database.sql](./vita-database.sql)，与 ORM / 业务代码一致；**外部只读库**（细胞库、员工库等）在 SQL 文末注释说明，不在主库脚本中建表。
+- **只记录当前状态**：该文件是**空库一次性执行的完整 DDL + 种子**，直接改表定义即可；**不**在此文件堆叠历史 `ALTER`、升级脚本或迁移版本号。已有环境升级 SQL 仅在提交说明或当次 PR 中附带，由运维/开发手动执行，不写入本仓库 DDL 主文件。
+- **注释齐全一致**：每张表、每个字段写清楚 `COMMENT`；命名、COMMENT 风格与现有表保持一致（中文说明业务含义，枚举/状态写清取值）。改表时同步改 ORM 与相关模块文档。
+
+### 配置与密钥
+
+- **严禁硬编码泄密项**：代码、文档、注释中**不得**出现数据库密码、JWT `SECRET_KEY`、第三方账号密码、内网 token 等；仅允许读取环境配置。
+- **统一走配置文件**：连接串、密钥、各对外/对内 **API 根地址**（如 `DATABASE_URL`、`LABILLION_BASE_URL`、`PUBLIC_API_BASE_URL`、`YUNZHIJIA_*` 等）写在 `config/<local|test|prod>/vita_server.env`（模板见同目录 `*.gitkeep`），**勿提交**真实 env 文件。
+- **新增变量**：在 [deploy.md](./deploy.md) 补充变量含义与是否必填；代码通过 `core/config.py`（或现有配置入口）读取，不在业务模块里写死 URL/端口。
+- **默认值仅 local 兜底**：`core/config.py` 中的 `database_url`、`secret_key` 等默认值仅供本地无 env 时启动；**test / prod 必须在** `config/<env>/vita_server.env` **中配置**，不得依赖代码默认值上线。
+- **前端**：业务请求统一走 `/api` 代理；不在源码里写死后端域名或生产端口（本地 Vite 代理配置除外）。
+
+### 接口
+
+- **沿用统一约定**：新接口对齐 [backend-structure.md](./backend-structure.md)——路由前缀与模块目录对应、响应 `{ code, data }` / 业务错误 `{ code: 1, message }`、HTTP 状态与 `BusinessError` 用法、写操作权限与审计登记。
+- **前后端同步**：改后端路径或请求/响应字段时，同步改前端 API 客户端（如 `api/*.ts`）与类型，避免页面内散落裸 URL 或重复封装。
+- **对外/设备接口**：特殊格式（如 `order-experiment/sync` multipart）在模块文档或 `backend-structure.md` 中说明，不单独搞一套无文档约定。
+
+### 文档
+
+- **代码与文档同步提交**：行为、字段、状态机、对外协议或权限有变时，同一 PR / 提交内更新对应文档，不留「代码已改、文档待补」。
+- **写到哪里**：表结构 → `vita-database.sql`；全景与路由 → `overview.md`；权限/功能开关 → `auth-permissions.md`；后端约定 → `backend-structure.md`；部署与环境变量 → `deploy.md`；单模块详述 → `modules/<模块>/`；未定稿样例 → `temp_text/`（定型后迁入 `modules/` 或合并概要）。
+- **只写已实现**：`overview` 等概要文档描述当前行为；规划与菜单蓝图**仅在本 README「开发计划」**维护，不在多处重复写「将来可能」。
+- **简洁直述**：句子短、结构清楚；同一事实不在多篇文档间来回复制——模块内细节一篇为主，跨模块边界文首互链即可（参考 `modules/mega-automation/` 两篇分工）。
+
+### 协作
+
+- **垂直切片**：优先在**本仓库可控范围**内打通一段可用链路（表结构 → API → 前端 → 权限 → 文档）。依赖外部方（设备协议、第三方 API）未就绪时，可阶段性交付并在文档中**标注边界与待对接项**，不必等整条业务链一次闭环再提交。
+- **提交说明**：写清「为什么改」；涉及对外集成、**已有库表结构变更**或数据迁移时，在描述中注明需手动执行的 SQL 与配置项（DDL 主文件仍只更新 `vita-database.sql` 当前态）。
+- **Review 关注点**：除功能外，看是否引入双写、幽灵代码、文档遗漏、权限/审计漏登记。
 
 ---
 
 ## 业务概览
 
-### 设计原则
+### 设计原则（业务架构）
 
-- **按实验阶段垂直切片**：每次打通一条完整链路（数据、API、前端、权限），再进入下一阶段。
+- **按实验阶段垂直切片**：每次优先打通本阶段可控链路，再进入下一阶段；外部依赖未齐时允许分步交付并文档标注待办。
 - **单一数据源**：同一业务事实只存一处；跨模块用 `experiment_id` 等主键关联，避免双写。
 - **工单驱动设备环节**：工单 + 下发快照 + 回传核对（镁伽流式工单已落地）。
+
+（书写与协作层面的通用要求见上文「开发约定」。）
 
 ### 模块与现状
 
@@ -50,7 +101,7 @@ experiment_id（免疫实验）
   → dispatchId（镁伽下发，设备回传匹配）
 ```
 
-字段与交互细节见 [temp_text/mega-automation-titer-upstream-flow.md](./temp_text/mega-automation-titer-upstream-flow.md)、[temp_text/mega-automation-flow-work-order.md](./temp_text/mega-automation-flow-work-order.md)。
+字段与交互细节见 [modules/mega-automation/titer-upstream-flow.md](./modules/mega-automation/titer-upstream-flow.md)、[modules/mega-automation/flow-work-order.md](./modules/mega-automation/flow-work-order.md)。
 
 ---
 

@@ -1,4 +1,7 @@
-# 镁伽自动化流式工单
+# 镁伽自动化 · 流式工单
+
+> **本文**：流式工单**模块本身**——数据模型、校验、状态机、Payload、Labillion 集成、API、前端页面与后端代码。  
+> **跨模块流程**（效价列表入口、新建向导、预填、结果回传约定）：见 [titer-upstream-flow.md](./titer-upstream-flow.md)。
 
 ## 1. 当前范围
 
@@ -12,8 +15,7 @@
 
 尚未接入：检测结果业务解析入库、跨模块自动同步。
 
-效价列表「工单」入口（鼠号确认 / 选鼠向导）已实现；点「确定」后跳转预填。
-
+`source_id` / `orderType` 字段支持关联上游业务单（如效价 `titer_order_id`）；入口与预填逻辑不在本文，见跨模块文档。
 ## 2. 数据模型
 
 ### `mega_flow_work_order`
@@ -171,7 +173,7 @@ POST /api/mega-automation/labillion/callback          # 镁伽推送，无需登
 
 - 功能码：`job.mega_labillion_status_sync`，默认每天 02:00。
 - 批量查询非终态工单并应用状态；未配 `LABILLION_BASE_URL` 时 skip 并记日志。
-- 开关与时间见系统功能页；修改后需重启服务（`restart_required`）。
+- 开关与时间见系统功能页（改完即写库；cron 重启后端生效）；可 **立即执行** 单次同步。
 
 ## 7. 权限
 
@@ -370,9 +372,9 @@ expected_content_hash
 
 ### 11.4 暂停状态下校验
 
-暂停后的编辑流程与普通保存不同：
+暂停后的编辑流程与普通保存不同（**已撤回** `withdrawn` 工单可直接编辑，走 §4.1 继续发送，不适用下列 pausing 流程）：
 
-1. 请求停止后，工单进入 `paused`，下发记录进入 `pausing`；
+1. 请求停止（running）后，工单进入 `paused`，下发记录进入 `pausing`；
 2. 设备确认暂停后，下发记录变为 `paused`；
 3. 只有此时页面才可编辑；
 4. 用户点击校验时，后端先比较本地内容与发送时的 `content_hash_at_send`；
@@ -419,7 +421,8 @@ DSP260710482913
 ```text
 工单 sent              ↔ 下发 pending
 工单 running           ↔ 下发 running
-工单 paused            ↔ 下发 pending/running + pause_state
+工单 paused + withdrawn   ↔ 下发 pending + pause_state=withdrawn（已撤回，可继续重推）
+工单 paused            ↔ 下发 pending/running + pause_state（pausing/paused/resuming）
 工单 completed         ↔ 下发 completed
 工单 execution_failed  ↔ 下发 failed
 修改暂停工单后 validated ↔ 原下发 voided
@@ -429,7 +432,7 @@ DSP260710482913
 
 ### 13.1 列表
 
-关键字、检测类型、状态、项目号、靶点、样本板条码、细胞板条码；状态统计；详情 / 操作 / 复制。显示态合并 `pause_state`（暂停中 / 已暂停 / 恢复中）。
+关键字、检测类型、状态、项目号、靶点、样本板条码、细胞板条码；状态统计；详情 / 操作 / 复制。显示态合并 `pause_state`（暂停中 / 已暂停 / 已撤回 / 恢复中）。
 
 ### 13.2 详情 · 工单编辑
 
@@ -481,14 +484,9 @@ CRUD、状态边界、行锁、版本校验、校验与下发联动。
 
 FastAPI 入口、`require_permission`、统一响应；业务规则不放路由层。
 
-## 15. 结果回传（后续）
+## 15. 结果回传
 
-实验结果 JSON 仍走 `POST /api/order-experiment/sync`（与 Labillion **状态**回调分离）。
-
-回传至少携带 `dispatchId`、结果 payload；以 `dispatchId` 匹配下发，不用可能重复的 `orderNum`。
-
-检测板条码若来自设备，作为结果数据保存；是否回写工单待协议确定。
-
+实验结果 JSON 走 `POST /api/order-experiment/sync`（与 Labillion **状态**回调分离）。回传以 `dispatchId` 匹配下发快照；业务解析入库与效价联动见 [titer-upstream-flow.md §8](./titer-upstream-flow.md#8-下游效价数据回传接收已实现业务处理待开发)。回传 JSON 样例见 [order-experiment-sync-api.md](../../temp_text/order-experiment-sync-api.md)。
 ## 16. 后续待办
 
 1. 检测结果业务解析入库与效价/免疫联动；

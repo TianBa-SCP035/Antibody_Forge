@@ -96,11 +96,13 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 |--------|------|------|
 | `mega.page.flow_work_order` | page | 流式工单总览与详情 |
 | `mega.flow_work_order.edit` | action | 保存、校验、删除、作废工单 |
-| `mega.flow_work_order.dispatch` | action | 发送、暂停/恢复、确认执行、完成/失败等调度操作 |
+| `mega.flow_work_order.dispatch` | action | 发送、撤回/停止/继续、确认执行、完成/失败及设备暂停确认等调度操作 |
 
 **Labillion 回调** `POST /api/mega-automation/labillion/callback` **无需登录**（镁伽服务器推送）；路由层不调用 `require_permission`，响应恒为 HTTP 200。
 
-**主动状态同步** `POST .../sync-labillion-status` 使用 `mega.page.flow_work_order`（与详情只读同级），供详情页进入时拉取镁伽最新状态。
+**主动状态同步** `POST .../sync-labillion-status` 使用 `mega.page.flow_work_order`（与详情只读同级），供详情页进入时拉取镁伽最新状态；**不登记** `sys_permission_api`（非人员主动操作，不进操作日志）。
+
+**手动执行定时任务** `POST /api/system/features/jobs/run` 需 `system.feature.manage`；body `{ "job_code": "job.xxx" }`。后台线程执行，结果记入 `sys_job_run_log` 与操作日志。
 
 镁伽接口**无**项目负责人式行级归属，仅按上述权限点鉴权。
 
@@ -114,7 +116,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `system.role.manage` | action | 角色 CRUD |
 | `system.permission.manage` | action | 权限包、权限点、个人覆盖 |
 | `system.operation_log.view` | action | 查看操作日志 |
-| `system.feature.manage` | action | 修改功能开关（查看用 `page.feature`） |
+| `system.feature.manage` | action | 修改功能开关、定时任务配置；手动执行定时任务（查看用 `page.feature`） |
 
 **page 与 action**：`page.*` 管进路由；Tab 与写接口靠对应的 `manage` / `view` action。
 
@@ -279,6 +281,10 @@ flowchart LR
 
 同一 path 何时需要多行：仅当审计文案需区分时（例如 `/save` 同时挂 `*.create` 与 `*.edit`，按 body 是否有 `id` 选型）。`edit` 与 `edit_all`（或多权限 OR 鉴权）**不必**各写一行，登记一条代表性写映射即可。
 
+**操作日志展示**：列表分 **目标类型**（如「系统功能」「工单」）与 **目标** 两列。目标列优先显示 `target_label`；若与 `target_id` 不同则拼为 `名称 / ID 编码`（不再重复目标类型前缀）。示例：手动执行镁伽同步 → 目标类型「系统功能」，目标「镁伽工单状态同步 / ID job.mega_labillion_status_sync」。
+
+**不宜登记**的写接口示例：`POST .../sync-labillion-status`（详情页自动刷新，非人员操作）。**应登记**的示例：`POST /api/system/features/jobs/run`（人员点击「立即执行」）。
+
 权限校验始终在业务路由中显式调用 `require_permission`。
 
 ## 7. 功能开关（`sys_feature_flag`）
@@ -295,6 +301,8 @@ flowchart LR
 | `job` | `job.employee_profile_sync` | 员工资料定时同步（默认 00:30） |
 | `job` | `job.serum_auto_update_status` | 免疫状态定时更新（默认 01:00） |
 | `job` | `job.mega_labillion_status_sync` | 镁伽工单状态同步（默认 02:00；未配 Labillion 地址时 skip） |
+
+**定时任务页（系统功能）**：启用开关与执行时间**改完即写库**；cron 变更需**重启后端**后生效（配置项 `restart_required`）。「立即执行」随时可点，直接调对应 job 函数，local 未开 scheduler 也可用。
 
 有效配置接口：`GET /api/system/features/effective`（前端 `getSystemEffectiveFeaturesApi`）。
 

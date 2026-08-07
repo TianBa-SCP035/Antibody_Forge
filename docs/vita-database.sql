@@ -2,6 +2,8 @@
 -- 在 DATABASE_URL 空库执行本文件即可。
 --
 -- 说明：
+--   - 本文件只维护**当前全量 DDL + 种子**（空库执行一次）；不收录历史 ALTER / 升级脚本。
+--   - 表、字段 COMMENT 须齐全，风格与现有表一致；有表结构变更时直接改本文件中的 CREATE，勿追加迁移段。
 --   - sys_permission / sys_permission_api / sys_feature_flag：与代码约定对齐，建议保持完整。
 --   - 文末「权限包 / 角色」仅为克隆空库时的示例种子，方便快速生效；生产环境完全自定义，
 --     不必与现网或示例一致，可删改或在系统管理中调整。
@@ -192,7 +194,7 @@ CREATE TABLE IF NOT EXISTS sys_job_run_log (
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS order_sync (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
   trace_id VARCHAR(128) NOT NULL COMMENT '追踪ID',
   file_path VARCHAR(1024) NOT NULL COMMENT '原始JSON路径',
   order_count INT NOT NULL DEFAULT 0 COMMENT '订单数',
@@ -212,7 +214,7 @@ CREATE TABLE IF NOT EXISTS order_sync (
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS mega_flow_work_order (
-  id BIGINT NOT NULL AUTO_INCREMENT,
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   orderName VARCHAR(255) NULL COMMENT '订单名称',
   orderNum VARCHAR(255) NOT NULL COMMENT '订单编号',
   orderType VARCHAR(32) NOT NULL DEFAULT 'TITER' COMMENT '检测类型',
@@ -241,7 +243,7 @@ CREATE TABLE IF NOT EXISTS mega_flow_work_order (
 ) COMMENT='镁伽流式工单';
 
 CREATE TABLE IF NOT EXISTS mega_flow_work_order_dispatch (
-  id BIGINT NOT NULL AUTO_INCREMENT,
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   dispatchId VARCHAR(64) NOT NULL COMMENT '下发编号',
   work_order_id BIGINT NOT NULL COMMENT '工单ID',
   payload JSON NOT NULL COMMENT '下发JSON',
@@ -425,7 +427,7 @@ CREATE TABLE IF NOT EXISTS serum_elisa_plate (
 ) COMMENT='ELISA效价板信息表';
 
 CREATE TABLE IF NOT EXISTS serum_titer_order (
-  id BIGINT NOT NULL AUTO_INCREMENT,
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   experiment_id VARCHAR(64) NOT NULL COMMENT '免疫实验ID',
   titer_order_id VARCHAR(128) NOT NULL COMMENT '效价工单ID',
   cage_position VARCHAR(64) NULL COMMENT '笼位',

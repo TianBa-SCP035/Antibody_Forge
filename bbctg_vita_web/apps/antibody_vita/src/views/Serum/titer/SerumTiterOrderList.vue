@@ -268,7 +268,28 @@
         <el-table-column label="靶点" prop="target_name" align="center" min-width="100" show-overflow-tooltip />
         <el-table-column label="笼位" prop="cage_position" align="center" min-width="90" show-overflow-tooltip />
         <el-table-column label="采血日期" prop="blood_collection_date" align="center" sortable min-width="110" />
-        <el-table-column label="只数" prop="mouse_count" align="center" min-width="80" class-name="plate-col-mouse">
+        <el-table-column prop="mouse_count" align="center" min-width="80" class-name="plate-col-mouse">
+          <template #header>
+            <el-popover v-model:visible="colFilterOpen.mouse_count" trigger="click" width="220">
+              <el-radio-group v-model="listQuery.mouse_count_zero" size="small" class="col-filter-zero">
+                <el-radio-button label="">全部</el-radio-button>
+                <el-radio-button label="hide">排除0</el-radio-button>
+                <el-radio-button label="only">只看0</el-radio-button>
+              </el-radio-group>
+              <div class="col-filter-range">
+                <el-input-number v-model="listQuery.mouse_count_min" :min="0" :controls="false" placeholder="最小" />
+                <span>—</span>
+                <el-input-number v-model="listQuery.mouse_count_max" :min="0" :controls="false" placeholder="最大" />
+              </div>
+              <div class="col-filter-actions">
+                <el-button size="small" @click="resetColFilter('mouse_count')">重置</el-button>
+                <el-button size="small" type="primary" @click="applyColFilter('mouse_count')">确定</el-button>
+              </div>
+              <template #reference>
+                <button type="button" class="col-filter-head" :class="{ 'is-active': isColFilterActive('mouse_count') }" @click.stop>只数</button>
+              </template>
+            </el-popover>
+          </template>
           <template #default="{ row, $index }">
             <div
               class="plate-select-cell"
@@ -281,7 +302,28 @@
           </template>
         </el-table-column>
         <el-table-column label="检测方法" prop="assay_method" align="center" min-width="130" show-overflow-tooltip />
-        <el-table-column label="FACS" prop="facs_plate_count" align="center" min-width="90" class-name="plate-col-facs">
+        <el-table-column prop="facs_plate_count" align="center" min-width="100" class-name="plate-col-facs">
+          <template #header>
+            <el-popover v-model:visible="colFilterOpen.facs_plate" trigger="click" width="220">
+              <el-radio-group v-model="listQuery.facs_plate_zero" size="small" class="col-filter-zero">
+                <el-radio-button label="">全部</el-radio-button>
+                <el-radio-button label="hide">排除0</el-radio-button>
+                <el-radio-button label="only">只看0</el-radio-button>
+              </el-radio-group>
+              <div class="col-filter-range">
+                <el-input-number v-model="listQuery.facs_plate_min" :min="0" :controls="false" placeholder="最小" />
+                <span>—</span>
+                <el-input-number v-model="listQuery.facs_plate_max" :min="0" :controls="false" placeholder="最大" />
+              </div>
+              <div class="col-filter-actions">
+                <el-button size="small" @click="resetColFilter('facs_plate')">重置</el-button>
+                <el-button size="small" type="primary" @click="applyColFilter('facs_plate')">确定</el-button>
+              </div>
+              <template #reference>
+                <button type="button" class="col-filter-head" :class="{ 'is-active': isColFilterActive('facs_plate') }" @click.stop>FACS</button>
+              </template>
+            </el-popover>
+          </template>
           <template #default="{ row, $index }">
             <div
               class="plate-select-cell"
@@ -293,7 +335,28 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="ELISA" prop="elisa_plate_count" align="center" min-width="90" class-name="plate-col-elisa">
+        <el-table-column prop="elisa_plate_count" align="center" min-width="100" class-name="plate-col-elisa">
+          <template #header>
+            <el-popover v-model:visible="colFilterOpen.elisa_plate" trigger="click" width="220">
+              <el-radio-group v-model="listQuery.elisa_plate_zero" size="small" class="col-filter-zero">
+                <el-radio-button label="">全部</el-radio-button>
+                <el-radio-button label="hide">排除0</el-radio-button>
+                <el-radio-button label="only">只看0</el-radio-button>
+              </el-radio-group>
+              <div class="col-filter-range">
+                <el-input-number v-model="listQuery.elisa_plate_min" :min="0" :controls="false" placeholder="最小" />
+                <span>—</span>
+                <el-input-number v-model="listQuery.elisa_plate_max" :min="0" :controls="false" placeholder="最大" />
+              </div>
+              <div class="col-filter-actions">
+                <el-button size="small" @click="resetColFilter('elisa_plate')">重置</el-button>
+                <el-button size="small" type="primary" @click="applyColFilter('elisa_plate')">确定</el-button>
+              </div>
+              <template #reference>
+                <button type="button" class="col-filter-head" :class="{ 'is-active': isColFilterActive('elisa_plate') }" @click.stop>ELISA</button>
+              </template>
+            </el-popover>
+          </template>
           <template #default="{ row, $index }">
             <div
               class="plate-select-cell"
@@ -659,9 +722,13 @@ import {
   ElDialog,
   ElIcon,
   ElInput,
+  ElInputNumber,
   ElMessage,
   ElOption,
   ElPagination,
+  ElPopover,
+  ElRadioButton,
+  ElRadioGroup,
   ElSelect,
   ElTable,
   ElTableColumn,
@@ -837,8 +904,12 @@ export default {
     ElDialog,
     ElIcon,
     ElInput,
+    ElInputNumber,
     ElOption,
     ElPagination,
+    ElPopover,
+    ElRadioButton,
+    ElRadioGroup,
     ElSelect,
     ElTable,
     ElTableColumn,
@@ -938,6 +1009,15 @@ export default {
         summary_status: '',
         target_name: '',
         titer_owner: '',
+        mouse_count_zero: '',
+        mouse_count_min: null,
+        mouse_count_max: null,
+        facs_plate_zero: '',
+        facs_plate_min: null,
+        facs_plate_max: null,
+        elisa_plate_zero: '',
+        elisa_plate_min: null,
+        elisa_plate_max: null,
       },
       allOwnerOptions: [],
       allTargetOptions: [],
@@ -978,6 +1058,11 @@ export default {
       plateBubblePos: null,
       plateOverlayRects: [],
       tabDataFetchedAt: 0,
+      colFilterOpen: {
+        mouse_count: false,
+        facs_plate: false,
+        elisa_plate: false,
+      },
     };
   },
   mounted() {
@@ -1412,6 +1497,23 @@ export default {
         payload.titer_owner_unassigned = true;
       }
       return payload;
+    },
+    applyColFilter(prefix) {
+      this.colFilterOpen[prefix] = false;
+      this.listQuery.page = 1;
+      this.persistListFilters();
+      this.getList();
+    },
+    isColFilterActive(prefix) {
+      return Boolean(this.listQuery[`${prefix}_zero`])
+        || this.listQuery[`${prefix}_min`] != null
+        || this.listQuery[`${prefix}_max`] != null;
+    },
+    resetColFilter(prefix) {
+      this.listQuery[`${prefix}_zero`] = '';
+      this.listQuery[`${prefix}_min`] = null;
+      this.listQuery[`${prefix}_max`] = null;
+      this.applyColFilter(prefix);
     },
     appendDateRange(payload, range, startKey, endKey) {
       if (Array.isArray(range) && range.length === 2 && range[0] && range[1]) {
@@ -1853,6 +1955,15 @@ export default {
         summary_status: '',
         target_name: '',
         titer_owner: '',
+        mouse_count_zero: '',
+        mouse_count_min: null,
+        mouse_count_max: null,
+        facs_plate_zero: '',
+        facs_plate_min: null,
+        facs_plate_max: null,
+        elisa_plate_zero: '',
+        elisa_plate_min: null,
+        elisa_plate_max: null,
       };
       this.testDatesRange = [];
       this.bloodCollectionRange = [];
@@ -1865,6 +1976,7 @@ export default {
       this.statFilterActive = createDefaultStatFilterActive();
       this.testDateStatScope = '';
       this.applyingStatDateRange = false;
+      this.colFilterOpen = { mouse_count: false, facs_plate: false, elisa_plate: false };
       this.persistListFilters();
       this.getList();
     },
@@ -2415,6 +2527,58 @@ export default {
 
 .table-card :deep(.el-table__header .cell) {
   white-space: nowrap;
+}
+
+.col-filter-head {
+  padding: 0;
+  font: inherit;
+  font-weight: bold;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.col-filter-head:hover,
+.col-filter-head.is-active {
+  color: var(--el-color-primary);
+}
+
+.col-filter-zero {
+  width: 100%;
+}
+
+.col-filter-zero :deep(.el-radio-button) {
+  flex: 1;
+}
+
+.col-filter-zero :deep(.el-radio-button__inner) {
+  width: 100%;
+}
+
+.col-filter-range {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 6px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.col-filter-range :deep(.el-input-number) {
+  width: 100%;
+}
+
+.col-filter-range :deep(.el-input__wrapper) {
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+.col-filter-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
 }
 
 .table-card :deep(.table-action-btn) {

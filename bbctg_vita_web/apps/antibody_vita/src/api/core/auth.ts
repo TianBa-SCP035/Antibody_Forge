@@ -31,6 +31,7 @@ export async function loginApi(data: AuthApi.LoginParams) {
 export async function yunzhijiaLoginApi(ticket: string) {
   return requestClient.get<AuthApi.LoginResult>('/auth/yunzhijia', {
     params: { ticket },
+    timeout: 15_000,
   });
 }
 

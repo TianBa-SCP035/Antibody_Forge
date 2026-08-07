@@ -151,11 +151,9 @@ ASSAY_FILTER_FACS = "__facs__"
 ASSAY_FILTER_ELISA = "__elisa__"
 ASSAY_FILTER_FACS_ELISA = "__facs_elisa__"
 
-_ASSAY_METHOD_COMBO_FILTERS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
-    ASSAY_FILTER_FACS: (("FACS",), ("ELISA",)),
-    ASSAY_FILTER_ELISA: (("ELISA",), ("FACS",)),
-    ASSAY_FILTER_FACS_ELISA: (("FACS", "ELISA"), ()),
-}
+
+def _assay_method_expr():
+    return func.coalesce(SerumTiterOrder.assay_method, SerumImmProject.assay_method)
 
 
 def _assay_plate_expr(method: str):
@@ -168,31 +166,62 @@ def _has_positive_plate_count(column):
     return and_(column.is_not(None), column > 0)
 
 
-def _missing_positive_plate_count(column):
+def _only_zero_plate_count(column):
     return or_(column.is_(None), column <= 0)
 
 
-def _assay_column_filter(*, include: tuple[str, ...], exclude: tuple[str, ...]):
-    parts = []
-    for method in include:
-        parts.append(_has_positive_plate_count(_assay_plate_expr(method)))
-    for method in exclude:
-        parts.append(_missing_positive_plate_count(_assay_plate_expr(method)))
-    return and_(*parts)
+def _parse_optional_plate_count(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _mouse_count_expr():
+    return func.coalesce(SerumTiterOrder.mouse_count, 0)
+
+
+def _apply_numeric_column_filters(stmt, data: dict[str, Any]):
+    specs = (
+        ("mouse_count", _mouse_count_expr),
+        ("facs_plate", lambda: _assay_plate_expr("FACS")),
+        ("elisa_plate", lambda: _assay_plate_expr("ELISA")),
+    )
+    for prefix, expr_fn in specs:
+        zero_mode = str(data.get(f"{prefix}_zero") or "").strip()
+        min_val = _parse_optional_plate_count(data.get(f"{prefix}_min"))
+        max_val = _parse_optional_plate_count(data.get(f"{prefix}_max"))
+        if not zero_mode and min_val is None and max_val is None:
+            continue
+        expr = expr_fn()
+        parts = []
+        if zero_mode == "hide":
+            parts.append(_has_positive_plate_count(expr))
+        elif zero_mode == "only":
+            parts.append(_only_zero_plate_count(expr))
+        if min_val is not None:
+            parts.append(expr >= min_val)
+        if max_val is not None:
+            parts.append(expr <= max_val)
+        stmt = stmt.where(and_(*parts))
+    return stmt
 
 
 def _apply_assay_method_filter(stmt, assay_method: str):
-    """检测方法筛选：FACS/ELISA/组合走板数列；其余为展示文案精确匹配。"""
-    combo = _ASSAY_METHOD_COMBO_FILTERS.get(assay_method)
-    if combo:
-        include, exclude = combo
-        return stmt.where(_assay_column_filter(include=include, exclude=exclude))
+    """检测方法筛选：按检测方法文案列匹配。"""
+    expr = _assay_method_expr()
+    if assay_method == ASSAY_FILTER_FACS:
+        return stmt.where(expr.like("%FACS%"))
+    if assay_method == ASSAY_FILTER_ELISA:
+        return stmt.where(expr.like("%ELISA%"))
+    if assay_method == ASSAY_FILTER_FACS_ELISA:
+        return stmt.where(expr.like("%FACS%"), expr.like("%ELISA%"))
     target = str(assay_method or "").strip()
     if not target:
         return stmt
-    return stmt.where(
-        func.coalesce(SerumTiterOrder.assay_method, SerumImmProject.assay_method) == target
-    )
+    return stmt.where(expr == target)
 
 
 def _normalize_test_dates(value: Any) -> list[str]:
@@ -721,6 +750,7 @@ def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
     assay_method = str(data.get("assay_method") or "").strip()
     if assay_method:
         stmt = _apply_assay_method_filter(stmt, assay_method)
+    stmt = _apply_numeric_column_filters(stmt, data)
     if data.get("summary_empty"):
         stmt = stmt.where(or_(SerumTiterOrder.summary.is_(None), SerumTiterOrder.summary == ""))
     if data.get("summary_filled"):

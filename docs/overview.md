@@ -30,7 +30,7 @@ Antibody_Forge/
 | 小鼠免疫 | `/serum/list`、`/serum/detail`、`/serum/edit` 等 | `/api/serum` | 项目、笼位、方案导出（xlsx / PDF） |
 | 效价数据 | `/serum/titer` | `/api/serum/titer` | 靶点、FACS、ELISA、附件（可选 DRM） |
 | 效价实验列表 | `/serum/titer-orders` | `/api/serum/titer/order/*` | 效价工单；「工单」→ 镁伽流式 |
-| 镁伽流式工单 | `/mega-automation/flow-work-orders`（含 `/detail`） | `/api/mega-automation` | 铺板、校验、下发；详见 [flow-work-order.md](./modules/mega-automation/flow-work-order.md) |
+| 镁伽流式工单 | `/mega-automation/flow-work-orders`（含 `/detail`） | `/api/mega-automation` | 铺板、校验、下发；Labillion 集成见 flow-work-order 文档 |
 | 工单数据回传 | 无前端 | `/api/order-experiment` | 设备 JSON → 落盘并记 `order_sync` |
 | 细胞库存 | `/serum/cell` | `/api/serum/cell_inventory` | 外部库只读 |
 | 系统管理 | `/system/user-permission`、`/system/features` | `/api/system` | 用户、角色、权限、日志、功能开关 |

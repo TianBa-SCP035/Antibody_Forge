@@ -299,6 +299,7 @@ flowchart LR
 | `feature` | `feature.drm_file_security` | DRM 上传解密 / 下载加密（`drm_service.py` 读取；另需 env 与 SDK） |
 | `feature` | `feature.yunzhijia_auto_provision` | 后台展示项；实际由 env `YUNZHIJIA_AUTO_PROVISION` 控制 |
 | `job` | `job.employee_profile_sync` | 员工资料定时同步（默认 00:30） |
+| `job` | `job.target_master_sync` | 靶点主数据定时同步（默认 00:45） |
 | `job` | `job.serum_auto_update_status` | 免疫状态定时更新（默认 01:00） |
 | `job` | `job.mega_labillion_status_sync` | 镁伽工单状态同步（默认 02:00；未配 Labillion 地址时 skip） |
 

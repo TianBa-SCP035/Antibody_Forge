@@ -112,6 +112,16 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "config": {"hour": 0, "minute": 30, "cron": "30 0 * * *", "restart_required": True},
     },
     {
+        "code": "job.target_master_sync",
+        "name": "靶点主数据定时同步",
+        "category": "job",
+        "description": "每天 00:45 同步外部靶点主数据",
+        "enabled": True,
+        "visible": True,
+        "sort_order": 205,
+        "config": {"hour": 0, "minute": 45, "cron": "45 0 * * *", "restart_required": True},
+    },
+    {
         "code": "job.serum_auto_update_status",
         "name": "血清状态自动更新",
         "category": "job",
@@ -314,6 +324,9 @@ def summarize_job_result(result: Any) -> str:
         for key, label in [
             ("created", "新增"),
             ("updated", "更新"),
+            ("unchanged", "未变化"),
+            ("reactivated", "重新启用"),
+            ("deactivated", "停用"),
             ("updated_count", "状态更新"),
             ("titer_order_created_count", "新增效价工单"),
             ("disabled_on_resignation", "离职禁用"),

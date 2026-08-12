@@ -637,8 +637,28 @@ export default {
     },
     async copyActivePayload() {
       if (!this.activePayload) return;
+      const text = JSON.stringify(this.activePayload, null, 2);
       try {
-        await navigator.clipboard.writeText(JSON.stringify(this.activePayload, null, 2));
+        if (navigator.clipboard?.writeText) {
+          try {
+            await navigator.clipboard.writeText(text);
+            ElMessage.success('已复制当前生效下发 JSON');
+            return;
+          } catch {
+            // HTTP 等非安全上下文下回退到传统复制方式。
+          }
+        }
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', 'readonly');
+        textarea.style.cssText = 'position:fixed;left:-9999px;opacity:0';
+        document.body.appendChild(textarea);
+        try {
+          textarea.select();
+          if (!document.execCommand('copy')) throw new Error('copy failed');
+        } finally {
+          document.body.removeChild(textarea);
+        }
         ElMessage.success('已复制当前生效下发 JSON');
       } catch {
         ElMessage.warning('复制失败，请手动选择文本复制');

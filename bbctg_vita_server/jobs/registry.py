@@ -6,6 +6,7 @@ from db.session import SessionLocal
 from jobs.employee_profile_sync import employee_profile_sync_job
 from jobs.labillion_status_sync import labillion_status_sync_job
 from jobs.serum_status import auto_update_status_job
+from jobs.target_master_sync import target_master_sync_job
 from modules.system.features import get_job_schedule
 
 _scheduler: BackgroundScheduler | None = None
@@ -25,6 +26,14 @@ SCHEDULED_JOBS = [
         "default_hour": 0,
         "default_minute": 30,
         "func": employee_profile_sync_job,
+    },
+    {
+        "id": "target_master_sync",
+        "description": "每天 00:45 同步外部靶点主数据",
+        "feature_code": "job.target_master_sync",
+        "default_hour": 0,
+        "default_minute": 45,
+        "func": target_master_sync_job,
     },
     {
         "id": "labillion_status_sync",

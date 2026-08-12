@@ -210,6 +210,60 @@ CREATE TABLE IF NOT EXISTS order_sync (
 ) COMMENT='效价数据回传记录';
 
 -- ---------------------------------------------------------------------------
+-- 靶点主数据（models/target.py；外部平台只读同步镜像）
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS target (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  external_id BIGINT NOT NULL COMMENT '外部平台靶点ID（target.id），同步唯一标识',
+  snum VARCHAR(100) NOT NULL COMMENT '靶点编号',
+  name VARCHAR(100) NOT NULL COMMENT '靶点名称',
+  type INT NULL COMMENT '靶点类型（源系统枚举，取值含义待确认）',
+  status INT NULL COMMENT '靶点状态：1未开发，2已开发，NULL未标注',
+  ko_lethal_info INT NULL COMMENT 'KO致死信息：1致死，2非致死，NULL未标注',
+  ko_lethal_info_desc VARCHAR(1000) NULL COMMENT 'KO致死信息备注',
+  structure_feature VARCHAR(100) NULL COMMENT '结构特性（跨膜次数）',
+  shape_remark VARCHAR(200) NULL COMMENT '形式备注',
+  structure_feature_remark VARCHAR(1000) NULL COMMENT '结构特性备注',
+  ko_mgi TEXT NULL COMMENT 'KO鼠表型MGI',
+  ko_impc VARCHAR(100) NULL COMMENT 'KO鼠表型IMPC',
+  effect_cell VARCHAR(1000) NULL COMMENT '靶点作用细胞',
+  ko_gt VARCHAR(100) NULL COMMENT 'KO鼠表型GT',
+  official_full_name VARCHAR(300) NULL COMMENT '官方全名',
+  human_gene_official_name VARCHAR(200) NULL COMMENT '人基因官方名称',
+  human_gene_alias_name VARCHAR(500) NULL COMMENT '人基因别名',
+  human_ncbi_gene_id VARCHAR(200) NULL COMMENT '人NCBI Gene ID',
+  human_chromosome_position VARCHAR(200) NULL COMMENT '人染色体位置',
+  is_homologous_gene BOOLEAN NULL COMMENT '是否有同源基因',
+  mouse_gene_official_name VARCHAR(200) NULL COMMENT '小鼠基因官方名称',
+  mouse_gene_alias_name VARCHAR(255) NULL COMMENT '小鼠基因别名',
+  mouse_ncbi_gene_id VARCHAR(200) NULL COMMENT '小鼠NCBI Gene ID',
+  mouse_chromosome_position VARCHAR(200) NULL COMMENT '小鼠染色体位置',
+  human_mouse_homology VARCHAR(200) NULL COMMENT '人鼠同源性',
+  human_dog_homology VARCHAR(200) NULL COMMENT '人犬同源性',
+  human_cat_homology VARCHAR(200) NULL COMMENT '人猫同源性',
+  human_monkey_homology VARCHAR(200) NULL COMMENT '人猴同源性',
+  human_mouse_homology_expect_functional_domain VARCHAR(200) NULL COMMENT '预期主要功能结构域人鼠同源性',
+  gene_functional_desc TEXT NULL COMMENT '基因功能描述',
+  is_ko_affect_humoral_immunity BOOLEAN NULL COMMENT 'KO是否影响体液免疫',
+  is_ko_affect_humoral_immunity_desc VARCHAR(500) NULL COMMENT 'KO是否影响体液免疫备注',
+  is_human_mouse_cross VARCHAR(1000) NULL COMMENT '配体或受体是否人鼠交叉',
+  indication VARCHAR(200) NULL COMMENT '适应症',
+  gene_family VARCHAR(200) NULL COMMENT '基因家族',
+  signal_path VARCHAR(1000) NULL COMMENT '信号通路',
+  remark VARCHAR(2000) NULL COMMENT '备注',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否有效：1有效，0源记录已不存在',
+  synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近同步时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_target_external_id (external_id),
+  UNIQUE KEY uk_target_snum (snum),
+  KEY idx_target_name (name),
+  KEY idx_target_human_gene_name (human_gene_official_name),
+  KEY idx_target_mouse_gene_name (mouse_gene_official_name),
+  KEY idx_target_status_type (status, type)
+) COMMENT='靶点表（项目管理同步）';
+
+-- ---------------------------------------------------------------------------
 -- 镁伽自动化 / 流式工单（models/mega_automation.py）
 -- ---------------------------------------------------------------------------
 
@@ -552,6 +606,7 @@ VALUES
   ('feature.yunzhijia_auto_provision', '云之家自动创建用户', 'feature', '允许云之家登录时自动创建未绑定用户', 0, 1, 110, JSON_OBJECT()),
   ('feature.drm_file_security', 'DRM 文件安全模块', 'feature', '控制上传自动解密、下载前加密等 DRM 文件安全能力', 0, 1, 120, JSON_OBJECT()),
   ('job.employee_profile_sync', '员工资料定时同步', 'job', '每天 00:30 同步外部员工基础资料', 1, 1, 200, JSON_OBJECT('hour', 0, 'minute', 30, 'cron', '30 0 * * *', 'restart_required', true)),
+  ('job.target_master_sync', '靶点主数据定时同步', 'job', '每天 00:45 同步外部靶点主数据', 1, 1, 205, JSON_OBJECT('hour', 0, 'minute', 45, 'cron', '45 0 * * *', 'restart_required', true)),
   ('job.serum_auto_update_status', '免疫状态自动更新', 'job', '每天 01:00 自动更新免疫实验状态', 1, 1, 210, JSON_OBJECT('hour', 1, 'minute', 0, 'cron', '0 1 * * *', 'restart_required', true)),
   ('job.mega_labillion_status_sync', '镁伽工单状态同步', 'job', '每天 02:00 同步镁伽非终态工单状态', 1, 1, 220, JSON_OBJECT('hour', 2, 'minute', 0, 'cron', '0 2 * * *', 'restart_required', true));
 
@@ -667,3 +722,7 @@ SELECT r.id, r.code FROM sys_role r WHERE r.code IN ('guest', 'operator', 'syste
 --   KEY idx_org_emp_depart (depart_id),
 --   KEY idx_org_emp_openid (cloud_open_id)
 -- ) COMMENT='员工（外部库，只读）';
+--
+-- 同一 EMPLOYEE_DB_URL 外部平台库还包含正式靶点表
+-- xdida_platform_biocytogen.target；本系统只读全量同步至主库 target，
+-- 字段选择与同步规则见 modules/system/target_sync.py，勿修改外部表。

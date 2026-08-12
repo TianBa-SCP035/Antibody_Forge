@@ -31,6 +31,8 @@ DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Offi
 
 镁伽 Labillion：`integrations/labillion.py`（HTTP 客户端）；`modules/mega_automation/callback.py`（状态回调与 `apply_labillion_status`）；`modules/mega_automation/labillion_sync.py`（主动查询与定时批量同步）。`LABILLION_BASE_URL` 留空时不发起对外 HTTP，本地工单状态仍可用。细节见 [modules/mega-automation/flow-work-order.md](./modules/mega-automation/flow-work-order.md)。
 
+外部主数据：`EMPLOYEE_DB_URL` 只读连接外部平台库；`modules/system/employee_sync.py` 同步员工资料，`modules/system/target_sync.py` 全量同步靶点至本地 `target`。两者使用独立定时任务，共用外部连接。
+
 ## API 前缀
 
 | 前缀 | 后端位置 |

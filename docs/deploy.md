@@ -32,7 +32,7 @@ Windows： 无需路径约定，固定环境为 local。
 | `REPOSITORY_ROOT` | 附件/日志根目录，默认 `repository` |
 | `ENABLE_SCHEDULER` | 是否强制开定时任务；prod 环境即使为 false 也会开 |
 | `YUNZHIJIA_*` | 云之家（可选） |
-| `CELL_DB_URL` / `EMPLOYEE_DB_URL` | 外部只读库（可选） |
+| `CELL_DB_URL` / `EMPLOYEE_DB_URL` | 外部只读库（可选）；后者提供员工与靶点主数据 |
 | `LABILLION_BASE_URL` / `LABILLION_USERNAME` / `LABILLION_PASSWORD` | 镁伽 Labillion（可选；URL 留空则不推送） |
 | `PUBLIC_API_BASE_URL` | 本系统对外 API 根，用于生成下发 Payload 的 `replyAddress` |
 | `DRM_*` | DRM（可选；另需功能开关） |
@@ -46,7 +46,7 @@ Windows： 无需路径约定，固定环境为 local。
 2. 对空库执行 [vita-database.sql](./vita-database.sql)（建表 + 权限/功能开关等种子；详见脚本头注释）。
 3. 首个超级管理员：按 SQL 文末注释生成 `password_hash` 并插入 `sys_user`。
 
-细胞库、员工库为外部只读库，不在此脚本中创建；需要时再配 `CELL_DB_URL` / `EMPLOYEE_DB_URL`。
+细胞库、外部平台库为只读库，不在此脚本中创建；需要时再配 `CELL_DB_URL` / `EMPLOYEE_DB_URL`。外部平台库提供员工资料及 `xdida_platform_biocytogen.target` 靶点主数据，本系统分别同步到本地主库。
 
 ## 启动
 
@@ -131,6 +131,7 @@ sudo apt install -y libreoffice
 | ID | 默认时间 | 作用 |
 |----|----------|------|
 | `employee_profile_sync` | 00:30 | 外部员工库 → 用户资料；**不改**已有用户的密码/角色/权限覆盖/超管；新建账号会写入随机初始密码 |
+| `target_master_sync` | 00:45 | 外部平台 `target` → 本地主库 `target`；全量 upsert，源记录消失时仅停用 |
 | `serum_auto_update_status` | 01:00 | 自动更新免疫实验状态 |
 | `labillion_status_sync` | 02:00 | 镁伽非终态流式工单状态批量同步；未配 `LABILLION_BASE_URL` 时 skip 并记日志 |
 

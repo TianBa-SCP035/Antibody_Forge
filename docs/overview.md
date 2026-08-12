@@ -48,6 +48,7 @@ Antibody_Forge/
 | 任务 | 默认时间 | 说明 |
 |------|----------|------|
 | `employee_profile_sync` | 00:30 | 同步外部员工资料 |
+| `target_master_sync` | 00:45 | 同步外部靶点主数据至本地 `target` |
 | `serum_auto_update_status` | 01:00 | 自动更新免疫实验状态 |
 | `labillion_status_sync` | 02:00 | 镁伽非终态工单状态批量同步（未配 `LABILLION_BASE_URL` 时 skip） |
 

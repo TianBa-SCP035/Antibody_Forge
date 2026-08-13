@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select, text
@@ -100,7 +99,6 @@ def sync_targets(db: Session, source_db: Session, *, dry_run: bool = False) -> d
     targets_by_external_id = {target.external_id: target for target in existing_targets}
     targets_by_snum = {target.snum: target for target in existing_targets}
     seen_external_ids: set[int] = set()
-    synced_at = datetime.now()
     result: dict[str, Any] = {
         "source_total": len(source_rows),
         "valid": 0,
@@ -153,7 +151,6 @@ def sync_targets(db: Session, source_db: Session, *, dry_run: bool = False) -> d
                 external_id=external_id,
                 **values,
                 is_active=True,
-                synced_at=synced_at,
             )
             db.add(target)
             targets_by_external_id[external_id] = target
@@ -170,7 +167,6 @@ def sync_targets(db: Session, source_db: Session, *, dry_run: bool = False) -> d
             target.is_active = True
             result["reactivated"] += 1
             changed = True
-        target.synced_at = synced_at
         if changed:
             result["updated"] += 1
         else:
@@ -179,7 +175,6 @@ def sync_targets(db: Session, source_db: Session, *, dry_run: bool = False) -> d
     for target in existing_targets:
         if target.external_id not in seen_external_ids and target.is_active:
             target.is_active = False
-            target.synced_at = synced_at
             result["deactivated"] += 1
 
     if dry_run:

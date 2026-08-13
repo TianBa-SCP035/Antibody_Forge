@@ -294,7 +294,7 @@
               <strong>{{ selectedTarget.external_id }}</strong>
             </div>
             <div>
-              <span>最近同步</span>
+              <span>最近变更</span>
               <strong>{{ selectedTarget.synced_at || '—' }}</strong>
             </div>
           </div>

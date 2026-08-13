@@ -6,9 +6,11 @@ from typing import Any
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
+from models.system import SysJobRunLog
 from models.target import Target
 
 
+TARGET_SYNC_JOB_CODE = "job.target_master_sync"
 SEARCH_FIELDS = (
     Target.snum,
     Target.name,
@@ -125,12 +127,21 @@ def _get_target_stats(db: Session) -> dict[str, Any]:
             func.max(Target.synced_at),
         ).where(Target.is_active.is_(True))
     ).one()
+    latest_successful_sync = db.scalar(
+        select(SysJobRunLog.finished_at)
+        .where(
+            SysJobRunLog.job_code == TARGET_SYNC_JOB_CODE,
+            SysJobRunLog.result == "success",
+        )
+        .order_by(SysJobRunLog.finished_at.desc(), SysJobRunLog.id.desc())
+        .limit(1)
+    )
     return {
         "total": int(row[0] or 0),
         "developed": int(row[1] or 0),
         "undeveloped": int(row[2] or 0),
         "unmarked": int(row[3] or 0),
-        "synced_at": _serialize(row[4]),
+        "synced_at": _serialize(latest_successful_sync or row[4]),
     }
 
 

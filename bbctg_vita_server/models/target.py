@@ -30,11 +30,13 @@ class Target(Base):
         comment="靶点类型：1内部-千鼠万抗，2内部-其他，3外部，4NA"
     )
     status: Mapped[int | None] = mapped_column(comment="开发状态：1已开发，2未开发")
+    category: Mapped[str | None] = mapped_column(String(200), comment="靶点分类")
 
     ko_lethal_info: Mapped[int | None] = mapped_column(
         comment="KO致死情况：1致死，2存活，3数据冲突，4NA"
     )
     ko_lethal_info_desc: Mapped[str | None] = mapped_column(String(1000), comment="KO致死信息备注")
+    structural_properties: Mapped[str | None] = mapped_column(String(200), comment="结构特性类别")
     structure_feature: Mapped[str | None] = mapped_column(String(100), comment="结构特性（跨膜次数）")
     shape_remark: Mapped[str | None] = mapped_column(String(200), comment="形式备注")
     structure_feature_remark: Mapped[str | None] = mapped_column(
@@ -95,6 +97,7 @@ class Target(Base):
         String(1000),
         comment="配体或受体是否人鼠交叉",
     )
+    treatment_field: Mapped[str | None] = mapped_column(String(500), comment="治疗领域")
     indication: Mapped[str | None] = mapped_column(String(200), comment="适应症")
     gene_family: Mapped[str | None] = mapped_column(String(200), comment="基因家族")
     signal_path: Mapped[str | None] = mapped_column(String(1000), comment="信号通路")

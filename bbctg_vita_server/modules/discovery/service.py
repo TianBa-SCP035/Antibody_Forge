@@ -21,6 +21,9 @@ SEARCH_FIELDS = (
     Target.mouse_gene_official_name,
     Target.mouse_gene_alias_name,
     Target.mouse_ncbi_gene_id,
+    Target.category,
+    Target.structural_properties,
+    Target.treatment_field,
 )
 GENE_NAME_FIELDS = (
     Target.human_gene_official_name,
@@ -33,6 +36,11 @@ ALIAS_FIELDS = (
 NCBI_ID_FIELDS = (
     Target.human_ncbi_gene_id,
     Target.mouse_ncbi_gene_id,
+)
+DESCRIPTIVE_FIELDS = (
+    Target.category,
+    Target.structural_properties,
+    Target.treatment_field,
 )
 
 TARGET_FIELDS = tuple(column.key for column in Target.__table__.columns)
@@ -81,6 +89,7 @@ def get_target_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
             (_matches(Target.snum, contains_pattern), 22),
             (or_(*(_matches(field, contains_pattern) for field in ALIAS_FIELDS)), 30),
             (_matches(Target.official_full_name, contains_pattern), 40),
+            (or_(*(_matches(field, contains_pattern) for field in DESCRIPTIVE_FIELDS)), 45),
             (or_(*(_matches(field, contains_pattern) for field in NCBI_ID_FIELDS)), 50),
             else_=60,
         )

@@ -9,8 +9,10 @@ export interface TargetItem {
   name: string;
   type?: null | number;
   status?: null | number;
+  category?: null | string;
   ko_lethal_info?: null | number;
   ko_lethal_info_desc?: null | string;
+  structural_properties?: null | string;
   structure_feature?: null | string;
   shape_remark?: null | string;
   structure_feature_remark?: null | string;
@@ -37,6 +39,7 @@ export interface TargetItem {
   is_ko_affect_humoral_immunity?: boolean | null;
   is_ko_affect_humoral_immunity_desc?: null | string;
   is_human_mouse_cross?: null | string;
+  treatment_field?: null | string;
   indication?: null | string;
   gene_family?: null | string;
   signal_path?: null | string;

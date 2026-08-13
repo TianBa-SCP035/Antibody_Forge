@@ -11,44 +11,67 @@ from models.target import Target
 TARGET_SOURCE_SQL = text(
     """
     SELECT
-      id AS external_id,
-      snum,
-      name,
-      type,
-      status,
-      ko_lethal_info,
-      ko_lethal_info_desc,
-      structure_feature,
-      shape_remark,
-      structure_feature_remark,
-      ko_mgi,
-      ko_impc,
-      effect_cell,
-      ko_gt,
-      official_full_name,
-      human_gene_official_name,
-      human_gene_alias_name,
-      human_ncbi_gene_id,
-      human_chromosome_position,
-      is_homologous_gene,
-      mouse_gene_official_name,
-      mouse_gene_alias_name,
-      mouse_ncbi_gene_id,
-      mouse_chromosome_position,
-      human_mouse_homology,
-      human_dog_homology,
-      human_cat_homology,
-      human_monkey_homology,
-      human_mouse_homology_expect_functional_domain,
-      gene_functional_desc,
-      is_ko_affect_humoral_immunity,
-      is_ko_affect_humoral_immunity_desc,
-      is_human_mouse_cross,
-      indication,
-      gene_family,
-      signal_path,
-      remark
-    FROM xdida_platform_biocytogen.target
+      t.id AS external_id,
+      t.snum,
+      t.name,
+      t.type,
+      t.status,
+      category_tag.sname AS category,
+      t.ko_lethal_info,
+      t.ko_lethal_info_desc,
+      structure_tag.sname AS structural_properties,
+      t.structure_feature,
+      t.shape_remark,
+      t.structure_feature_remark,
+      t.ko_mgi,
+      t.ko_impc,
+      t.effect_cell,
+      t.ko_gt,
+      t.official_full_name,
+      t.human_gene_official_name,
+      t.human_gene_alias_name,
+      t.human_ncbi_gene_id,
+      t.human_chromosome_position,
+      t.is_homologous_gene,
+      t.mouse_gene_official_name,
+      t.mouse_gene_alias_name,
+      t.mouse_ncbi_gene_id,
+      t.mouse_chromosome_position,
+      t.human_mouse_homology,
+      t.human_dog_homology,
+      t.human_cat_homology,
+      t.human_monkey_homology,
+      t.human_mouse_homology_expect_functional_domain,
+      t.gene_functional_desc,
+      t.is_ko_affect_humoral_immunity,
+      t.is_ko_affect_humoral_immunity_desc,
+      t.is_human_mouse_cross,
+      treatment_tags.treatment_field,
+      t.indication,
+      t.gene_family,
+      t.signal_path,
+      t.remark
+    FROM xdida_platform_biocytogen.target AS t
+    LEFT JOIN xdida_platform_biocytogen.org_tag AS category_tag
+      ON category_tag.id = t.sort
+    LEFT JOIN xdida_platform_biocytogen.org_tag AS structure_tag
+      ON structure_tag.id = t.structural_properties
+    LEFT JOIN (
+      SELECT
+        target_tag.target_id,
+        GROUP_CONCAT(
+          DISTINCT org_tag.sname
+          ORDER BY org_tag.order_by, org_tag.id
+          SEPARATOR ', '
+        ) AS treatment_field
+      FROM xdida_platform_biocytogen.target_tag AS target_tag
+      INNER JOIN xdida_platform_biocytogen.org_tag AS org_tag
+        ON org_tag.id = target_tag.tag_id
+      WHERE org_tag.tag_type = 36
+        AND org_tag.is_delete = 0
+      GROUP BY target_tag.target_id
+    ) AS treatment_tags
+      ON treatment_tags.target_id = t.id
     """
 )
 
@@ -57,7 +80,9 @@ BOOLEAN_FIELDS = frozenset({"is_homologous_gene", "is_ko_affect_humoral_immunity
 TEXT_FIELDS = (
     "snum",
     "name",
+    "category",
     "ko_lethal_info_desc",
+    "structural_properties",
     "structure_feature",
     "shape_remark",
     "structure_feature_remark",
@@ -82,6 +107,7 @@ TEXT_FIELDS = (
     "gene_functional_desc",
     "is_ko_affect_humoral_immunity_desc",
     "is_human_mouse_cross",
+    "treatment_field",
     "indication",
     "gene_family",
     "signal_path",

@@ -106,7 +106,15 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
 镁伽接口**无**项目负责人式行级归属，仅按上述权限点鉴权。
 
-### 2.3 系统模块（`system.*`）
+### 2.3 千鼠万抗（`discovery.*`）
+
+| 权限码 | 类型 | 说明 |
+|--------|------|------|
+| `discovery.page.target_library` | page | 靶点库列表与详情浏览 |
+
+靶点库首版只读；列表与详情接口均使用该页面权限，不登记 `sys_permission_api`。
+
+### 2.4 系统模块（`system.*`）
 
 | 权限码 | 类型 | 说明 |
 |--------|------|------|
@@ -120,7 +128,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
 **page 与 action**：`page.*` 管进路由；Tab 与写接口靠对应的 `manage` / `view` action。
 
-### 2.4 权限包与角色（示例种子）
+### 2.5 权限包与角色（示例种子）
 
 `docs/vita-database.sql` 文末的权限包 / 角色**仅为克隆空库示例**，生产环境在后台完全自定义；新增页面时只需在 `sys_permission` 登记权限点，**不必**同步改示例包。
 
@@ -293,6 +301,7 @@ flowchart LR
 
 | category | code | 作用 |
 |----------|------|------|
+| `menu` | `menu.discovery`、`menu.discovery.target_library` | 千鼠万抗侧栏 |
 | `menu` | `menu.serum`、`menu.serum.list`、`menu.serum.titer_order` | 免疫实验侧栏 |
 | `menu` | `menu.mega_automation`、`menu.mega_automation.flow_work_orders` | 镁伽自动化侧栏 |
 | `menu` | `menu.system`、`menu.system.user_permission`、`menu.system.features` | 系统管理侧栏 |

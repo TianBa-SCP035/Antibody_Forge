@@ -218,9 +218,9 @@ CREATE TABLE IF NOT EXISTS target (
   external_id BIGINT NOT NULL COMMENT '外部平台靶点ID（target.id），同步唯一标识',
   snum VARCHAR(100) NOT NULL COMMENT '靶点编号',
   name VARCHAR(100) NOT NULL COMMENT '靶点名称',
-  type INT NULL COMMENT '靶点类型（源系统枚举，取值含义待确认）',
-  status INT NULL COMMENT '靶点状态：1未开发，2已开发，NULL未标注',
-  ko_lethal_info INT NULL COMMENT 'KO致死信息：1致死，2非致死，NULL未标注',
+  type INT NULL COMMENT '靶点类型：1内部-千鼠万抗，2内部-其他，3外部，4NA',
+  status INT NULL COMMENT '靶点状态：1已开发，2未开发，NULL未标注',
+  ko_lethal_info INT NULL COMMENT 'KO致死信息：1致死，2存活，3致死数据冲突，4NA，NULL未标注',
   ko_lethal_info_desc VARCHAR(1000) NULL COMMENT 'KO致死信息备注',
   structure_feature VARCHAR(100) NULL COMMENT '结构特性（跨膜次数）',
   shape_remark VARCHAR(200) NULL COMMENT '形式备注',
@@ -504,6 +504,7 @@ CREATE TABLE IF NOT EXISTS serum_titer_order (
 INSERT IGNORE INTO sys_permission
   (code, name, type, module, resource, action, route_path, ui_key, parent_code, sort_order)
 VALUES
+  ('discovery.page.target_library', '靶点库', 'page', 'discovery', 'target', 'view', '/discovery/targets', NULL, NULL, 50),
   ('serum.page.list', '免疫实验列表', 'page', 'serum', 'project', 'view', '/serum/list', NULL, NULL, 100),
   ('serum.page.detail', '免疫实验详情', 'page', 'serum', 'project', 'view_detail', '/serum/detail', NULL, NULL, 110),
   ('serum.page.edit', '免疫实验编辑', 'page', 'serum', 'project', 'edit_page', '/serum/edit', NULL, NULL, 120),
@@ -595,6 +596,8 @@ VALUES
 INSERT IGNORE INTO sys_feature_flag
   (code, name, category, description, enabled, visible, sort_order, config)
 VALUES
+  ('menu.discovery', '千鼠万抗', 'menu', '控制千鼠万抗父级菜单显示', 1, 1, 5, JSON_OBJECT('path', '/discovery', 'icon', 'lucide:network')),
+  ('menu.discovery.target_library', '靶点库', 'menu', '控制靶点库页面显示', 1, 1, 10, JSON_OBJECT('path', '/discovery/targets', 'icon', 'lucide:database', 'parent_code', 'menu.discovery')),
   ('menu.serum', '免疫实验菜单', 'menu', '控制免疫实验模块菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum', 'icon', 'lucide:test-tube')),
   ('menu.serum.list', '免疫实验列表', 'menu', '控制免疫实验列表菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum/list', 'icon', 'lucide:list', 'parent_code', 'menu.serum')),
   ('menu.serum.titer_order', '效价实验列表', 'menu', '控制效价实验列表菜单显示', 1, 1, 20, JSON_OBJECT('path', '/serum/titer-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.serum')),

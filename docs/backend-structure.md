@@ -17,6 +17,7 @@ bbctg_vita_server/
   modules/
     auth/              # 登录、JWT、当前用户
     immunology/        # serum / titer / cell
+    discovery/         # 千鼠万抗
     mega_automation/   # 镁伽流式工单（含 callback、labillion_sync）
     order_sync/        # 工单数据回传
     system/            # 用户角色权限、审计、功能开关
@@ -40,6 +41,7 @@ DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Offi
 | `/api/health` | `api.py` |
 | `/api/auth` | `modules/auth` |
 | `/api/user/info` | `api.py`（Vben 用户信息） |
+| `/api/discovery` | `modules/discovery` |
 | `/api/serum` | `modules/immunology/serum` |
 | `/api/serum/titer` | `modules/immunology/titer` |
 | `/api/serum/cell_inventory` | `modules/immunology/cell` |

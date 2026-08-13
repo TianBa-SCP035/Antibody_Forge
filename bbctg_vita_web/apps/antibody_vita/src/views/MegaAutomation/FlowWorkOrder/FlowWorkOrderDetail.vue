@@ -587,7 +587,8 @@ export default {
     await this.loadDetail();
   },
   activated() {
-    this.reloadIfRouteIdentityChanged();
+    if (this.reloadIfRouteIdentityChanged()) return;
+    this.triggerLabillionSync();
   },
   beforeUnmount() {
     this.stopPausedDirtyWatch();
@@ -758,10 +759,11 @@ export default {
     },
     reloadIfRouteIdentityChanged() {
       // 返回列表时路由已切走，详情组件可能仍处在离开动画中；勿按「无 id」当成新建草稿重载
-      if (this.$route.name !== 'MegaFlowWorkOrderDetail') return;
-      if (this.loading) return;
-      if (this.loadedRouteIdentity === this.detailRouteIdentity()) return;
+      if (this.$route.name !== 'MegaFlowWorkOrderDetail') return true;
+      if (this.loading) return true;
+      if (this.loadedRouteIdentity === this.detailRouteIdentity()) return false;
       this.loadDetail();
+      return true;
     },
     async loadDetail() {
       this.clearValidationIssues();

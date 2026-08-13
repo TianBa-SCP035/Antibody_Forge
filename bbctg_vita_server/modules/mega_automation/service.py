@@ -736,7 +736,7 @@ def cancel_work_order(db: Session, order_id: int) -> dict[str, Any]:
     return get_work_order_detail(db, order.id)
 
 
-def sync_work_order_labillion_status(db: Session, order_id: int) -> dict[str, Any]:
+def sync_work_order_labillion_status(db: Session, order_id: int, *, force: bool = True) -> dict[str, Any]:
     from modules.mega_automation.labillion_sync import sync_work_order_labillion_status as sync_status
 
-    return sync_status(db, order_id)
+    return sync_status(db, order_id, force=force)

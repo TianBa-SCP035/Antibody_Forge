@@ -26,11 +26,13 @@ class Target(Base):
     )
     snum: Mapped[str] = mapped_column(String(100), nullable=False, comment="靶点编号")
     name: Mapped[str] = mapped_column(String(100), nullable=False, comment="靶点名称")
-    type: Mapped[int | None] = mapped_column(comment="靶点类型（源系统枚举，取值含义待确认）")
-    status: Mapped[int | None] = mapped_column(comment="靶点状态：1未开发，2已开发，NULL未标注")
+    type: Mapped[int | None] = mapped_column(
+        comment="靶点类型：1内部-千鼠万抗，2内部-其他，3外部，4NA"
+    )
+    status: Mapped[int | None] = mapped_column(comment="靶点状态：1已开发，2未开发，NULL未标注")
 
     ko_lethal_info: Mapped[int | None] = mapped_column(
-        comment="KO致死信息：1致死，2非致死，NULL未标注"
+        comment="KO致死信息：1致死，2存活，3致死数据冲突，4NA，NULL未标注"
     )
     ko_lethal_info_desc: Mapped[str | None] = mapped_column(String(1000), comment="KO致死信息备注")
     structure_feature: Mapped[str | None] = mapped_column(String(100), comment="结构特性（跨膜次数）")

@@ -14,6 +14,30 @@ from models.system import SysFeatureFlag, SysJobRunLog
 
 DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
     {
+        "code": "menu.discovery",
+        "name": "千鼠万抗",
+        "category": "menu",
+        "description": "控制千鼠万抗父级菜单显示",
+        "enabled": True,
+        "visible": True,
+        "sort_order": 5,
+        "config": {"path": "/discovery", "icon": "lucide:network"},
+    },
+    {
+        "code": "menu.discovery.target_library",
+        "name": "靶点库",
+        "category": "menu",
+        "description": "控制靶点库页面显示",
+        "enabled": True,
+        "visible": True,
+        "sort_order": 10,
+        "config": {
+            "path": "/discovery/targets",
+            "icon": "lucide:database",
+            "parent_code": "menu.discovery",
+        },
+    },
+    {
         "code": "menu.system",
         "name": "系统管理",
         "category": "menu",

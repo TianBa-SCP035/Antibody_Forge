@@ -124,6 +124,14 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
     url: '/mega-automation/flow-work-orders',
   },
   {
+    id: 'target-library',
+    titleKey: 'page.home.presetTargetLibraryTitle',
+    subtitleKey: 'page.home.presetTargetLibrarySubtitle',
+    icon: 'lucide:database',
+    iconClass: 'bg-cyan-500/15 text-cyan-600',
+    url: '/discovery/targets',
+  },
+  {
     id: 'profile',
     titleKey: 'page.home.presetProfileTitle',
     subtitleKey: 'page.home.presetProfileSubtitle',
@@ -169,11 +177,11 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
 
 export const defaultQuickNavPresetIds: Array<string | null> = [
   'serum-list',
-  'titer-order-list',
   'flow-work-order-list',
-  'profile',
   'system',
-  null,
+  'titer-order-list',
+  'profile',
+  'target-library',
 ];
 
 export function getQuickNavPresetDef(id: string) {
@@ -308,6 +316,9 @@ export function canAccessStartPath(
   }
   if (path === '/mega-automation/flow-work-orders') {
     return hasAccessByCodes(['mega.page.flow_work_order']);
+  }
+  if (path === '/discovery/targets') {
+    return hasAccessByCodes(['discovery.page.target_library']);
   }
   if (path.startsWith('/system')) {
     return hasAccessByCodes([...HOME_SYSTEM_ACCESS_CODES]);

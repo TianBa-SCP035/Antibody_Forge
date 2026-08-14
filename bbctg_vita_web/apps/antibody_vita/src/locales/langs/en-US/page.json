@@ -35,6 +35,8 @@
     "presetTiterOrderSubtitle": "Orders and test scheduling",
     "presetFlowWorkOrderTitle": "Flow work orders",
     "presetFlowWorkOrderSubtitle": "Mega automation flow orders",
+    "presetTargetLibraryTitle": "Target intelligence",
+    "presetTargetLibrarySubtitle": "Master data search and profiles",
     "presetProfileTitle": "Profile",
     "presetProfileSubtitle": "Roles and credentials",
     "presetSystemTitle": "System settings",

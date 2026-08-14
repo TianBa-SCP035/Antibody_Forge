@@ -35,6 +35,8 @@
     "presetTiterOrderSubtitle": "效价工单与检测安排",
     "presetFlowWorkOrderTitle": "流式工单总览",
     "presetFlowWorkOrderSubtitle": "镁伽自动化流式工单",
+    "presetTargetLibraryTitle": "靶点情报",
+    "presetTargetLibrarySubtitle": "主数据搜索与档案",
     "presetProfileTitle": "用户中心",
     "presetProfileSubtitle": "平台角色与密钥",
     "presetSystemTitle": "系统管理",

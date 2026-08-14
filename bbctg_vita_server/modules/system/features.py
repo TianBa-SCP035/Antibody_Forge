@@ -25,9 +25,9 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
     },
     {
         "code": "menu.discovery.target_library",
-        "name": "靶点库",
+        "name": "靶点情报",
         "category": "menu",
-        "description": "控制靶点库页面显示",
+        "description": "控制靶点情报页面显示",
         "enabled": True,
         "visible": True,
         "sort_order": 10,
@@ -194,6 +194,8 @@ def list_feature_flags(db: Session) -> list[dict[str, Any]]:
                 **default,
                 **flag_data,
                 "config": {**(default.get("config") or {}), **(flag_data.get("config") or {})},
+                "name": default["name"],
+                "description": default.get("description"),
             }
         else:
             data = dict(default)

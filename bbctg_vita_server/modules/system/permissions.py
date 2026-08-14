@@ -83,7 +83,7 @@ PERMISSION_MESSAGES: dict[str, str] = {
     "mega.page.flow_work_order": "没有权限查看流式工单总览",
     "mega.flow_work_order.edit": "没有权限编辑流式工单",
     "mega.flow_work_order.dispatch": "没有权限发送流式工单",
-    "discovery.page.target_library": "没有权限查看靶点库",
+    "discovery.page.target_library": "没有权限查看靶点情报",
     "system.page.user": "没有权限访问用户管理",
     "system.page.role": "没有权限访问角色管理",
     "system.page.permission": "没有权限访问权限管理",

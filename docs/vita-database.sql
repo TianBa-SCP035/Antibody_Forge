@@ -507,7 +507,7 @@ CREATE TABLE IF NOT EXISTS serum_titer_order (
 INSERT IGNORE INTO sys_permission
   (code, name, type, module, resource, action, route_path, ui_key, parent_code, sort_order)
 VALUES
-  ('discovery.page.target_library', '靶点库', 'page', 'discovery', 'target', 'view', '/discovery/targets', NULL, NULL, 50),
+  ('discovery.page.target_library', '靶点情报', 'page', 'discovery', 'target', 'view', '/discovery/targets', NULL, NULL, 50),
   ('serum.page.list', '免疫实验列表', 'page', 'serum', 'project', 'view', '/serum/list', NULL, NULL, 100),
   ('serum.page.detail', '免疫实验详情', 'page', 'serum', 'project', 'view_detail', '/serum/detail', NULL, NULL, 110),
   ('serum.page.edit', '免疫实验编辑', 'page', 'serum', 'project', 'edit_page', '/serum/edit', NULL, NULL, 120),
@@ -600,7 +600,7 @@ INSERT IGNORE INTO sys_feature_flag
   (code, name, category, description, enabled, visible, sort_order, config)
 VALUES
   ('menu.discovery', '千鼠万抗', 'menu', '控制千鼠万抗父级菜单显示', 1, 1, 5, JSON_OBJECT('path', '/discovery', 'icon', 'lucide:network')),
-  ('menu.discovery.target_library', '靶点库', 'menu', '控制靶点库页面显示', 1, 1, 10, JSON_OBJECT('path', '/discovery/targets', 'icon', 'lucide:database', 'parent_code', 'menu.discovery')),
+  ('menu.discovery.target_library', '靶点情报', 'menu', '控制靶点情报页面显示', 1, 1, 10, JSON_OBJECT('path', '/discovery/targets', 'icon', 'lucide:database', 'parent_code', 'menu.discovery')),
   ('menu.serum', '免疫实验菜单', 'menu', '控制免疫实验模块菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum', 'icon', 'lucide:test-tube')),
   ('menu.serum.list', '免疫实验列表', 'menu', '控制免疫实验列表菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum/list', 'icon', 'lucide:list', 'parent_code', 'menu.serum')),
   ('menu.serum.titer_order', '效价实验列表', 'menu', '控制效价实验列表菜单显示', 1, 1, 20, JSON_OBJECT('path', '/serum/titer-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.serum')),

@@ -3,6 +3,10 @@ import { requestClient, skipGlobalErrorHandler } from '#/api/request';
 type RequestConfig = Parameters<typeof requestClient.get>[1];
 type PostConfig = Parameters<typeof requestClient.post>[2];
 
+const downloadConfig = {
+  skipErrorHandler: true,
+} as Parameters<typeof requestClient.download>[1];
+
 export interface FlowWorkOrderOption {
   label: string;
   value: string;
@@ -170,6 +174,15 @@ export function fetchFlowWorkOrderList(data: FlowWorkOrderListQuery, config?: Po
   return requestClient.post<FlowWorkOrderListResult>('/mega-automation/flow-work-orders/list', data, {
     ...skipGlobalErrorHandler,
     ...config,
+  });
+}
+
+export function exportFlowWorkOrderList(data: FlowWorkOrderListQuery) {
+  return requestClient.download('/mega-automation/flow-work-orders/export', {
+    data,
+    method: 'POST',
+    timeout: 360_000,
+    ...downloadConfig,
   });
 }
 

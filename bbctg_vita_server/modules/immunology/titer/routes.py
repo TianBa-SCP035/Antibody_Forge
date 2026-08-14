@@ -362,6 +362,19 @@ def titer_order_list(
     return success(service.get_titer_order_list(db, data or {}))
 
 
+@router.post("/order/export")
+def titer_order_export(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+):
+    require_permission(db, current_user, "serum.page.titer_order")
+    from utils.excel import xlsx_response
+
+    output, filename = service.export_titer_order_list_workbook(db, data or {})
+    return xlsx_response(output, filename)
+
+
 @router.post("/order/save")
 def titer_order_save(
     data: dict,

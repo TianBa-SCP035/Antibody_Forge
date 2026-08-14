@@ -71,6 +71,8 @@ PRIORITIES = [
     {"value": "normal", "label": "普通"},
     {"value": "low", "label": "低"},
 ]
+ORDER_TYPE_LABELS = {item["value"]: item["label"] for item in ORDER_TYPES}
+PRIORITY_LABELS = {item["value"]: item["label"] for item in PRIORITIES}
 PRIORITY_VALUES = {item["value"] for item in PRIORITIES}
 
 EDITABLE_STATUSES = frozenset({"draft", "validated", "failed", "execution_failed"})
@@ -348,11 +350,8 @@ def _json_overlaps(column, value: str):
     return func.json_overlaps(column, json.dumps([value]))
 
 
-def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
-    page = max(int(data.get("page", 1) or 1), 1)
-    limit = min(max(int(data.get("limit", 20) or 20), 1), 200)
+def _work_order_list_stmt(data: dict[str, Any]):
     stmt = select(MegaFlowWorkOrder)
-
     keyword = clean_text(data.get("keyword"))
     if keyword:
         pattern = f"%{keyword}%"
@@ -380,6 +379,13 @@ def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     cell_plate_barcode = clean_text(data.get("cell_plate_barcode"))
     if cell_plate_barcode:
         stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.cell_plate_barcodes, cell_plate_barcode))
+    return stmt
+
+
+def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    page = max(int(data.get("page", 1) or 1), 1)
+    limit = min(max(int(data.get("limit", 20) or 20), 1), 200)
+    stmt = _work_order_list_stmt(data)
 
     total = db.scalar(
         stmt.with_only_columns(func.count(), maintain_column_froms=True).order_by(None)
@@ -406,6 +412,70 @@ def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
         "total": total,
         "stats": get_work_order_stats(db),
     }
+
+
+def export_work_order_list_workbook(db: Session, data: dict[str, Any]):
+    from utils.excel import build_list_workbook, cell_text
+
+    stmt = _work_order_list_stmt(data or {})
+    rows = db.scalars(
+        stmt.options(defer(MegaFlowWorkOrder.content)).order_by(
+            MegaFlowWorkOrder.updated_at.desc(),
+            MegaFlowWorkOrder.id.desc(),
+        )
+    ).all()
+    current_dispatches = batch_current_dispatches(db, [row.id for row in rows])
+    headers = [
+        "订单编号",
+        "订单名称",
+        "检测类型",
+        "优先级",
+        "项目号",
+        "靶点",
+        "样本板",
+        "细胞板",
+        "备注",
+        "状态",
+        "来源工单号",
+        "创建人",
+        "发送时间",
+        "创建时间",
+        "更新时间",
+        "失败信息",
+    ]
+    excel_rows = []
+    for row in rows:
+        item = row.to_dict(include_detail=False)
+        current = current_dispatches.get(row.id)
+        _apply_order_display(
+            item,
+            status=row.status,
+            pause_state=current.pause_state if current else None,
+        )
+        excel_rows.append([
+            item.get("orderNum"),
+            item.get("orderName"),
+            ORDER_TYPE_LABELS.get(item.get("orderType"), item.get("orderType") or ""),
+            PRIORITY_LABELS.get(item.get("priority"), item.get("priority") or "普通"),
+            cell_text(item.get("project_nos"), joiner=", "),
+            cell_text(item.get("targets"), joiner=", "),
+            cell_text(item.get("sample_plate_barcodes"), joiner=", "),
+            cell_text(item.get("cell_plate_barcodes"), joiner=", "),
+            item.get("remark"),
+            item.get("display_status_label") or ORDER_STATUS_LABELS.get(item.get("status"), item.get("status") or ""),
+            item.get("source_id"),
+            item.get("created_by"),
+            item.get("sent_at"),
+            item.get("created_at"),
+            item.get("updated_at"),
+            item.get("error_message"),
+        ])
+    return build_list_workbook(
+        sheet_title="流式工单总览",
+        filename_prefix="流式工单总览",
+        headers=headers,
+        rows=excel_rows,
+    )
 
 
 def get_work_orders_by_source(db: Session, data: dict[str, Any]) -> dict[str, Any]:

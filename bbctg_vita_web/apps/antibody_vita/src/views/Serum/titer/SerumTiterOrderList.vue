@@ -1,5 +1,11 @@
 <template>
   <div class="app-container titer-order-page">
+    <AdvancedOpsBar v-model="showAdvancedOps">
+      <el-button type="warning" :icon="Download" @click="handleListExport">
+        列表导出
+      </el-button>
+    </AdvancedOpsBar>
+
     <section class="workbench-panel">
       <div class="page-header-band">
         <div class="title-group">
@@ -233,6 +239,9 @@
           placeholder="工单状态"
         />
         <div class="filter-actions">
+          <span class="more-toggle-btn" title="高级操作" @click="showAdvancedOps = !showAdvancedOps">
+            <el-icon><Tools /></el-icon>
+          </span>
           <el-button type="primary" :icon="Search" @click="handleFilter">查询</el-button>
           <el-button :icon="Refresh" @click="resetFilter">重置</el-button>
         </div>
@@ -711,7 +720,7 @@
 </template>
 
 <script>
-import { DataAnalysis, Document, Download, Plus, Refresh, Search, TrendCharts } from '@element-plus/icons-vue';
+import { DataAnalysis, Document, Download, Plus, Refresh, Search, Tools, TrendCharts } from '@element-plus/icons-vue';
 import { markRaw } from 'vue';
 import * as XLSX from 'xlsx';
 import {
@@ -743,8 +752,11 @@ import {
   fetchTiterOrderMeta,
   fetchTiterOrderOwnerStats,
   fetchTiterOrderStats,
+  exportTiterOrderList,
   saveTiterOrder,
 } from '#/api/serum';
+import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
+import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
 import { getSerumProjectStatusTagType, getSerumTiterStatusTagType, mergeTiterSerumStatusOptions } from '#/utils/serumProjectStatus';
 import {
   canDeleteTiterOrder,
@@ -915,7 +927,9 @@ export default {
     ElTableColumn,
     ElTag,
     ElTooltip,
+    AdvancedOpsBar,
     Plus,
+    Tools,
     TiterInstrumentOrderDialogs,
     TiterOrderCreateDialog,
   },
@@ -995,6 +1009,7 @@ export default {
       TrendCharts: markRaw(TrendCharts),
       _filterMethodCache: Object.create(null),
       createDialogVisible: false,
+      showAdvancedOps: false,
       dialogEditOrder: null,
       list: [],
       listLoading: false,
@@ -1711,6 +1726,16 @@ export default {
       this.listQuery.page = 1;
       this.getList();
     },
+    async handleListExport() {
+      try {
+        await downloadListExcel(
+          () => exportTiterOrderList(this.buildQuery()),
+          `效价实验列表_${excelTimestamp()}.xlsx`,
+        );
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '列表导出失败，请重试' } });
+      }
+    },
     openOwnerStatsDialog() {
       const month = currentMonthKey();
       this.ownerStatsMonthRange = [month, month];
@@ -2120,6 +2145,7 @@ export default {
  */
 
 .titer-order-page {
+  position: relative;
   min-height: 100%;
   padding: var(--list-page-padding);
   background: var(--list-page-bg);
@@ -2373,24 +2399,44 @@ export default {
   min-width: 0;
 }
 
-.filter-strip :deep(.el-date-editor) {
+.filter-strip :deep(.el-date-editor),
+.filter-strip :deep(.el-select),
+.filter-strip :deep(.el-input) {
   width: 100%;
   min-width: 0;
+  font-size: 13px;
+}
+
+.filter-strip :deep(.el-input) {
+  --el-input-height: 30px;
+}
+
+.filter-strip :deep(.el-input__wrapper),
+.filter-strip :deep(.el-select__wrapper) {
+  min-height: 30px;
 }
 
 .filter-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
   justify-content: flex-end;
   white-space: nowrap;
 }
 
+.filter-actions .more-toggle-btn {
+  margin-right: 10px;
+}
+
 .filter-actions :deep(.el-button) {
   height: 30px;
   min-height: 30px;
-  padding: 0 10px;
+  padding: 0 13px;
   font-size: 13px;
+}
+
+.filter-actions :deep(.el-button .el-icon + span) {
+  margin-left: 4px;
 }
 
 .table-card {

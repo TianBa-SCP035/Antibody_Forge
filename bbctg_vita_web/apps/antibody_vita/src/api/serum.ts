@@ -72,6 +72,15 @@ export function export_mouse(data: any) {
   });
 }
 
+export function exportSerumList(data: any) {
+  return requestClient.download('/serum/export_list', {
+    data,
+    method: 'POST',
+    timeout: LONG_TIMEOUT,
+    ...downloadConfig,
+  });
+}
+
 export function exportScheme(data: { id?: number; ids?: number[] }) {
   return requestClient.download('/serum/export_scheme', {
     data,
@@ -218,6 +227,15 @@ export function fetchTiterOrderBatchPreview(experimentId: string, config?: Reque
 
 export function fetchTiterOrderList(data: any, config?: PostConfig) {
   return requestClient.post('/serum/titer/order/list', data, config);
+}
+
+export function exportTiterOrderList(data: any) {
+  return requestClient.download('/serum/titer/order/export', {
+    data,
+    method: 'POST',
+    timeout: LONG_TIMEOUT,
+    ...downloadConfig,
+  });
 }
 
 export function saveTiterOrder(data: any) {

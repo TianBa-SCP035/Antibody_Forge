@@ -77,6 +77,27 @@ def flow_work_order_list(
     return _run(db, lambda: service.get_work_order_list(db, data or {}))
 
 
+@router.post("/flow-work-orders/export")
+def flow_work_order_export(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+):
+    require_permission(db, current_user, "mega.page.flow_work_order")
+    from utils.excel import xlsx_response
+
+    try:
+        output, filename = service.export_work_order_list_workbook(db, data or {})
+    except ValueError as exc:
+        db.rollback()
+        return error(str(exc))
+    except Exception:
+        db.rollback()
+        logger.exception("mega automation export failed")
+        return error("服务端异常，请稍后重试")
+    return xlsx_response(output, filename)
+
+
 @router.get("/flow-work-orders/{order_id}")
 def flow_work_order_detail(
     order_id: int,

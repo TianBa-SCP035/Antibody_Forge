@@ -717,11 +717,7 @@ def _empty_titer_owners_condition():
     )
 
 
-def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
-    page = int(data.get("page", 1) or 1)
-    limit = int(data.get("limit", 20) or 20)
-    stmt = _titer_order_query()
-
+def _apply_titer_order_list_filters(stmt, data: dict[str, Any]):
     project_code = str(data.get("project_code") or "").strip()
     project_codes = data.get("project_codes")
     target_name = str(data.get("target_name") or "").strip()
@@ -755,8 +751,6 @@ def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
         stmt = stmt.where(or_(SerumTiterOrder.summary.is_(None), SerumTiterOrder.summary == ""))
     if data.get("summary_filled"):
         stmt = stmt.where(SerumTiterOrder.summary.is_not(None), SerumTiterOrder.summary != "")
-
-    blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
     test_start, test_end = _filter_date_bounds(data, "test_dates_start", "test_dates_end")
     if test_start or test_end:
         stmt = stmt.where(
@@ -765,6 +759,29 @@ def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
                 test_end or "9999-12-31",
             )
         )
+    return stmt
+
+
+def _titer_order_list_items(db: Session, data: dict[str, Any]) -> list[dict]:
+    stmt = _apply_titer_order_list_filters(_titer_order_query(), data)
+    blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
+    rows = db.execute(stmt.order_by(SerumTiterOrder.id.desc())).all()
+    items = _enrich_order_rows(db, rows)
+    if blood_start or blood_end:
+        items = [
+            item
+            for item in items
+            if _blood_date_in_range(item.get("blood_collection_date") or "", blood_start, blood_end)
+        ]
+    return items
+
+
+def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
+    page = int(data.get("page", 1) or 1)
+    limit = int(data.get("limit", 20) or 20)
+    stmt = _apply_titer_order_list_filters(_titer_order_query(), data)
+
+    blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
 
     if blood_start or blood_end:
         rows = db.execute(stmt.order_by(SerumTiterOrder.id.desc())).all()
@@ -1377,3 +1394,57 @@ def delete_elisa_plate(db: Session, plate_id: int) -> None:
         raise ValueError("板数据不存在")
     db.delete(plate)
     db.commit()
+
+
+def export_titer_order_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, str]:
+    from utils.excel import build_list_workbook, cell_text
+
+    items = _titer_order_list_items(db, data or {})
+    headers = [
+        "项目编号",
+        "实验ID",
+        "效价工单号",
+        "靶点",
+        "笼位",
+        "采血日期",
+        "采血次数",
+        "只数",
+        "检测方法",
+        "FACS",
+        "ELISA",
+        "免疫负责人",
+        "效价负责人",
+        "检测日期",
+        "血清状态",
+        "备注",
+        "效价小结",
+        "免疫状态",
+    ]
+    rows = []
+    for item in items:
+        rows.append([
+            item.get("project_code"),
+            item.get("experiment_id"),
+            item.get("titer_order_id"),
+            item.get("target_name"),
+            item.get("cage_position"),
+            item.get("blood_collection_date"),
+            item.get("blood_collection_seq"),
+            item.get("mouse_count"),
+            item.get("assay_method"),
+            item.get("facs_plate_count"),
+            item.get("elisa_plate_count"),
+            item.get("immune_owner"),
+            cell_text(item.get("titer_owners")),
+            item.get("test_dates_display") or cell_text(item.get("test_dates")),
+            item.get("serum_status"),
+            item.get("remark"),
+            item.get("summary"),
+            item.get("immune_status"),
+        ])
+    return build_list_workbook(
+        sheet_title="效价实验列表",
+        filename_prefix="效价实验列表",
+        headers=headers,
+        rows=rows,
+    )

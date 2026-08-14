@@ -45,6 +45,9 @@ export const SERUM_ERRORS = {
     exportMouse: {
       default: '导出失败，请重试',
     } satisfies OperationMessages,
+    exportList: {
+      default: '列表导出失败，请重试',
+    } satisfies OperationMessages,
     initMeta: {
       default: '列表数据加载失败',
     } satisfies OperationMessages,

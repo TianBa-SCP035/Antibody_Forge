@@ -1,5 +1,11 @@
 <template>
   <div class="app-container mega-flow-order-page">
+    <AdvancedOpsBar v-model="showAdvancedOps">
+      <el-button type="warning" :icon="Download" @click="handleListExport">
+        列表导出
+      </el-button>
+    </AdvancedOpsBar>
+
     <section class="workbench-panel">
       <div class="page-header-band">
         <div>
@@ -101,6 +107,9 @@
           placeholder="细胞板条码"
           @keyup.enter="handleFilter"
         />
+        <span class="more-toggle-btn" title="高级操作" @click="showAdvancedOps = !showAdvancedOps">
+          <el-icon><Tools /></el-icon>
+        </span>
         <div class="filter-actions">
           <el-button type="primary" :icon="Search" @click="handleFilter">查询</el-button>
           <el-button :icon="Refresh" @click="resetFilter">重置</el-button>
@@ -216,9 +225,11 @@
 
 <script>
 import {
+  Download,
   Plus,
   Refresh,
   Search,
+  Tools,
 } from '@element-plus/icons-vue';
 import {
   ElButton,
@@ -239,7 +250,10 @@ import { useUserStore } from '@vben/stores';
 import {
   fetchFlowWorkOrderList,
   fetchFlowWorkOrderMeta,
+  exportFlowWorkOrderList,
 } from '#/api/megaAutomation';
+import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
+import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
 import {
   canEditMegaFlowWorkOrder,
 } from '#/utils/megaPermission';
@@ -289,11 +303,13 @@ export default {
     ElTable,
     ElTableColumn,
     ElTag,
+    AdvancedOpsBar,
     Plus,
+    Tools,
   },
   setup() {
     const userStore = useUserStore();
-    return { userStore, Refresh, Search };
+    return { userStore, Download, Refresh, Search };
   },
   data() {
     return {
@@ -301,6 +317,7 @@ export default {
       total: 0,
       stats: {},
       listLoading: false,
+      showAdvancedOps: false,
       listQuery: emptyQuery(),
       statusOptions: DEFAULT_STATUS_OPTIONS,
       orderTypeOptions: [{ value: 'TITER', label: '效价' }],
@@ -365,6 +382,16 @@ export default {
     handleFilter() {
       this.listQuery.page = 1;
       this.fetchList();
+    },
+    async handleListExport() {
+      try {
+        await downloadListExcel(
+          () => exportFlowWorkOrderList(this.listQuery),
+          `流式工单总览_${excelTimestamp()}.xlsx`,
+        );
+      } catch (error) {
+        ElMessage.error(error?.message || '列表导出失败，请重试');
+      }
     },
     resetFilter() {
       this.listQuery = emptyQuery();
@@ -439,6 +466,7 @@ export default {
 
 <style scoped>
 .mega-flow-order-page {
+  position: relative;
   min-height: 100%;
   padding: var(--list-page-padding);
   font-size: 14px;
@@ -638,25 +666,34 @@ export default {
 }
 
 .filter-strip {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(6, minmax(0, 1fr)) auto auto;
   gap: 10px;
   align-items: center;
   padding: 12px 2px 2px;
 }
 
-.filter-item {
-  width: 180px;
+.filter-item,
+.filter-keyword {
+  width: 100%;
+  min-width: 0;
 }
 
-.filter-keyword {
-  width: 360px;
+.filter-strip :deep(.el-select),
+.filter-strip :deep(.el-input) {
+  width: 100%;
+}
+
+.filter-strip > .more-toggle-btn {
+  margin: 0 8px;
 }
 
 .filter-actions {
   display: flex;
+  flex-shrink: 0;
   gap: 8px;
-  margin-left: auto;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .link-text {
@@ -690,15 +727,6 @@ export default {
   .page-header-band {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .filter-actions {
-    margin-left: 0;
-  }
-
-  .filter-keyword {
-    width: 100%;
-    max-width: 360px;
   }
 }
 

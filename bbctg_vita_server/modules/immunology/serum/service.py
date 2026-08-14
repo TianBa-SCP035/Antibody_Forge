@@ -176,14 +176,38 @@ def generate_next_id(db: Session, project_code: str) -> str | None:
     return f"{project_code}{next_suffix:02d}"
 
 
-def get_list(db: Session, data: dict[str, Any]) -> dict:
-    page = int(data.get("page", 1) or 1)
-    limit = int(data.get("limit", 20) or 20)
+def _project_list_stmt(data: dict[str, Any]):
     stmt = apply_project_filters(select(SerumImmProject), data)
     if data.get("start_date"):
         stmt = stmt.where(SerumImmProject.start_date >= data["start_date"])
     if data.get("end_date"):
         stmt = stmt.where(SerumImmProject.start_date <= data["end_date"])
+    return stmt
+
+
+def _first_cage_by_experiment(db: Session, experiment_ids: list[str]) -> dict[str, str]:
+    ids = [str(exp_id).strip() for exp_id in experiment_ids if str(exp_id or "").strip()]
+    if not ids:
+        return {}
+    cages: dict[str, str] = {}
+    for exp_id, cage in db.execute(
+        select(SerumImmMouse.experiment_id, SerumImmMouse.cage_position)
+        .where(
+            SerumImmMouse.experiment_id.in_(ids),
+            SerumImmMouse.cage_position.is_not(None),
+        )
+        .order_by(SerumImmMouse.id.asc())
+    ).all():
+        key = str(exp_id or "").strip()
+        if key and key not in cages:
+            cages[key] = str(cage or "").strip()
+    return cages
+
+
+def get_list(db: Session, data: dict[str, Any]) -> dict:
+    page = int(data.get("page", 1) or 1)
+    limit = int(data.get("limit", 20) or 20)
+    stmt = _project_list_stmt(data)
 
     total_stmt = select(func.count()).select_from(stmt.subquery())
     total = db.scalar(total_stmt) or 0
@@ -205,6 +229,69 @@ def get_list(db: Session, data: dict[str, Any]) -> dict:
         item["cage_position_display"] = item["cage_position"]
         items.append(item)
     return {"items": items, "total": total}
+
+
+def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, str]:
+    from utils.excel import build_list_workbook
+
+    projects = db.scalars(_project_list_stmt(data or {}).order_by(SerumImmProject.id.desc())).all()
+    cages = _first_cage_by_experiment(
+        db, [project.experiment_id for project in projects if project.experiment_id]
+    )
+    headers = [
+        "编号",
+        "实验ID",
+        "项目名称",
+        "归类鼠型",
+        "笼位",
+        "实验备注",
+        "课题类型",
+        "PM",
+        "鼠型",
+        "靶点",
+        "靶点类型",
+        "靶点大小",
+        "负责人",
+        "开始日期",
+        "免疫间隔",
+        "检测方法",
+        "FACS板数",
+        "ELISA板数",
+        "状态",
+        "制备状态",
+        "项目目的",
+    ]
+    rows = []
+    for project in projects:
+        rows.append([
+            project.project_code,
+            project.experiment_id,
+            project.project_name,
+            project.mouse_strain_category,
+            cages.get(str(project.experiment_id or "").strip(), ""),
+            project.remark,
+            project.study_type,
+            project.pm,
+            project.mouse_strain,
+            project.target_name,
+            project.target_type,
+            project.target_size,
+            project.owner,
+            project.start_date,
+            project.immunization_interval,
+            project.assay_method,
+            project.facs_plate_count,
+            project.elisa_plate_count,
+            project.project_status,
+            project.prep_status,
+            project.project_purpose,
+        ])
+    return build_list_workbook(
+        sheet_title="免疫实验列表",
+        filename_prefix="免疫实验列表",
+        headers=headers,
+        rows=rows,
+    )
 
 
 def get_detail(db: Session, project_id: int) -> dict | None:

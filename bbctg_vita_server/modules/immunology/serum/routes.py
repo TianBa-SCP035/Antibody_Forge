@@ -222,6 +222,19 @@ def auto_update_status(
         return error(str(exc))
 
 
+@router.post("/export_list")
+def export_list(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> Response:
+    require_permission(db, current_user, "serum.page.list")
+    from utils.excel import xlsx_response
+
+    output, filename = service.export_list_workbook(db, data or {})
+    return xlsx_response(output, filename)
+
+
 @router.post("/export_mouse")
 def export_mouse(
     data: dict,

@@ -1,30 +1,20 @@
 <template>
   <div class="app-container">
     <!-- Advanced Ops: slide down overlay -->
-    <transition name="ops-slide">
-      <div v-show="showAdvancedOps" class="advanced-ops-bar">
-        <div class="ops-bar-header">
-          <div class="ops-title">
-            <el-icon style="margin-right:6px;"><Tools /></el-icon>
-            高级操作
-          </div>
-
-          <el-button link :icon="Close" @click="showAdvancedOps = false" />
-        </div>
-
-        <div class="ops-actions">
-          <el-button
-            type="primary"
-            :class="{'no-permission-btn': !canViewCellInventory()}"
-            :icon="Search"
-            :title="!canViewCellInventory() ? '您没有权限查看细胞库存' : ''"
-            @click="handleCellInventory"
-          >
-            细胞库存查询
-          </el-button>
-        </div>
-      </div>
-    </transition>
+    <AdvancedOpsBar v-model="showAdvancedOps">
+      <el-button
+        type="primary"
+        :class="{'no-permission-btn': !canViewCellInventory()}"
+        :icon="Search"
+        :title="!canViewCellInventory() ? '您没有权限查看细胞库存' : ''"
+        @click="handleCellInventory"
+      >
+        细胞库存查询
+      </el-button>
+      <el-button type="warning" :icon="Download" @click="handleListExport">
+        列表导出
+      </el-button>
+    </AdvancedOpsBar>
 
     <!-- Dashboard / Overview -->
     <el-row :gutter="20" class="panel-group">
@@ -422,7 +412,6 @@ import {
   ArrowDown,
   ArrowUp,
   CircleCheck,
-  Close,
   DataAnalysis,
   Download,
   Edit,
@@ -459,9 +448,11 @@ import {
 } from 'element-plus'
 
 import { notifyApiError, resolveUserMessage } from '#/api/errors'
-import { fetchList, fetchStats, getSerumFilterOptions, updateSerumStatus, export_mouse, autoUpdateStatus, updateCagePosition, exportSchemePdf } from '#/api/serum'
+import { fetchList, fetchStats, getSerumFilterOptions, updateSerumStatus, export_mouse, exportSerumList, autoUpdateStatus, updateCagePosition, exportSchemePdf } from '#/api/serum'
 import { skipGlobalErrorHandler } from '#/api/request'
 import { SERUM_ERRORS } from '../shared/errors'
+import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
+import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 import {
   canAutoUpdateSerumStatus,
   canCreateSerumProject,
@@ -499,6 +490,7 @@ export default {
     ElTable,
     ElTableColumn,
     ElTag,
+    AdvancedOpsBar,
     ArrowDown,
     ArrowUp,
     CircleCheck,
@@ -510,7 +502,6 @@ export default {
   setup() {
     const userStore = useUserStore()
     return {
-      Close,
       Download,
       Edit,
       Plus,
@@ -1073,6 +1064,16 @@ export default {
             this.performExport(startDate, endDate)
         }
     },
+    async handleListExport() {
+        try {
+            await downloadListExcel(
+                () => exportSerumList(this.getCurrentFilterPayload()),
+                `免疫实验列表_${excelTimestamp()}.xlsx`,
+            )
+        } catch (error) {
+            notifyApiError(error, { messages: SERUM_ERRORS.list.exportList })
+        }
+    },
     
     performExport(startDate, endDate) {
         const loading = ElLoading.service({
@@ -1177,8 +1178,7 @@ export default {
     padding: 0 13px;
     font-size: 13px;
 }
-.filter-wrapper :deep(.el-button .el-icon + span),
-.advanced-ops-bar :deep(.el-button .el-icon + span) {
+.filter-wrapper :deep(.el-button .el-icon + span) {
     margin-left: 4px;
 }
 .table-action-btn {
@@ -1352,55 +1352,5 @@ export default {
     z-index: 3000 !important;
     border-radius: var(--list-mid-radius);
     box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
-}
-
-/* 覆盖层本体 */
-.advanced-ops-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-
-  height: 140px;
-  padding: 12px 16px;
-  border-radius: var(--list-mid-radius);
-
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
-  z-index: 50;
-
-  backdrop-filter: blur(6px);
-}
-
-.ops-bar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.ops-title {
-  font-weight: 700;
-  color: #303133;
-  display: flex;
-  align-items: center;
-}
-
-.ops-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-/* 滑入动画 */
-.ops-slide-enter-active,
-.ops-slide-leave-active {
-  transition: transform .25s ease, opacity .25s ease;
-}
-.ops-slide-enter,
-.ops-slide-leave-to {
-  transform: translateY(-110%);
-  opacity: 0;
 }
 </style>

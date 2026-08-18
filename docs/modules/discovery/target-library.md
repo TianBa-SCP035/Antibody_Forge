@@ -29,7 +29,7 @@
 - 完整档案通过开关在主工作台下方展开，无需跳转子页面或打开弹窗。
 - 页面启用 KeepAlive；离开后超过 10 分钟再次进入时，按项目统一机制静默刷新当前筛选结果。
 
-首版不提供编辑、手动同步、关注、对比或实验进程。实验进程必须等业务表建立可靠的 `target.id` 关联后再接入，不按名称猜测关联。
+首版不提供编辑、手动同步、关注、对比或实验进程。靶点搜索能力可供其他业务模块复用。
 
 ## API
 
@@ -48,4 +48,4 @@ bbctg_vita_web/apps/antibody_vita/src/api/discovery.ts
 bbctg_vita_web/apps/antibody_vita/src/router/routes/modules/discovery.ts
 ```
 
-后续免疫与发现流程通过本地 `target.id` 建立关联，不在本页复制业务状态。
+靶点库只提供主数据查询，不在本页复制业务状态。

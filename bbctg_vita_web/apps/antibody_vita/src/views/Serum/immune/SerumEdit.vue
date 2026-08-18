@@ -39,8 +39,65 @@
         <!-- Row 2: 靶点名称, 靶点类型, 靶点大小 -->
         <el-row :gutter="20">
           <el-col :span="8">
-            <el-form-item label="靶点名称" prop="target_name">
-              <el-input v-model="postForm.target_name" @change="updateProjectName" />
+            <el-form-item label="靶点名称">
+              <el-select
+                ref="targetSelect"
+                v-model="postForm.target_codes"
+                filterable
+                multiple
+                remote
+                remote-show-suffix
+                :remote-method="searchTargetOptions"
+                :loading="targetLoading"
+                :placeholder="postForm.target_name ? '' : '搜索并选择靶点'"
+                title="Shift+Enter 可直接录入未入库靶点名称"
+                style="width: 100%"
+                @change="handleTargetChange"
+                @focus="handleTargetFocus"
+                @keydown.shift.enter.capture.prevent.stop="commitFreeTargetName"
+              >
+                <template #tag>
+                  <span class="target-selected-text">{{ postForm.target_name }}</span>
+                </template>
+                <el-option
+                  v-for="item in targetOptions"
+                  :key="item.snum"
+                  :label="item.name"
+                  :value="item.snum"
+                >
+                  <div
+                    v-if="targetAliasEdit?.code === item.snum"
+                    class="target-option target-option--editing"
+                    @click.stop
+                    @mousedown.stop
+                  >
+                    <span class="target-option__name">{{ item.name }}</span>
+                    <el-input
+                      ref="targetAliasInput"
+                      v-model="targetAliasEdit.name"
+                      size="small"
+                      placeholder="输入自定义名称"
+                      @blur="targetAliasEdit = null"
+                      @keydown.enter.prevent.stop="confirmTargetAlias"
+                      @keydown.esc.prevent.stop="targetAliasEdit = null"
+                    />
+                  </div>
+                  <div
+                    v-else
+                    class="target-option"
+                    title="右键可自定义项目中的显示名称"
+                    @contextmenu.prevent.stop="startTargetAliasEdit(item)"
+                  >
+                    <span class="target-option__name">{{ item.name }}</span>
+                    <span
+                      v-if="targetDisplayNames[item.snum] && targetDisplayNames[item.snum] !== item.name"
+                      class="target-option__alias"
+                    >
+                      当前名称：{{ targetDisplayNames[item.snum] }}
+                    </span>
+                  </div>
+                </el-option>
+              </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -736,7 +793,14 @@ import {
 } from 'element-plus'
 
 import { notifyApiError } from '#/api/errors'
-import { fetchDetail, saveSerum, fetchNextId, deleteSerum, getSerumFilterOptions } from '#/api/serum'
+import {
+  deleteSerum,
+  fetchDetail,
+  fetchNextId,
+  fetchSerumTargetOptions,
+  getSerumFilterOptions,
+  saveSerum,
+} from '#/api/serum'
 import { SERUM_ERRORS } from '../shared/errors'
 import MouseRegistryDialog from '../shared/MouseRegistryDialog.vue'
 import AssayMethodEditor from '../shared/AssayMethodEditor.vue'
@@ -869,6 +933,7 @@ export default {
           owner: '',
           start_date: '',
           project_status: '规划中',
+          target_codes: [],
           target_name: '',
           target_type: '',
           target_size: '',
@@ -886,6 +951,10 @@ export default {
           titer_pcs: []
       },
       loading: false,
+      targetAliasEdit: null,
+      targetDisplayNames: {},
+      targetLoading: false,
+      targetOptions: [],
       users: ['李婉绮', '王申森','陈研','于卓','纪鑫'],
       remarkDialogVisible: false,
       currentRemark: '',
@@ -974,7 +1043,19 @@ export default {
         }
         if (id) {
           const detail = results[1]
-          this.postForm = detail
+          const targetCodes = Array.isArray(detail.target_codes) ? detail.target_codes : []
+          this.postForm = { ...detail, target_codes: targetCodes }
+          const targetNames = String(detail.target_name || '').split(/[&,]/)
+          this.targetDisplayNames = Object.fromEntries(
+            targetCodes.map((snum, index) => [snum, targetNames[index] || snum]),
+          )
+          this.targetOptions = targetCodes.map((snum, index) => ({
+            name: targetNames[index] || snum,
+            snum,
+          }))
+          if (targetCodes.length) {
+            await this.searchTargetOptions('')
+          }
           this.originalProjectCode = detail.project_code
           if (this.postForm.steps) {
             this.postForm.steps.forEach((step) => {
@@ -1002,6 +1083,81 @@ export default {
           this.initializing = false
         })
       }
+    },
+    async searchTargetOptions(keyword) {
+      this.targetLoading = true
+      try {
+        const response = await fetchSerumTargetOptions(keyword, this.postForm.target_codes)
+        this.targetOptions = response?.items || []
+      } finally {
+        this.targetLoading = false
+      }
+    },
+    handleTargetFocus() {
+      if (!this.targetOptions.length) {
+        this.searchTargetOptions('')
+      }
+    },
+    commitFreeTargetName(event) {
+      const input = event.target
+      const customName = (input?.value || '').trim()
+      if (!customName) return
+      this.postForm.target_codes = []
+      this.targetDisplayNames = {}
+      this.postForm.target_name = customName
+      if (input) input.value = ''
+      this.updateProjectName()
+      this.$nextTick(() => this.$refs.targetSelect?.blur())
+    },
+    handleTargetChange(codes) {
+      const selected = codes || []
+      const namesByCode = new Map(this.targetOptions.map((item) => [item.snum, item.name]))
+      this.targetDisplayNames = Object.fromEntries(
+        selected.map((code) => [
+          code,
+          this.targetDisplayNames[code] || namesByCode.get(code) || code,
+        ]),
+      )
+      this.postForm.target_name = selected
+        .map((code) => this.targetDisplayNames[code] || code)
+        .join('&')
+      this.updateProjectName()
+      this.$nextTick(() => this.$refs.targetSelect?.blur())
+    },
+    startTargetAliasEdit(item) {
+      this.targetAliasEdit = {
+        code: item.snum,
+        name: this.targetDisplayNames[item.snum] || item.name,
+      }
+      this.$nextTick(() => {
+        const input = Array.isArray(this.$refs.targetAliasInput)
+          ? this.$refs.targetAliasInput[0]
+          : this.$refs.targetAliasInput
+        input?.focus()
+        input?.select()
+      })
+    },
+    confirmTargetAlias() {
+      if (!this.targetAliasEdit) return
+      const { code, name } = this.targetAliasEdit
+      const customName = name.trim()
+      if (!customName) {
+        ElMessage.warning('请输入自定义名称')
+        return
+      }
+      if (/[&,，]/.test(customName)) {
+        ElMessage.warning('自定义名称不能包含 & 或逗号')
+        return
+      }
+      this.targetDisplayNames = {
+        ...this.targetDisplayNames,
+        [code]: customName,
+      }
+      if (!this.postForm.target_codes.includes(code)) {
+        this.postForm.target_codes = [...this.postForm.target_codes, code]
+      }
+      this.targetAliasEdit = null
+      this.handleTargetChange(this.postForm.target_codes)
     },
     getAntigenDisplay(antigenIds) {
       const ids = Array.isArray(antigenIds) ? antigenIds : []
@@ -1792,6 +1948,37 @@ export default {
 }
 .basic-info-card :deep(.el-form-item__label) {
     font-weight: 700;
+}
+.target-selected-text {
+    overflow: hidden;
+    color: var(--el-text-color-regular);
+    font: inherit;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+:deep(.el-select__selection.is-near) .target-selected-text {
+    margin-left: 7px;
+}
+.target-option {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+}
+.target-option__name {
+    flex-shrink: 0;
+    min-width: 130px;
+}
+.target-option__alias {
+    overflow: hidden;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.target-option--editing :deep(.el-input) {
+    flex: 1;
+    min-width: 140px;
 }
 .small-header {
     font-size: 15px;

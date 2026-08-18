@@ -254,14 +254,15 @@
         style="width: 100%;"
         size="large"
         :header-cell-style="{background:'#F5F7FA', color:'#606266', fontWeight:'bold',  height: '50px'}"
+        @sort-change="handleSortChange"
         >
-        <el-table-column label="编号" prop="project_code" align="left" width="135" sortable fixed>
+        <el-table-column label="编号" prop="project_code" align="left" width="135" sortable="custom" fixed>
             <template #default="{ row }">
                <div class="code-text" @click="handleView(row)">{{ row.project_code }}</div>
             </template>
         </el-table-column>
         
-        <el-table-column label="项目名称" prop="project_name" align="left" min-width="250" sortable show-overflow-tooltip>
+        <el-table-column label="项目名称" prop="project_name" align="left" min-width="250" sortable="custom" show-overflow-tooltip>
             <template #default="{ row }">
                <span class="project-name">{{ row.project_name }}</span>
             </template>
@@ -292,17 +293,17 @@
 
         <el-table-column v-if="showExtraColumns" label="鼠型" prop="mouse_strain" align="center" min-width="100" show-overflow-tooltip />
 
-        <el-table-column label="靶点" prop="target_name" align="center" width="100" sortable />
+        <el-table-column label="靶点" prop="target_name" align="center" width="100" sortable="custom" />
         
-        <el-table-column label="负责人" prop="owner" align="center" width="100" sortable>
+        <el-table-column label="负责人" prop="owner" align="center" width="100" sortable="custom">
             <template #default="{ row }">
                {{ row.owner }}
             </template>
         </el-table-column>
         
-        <el-table-column label="开始日期" prop="start_date" align="center" width="120" sortable />
+        <el-table-column label="开始日期" prop="start_date" align="center" width="120" sortable="custom" />
         
-        <el-table-column label="状态" prop="project_status" align="center" width="100" sortable class-name="status-column-cell">
+        <el-table-column label="状态" prop="project_status" align="center" width="100" sortable="custom" class-name="status-column-cell">
             <template #default="{ row }">
               <el-popover
                 :visible="activeStatusRowId === row.id"
@@ -560,7 +561,9 @@ export default {
         mouse_strain_category: undefined,
         project_status: undefined,
         start_date: undefined,
-        end_date: undefined
+        end_date: undefined,
+        sort_field: undefined,
+        sort_order: undefined
       },
       dateRange: [],
       ownerFilterQuery: '',
@@ -623,7 +626,7 @@ export default {
       sessionStorage.setItem(
         SERUM_LIST_FILTER_KEY,
         JSON.stringify({
-          listQuery: this.listQuery,
+          listQuery: { ...this.listQuery, sort_field: undefined, sort_order: undefined },
           dateRange: this.dateRange,
           showAdvancedFilters: this.showAdvancedFilters,
           showExtraColumns: this.showExtraColumns,
@@ -730,7 +733,9 @@ export default {
             start_date: startDate,
             end_date: endDate,
             page: this.listQuery.page,
-            limit: this.listQuery.limit
+            limit: this.listQuery.limit,
+            sort_field: this.listQuery.sort_field,
+            sort_order: this.listQuery.sort_order
         }
     },
     async initListMeta() {
@@ -812,6 +817,12 @@ export default {
       this.getList()
     },
     handleFilter() {
+      this.listQuery.page = 1
+      this.getList()
+    },
+    handleSortChange({ prop, order }) {
+      this.listQuery.sort_field = order ? prop : undefined
+      this.listQuery.sort_order = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : undefined
       this.listQuery.page = 1
       this.getList()
     },

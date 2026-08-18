@@ -29,6 +29,8 @@ from models.immunology import (
     SerumTiterPc,
     SerumTiterTarget,
 )
+from models.target import Target
+from modules.discovery import service as discovery_service
 from modules.immunology.titer.service import (
     PENDING_BLOOD_COLLECTION_STATUS,
     _normalize_owner_names,
@@ -78,6 +80,25 @@ def _collect_titer_owners_by_experiment(db: Session, experiment_ids: list[str]) 
     return owners_map
 
 
+PROJECT_SORT_COLUMNS = {
+    "owner": SerumImmProject.owner,
+    "project_code": SerumImmProject.project_code,
+    "project_name": SerumImmProject.project_name,
+    "project_status": SerumImmProject.project_status,
+    "start_date": SerumImmProject.start_date,
+    "target_name": SerumImmProject.target_name,
+}
+
+
+def _project_order_by(data: dict[str, Any]) -> list:
+    column = PROJECT_SORT_COLUMNS.get(str(data.get("sort_field") or ""))
+    if column is None:
+        return [SerumImmProject.id.desc()]
+    direction = str(data.get("sort_order") or "").lower()
+    ordered_column = column.asc() if direction == "asc" else column.desc()
+    return [ordered_column, SerumImmProject.id.desc()]
+
+
 def apply_project_filters(stmt, data: dict[str, Any]):
     p_code = data.get("project_code")
     p_codes = data.get("project_codes")
@@ -115,7 +136,17 @@ def apply_project_filters(stmt, data: dict[str, Any]):
         else:
             stmt = stmt.where(SerumImmProject.project_status == status)
     if target_name:
-        stmt = stmt.where(SerumImmProject.target_name == target_name)
+        selected_target = str(target_name).strip()
+        stmt = stmt.where(
+            or_(
+                SerumImmProject.target_name == selected_target,
+                func.find_in_set(
+                    selected_target,
+                    func.replace(func.replace(SerumImmProject.target_name, "，", ","), "&", ","),
+                )
+                > 0,
+            )
+        )
     if study_type:
         stmt = stmt.where(SerumImmProject.study_type == study_type)
     if pm:
@@ -211,7 +242,11 @@ def get_list(db: Session, data: dict[str, Any]) -> dict:
 
     total_stmt = select(func.count()).select_from(stmt.subquery())
     total = db.scalar(total_stmt) or 0
-    projects = db.scalars(stmt.order_by(SerumImmProject.id.desc()).offset((page - 1) * limit).limit(limit)).all()
+    projects = db.scalars(
+        stmt.order_by(*_project_order_by(data))
+        .offset((page - 1) * limit)
+        .limit(limit)
+    ).all()
     titer_owners_map = _collect_titer_owners_by_experiment(
         db, [project.experiment_id for project in projects if project.experiment_id]
     )
@@ -234,7 +269,9 @@ def get_list(db: Session, data: dict[str, Any]) -> dict:
 def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, str]:
     from utils.excel import build_list_workbook
 
-    projects = db.scalars(_project_list_stmt(data or {}).order_by(SerumImmProject.id.desc())).all()
+    projects = db.scalars(
+        _project_list_stmt(data or {}).order_by(*_project_order_by(data or {}))
+    ).all()
     cages = _first_cage_by_experiment(
         db, [project.experiment_id for project in projects if project.experiment_id]
     )
@@ -249,6 +286,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, st
         "PM",
         "鼠型",
         "靶点",
+        "靶点编号",
         "靶点类型",
         "靶点大小",
         "负责人",
@@ -274,6 +312,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, st
             project.pm,
             project.mouse_strain,
             project.target_name,
+            ",".join(project.target_codes) if isinstance(project.target_codes, list) else "",
             project.target_type,
             project.target_size,
             project.owner,
@@ -414,6 +453,7 @@ PROJECT_FIELDS = [
     "project_purpose",
     "start_date",
     "immunization_interval",
+    "target_codes",
     "target_name",
     "target_type",
     "target_size",
@@ -426,6 +466,48 @@ PROJECT_FIELDS = [
     "project_status",
     "remark",
 ]
+
+
+def get_target_options(
+    db: Session,
+    keyword: str,
+    limit: int = 20,
+    codes: list[str] | None = None,
+) -> dict[str, list[dict[str, str]]]:
+    selected_codes = list(
+        dict.fromkeys(
+            str(code).strip()
+            for code in (codes or [])
+            if str(code).strip()
+        )
+    )
+    selected_items = []
+    if selected_codes:
+        names = {
+            target.snum: target.name
+            for target in db.scalars(select(Target).where(Target.snum.in_(selected_codes)))
+        }
+        selected_items = [
+            {"snum": code, "name": names[code]}
+            for code in selected_codes
+            if code in names
+        ]
+
+    result = discovery_service.get_target_list(
+        db,
+        {
+            "page": 1,
+            "limit": min(max(limit, 1), 50),
+            "keyword": str(keyword or "").strip(),
+        },
+    )
+    seen_codes = set(selected_codes)
+    search_items = [
+        {"snum": item["snum"], "name": item["name"]}
+        for item in result["items"]
+        if item["snum"] not in seen_codes
+    ]
+    return {"items": [*selected_items, *search_items]}
 
 
 def _titer_upload_root() -> Path:

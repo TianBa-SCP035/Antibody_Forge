@@ -37,6 +37,18 @@ export function fetchNextId(code: any) {
   });
 }
 
+export interface SerumTargetOption {
+  name: string;
+  snum: string;
+}
+
+export function fetchSerumTargetOptions(keyword = '', codes: string[] = []) {
+  return requestClient.get<{ items: SerumTargetOption[] }>('/serum/target_options', {
+    params: { keyword, codes: codes.join(',') },
+    ...skipGlobalErrorHandler,
+  });
+}
+
 export function saveSerum(data: any) {
   return requestClient.post('/serum/save', data, {
     timeout: SAVE_TIMEOUT,

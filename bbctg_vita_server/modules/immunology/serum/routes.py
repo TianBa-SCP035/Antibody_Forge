@@ -78,6 +78,18 @@ def next_id(
     return success({"next_id": service.generate_next_id(db, code)})
 
 
+@router.get("/target_options")
+def target_options(
+    keyword: str = Query(default=""),
+    limit: int = Query(default=20, ge=1, le=50),
+    codes: str = Query(default=""),
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "serum.page.edit")
+    return success(service.get_target_options(db, keyword, limit, codes.split(",")))
+
+
 @router.get("/mouse-groups")
 def mouse_groups(
     experiment_id: str = Query(...),

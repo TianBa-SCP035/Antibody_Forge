@@ -328,6 +328,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_project (
   project_purpose VARCHAR(255) NULL COMMENT '项目目的',
   start_date VARCHAR(32) NULL COMMENT '项目开始日期',
   immunization_interval VARCHAR(32) NULL COMMENT '免疫间隔',
+  target_codes JSON NULL COMMENT '靶点编号列表',
   target_name VARCHAR(128) NULL COMMENT '靶点名称',
   target_type VARCHAR(64) NULL COMMENT '靶点类型',
   target_size VARCHAR(64) NULL COMMENT '靶点大小',

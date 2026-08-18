@@ -14,6 +14,7 @@ class SerumImmProject(Base):
     project_purpose: Mapped[str | None] = mapped_column(String(255))
     start_date: Mapped[str | None] = mapped_column(String(32))
     immunization_interval: Mapped[str | None] = mapped_column(String(32))
+    target_codes: Mapped[list[str] | None] = mapped_column(JSON)
     target_name: Mapped[str | None] = mapped_column(String(128))
     target_type: Mapped[str | None] = mapped_column(String(64))
     target_size: Mapped[str | None] = mapped_column(String(64))
@@ -38,6 +39,7 @@ class SerumImmProject(Base):
             "project_purpose": self.project_purpose,
             "start_date": self.start_date,
             "immunization_interval": self.immunization_interval,
+            "target_codes": self.target_codes if isinstance(self.target_codes, list) else [],
             "target_name": self.target_name,
             "target_type": self.target_type,
             "target_size": self.target_size,

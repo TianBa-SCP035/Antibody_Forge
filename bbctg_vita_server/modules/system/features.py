@@ -147,9 +147,9 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
     },
     {
         "code": "job.serum_auto_update_status",
-        "name": "血清状态自动更新",
+        "name": "免疫状态自动更新",
         "category": "job",
-        "description": "每天 01:00 自动更新血清实验状态",
+        "description": "每天 01:00 自动更新免疫实验状态",
         "enabled": True,
         "visible": True,
         "sort_order": 210,

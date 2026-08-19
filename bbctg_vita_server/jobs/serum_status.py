@@ -6,7 +6,7 @@ from modules.immunology.serum.service import auto_update_status
 from modules.system.features import record_job_run, summarize_job_result
 
 JOB_CODE = "job.serum_auto_update_status"
-JOB_NAME = "血清状态自动更新"
+JOB_NAME = "免疫状态自动更新"
 
 
 def auto_update_status_job() -> None:

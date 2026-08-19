@@ -13,7 +13,7 @@ _scheduler: BackgroundScheduler | None = None
 SCHEDULED_JOBS = [
     {
         "id": "serum_auto_update_status",
-        "description": "每天 01:00 自动更新血清实验状态",
+        "description": "每天 01:00 自动更新免疫实验状态",
         "feature_code": "job.serum_auto_update_status",
         "default_hour": 1,
         "default_minute": 0,

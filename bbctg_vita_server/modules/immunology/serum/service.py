@@ -231,7 +231,7 @@ def _cages_by_experiment(db: Session, experiment_ids: list[str]) -> dict[str, st
         if not key or not value:
             continue
         grouped.setdefault(key, set()).add(value)
-    return {key: " / ".join(sorted(cages)) for key, cages in grouped.items()}
+    return {key: "、".join(sorted(cages)) for key, cages in grouped.items()}
 
 
 def get_list(db: Session, data: dict[str, Any]) -> dict:

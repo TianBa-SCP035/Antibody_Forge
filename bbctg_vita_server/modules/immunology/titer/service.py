@@ -363,7 +363,7 @@ def _derived_cage_position(
     groups = _groups_for_blood_date(steps, blood_date)
     if groups:
         mice = [mouse for mouse in mice if str(mouse.group_id or "").strip() in groups]
-    return " / ".join(_unique_cages(mice))
+    return "、".join(_unique_cages(mice))
 
 
 BLOOD_COLLECTION_STAGE_NAME = "采血"

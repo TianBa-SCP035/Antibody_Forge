@@ -333,16 +333,37 @@ def _sum_mouse_count(mice: list[SerumImmMouse]) -> int | None:
     return total if has_value else None
 
 
-def _mode_cage_position(mice: list[SerumImmMouse]) -> str:
-    counts: dict[str, int] = {}
-    for mouse in mice:
-        value = str(mouse.cage_position or "").strip()
-        if not value:
+def _unique_cages(mice: list[SerumImmMouse]) -> list[str]:
+    cages = {str(mouse.cage_position or "").strip() for mouse in mice}
+    return sorted(cage for cage in cages if cage)
+
+
+def _groups_for_blood_date(steps: list[SerumImmStep], blood_date: str) -> set[str]:
+    date = _normalize_blood_collection_date(blood_date) or ""
+    if not date:
+        return set()
+    groups: set[str] = set()
+    for step in steps:
+        if str(step.stage_name or "").strip() != BLOOD_COLLECTION_STAGE_NAME:
             continue
-        counts[value] = counts.get(value, 0) + 1
-    if not counts:
-        return ""
-    return max(counts, key=lambda cage: (counts[cage], cage))
+        if (_normalize_blood_collection_date(step.date_actual) or "") != date:
+            continue
+        group_id = str(step.group_id or "").strip()
+        if group_id:
+            groups.add(group_id)
+    return groups
+
+
+def _derived_cage_position(
+    mice: list[SerumImmMouse],
+    steps: list[SerumImmStep],
+    blood_date: str,
+) -> str:
+    """能对上采血日则只用当天组；对不上则用全项目。笼位去重去空后拼接。"""
+    groups = _groups_for_blood_date(steps, blood_date)
+    if groups:
+        mice = [mouse for mouse in mice if str(mouse.group_id or "").strip() in groups]
+    return " / ".join(_unique_cages(mice))
 
 
 BLOOD_COLLECTION_STAGE_NAME = "采血"
@@ -423,10 +444,12 @@ def _default_blood_collection_seq(
 def _immune_batch_fields(
     project: SerumImmProject,
     mice: list[SerumImmMouse],
+    steps: list[SerumImmStep] | None = None,
+    blood_date: str | None = None,
 ) -> dict[str, Any]:
     """方案侧可跟随字段（采血日由 seq 推导，不在此返回）。"""
     return {
-        "cage_position": _mode_cage_position(mice) or None,
+        "cage_position": _derived_cage_position(mice, steps or [], blood_date or "") or None,
         "mouse_count": _sum_mouse_count(mice),
         "assay_method": project.assay_method,
         "facs_plate_count": project.facs_plate_count,
@@ -453,7 +476,7 @@ def _immune_batch_for_experiment(
             raise ValueError("免疫实验不存在")
     mice = list(db.scalars(select(SerumImmMouse).where(SerumImmMouse.experiment_id == experiment_id)).all())
     steps = list(db.scalars(select(SerumImmStep).where(SerumImmStep.experiment_id == experiment_id)).all())
-    return project, _immune_batch_fields(project, mice), steps
+    return project, _immune_batch_fields(project, mice, steps), steps
 
 
 def _apply_batch_fields_to_order(order: SerumTiterOrder, batch: dict[str, Any]) -> None:
@@ -509,6 +532,7 @@ def _build_derive_contexts(db: Session, experiment_ids: list[str]) -> dict[str, 
     return {
         eid: {
             "mice": mice_by_exp.get(eid, []),
+            "steps": steps_by_exp.get(eid, []),
             "blood_dates": _all_blood_collection_dates(steps_by_exp.get(eid, [])),
         }
         for eid in ids
@@ -521,11 +545,13 @@ def _resolve_followable_fields(
     ctx: dict[str, Any] | None,
 ) -> dict[str, Any]:
     mice = list(ctx.get("mice") or []) if ctx else []
+    steps = list(ctx.get("steps") or []) if ctx else []
     blood_dates = list(ctx.get("blood_dates") or []) if ctx else []
-    scheme = _immune_batch_fields(project, mice)
+    blood_date = _effective_blood_collection_date(order, blood_dates)
+    scheme = _immune_batch_fields(project, mice, steps, blood_date)
     return {
         "cage_position": _coalesce_follow_str(order.cage_position, scheme.get("cage_position")),
-        "blood_collection_date": _effective_blood_collection_date(order, blood_dates),
+        "blood_collection_date": blood_date,
         "blood_collection_seq": order.blood_collection_seq,
         "mouse_count": _coalesce_follow_int(order.mouse_count, scheme.get("mouse_count")),
         "assay_method": _coalesce_follow_str(order.assay_method, scheme.get("assay_method")),
@@ -589,11 +615,13 @@ def _scheme_follow_baseline(
 ) -> dict[str, Any]:
     """编辑保存时对比用：方案推导值（采血日按当前 seq）。"""
     mice = list(ctx.get("mice") or []) if ctx else []
+    steps = list(ctx.get("steps") or []) if ctx else []
     blood_dates = list(ctx.get("blood_dates") or []) if ctx else []
-    scheme = _immune_batch_fields(project, mice)
+    blood_date = _scheme_date_for_seq(blood_dates, order.blood_collection_seq)
+    scheme = _immune_batch_fields(project, mice, steps, blood_date)
     return {
         **scheme,
-        "blood_collection_date": _scheme_date_for_seq(blood_dates, order.blood_collection_seq),
+        "blood_collection_date": blood_date,
     }
 
 

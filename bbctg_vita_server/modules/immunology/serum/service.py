@@ -216,23 +216,22 @@ def _project_list_stmt(data: dict[str, Any]):
     return stmt
 
 
-def _first_cage_by_experiment(db: Session, experiment_ids: list[str]) -> dict[str, str]:
+def _cages_by_experiment(db: Session, experiment_ids: list[str]) -> dict[str, str]:
     ids = [str(exp_id).strip() for exp_id in experiment_ids if str(exp_id or "").strip()]
     if not ids:
         return {}
-    cages: dict[str, str] = {}
+    grouped: dict[str, set[str]] = {}
     for exp_id, cage in db.execute(
-        select(SerumImmMouse.experiment_id, SerumImmMouse.cage_position)
-        .where(
-            SerumImmMouse.experiment_id.in_(ids),
-            SerumImmMouse.cage_position.is_not(None),
+        select(SerumImmMouse.experiment_id, SerumImmMouse.cage_position).where(
+            SerumImmMouse.experiment_id.in_(ids)
         )
-        .order_by(SerumImmMouse.id.asc())
     ).all():
         key = str(exp_id or "").strip()
-        if key and key not in cages:
-            cages[key] = str(cage or "").strip()
-    return cages
+        value = str(cage or "").strip()
+        if not key or not value:
+            continue
+        grouped.setdefault(key, set()).add(value)
+    return {key: " / ".join(sorted(cages)) for key, cages in grouped.items()}
 
 
 def get_list(db: Session, data: dict[str, Any]) -> dict:
@@ -247,21 +246,17 @@ def get_list(db: Session, data: dict[str, Any]) -> dict:
         .offset((page - 1) * limit)
         .limit(limit)
     ).all()
-    titer_owners_map = _collect_titer_owners_by_experiment(
-        db, [project.experiment_id for project in projects if project.experiment_id]
-    )
+    experiment_ids = [project.experiment_id for project in projects if project.experiment_id]
+    titer_owners_map = _collect_titer_owners_by_experiment(db, experiment_ids)
+    cages = _cages_by_experiment(db, experiment_ids)
 
     items = []
     for project in projects:
         item = project.to_dict()
         item["titer_owners"] = titer_owners_map.get(project.experiment_id or "", [])
-        mouse = db.scalar(
-            select(SerumImmMouse)
-            .where(SerumImmMouse.experiment_id == project.experiment_id, SerumImmMouse.cage_position.is_not(None))
-            .limit(1)
-        )
-        item["cage_position"] = getattr(mouse, "cage_position", "") or ""
-        item["cage_position_display"] = item["cage_position"]
+        cage = cages.get(str(project.experiment_id or "").strip(), "")
+        item["cage_position"] = cage
+        item["cage_position_display"] = cage
         items.append(item)
     return {"items": items, "total": total}
 
@@ -272,7 +267,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, st
     projects = db.scalars(
         _project_list_stmt(data or {}).order_by(*_project_order_by(data or {}))
     ).all()
-    cages = _first_cage_by_experiment(
+    cages = _cages_by_experiment(
         db, [project.experiment_id for project in projects if project.experiment_id]
     )
     headers = [

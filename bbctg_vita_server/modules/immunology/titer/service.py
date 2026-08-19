@@ -710,6 +710,43 @@ def _titer_order_query():
     )
 
 
+TITER_ORDER_SQL_SORT_COLUMNS = {
+    "project_code": SerumImmProject.project_code,
+    "serum_status": SerumTiterOrder.serum_status,
+}
+TITER_ORDER_ITEM_SORT_FIELDS = {
+    "blood_collection_date",
+    "project_code",
+    "serum_status",
+    "test_dates_display",
+}
+
+
+def _titer_order_sql_order_by(data: dict[str, Any]) -> list:
+    column = TITER_ORDER_SQL_SORT_COLUMNS.get(str(data.get("sort_field") or ""))
+    if column is None:
+        return [SerumTiterOrder.id.desc()]
+    direction = str(data.get("sort_order") or "").lower()
+    ordered_column = column.asc() if direction == "asc" else column.desc()
+    return [ordered_column, SerumTiterOrder.id.desc()]
+
+
+def _titer_order_needs_full_scan(data: dict[str, Any], blood_start: str | None, blood_end: str | None) -> bool:
+    if blood_start or blood_end:
+        return True
+    return str(data.get("sort_field") or "") in {"blood_collection_date", "test_dates_display"}
+
+
+def _sort_titer_order_items(items: list[dict], data: dict[str, Any]) -> list[dict]:
+    field = str(data.get("sort_field") or "")
+    if field not in TITER_ORDER_ITEM_SORT_FIELDS:
+        return items
+    reverse = str(data.get("sort_order") or "").lower() == "desc"
+    items.sort(key=lambda item: int(item.get("id") or 0), reverse=True)
+    items.sort(key=lambda item: str(item.get(field) or ""), reverse=reverse)
+    return items
+
+
 def _empty_titer_owners_condition():
     return or_(
         SerumTiterOrder.titer_owners.is_(None),
@@ -765,7 +802,7 @@ def _apply_titer_order_list_filters(stmt, data: dict[str, Any]):
 def _titer_order_list_items(db: Session, data: dict[str, Any]) -> list[dict]:
     stmt = _apply_titer_order_list_filters(_titer_order_query(), data)
     blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
-    rows = db.execute(stmt.order_by(SerumTiterOrder.id.desc())).all()
+    rows = db.execute(stmt.order_by(*_titer_order_sql_order_by(data))).all()
     items = _enrich_order_rows(db, rows)
     if blood_start or blood_end:
         items = [
@@ -773,7 +810,7 @@ def _titer_order_list_items(db: Session, data: dict[str, Any]) -> list[dict]:
             for item in items
             if _blood_date_in_range(item.get("blood_collection_date") or "", blood_start, blood_end)
         ]
-    return items
+    return _sort_titer_order_items(items, data)
 
 
 def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
@@ -783,20 +820,15 @@ def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
 
     blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
 
-    if blood_start or blood_end:
-        rows = db.execute(stmt.order_by(SerumTiterOrder.id.desc())).all()
-        items = [
-            item
-            for item in _enrich_order_rows(db, rows)
-            if _blood_date_in_range(item.get("blood_collection_date") or "", blood_start, blood_end)
-        ]
+    if _titer_order_needs_full_scan(data, blood_start, blood_end):
+        items = _titer_order_list_items(db, data)
         total = len(items)
         start = max(page - 1, 0) * limit
         return {"items": items[start : start + limit], "total": total}
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.execute(
-        stmt.order_by(SerumTiterOrder.id.desc()).offset((page - 1) * limit).limit(limit)
+        stmt.order_by(*_titer_order_sql_order_by(data)).offset((page - 1) * limit).limit(limit)
     ).all()
     return {"items": _enrich_order_rows(db, rows), "total": total}
 

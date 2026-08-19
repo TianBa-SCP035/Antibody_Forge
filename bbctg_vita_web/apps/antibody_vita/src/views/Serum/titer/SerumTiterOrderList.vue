@@ -264,8 +264,9 @@
           highlight-current-row
           style="width: 100%"
           :header-cell-style="{ background: '#F5F7FA', color: '#606266', fontWeight: 'bold' }"
+          @sort-change="handleSortChange"
         >
-        <el-table-column label="项目编号" prop="project_code" align="left" sortable fixed min-width="130" show-overflow-tooltip>
+        <el-table-column label="项目编号" prop="project_code" align="left" sortable="custom" fixed min-width="130" show-overflow-tooltip>
           <template #default="{ row }">
             <span
               class="code-text"
@@ -276,7 +277,7 @@
         </el-table-column>
         <el-table-column label="靶点" prop="target_name" align="center" min-width="100" show-overflow-tooltip />
         <el-table-column label="笼位" prop="cage_position" align="center" min-width="90" show-overflow-tooltip />
-        <el-table-column label="采血日期" prop="blood_collection_date" align="center" sortable min-width="110" />
+        <el-table-column label="采血日期" prop="blood_collection_date" align="center" sortable="custom" min-width="110" />
         <el-table-column prop="mouse_count" align="center" min-width="80" class-name="plate-col-mouse">
           <template #header>
             <el-popover v-model:visible="colFilterOpen.mouse_count" trigger="click" width="220">
@@ -426,7 +427,7 @@
           label="检测日期"
           prop="test_dates_display"
           align="center"
-          sortable
+          sortable="custom"
           min-width="180"
           class-name="plate-col-test-dates"
         >
@@ -466,7 +467,7 @@
           label="血清状态"
           prop="serum_status"
           align="center"
-          sortable
+          sortable="custom"
           min-width="140"
           class-name="status-column-cell plate-col-serum-status"
         >
@@ -1033,6 +1034,8 @@ export default {
         elisa_plate_zero: '',
         elisa_plate_min: null,
         elisa_plate_max: null,
+        sort_field: undefined,
+        sort_order: undefined,
       },
       allOwnerOptions: [],
       allTargetOptions: [],
@@ -1108,7 +1111,7 @@ export default {
       sessionStorage.setItem(
         TITER_ORDER_LIST_FILTER_KEY,
         JSON.stringify({
-          listQuery: this.listQuery,
+          listQuery: { ...this.listQuery, sort_field: undefined, sort_order: undefined },
           bloodCollectionRange: this.bloodCollectionRange,
           testDatesRange: this.testDatesRange,
           statFilterActive: this.statFilterActive,
@@ -1726,6 +1729,17 @@ export default {
       this.listQuery.page = 1;
       this.getList();
     },
+    handleSortChange({ prop, order }) {
+      const sort_field = order ? prop : undefined;
+      const sort_order = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : undefined;
+      if (this.listQuery.sort_field === sort_field && this.listQuery.sort_order === sort_order) {
+        return;
+      }
+      this.listQuery.sort_field = sort_field;
+      this.listQuery.sort_order = sort_order;
+      this.listQuery.page = 1;
+      this.getList();
+    },
     async handleListExport() {
       try {
         await downloadListExcel(
@@ -1989,7 +2003,10 @@ export default {
         elisa_plate_zero: '',
         elisa_plate_min: null,
         elisa_plate_max: null,
+        sort_field: undefined,
+        sort_order: undefined,
       };
+      this.$refs.orderTable?.clearSort?.();
       this.testDatesRange = [];
       this.bloodCollectionRange = [];
       this.orderStatusPlaceholder = '';

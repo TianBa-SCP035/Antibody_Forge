@@ -412,6 +412,12 @@ onMounted(loadFeatures);
         </el-tab-pane>
 
         <el-tab-pane label="功能开关" name="feature">
+          <el-alert
+            class="tab-tip"
+            show-icon
+            type="success"
+            title="功能开关保存后立即生效，无需重启。DRM 还需部署服务端与动态库；仅打开开关但环境未配齐时会自动跳过。"
+          />
           <div class="feature-card-grid">
             <el-card v-for="item in featureFlags" :key="item.code" shadow="never" class="feature-card">
               <div class="feature-card-header">

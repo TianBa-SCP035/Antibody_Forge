@@ -47,7 +47,6 @@ class Settings(BaseSettings):
 
     yunzhijia_appid: str = ""
     yunzhijia_appsecret: str = ""
-    yunzhijia_auto_provision: bool = False
     drm_enabled: bool = True
     drm_lib_dir: str = ""
     drm_server_ssl: bool = False

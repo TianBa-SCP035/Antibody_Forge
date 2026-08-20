@@ -10,7 +10,10 @@ from integrations.yunzhijia import YunzhijiaClient
 from models.system import SysUser
 from modules.auth.security import create_access_token, hash_password, verify_password
 from modules.system.audit import write_operation_log
+from modules.system.features import is_feature_enabled
 from modules.system.permissions import build_user_context
+
+YUNZHIJIA_AUTO_PROVISION_FEATURE = "feature.yunzhijia_auto_provision"
 
 
 def login_with_password(db: Session, username: str, password: str) -> dict:
@@ -87,7 +90,7 @@ def login_with_yunzhijia_ticket(db: Session, ticket: str) -> dict:
         raise HTTPException(status_code=401, detail="云之家未返回用户 openid")
     user = db.scalar(select(SysUser).where(SysUser.openid == openid))
     if not user:
-        if settings.yunzhijia_auto_provision:
+        if is_feature_enabled(db, YUNZHIJIA_AUTO_PROVISION_FEATURE, default=False):
             user = _provision_yunzhijia_user(db, user_context)
             write_operation_log(
                 db,

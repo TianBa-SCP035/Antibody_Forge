@@ -183,7 +183,7 @@ require_permission(db, user, code)  # 无权限则 HTTP 403
 | 方式 | 路由 | 说明 |
 |------|------|------|
 | 账号密码 | `POST /api/auth/login` | 校验 `password_hash`，写登录日志 |
-| 云之家 | `GET /api/auth/yunzhijia?ticket=` | `openid` 绑定 `sys_user`；未绑定且 env `YUNZHIJIA_AUTO_PROVISION=false` 则 403 |
+| 云之家 | `GET /api/auth/yunzhijia?ticket=` | `openid` 绑定 `sys_user`；未绑定且未开启 `feature.yunzhijia_auto_provision` 则 403 |
 | 当前用户 | `Depends(get_current_user)` | 解析 JWT `sub` → 用户 id，`status=active` |
 
 JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: Bearer <token>`。
@@ -305,8 +305,8 @@ flowchart LR
 | `menu` | `menu.serum`、`menu.serum.list`、`menu.serum.titer_order` | 免疫实验侧栏 |
 | `menu` | `menu.mega_automation`、`menu.mega_automation.flow_work_orders` | 镁伽自动化侧栏 |
 | `menu` | `menu.system`、`menu.system.user_permission`、`menu.system.features` | 系统管理侧栏 |
-| `feature` | `feature.drm_file_security` | DRM 上传解密 / 下载加密（`drm_service.py` 读取；另需 env 与 SDK） |
-| `feature` | `feature.yunzhijia_auto_provision` | 后台展示项；实际由 env `YUNZHIJIA_AUTO_PROVISION` 控制 |
+| `feature` | `feature.drm_file_security` | DRM 上传解密 / 下载加密（请求时读库，立即生效；另需 env 与 SDK） |
+| `feature` | `feature.yunzhijia_auto_provision` | 云之家登录自动开户（请求时读库，立即生效） |
 | `job` | `job.employee_profile_sync` | 员工资料定时同步（默认 00:30） |
 | `job` | `job.target_master_sync` | 靶点主数据定时同步（默认 00:45） |
 | `job` | `job.serum_auto_update_status` | 免疫状态定时更新（默认 01:00） |
@@ -343,7 +343,7 @@ sequenceDiagram
 
 1. 执行 [vita-database.sql](./vita-database.sql)（含权限点、功能开关、示例角色）。
 2. 按文件文末注释创建首个超管：`is_superuser=TRUE`，**不绑角色**；在 `bbctg_vita_server` 目录生成 `password_hash` 后执行 `INSERT`。
-3. 云之家用户绑定 `openid`，或设置 env `YUNZHIJIA_AUTO_PROVISION=true` 允许自动开户。
+3. 云之家用户绑定 `openid`，或在系统功能中开启「云之家自动创建用户」允许自动开户。
 4. 部署与验收见 [deploy.md](./deploy.md)。
 
 ## 10. 代码索引

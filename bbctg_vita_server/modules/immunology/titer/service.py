@@ -1323,7 +1323,7 @@ def get_titer_order_stats(db: Session) -> dict[str, int]:
     }
 
 
-_COMPLETED_SERUM_STATUSES = frozenset({"已检测", "已交接"})
+_COMPLETED_SERUM_STATUSES = frozenset({"已检测", "已交接", "已销毁"})
 
 
 def _month_bounds(month_key: str) -> tuple[str, str]:

@@ -325,6 +325,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_project (
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
   project_code VARCHAR(64) NULL COMMENT '项目管理编号',
   project_name VARCHAR(255) NULL COMMENT '项目名称',
+  lab_notebook VARCHAR(64) NULL COMMENT '实验记录本号',
   project_purpose VARCHAR(255) NULL COMMENT '项目目的',
   start_date VARCHAR(32) NULL COMMENT '项目开始日期',
   immunization_interval VARCHAR(32) NULL COMMENT '免疫间隔',
@@ -554,6 +555,8 @@ INSERT IGNORE INTO sys_permission_api
 VALUES
   ('serum.project.create', 'POST', '/api/serum/save', '新建免疫项目'),
   ('serum.project.edit', 'POST', '/api/serum/save', '编辑免疫项目'),
+  ('serum.project.edit', 'POST', '/api/serum/update_lab_notebook', '更新实验记录本'),
+  ('serum.project.edit_all', 'POST', '/api/serum/update_lab_notebook', '更新他人实验记录本'),
   ('serum.project.delete', 'POST', '/api/serum/delete', '删除免疫项目'),
   ('serum.status.update', 'POST', '/api/serum/update_status', '快速修改状态'),
   ('serum.cage.update', 'POST', '/api/serum/update_cage_position', '更新笼位信息'),

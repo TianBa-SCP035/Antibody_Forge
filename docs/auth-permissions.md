@@ -201,6 +201,7 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 |------|------|
 | 保存项目（有 id） | 当前负责人且改后仍为自己 → `serum.project.edit`；否则 `serum.project.edit_all` |
 | 新建项目 | `serum.project.create`；无 `edit_all` 时只能把自己设为 `owner` |
+| 改实验记录本 | 与方案编辑相同：`serum.project.edit_all`，或 `serum.project.edit` 且为项目负责人 |
 | 改笼位 | `serum.cage.update` + 项目负责人或 `edit_all` |
 | 改状态 | 项目负责人：`status.update` 或 `titer.edit`；非负责人：`status.update`+`edit_all`，或 `titer.edit`+`titer.edit_all` |
 | 鼠号分组查询 / 鼠号明细保存 | `serum.project.edit` / `edit_all` / `serum.titer.edit` / `titer.edit_all` **任一** |

@@ -42,6 +42,14 @@ def _compact_identifier(raw: Any) -> str:
     return "".join(str(raw or "").split())
 
 
+def _normalize_lab_notebook(raw: Any) -> str | None:
+    return _compact_identifier(raw) or None
+
+
+def _is_blank_search(raw: Any) -> bool:
+    return str(raw or "").strip() == "空"
+
+
 def _normalize_project_identifiers(data: dict[str, Any]) -> None:
     project_code = _compact_identifier(data.get("project_code"))
     if project_code:
@@ -103,6 +111,8 @@ def apply_project_filters(stmt, data: dict[str, Any]):
     p_code = data.get("project_code")
     p_codes = data.get("project_codes")
     p_name = data.get("project_name")
+    lab_notebook = data.get("lab_notebook")
+    cage_position = data.get("cage_position")
     owner = data.get("owner")
     status = data.get("project_status")
     target_name = data.get("target_name")
@@ -118,6 +128,35 @@ def apply_project_filters(stmt, data: dict[str, Any]):
         stmt = stmt.where(SerumImmProject.project_code.like(f"%{p_code}%"))
     if p_name:
         stmt = stmt.where(SerumImmProject.project_name.like(f"%{p_name}%"))
+    if lab_notebook:
+        if _is_blank_search(lab_notebook):
+            stmt = stmt.where(
+                or_(
+                    SerumImmProject.lab_notebook.is_(None),
+                    SerumImmProject.lab_notebook == "",
+                )
+            )
+        else:
+            stmt = stmt.where(SerumImmProject.lab_notebook.like(f"%{lab_notebook}%"))
+    if cage_position:
+        if _is_blank_search(cage_position):
+            stmt = stmt.where(
+                ~select(SerumImmMouse.id)
+                .where(
+                    SerumImmMouse.experiment_id == SerumImmProject.experiment_id,
+                    SerumImmMouse.cage_position.is_not(None),
+                    SerumImmMouse.cage_position != "",
+                )
+                .exists()
+            )
+        else:
+            stmt = stmt.where(
+                SerumImmProject.experiment_id.in_(
+                    select(SerumImmMouse.experiment_id).where(
+                        SerumImmMouse.cage_position.like(f"%{cage_position}%")
+                    )
+                )
+            )
     if owner:
         stmt = stmt.where(SerumImmProject.owner == owner)
     if status:
@@ -274,6 +313,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, st
         "编号",
         "实验ID",
         "项目名称",
+        "实验记录本",
         "归类鼠型",
         "笼位",
         "实验备注",
@@ -300,6 +340,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, st
             project.project_code,
             project.experiment_id,
             project.project_name,
+            project.lab_notebook,
             project.mouse_strain_category,
             cages.get(str(project.experiment_id or "").strip(), ""),
             project.remark,
@@ -670,6 +711,18 @@ def update_status(db: Session, project_id: int, project_status: str) -> None:
         raise ValueError("项目不存在")
     project.project_status = project_status
     db.commit()
+
+
+def update_lab_notebook(db: Session, project_id: int, lab_notebook: str | None) -> str | None:
+    project = db.get(SerumImmProject, project_id)
+    if not project:
+        raise ValueError("项目不存在")
+    value = _normalize_lab_notebook(lab_notebook)
+    if value and len(value) > 64:
+        raise ValueError("实验记录本号过长")
+    project.lab_notebook = value
+    db.commit()
+    return value
 
 
 def update_cage_position(db: Session, project_id: int, cage_position: str | None) -> None:

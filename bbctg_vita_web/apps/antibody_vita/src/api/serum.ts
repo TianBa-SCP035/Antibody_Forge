@@ -75,6 +75,10 @@ export function updateCagePosition(data: any) {
   return requestClient.post('/serum/update_cage_position', data, skipGlobalErrorHandler);
 }
 
+export function updateLabNotebook(data: any) {
+  return requestClient.post('/serum/update_lab_notebook', data, skipGlobalErrorHandler);
+}
+
 export function export_mouse(data: any) {
   return requestClient.download('/serum/export_mouse', {
     data,

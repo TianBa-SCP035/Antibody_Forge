@@ -63,6 +63,9 @@ export const SERUM_ERRORS = {
         },
       },
     } satisfies OperationMessages,
+    updateLabNotebook: {
+      default: '实验记录本更新失败',
+    } satisfies OperationMessages,
     updateStatus: {
       default: '状态修改失败',
     } satisfies OperationMessages,

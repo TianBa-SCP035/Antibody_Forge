@@ -11,6 +11,7 @@ class SerumImmProject(Base):
     experiment_id: Mapped[str | None] = mapped_column(String(64), unique=True)
     project_code: Mapped[str | None] = mapped_column(String(64))
     project_name: Mapped[str | None] = mapped_column(String(255))
+    lab_notebook: Mapped[str | None] = mapped_column(String(64))
     project_purpose: Mapped[str | None] = mapped_column(String(255))
     start_date: Mapped[str | None] = mapped_column(String(32))
     immunization_interval: Mapped[str | None] = mapped_column(String(32))
@@ -36,6 +37,7 @@ class SerumImmProject(Base):
             "experiment_id": self.experiment_id,
             "project_code": self.project_code,
             "project_name": self.project_name,
+            "lab_notebook": self.lab_notebook,
             "project_purpose": self.project_purpose,
             "start_date": self.start_date,
             "immunization_interval": self.immunization_interval,

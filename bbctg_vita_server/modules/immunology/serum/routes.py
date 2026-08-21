@@ -180,6 +180,23 @@ def update_status(
         return error(str(exc))
 
 
+@router.post("/update_lab_notebook")
+def update_lab_notebook(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    try:
+        _require_project_scheme_edit(db, current_user, int(data.get("id")))
+        value = service.update_lab_notebook(db, int(data.get("id")), data.get("lab_notebook"))
+        return success({"message": "实验记录本更新成功", "lab_notebook": value})
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        return error(str(exc))
+
+
 @router.post("/update_cage_position")
 def update_cage_position(
     data: dict,
@@ -350,6 +367,20 @@ def _require_project_save_permission(db: Session, user: SysUser, data: dict) -> 
         return
 
     require_permission(db, user, "serum.project.edit_all")
+
+
+def _require_project_scheme_edit(db: Session, user: SysUser, project_id: int) -> None:
+    project = db.get(SerumImmProject, project_id)
+    if not project:
+        raise ValueError("项目不存在")
+    if has_permission(db, user, "serum.project.edit_all"):
+        return
+    if has_permission(db, user, "serum.project.edit") and _is_owner_name(user, project.owner):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=PERMISSION_MESSAGES.get("serum.project.edit", DEFAULT_PERMISSION_MESSAGE),
+    )
 
 
 def _require_project_owner_or_edit_all(db: Session, user: SysUser, project_id: int) -> None:

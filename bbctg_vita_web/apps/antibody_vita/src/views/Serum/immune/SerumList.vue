@@ -2,6 +2,26 @@
   <div class="app-container">
     <!-- Advanced Ops: slide down overlay -->
     <AdvancedOpsBar v-model="showAdvancedOps">
+      <el-input
+        v-model="listQuery.lab_notebook"
+        placeholder="实验记录本"
+        title="输入「空」可查找未填写"
+        clearable
+        :prefix-icon="Search"
+        style="width: 220px;"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <el-input
+        v-model="listQuery.cage_position"
+        placeholder="笼位"
+        title="输入「空」可查找未填写"
+        clearable
+        :prefix-icon="Search"
+        style="width: 220px;"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
       <el-button
         type="primary"
         :class="{'no-permission-btn': !canViewCellInventory()}"
@@ -262,28 +282,56 @@
             </template>
         </el-table-column>
         
-        <el-table-column label="项目名称" prop="project_name" align="left" min-width="250" sortable="custom" show-overflow-tooltip>
+        <el-table-column label="项目名称" prop="project_name" align="left" min-width="240" sortable="custom" show-overflow-tooltip>
             <template #default="{ row }">
                <span class="project-name">{{ row.project_name }}</span>
             </template>
         </el-table-column>
 
-        <el-table-column v-if="showExtraColumns" label="归类鼠型" prop="mouse_strain_category" align="center" min-width="100" show-overflow-tooltip />
-
-        <el-table-column v-if="showExtraColumns" :label="isCageMode ? '笼位' : '实验备注'" prop="remark" align="center" min-width="130" show-overflow-tooltip>
+        <el-table-column v-if="showExtraColumns" label="实验记录本" prop="lab_notebook" align="center" min-width="110" show-overflow-tooltip class-name="inline-edit-cell">
             <template #default="{ row }">
                <el-input
-                  v-if="isCageMode && editingRowId === row.id"
+                  v-if="editingField === 'lab_notebook' && editingRowId === row.id"
                   v-model="editingValue"
-                  size="small"
-                  style="width: 100%;"
+                  class="inline-edit-input"
+                  placeholder="实验记录本号"
+                  @keyup.enter="saveLabNotebook(row)"
+                  @blur="saveLabNotebook(row)"
+               />
+               <button
+                  v-else
+                  type="button"
+                  class="inline-edit-trigger"
+                  :class="{ 'is-editable': canEdit(row) }"
+                  @click="handleNotebookClick(row)"
+               >
+                  {{ row.lab_notebook || '' }}
+               </button>
+            </template>
+        </el-table-column>
+
+        <el-table-column v-if="showExtraColumns" label="归类鼠型" prop="mouse_strain_category" align="center" min-width="110" show-overflow-tooltip />
+
+        <el-table-column v-if="showExtraColumns" :label="isCageMode ? '笼位' : '实验备注'" prop="remark" align="center" min-width="130" show-overflow-tooltip :class-name="isCageMode ? 'inline-edit-cell' : ''">
+            <template #default="{ row }">
+               <el-input
+                  v-if="isCageMode && editingField === 'cage' && editingRowId === row.id"
+                  v-model="editingValue"
+                  class="inline-edit-input"
                   placeholder="鼠鼠大House~"
                   @keyup.enter="handleEnter(row)"
                   @blur="handleBlur(row)"
                />
-               <span v-else @click="handleCageClick(row)" :style="isCageMode && canUpdateCage(row) ? 'cursor: pointer; min-height: 20px; display: inline-block; min-width: 20px;' : 'cursor: default; min-height: 20px; display: inline-block; min-width: 20px;'">
-                  {{ isCageMode ? (row.cage_position_display || '') : (row.remark || '') }}
-               </span>
+               <button
+                  v-else-if="isCageMode"
+                  type="button"
+                  class="inline-edit-trigger"
+                  :class="{ 'is-editable': canUpdateCage(row) }"
+                  @click="handleCageClick(row)"
+               >
+                  {{ row.cage_position_display || '' }}
+               </button>
+               <span v-else>{{ row.remark || '' }}</span>
             </template>
         </el-table-column>
 
@@ -449,7 +497,7 @@ import {
 } from 'element-plus'
 
 import { notifyApiError, resolveUserMessage } from '#/api/errors'
-import { fetchList, fetchStats, getSerumFilterOptions, updateSerumStatus, export_mouse, exportSerumList, autoUpdateStatus, updateCagePosition, exportSchemePdf } from '#/api/serum'
+import { fetchList, fetchStats, getSerumFilterOptions, updateSerumStatus, export_mouse, exportSerumList, autoUpdateStatus, updateCagePosition, updateLabNotebook, exportSchemePdf } from '#/api/serum'
 import { skipGlobalErrorHandler } from '#/api/request'
 import { SERUM_ERRORS } from '../shared/errors'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
@@ -553,6 +601,8 @@ export default {
         limit: 20,
         project_code: undefined,
         project_name: undefined,
+        lab_notebook: undefined,
+        cage_position: undefined,
         owner: undefined,
         target_name: undefined,
         study_type: undefined,
@@ -587,9 +637,10 @@ export default {
       showAdvancedOps: false,
       isCageMode: false,
       editingRowId: null,
+      editingField: '',
       editingValue: '',
       editingOriginalValue: '',
-      isSaving: false,
+      savingKeys: {},
       schemePrintLoading: false,
       tableScrollAnimationFrame: 0,
       tabDataFetchedAt: 0,
@@ -723,6 +774,8 @@ export default {
             project_code: projectCode,
             project_codes: projectCodes,
             project_name: this.listQuery.project_name,
+            lab_notebook: this.listQuery.lab_notebook,
+            cage_position: this.listQuery.cage_position,
             owner: this.listQuery.owner,
             project_status: this.listQuery.project_status,
             target_name: this.listQuery.target_name,
@@ -963,6 +1016,7 @@ export default {
       event.preventDefault()
       this.isCageMode = !this.isCageMode
       this.editingRowId = null
+      this.editingField = ''
       this.editingValue = ''
       if (this.isCageMode) {
         ElMessage.info('已切换到笼位编辑模式')
@@ -970,27 +1024,14 @@ export default {
     },
     handleCageClick(row) {
       if (!this.isCageMode) {
-        this.editingRowId = null
         return
       }
       if (!this.canUpdateCage(row)) {
         ElMessage.warning('您没有权限编辑此项目')
-        this.editingRowId = null
         return
       }
-      this.editingRowId = row.id
-      this.editingValue = row.cage_position_display || ''
-      this.editingOriginalValue = this.editingValue
-      this.$nextTick(() => {
-        setTimeout(() => {
-          const rowEl = this.$el.querySelector(`.serum-row-${row.id}`)
-          const inputEl = rowEl && rowEl.querySelector('input')
-          if (inputEl) {
-            inputEl.focus()
-            inputEl.select()
-          }
-        }, 0)
-      })
+      this.startInlineEdit(row.id, 'cage', row.cage_position_display || '')
+      this.focusInlineInput(row.id, 'input')
     },
     handleEnter(row) {
       this.saveCagePosition(row)
@@ -999,30 +1040,34 @@ export default {
       this.saveCagePosition(row)
     },
     saveCagePosition(row) {
-      if (this.isSaving) {
+      const field = 'cage'
+      const key = `${row.id}:${field}`
+      if (this.savingKeys[key]) {
+        return
+      }
+      if (this.editingField !== field || this.editingRowId !== row.id) {
         return
       }
       if (this.editingValue.trim() === this.editingOriginalValue) {
-        this.editingRowId = null
-        this.editingValue = ''
+        this.stopInlineEditIfCurrent(row.id, field)
         return
       }
       if (!this.canUpdateCage(row)) {
         ElMessage.warning('您没有权限编辑此项目')
-        this.editingRowId = null
-        this.editingValue = ''
+        this.stopInlineEditIfCurrent(row.id, field)
         return
       }
-      this.isSaving = true
+      const value = this.editingValue.trim()
+      const previous = row.cage_position_display || ''
+      row.cage_position = value
+      row.cage_position_display = value
+      this.savingKeys[key] = true
       updateCagePosition({
         id: row.id,
-        cage_position: this.editingValue.trim(),
+        cage_position: value,
       }).then(() => {
-        row.cage_position = this.editingValue.trim()
-        row.cage_position_display = this.editingValue.trim()
         ElMessage.success('笼位更新成功')
-        this.editingRowId = null
-        this.editingValue = ''
+        this.stopInlineEditIfCurrent(row.id, field)
       }).catch((error) => {
         const resolved = resolveUserMessage(error, {
           messages: SERUM_ERRORS.list.updateCage,
@@ -1032,12 +1077,87 @@ export default {
           row.cage_position = ''
           row.cage_position_display = ''
         } else {
+          row.cage_position = previous
+          row.cage_position_display = previous
           notifyApiError(error, { messages: SERUM_ERRORS.list.updateCage })
         }
-        this.editingRowId = null
-        this.editingValue = ''
+        this.stopInlineEditIfCurrent(row.id, field)
       }).finally(() => {
-        this.isSaving = false
+        this.savingKeys[key] = false
+      })
+    },
+    handleNotebookClick(row) {
+      if (!this.canEdit(row)) {
+        ElMessage.warning('您没有权限编辑此项目')
+        return
+      }
+      this.startInlineEdit(row.id, 'lab_notebook', row.lab_notebook || '')
+      this.focusInlineInput(row.id, '.inline-edit-input input')
+    },
+    startInlineEdit(rowId, field, value) {
+      this.editingRowId = rowId
+      this.editingField = field
+      this.editingValue = value
+      this.editingOriginalValue = value
+    },
+    focusInlineInput(rowId, selector) {
+      this.$nextTick(() => {
+        setTimeout(() => {
+          const rowEl = this.$el.querySelector(`.serum-row-${rowId}`)
+          const inputEl = rowEl && rowEl.querySelector(selector)
+          if (inputEl) {
+            inputEl.focus()
+            inputEl.select()
+          }
+        }, 0)
+      })
+    },
+    stopInlineEditIfCurrent(rowId, field) {
+      if (this.editingRowId !== rowId || this.editingField !== field) {
+        return
+      }
+      this.editingRowId = null
+      this.editingField = ''
+      this.editingValue = ''
+    },
+    normalizeLabNotebook(value) {
+      return String(value || '').replace(/\s+/g, '')
+    },
+    saveLabNotebook(row) {
+      const field = 'lab_notebook'
+      const key = `${row.id}:${field}`
+      if (this.savingKeys[key]) {
+        return
+      }
+      if (this.editingField !== field || this.editingRowId !== row.id) {
+        return
+      }
+      const value = this.normalizeLabNotebook(this.editingValue)
+      if (value === (row.lab_notebook || '')) {
+        this.stopInlineEditIfCurrent(row.id, field)
+        return
+      }
+      if (!this.canEdit(row)) {
+        ElMessage.warning('您没有权限编辑此项目')
+        this.stopInlineEditIfCurrent(row.id, field)
+        return
+      }
+      const previous = row.lab_notebook || ''
+      row.lab_notebook = value
+      this.savingKeys[key] = true
+      updateLabNotebook({
+        id: row.id,
+        lab_notebook: value,
+      }).then((response) => {
+        row.lab_notebook = response?.lab_notebook ?? value
+        ElMessage.success('实验记录本更新成功')
+        this.stopInlineEditIfCurrent(row.id, field)
+      }).catch((error) => {
+        row.lab_notebook = previous
+        notifyApiError(error, { messages: SERUM_ERRORS.list.updateLabNotebook })
+        this.stopInlineEditIfCurrent(row.id, field)
+      }).finally(() => {
+        this.savingKeys[key] = false
       })
     },
     saveStatus(row, newStatus) {
@@ -1206,6 +1326,41 @@ export default {
 .app-container :deep(.status-column-cell .cell) {
     padding-left: 5px;
     padding-right: 5px;
+}
+.app-container :deep(td.inline-edit-cell) {
+    height: 1px;
+    padding: 0;
+}
+.app-container :deep(.inline-edit-cell .cell) {
+    height: 100%;
+    padding: 0;
+}
+.app-container :deep(.inline-edit-cell .inline-edit-trigger) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 0 8px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    line-height: inherit;
+    cursor: default;
+}
+.app-container :deep(.inline-edit-cell .inline-edit-trigger.is-editable) {
+    cursor: pointer;
+}
+.app-container :deep(.inline-edit-cell .inline-edit-input) {
+    width: 100%;
+    height: 100%;
+    --el-input-height: 100%;
+}
+.app-container :deep(.inline-edit-cell .inline-edit-input .el-input__wrapper) {
+    height: 100%;
+    min-height: 100%;
+    border-radius: 0;
 }
 /*
  * 「状态」与右侧 fixed「操作」之间的硬分割线。

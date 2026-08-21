@@ -355,6 +355,7 @@ class SerumTiterOrder(Base):
     serum_status: Mapped[str | None] = mapped_column(String(64))
     summary: Mapped[str | None] = mapped_column(String(500))
     remark: Mapped[str | None] = mapped_column(String(500))
+    priority: Mapped[str | None] = mapped_column(String(64))
 
     def to_dict(self) -> dict:
         raw_dates = self.test_dates if isinstance(self.test_dates, list) else []
@@ -376,4 +377,5 @@ class SerumTiterOrder(Base):
             "serum_status": self.serum_status,
             "summary": self.summary,
             "remark": self.remark,
+            "priority": self.priority or "正常",
         }

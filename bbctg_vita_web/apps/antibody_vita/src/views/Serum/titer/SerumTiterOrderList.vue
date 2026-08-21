@@ -1,6 +1,20 @@
 <template>
   <div class="app-container titer-order-page">
     <AdvancedOpsBar v-model="showAdvancedOps">
+      <el-select
+        v-model="listQuery.order_status"
+        clearable
+        placeholder="工单状态"
+        style="width: 220px;"
+        @change="handleFilter"
+      >
+        <el-option
+          v-for="item in flowOrderStatusOptions"
+          :key="item.value"
+          :label="item.label"
+          :value="item.value"
+        />
+      </el-select>
       <el-button type="warning" :icon="Download" @click="handleListExport">
         列表导出
       </el-button>
@@ -41,7 +55,9 @@
         <div
           class="stat-tile stat-purple stat-tile-interactive"
           :class="{ 'stat-tile-active': statFilterActive.pending }"
-          @click="handleStatFilter('pending')"
+          title="左键：已采血且未填检测日期；右键：未填检测日期"
+          @click="handlePendingStatFilter('blooded')"
+          @contextmenu.prevent="handlePendingStatFilter('empty')"
         >
           <span class="stat-copy">
             <span class="stat-label">待检测</span>
@@ -52,8 +68,9 @@
         <div
           class="stat-tile stat-orange stat-tile-interactive"
           :class="{ 'stat-tile-active': statFilterActive.thisWeek }"
+          title="左键：检测日期在本周；右键：已填检测日期但尚未改为已检测"
           @click="handleThisWeekStatFilter('week')"
-          @contextmenu.prevent="handleThisWeekStatFilter('month')"
+          @contextmenu.prevent="handleThisWeekStatFilter('unsubmitted')"
         >
           <span class="stat-copy">
             <span class="stat-label">本周检测</span>
@@ -223,6 +240,20 @@
           />
         </el-select>
         <el-select
+          v-model="listQuery.priority"
+          class="filter-item"
+          clearable
+          placeholder="检测优先级"
+          @change="handleFilter"
+        >
+          <el-option
+            v-for="item in titerPriorityOptions"
+            :key="item"
+            :label="item"
+            :value="item"
+          />
+        </el-select>
+        <el-select
           v-model="listQuery.summary_status"
           class="filter-item"
           clearable
@@ -232,12 +263,6 @@
           <el-option label="未填写小结" value="empty" />
           <el-option label="已填写小结" value="filled" />
         </el-select>
-        <el-select
-          v-model="orderStatusPlaceholder"
-          class="filter-item"
-          clearable
-          placeholder="工单状态"
-        />
         <div class="filter-actions">
           <span class="more-toggle-btn" title="高级操作" @click="showAdvancedOps = !showAdvancedOps">
             <el-icon><Tools /></el-icon>
@@ -312,7 +337,7 @@
           </template>
         </el-table-column>
         <el-table-column label="检测方法" prop="assay_method" align="center" min-width="130" show-overflow-tooltip />
-        <el-table-column prop="facs_plate_count" align="center" min-width="100" class-name="plate-col-facs">
+        <el-table-column prop="facs_plate_count" align="center" min-width="80" class-name="plate-col-facs">
           <template #header>
             <el-popover v-model:visible="colFilterOpen.facs_plate" trigger="click" width="220">
               <el-radio-group v-model="listQuery.facs_plate_zero" size="small" class="col-filter-zero">
@@ -345,7 +370,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="elisa_plate_count" align="center" min-width="100" class-name="plate-col-elisa">
+        <el-table-column prop="elisa_plate_count" align="center" min-width="80" class-name="plate-col-elisa">
           <template #header>
             <el-popover v-model:visible="colFilterOpen.elisa_plate" trigger="click" width="220">
               <el-radio-group v-model="listQuery.elisa_plate_zero" size="small" class="col-filter-zero">
@@ -428,7 +453,7 @@
           prop="test_dates_display"
           align="center"
           sortable="custom"
-          min-width="180"
+          min-width="160"
           class-name="plate-col-test-dates"
         >
           <template #default="{ row, $index }">
@@ -483,15 +508,39 @@
                 class="inline-cell-control serum-status-select"
                 :class="row.serum_status ? 'status-tone-' + getSerumTiterStatusTagType(row.serum_status) : ''"
                 size="small"
-                allow-create
                 clearable
-                filterable
-                :disabled="!canEditTiterOrderRecord(row)"
-                placeholder="选择或输入"
+                :disabled="!canEditTiterOrderRecordOpen()"
+                placeholder="选择状态"
                 @change="onSerumStatusChange(row)"
               >
                 <el-option
-                  v-for="item in allSerumStatusOptions"
+                  v-for="item in titerSerumStatusOptions"
+                  :key="item"
+                  :label="item"
+                  :value="item"
+                />
+              </el-select>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="优先级" prop="priority" align="center" sortable="custom" min-width="120" class-name="status-column-cell plate-col-priority">
+          <template #default="{ row, $index }">
+            <div
+              class="plate-select-cell plate-select-cell--field"
+              @mousedown="onFieldCellMouseDown('priority', $index, $event)"
+              @mouseenter="onPlateCellMouseEnter('priority', $index)"
+              @contextmenu.prevent="onPlateCellContextMenu('priority')"
+            >
+              <el-select
+                v-model="row.priority"
+                class="inline-cell-control priority-select"
+                :class="'status-tone-' + getTiterPriorityTone(row.priority)"
+                size="small"
+                :disabled="!canEditTiterOrderRecordOpen()"
+                @change="onPriorityChange(row)"
+              >
+                <el-option
+                  v-for="item in titerPriorityOptions"
                   :key="item"
                   :label="item"
                   :value="item"
@@ -550,8 +599,18 @@
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="工单状态" prop="order_status" align="center" min-width="100" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.order_status || '-' }}</template>
+        <el-table-column label="工单状态" prop="order_status" align="center" min-width="100" class-name="status-column-cell">
+          <template #default="{ row }">
+            <el-tag
+              v-if="row.order_status"
+              class="status-tag"
+              :type="orderStatusTagType(row.order_status)"
+              effect="plain"
+            >
+              {{ row.order_status_label }}
+            </el-tag>
+            <span v-else>-</span>
+          </template>
         </el-table-column>
         <el-table-column label="免疫状态" prop="immune_status" align="center" min-width="100" class-name="status-column-cell">
           <template #default="{ row }">
@@ -758,13 +817,15 @@ import {
 } from '#/api/serum';
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
-import { getSerumProjectStatusTagType, getSerumTiterStatusTagType, mergeTiterSerumStatusOptions } from '#/utils/serumProjectStatus';
+import { getSerumProjectStatusTagType, getSerumTiterStatusTagType, getTiterPriorityTone, mergeTiterSerumStatusOptions, TITER_PRIORITY_DEFAULT, TITER_PRIORITY_OPTIONS, TITER_SERUM_STATUS_OPTIONS } from '#/utils/serumProjectStatus';
+import { FLOW_WORK_ORDER_STATUS_OPTIONS, orderStatusTagType } from '#/utils/megaFlowWorkOrderStatus';
 import {
   canDeleteTiterOrder,
   canEditSerumTiter,
   canEditTiterOrder,
   canEditTiterOrderOwner,
   canEditTiterOrderRecord,
+  canEditTiterOrderRecordOpen,
   getSerumUserName,
 } from '#/utils/serumPermission';
 import { useUserStore } from '@vben/stores';
@@ -787,7 +848,7 @@ const DEFAULT_STATS = {
 const STATS_AFFECTING_LABELS = new Set(['效价负责人', '检测日期', '血清状态', '效价小结']);
 
 /** 可划选后改一处同步的列；值仅用于选区计数，无板数含义 */
-const FIELD_SELECT_COLUMNS = new Set(['owner', 'test_dates', 'serum_status']);
+const FIELD_SELECT_COLUMNS = new Set(['owner', 'test_dates', 'serum_status', 'priority']);
 
 const ASSAY_FILTER_FACS = '__facs__';
 const ASSAY_FILTER_ELISA = '__elisa__';
@@ -815,13 +876,6 @@ function getCurrentWeekRange() {
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   return [formatLocalDate(monday), formatLocalDate(sunday)];
-}
-
-function getCurrentMonthRange() {
-  const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return [formatLocalDate(first), formatLocalDate(last)];
 }
 
 function isSameDateRange(left, right) {
@@ -1023,6 +1077,10 @@ export default {
         immune_status: '',
         serum_status: '',
         summary_status: '',
+        priority: '',
+        test_dates_empty: false,
+        tested_unsubmitted: false,
+        order_status: '',
         target_name: '',
         titer_owner: '',
         mouse_count_zero: '',
@@ -1043,6 +1101,9 @@ export default {
       allImmuneOwnerOptions: [],
       allImmuneStatusOptions: [],
       allSerumStatusOptions: mergeTiterSerumStatusOptions(),
+      titerSerumStatusOptions: [...TITER_SERUM_STATUS_OPTIONS],
+      titerPriorityOptions: [...TITER_PRIORITY_OPTIONS],
+      flowOrderStatusOptions: FLOW_WORK_ORDER_STATUS_OPTIONS,
       ownerFilterQuery: '',
       targetFilterQuery: '',
       assayMethodFilterQuery: '',
@@ -1052,9 +1113,9 @@ export default {
       bloodCollectionRange: [],
       testDatesRange: [],
       overflowCellKeys: {},
-      orderStatusPlaceholder: '',
       statFilterActive: createDefaultStatFilterActive(),
       testDateStatScope: '',
+      pendingStatScope: '',
       applyingStatDateRange: false,
       ownerStatsVisible: false,
       ownerStatsLoading: false,
@@ -1116,6 +1177,7 @@ export default {
           testDatesRange: this.testDatesRange,
           statFilterActive: this.statFilterActive,
           testDateStatScope: this.testDateStatScope,
+          pendingStatScope: this.pendingStatScope,
         }),
       );
     },
@@ -1141,12 +1203,19 @@ export default {
         if (state.testDateStatScope !== undefined) {
           this.testDateStatScope = state.testDateStatScope;
         }
+        if (state.pendingStatScope !== undefined) {
+          this.pendingStatScope = state.pendingStatScope;
+        }
+        this.listQuery.test_dates_empty = Boolean(this.listQuery.test_dates_empty);
+        this.listQuery.tested_unsubmitted = Boolean(this.listQuery.tested_unsubmitted);
       } catch {
         /* ignore */
       }
     },
     getSerumProjectStatusTagType,
     getSerumTiterStatusTagType,
+    getTiterPriorityTone,
+    orderStatusTagType,
     bindPlateTableScroll() {
       this.unbindPlateTableScroll();
       const tableEl = this.$refs.orderTable?.$el;
@@ -1191,6 +1260,7 @@ export default {
         owner: 'plate-col-owner',
         test_dates: 'plate-col-test-dates',
         serum_status: 'plate-col-serum-status',
+        priority: 'plate-col-priority',
       };
       return map[column] || '';
     },
@@ -1210,8 +1280,11 @@ export default {
       if (label === '效价负责人') {
         return this.canEditTiterOrderOwner();
       }
-      if (label === '检测日期' || label === '血清状态' || label === '备注' || label === '效价小结') {
+      if (label === '检测日期' || label === '备注' || label === '效价小结') {
         return this.canEditTiterOrderRecord(row);
+      }
+      if (label === '血清状态' || label === '优先级') {
+        return this.canEditTiterOrderRecordOpen();
       }
       return false;
     },
@@ -1502,7 +1575,7 @@ export default {
       this.plateBubblePos = null;
     },
     buildQuery() {
-      const { summary_status, project_code, ...rest } = this.listQuery;
+      const { summary_status, project_code, test_dates_empty, tested_unsubmitted, ...rest } = this.listQuery;
       const payload = {
         ...rest,
         ...this.buildProjectCodeFilter(project_code),
@@ -1510,7 +1583,13 @@ export default {
         summary_filled: summary_status === 'filled',
       };
       this.appendDateRange(payload, this.bloodCollectionRange, 'blood_collection_start', 'blood_collection_end');
-      this.appendDateRange(payload, this.testDatesRange, 'test_dates_start', 'test_dates_end');
+      if (test_dates_empty) {
+        payload.test_dates_empty = true;
+      } else if (tested_unsubmitted) {
+        payload.tested_unsubmitted = true;
+      } else {
+        this.appendDateRange(payload, this.testDatesRange, 'test_dates_start', 'test_dates_end');
+      }
       if (this.statFilterActive.unassigned) {
         payload.titer_owner_unassigned = true;
       }
@@ -1668,6 +1747,7 @@ export default {
                 titer_owners: Array.isArray(item.titer_owners) ? item.titer_owners : [],
                 test_dates: Array.isArray(item.test_dates) ? item.test_dates : [],
                 test_dates_display: item.test_dates_display || '',
+                priority: item.priority || TITER_PRIORITY_DEFAULT,
               }))
             : [];
           this.total = Number(response.total) || 0;
@@ -1874,18 +1954,6 @@ export default {
           this.ownerFilterQuery = '';
           this.statFilterActive.owners = false;
         }
-      } else if (key === 'pending') {
-        if (turningOff) {
-          if (this.listQuery.serum_status === SERUM_STATUS_PENDING_TEST) {
-            this.listQuery.serum_status = '';
-          }
-        } else {
-          this.statFilterActive.toReport = false;
-          this.listQuery.serum_status = SERUM_STATUS_PENDING_TEST;
-          if (this.listQuery.summary_status === 'empty') {
-            this.listQuery.summary_status = '';
-          }
-        }
       } else if (key === 'toReport') {
         if (turningOff) {
           if (this.listQuery.serum_status === SERUM_STATUS_TESTED) {
@@ -1895,7 +1963,8 @@ export default {
             this.listQuery.summary_status = '';
           }
         } else {
-          this.statFilterActive.pending = false;
+          this.clearPendingStatFilter();
+          this.clearThisWeekStatFilter();
           this.listQuery.serum_status = SERUM_STATUS_TESTED;
           this.listQuery.summary_status = 'empty';
         }
@@ -1915,23 +1984,66 @@ export default {
       }
       this.handleFilter();
     },
+    handlePendingStatFilter(scope) {
+      const turningOff = this.statFilterActive.pending && this.pendingStatScope === scope;
+      if (turningOff) {
+        this.clearPendingStatFilter();
+      } else {
+        this.statFilterActive.pending = true;
+        this.pendingStatScope = scope;
+        this.statFilterActive.toReport = false;
+        this.clearThisWeekStatFilter();
+        this.listQuery.test_dates_empty = true;
+        this.listQuery.serum_status = scope === 'blooded' ? SERUM_STATUS_PENDING_TEST : '';
+        if (this.listQuery.summary_status === 'empty') {
+          this.listQuery.summary_status = '';
+        }
+      }
+      this.handleFilter();
+    },
+    clearPendingStatFilter(options = {}) {
+      const clearSerum = options.clearSerum !== false
+        && this.statFilterActive.pending
+        && this.pendingStatScope === 'blooded';
+      this.statFilterActive.pending = false;
+      this.pendingStatScope = '';
+      this.listQuery.test_dates_empty = false;
+      if (clearSerum && this.listQuery.serum_status === SERUM_STATUS_PENDING_TEST) {
+        this.listQuery.serum_status = '';
+      }
+    },
     handleThisWeekStatFilter(scope) {
-      const range = scope === 'month' ? getCurrentMonthRange() : getCurrentWeekRange();
       const turningOff = this.statFilterActive.thisWeek && this.testDateStatScope === scope;
       if (turningOff) {
-        this.statFilterActive.thisWeek = false;
-        this.testDateStatScope = '';
-        this.testDatesRange = [];
+        this.clearThisWeekStatFilter();
       } else {
         this.statFilterActive.thisWeek = true;
         this.testDateStatScope = scope;
-        this.applyingStatDateRange = true;
-        this.testDatesRange = range;
-        this.$nextTick(() => {
-          this.applyingStatDateRange = false;
-        });
+        this.clearPendingStatFilter({ clearSerum: false });
+        this.statFilterActive.toReport = false;
+        if (this.listQuery.summary_status === 'empty') {
+          this.listQuery.summary_status = '';
+        }
+        if (scope === 'unsubmitted') {
+          this.testDatesRange = [];
+          this.listQuery.tested_unsubmitted = true;
+          this.listQuery.serum_status = '';
+        } else {
+          this.listQuery.tested_unsubmitted = false;
+          this.applyingStatDateRange = true;
+          this.testDatesRange = getCurrentWeekRange();
+          this.$nextTick(() => {
+            this.applyingStatDateRange = false;
+          });
+        }
       }
       this.handleFilter();
+    },
+    clearThisWeekStatFilter() {
+      this.statFilterActive.thisWeek = false;
+      this.testDateStatScope = '';
+      this.testDatesRange = [];
+      this.listQuery.tested_unsubmitted = false;
     },
     handleTiterOwnerFilterChange() {
       if (this.listQuery.titer_owner) {
@@ -1943,8 +2055,9 @@ export default {
       this.handleFilter();
     },
     handleSerumStatusFilterChange() {
-      if (this.listQuery.serum_status !== SERUM_STATUS_PENDING_TEST) {
-        this.statFilterActive.pending = false;
+      if (this.statFilterActive.pending && this.pendingStatScope === 'blooded'
+        && this.listQuery.serum_status !== SERUM_STATUS_PENDING_TEST) {
+        this.clearPendingStatFilter({ clearSerum: false });
       }
       if (this.listQuery.serum_status !== SERUM_STATUS_TESTED) {
         this.statFilterActive.toReport = false;
@@ -1958,19 +2071,23 @@ export default {
       this.handleFilter();
     },
     handleTestDatesFilterChange() {
+      if (Array.isArray(this.testDatesRange) && this.testDatesRange.length === 2 && this.testDatesRange[0]) {
+        this.clearPendingStatFilter({ clearSerum: false });
+        this.listQuery.tested_unsubmitted = false;
+        if (this.testDateStatScope === 'unsubmitted') {
+          this.statFilterActive.thisWeek = false;
+          this.testDateStatScope = '';
+        }
+      }
       if (this.applyingStatDateRange) {
         this.handleFilter();
         return;
       }
       const weekRange = getCurrentWeekRange();
-      const monthRange = getCurrentMonthRange();
       if (isSameDateRange(this.testDatesRange, weekRange)) {
         this.statFilterActive.thisWeek = true;
         this.testDateStatScope = 'week';
-      } else if (isSameDateRange(this.testDatesRange, monthRange)) {
-        this.statFilterActive.thisWeek = true;
-        this.testDateStatScope = 'month';
-      } else {
+      } else if (this.testDateStatScope !== 'unsubmitted') {
         this.statFilterActive.thisWeek = false;
         this.testDateStatScope = '';
       }
@@ -1992,6 +2109,10 @@ export default {
         immune_status: '',
         serum_status: '',
         summary_status: '',
+        priority: '',
+        test_dates_empty: false,
+        tested_unsubmitted: false,
+        order_status: '',
         target_name: '',
         titer_owner: '',
         mouse_count_zero: '',
@@ -2009,7 +2130,6 @@ export default {
       this.$refs.orderTable?.clearSort?.();
       this.testDatesRange = [];
       this.bloodCollectionRange = [];
-      this.orderStatusPlaceholder = '';
       this.targetFilterQuery = '';
       this.ownerFilterQuery = '';
       this.assayMethodFilterQuery = '';
@@ -2017,6 +2137,7 @@ export default {
       this.immuneStatusFilterQuery = '';
       this.statFilterActive = createDefaultStatFilterActive();
       this.testDateStatScope = '';
+      this.pendingStatScope = '';
       this.applyingStatDateRange = false;
       this.colFilterOpen = { mouse_count: false, facs_plate: false, elisa_plate: false };
       this.persistListFilters();
@@ -2041,6 +2162,9 @@ export default {
     },
     canEditTiterOrderRecord(row) {
       return canEditTiterOrderRecord(this.currentUserInfo, row);
+    },
+    canEditTiterOrderRecordOpen() {
+      return canEditTiterOrderRecordOpen(this.currentUserInfo);
     },
     canEditTiter(row) {
       return canEditSerumTiter(this.currentUserInfo, {
@@ -2091,6 +2215,11 @@ export default {
         target.serum_status = source.serum_status;
       });
     },
+    onPriorityChange(row) {
+      this.syncSelectedField(row, 'priority', '优先级', (target, source) => {
+        target.priority = source.priority;
+      });
+    },
     saveRow(row, label, options = {}) {
       const silent = Boolean(options.silent);
       const payload = { id: row.id };
@@ -2107,7 +2236,7 @@ export default {
         }
         payload.test_dates = row.test_dates;
       } else if (label === '血清状态') {
-        if (!this.canEditTiterOrderRecord(row)) {
+        if (!this.canEditTiterOrderRecordOpen()) {
           ElMessage.warning('您没有权限编辑血清状态');
           return Promise.resolve(false);
         }
@@ -2124,6 +2253,12 @@ export default {
           return Promise.resolve(false);
         }
         payload.summary = row.summary;
+      } else if (label === '优先级') {
+        if (!this.canEditTiterOrderRecordOpen()) {
+          ElMessage.warning('您没有权限编辑优先级');
+          return Promise.resolve(false);
+        }
+        payload.priority = row.priority || TITER_PRIORITY_DEFAULT;
       } else {
         return Promise.resolve(false);
       }
@@ -2472,7 +2607,8 @@ export default {
 .table-card :deep(td.plate-col-mouse),
 .table-card :deep(td.plate-col-owner),
 .table-card :deep(td.plate-col-test-dates),
-.table-card :deep(td.plate-col-serum-status) {
+.table-card :deep(td.plate-col-serum-status),
+.table-card :deep(td.plate-col-priority) {
   height: 1px;
   padding: 0;
 }
@@ -2482,7 +2618,8 @@ export default {
 .table-card :deep(td.plate-col-mouse .cell),
 .table-card :deep(td.plate-col-owner .cell),
 .table-card :deep(td.plate-col-test-dates .cell),
-.table-card :deep(td.plate-col-serum-status .cell) {
+.table-card :deep(td.plate-col-serum-status .cell),
+.table-card :deep(td.plate-col-priority .cell) {
   position: relative;
   height: 100%;
   padding: 0;
@@ -2709,6 +2846,38 @@ export default {
   color: var(--el-color-danger);
 }
 
+.table-card :deep(.priority-select.status-tone-info .el-select__wrapper) {
+  background-color: var(--el-color-info-light-9);
+}
+
+.table-card :deep(.priority-select.status-tone-info .el-select__selected-item) {
+  color: var(--el-color-info);
+}
+
+.table-card :deep(.priority-select.status-tone-warning .el-select__wrapper) {
+  background-color: var(--el-color-warning-light-9);
+}
+
+.table-card :deep(.priority-select.status-tone-warning .el-select__selected-item) {
+  color: var(--el-color-warning);
+}
+
+.table-card :deep(.priority-select.status-tone-danger .el-select__wrapper) {
+  background-color: var(--el-color-danger-light-9);
+}
+
+.table-card :deep(.priority-select.status-tone-danger .el-select__selected-item) {
+  color: var(--el-color-danger);
+}
+
+.table-card :deep(.priority-select.status-tone-king .el-select__wrapper) {
+  background-color: #efe8f6;
+}
+
+.table-card :deep(.priority-select.status-tone-king .el-select__selected-item) {
+  color: #6f4d9c;
+}
+
 .table-card :deep(.status-column-cell .cell) {
   padding-left: 5px;
   padding-right: 5px;
@@ -2724,7 +2893,7 @@ export default {
   width: 100%;
 }
 
-/* 效价负责人 → 效价小结：行内控件统一空态高度 */
+/* 效价负责人 → 优先级：行内控件统一空态高度 */
 .table-card :deep(.inline-cell-control .el-select__wrapper),
 .table-card :deep(.inline-cell-control .el-input__wrapper) {
   min-height: 24px;

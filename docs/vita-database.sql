@@ -501,6 +501,7 @@ CREATE TABLE IF NOT EXISTS serum_titer_order (
   serum_status VARCHAR(64) NULL COMMENT '血清状态',
   remark VARCHAR(500) NULL COMMENT '备注',
   summary VARCHAR(500) NULL COMMENT '效价小结',
+  priority VARCHAR(64) NULL COMMENT '检测优先级',
   PRIMARY KEY (id),
   UNIQUE KEY uk_serum_titer_order_id (titer_order_id),
   KEY idx_serum_titer_order_experiment_id (experiment_id)

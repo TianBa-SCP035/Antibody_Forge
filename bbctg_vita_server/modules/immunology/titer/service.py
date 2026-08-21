@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import UploadFile
 from PIL import Image
-from sqlalchemy import JSON, String, and_, bindparam, cast, func, or_, select, text
+from sqlalchemy import JSON, String, and_, bindparam, case, cast, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
@@ -23,6 +23,8 @@ from models.immunology import (
     SerumTiterPc,
     SerumTiterTarget,
 )
+from models.mega_automation import MegaFlowWorkOrder
+from modules.mega_automation.service import ORDER_STATUS_LABELS
 
 
 def _upload_root() -> Path:
@@ -369,6 +371,11 @@ def _derived_cage_position(
 BLOOD_COLLECTION_STAGE_NAME = "采血"
 PENDING_BLOOD_COLLECTION_STATUS = "待采血"
 PENDING_BLOOD_COLLECTION_BOOST_STATUS = "待采血-加免"
+TITER_ORDER_PRIORITY_DEFAULT = "正常"
+TITER_ORDER_PRIORITIES = ("正常", "加急", "非常紧急", "吉吉国王")
+TITER_SERUM_STATUS_ORDER = ("待采血", "待采血-加免", "已采血", "已检测", "已交接", "已销毁")
+TITER_SERUM_STATUS_POST_TEST = ("已检测", "已交接", "已销毁")
+TITER_FLOW_ORDER_TYPE = "TITER"
 
 # NULL=跟随免疫方案；非 NULL=用户覆盖（字段互相独立）
 FOLLOWABLE_BATCH_KEYS = (
@@ -661,6 +668,13 @@ def _parse_blood_collection_seq(raw: Any) -> int | None:
     return seq
 
 
+def _normalize_titer_order_priority(raw: Any) -> str:
+    value = str(raw or "").strip() or TITER_ORDER_PRIORITY_DEFAULT
+    if value not in TITER_ORDER_PRIORITIES:
+        raise ValueError("检测优先级须为：正常、加急、非常紧急、吉吉国王")
+    return value
+
+
 def get_titer_order_batch_preview(db: Session, experiment_id: str) -> dict[str, Any]:
     project, batch, steps = _immune_batch_for_experiment(db, experiment_id)
     blood_dates = _all_blood_collection_dates(steps)
@@ -692,7 +706,6 @@ def _order_to_list_item(
             "target_name": project.target_name or "",
             "immune_owner": project.owner or "",
             "immune_status": project.project_status or "",
-            "order_status": "",
             "blood_collections": _blood_collections_payload(blood_dates),
             "following": {
                 "cage_position": order.cage_position is None,
@@ -707,16 +720,69 @@ def _order_to_list_item(
     return item
 
 
+def _latest_titer_flow_id_subquery(*, source_ids: list[str] | None = None):
+    stmt = (
+        select(
+            MegaFlowWorkOrder.source_id.label("source_id"),
+            func.max(MegaFlowWorkOrder.id).label("max_id"),
+        )
+        .where(
+            MegaFlowWorkOrder.orderType == TITER_FLOW_ORDER_TYPE,
+            MegaFlowWorkOrder.source_id.is_not(None),
+            MegaFlowWorkOrder.source_id != "",
+        )
+        .group_by(MegaFlowWorkOrder.source_id)
+    )
+    if source_ids is not None:
+        stmt = stmt.where(MegaFlowWorkOrder.source_id.in_(source_ids))
+    return stmt.subquery()
+
+
+def _latest_titer_flow_status_subquery():
+    latest_id = _latest_titer_flow_id_subquery()
+    return (
+        select(
+            MegaFlowWorkOrder.source_id.label("source_id"),
+            MegaFlowWorkOrder.status.label("status"),
+        )
+        .join(latest_id, MegaFlowWorkOrder.id == latest_id.c.max_id)
+        .subquery()
+    )
+
+
+def _latest_flow_status_by_titer_ids(db: Session, titer_order_ids: list[str]) -> dict[str, str]:
+    ids = [str(value).strip() for value in titer_order_ids if str(value or "").strip()]
+    if not ids:
+        return {}
+    latest_id = _latest_titer_flow_id_subquery(source_ids=ids)
+    rows = db.execute(
+        select(MegaFlowWorkOrder.source_id, MegaFlowWorkOrder.status).join(
+            latest_id, MegaFlowWorkOrder.id == latest_id.c.max_id
+        )
+    ).all()
+    return {str(source_id): str(status or "") for source_id, status in rows if source_id}
+
+
+def _apply_flow_status_to_items(db: Session, items: list[dict]) -> list[dict]:
+    status_map = _latest_flow_status_by_titer_ids(db, [item.get("titer_order_id") or "" for item in items])
+    for item in items:
+        status = status_map.get(str(item.get("titer_order_id") or "").strip(), "")
+        item["order_status"] = status
+        item["order_status_label"] = ORDER_STATUS_LABELS.get(status, status) if status else ""
+    return items
+
+
 def _enrich_order_rows(
     db: Session,
     rows: list[tuple[SerumTiterOrder, SerumImmProject]],
 ) -> list[dict]:
     exp_ids = [project.experiment_id for _order, project in rows if project.experiment_id]
     contexts = _build_derive_contexts(db, exp_ids)
-    return [
+    items = [
         _order_to_list_item(order, project, contexts.get(order.experiment_id))
         for order, project in rows
     ]
+    return _apply_flow_status_to_items(db, items)
 
 
 def _blood_date_in_range(value: str, start: str | None, end: str | None) -> bool:
@@ -738,14 +804,26 @@ def _titer_order_query():
     )
 
 
+TITER_SERUM_STATUS_RANK = {status: index for index, status in enumerate(TITER_SERUM_STATUS_ORDER)}
+TITER_PRIORITY_RANK = {name: index for index, name in enumerate(TITER_ORDER_PRIORITIES)}
 TITER_ORDER_SQL_SORT_COLUMNS = {
     "project_code": SerumImmProject.project_code,
-    "serum_status": SerumTiterOrder.serum_status,
+    "serum_status": case(
+        TITER_SERUM_STATUS_RANK,
+        value=SerumTiterOrder.serum_status,
+        else_=len(TITER_SERUM_STATUS_ORDER),
+    ),
+    "priority": case(
+        TITER_PRIORITY_RANK,
+        value=func.coalesce(func.nullif(SerumTiterOrder.priority, ""), TITER_ORDER_PRIORITY_DEFAULT),
+        else_=len(TITER_ORDER_PRIORITIES),
+    ),
 }
 TITER_ORDER_ITEM_SORT_FIELDS = {
     "blood_collection_date",
     "project_code",
     "serum_status",
+    "priority",
     "test_dates_display",
 }
 
@@ -765,13 +843,22 @@ def _titer_order_needs_full_scan(data: dict[str, Any], blood_start: str | None, 
     return str(data.get("sort_field") or "") in {"blood_collection_date", "test_dates_display"}
 
 
+def _item_sort_key(item: dict, field: str):
+    if field == "serum_status":
+        return TITER_SERUM_STATUS_RANK.get(str(item.get("serum_status") or "").strip(), len(TITER_SERUM_STATUS_ORDER))
+    if field == "priority":
+        value = str(item.get("priority") or "").strip() or TITER_ORDER_PRIORITY_DEFAULT
+        return TITER_PRIORITY_RANK.get(value, len(TITER_ORDER_PRIORITIES))
+    return str(item.get(field) or "")
+
+
 def _sort_titer_order_items(items: list[dict], data: dict[str, Any]) -> list[dict]:
     field = str(data.get("sort_field") or "")
     if field not in TITER_ORDER_ITEM_SORT_FIELDS:
         return items
     reverse = str(data.get("sort_order") or "").lower() == "desc"
     items.sort(key=lambda item: int(item.get("id") or 0), reverse=True)
-    items.sort(key=lambda item: str(item.get(field) or ""), reverse=reverse)
+    items.sort(key=lambda item: _item_sort_key(item, field), reverse=reverse)
     return items
 
 
@@ -779,6 +866,18 @@ def _empty_titer_owners_condition():
     return or_(
         SerumTiterOrder.titer_owners.is_(None),
         cast(SerumTiterOrder.titer_owners, String).in_(("[]", "null")),
+    )
+
+
+def _empty_test_dates_condition():
+    return func.json_length(func.coalesce(SerumTiterOrder.test_dates, text("JSON_ARRAY()"))) == 0
+
+
+def _serum_status_pre_tested_condition():
+    return or_(
+        SerumTiterOrder.serum_status.is_(None),
+        SerumTiterOrder.serum_status == "",
+        SerumTiterOrder.serum_status.notin_(TITER_SERUM_STATUS_POST_TEST),
     )
 
 
@@ -808,6 +907,26 @@ def _apply_titer_order_list_filters(stmt, data: dict[str, Any]):
         stmt = stmt.where(SerumImmProject.project_status == immune_status)
     if serum_status:
         stmt = stmt.where(SerumTiterOrder.serum_status == serum_status)
+    priority = str(data.get("priority") or "").strip()
+    if priority:
+        if priority == TITER_ORDER_PRIORITY_DEFAULT:
+            stmt = stmt.where(
+                or_(
+                    SerumTiterOrder.priority == priority,
+                    SerumTiterOrder.priority.is_(None),
+                    SerumTiterOrder.priority == "",
+                )
+            )
+        else:
+            stmt = stmt.where(SerumTiterOrder.priority == priority)
+    order_status = str(data.get("order_status") or "").strip()
+    if order_status:
+        latest_flow = _latest_titer_flow_status_subquery()
+        stmt = stmt.where(
+            SerumTiterOrder.titer_order_id.in_(
+                select(latest_flow.c.source_id).where(latest_flow.c.status == order_status)
+            )
+        )
     assay_method = str(data.get("assay_method") or "").strip()
     if assay_method:
         stmt = _apply_assay_method_filter(stmt, assay_method)
@@ -816,14 +935,19 @@ def _apply_titer_order_list_filters(stmt, data: dict[str, Any]):
         stmt = stmt.where(or_(SerumTiterOrder.summary.is_(None), SerumTiterOrder.summary == ""))
     if data.get("summary_filled"):
         stmt = stmt.where(SerumTiterOrder.summary.is_not(None), SerumTiterOrder.summary != "")
-    test_start, test_end = _filter_date_bounds(data, "test_dates_start", "test_dates_end")
-    if test_start or test_end:
-        stmt = stmt.where(
-            _test_dates_in_range_clause(
-                test_start or "0000-01-01",
-                test_end or "9999-12-31",
+    if data.get("test_dates_empty"):
+        stmt = stmt.where(_empty_test_dates_condition())
+    elif data.get("tested_unsubmitted"):
+        stmt = stmt.where(~_empty_test_dates_condition(), _serum_status_pre_tested_condition())
+    else:
+        test_start, test_end = _filter_date_bounds(data, "test_dates_start", "test_dates_end")
+        if test_start or test_end:
+            stmt = stmt.where(
+                _test_dates_in_range_clause(
+                    test_start or "0000-01-01",
+                    test_end or "9999-12-31",
+                )
             )
-        )
     return stmt
 
 
@@ -901,6 +1025,7 @@ def create_titer_order_for_blood_collection_if_absent(
                 if seq < 2
                 else PENDING_BLOOD_COLLECTION_BOOST_STATUS
             ),
+            priority=TITER_ORDER_PRIORITY_DEFAULT,
             blood_collection_seq=seq,
             cage_position=None,
             blood_collection_date=None,
@@ -950,6 +1075,7 @@ def save_titer_order(db: Session, data: dict[str, Any]) -> dict:
             titer_order_id=generate_titer_order_id(db, project.project_code, experiment_id),
             titer_owners=[],
             test_dates=[],
+            priority=TITER_ORDER_PRIORITY_DEFAULT,
             blood_collection_seq=_default_blood_collection_seq(db, experiment_id, steps),
         )
         _apply_batch_fields_to_order(order, immune_batch)
@@ -982,6 +1108,8 @@ def save_titer_order(db: Session, data: dict[str, Any]) -> dict:
         order.summary = summary or None
     if "remark" in data:
         order.remark = str(data.get("remark") or "").strip() or None
+    if "priority" in data:
+        order.priority = _normalize_titer_order_priority(data.get("priority"))
 
     _sync_blood_collection_seq(db, order)
 
@@ -990,7 +1118,8 @@ def save_titer_order(db: Session, data: dict[str, Any]) -> dict:
     if project is None:
         return order.to_dict()
     contexts = _build_derive_contexts(db, [order.experiment_id])
-    return _order_to_list_item(order, project, contexts.get(order.experiment_id))
+    item = _order_to_list_item(order, project, contexts.get(order.experiment_id))
+    return _apply_flow_status_to_items(db, [item])[0]
 
 
 def delete_titer_order(db: Session, order_id: int) -> None:
@@ -1111,6 +1240,14 @@ def get_titer_order_page_meta(db: Session) -> dict:
     }
 
 
+def _pending_detection_filters(deleted_filter):
+    return (
+        deleted_filter,
+        SerumTiterOrder.serum_status == "已采血",
+        _empty_test_dates_condition(),
+    )
+
+
 def _sum_pending_test_plate_counts(db: Session) -> tuple[int, int]:
     join_on = SerumImmProject.experiment_id == SerumTiterOrder.experiment_id
     deleted_filter = or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted")
@@ -1127,7 +1264,7 @@ def _sum_pending_test_plate_counts(db: Session) -> tuple[int, int]:
         )
         .select_from(SerumTiterOrder)
         .join(SerumImmProject, join_on)
-        .where(deleted_filter, SerumTiterOrder.serum_status == "已采血")
+        .where(*_pending_detection_filters(deleted_filter))
     )
     facs, elisa = db.execute(base).one()
     return int(facs or 0), int(elisa or 0)
@@ -1147,7 +1284,7 @@ def get_titer_order_stats(db: Session) -> dict[str, int]:
         select(func.count(SerumTiterOrder.id))
         .select_from(SerumTiterOrder)
         .join(SerumImmProject, join_on)
-        .where(deleted_filter, SerumTiterOrder.serum_status == "已采血")
+        .where(*_pending_detection_filters(deleted_filter))
     ) or 0
     to_report = db.scalar(
         select(func.count(SerumTiterOrder.id))
@@ -1476,8 +1613,10 @@ def export_titer_order_list_workbook(db: Session, data: dict[str, Any]) -> tuple
         "效价负责人",
         "检测日期",
         "血清状态",
+        "优先级",
         "备注",
         "效价小结",
+        "工单状态",
         "免疫状态",
     ]
     rows = []
@@ -1498,8 +1637,10 @@ def export_titer_order_list_workbook(db: Session, data: dict[str, Any]) -> tuple
             cell_text(item.get("titer_owners")),
             item.get("test_dates_display") or cell_text(item.get("test_dates")),
             item.get("serum_status"),
+            item.get("priority") or TITER_ORDER_PRIORITY_DEFAULT,
             item.get("remark"),
             item.get("summary"),
+            item.get("order_status_label") or item.get("order_status"),
             item.get("immune_status"),
         ])
     return build_list_workbook(

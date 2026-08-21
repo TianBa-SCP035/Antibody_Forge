@@ -160,9 +160,14 @@ export function canEditAllTiterOrderRecord(userInfo: any): boolean {
   return hasAccessCode(userInfo, 'serum.titer_order.record.edit_all');
 }
 
+/** 血清状态、检测优先级：有 record.edit 即可，不校验负责人。 */
+export function canEditTiterOrderRecordOpen(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.titer_order.record.edit');
+}
+
 export function canEditTiterOrderRecord(userInfo: any, row: any): boolean {
   return (
-    hasAccessCode(userInfo, 'serum.titer_order.record.edit') &&
+    canEditTiterOrderRecordOpen(userInfo) &&
     (canEditAllTiterOrderRecord(userInfo) ||
       isTiterOwner(userInfo, row) ||
       isProjectOwner(userInfo, { owner: row?.immune_owner }))

@@ -330,6 +330,8 @@ def _resolve_operation_name(description: str | None, permission_name: str, path:
                 return "新建效价工单"
             if "summary" in body_data:
                 return "保存效价小结"
+            if "priority" in body_data:
+                return "保存检测优先级"
             if "titer_owners" in body_data:
                 return "保存效价负责人"
             if any(key in body_data for key in ("test_dates", "serum_status", "remark")):

@@ -290,7 +290,8 @@ _TITER_ORDER_BATCH_FIELD_KEYS = (
     "facs_plate_count",
     "elisa_plate_count",
 )
-_TITER_ORDER_RECORD_FIELD_KEYS = ("test_dates", "serum_status", "remark", "summary")
+_TITER_ORDER_RECORD_FIELD_KEYS = ("test_dates", "remark", "summary")
+_TITER_ORDER_RECORD_OPEN_FIELD_KEYS = ("serum_status", "priority")
 
 
 @router.get("/order/meta")
@@ -554,3 +555,5 @@ def _validate_titer_order_save(db: Session, user: SysUser, data: dict) -> None:
                 detail=PERMISSION_MESSAGES.get("serum.titer_order.record.edit", DEFAULT_PERMISSION_MESSAGE),
             )
         _require_titer_order_record_edit(db, user, order, project)
+    elif _has_payload_keys(data, _TITER_ORDER_RECORD_OPEN_FIELD_KEYS):
+        require_permission(db, user, "serum.titer_order.record.edit")

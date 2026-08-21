@@ -87,7 +87,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `serum.titer_order.edit` | action | 新建/编辑效价工单（含批次信息：笼位、采血、只数、检测方法等） |
 | `serum.titer_order.delete` | action | 删除效价工单 |
 | `serum.titer_order.owner.edit` | action | 编辑效价负责人列 |
-| `serum.titer_order.record.edit` | action | 编辑检测日期、血清状态、备注、效价小结（需为效价或免疫负责人，或 `record.edit_all`） |
+| `serum.titer_order.record.edit` | action | 编辑检测日期、备注、效价小结（需为效价或免疫负责人，或 `record.edit_all`）；血清状态、检测优先级仅需本权限 |
 | `serum.titer_order.record.edit_all` | action | 编辑任意工单检测记录字段（含效价小结） |
 
 ### 2.2 镁伽模块（`mega.*`）
@@ -211,7 +211,7 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 | 效价只读 | `serum.page.detail` 或 `serum.page.titer` |
 | 效价写 | 对应 action + 项目负责人、效价负责人或 `titer.edit_all` |
 | 效价工单（批次/删除/负责人） | 对应 `titer_order.*` action，无归属校验 |
-| 效价工单（检测记录） | `record.edit` + 负责人或 `record.edit_all` |
+| 效价工单（检测记录） | 检测日期 / 备注 / 小结：`record.edit` + 负责人或 `record.edit_all`；血清状态 / 检测优先级：仅 `record.edit` |
 | 自动更新状态 | `serum.status.auto_update` |
 
 负责人匹配：用户 `username` / `display_name`（前端下发为 `realName`）与项目 `owner` 字符串比对（含姓名首段别名）。

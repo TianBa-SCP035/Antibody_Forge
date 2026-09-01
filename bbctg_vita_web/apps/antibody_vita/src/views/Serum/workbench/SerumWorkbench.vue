@@ -1443,17 +1443,16 @@ export default {
       row.species_cross = this.normalizeSpeciesCrossSelection(values)
       this.persistRow(row, 'species_cross')
     },
-    async searchTargetOptions(keyword) {
+    async searchTargetOptions(keyword, selectedCodes) {
       const requestToken = ++this.targetRequestToken
       this.targetLoading = true
       try {
-        const codes = [
-          ...this.list.flatMap((row) => (Array.isArray(row.target_codes) ? row.target_codes : [])),
-          ...(Array.isArray(this.editingRow?.target_codes) ? this.editingRow.target_codes : []),
-        ]
-        const data = await fetchSerumTargetOptions(keyword || '', [...new Set(codes)])
+        const codes = Array.isArray(selectedCodes)
+          ? selectedCodes
+          : (Array.isArray(this.editingRow?.target_codes) ? this.editingRow.target_codes : [])
+        const data = await fetchSerumTargetOptions(keyword || '', codes)
         if (requestToken !== this.targetRequestToken) return
-        this.mergeTargetOptions(data?.items || [])
+        this.targetOptions = data?.items || []
       } catch {
         if (requestToken === this.targetRequestToken) {
           this.targetOptions = this.targetOptions || []
@@ -2505,7 +2504,8 @@ export default {
       row[key] = value
     },
     querySheetTargetOptions({ searchValue }) {
-      return this.searchTargetOptions(searchValue)
+      const row = this.list[this.pasteAnchor?.rowIndex]
+      return this.searchTargetOptions(searchValue, row?.target_codes)
     },
     onSheetTargetPickerChange(row) {
       const codes = this.uniq(Array.isArray(row.target_codes) ? row.target_codes : [])

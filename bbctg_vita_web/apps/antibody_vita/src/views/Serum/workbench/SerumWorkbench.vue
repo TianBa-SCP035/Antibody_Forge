@@ -789,10 +789,6 @@
 <script>
 import { useUserStore } from '@vben/stores'
 import {
-  Bottom,
-  CopyDocument,
-  Delete,
-  Document,
   Download,
   Search,
   Tools,
@@ -800,7 +796,6 @@ import {
 } from '@element-plus/icons-vue'
 import {
   ElButton,
-  ElButtonGroup,
   ElCard,
   ElDatePicker,
   ElDrawer,
@@ -812,7 +807,6 @@ import {
   ElMessageBox,
   ElOption,
   ElPagination,
-  ElPopover,
   ElSelect,
   ElTable,
   ElTableColumn,
@@ -862,6 +856,8 @@ import {
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 import { SERUM_ERRORS } from '../shared/errors'
 import SerumUserSelect from '../shared/SerumUserSelect.vue'
+import WorkbenchRowActions from './WorkbenchRowActions.vue'
+import WorkbenchStatusEditor from './WorkbenchStatusEditor.vue'
 
 const PLAN_STATUS_OPTIONS = [...WORKBENCH_PLAN_STATUS_OPTIONS]
 const PRIORITY_OPTIONS = [...WORKBENCH_PRIORITY_OPTIONS]
@@ -1060,124 +1056,6 @@ const SHEET_HEADER_ALIASES = Object.freeze({
   冲击细胞准备: 'cell_prep_status',
   是否可开展: 'can_start',
 })
-const WorkbenchStatusEditor = {
-  name: 'WorkbenchStatusEditor',
-  components: { ElPopover, ElTag },
-  props: {
-    value: { type: [String, Number], default: '' },
-    options: { type: Array, default: () => [] },
-    type: { type: String, default: 'info' },
-    editable: { type: Boolean, default: false },
-  },
-  emits: ['change'],
-  data() {
-    return { visible: false }
-  },
-  computed: {
-    displayValue() {
-      return String(this.value ?? '').trim() || '—'
-    },
-  },
-  watch: {
-    editable(value) {
-      if (!value) this.visible = false
-    },
-  },
-  methods: {
-    choose(value) {
-      this.visible = false
-      if (value !== this.value) this.$emit('change', value)
-    },
-  },
-  template: `
-    <el-popover
-      v-model:visible="visible"
-      placement="right"
-      trigger="click"
-      transition="el-zoom-in-left"
-      :width="116"
-      :disabled="!editable"
-      :teleported="true"
-    >
-      <div class="workbench-status-option-list">
-        <button
-          v-for="item in options"
-          :key="item"
-          type="button"
-          class="workbench-status-option"
-          :class="{ 'is-current': item === value }"
-          @click.stop="choose(item)"
-        >
-          {{ item }}
-        </button>
-      </div>
-      <template #reference>
-        <el-tag
-          class="list-status-tag workbench-status-tag"
-          :class="{ 'is-editable': editable }"
-          :type="type"
-          effect="plain"
-          @click.stop
-        >
-          {{ displayValue }}
-        </el-tag>
-      </template>
-    </el-popover>
-  `,
-}
-
-const WorkbenchRowActions = {
-  name: 'WorkbenchRowActions',
-  components: { ElButton, ElButtonGroup },
-  props: {
-    row: { type: Object, required: true },
-    canCopy: { type: Boolean, default: false },
-    canDelete: { type: Boolean, default: false },
-    canUnlist: { type: Boolean, default: false },
-  },
-  emits: ['scheme', 'copy', 'delete', 'unlist'],
-  setup() {
-    return { Bottom, CopyDocument, Delete, Document, ViewIcon }
-  },
-  template: `
-    <div class="action-cell" @click.stop>
-      <el-button-group>
-        <el-button
-          class="list-table-action-btn"
-          type="primary"
-          plain
-          :icon="row.aligned_locked ? ViewIcon : Document"
-          @click="$emit('scheme', row)"
-        >
-          {{ row.aligned_locked ? '详情' : '方案' }}
-        </el-button>
-        <el-button
-          class="list-table-action-btn"
-          type="success"
-          plain
-          :icon="CopyDocument"
-          :class="{ 'no-permission-btn': !canCopy }"
-          :title="!canCopy ? '您没有权限复制工作台记录' : ''"
-          @click="$emit('copy', row)"
-        >
-          复制
-        </el-button>
-        <el-button
-          class="list-table-action-btn"
-          type="warning"
-          plain
-          :icon="row.aligned_locked ? Bottom : Delete"
-          :class="{ 'no-permission-btn': !(row.aligned_locked ? canUnlist : canDelete) }"
-          :title="!(row.aligned_locked ? canUnlist : canDelete) ? '您没有权限执行此操作' : ''"
-          @click="$emit(row.aligned_locked ? 'unlist' : 'delete', row)"
-        >
-          {{ row.aligned_locked ? '下架' : '删除' }}
-        </el-button>
-      </el-button-group>
-    </div>
-  `,
-}
-
 export default {
   name: 'SerumWorkbench',
   components: {
@@ -3628,12 +3506,6 @@ export default {
 .table-card :deep(.is-editing > td) {
   background: #ecf5ff !important;
 }
-.action-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-}
 .list-status-tag.status-tone-king {
   color: #6f4d9c;
   background: #efe8f6;
@@ -4038,36 +3910,6 @@ export default {
 </style>
 
 <style>
-.workbench-status-tag.is-editable {
-  cursor: pointer;
-}
-.workbench-status-option-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 2px;
-}
-.workbench-status-option {
-  width: 100%;
-  padding: 7px 10px;
-  border: 0;
-  border-radius: var(--list-inner-radius);
-  background: transparent;
-  color: var(--el-text-color-regular);
-  font: inherit;
-  line-height: 18px;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color .16s ease, color .16s ease;
-}
-.workbench-status-option:hover,
-.workbench-status-option.is-current {
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
-}
-.workbench-status-option.is-current {
-  font-weight: 600;
-}
 .sheet-picker-popup {
   --vxe-ui-font-size-small: 14px;
 

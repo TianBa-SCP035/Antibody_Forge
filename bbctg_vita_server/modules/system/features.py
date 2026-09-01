@@ -49,9 +49,9 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
     },
     {
         "code": "menu.serum",
-        "name": "血清实验菜单",
+        "name": "小鼠免疫菜单",
         "category": "menu",
-        "description": "控制血清实验模块菜单显示",
+        "description": "控制小鼠免疫模块菜单显示",
         "enabled": True,
         "visible": True,
         "sort_order": 10,

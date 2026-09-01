@@ -673,7 +673,7 @@ INSERT IGNORE INTO sys_feature_flag
 VALUES
   ('menu.discovery', '千鼠万抗', 'menu', '控制千鼠万抗父级菜单显示', 1, 1, 5, JSON_OBJECT('path', '/discovery', 'icon', 'lucide:network')),
   ('menu.discovery.target_library', '靶点情报', 'menu', '控制靶点情报页面显示', 1, 1, 10, JSON_OBJECT('path', '/discovery/targets', 'icon', 'lucide:database', 'parent_code', 'menu.discovery')),
-  ('menu.serum', '免疫实验菜单', 'menu', '控制免疫实验模块菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum', 'icon', 'lucide:test-tube')),
+  ('menu.serum', '小鼠免疫菜单', 'menu', '控制小鼠免疫模块菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum', 'icon', 'lucide:test-tube')),
   ('menu.serum.workbench', '项目工作台', 'menu', '控制项目工作台菜单显示', 1, 1, 5, JSON_OBJECT('path', '/serum/workbench', 'icon', 'lucide:layout-dashboard', 'parent_code', 'menu.serum')),
   ('menu.serum.list', '免疫实验列表', 'menu', '控制免疫实验列表菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum/list', 'icon', 'lucide:list', 'parent_code', 'menu.serum')),
   ('menu.serum.titer_order', '效价实验列表', 'menu', '控制效价实验列表菜单显示', 1, 1, 20, JSON_OBJECT('path', '/serum/titer-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.serum')),

@@ -142,6 +142,7 @@ export interface SystemUserQuery {
   keyword?: string;
   page?: number;
   page_size?: number;
+  role_id?: number;
   status?: string;
 }
 

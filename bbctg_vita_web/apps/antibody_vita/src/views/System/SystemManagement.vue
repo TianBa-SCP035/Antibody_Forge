@@ -116,8 +116,9 @@ const userFilters = reactive({
   status: '',
 });
 
-/** 客户端筛选：任一已绑定角色的名称包含「管理员」 */
+/** 任一已绑定角色的名称包含「管理员」 */
 const systemAdminRoleFilter = ref<'' | 'no' | 'yes'>('');
+const userRoleFilter = ref<number | ''>('');
 
 const userForm = reactive<SystemUser & { password?: string }>({
   username: '',
@@ -565,6 +566,7 @@ async function loadData() {
         keyword: userKeyword.value.trim(),
         page: userQuery.page,
         page_size: userQuery.page_size,
+        role_id: userRoleFilter.value || undefined,
       }, skipGlobalErrorHandler);
       users.value = userResult?.items || [];
       userTotal.value = userResult?.total || users.value.length;
@@ -1112,6 +1114,21 @@ onMounted(loadData);
                 <el-option label="在职" value="active" />
                 <el-option label="休假中" value="on_leave" />
                 <el-option label="已离职" value="resigned" />
+              </el-select>
+              <el-select
+                v-model="userRoleFilter"
+                clearable
+                filterable
+                placeholder="角色"
+                style="width: 150px"
+                @change="handleUserSearch"
+              >
+                <el-option
+                  v-for="role in rolesWithId"
+                  :key="role.id"
+                  :label="role.name"
+                  :value="role.id"
+                />
               </el-select>
               <el-select
                 v-model="systemAdminRoleFilter"

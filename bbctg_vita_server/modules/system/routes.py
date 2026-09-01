@@ -57,6 +57,7 @@ def list_users(
     gender: str = "",
     status: str = "",
     employment_status: str = "",
+    role_id: int | None = None,
     has_admin_role: str = "",
     page: int = 1,
     page_size: int = 50,
@@ -85,6 +86,12 @@ def list_users(
         stmt = stmt.where(SysUser.status == status)
     if employment_status:
         stmt = stmt.where(SysUser.employment_status == employment_status)
+    if role_id:
+        stmt = stmt.where(
+            SysUser.id.in_(
+                select(SysUserRole.user_id).where(SysUserRole.role_id == role_id)
+            )
+        )
     admin_user_ids = (
         select(SysUserRole.user_id)
         .join(SysRole, SysRole.id == SysUserRole.role_id)

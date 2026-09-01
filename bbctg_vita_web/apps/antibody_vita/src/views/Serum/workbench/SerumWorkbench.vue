@@ -1131,7 +1131,7 @@ export default {
       },
       listQuery: {
         page: 1,
-        limit: 50,
+        limit: 20,
         keyword: '',
         view_group: null,
         can_start: '',

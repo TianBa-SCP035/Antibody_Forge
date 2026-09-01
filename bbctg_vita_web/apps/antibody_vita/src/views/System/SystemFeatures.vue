@@ -352,7 +352,6 @@ onMounted(loadFeatures);
               v-loading="loading"
               :data="menuTree"
               border
-              default-expand-all
               row-key="code"
               stripe
             >

@@ -890,7 +890,7 @@ def _list_stats(db: Session, data: dict[str, Any]) -> dict[str, int]:
 
 def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     page = max(int(data.get("page", 1) or 1), 1)
-    limit = min(max(int(data.get("limit", 50) or 50), 1), 200)
+    limit = min(max(int(data.get("limit", 20) or 20), 1), 200)
     payload = data or {}
     stmt = _apply_list_filters(_base_stmt(), payload)
     total = db.scalar(_apply_list_filters(_count_stmt(), payload)) or 0

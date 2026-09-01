@@ -16,14 +16,14 @@ bbctg_vita_server/
   models/              # ORM
   modules/
     auth/              # 登录、JWT、当前用户
-    immunology/        # serum / titer / cell
+    immunology/        # serum / workbench / titer / cell
     discovery/         # 千鼠万抗
     mega_automation/   # 镁伽流式工单（含 callback、labillion_sync）
     order_sync/        # 工单数据回传
     system/            # 用户角色权限、审计、功能开关
   integrations/        # 云之家、Labillion、drm_service（SDK 在 drm/，gitignore）
   jobs/                # 定时任务实现与 registry（含手动触发入口）
-  utils/               # 预留：通用工具
+  utils/               # 通用工具（Excel 导入导出等）
   scripts/             # 预留：一次性脚本
   tests/
 ```
@@ -43,6 +43,7 @@ DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Offi
 | `/api/user/info` | `api.py`（Vben 用户信息） |
 | `/api/discovery` | `modules/discovery` |
 | `/api/serum` | `modules/immunology/serum` |
+| `/api/serum/workbench` | `modules/immunology/workbench` |
 | `/api/serum/titer` | `modules/immunology/titer` |
 | `/api/serum/cell_inventory` | `modules/immunology/cell` |
 | `/api/mega-automation` | `modules/mega_automation` |

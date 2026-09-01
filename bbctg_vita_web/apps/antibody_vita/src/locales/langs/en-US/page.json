@@ -29,6 +29,8 @@
     "quickNavReset": "Reset defaults",
     "actionCancel": "Cancel",
     "actionSave": "Save",
+    "presetSerumWorkbenchTitle": "Immunization workbench",
+    "presetSerumWorkbenchSubtitle": "Project planning and preparation",
     "presetSerumTitle": "Serum experiments",
     "presetSerumSubtitle": "End-to-end tracking",
     "presetTiterOrderTitle": "Titer experiments",

@@ -17,6 +17,10 @@ from models.system import (
 
 
 SERUM_PERMISSION_CODES = {
+    "serum.page.workbench",
+    "serum.workbench.edit",
+    "serum.workbench.draft_edit",
+    "serum.workbench.support_edit",
     "serum.page.list",
     "serum.page.detail",
     "serum.page.edit",
@@ -56,6 +60,10 @@ DISCOVERY_PERMISSION_CODES = {
 DEFAULT_PERMISSION_MESSAGE = "没有权限执行此操作"
 
 PERMISSION_MESSAGES: dict[str, str] = {
+    "serum.page.workbench": "没有权限访问项目工作台",
+    "serum.workbench.edit": "没有权限编辑项目工作台",
+    "serum.workbench.draft_edit": "没有权限编辑工作台草稿",
+    "serum.workbench.support_edit": "没有权限编辑实验保障信息",
     "serum.page.list": "没有权限查看血清项目列表",
     "serum.page.detail": "没有权限查看项目详情",
     "serum.page.edit": "没有权限编辑血清项目",

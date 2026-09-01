@@ -1157,7 +1157,7 @@ $plate-legend-title-h: 28px;
           font-size: 14px;
         }
 
-        .absorbance-input :deep(.el-input__inner) {
+        .absorbance-input .el-input__inner {
           padding-right: 28px;
         }
 

@@ -41,7 +41,7 @@
       <!-- Total: Pie Chart Trigger -->
       <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
         <div class="card-panel blue-panel" @click="handleTotalClick">
-          <div class="card-panel-icon-wrapper icon-people">
+          <div class="card-panel-icon-wrapper">
             <el-icon class="card-panel-icon"><DataAnalysis /></el-icon>
           </div>
           <div class="card-panel-description">
@@ -53,7 +53,7 @@
       <!-- Ongoing: Filter Trigger -->
       <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
         <div class="card-panel green-panel" :class="{'active-card': listQuery.project_status === 'ongoing'}" @click="handleStatusFilter('ongoing')">
-          <div class="card-panel-icon-wrapper icon-message">
+          <div class="card-panel-icon-wrapper">
             <el-icon class="card-panel-icon"><Timer /></el-icon>
           </div>
           <div class="card-panel-description">
@@ -65,7 +65,7 @@
       <!-- Completed: Filter Trigger -->
       <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
         <div class="card-panel red-panel" :class="{'active-card': listQuery.project_status === 'completed'}" @click="handleStatusFilter('completed')">
-          <div class="card-panel-icon-wrapper icon-money">
+          <div class="card-panel-icon-wrapper">
             <el-icon class="card-panel-icon"><CircleCheck /></el-icon>
           </div>
           <div class="card-panel-description">
@@ -77,13 +77,11 @@
       <!-- Owner: User Filter Trigger -->
       <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
         <div class="card-panel orange-panel" :class="{'active-card': listQuery.owner === currentOwnerName}" @click="handleOwnerFilter(currentOwnerName)">
-          <div class="card-panel-icon-wrapper icon-shopping">
+          <div class="card-panel-icon-wrapper">
             <el-icon class="card-panel-icon"><UserFilled /></el-icon>
           </div>
           <div class="card-panel-description">
             <div class="card-panel-text">负责人</div>
-            <!-- Displaying mock count for '王申森' or total owners? Use distinct owners count or specific user count if available. 
-                 User asked for "number of admin users". Let's show distinct owner count for now. -->
             <div class="card-panel-num">{{ stats.owner_counts.length }}</div>
           </div>
         </div>
@@ -91,7 +89,7 @@
     </el-row>
 
     <!-- Filter Header -->
-    <div class="filter-wrapper">
+    <div class="filter-wrapper list-filter-controls">
         <el-row :gutter="15" type="flex" align="middle" style="flex-wrap: wrap;">
             <el-col :span="4">
                <el-input v-model="listQuery.project_code" placeholder="项目编号" class="filter-item" @keyup.enter="handleFilter" clearable :prefix-icon="Search" />
@@ -138,24 +136,33 @@
                 </el-date-picker>
             </el-col>
             <el-col :span="1" style="text-align: center;">
-                <span class="more-toggle-btn" title="看不见我" @click="toggleAdvanced">
+                <button
+                  type="button"
+                  class="list-advanced-trigger"
+                  :class="{ 'is-active': showAdvancedFilters }"
+                  title="看不见我"
+                  @click="toggleAdvanced"
+                >
                   <el-icon>
                     <ArrowUp v-if="showAdvancedFilters" />
                     <ArrowDown v-else />
                   </el-icon>
-                </span>
+                </button>
             </el-col>
             <el-col :span="4" style="text-align: right;">
-                <el-button type="primary" :icon="Search" @click="handleFilter">查询</el-button>
-                <el-button
-                  type="success"
-                  :class="{'no-permission-btn': !canCreateProject()}"
-                  :icon="Plus"
-                  :title="!canCreateProject() ? '您没有权限新建项目' : ''"
-                  @click="handleCreate"
-                >
-                  新建
-                </el-button>
+                <div class="list-filter-actions">
+                  <el-button class="list-filter-action-button" type="primary" :icon="Search" @click="handleFilter">查询</el-button>
+                  <el-button
+                    class="list-filter-action-button"
+                    type="success"
+                    :class="{'no-permission-btn': !canCreateProject()}"
+                    :icon="Plus"
+                    :title="!canCreateProject() ? '您没有权限新建项目' : ''"
+                    @click="handleCreate"
+                  >
+                    新建
+                  </el-button>
+                </div>
             </el-col>
         </el-row>
         <el-collapse-transition>
@@ -229,30 +236,40 @@
                   </el-select>
               </el-col>
               <el-col :span="1" style="text-align: center;">
-                <span class="more-toggle-btn" title="彻底疯狂" @click="toggleAdvancedOps">
+                <button
+                  type="button"
+                  class="list-advanced-trigger"
+                  :class="{ 'is-active': showAdvancedOps }"
+                  title="彻底疯狂"
+                  @click="toggleAdvancedOps"
+                >
                   <el-icon><Tools /></el-icon>
-                </span>
+                </button>
               </el-col>
               <el-col :span="4" style="text-align: right;">
-                <el-button
-                  type="danger"
-                  :class="{'no-permission-btn': !canAutoUpdateStatus()}"
-                  :icon="Refresh"
-                  :title="!canAutoUpdateStatus() ? '您没有权限自动更新状态' : ''"
-                  @click="handleAutoUpdateStatus"
-                >
-                  曼波
-                </el-button>
-                <el-button
-                  type="warning"
-                  :class="{'no-permission-btn': !canExportMouse()}"
-                  :icon="Download"
-                  :title="!canExportMouse() ? '您没有权限导出小鼠免疫数据' : ''"
-                  @click="handleExport"
-                  @contextmenu.prevent="handleMouseRightClick"
-                >
-                  鼠鼠
-                </el-button>
+                <div class="list-filter-actions">
+                  <el-button
+                    class="list-filter-action-button"
+                    type="danger"
+                    :class="{'no-permission-btn': !canAutoUpdateStatus()}"
+                    :icon="Refresh"
+                    :title="!canAutoUpdateStatus() ? '您没有权限自动更新状态' : ''"
+                    @click="handleAutoUpdateStatus"
+                  >
+                    曼波
+                  </el-button>
+                  <el-button
+                    class="list-filter-action-button"
+                    type="warning"
+                    :class="{'no-permission-btn': !canExportMouse()}"
+                    :icon="Download"
+                    :title="!canExportMouse() ? '您没有权限导出小鼠免疫数据' : ''"
+                    @click="handleExport"
+                    @contextmenu.prevent="handleMouseRightClick"
+                  >
+                    鼠鼠
+                  </el-button>
+                </div>
               </el-col>
             </el-row>
           </div>
@@ -260,7 +277,7 @@
     </div>
 
     <!-- Main Table -->
-    <el-card shadow="never" class="table-card" :body-style="{ padding: '15px' }">
+    <el-card shadow="never" class="list-table-card">
         <el-table
         ref="serumTable"
         v-loading="listLoading"
@@ -271,14 +288,14 @@
         stripe
         fit
         highlight-current-row
-        style="width: 100%;"
         size="large"
-        :header-cell-style="{background:'#F5F7FA', color:'#606266', fontWeight:'bold',  height: '50px'}"
+        class="list-data-table"
+        style="width: 100%;"
         @sort-change="handleSortChange"
         >
         <el-table-column label="编号" prop="project_code" align="left" width="135" sortable="custom" fixed>
             <template #default="{ row }">
-               <div class="code-text" @click="handleView(row)">{{ row.project_code }}</div>
+               <div class="list-code-text is-clickable" @click="handleView(row)">{{ row.project_code }}</div>
             </template>
         </el-table-column>
         
@@ -369,7 +386,7 @@
                   </div>
                 </div>
                 <template #reference>
-                  <el-tag class="status-tag" :type="getSerumProjectStatusTagType(row.project_status)" effect="plain" :style="canUpdateStatus(row) ? 'cursor: pointer;' : 'cursor: default;'" @click="canUpdateStatus(row) && handleStatusClick(row)">
+                  <el-tag class="list-status-tag" :type="getSerumProjectStatusTagType(row.project_status)" effect="plain" :style="canUpdateStatus(row) ? 'cursor: pointer;' : 'cursor: default;'" @click="canUpdateStatus(row) && handleStatusClick(row)">
                     {{ row.project_status }}
                   </el-tag>
                 </template>
@@ -377,12 +394,11 @@
             </template>
         </el-table-column>
 
-        <el-table-column label="操作" align="center" width="280" fixed="right">
+        <el-table-column label="操作" align="center" width="240" fixed="right">
             <template #default="{ row }">
                 <el-button-group>
                     <el-button
-                        class="table-action-btn"
-                        size="small"
+                        class="list-table-action-btn"
                         type="primary"
                         plain
                         :icon="View"
@@ -392,23 +408,21 @@
                     >
                         详情
                     </el-button>
-                    <el-button 
-                        size="small" 
-                        class="table-action-btn"
-                        type="success" 
-                        plain 
-                        :icon="Edit" 
+                    <el-button
+                        class="list-table-action-btn"
+                        type="success"
+                        plain
+                        :icon="Edit"
                         :class="{'no-permission-btn': !canEdit(row)}"
                         @click="handleUpdate(row, 'scheme')"
                         :title="!canEdit(row) ? '您没有权限编辑此项目' : ''">
                         方案
                     </el-button>
-                    <el-button 
-                        size="small" 
-                        class="table-action-btn"
-                        type="warning" 
-                        plain 
-                        :icon="TrendCharts" 
+                    <el-button
+                        class="list-table-action-btn"
+                        type="warning"
+                        plain
+                        :icon="TrendCharts"
                         :class="{'no-permission-btn': !canEditTiter(row)}"
                         @click="handleUpdate(row, 'titer')"
                         :title="!canEditTiter(row) ? '您没有权限编辑此项目' : ''">
@@ -419,13 +433,13 @@
         </el-table-column>
         </el-table>
 
-         <div class="pagination-container">
+         <div class="list-pagination">
             <el-pagination
                 v-if="paginationReady && total > 0"
                 :current-page="listQuery.page"
                 :page-size="listQuery.limit"
                 :total="total"
-                background
+                :page-sizes="[20, 50, 100, 200]"
                 layout="total, sizes, prev, pager, next, jumper"
                 @size-change="handleSizeChange"
                 @current-change="handleCurrentChange"
@@ -435,10 +449,10 @@
 
     <!-- Pie Chart Dialog (Replaced with CSS Bar Chart to standard) -->
     <el-dialog v-model="chartVisible" title="☝️🤓疯狂牛马榜🐮🐴 o((>ω< ))o" width="500px" append-to-body>
-        <div class="chart-container" style="padding: 0px 20px 20px 20px;">
+        <div style="padding: 0px 20px 20px 20px;">
            <div v-if="stats.owner_counts.length === 0" style="text-align: center; color: #999;">暂无数据</div>
            <div v-else>
-               <div v-for="(item, index) in stats.owner_counts.slice(0, 10)" :key="index" class="bar-row" style="margin-bottom: 15px;">
+               <div v-for="(item, index) in stats.owner_counts.slice(0, 10)" :key="index" style="margin-bottom: 15px;">
                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                        <span style="font-weight: bold; color: #333;">{{ item.name }}</span>
                        <span style="color: #666;">{{ item.value }} 单</span>
@@ -1282,7 +1296,7 @@ export default {
     position: relative;
     padding: var(--list-page-padding);
     background-color: var(--list-page-bg);
-    min-height: 100vh;
+    min-height: 100%;
 }
 .filter-wrapper {
     background: var(--list-surface-bg);
@@ -1291,37 +1305,6 @@ export default {
     border-radius: var(--list-surface-radius);
     margin-bottom: var(--list-page-gap);
     box-shadow: var(--list-surface-shadow);
-}
-.app-container :deep(.el-input:not(.el-input--small):not(.el-input--large)),
-.app-container :deep(.el-select:not(.el-select--small):not(.el-select--large)),
-.app-container :deep(.el-date-editor.el-input:not(.el-input--small):not(.el-input--large)) {
-    font-size: 13px;
-}
-.app-container :deep(.el-input:not(.el-input--small):not(.el-input--large)) {
-    --el-input-height: 30px;
-}
-.app-container :deep(.el-input:not(.el-input--small):not(.el-input--large) .el-input__wrapper),
-.app-container :deep(.el-select:not(.el-select--small):not(.el-select--large) .el-select__wrapper) {
-    min-height: 30px;
-}
-.app-container :deep(.el-button:not(.el-button--small):not(.el-button--large):not(.el-button--text)) {
-    height: 30px;
-    padding: 0 13px;
-    font-size: 13px;
-}
-.filter-wrapper :deep(.el-button .el-icon + span) {
-    margin-left: 4px;
-}
-.table-action-btn {
-    height: 30px;
-    padding: 0 14px;
-    font-size: 13px;
-}
-.status-tag {
-    height: 25px;
-    padding: 0 8px;
-    font-size: 13px;
-    border-radius: var(--list-chip-radius);
 }
 .app-container :deep(.status-column-cell .cell) {
     padding-left: 5px;
@@ -1362,19 +1345,6 @@ export default {
     min-height: 100%;
     border-radius: 0;
 }
-/*
- * 「状态」与右侧 fixed「操作」之间的硬分割线。
- * sticky 固定列会盖住上一列右边框；用 1px 投影画竖线（视觉同边框），
- * 避免 border-left 改变盒模型导致拖列宽时固定列跟着跑。
- */
-.app-container :deep(.el-table--border .el-table-fixed-column--right.is-first-column.el-table__cell) {
-    box-shadow: -1px 0 0 0 var(--el-table-border-color);
-}
-.table-card {
-    border-radius: var(--list-surface-radius);
-    border: var(--list-surface-border);
-    box-shadow: var(--list-surface-shadow);
-}
 .filter-item {
     width: 100%;
 }
@@ -1383,43 +1353,9 @@ export default {
     padding-top: 10px;
     border-top: 1px dashed #e8e8e8;
 }
-.more-toggle-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    color: #606266;
-    background: #f5f7fa;
-    cursor: pointer;
-    margin-right: 6px;
-    vertical-align: middle;
-}
-.more-toggle-btn .el-icon {
-    font-size: 15px;
-}
-.more-toggle-btn:hover {
-    color: #409EFF;
-    background: #eef5ff;
-}
-.code-text {
-    font-family: 'Consolas', monospace;
-    color: #409EFF;
-    cursor: pointer;
-    font-weight: bold;
-}
-.code-text:hover {
-    text-decoration: underline;
-}
 .project-name {
     font-weight: 500;
     color: #333;
-}
-
-/* 无权限按钮样式 */
-.no-permission-btn {
-    cursor: not-allowed;
 }
 
 /* Dashboard Panel Styles */
@@ -1493,10 +1429,6 @@ export default {
 .red-panel { background: linear-gradient(135deg, #8e44ad 0%, #9b59b6 100%); }
 .orange-panel { background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); }
 
-.pagination-container {
-    margin-top: 15px;
-    text-align: right;
-}
 .status-option-list {
     max-height: 250px;
     overflow-y: auto;

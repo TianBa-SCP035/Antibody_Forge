@@ -1,6 +1,8 @@
 from collections import defaultdict
 from datetime import datetime
+import hashlib
 from io import BytesIO
+import json
 from pathlib import Path
 import shutil
 from typing import Any
@@ -14,9 +16,6 @@ from sqlalchemy.orm import Session
 from core.config import get_settings
 from core.errors import BusinessError
 
-SERUM_CAGE_NO_MOUSE = "SERUM_CAGE_NO_MOUSE"
-TERMINAL_PROJECT_STATUSES = frozenset({"结题", "无效价处死"})
-STATUS_AUTO_UPDATE_SKIP_STATUSES = TERMINAL_PROJECT_STATUSES | {"加免中"}
 from models.immunology import (
     SerumElisaPlate,
     SerumFacsPlate,
@@ -25,16 +24,61 @@ from models.immunology import (
     SerumImmMouse,
     SerumImmProject,
     SerumImmStep,
+    SerumImmWorkbench,
     SerumTiterOrder,
     SerumTiterPc,
     SerumTiterTarget,
 )
+from models.system import SysUser
 from models.target import Target
 from modules.discovery import service as discovery_service
+from modules.immunology.project_lock import lock_experiment_owner, lock_project_by_id
 from modules.immunology.titer.service import (
     PENDING_BLOOD_COLLECTION_STATUS,
     _normalize_owner_names,
     create_titer_order_for_blood_collection_if_absent,
+)
+
+SERUM_CAGE_NO_MOUSE = "SERUM_CAGE_NO_MOUSE"
+TERMINAL_PROJECT_STATUSES = frozenset({"结题", "无效价处死"})
+STATUS_AUTO_UPDATE_SKIP_STATUSES = TERMINAL_PROJECT_STATUSES | {"加免中"}
+EXPERIMENT_CHILD_MODELS = (
+    SerumImmMouse,
+    SerumImmAntigen,
+    SerumImmStep,
+    SerumTiterTarget,
+    SerumTiterPc,
+    SerumFacsPlate,
+    SerumElisaPlate,
+    SerumTiterOrder,
+)
+EXPERIMENT_RELATED_MODELS = (SerumFile, *EXPERIMENT_CHILD_MODELS)
+PROJECT_FIELDS = (
+    "experiment_id",
+    "project_code",
+    "project_name",
+    "project_purpose",
+    "start_date",
+    "immunization_interval",
+    "target_codes",
+    "target_name",
+    "target_type",
+    "target_size",
+    "owner",
+    "pm",
+    "study_type",
+    "assay_method",
+    "facs_plate_count",
+    "elisa_plate_count",
+    "project_status",
+    "remark",
+)
+PROJECT_CHILD_FIELDS = (
+    "mouse_groups",
+    "antigens",
+    "steps",
+    "titer_targets",
+    "titer_pcs",
 )
 
 
@@ -229,17 +273,21 @@ def generate_next_id(db: Session, project_code: str) -> str | None:
     project_code = _compact_identifier(project_code)
     if not project_code:
         return None
-    projects = db.scalars(
-        select(SerumImmProject).where(SerumImmProject.experiment_id.like(f"{project_code}%"))
-    ).all()
-    existing_suffixes = set()
-    for project in projects:
-        try:
-            suffix = (project.experiment_id or "")[len(project_code) :]
-            if suffix.isdigit():
-                existing_suffixes.add(int(suffix))
-        except Exception:
-            continue
+    existing_suffixes: set[int] = set()
+    for experiment_id in db.scalars(
+        select(SerumImmProject.experiment_id).where(SerumImmProject.experiment_id.like(f"{project_code}%"))
+    ).all():
+        suffix = (experiment_id or "")[len(project_code) :]
+        if suffix.isdigit():
+            existing_suffixes.add(int(suffix))
+    for experiment_id in db.scalars(
+        select(SerumImmWorkbench.experiment_id).where(
+            SerumImmWorkbench.experiment_id.like(f"{project_code}%")
+        )
+    ).all():
+        suffix = (experiment_id or "")[len(project_code) :]
+        if suffix.isdigit():
+            existing_suffixes.add(int(suffix))
     next_suffix = 1
     while next_suffix in existing_suffixes:
         next_suffix += 1
@@ -369,17 +417,78 @@ def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, st
     )
 
 
+def _load_project_children(db: Session, experiment_id: str | None) -> dict[str, list[dict]]:
+    return {
+        "mouse_groups": [
+            item.to_dict()
+            for item in db.scalars(
+                select(SerumImmMouse)
+                .where(SerumImmMouse.experiment_id == experiment_id)
+                .order_by(SerumImmMouse.id.asc())
+            ).all()
+        ],
+        "antigens": [
+            item.to_dict()
+            for item in db.scalars(
+                select(SerumImmAntigen)
+                .where(SerumImmAntigen.experiment_id == experiment_id)
+                .order_by(SerumImmAntigen.id.asc())
+            ).all()
+        ],
+        "steps": [
+            item.to_dict()
+            for item in db.scalars(_steps_query(str(experiment_id or ""))).all()
+        ],
+        "titer_pcs": [
+            item.to_dict()
+            for item in db.scalars(
+                select(SerumTiterPc)
+                .where(SerumTiterPc.experiment_id == experiment_id)
+                .order_by(SerumTiterPc.id.asc())
+            ).all()
+        ],
+        "titer_targets": [
+            item.to_dict()
+            for item in db.scalars(
+                select(SerumTiterTarget)
+                .where(SerumTiterTarget.experiment_id == experiment_id)
+                .order_by(SerumTiterTarget.id.asc())
+            ).all()
+        ],
+    }
+
+
+def _project_snapshot(db: Session, project: SerumImmProject) -> dict:
+    snapshot = project.to_dict()
+    snapshot.update(_load_project_children(db, project.experiment_id))
+    return snapshot
+
+
+def _project_revision(snapshot: dict) -> str:
+    revision_input = {
+        "header": {field: snapshot.get(field) for field in PROJECT_FIELDS},
+        "children": {
+            field: snapshot.get(field, [])
+            for field in PROJECT_CHILD_FIELDS
+        },
+    }
+    encoded = json.dumps(
+        revision_input,
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def get_detail(db: Session, project_id: int) -> dict | None:
     project = db.get(SerumImmProject, project_id)
     if not project:
         return None
     exp_id = project.experiment_id
-    data = project.to_dict()
-    data["mouse_groups"] = [item.to_dict() for item in db.scalars(select(SerumImmMouse).where(SerumImmMouse.experiment_id == exp_id)).all()]
-    data["antigens"] = [item.to_dict() for item in db.scalars(select(SerumImmAntigen).where(SerumImmAntigen.experiment_id == exp_id)).all()]
-    data["steps"] = [item.to_dict() for item in db.scalars(_steps_query(exp_id)).all()]
-    data["titer_pcs"] = [item.to_dict() for item in db.scalars(select(SerumTiterPc).where(SerumTiterPc.experiment_id == exp_id)).all()]
-    data["titer_targets"] = [item.to_dict() for item in db.scalars(select(SerumTiterTarget).where(SerumTiterTarget.experiment_id == exp_id)).all()]
+    data = _project_snapshot(db, project)
+    data["project_revision"] = _project_revision(data)
     data["titer_owners"] = _collect_titer_owners_by_experiment(db, [exp_id]).get(exp_id, [])
     return data
 
@@ -400,6 +509,8 @@ def save_mouse_registry(db: Session, data: dict[str, Any]) -> dict:
     experiment_id = str(data.get("experiment_id") or "").strip()
     if not experiment_id:
         raise ValueError("experiment_id 不能为空")
+    if not lock_experiment_owner(db, experiment_id):
+        raise ValueError("项目不存在或实验 ID 已变更")
 
     row = None
     raw_id = data.get("id")
@@ -439,35 +550,56 @@ def _update_fields(obj, item: dict[str, Any], skip: set[str]) -> None:
 
 
 def incremental_update(db: Session, model_class, items: list[dict], experiment_id: str, id_field: str = "id") -> list:
-    submitted_ids = set()
-    new_items = []
+    if not isinstance(items, list):
+        raise ValueError("子表数据格式不正确")
+    if any(not isinstance(item, dict) for item in items):
+        raise ValueError("子表数据格式不正确")
+    existing = list(
+        db.scalars(
+            select(model_class).where(model_class.experiment_id == experiment_id)
+        ).all()
+    )
+    existing_by_id = {
+        int(getattr(item, id_field)): item
+        for item in existing
+    }
+    supplied_ids: list[int] = []
     for item in items:
-        item_id = item.get(id_field)
-        if item_id not in (None, ""):
-            obj = db.get(model_class, int(item_id))
-            if obj:
-                _update_fields(obj, item, {id_field})
-                obj.experiment_id = experiment_id
-                submitted_ids.add(int(item_id))
-            else:
-                new_items.append(item)
-        else:
-            new_items.append(item)
+        raw_id = item.get(id_field)
+        if raw_id in (None, ""):
+            continue
+        try:
+            item_id = int(raw_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("子表记录 ID 不正确") from exc
+        if item_id <= 0:
+            raise ValueError("子表记录 ID 不正确")
+        supplied_ids.append(item_id)
+    if len(supplied_ids) != len(set(supplied_ids)):
+        raise ValueError("子表记录 ID 重复")
+    if any(item_id not in existing_by_id for item_id in supplied_ids):
+        raise ValueError("子表记录不属于当前项目")
 
-    existing = db.scalars(select(model_class).where(model_class.experiment_id == experiment_id)).all()
-    for obj in existing:
-        if submitted_ids and getattr(obj, id_field) not in submitted_ids:
-            db.delete(obj)
-        elif not submitted_ids:
-            db.delete(obj)
-
+    submitted_ids: set[int] = set()
     inserted = []
-    for item in new_items:
-        item_data = {key: value for key, value in item.items() if key != id_field}
-        item_data["experiment_id"] = experiment_id
-        obj = model_class(**item_data)
+    for item in items:
+        values = dict(item)
+        raw_id = values.pop(id_field, None)
+        if raw_id not in (None, ""):
+            item_id = int(raw_id)
+            obj = existing_by_id[item_id]
+            _update_fields(obj, values, {"experiment_id"})
+            obj.experiment_id = experiment_id
+            submitted_ids.add(item_id)
+            continue
+        values["experiment_id"] = experiment_id
+        obj = model_class(**values)
         db.add(obj)
         inserted.append(obj)
+
+    for item_id, obj in existing_by_id.items():
+        if item_id not in submitted_ids:
+            db.delete(obj)
     return inserted
 
 
@@ -480,28 +612,6 @@ def bulk_insert(db: Session, model_class, items: list[dict], experiment_id: str,
         db.add(obj)
         inserted.append(obj)
     return inserted
-
-
-PROJECT_FIELDS = [
-    "experiment_id",
-    "project_code",
-    "project_name",
-    "project_purpose",
-    "start_date",
-    "immunization_interval",
-    "target_codes",
-    "target_name",
-    "target_type",
-    "target_size",
-    "owner",
-    "pm",
-    "study_type",
-    "assay_method",
-    "facs_plate_count",
-    "elisa_plate_count",
-    "project_status",
-    "remark",
-]
 
 
 def get_target_options(
@@ -595,81 +705,136 @@ def _rewrite_titer_file_path(file_path: str | None, old_eid: str, new_eid: str, 
     return path_map.get(relative, f"/titer_files/{new_eid}/{relative}")
 
 
-def _rename_experiment_related_records(db: Session, old_eid: str | None, new_eid: str | None) -> None:
+def rename_experiment_related_records(db: Session, old_eid: str | None, new_eid: str | None) -> None:
     if not old_eid or not new_eid or old_eid == new_eid:
         return
     path_map = _move_titer_experiment_dir(old_eid, new_eid)
     for record in db.scalars(select(SerumFile).where(SerumFile.experiment_id == old_eid)).all():
         record.file_path = _rewrite_titer_file_path(record.file_path, old_eid, new_eid, path_map)
         record.experiment_id = new_eid
-    for model in [
-        SerumImmMouse,
-        SerumImmAntigen,
-        SerumImmStep,
-        SerumTiterTarget,
-        SerumTiterPc,
-        SerumFacsPlate,
-        SerumElisaPlate,
-        SerumTiterOrder,
-    ]:
+    for model in EXPERIMENT_CHILD_MODELS:
         db.query(model).filter(model.experiment_id == old_eid).update({"experiment_id": new_eid}, synchronize_session=False)
 
 
+def update_project_identifiers(
+    db: Session,
+    project: SerumImmProject,
+    project_code: Any,
+    experiment_id: Any = None,
+) -> str:
+    code = _compact_identifier(project_code)
+    if not code:
+        raise ValueError("项目编号不能为空")
+
+    old_eid = _compact_identifier(project.experiment_id)
+    requested_eid = _compact_identifier(experiment_id)
+    code_changed = code != _compact_identifier(project.project_code)
+    if code_changed and (not requested_eid or requested_eid == old_eid):
+        requested_eid = generate_next_id(db, code) or ""
+    new_eid = requested_eid or old_eid
+    if not new_eid:
+        raise ValueError("实验 ID 不能为空")
+
+    if new_eid != old_eid:
+        existing_project = db.scalar(
+            select(SerumImmProject).where(
+                SerumImmProject.experiment_id == new_eid,
+                SerumImmProject.id != project.id,
+            )
+        )
+        if existing_project:
+            raise ValueError("实验 ID 已存在")
+        existing_workbench = db.scalar(
+            select(SerumImmWorkbench).where(
+                SerumImmWorkbench.experiment_id == new_eid
+            )
+        )
+        if existing_workbench:
+            raise ValueError("实验 ID 已被工作台记录占用")
+
+    identifiers_changed = code_changed or old_eid != new_eid
+    linked_workbenches = (
+        db.scalars(
+            select(SerumImmWorkbench).where(
+                SerumImmWorkbench.experiment_id == old_eid
+            )
+        ).all()
+        if identifiers_changed
+        else []
+    )
+
+    project.project_code = code
+    project.experiment_id = new_eid
+    if old_eid != new_eid:
+        rename_experiment_related_records(db, old_eid, new_eid)
+    for workbench in linked_workbenches:
+        workbench.project_code = code
+        workbench.experiment_id = new_eid
+    return new_eid
+
+
 def save_serum(db: Session, data: dict[str, Any]) -> dict:
+    data = dict(data or {})
+    for field in PROJECT_CHILD_FIELDS:
+        if field not in data or not isinstance(data[field], list):
+            raise ValueError(f"项目数据不完整：缺少 {field}")
+    expected_revision = str(data.pop("project_revision", "") or "").strip()
     _normalize_project_identifiers(data)
     project_id = data.get("id")
     new_eid = data.get("experiment_id")
     new_mice = new_antigens = new_steps = new_targets = new_pcs = []
 
     if project_id:
-        project = db.get(SerumImmProject, int(project_id))
+        project = lock_project_by_id(db, int(project_id))
         if not project:
             raise ValueError("项目不存在")
-        old_eid = project.experiment_id
-        if old_eid != new_eid:
-            if not new_eid:
-                raise ValueError("实验 ID 不能为空")
-            existing_project = db.scalar(
-                select(SerumImmProject).where(
-                    SerumImmProject.experiment_id == new_eid,
-                    SerumImmProject.id != project.id,
-                )
-            )
-            if existing_project:
-                raise ValueError("实验 ID 已存在")
+        if not expected_revision:
+            raise ValueError("项目版本缺失，请刷新后重试")
+        if expected_revision != _project_revision(_project_snapshot(db, project)):
+            raise ValueError("项目已被其他用户修改，请刷新后重试")
+        new_eid = update_project_identifiers(
+            db,
+            project,
+            data.get("project_code"),
+            new_eid,
+        )
+        data["project_code"] = project.project_code
+        data["experiment_id"] = new_eid
         for field in PROJECT_FIELDS:
+            if field in {"project_code", "experiment_id"}:
+                continue
             setattr(project, field, data.get(field))
-        if old_eid != new_eid:
-            _rename_experiment_related_records(db, old_eid, new_eid)
-        new_mice = incremental_update(db, SerumImmMouse, data.get("mouse_groups", []), new_eid)
-        new_antigens = incremental_update(db, SerumImmAntigen, data.get("antigens", []), new_eid)
-        new_steps = incremental_update(db, SerumImmStep, data.get("steps", []), new_eid, id_field="step_id")
-        new_targets = incremental_update(db, SerumTiterTarget, data.get("titer_targets", []), new_eid)
-        new_pcs = incremental_update(db, SerumTiterPc, data.get("titer_pcs", []), new_eid)
+        new_mice = incremental_update(db, SerumImmMouse, data["mouse_groups"], new_eid)
+        new_antigens = incremental_update(db, SerumImmAntigen, data["antigens"], new_eid)
+        new_steps = incremental_update(db, SerumImmStep, data["steps"], new_eid, id_field="step_id")
+        new_targets = incremental_update(db, SerumTiterTarget, data["titer_targets"], new_eid)
+        new_pcs = incremental_update(db, SerumTiterPc, data["titer_pcs"], new_eid)
     else:
+        new_eid = generate_next_id(db, data.get("project_code"))
         if not new_eid:
-            new_eid = generate_next_id(db, data.get("project_code"))
-            if not new_eid:
-                raise ValueError("项目编号不能为空，无法生成实验 ID")
+            raise ValueError("项目编号不能为空，无法生成实验 ID")
         project = SerumImmProject(**{field: data.get(field) for field in PROJECT_FIELDS})
         project.experiment_id = new_eid
         db.add(project)
         db.flush()
-        new_mice = bulk_insert(db, SerumImmMouse, data.get("mouse_groups", []), new_eid)
-        new_antigens = bulk_insert(db, SerumImmAntigen, data.get("antigens", []), new_eid)
-        new_steps = bulk_insert(db, SerumImmStep, data.get("steps", []), new_eid, id_field="step_id")
-        new_targets = bulk_insert(db, SerumTiterTarget, data.get("titer_targets", []), new_eid)
-        new_pcs = bulk_insert(db, SerumTiterPc, data.get("titer_pcs", []), new_eid)
+        new_mice = bulk_insert(db, SerumImmMouse, data["mouse_groups"], new_eid)
+        new_antigens = bulk_insert(db, SerumImmAntigen, data["antigens"], new_eid)
+        new_steps = bulk_insert(db, SerumImmStep, data["steps"], new_eid, id_field="step_id")
+        new_targets = bulk_insert(db, SerumTiterTarget, data["titer_targets"], new_eid)
+        new_pcs = bulk_insert(db, SerumTiterPc, data["titer_pcs"], new_eid)
 
     mouse_groups = data.get("mouse_groups", [])
     project.mouse_strain = "+".join(sorted({m.get("mouse_strain", "").strip() for m in mouse_groups if m.get("mouse_strain")}))
     project.mouse_strain_category = "+".join(sorted({m.get("mouse_strain_category", "").strip() for m in mouse_groups if m.get("mouse_strain_category")}))
+    db.flush()
+    project_revision = _project_revision(_project_snapshot(db, project))
     db.commit()
 
     response = {
         "id": project.id,
         "experiment_id": project.experiment_id,
         "project_code": project.project_code,
+        "project_revision": project_revision,
     }
     if new_mice:
         response["new_mouse_records"] = [item.to_dict() for item in new_mice]
@@ -685,21 +850,11 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
 
 
 def delete_serum(db: Session, project_id: int) -> None:
-    project = db.get(SerumImmProject, project_id)
+    project = lock_project_by_id(db, project_id)
     if not project:
         raise ValueError("项目不存在")
     exp_id = project.experiment_id
-    for model in [
-        SerumFacsPlate,
-        SerumElisaPlate,
-        SerumFile,
-        SerumImmMouse,
-        SerumImmAntigen,
-        SerumImmStep,
-        SerumTiterTarget,
-        SerumTiterPc,
-        SerumTiterOrder,
-    ]:
+    for model in EXPERIMENT_RELATED_MODELS:
         db.query(model).filter(model.experiment_id == exp_id).delete(synchronize_session=False)
     db.delete(project)
     db.commit()
@@ -726,7 +881,7 @@ def update_lab_notebook(db: Session, project_id: int, lab_notebook: str | None) 
 
 
 def update_cage_position(db: Session, project_id: int, cage_position: str | None) -> None:
-    project = db.get(SerumImmProject, project_id)
+    project = lock_project_by_id(db, project_id)
     if not project:
         raise ValueError("项目不存在")
     count = db.scalar(select(func.count(SerumImmMouse.id)).where(SerumImmMouse.experiment_id == project.experiment_id)) or 0
@@ -852,6 +1007,22 @@ def get_filter_options(db: Session) -> dict:
         "mouse_strain_categories": distinct_values(SerumImmProject.mouse_strain_category),
         "statuses": distinct_values(SerumImmProject.project_status),
     }
+
+
+def get_user_options(db: Session) -> list[str]:
+    return [
+        value
+        for value in db.scalars(
+            select(SysUser.display_name)
+            .where(
+                SysUser.display_name.is_not(None),
+                SysUser.display_name != "",
+            )
+            .distinct()
+            .order_by(SysUser.display_name)
+        ).all()
+        if value
+    ]
 
 
 def _cell_display_width(value: Any) -> float:

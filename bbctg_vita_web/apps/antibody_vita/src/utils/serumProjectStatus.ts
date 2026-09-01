@@ -22,6 +22,26 @@ export const TITER_PRIORITY_OPTIONS = ['正常', '加急', '非常紧急', '吉�
 
 export const TITER_PRIORITY_DEFAULT = '正常';
 
+export const SERUM_PROJECT_STATUS_OPTIONS = [
+  '规划中',
+  '待一免',
+  '待二免',
+  '待三免',
+  '待四免',
+  '待五免',
+  '待六免',
+  '加免中',
+  '待检测',
+  '待上机',
+  '已采血',
+  '已上传',
+  '已检测',
+  '已汇报',
+  '无效价处死',
+  '结题',
+] as const;
+export const SERUM_PROJECT_STATUS_DEFAULT = SERUM_PROJECT_STATUS_OPTIONS[0];
+
 /** 固定默认项在前，再按字母序追加接口返回的其它状态。 */
 export function mergeTiterSerumStatusOptions(
   fromApi: string[] | null | undefined,
@@ -73,8 +93,52 @@ export function getSerumTiterStatusTagType(
 export function getTiterPriorityTone(
   priority: string | null | undefined,
 ): TiterPriorityTone {
-  if (priority === '加急') return 'warning';
-  if (priority === '非常紧急') return 'danger';
-  if (priority === '吉吉国王') return 'king';
+  const value = canonicalizeWorkbenchPriority(priority);
+  if (value === '加急') return 'warning';
+  if (value === '非常紧急') return 'danger';
+  if (value === '吉吉国王') return 'king';
   return 'info';
+}
+
+/** 工作台优先级与效价实验列表使用同一组选项。 */
+export const WORKBENCH_PRIORITY_OPTIONS = TITER_PRIORITY_OPTIONS;
+export const WORKBENCH_PRIORITY_DEFAULT = TITER_PRIORITY_DEFAULT;
+
+export function canonicalizeWorkbenchPriority(priority: string | null | undefined): string {
+  return String(priority || '').trim() || WORKBENCH_PRIORITY_DEFAULT;
+}
+
+/** 未开展工作台状态选项；已开展后展示实验表状态。 */
+export const WORKBENCH_CLOSED_PLAN_STATUSES = [
+  '小鼠KO致死',
+  '已取消',
+] as const;
+
+export const WORKBENCH_PLAN_STATUS_OPTIONS = [
+  '草稿',
+  '筹备中',
+  ...WORKBENCH_CLOSED_PLAN_STATUSES,
+] as const;
+
+export function isWorkbenchPlanClosed(status: string | null | undefined): boolean {
+  return WORKBENCH_CLOSED_PLAN_STATUSES.some((item) => item === status);
+}
+
+export function getWorkbenchPlanStatusTagType(
+  status: string | null | undefined,
+): SerumProjectStatusTagType {
+  if (!status) return 'info';
+  if (status === '小鼠KO致死') return 'danger';
+  if (status === '筹备中') return 'primary';
+  if (status === '已开展') return 'success';
+  if (status.includes('取消')) return 'info';
+  return 'info';
+}
+
+export function getWorkbenchDisplayStatusTagType(
+  row: { aligned_locked?: boolean; display_status?: string | null; plan_status?: string | null },
+): SerumProjectStatusTagType {
+  const status = row.display_status || row.plan_status;
+  if (row.aligned_locked) return getSerumProjectStatusTagType(status);
+  return getWorkbenchPlanStatusTagType(status);
 }

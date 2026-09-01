@@ -25,6 +25,7 @@ from models.immunology import (
 )
 from models.mega_automation import MegaFlowWorkOrder
 from modules.mega_automation.service import ORDER_STATUS_LABELS
+from modules.immunology.project_lock import lock_experiment_owner
 
 
 def _upload_root() -> Path:
@@ -1446,21 +1447,55 @@ def get_project_options(db: Session, keyword: str = "", limit: int = 20) -> list
 
 
 def _replace_children(db: Session, model_class, experiment_id: str, items: list[dict], id_field: str = "id") -> list[dict]:
-    submitted_ids = set()
-    created_objs = []
+    if not lock_experiment_owner(db, experiment_id):
+        raise ValueError("项目不存在或实验 ID 已变更")
+    if not isinstance(items, list):
+        raise ValueError("子表数据格式不正确")
+    if any(not isinstance(item, dict) for item in items):
+        raise ValueError("子表数据格式不正确")
     valid_fields = set(model_class.__table__.columns.keys())
+    existing = list(
+        db.scalars(
+            select(model_class).where(model_class.experiment_id == experiment_id)
+        ).all()
+    )
+    existing_by_id = {
+        int(getattr(item, id_field)): item
+        for item in existing
+    }
+    supplied_ids: list[int] = []
     for item in items:
-        item_id = item.get(id_field)
-        if item_id:
-            obj = db.get(model_class, int(item_id))
-            if obj:
-                for key, value in item.items():
-                    if key != id_field and hasattr(obj, key):
-                        setattr(obj, key, value)
-                obj.experiment_id = experiment_id
-                submitted_ids.add(int(item_id))
-                continue
-        data = {key: value for key, value in item.items() if key in valid_fields and key != id_field}
+        raw_id = item.get(id_field)
+        if raw_id in (None, ""):
+            continue
+        try:
+            item_id = int(raw_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("子表记录 ID 不正确") from exc
+        if item_id <= 0:
+            raise ValueError("子表记录 ID 不正确")
+        supplied_ids.append(item_id)
+    if len(supplied_ids) != len(set(supplied_ids)):
+        raise ValueError("子表记录 ID 重复")
+    if any(item_id not in existing_by_id for item_id in supplied_ids):
+        raise ValueError("子表记录不属于当前项目")
+
+    submitted_ids: set[int] = set()
+    created_objs = []
+    for item in items:
+        data = {
+            key: value
+            for key, value in item.items()
+            if key in valid_fields and key not in {id_field, "experiment_id"}
+        }
+        raw_id = item.get(id_field)
+        if raw_id not in (None, ""):
+            item_id = int(raw_id)
+            obj = existing_by_id[item_id]
+            for key, value in data.items():
+                setattr(obj, key, value)
+            submitted_ids.add(item_id)
+            continue
         data["experiment_id"] = experiment_id
         obj = model_class(**data)
         db.add(obj)
@@ -1468,7 +1503,6 @@ def _replace_children(db: Session, model_class, experiment_id: str, items: list[
 
     db.flush()
     keep_ids = submitted_ids | {getattr(obj, id_field) for obj in created_objs if getattr(obj, id_field, None)}
-    existing = db.scalars(select(model_class).where(model_class.experiment_id == experiment_id)).all()
     for obj in existing:
         if getattr(obj, id_field) not in keep_ids:
             db.delete(obj)

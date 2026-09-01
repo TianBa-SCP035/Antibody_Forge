@@ -2,11 +2,12 @@
 -- 在 DATABASE_URL 空库执行本文件即可。
 --
 -- 说明：
---   - 本文件只维护**当前全量 DDL + 种子**（空库执行一次）；不收录历史 ALTER / 升级脚本。
---   - 表、字段 COMMENT 须齐全，风格与现有表一致；有表结构变更时直接改本文件中的 CREATE，勿追加迁移段。
+--   - 改表或增删改数据行前，先列出对象、操作、目的和影响，确认后再实施。
+--   - 本文件只维护**当前全量 DDL + 种子**（空库执行一次）；修改已有表时直接改对应 CREATE TABLE 定义，不追加 ALTER / 升级脚本，也不标注本次新增。
+--   - 表、字段 COMMENT 须齐全且简练，只说明业务含义，不在括号中列举可能值。
+--   - 新模块尽量少改数据库；新增表和字段必须有长期业务意义，不建临时占位。
 --   - sys_permission / sys_permission_api / sys_feature_flag：与代码约定对齐，建议保持完整。
---   - 文末「权限包 / 角色」仅为克隆空库时的示例种子，方便快速生效；生产环境完全自定义，
---     不必与现网或示例一致，可删改或在系统管理中调整。
+--   - 文末「权限包 / 角色」仅为空库示例；新模块只加权限点，不要改现网角色/权限包。
 --   - 外部细胞库 sam_sample 见文末注释（CELL_DB_URL，models/cell_inventory.py），勿在主库执行。
 --   - 外部员工库 org_emp / org_depart 见文末注释（EMPLOYEE_DB_URL，modules/system/employee_sync.py），勿在主库执行。
 --
@@ -183,10 +184,7 @@ CREATE TABLE IF NOT EXISTS sys_job_run_log (
   summary VARCHAR(255) NULL COMMENT '结果摘要',
   detail JSON NULL COMMENT '执行详情',
   error_message TEXT NULL COMMENT '错误信息',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  KEY idx_sys_job_run_log_job (job_code),
-  KEY idx_sys_job_run_log_started_at (started_at),
-  KEY idx_sys_job_run_log_result (result)
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
 ) COMMENT='定时任务运行日志（起止时间、耗时、结果摘要与结构化详情）';
 
 -- ---------------------------------------------------------------------------
@@ -218,10 +216,10 @@ CREATE TABLE IF NOT EXISTS target (
   external_id BIGINT NOT NULL COMMENT '外部平台靶点ID',
   snum VARCHAR(100) NOT NULL COMMENT '靶点编号',
   name VARCHAR(100) NOT NULL COMMENT '靶点名称',
-  type INT NULL COMMENT '靶点类型：1内部-千鼠万抗，2内部-其他，3外部，4NA',
-  status INT NULL COMMENT '开发状态：1已开发，2未开发',
+  type INT NULL COMMENT '靶点类型',
+  status INT NULL COMMENT '开发状态',
   category VARCHAR(200) NULL COMMENT '靶点分类',
-  ko_lethal_info INT NULL COMMENT 'KO致死情况：1致死，2存活，3数据冲突，4NA',
+  ko_lethal_info INT NULL COMMENT 'KO致死情况',
   ko_lethal_info_desc VARCHAR(1000) NULL COMMENT 'KO致死信息备注',
   structural_properties VARCHAR(200) NULL COMMENT '结构特性类别',
   structure_feature VARCHAR(100) NULL COMMENT '结构特性（跨膜次数）',
@@ -255,7 +253,7 @@ CREATE TABLE IF NOT EXISTS target (
   gene_family VARCHAR(200) NULL COMMENT '基因家族',
   signal_path VARCHAR(1000) NULL COMMENT '信号通路',
   remark VARCHAR(2000) NULL COMMENT '备注',
-  is_active BOOLEAN NOT NULL DEFAULT TRUE COMMENT '数据状态：1有效，0已下架',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE COMMENT '数据是否有效',
   synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近变更时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_target_external_id (external_id),
@@ -348,6 +346,66 @@ CREATE TABLE IF NOT EXISTS serum_imm_project (
   UNIQUE KEY uk_serum_imm_project_experiment_id (experiment_id)
 ) COMMENT='免疫项目表';
 
+CREATE TABLE IF NOT EXISTS serum_imm_workbench (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  experiment_id VARCHAR(64) NULL COMMENT '实验号',
+  project_code VARCHAR(64) NULL COMMENT '项目管理编号',
+  project_name VARCHAR(255) NULL COMMENT '项目名称',
+  project_purpose VARCHAR(255) NULL COMMENT '项目目的',
+  start_date VARCHAR(32) NULL COMMENT '项目开始日期',
+  immunization_interval VARCHAR(32) NULL COMMENT '免疫间隔',
+  target_codes JSON NULL COMMENT '靶点编号列表',
+  target_name VARCHAR(128) NULL COMMENT '靶点名称',
+  target_type VARCHAR(64) NULL COMMENT '靶点类型',
+  target_size VARCHAR(64) NULL COMMENT '靶点大小',
+  owner VARCHAR(64) NULL COMMENT '开展人',
+  pm VARCHAR(64) NULL COMMENT 'PM',
+  study_type VARCHAR(64) NULL COMMENT '课题类型',
+  assay_method VARCHAR(128) NULL COMMENT '检测方法',
+  facs_plate_count INT NULL COMMENT 'FACS板数',
+  elisa_plate_count INT NULL COMMENT 'ELISA板数',
+  remark VARCHAR(255) NULL COMMENT '备注',
+  mouse_strain VARCHAR(128) NULL COMMENT '确切鼠型',
+  mouse_strain_category VARCHAR(128) NULL COMMENT '归类鼠型',
+  sort_order INT NOT NULL DEFAULT 0 COMMENT '排序',
+  priority VARCHAR(32) NULL COMMENT '优先级',
+  plan_status VARCHAR(32) NULL COMMENT '工作台状态；已开展后列表展示实验 project_status',
+  project_set_code VARCHAR(64) NULL COMMENT '项目集编号',
+  species_cross VARCHAR(64) NULL COMMENT '种属交叉',
+  immuno_method VARCHAR(64) NULL COMMENT '免疫方式',
+  reviewer VARCHAR(64) NULL COMMENT '审核人',
+  review_status VARCHAR(32) NULL COMMENT '审核结果',
+  mouse_scheme_no VARCHAR(64) NULL COMMENT '小鼠方案号',
+  mouse_count VARCHAR(32) NULL COMMENT '小鼠数量',
+  mouse_zygosity VARCHAR(32) NULL COMMENT '小鼠合子状态',
+  mouse_birth_date VARCHAR(32) NULL COMMENT '出生日期',
+  mouse_age_weeks VARCHAR(32) NULL COMMENT '周龄',
+  mouse_expand_requested VARCHAR(16) NULL COMMENT '是否代下扩繁',
+  mouse_region VARCHAR(64) NULL COMMENT '提供地区',
+  mouse_room VARCHAR(64) NULL COMMENT '房间号',
+  mouse_status VARCHAR(32) NULL COMMENT '运输状态',
+  mouse_arrive_date VARCHAR(32) NULL COMMENT '到鼠时间',
+  mouse_remark VARCHAR(255) NULL COMMENT '小鼠备注',
+  antigen_source VARCHAR(128) NULL COMMENT '抗原来源',
+  antigen_ready VARCHAR(16) NULL COMMENT '抗原到货情况',
+  antigen_eta VARCHAR(32) NULL COMMENT '抗原预计日',
+  lnp_ordered VARCHAR(16) NULL COMMENT 'LNP是否下单',
+  cell_prep_status VARCHAR(64) NULL COMMENT '冲击细胞准备',
+  antigen_remark VARCHAR(255) NULL COMMENT '抗原备注',
+  can_start VARCHAR(16) NULL COMMENT '是否可开展',
+  created_by VARCHAR(64) NULL COMMENT '创建人',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_serum_imm_workbench_experiment_id (experiment_id),
+  KEY idx_serum_imm_workbench_sort_order (sort_order),
+  KEY idx_serum_imm_workbench_plan_status (plan_status),
+  KEY idx_serum_imm_workbench_pm (pm),
+  KEY idx_serum_imm_workbench_owner (owner),
+  KEY idx_serum_imm_workbench_project_code (project_code),
+  KEY idx_serum_imm_workbench_target_name (target_name)
+) COMMENT='免疫项目工作台';
+
 CREATE TABLE IF NOT EXISTS serum_imm_mouse (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
@@ -357,10 +415,10 @@ CREATE TABLE IF NOT EXISTS serum_imm_mouse (
   mouse_count VARCHAR(32) NULL COMMENT '免疫数量',
   age_weeks VARCHAR(32) NULL COMMENT '周龄',
   sex VARCHAR(32) NULL COMMENT '性别',
+  cage_position VARCHAR(64) NULL COMMENT '笼位',
   vendor VARCHAR(128) NULL COMMENT '供应商',
   mouse_no_list VARCHAR(512) NULL COMMENT '鼠号列表',
   mouse_registry JSON NULL COMMENT '鼠号明细',
-  cage_position VARCHAR(64) NULL COMMENT '笼位',
   remark VARCHAR(255) NULL COMMENT '备注',
   PRIMARY KEY (id),
   KEY idx_serum_imm_mouse_experiment_id (experiment_id)
@@ -372,10 +430,10 @@ CREATE TABLE IF NOT EXISTS serum_file (
   upload_user VARCHAR(64) NULL COMMENT '上传人',
   file_name VARCHAR(255) NOT NULL COMMENT '文件名',
   file_path VARCHAR(1024) NOT NULL COMMENT '文件位置',
-  created_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
-  updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间',
   PRIMARY KEY (id),
-  KEY idx_serum_file_experiment_id (experiment_id)
+  KEY idx_experiment (experiment_id)
 ) COMMENT='效价实验文件表';
 
 CREATE TABLE IF NOT EXISTS serum_imm_antigen (
@@ -392,8 +450,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_antigen (
   adjuvant_type VARCHAR(64) NULL COMMENT '佐剂类型',
   adjuvant_source VARCHAR(128) NULL COMMENT '佐剂来源',
   PRIMARY KEY (id),
-  UNIQUE KEY uq_experiment_antigen (experiment_id, antigen_id),
-  KEY idx_serum_imm_antigen_experiment_id (experiment_id)
+  UNIQUE KEY uq_experiment_antigen (experiment_id, antigen_id)
 ) COMMENT='免疫抗原信息表';
 
 CREATE TABLE IF NOT EXISTS serum_imm_step (
@@ -423,8 +480,7 @@ CREATE TABLE IF NOT EXISTS serum_titer_pc (
   catalog_batch VARCHAR(128) NULL COMMENT '货号/批次',
   source VARCHAR(128) NULL COMMENT '来源',
   concentration VARCHAR(64) NULL COMMENT '浓度',
-  PRIMARY KEY (id),
-  KEY idx_serum_titer_pc_experiment_id (experiment_id)
+  PRIMARY KEY (id)
 ) COMMENT='效价阳性对照表';
 
 CREATE TABLE IF NOT EXISTS serum_titer_target (
@@ -438,17 +494,17 @@ CREATE TABLE IF NOT EXISTS serum_titer_target (
   cell_count VARCHAR(64) NULL COMMENT '细胞量',
   catalog_no VARCHAR(64) NULL COMMENT '货号',
   source VARCHAR(128) NULL COMMENT '来源',
-  PRIMARY KEY (id),
-  KEY idx_serum_titer_target_experiment_id (experiment_id)
+  PRIMARY KEY (id)
 ) COMMENT='效价检测目标表';
 
 CREATE TABLE IF NOT EXISTS serum_facs_plate (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
   experiment_id VARCHAR(64) NOT NULL COMMENT '实验编号',
   qr_code VARCHAR(128) NULL COMMENT '板二维码编号',
+  instrument_type VARCHAR(64) NULL COMMENT '仪器类型',
   image_file_id BIGINT NULL COMMENT '图片文件id',
   excel_file_id BIGINT NULL COMMENT 'Excel文件id',
-  immune_stage VARCHAR(64) NULL COMMENT '免疫阶段',
+  immune_stage VARCHAR(64) NOT NULL COMMENT '免疫阶段',
   x_axis VARCHAR(64) NULL COMMENT '横坐标参数',
   y_axis VARCHAR(64) NULL COMMENT '纵坐标参数',
   cell_target_id BIGINT NULL COMMENT '细胞标靶id',
@@ -456,14 +512,13 @@ CREATE TABLE IF NOT EXISTS serum_facs_plate (
   pc_lower_id BIGINT NULL COMMENT '下PC的id',
   upper_group VARCHAR(32) NULL COMMENT '上半板组别',
   lower_group VARCHAR(32) NULL COMMENT '下半板组别',
-  upper_mouse_list JSON NULL,
-  lower_mouse_list JSON NULL,
+  upper_mouse_list JSON NULL COMMENT '上半板小鼠列表',
+  lower_mouse_list JSON NULL COMMENT '下半板小鼠列表',
   upper_slot_groups JSON NULL COMMENT '上半板孔位分组标题',
   lower_slot_groups JSON NULL COMMENT '下半板孔位分组标题',
-  positive_well_list JSON NULL,
-  instrument_type VARCHAR(64) NULL COMMENT '仪器类型',
+  positive_well_list JSON NULL COMMENT '阳性孔位列表',
   PRIMARY KEY (id),
-  KEY idx_serum_facs_plate_experiment_id (experiment_id)
+  KEY idx_experiment (experiment_id)
 ) COMMENT='FACS效价板信息表';
 
 CREATE TABLE IF NOT EXISTS serum_elisa_plate (
@@ -482,7 +537,7 @@ CREATE TABLE IF NOT EXISTS serum_elisa_plate (
   positive_well_list JSON NULL COMMENT '阳性孔列表',
   absorbance_1 JSON NULL COMMENT '吸光度1:{wavelength,matrix}',
   PRIMARY KEY (id),
-  KEY idx_serum_elisa_plate_experiment (experiment_id)
+  KEY idx_experiment (experiment_id)
 ) COMMENT='ELISA效价板信息表';
 
 CREATE TABLE IF NOT EXISTS serum_titer_order (
@@ -511,6 +566,10 @@ INSERT IGNORE INTO sys_permission
   (code, name, type, module, resource, action, route_path, ui_key, parent_code, sort_order)
 VALUES
   ('discovery.page.target_library', '靶点情报', 'page', 'discovery', 'target', 'view', '/discovery/targets', NULL, NULL, 50),
+  ('serum.page.workbench', '项目工作台', 'page', 'serum', 'serum_workbench', 'view', '/serum/workbench', NULL, NULL, 95),
+  ('serum.workbench.edit', '编辑项目工作台', 'action', 'serum', 'serum_workbench', 'edit', NULL, 'serum.workbench.edit_button', 'serum.page.workbench', 96),
+  ('serum.workbench.draft_edit', '编辑工作台草稿', 'action', 'serum', 'serum_workbench', 'draft_edit', NULL, NULL, 'serum.page.workbench', 97),
+  ('serum.workbench.support_edit', '编辑实验保障信息', 'action', 'serum', 'serum_workbench', 'support_edit', NULL, NULL, 'serum.page.workbench', 98),
   ('serum.page.list', '免疫实验列表', 'page', 'serum', 'project', 'view', '/serum/list', NULL, NULL, 100),
   ('serum.page.detail', '免疫实验详情', 'page', 'serum', 'project', 'view_detail', '/serum/detail', NULL, NULL, 110),
   ('serum.page.edit', '免疫实验编辑', 'page', 'serum', 'project', 'edit_page', '/serum/edit', NULL, NULL, 120),
@@ -554,6 +613,14 @@ VALUES
 INSERT IGNORE INTO sys_permission_api
   (permission_code, method, path_pattern, description)
 VALUES
+  ('serum.workbench.edit', 'POST', '/api/serum/workbench/save', '保存免疫工作台'),
+  ('serum.workbench.edit', 'POST', '/api/serum/workbench/save_batch', '批量保存免疫工作台'),
+  ('serum.workbench.edit', 'POST', '/api/serum/workbench/save_scheme', '保存免疫工作台方案草稿'),
+  ('serum.workbench.edit', 'POST', '/api/serum/workbench/delete', '删除免疫工作台'),
+  ('serum.workbench.edit', 'POST', '/api/serum/workbench/start', '免疫工作台记录开展为实验'),
+  ('serum.workbench.edit', 'POST', '/api/serum/workbench/unlist', '免疫工作台记录下架撤回实验'),
+  ('serum.workbench.edit', 'POST', '/api/serum/workbench/copy', '复制免疫工作台记录'),
+  ('serum.workbench.edit', 'POST', '/api/serum/workbench/reorder', '免疫工作台同优先级排序'),
   ('serum.project.create', 'POST', '/api/serum/save', '新建免疫项目'),
   ('serum.project.edit', 'POST', '/api/serum/save', '编辑免疫项目'),
   ('serum.project.edit', 'POST', '/api/serum/update_lab_notebook', '更新实验记录本'),
@@ -607,6 +674,7 @@ VALUES
   ('menu.discovery', '千鼠万抗', 'menu', '控制千鼠万抗父级菜单显示', 1, 1, 5, JSON_OBJECT('path', '/discovery', 'icon', 'lucide:network')),
   ('menu.discovery.target_library', '靶点情报', 'menu', '控制靶点情报页面显示', 1, 1, 10, JSON_OBJECT('path', '/discovery/targets', 'icon', 'lucide:database', 'parent_code', 'menu.discovery')),
   ('menu.serum', '免疫实验菜单', 'menu', '控制免疫实验模块菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum', 'icon', 'lucide:test-tube')),
+  ('menu.serum.workbench', '项目工作台', 'menu', '控制项目工作台菜单显示', 1, 1, 5, JSON_OBJECT('path', '/serum/workbench', 'icon', 'lucide:layout-dashboard', 'parent_code', 'menu.serum')),
   ('menu.serum.list', '免疫实验列表', 'menu', '控制免疫实验列表菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum/list', 'icon', 'lucide:list', 'parent_code', 'menu.serum')),
   ('menu.serum.titer_order', '效价实验列表', 'menu', '控制效价实验列表菜单显示', 1, 1, 20, JSON_OBJECT('path', '/serum/titer-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.serum')),
   ('menu.mega_automation', '镁伽自动化菜单', 'menu', '控制镁伽自动化模块菜单显示', 1, 1, 50, JSON_OBJECT('path', '/mega-automation', 'icon', 'lucide:workflow')),
@@ -631,6 +699,7 @@ INSERT IGNORE INTO sys_permission_bundle (code, name, module, description, sort_
   ('system_admin', '系统管理', 'system', '示例：系统管理模块全部权限', 900);
 
 INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VALUES
+  ('guest', 'serum.page.workbench'),
   ('guest', 'serum.page.list'),
   ('guest', 'serum.page.detail'),
   ('guest', 'serum.page.titer'),
@@ -644,6 +713,9 @@ INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VAL
   ('guest', 'system.page.operation_log'),
   ('guest', 'system.page.feature'),
   ('guest', 'system.operation_log.view'),
+  ('operator', 'serum.page.workbench'),
+  ('operator', 'serum.workbench.draft_edit'),
+  ('operator', 'serum.workbench.support_edit'),
   ('operator', 'serum.page.list'),
   ('operator', 'serum.page.detail'),
   ('operator', 'serum.page.edit'),

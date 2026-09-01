@@ -29,14 +29,6 @@ export function fetchDetail(id: any, config?: RequestConfig) {
   });
 }
 
-export function fetchNextId(code: any) {
-  return requestClient.get('/serum/next_id', {
-    params: { code },
-    timeout: SAVE_TIMEOUT,
-    ...skipGlobalErrorHandler,
-  });
-}
-
 export interface SerumTargetOption {
   name: string;
   snum: string;
@@ -49,6 +41,12 @@ export function fetchSerumTargetOptions(keyword = '', codes: string[] = []) {
   });
 }
 
+export function fetchSerumUserOptions() {
+  return requestClient.get<{ items: string[] }>('/serum/user_options', {
+    ...skipGlobalErrorHandler,
+  });
+}
+
 export function saveSerum(data: any) {
   return requestClient.post('/serum/save', data, {
     timeout: SAVE_TIMEOUT,
@@ -56,8 +54,13 @@ export function saveSerum(data: any) {
   });
 }
 
+export interface SerumDeleteResult {
+  action: 'deleted' | 'reverted';
+  message: string;
+}
+
 export function deleteSerum(id: any) {
-  return requestClient.post('/serum/delete', { id }, skipGlobalErrorHandler);
+  return requestClient.post<SerumDeleteResult>('/serum/delete', { id }, skipGlobalErrorHandler);
 }
 
 export function getSerumFilterOptions(config?: RequestConfig) {

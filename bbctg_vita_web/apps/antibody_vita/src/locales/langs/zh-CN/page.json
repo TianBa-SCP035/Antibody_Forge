@@ -29,6 +29,8 @@
     "quickNavReset": "恢复默认",
     "actionCancel": "取消",
     "actionSave": "保存",
+    "presetSerumWorkbenchTitle": "免疫工作台",
+    "presetSerumWorkbenchSubtitle": "项目计划与实验筹备",
     "presetSerumTitle": "免疫实验列表",
     "presetSerumSubtitle": "全流向跟踪管理",
     "presetTiterOrderTitle": "效价实验列表",

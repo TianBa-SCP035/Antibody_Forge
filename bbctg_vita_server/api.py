@@ -11,6 +11,7 @@ from modules.discovery.routes import router as discovery_router
 from modules.immunology.cell.routes import router as cell_router
 from modules.immunology.serum.routes import router as serum_router
 from modules.immunology.titer.routes import router as titer_router
+from modules.immunology.workbench.routes import router as workbench_router
 from modules.mega_automation.routes import router as mega_automation_router
 from modules.order_sync.routes import router as order_sync_router
 from modules.system.routes import router as system_router
@@ -26,6 +27,7 @@ def health_check() -> dict[str, str]:
 api_router.include_router(auth_router, prefix="/auth", tags=["认证"])
 api_router.include_router(discovery_router, prefix="/discovery", tags=["千鼠万抗"])
 api_router.include_router(serum_router, prefix="/serum", tags=["免疫部-血清"])
+api_router.include_router(workbench_router, prefix="/serum/workbench", tags=["免疫部-项目工作台"])
 api_router.include_router(titer_router, prefix="/serum/titer", tags=["免疫部-效价"])
 api_router.include_router(cell_router, prefix="/serum/cell_inventory", tags=["免疫部-细胞"])
 api_router.include_router(mega_automation_router, prefix="/mega-automation", tags=["镁伽自动化"])

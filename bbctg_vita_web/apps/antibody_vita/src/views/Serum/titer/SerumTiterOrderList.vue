@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container titer-order-page">
+  <div class="titer-order-page">
     <AdvancedOpsBar v-model="showAdvancedOps">
       <el-select
         v-model="listQuery.order_status"
@@ -24,17 +24,17 @@
       <div class="page-header-band">
         <div class="title-group">
           <h1 class="page-title">效价实验列表</h1>
-          <p class="page-subtitle text-secondary">按效价工单安排负责人与检测日期，在列表中维护血清状态和效价小结。</p>
+          <p class="page-subtitle">按效价工单安排负责人与检测日期，在列表中维护血清状态和效价小结。</p>
         </div>
         <div class="header-actions">
           <span class="total-count text-secondary">共 {{ total }} 条工单</span>
           <el-button
             type="primary"
+            :icon="Plus"
             :class="{ 'no-permission-btn': !canEditTiterOrder() }"
             :title="!canEditTiterOrder() ? '您没有权限编辑效价工单' : ''"
             @click="openCreateDialog"
           >
-            <el-icon><Plus /></el-icon>
             新增
           </el-button>
         </div>
@@ -103,7 +103,7 @@
         </div>
       </div>
 
-      <div class="filter-strip">
+      <div class="filter-strip list-filter-controls">
         <el-input
           v-model="listQuery.project_code"
           class="filter-item"
@@ -263,17 +263,23 @@
           <el-option label="未填写小结" value="empty" />
           <el-option label="已填写小结" value="filled" />
         </el-select>
-        <div class="filter-actions">
-          <span class="more-toggle-btn" title="高级操作" @click="showAdvancedOps = !showAdvancedOps">
+        <div class="filter-actions list-filter-actions">
+          <button
+            type="button"
+            class="list-advanced-trigger"
+            :class="{ 'is-active': showAdvancedOps }"
+            title="高级操作"
+            @click="showAdvancedOps = !showAdvancedOps"
+          >
             <el-icon><Tools /></el-icon>
-          </span>
-          <el-button type="primary" :icon="Search" @click="handleFilter">查询</el-button>
-          <el-button :icon="Refresh" @click="resetFilter">重置</el-button>
+          </button>
+          <el-button class="list-filter-action-button" type="primary" :icon="Search" @click="handleFilter">查询</el-button>
+          <el-button class="list-filter-action-button" :icon="Refresh" @click="resetFilter">重置</el-button>
         </div>
       </div>
     </section>
 
-    <el-card shadow="never" class="table-card" :body-style="{ padding: '15px' }">
+    <el-card shadow="never" class="table-card list-table-card">
       <div
         ref="tablePlateWrap"
         class="table-plate-wrap"
@@ -287,22 +293,23 @@
           stripe
           fit
           highlight-current-row
+          size="large"
+          class="list-data-table"
           style="width: 100%"
-          :header-cell-style="{ background: '#F5F7FA', color: '#606266', fontWeight: 'bold' }"
           @sort-change="handleSortChange"
         >
-        <el-table-column label="项目编号" prop="project_code" align="left" sortable="custom" fixed min-width="130" show-overflow-tooltip>
+        <el-table-column label="项目编号" prop="project_code" align="left" sortable="custom" fixed min-width="120" show-overflow-tooltip>
           <template #default="{ row }">
             <span
-              class="code-text"
+              class="list-code-text is-clickable"
               @click="goDetail(row)"
               @contextmenu.prevent="openOrderDialog(row)"
             >{{ row.project_code || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="靶点" prop="target_name" align="center" min-width="100" show-overflow-tooltip />
-        <el-table-column label="笼位" prop="cage_position" align="center" min-width="90" show-overflow-tooltip />
-        <el-table-column label="采血日期" prop="blood_collection_date" align="center" sortable="custom" min-width="110" />
+        <el-table-column label="笼位" prop="cage_position" align="center" min-width="110" show-overflow-tooltip />
+        <el-table-column label="采血日期" prop="blood_collection_date" align="center" sortable="custom" min-width="115" />
         <el-table-column prop="mouse_count" align="center" min-width="80" class-name="plate-col-mouse">
           <template #header>
             <el-popover v-model:visible="colFilterOpen.mouse_count" trigger="click" width="220">
@@ -403,8 +410,8 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="免疫负责人" prop="immune_owner" align="center" min-width="100" show-overflow-tooltip />
-        <el-table-column label="效价负责人" align="center" min-width="180" class-name="plate-col-owner">
+        <el-table-column label="免疫负责人" prop="immune_owner" align="center" min-width="105" show-overflow-tooltip />
+        <el-table-column label="效价负责人" align="center" min-width="175" class-name="plate-col-owner">
           <template #default="{ row, $index }">
             <div
               class="plate-select-cell plate-select-cell--field"
@@ -523,7 +530,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="优先级" prop="priority" align="center" sortable="custom" min-width="120" class-name="status-column-cell plate-col-priority">
+        <el-table-column label="优先级" prop="priority" align="center" sortable="custom" min-width="110" class-name="status-column-cell plate-col-priority">
           <template #default="{ row, $index }">
             <div
               class="plate-select-cell plate-select-cell--field"
@@ -603,7 +610,7 @@
           <template #default="{ row }">
             <el-tag
               v-if="row.order_status"
-              class="status-tag"
+              class="list-status-tag"
               :type="orderStatusTagType(row.order_status)"
               effect="plain"
             >
@@ -616,7 +623,7 @@
           <template #default="{ row }">
             <el-tag
               v-if="row.immune_status"
-              class="status-tag"
+              class="list-status-tag"
               :type="getSerumProjectStatusTagType(row.immune_status)"
               effect="plain"
             >
@@ -625,12 +632,11 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" fixed="right" min-width="236" align="center">
+        <el-table-column label="操作" fixed="right" width="240" align="center">
           <template #default="{ row }">
             <el-button-group>
               <el-button
-                class="table-action-btn"
-                size="small"
+                class="list-table-action-btn"
                 type="primary"
                 plain
                 :icon="Document"
@@ -639,12 +645,11 @@
               >
                 工单
               </el-button>
-              <el-button class="table-action-btn" size="small" type="warning" plain :icon="DataAnalysis" @click="goSequencing(row)">
+              <el-button class="list-table-action-btn" type="warning" plain :icon="DataAnalysis" @click="goSequencing(row)">
                 测序
               </el-button>
               <el-button
-                class="table-action-btn"
-                size="small"
+                class="list-table-action-btn"
                 type="success"
                 plain
                 :icon="TrendCharts"
@@ -692,9 +697,9 @@
         v-model:current-page="listQuery.page"
         v-model:page-size="listQuery.limit"
         :total="total"
-        :page-sizes="[10, 20, 50, 100]"
+        :page-sizes="[20, 50, 100, 200]"
         layout="total, sizes, prev, pager, next, jumper"
-        class="pagination"
+        class="list-pagination"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
       />
@@ -983,7 +988,6 @@ export default {
     ElTag,
     ElTooltip,
     AdvancedOpsBar,
-    Plus,
     Tools,
     TiterInstrumentOrderDialogs,
     TiterOrderCreateDialog,
@@ -1059,6 +1063,7 @@ export default {
       DataAnalysis: markRaw(DataAnalysis),
       Document: markRaw(Document),
       Download: markRaw(Download),
+      Plus: markRaw(Plus),
       Refresh: markRaw(Refresh),
       Search: markRaw(Search),
       TrendCharts: markRaw(TrendCharts),
@@ -2287,11 +2292,11 @@ export default {
 <style scoped>
 /*
  * 尺寸维护约定（L1 页面壳子 / L2 数据区）：
- * 1. 整表密度 → 只改 el-table 的 size 一处，表头勿写 fontSize
- * 2. 说明文字 → .text-secondary / .text-hint
+ * 1. 表格卡片 → 使用 list-data-table / list-table-card 共享类
+ * 2. 说明文字 → --list-page-subtitle-* / .text-secondary / .text-hint
  * 3. 统计数字 → .stat-value
- * 4. 表格内勿用 :deep 覆盖 font-size
- * 5. 数据行边距 → 只改 .table-card :deep(.el-table__body .cell)，勿改表头
+ * 4. 表格正文文字沿用组件默认值；列筛选弹层可局部设置
+ * 5. 表格密度 → 使用 el-table 的 size，勿额外叠加单元格垂直内边距
  * 6. 负责人标签色 → 只改 OWNER_TAG_COLORS
  * 7. 表面圆角/边框/阴影 → 用 --list-* token（见 list-page-surface.css）
  */
@@ -2306,8 +2311,8 @@ export default {
 .page-title {
   margin: 0;
   color: var(--el-text-color-primary);
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--list-page-title-size);
+  font-weight: var(--list-page-title-weight);
   letter-spacing: 0.2px;
 }
 
@@ -2361,9 +2366,9 @@ export default {
   min-width: 0;
   padding: 12px 16px;
   margin: 0;
-  border: 1px solid rgba(64, 158, 255, 0.12);
+  border: 1px solid rgb(191 219 254 / 45%);
   border-radius: var(--list-mid-radius);
-  background: linear-gradient(135deg, rgba(64, 158, 255, 0.10), rgba(103, 194, 58, 0.06));
+  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, #ffffff 100%);
 }
 
 .title-group {
@@ -2373,7 +2378,9 @@ export default {
 .page-subtitle {
   max-width: 560px;
   margin: 6px 0 0;
-  line-height: 1.5;
+  color: var(--list-page-subtitle-color);
+  font-size: var(--list-page-subtitle-size);
+  font-weight: var(--list-page-subtitle-weight);
 }
 
 .header-actions {
@@ -2540,7 +2547,7 @@ export default {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   grid-template-rows: repeat(2, auto);
-  gap: 8px 10px;
+  gap: 8px var(--list-filter-action-gap);
   align-items: center;
   padding-top: 10px;
   border-top: 1px solid #edf1f7;
@@ -2556,46 +2563,10 @@ export default {
 .filter-strip :deep(.el-input) {
   width: 100%;
   min-width: 0;
-  font-size: 13px;
-}
-
-.filter-strip :deep(.el-input) {
-  --el-input-height: 30px;
-}
-
-.filter-strip :deep(.el-input__wrapper),
-.filter-strip :deep(.el-select__wrapper) {
-  min-height: 30px;
 }
 
 .filter-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: flex-end;
   white-space: nowrap;
-}
-
-.filter-actions .more-toggle-btn {
-  margin-right: 10px;
-}
-
-.filter-actions :deep(.el-button) {
-  height: 30px;
-  min-height: 30px;
-  padding: 0 13px;
-  font-size: 13px;
-}
-
-.filter-actions :deep(.el-button .el-icon + span) {
-  margin-left: 4px;
-}
-
-.table-card {
-  overflow: hidden;
-  border: var(--list-surface-border);
-  border-radius: var(--list-surface-radius);
-  box-shadow: var(--list-surface-shadow);
 }
 
 .table-plate-wrap {
@@ -2718,13 +2689,6 @@ export default {
   opacity: 0;
 }
 
-.table-card :deep(.el-table__body .cell) {
-  padding-top: 6px;
-  padding-right: 8px;
-  padding-bottom: 6px;
-  padding-left: 8px;
-}
-
 .table-card :deep(.el-table__header .cell) {
   white-space: nowrap;
 }
@@ -2781,28 +2745,10 @@ export default {
   margin-top: 10px;
 }
 
-.table-card :deep(.table-action-btn) {
-  height: 28px;
-  min-height: 28px;
-  padding: 0 10px;
-  font-size: 13px;
-}
-
-.no-permission-btn {
-  cursor: not-allowed;
-}
-
 .table-card :deep(.el-button-group) {
   display: inline-flex;
   flex-wrap: nowrap;
   vertical-align: middle;
-}
-
-.status-tag {
-  height: 25px;
-  padding: 0 8px;
-  font-size: 13px;
-  border-radius: var(--list-chip-radius);
 }
 
 /* 血清状态：沿用 el-tag 色系，仅给选中项轻量着色 */
@@ -2883,11 +2829,6 @@ export default {
   padding-right: 5px;
 }
 
-/* 与免疫列表一致：右侧 fixed「操作」左侧硬分割线（不占布局，避免拖列宽错位） */
-.table-card :deep(.el-table--border .el-table-fixed-column--right.is-first-column.el-table__cell) {
-  box-shadow: -1px 0 0 0 var(--el-table-border-color);
-}
-
 /* 效价负责人多选：标签胶囊样式 */
 .owner-select {
   width: 100%;
@@ -2942,22 +2883,6 @@ export default {
 .table-card :deep(.owner-select .owner-tag .el-tag__close:hover) {
   background-color: rgba(0, 0, 0, 0.06);
   color: inherit;
-}
-
-.code-text {
-  font-family: Consolas, monospace;
-  color: var(--el-color-primary);
-  cursor: pointer;
-  font-weight: bold;
-}
-
-.code-text:hover {
-  text-decoration: underline;
-}
-
-.pagination {
-  justify-content: flex-start;
-  margin-top: 12px;
 }
 
 .owner-stats-toolbar {

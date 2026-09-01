@@ -1,44 +1,57 @@
 <template>
-  <div class="createPost-main-container" v-loading="loading">
+  <div class="workbench-scheme-page" v-loading="loading">
     <el-card class="box-card basic-info-card" :body-style="{ padding: '18px' }">
       <template #header>
         <div class="clearfix">
-          <span>1. 项目基础信息 (Project Info)</span>
+          <span>1. 方案草稿</span>
+          <span class="header-hint">核对抗原 / 小鼠 / 步骤后再开展；开展前不写入免疫实验主表</span>
           <div style="float: right;">
+              <span v-if="!canEdit" class="readonly-hint">只读</span>
               <span v-if="autoSaving" style="margin-right: 10px; color: #409EFF; font-size: 12px;">
                   <el-icon class="is-loading"><Loading /></el-icon> 自动保存中...
               </span>
-              <el-button size="small" type="primary" @click="submitForm" @contextmenu.prevent="submitForm($event, true)" :loading="loading" :disabled="loading || autoSaving || !canSaveForm()">保存</el-button>
-              <el-button size="small" @click="handleCancel">取消</el-button>
+              <el-button size="small" type="primary" @click="submitForm" :loading="loading" :disabled="loading || autoSaving || !canEdit">保存</el-button>
+              <el-button
+                v-if="canStart"
+                size="small"
+                type="success"
+                @click="handleStart"
+                :loading="loading"
+                :disabled="loading || autoSaving"
+              >
+                开展
+              </el-button>
+              <el-button size="small" @click="handleCancel">返回工作台</el-button>
           </div>
         </div>
       </template>
-      
-      <el-form ref="postForm" :model="postForm" :rules="rules" label-width="100px">
+
+      <el-form :model="postForm" label-width="100px">
         <!-- Row 1: 项目编号, 实验ID, 负责人 -->
         <el-row :gutter="20">
           <el-col :span="8">
-            <el-form-item label="项目编号" prop="project_code">
-              <el-input v-model="postForm.project_code" placeholder="输入后自动生成实验ID" />
+            <el-form-item label="项目编号">
+              <el-input v-model="postForm.project_code" placeholder="可选，开展前必填" :disabled="!canEdit" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="实验ID" prop="experiment_id">
-              <el-input v-model="postForm.experiment_id" disabled placeholder="根据项目编号自动生成" />
+            <el-form-item label="实验ID">
+              <el-input v-model="postForm.experiment_id" disabled placeholder="首次保存自动生成" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="负责人" prop="owner">
+            <el-form-item label="负责人">
               <SerumUserSelect
                 v-model="postForm.owner"
-                :options="ownerOptions"
                 placeholder="选择负责人"
-                :disabled="!canAssignProjectOwner"
+                :options="schemeUserOptions('owner')"
+                :disabled="!canEdit"
+                clearable
               />
             </el-form-item>
           </el-col>
         </el-row>
-        
+
         <!-- Row 2: 靶点名称, 靶点类型, 靶点大小 -->
         <el-row :gutter="20">
           <el-col :span="8">
@@ -56,6 +69,7 @@
                 :placeholder="postForm.target_name ? '' : '搜索并选择靶点'"
                 title="Shift+Enter 可直接录入未入库靶点名称"
                 style="width: 100%"
+                :disabled="!canEdit"
                 @change="handleTargetChange"
                 @focus="handleTargetFocus"
                 @keydown.shift.enter.capture.prevent.stop="commitFreeTargetName"
@@ -105,8 +119,8 @@
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="靶点类型" prop="target_type">
-              <el-select v-model="postForm.target_type" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入靶点类型">
+            <el-form-item label="靶点类型">
+              <el-select v-model="postForm.target_type" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入靶点类型" :disabled="!canEdit">
                 <el-option label="I型" value="I型" />
                 <el-option label="II型" value="II型" />
                 <el-option label="III型" value="III型" />
@@ -119,25 +133,25 @@
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="靶点大小" prop="target_size">
-              <el-select v-model="postForm.target_size" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入靶点大小">
+            <el-form-item label="靶点大小">
+              <el-select v-model="postForm.target_size" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入靶点大小" :disabled="!canEdit">
                 <el-option label="大于300AA" value="大于300AA" />
                 <el-option label="小于300AA" value="小于300AA" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
-        
+
         <!-- Row 3: 项目名称, 课题类型, 产品经理 -->
         <el-row :gutter="20">
           <el-col :span="8">
-            <el-form-item label="项目名称" prop="project_name">
-              <el-input v-model="postForm.project_name" />
+            <el-form-item label="项目名称">
+              <el-input v-model="postForm.project_name" :disabled="!canEdit" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="课题类型" prop="study_type">
-              <el-select v-model="postForm.study_type" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入课题类型">
+            <el-form-item label="课题类型">
+              <el-select v-model="postForm.study_type" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入课题类型" :disabled="!canEdit">
                 <el-option label="数据包" value="数据包" />
                 <el-option label="客户关注" value="客户关注" />
                 <el-option label="公司内部研发" value="公司内部研发" />
@@ -151,75 +165,82 @@
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="产品经理" prop="pm">
+            <el-form-item label="产品经理">
               <SerumUserSelect
                 v-model="postForm.pm"
-                :options="pmOptions"
                 placeholder="选择产品经理"
+                :options="schemeUserOptions('pm')"
+                :disabled="!canEdit"
                 clearable
               />
             </el-form-item>
           </el-col>
         </el-row>
-        
+
         <!-- Row 4: 开始日期, 检测方法, 项目状态 -->
         <el-row :gutter="20">
           <el-col :span="8">
-            <el-form-item label="开始日期" prop="start_date">
-              <el-date-picker v-model="postForm.start_date" type="date" value-format="YYYY-MM-DD" style="width:100%" @change="recalculateAllStepDates" />
+            <el-form-item label="开始日期">
+              <el-date-picker v-model="postForm.start_date" type="date" value-format="YYYY-MM-DD" style="width:100%" :disabled="!canEdit" @change="recalculateAllStepDates" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="检测方法" prop="assay_method">
+            <el-form-item label="检测方法">
               <AssayMethodEditor
                 v-model:assay-method="postForm.assay_method"
                 v-model:facs-plate-count="postForm.facs_plate_count"
                 v-model:elisa-plate-count="postForm.elisa_plate_count"
+                :disabled="!canEdit"
               />
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="项目状态" prop="project_status">
-              <el-select v-model="postForm.project_status" style="width:100%" filterable allow-create default-first-option>
-                <el-option v-for="item in projectStatusOptions" :key="item" :label="item" :value="item" />
+            <el-form-item label="项目状态">
+              <el-select v-model="postForm.project_status" style="width:100%" disabled>
+                <el-option v-for="item in schemeProjectStatusOptions" :key="item" :label="item" :value="item" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
-        
+
         <!-- Row 5: 免疫间隔, 备注 -->
         <el-row :gutter="20">
           <el-col :span="8">
-            <el-form-item label="免疫间隔" prop="immunization_interval">
-              <el-input v-model="postForm.immunization_interval" placeholder="天数" @change="recalculateAllStepDates">
+            <el-form-item label="免疫间隔">
+              <el-input v-model="postForm.immunization_interval" placeholder="天数" :disabled="!canEdit" @change="recalculateAllStepDates">
                 <template #append>天</template>
               </el-input>
             </el-form-item>
           </el-col>
           <el-col :span="16">
             <el-form-item label="实验备注">
-              <el-input v-model="postForm.remark" />
+              <el-input v-model="postForm.remark" :disabled="!canEdit" />
             </el-form-item>
           </el-col>
         </el-row>
-        
+
         <!-- Row 6: 项目目的 -->
         <el-row :gutter="20">
           <el-col :span="24">
-            <el-form-item label="项目目的" prop="project_purpose">
-              <el-input v-model="postForm.project_purpose" type="textarea" :rows="2" placeholder="请输入项目目的" />
+            <el-form-item label="项目目的">
+              <el-input v-model="postForm.project_purpose" type="textarea" :rows="2" placeholder="请输入项目目的" :disabled="!canEdit" />
             </el-form-item>
           </el-col>
         </el-row>
       </el-form>
     </el-card>
 
-    <!-- 2. Antigens (Full Width) -->
-    <el-card class="box-card" :body-style="{ padding: '15px' }">
+    <div
+      class="scheme-detail-editor"
+      :class="{ 'is-readonly': !canEdit }"
+      :inert="!canEdit"
+    >
+      <!-- 2. Antigens (Full Width) -->
+      <el-card class="box-card" :body-style="{ padding: '15px' }">
         <template #header>
           <div class="clearfix small-header">
             <span>2. 抗原信息 (Antigens)</span>
-                <el-button style="float: right; padding: 3px 0" link @click="addAntigen">添加抗原</el-button>
+                <el-button v-if="canEdit" style="float: right; padding: 3px 0" link @click="addAntigen">添加抗原</el-button>
           </div>
         </template>
         <el-table :data="postForm.antigens" border size="small" style="width: 100%">
@@ -259,8 +280,8 @@
                         <el-option label="KLH" value="KLH" />
                         <el-option label="BSA" value="BSA" />
                         <el-option label="SMA" value="SMA" />
-                        
-                        
+
+
                     </el-select>
                 </template>
             </el-table-column>
@@ -303,7 +324,7 @@
                     </el-select>
                 </template>
             </el-table-column>
-                <el-table-column label="操作" width="50" align="center">
+                <el-table-column v-if="canEdit" label="操作" width="50" align="center">
                 <template #default="{ $index }">
                     <el-icon class="delete-btn" @click="removeAntigen($index)"><Delete /></el-icon>
                 </template>
@@ -316,7 +337,7 @@
         <template #header>
           <div class="clearfix small-header">
             <span>3. 小鼠分组 (Mouse Groups)</span>
-            <el-button style="float: right; padding: 3px 0" link @click="addMouseGroup">添加分组</el-button>
+            <el-button v-if="canEdit" style="float: right; padding: 3px 0" link @click="addMouseGroup">添加分组</el-button>
           </div>
         </template>
         <el-table :data="postForm.mouse_groups" border size="small" style="width: 100%">
@@ -399,7 +420,7 @@
                     <el-input v-model="row.remark" size="small" />
                 </template>
             </el-table-column>
-                <el-table-column label="操作" width="50" align="center">
+                <el-table-column v-if="canEdit" label="操作" width="50" align="center">
                 <template #default="{ $index }">
                     <el-icon class="delete-btn" @click="removeMouseGroup($index)"><Delete /></el-icon>
                 </template>
@@ -407,34 +428,34 @@
         </el-table>
     </el-card>
 
-    <!-- 4. Immunization Scheme (Moved to Top) -->
+    <!-- 4. Immunization Scheme -->
     <el-card class="box-card" :body-style="{ padding: '15px' }">
       <template #header>
         <div class="clearfix small-header">
           <span>4. 免疫方案 (Immunization Scheme)</span>
-          <el-button v-if="postForm.mouse_groups.length > 0" style="float: right; padding: 3px 0" link @click="addStepToGroup(activeGroupTab)">添加步骤</el-button>
+          <el-button v-if="canEdit && postForm.mouse_groups.length > 0" style="float: right; padding: 3px 0" link @click="addStepToGroup(activeGroupTab)">添加步骤</el-button>
         </div>
       </template>
-      
+
       <div v-if="postForm.mouse_groups.length === 0" style="text-align: center; color: #999; padding: 20px;">
           请先在上方添加小鼠分组
       </div>
 
       <div v-else>
         <el-tabs v-model="activeGroupTab" type="card">
-            <el-tab-pane 
-              v-for="(group, idx) in postForm.mouse_groups.filter(g => g.group_id)" 
-              :key="group.group_id || `tmp-${idx}`" 
+            <el-tab-pane
+              v-for="(group, idx) in postForm.mouse_groups.filter(g => g.group_id)"
+              :key="group.group_id || `tmp-${idx}`"
               :name="group.group_id">
               <template #label>
-                <span 
-                  @contextmenu.prevent="openCopyDialogFromTab(group.group_id)" 
+                <span
+                  @contextmenu.prevent="openCopyDialogFromTab(group.group_id)"
                   title="右键复制免疫方案"
                 >
                   分组 {{ group.group_id }}
                 </span>
               </template>
-              
+
               <el-table :data="getStepsForGroup(group.group_id)" border size="small" style="width:100%">
                 <el-table-column label="阶段" min-width="92">
                      <template #default="{ row }">
@@ -467,16 +488,16 @@
                 <el-table-column label="抗原" min-width="150">
                      <template #default="{ row, $index }">
                         <div class="antigen-select-wrapper">
-                            <div 
-                              class="antigen-display-text" 
+                            <div
+                              class="antigen-display-text"
                               :class="{ 'is-placeholder': !getAntigenDisplay(row.antigen_id) }"
                             >{{ getAntigenDisplay(row.antigen_id) || '选择抗原' }}</div>
-                            <el-select 
+                            <el-select
                                 :ref="`antigenSelect_${group.group_id}_${$index}`"
-                                v-model="row.antigen_id" 
-                                size="small" 
-                                placeholder="选择抗原" 
-                                filterable 
+                                v-model="row.antigen_id"
+                                size="small"
+                                placeholder="选择抗原"
+                                filterable
                                 multiple
                                 class="antigen-select-hidden"
                                 @change="handleAntigenChange(row, group.group_id, $index)"
@@ -526,9 +547,9 @@
                 <el-table-column label="备注" min-width="50" align="center">
                      <template #default="{ row }">
                         <el-tooltip :content="row.remark || '暂无备注'" placement="top" :disabled="!row.remark">
-                            <el-icon 
-                                class="remark-icon" 
-                                :class="{'has-remark': row.remark}" 
+                            <el-icon
+                                class="remark-icon"
+                                :class="{'has-remark': row.remark}"
                                 @click="openRemarkDialog(row)"
                                 style="cursor: pointer; font-size: 17px;">
                               <Edit />
@@ -536,7 +557,7 @@
                         </el-tooltip>
                     </template>
                 </el-table-column>
-                <el-table-column label="操作" min-width="50" align="center">
+                <el-table-column v-if="canEdit" label="操作" min-width="50" align="center">
                     <template #default="{ row }">
                         <el-icon class="delete-btn" @click="removeStep(row)"><Delete /></el-icon>
                     </template>
@@ -546,13 +567,13 @@
           </el-tab-pane>
        </el-tabs>
       </div>
-      
+
       <!-- Remark Dialog -->
       <el-dialog title="编辑备注" v-model="remarkDialogVisible" width="500px">
-        <el-input 
-          v-model="currentRemark" 
-          type="textarea" 
-          :rows="6" 
+        <el-input
+          v-model="currentRemark"
+          type="textarea"
+          :rows="6"
           placeholder="请输入备注信息"
           maxlength="500"
           show-word-limit>
@@ -576,12 +597,12 @@
 
           <el-form-item label="目标分组">
             <el-select v-model="copyToGroups" multiple style="width:100%" placeholder="请选择目标分组（可多选）">
-              <el-option 
-                v-for="g in postForm.mouse_groups.filter(g => g.group_id)" 
-                :key="g.group_id" 
-                :label="g.group_id" 
-                :value="g.group_id" 
-                :disabled="g.group_id === copyFromGroup" 
+              <el-option
+                v-for="g in postForm.mouse_groups.filter(g => g.group_id)"
+                :key="g.group_id"
+                :label="g.group_id"
+                :value="g.group_id"
+                :disabled="g.group_id === copyFromGroup"
               />
             </el-select>
           </el-form-item>
@@ -601,9 +622,8 @@
 
 
 
-    <!-- 5. Titer Section (Ref) -->
-    <div ref="titerCard">
-        <el-card class="box-card" :body-style="{ padding: '15px' }">
+    <!-- 5. Titer Section -->
+    <el-card class="box-card" :body-style="{ padding: '15px' }">
         <template #header>
           <div class="clearfix small-header">
               <span>5. 效价检测 (Titer Assay)</span>
@@ -613,7 +633,7 @@
             <el-col :span="24" style="margin-bottom: 20px;">
                 <div class="sub-header">
                     <span>检测标靶</span>
-                    <el-button link @click="addTarget">
+                    <el-button v-if="canEdit" link @click="addTarget">
                       <el-icon><Plus /></el-icon>
                     </el-button>
                 </div>
@@ -668,18 +688,18 @@
                             <el-input v-model="row.source" size="small" />
                         </template>
                     </el-table-column>
-                    <el-table-column width="50" align="center">
+                    <el-table-column v-if="canEdit" width="50" align="center">
                         <template #default="{ $index }">
                             <el-icon class="delete-btn" @click="removeTarget($index)"><Delete /></el-icon>
                         </template>
                     </el-table-column>
                 </el-table>
             </el-col>
-            
+
             <el-col :span="24">
                  <div class="sub-header">
                     <span>阳性对照</span>
-                    <el-button link @click="addPC">
+                    <el-button v-if="canEdit" link @click="addPC">
                       <el-icon><Plus /></el-icon>
                     </el-button>
                 </div>
@@ -704,7 +724,7 @@
                             <el-input v-model="row.concentration" size="small" />
                         </template>
                     </el-table-column>
-                     <el-table-column width="50" align="center">
+                     <el-table-column v-if="canEdit" width="50" align="center">
                         <template #default="{ $index }">
                             <el-icon class="delete-btn" @click="removePC($index)"><Delete /></el-icon>
                         </template>
@@ -712,31 +732,6 @@
                 </el-table>
             </el-col>
         </el-row>
-        </el-card>
-    </div>
-
-    <!-- 6. Danger Zone: Delete Experiment -->
-    <el-card v-if="postForm.id" class="box-card danger-zone-card" :body-style="{ padding: '20px' }">
-      <template #header>
-        <div class="clearfix danger-zone-header">
-          <el-icon style="margin-right: 8px;"><WarningFilled /></el-icon>
-          <span>6. 危险区域 (Danger Zone)</span>
-        </div>
-      </template>
-      
-      <div class="danger-zone-content">
-        <div class="danger-zone-text">
-          <h4 style="margin: 0 0 8px 0; color: #F56C6C;">
-            <el-icon><Delete /></el-icon> 删除此实验项目
-          </h4>
-          <p style="margin: 0; color: #606266; font-size: 13px;">
-            删除后将无法恢复，所有相关数据（小鼠分组、抗原信息、免疫步骤、效价检测等）都将被永久清除。请谨慎操作。
-          </p>
-        </div>
-        <el-button type="danger" size="small" :disabled="!canDeleteForm()" @click="handleDelete" plain>
-          <el-icon><Delete /></el-icon> 删除实验项目
-        </el-button>
-      </div>
     </el-card>
 
     <MouseRegistryDialog
@@ -744,6 +739,7 @@
       :group="mouseRegistryEditingRow"
       @confirm="onMouseRegistryConfirm"
     />
+    </div>
 
   </div>
 </template>
@@ -756,7 +752,6 @@ import {
   Edit,
   Loading,
   Plus,
-  WarningFilled,
 } from '@element-plus/icons-vue'
 
 import {
@@ -784,32 +779,91 @@ import {
 } from 'element-plus'
 
 import { extractApiError, notifyApiError } from '#/api/errors'
+import { fetchSerumTargetOptions } from '#/api/serum'
 import {
-  deleteSerum,
-  fetchDetail,
-  fetchSerumTargetOptions,
-  getSerumFilterOptions,
-  saveSerum,
-} from '#/api/serum'
+  fetchWorkbenchDetail,
+  fetchWorkbenchOptions,
+  saveWorkbenchScheme,
+  startWorkbench,
+} from '#/api/serumWorkbench'
 import { SERUM_ERRORS } from '../shared/errors'
 import MouseRegistryDialog from '../shared/MouseRegistryDialog.vue'
 import AssayMethodEditor from '../shared/AssayMethodEditor.vue'
 import SerumUserSelect from '../shared/SerumUserSelect.vue'
 import {
-  canEditAllSerumProjects,
-  canCreateSerumProject,
-  canDeleteSerumProject,
+  canAccessSerumDetail,
   canEditSerumProject,
-  getSerumUserName,
+  canEditWorkbench,
+  canEditWorkbenchDraft,
+  canOpenSerumEdit,
+  hasSerumProjectEditPermission,
 } from '#/utils/serumPermission'
 import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS } from '#/utils/serumMouseOptions'
 import {
+  isWorkbenchPlanClosed,
   SERUM_PROJECT_STATUS_DEFAULT,
-  SERUM_PROJECT_STATUS_OPTIONS,
 } from '#/utils/serumProjectStatus'
-import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
 const MIAN_NUMERALS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
+const SCHEME_PROJECT_STATUS_OPTIONS = [SERUM_PROJECT_STATUS_DEFAULT]
+const SCHEME_HEADER_FIELDS = [
+  'project_code',
+  'project_name',
+  'project_purpose',
+  'start_date',
+  'immunization_interval',
+  'target_codes',
+  'target_name',
+  'target_type',
+  'target_size',
+  'owner',
+  'pm',
+  'study_type',
+  'assay_method',
+  'facs_plate_count',
+  'elisa_plate_count',
+  'remark',
+]
+const SCHEME_CHILD_FIELDS = [
+  'mouse_groups',
+  'antigens',
+  'steps',
+  'titer_targets',
+  'titer_pcs',
+]
+
+function createEmptySchemeForm() {
+  return {
+    id: undefined,
+    experiment_id: '',
+    project_code: '',
+    project_name: '',
+    project_purpose: '',
+    owner: '',
+    start_date: '',
+    project_status: SCHEME_PROJECT_STATUS_OPTIONS[0],
+    target_codes: [],
+    target_name: '',
+    target_type: '',
+    target_size: '',
+    pm: '纪鑫',
+    study_type: '',
+    assay_method: '',
+    facs_plate_count: null,
+    elisa_plate_count: null,
+    immunization_interval: '',
+    remark: '',
+    mouse_strain: '',
+    mouse_strain_category: '',
+    plan_status: '',
+    scheme_revision: '',
+    mouse_groups: [],
+    steps: [],
+    antigens: [],
+    titer_targets: [],
+    titer_pcs: [],
+  }
+}
 
 function mianNumber(stageName) {
   const name = (stageName || '').trim()
@@ -882,42 +936,12 @@ function resortMianStepsInGroup(steps, groupId) {
   })
 }
 
-function createEmptyPostForm() {
-  return {
-    id: undefined,
-    project_revision: '',
-    experiment_id: '',
-    project_code: '',
-    project_name: '',
-    project_purpose: '',
-    owner: '',
-    start_date: '',
-    project_status: SERUM_PROJECT_STATUS_DEFAULT,
-    target_codes: [],
-    target_name: '',
-    target_type: '',
-    target_size: '',
-    pm: '纪鑫',
-    study_type: '',
-    assay_method: '',
-    facs_plate_count: null,
-    elisa_plate_count: null,
-    immunization_interval: '',
-    remark: '',
-    mouse_groups: [],
-    steps: [],
-    antigens: [],
-    titer_targets: [],
-    titer_pcs: [],
-  }
-}
-
 export default {
-  name: 'SerumEdit',
+  name: 'SerumWorkbenchScheme',
   components: {
     MouseRegistryDialog,
-    AssayMethodEditor,
     SerumUserSelect,
+    AssayMethodEditor,
     ElButton,
     ElCard,
     ElCheckbox,
@@ -932,7 +956,6 @@ export default {
     Edit,
     Loading,
     Plus,
-    WarningFilled,
     ElOption,
     ElRow,
     ElSelect,
@@ -951,18 +974,16 @@ export default {
   },
   data() {
     return {
-      postForm: createEmptyPostForm(),
+      postForm: createEmptySchemeForm(),
       loading: false,
-      loadFailed: false,
       targetAliasEdit: null,
       targetDisplayNames: {},
       targetLoading: false,
       targetOptions: [],
       targetRequestToken: 0,
-      ownerOptions: [],
-      pmOptions: [],
+      usedUserOptions: { owner: [], pm: [] },
+      schemeProjectStatusOptions: SCHEME_PROJECT_STATUS_OPTIONS,
       mouseStrainCategoryOptions: SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS,
-      projectStatusOptions: SERUM_PROJECT_STATUS_OPTIONS,
       remarkDialogVisible: false,
       currentRemark: '',
       currentRemarkRow: null,
@@ -972,35 +993,45 @@ export default {
       overwriteSteps: true,
       mouseRegistryDialogVisible: false,
       mouseRegistryEditingRow: null,
-      rules: {
-          project_code: [{ required: true, message: '必填', trigger: 'blur' }],
-          owner: [{ required: true, message: '必填', trigger: 'blur' }]
-      },
       activeGroupTab: null,
       groupIdSnapshots: new WeakMap(),
       autoSaveTimer: null,
       autoSaving: false,
       initializing: true,
       applyingServerState: false,
+      initRequestToken: 0,
+      loadingWorkbenchId: null,
+      activeWorkbenchId: null,
       formRevision: 0,
       savedRevision: 0,
       saveQueued: false,
       savePromise: null,
-      loadedRouteIdentity: '',
-      initRequestToken: 0,
-      routeTransitionPending: false,
-      tabDataFetchedAt: 0,
     }
   },
   computed: {
     currentUserInfo() {
       return this.userStore.userInfo || {}
     },
-    currentUserName() {
-      return getSerumUserName(this.currentUserInfo)
+    canFullEdit() {
+      return canEditWorkbench(this.currentUserInfo)
     },
-    canAssignProjectOwner() {
-      return canEditAllSerumProjects(this.currentUserInfo)
+    canDraftEdit() {
+      return canEditWorkbenchDraft(this.currentUserInfo)
+    },
+    canEdit() {
+      return Boolean(this.activeWorkbenchId)
+        && (
+          this.canFullEdit
+          || (this.canDraftEdit && String(this.postForm.plan_status || '草稿').trim() === '草稿')
+        )
+        && !this.postForm.aligned_locked
+    },
+    canStart() {
+      return this.canFullEdit
+        && Boolean(this.activeWorkbenchId)
+        && !this.postForm.aligned_locked
+        && !isWorkbenchPlanClosed(this.postForm.plan_status)
+        && hasSerumProjectEditPermission(this.currentUserInfo)
     },
   },
   watch: {
@@ -1014,144 +1045,201 @@ export default {
     }
   },
   created() {
+    this.loadWorkbenchOptions()
     const id = this.$route.query.id
     this.initPage(id)
   },
   activated() {
-    if (this.$route.name !== 'SerumEdit') return
-    if (this.initializing) return
-    if (this.loadedRouteIdentity !== this.editRouteIdentity(this.$route)) {
-      this.initPage(this.$route.query.id)
-      return
+    if (!this.isWorkbenchSchemeRoute(this.$route)) return
+    const id = this.parseWorkbenchId(this.$route.query.id)
+    if (!id || this.loadingWorkbenchId === id) return
+    if (id !== this.activeWorkbenchId) {
+      this.initPage(id)
     }
-    if (shouldRefreshTabData(this.tabDataFetchedAt)) {
-      const id = this.$route.query.id
-      if (id) {
-        this.initPage(id)
-      }
-    }
+  },
+  deactivated() {
+    this.clearAutoSaveTimer()
   },
   beforeUnmount() {
     this.clearAutoSaveTimer()
     this.initRequestToken += 1
     this.targetRequestToken += 1
+    this.activeWorkbenchId = null
   },
   beforeRouteUpdate(to, from, next) {
-    if (this.editRouteIdentity(to) === this.loadedRouteIdentity) {
-      next()
-      return
-    }
+    const workbenchId = this.parseWorkbenchId(to.query.id)
     const continueNavigation = () => {
-      this.routeTransitionPending = false
-      this.initializing = true
+      this.initRequestToken += 1
+      this.targetRequestToken += 1
+      this.activeWorkbenchId = null
       next()
-      this.$nextTick(() => this.initPage(to.query.id))
+      this.$nextTick(() => this.initPage(workbenchId, to))
     }
-    this.routeTransitionPending = true
     this.flushPendingSave()
       .then(continueNavigation)
       .catch((err) => {
-        this.routeTransitionPending = false
         this.handleSaveFailure(err)
         next(false)
       })
   },
   beforeRouteLeave(to, from, next) {
-    this.routeTransitionPending = true
     this.flushPendingSave()
       .then(() => {
-        this.routeTransitionPending = false
+        this.initRequestToken += 1
+        this.targetRequestToken += 1
+        this.activeWorkbenchId = null
         next()
       })
       .catch((err) => {
-        this.routeTransitionPending = false
         this.handleSaveFailure(err)
         next(false)
       })
   },
   methods: {
-    async initPage(id) {
+    resetTransientEditors() {
+      this.targetAliasEdit = null
+      this.remarkDialogVisible = false
+      this.currentRemark = ''
+      this.currentRemarkRow = null
+      this.copyDialogVisible = false
+      this.copyFromGroup = ''
+      this.copyToGroups = []
+      this.mouseRegistryDialogVisible = false
+      this.mouseRegistryEditingRow = null
+    },
+    async loadWorkbenchOptions() {
+      try {
+        const data = await fetchWorkbenchOptions()
+        this.usedUserOptions.owner = this.uniq(data?.owners || [])
+        this.usedUserOptions.pm = this.uniq(data?.pms || [])
+      } catch {
+        // 选项接口不可用时仍可显示当前记录中的人员
+      }
+    },
+    uniq(values) {
+      return [...new Set((values || []).map((item) => String(item || '').trim()).filter(Boolean))]
+    },
+    schemeUserOptions(field) {
+      return this.uniq([...(this.usedUserOptions[field] || []), this.postForm[field]])
+    },
+    isWorkbenchSchemeRoute(route = this.$route) {
+      return route?.name === 'SerumWorkbenchScheme'
+        || route?.path === '/serum/workbench/scheme'
+    },
+    parseWorkbenchId(raw) {
+      const text = String(raw ?? '').trim()
+      if (!/^\d+$/.test(text)) return null
+      const value = Number(text)
+      return Number.isSafeInteger(value) && value > 0 ? value : null
+    },
+    async initPage(rawWorkbenchId, route = this.$route) {
+      if (!this.isWorkbenchSchemeRoute(route)) return
+      const workbenchId = this.parseWorkbenchId(rawWorkbenchId)
+      if (!workbenchId) {
+        ElMessage.warning('缺少工作台记录')
+        this.$router.replace('/serum/workbench')
+        return
+      }
+      if (this.loadingWorkbenchId === workbenchId) return
+
+      const previousWorkbenchId = this.activeWorkbenchId
       const requestToken = ++this.initRequestToken
-      this.targetRequestToken += 1
-      this.targetLoading = false
-      const routeIdentity = id ? `id:${id}` : 'new'
-      let loadSucceeded = false
-      this.clearAutoSaveTimer()
-      this.loading = Boolean(id)
-      this.loadFailed = false
+      this.loadingWorkbenchId = workbenchId
+      this.activeWorkbenchId = null
+      this.loading = true
       this.initializing = true
-      if (routeIdentity !== this.loadedRouteIdentity) {
-        this.postForm = createEmptyPostForm()
-        this.targetAliasEdit = null
+      this.clearAutoSaveTimer()
+      if (previousWorkbenchId !== workbenchId) {
+        this.resetTransientEditors()
+        this.postForm = createEmptySchemeForm()
         this.targetDisplayNames = {}
         this.targetOptions = []
+        this.targetRequestToken += 1
+        this.targetLoading = false
         this.activeGroupTab = null
-        this.mouseRegistryEditingRow = null
-      }
-      try {
-        const tasks = [getSerumFilterOptions()]
-        if (id) {
-          tasks.push(fetchDetail(id))
-        }
-        const results = await Promise.all(tasks)
-        if (requestToken !== this.initRequestToken) return
-        const filterOptions = results[0]
-        this.ownerOptions = filterOptions?.owners || []
-        this.pmOptions = filterOptions?.pms || []
-        if (id) {
-          const detail = results[1]
-          const targetCodes = Array.isArray(detail.target_codes) ? detail.target_codes : []
-          this.postForm = { ...detail, target_codes: targetCodes }
-          const targetNames = String(detail.target_name || '').split(/[&,]/)
-          this.targetDisplayNames = Object.fromEntries(
-            targetCodes.map((snum, index) => [snum, targetNames[index] || snum]),
-          )
-          this.targetOptions = targetCodes.map((snum, index) => ({
-            name: targetNames[index] || snum,
-            snum,
-          }))
-          if (targetCodes.length) {
-            await this.searchTargetOptions('')
-          }
-          if (this.postForm.steps) {
-            this.postForm.steps.forEach((step) => {
-              if (step.antigen_id && typeof step.antigen_id === 'string') {
-                step.antigen_id = step.antigen_id
-                  .split(',')
-                  .map((item) => item.trim())
-                  .filter(Boolean)
-              }
-            })
-          }
-          if (this.postForm.mouse_groups.length > 0) {
-            this.activeGroupTab = this.postForm.mouse_groups[0].group_id
-          }
-        } else {
-          const currentUser = this.currentUserName
-          this.postForm.owner = currentUser.split(' ')[0]
-        }
-        loadSucceeded = true
-      } catch (err) {
-        if (requestToken !== this.initRequestToken) return
-        this.loadFailed = true
-        notifyApiError(err, { messages: SERUM_ERRORS.edit.loadPage })
-      } finally {
-        if (requestToken !== this.initRequestToken) return
-        this.loading = false
-        if (!loadSucceeded) {
-          this.$nextTick(() => {
-            this.initializing = false
-          })
-          return
-        }
-        this.tabDataFetchedAt = Date.now()
-        this.loadedRouteIdentity = routeIdentity
         this.formRevision = 0
         this.savedRevision = 0
         this.saveQueued = false
-        this.$nextTick(() => {
-          this.initializing = false
-        })
+      }
+      try {
+        const detail = await fetchWorkbenchDetail(workbenchId)
+        if (
+          requestToken !== this.initRequestToken
+          || !this.isWorkbenchSchemeRoute(this.$route)
+          || this.parseWorkbenchId(this.$route.query.id) !== workbenchId
+        ) {
+          return
+        }
+        if (detail?.aligned_locked && detail.serum_project_id) {
+          if (canOpenSerumEdit(this.currentUserInfo, detail)) {
+            this.$router.replace({ path: '/serum/edit', query: { id: detail.serum_project_id } })
+            return
+          }
+          if (canAccessSerumDetail(this.currentUserInfo)) {
+            this.$router.replace({ path: '/serum/detail', query: { id: detail.serum_project_id } })
+            return
+          }
+        }
+        const targetCodes = Array.isArray(detail.target_codes) ? detail.target_codes : []
+        this.resetTransientEditors()
+        this.postForm = {
+          ...createEmptySchemeForm(),
+          ...detail,
+          target_codes: targetCodes,
+          mouse_groups: detail.mouse_groups || [],
+          antigens: detail.antigens || [],
+          steps: detail.steps || [],
+          titer_targets: detail.titer_targets || [],
+          titer_pcs: detail.titer_pcs || [],
+        }
+        if (
+          !this.postForm.aligned_locked
+          && (
+            this.canFullEdit
+            || (this.canDraftEdit && String(this.postForm.plan_status || '草稿').trim() === '草稿')
+          )
+        ) {
+          this.ensureInitialMouseGroup()
+        }
+        this.activeWorkbenchId = workbenchId
+        this.formRevision = 0
+        this.savedRevision = 0
+        this.saveQueued = false
+        const targetNames = String(detail.target_name || '').split(/[&,]/)
+        this.targetDisplayNames = Object.fromEntries(
+          targetCodes.map((snum, index) => [snum, targetNames[index] || snum]),
+        )
+        this.targetOptions = targetCodes.map((snum, index) => ({
+          name: targetNames[index] || snum,
+          snum,
+        }))
+        if (targetCodes.length) {
+          this.searchTargetOptions('')
+        }
+        if (this.postForm.steps) {
+          this.postForm.steps.forEach((step) => {
+            if (step.antigen_id && typeof step.antigen_id === 'string') {
+              step.antigen_id = step.antigen_id
+                .split(',')
+                .map((item) => item.trim())
+                .filter(Boolean)
+            }
+          })
+        }
+        this.activeGroupTab = this.postForm.mouse_groups[0]?.group_id || null
+      } catch (err) {
+        if (requestToken === this.initRequestToken) {
+          notifyApiError(err, { messages: SERUM_ERRORS.workbench.schemeLoad })
+        }
+      } finally {
+        if (requestToken === this.initRequestToken) {
+          this.loading = false
+          this.loadingWorkbenchId = null
+          this.$nextTick(() => {
+            if (requestToken !== this.initRequestToken) return
+            this.initializing = false
+          })
+        }
       }
     },
     async searchTargetOptions(keyword) {
@@ -1161,6 +1249,8 @@ export default {
         const response = await fetchSerumTargetOptions(keyword, this.postForm.target_codes)
         if (requestToken !== this.targetRequestToken) return
         this.targetOptions = response?.items || []
+      } catch {
+        // 无靶点库权限时仍可用 Shift+Enter 录入名称
       } finally {
         if (requestToken === this.targetRequestToken) this.targetLoading = false
       }
@@ -1234,19 +1324,20 @@ export default {
     getAntigenDisplay(antigenIds) {
       const ids = Array.isArray(antigenIds) ? antigenIds : []
       if (!ids.length) return ''
-      
+
       const names = ids.map(id => {
         const trimmedId = String(id).trim()
         const antigen = this.postForm.antigens && this.postForm.antigens.find(a => String(a.antigen_id) === trimmedId)
         return antigen ? antigen.antigen_name : trimmedId
       })
-      
+
       return names.join(' + ')
     },
     getStepsForGroup(groupId) {
         return pickStepsForGroup(this.postForm.steps, groupId)
     },
     addStepToGroup(groupId) {
+        if (!this.canEdit) return
         if (!groupId) {
             ElMessage.warning('请先选择一个分组')
             return
@@ -1299,6 +1390,7 @@ export default {
         this.currentRemark = ''
     },
     openCopyDialogFromTab(fromGroupId) {
+        if (!this.canEdit) return
         this.copyFromGroup = fromGroupId
         this.copyToGroups = []
         this.overwriteSteps = true
@@ -1369,16 +1461,16 @@ export default {
     },
     handleAntigenChange(row, groupId, rowIndex) {
         let antigenIds = Array.isArray(row.antigen_id) ? [...row.antigen_id] : []
-        
+
         const hasNA = antigenIds.includes('N/A')
         const hasNormalAntigen = antigenIds.some(id => id !== 'N/A')
-        
+
         if (hasNA && hasNormalAntigen) {
             antigenIds = antigenIds.filter(id => id !== 'N/A')
         }
-        
+
         row.antigen_id = antigenIds
-        
+
         if (antigenIds.length === 1 && antigenIds[0] === 'N/A') {
             row.antigen_dose = '-'
             row.adjuvant_name = '-'
@@ -1393,7 +1485,7 @@ export default {
             if (row.injection_volume === '-') row.injection_volume = '100µL'
             if (row.route === '-') row.route = 's.c.'
             if (row.injection_site === '-') row.injection_site = '颈部+尾根部'
-            
+
             const firstAntigenId = antigenIds.find(id => id !== 'N/A')
             if (firstAntigenId) {
                 const antigen = this.postForm.antigens.find(a => String(a.antigen_id) === String(firstAntigenId))
@@ -1401,12 +1493,12 @@ export default {
                 this.applyAntigenRouteByType(row, antigen)
             }
         }
-        
+
         this.$nextTick(() => {
             const refName = `antigenSelect_${groupId}_${rowIndex}`
             const selectRef = this.$refs[refName]
             const ins = Array.isArray(selectRef) ? selectRef[0] : selectRef
-            
+
             if (ins) {
                 ins.blur && ins.blur()
             }
@@ -1443,7 +1535,7 @@ export default {
     },
     handleAntigenAdjuvantTypeChange(antigenRow) {
         if (!antigenRow.antigen_id || !antigenRow.adjuvant_type || antigenRow.adjuvant_type === '无') return
-        
+
         this.postForm.steps.forEach(step => {
             const ids = Array.isArray(step.antigen_id) ? step.antigen_id.map(String) : []
             if (ids.includes(String(antigenRow.antigen_id))) {
@@ -1504,20 +1596,20 @@ export default {
     calculateStepDate(row) {
         const startDate = this.parseDateOnly(this.postForm.start_date)
         if (!startDate) return
-        
+
         const groupSteps = this.getStepsForGroup(row.group_id)
         const currentIndex = groupSteps.findIndex(s => s === row)
-        
+
         const lastStep = currentIndex > 0 ? groupSteps[currentIndex - 1] : null
         const baseDate = lastStep?.date_actual ? this.parseDateOnly(lastStep.date_actual) : startDate
         if (!baseDate) return
-        
-        const interval = lastStep 
+
+        const interval = lastStep
             ? (row.stage_name === '采血' ? 7 : parseInt(this.postForm.immunization_interval) || 0)
             : 0
-        
+
         const targetDate = this.addDays(baseDate, interval)
-        
+
         row.date_actual = this.formatDate(targetDate)
         row.day_relative = this.daysBetween(targetDate, startDate).toString()
     },
@@ -1545,63 +1637,98 @@ export default {
             this.recalculateGroupDates(row.group_id, currentIndex + 1)
         }
     },
-    submitForm(event, isRightClick = false) {
-        if (!this.canSaveForm()) {
-            ElMessage.warning('您没有权限保存此项目')
+    async submitForm() {
+        if (!this.canEdit) {
+            ElMessage.warning('您没有权限保存此草稿')
+            return
+        }
+        if (this.loading) {
+            return
+        }
+        if (!this.postForm.id) {
+            ElMessage.error('缺少工作台记录')
+            return
+        }
+        this.loading = true
+        try {
+          await this.doSubmit({ force: true })
+          ElNotification({ type: 'success', message: '草稿已保存' })
+        } catch {
+          // doSubmit 已统一提示保存错误
+        } finally {
+          this.loading = false
+        }
+    },
+    async doSubmit({ force = true } = {}) {
+        try {
+            return await this.queueSchemeSave({ force })
+        } catch (err) {
+            this.handleSaveFailure(err)
+            throw err
+        }
+    },
+    schemeStartBlockReason() {
+        const code = String(this.postForm.project_code || '').replace(/\s/g, '')
+        if (!code) return '开展前必须填写项目编号'
+        if (!String(this.postForm.owner || '').trim()) return '开展前必须选择负责人'
+        return ''
+    },
+    async handleStart() {
+        if (!this.canEdit) return
+        if (!this.canStart) {
+            ElMessage.warning('该状态不能开展')
             return
         }
         if (this.loading) return
-        this.loading = true
-        this.doSubmit(isRightClick)
-    },
-    doSubmit(isRightClick) {
-        this.$refs.postForm.validate(async (valid) => {
-            if (!valid) {
-                this.loading = false
-                return
-            }
-            try {
-                await this.queueFormSave({ force: true })
-                ElNotification({ type: 'success', message: '保存成功' })
-                if (isRightClick) {
-                    this.$router.push('/serum/list')
-                    setTimeout(() => {
-                        this.$router.push('/serum/edit')
-                    }, 100)
-                }
-            } catch (err) {
-                this.handleSaveFailure(err, SERUM_ERRORS.edit.save)
-            } finally {
-                this.loading = false
-            }
-        })
-    },
-    handleCancel() {
-        this.$router.go(-1)
-    },
-    handleDelete() {
-        if (!this.canDeleteForm()) {
-            ElMessage.warning('您没有权限删除此项目')
+        if (!this.postForm.id) {
+            ElMessage.error('缺少工作台记录')
             return
         }
-        ElMessageBox.confirm('确定移除这个实验吗？工作台来源项目将撤回为草稿，其他项目将永久删除；已有下游效价数据时不能操作。', '警告', {
-            confirmButtonText: '确定',
-            cancelButtonText: '取消',
-            type: 'warning'
-        }).then(() => {
-            this.loading = true
-            deleteSerum(this.postForm.id).then((result) => {
-                const message = result?.action === 'reverted' ? '已撤回为工作台草稿' : '删除成功'
-                ElNotification({ type: 'success', message })
-                this.loading = false
-                this.$router.push('/serum/list')
-            }).catch((err) => {
-                this.loading = false
-                notifyApiError(err, { messages: SERUM_ERRORS.edit.delete })
-            })
-        }).catch(() => {
-            // User cancelled
-        })
+        const blocked = this.schemeStartBlockReason()
+        if (blocked) {
+            ElMessage.warning(blocked)
+            return
+        }
+        if (!canEditSerumProject(this.currentUserInfo, this.postForm)) {
+            try {
+                await ElMessageBox.confirm(
+                  '负责人不是当前用户，开展后你将无法编辑该项目。是否继续？',
+                  '确认开展',
+                  { type: 'warning' },
+                )
+            } catch {
+                return
+            }
+        }
+        this.loading = true
+        try {
+            await this.doSubmit({ force: true })
+        } catch {
+            this.loading = false
+            return
+        }
+        try {
+            const saved = await startWorkbench(this.postForm.id)
+            ElMessage.success(`已开展，实验号 ${saved.experiment_id}`)
+            if (saved?.serum_project_id) {
+                if (canOpenSerumEdit(this.currentUserInfo, saved)) {
+                    this.$router.replace({ path: '/serum/edit', query: { id: saved.serum_project_id } })
+                    return
+                }
+                if (canAccessSerumDetail(this.currentUserInfo)) {
+                    this.$router.replace({ path: '/serum/detail', query: { id: saved.serum_project_id } })
+                    return
+                }
+            }
+            this.$router.replace('/serum/workbench')
+        } catch (err) {
+            notifyApiError(err, { messages: SERUM_ERRORS.workbench.start })
+        } finally {
+            this.loading = false
+        }
+    },
+    handleCancel() {
+        this.$router.push('/serum/workbench')
     },
     cacheGroupId(row) {
         this.groupIdSnapshots.set(row, row.group_id)
@@ -1642,24 +1769,11 @@ export default {
         row.mouse_registry = mouse_registry
         row.mouse_no_list = mouse_no_list
     },
-    addMouseGroup() {
-        // Smart auto-increment for group_id
-        let nextGroupId = 'G1'
-        const existingGroups = this.postForm.mouse_groups.map(g => g.group_id)
-        
-        // Find the next available group number
-        for (let i = 1; i <= 100; i++) {
-            const candidateId = `G${i}`
-            if (!existingGroups.includes(candidateId)) {
-                nextGroupId = candidateId
-                break
-            }
-        }
-        
-        this.postForm.mouse_groups.push({
-            group_id: nextGroupId,
-            mouse_strain: '',
-            mouse_strain_category: '',
+    createMouseGroup(groupId, seedWorkbench = false) {
+        return {
+            group_id: groupId,
+            mouse_strain: seedWorkbench ? (this.postForm.mouse_strain || '') : '',
+            mouse_strain_category: seedWorkbench ? (this.postForm.mouse_strain_category || '') : '',
             mouse_count: '10',
             age_weeks: '6-8',
             sex: 'F/M',
@@ -1668,8 +1782,30 @@ export default {
             mouse_no_list: '',
             mouse_registry: null,
             remark: ''
-        })
-        
+        }
+    },
+    ensureInitialMouseGroup() {
+        if (this.postForm.mouse_groups.length > 0) return
+        if (!this.postForm.mouse_strain && !this.postForm.mouse_strain_category) return
+        this.postForm.mouse_groups.push(this.createMouseGroup('G1', true))
+    },
+    addMouseGroup() {
+        if (!this.canEdit) return
+        const isFirstGroup = this.postForm.mouse_groups.length === 0
+        let nextGroupId = 'G1'
+        const existingGroups = this.postForm.mouse_groups.map(g => g.group_id)
+
+        // Find the next available group number
+        for (let i = 1; i <= 100; i++) {
+            const candidateId = `G${i}`
+            if (!existingGroups.includes(candidateId)) {
+                nextGroupId = candidateId
+                break
+            }
+        }
+
+        this.postForm.mouse_groups.push(this.createMouseGroup(nextGroupId, isFirstGroup))
+
         // Auto-activate the newly added group
         this.$nextTick(() => {
             this.activeGroupTab = nextGroupId
@@ -1699,13 +1835,13 @@ export default {
         }
     },
     addAntigen() {
-        // Find smallest available ID (fill gaps first)
+        if (!this.canEdit) return
         let nextId = 1
         const existingIds = this.postForm.antigens.map(a => parseInt(a.antigen_id)).filter(id => !isNaN(id))
         while (existingIds.includes(nextId)) {
             nextId++
         }
-        
+
         this.postForm.antigens.push({
             antigen_id: nextId.toString(),
             antigen_name: '',
@@ -1723,56 +1859,63 @@ export default {
         event.preventDefault()
         const clipboardData = event.clipboardData || window.clipboardData
         const pastedText = clipboardData.getData('text')
-        
+
         if (!pastedText) return
         const parts = pastedText.split(/\t|\r?\n/)
-        
+
         if (parts.length === 0) return;
         row.antigen_name = parts[0] || row.antigen_name;
         if (parts.length >= 2) row.catalog_no = parts[1];
         if (parts.length >= 3) row.lot_no = parts[2];
         if (parts.length >= 4) row.stock_conc = parts[3];
-        
+
         ElMessage.success('已自动填充抗原信息')
     },
     removeAntigen(index) {
+        const antigenId = String(this.postForm.antigens[index]?.antigen_id || '').trim()
+        let wasReferenced = false
+        if (antigenId) {
+            this.postForm.steps.forEach((step) => {
+                const ids = Array.isArray(step.antigen_id)
+                    ? step.antigen_id
+                    : String(step.antigen_id || '').split(',')
+                const remaining = ids.filter((id) => String(id).trim() !== antigenId)
+                if (remaining.length !== ids.length) {
+                    step.antigen_id = remaining
+                    wasReferenced = true
+                }
+            })
+        }
         this.postForm.antigens.splice(index, 1)
+        if (wasReferenced) {
+            ElMessage.warning('该抗原已被引用，请记得为相关免疫步骤重新选择抗原')
+        }
     },
     addTarget() {
+        if (!this.canEdit) return
         this.postForm.titer_targets.push({ name: '', type: '', species: '', batch_no: '', passage: '', cell_count: '', catalog_no: '', source: '' })
     },
     removeTarget(index) {
         this.postForm.titer_targets.splice(index, 1)
     },
     addPC() {
+        if (!this.canEdit) return
         this.postForm.titer_pcs.push({ pc_name: '', catalog_batch: '', source: '', concentration: '' })
     },
     removePC(index) {
         this.postForm.titer_pcs.splice(index, 1)
     },
-    editRouteIdentity(route) {
-      const id = route?.query?.id
-      return id ? `id:${id}` : 'new'
-    },
-    async syncEditRouteId() {
-      if (!this.postForm.id) return
-      const nextId = String(this.postForm.id)
-      const routeId = String(this.$route.query.id ?? '')
-      if (routeId === nextId) return
-      this.loadedRouteIdentity = `id:${nextId}`
-      if (this.routeTransitionPending) return
-      try {
-        await this.$router.replace({
-          name: 'SerumEdit',
-          query: { ...this.$route.query, id: nextId },
-        })
-      } catch (err) {
-        this.loadedRouteIdentity = this.editRouteIdentity(this.$route)
-        ElMessage.warning('项目已保存，但页面地址更新失败，请重新打开该项目')
-      }
-    },
     prepareSubmitData() {
-      const submitData = JSON.parse(JSON.stringify(this.postForm))
+      const payload = {
+        id: this.postForm.id,
+        scheme_revision: this.postForm.scheme_revision,
+      }
+      for (const field of [...SCHEME_HEADER_FIELDS, ...SCHEME_CHILD_FIELDS]) {
+        payload[field] = this.postForm[field]
+      }
+      if (payload.owner == null) payload.owner = ''
+      if (payload.pm == null) payload.pm = ''
+      const submitData = JSON.parse(JSON.stringify(payload))
 
       if (submitData.steps) {
         const groupIds = [...new Set(submitData.steps.map((s) => s.group_id).filter(Boolean))]
@@ -1795,17 +1938,17 @@ export default {
       const { backendMessage, httpStatus } = extractApiError(err)
       return httpStatus === 409 || String(backendMessage || '').includes('已被其他用户修改')
     },
-    handleSaveFailure(err, messages = SERUM_ERRORS.edit.autoSave) {
+    handleSaveFailure(err) {
       if (this.isRevisionConflict(err)) {
-        ElMessage.warning('该项目已被其他用户修改，已为你加载最新数据')
+        ElMessage.warning('该方案已被其他用户修改，已为你加载最新数据')
         this.initPage(this.$route.query.id)
         return
       }
-      notifyApiError(err, { messages })
+      notifyApiError(err, { messages: SERUM_ERRORS.workbench.schemeSave })
     },
     triggerAutoSave() {
-      if (!this.canSaveForm()) return
-      if (!this.postForm.project_code || !this.postForm.owner || this.loading) return
+      if (!this.canEdit) return
+      if (!this.activeWorkbenchId || this.loading) return
       this.clearAutoSaveTimer()
       this.autoSaveTimer = setTimeout(() => {
         this.doAutoSave()
@@ -1822,6 +1965,7 @@ export default {
       }
     },
     applyChildIds(response, refs) {
+      if (!response) return
       const mappings = [
         ['mouse_groups', 'new_mouse_records', 'id'],
         ['antigens', 'new_antigen_records', 'id'],
@@ -1831,8 +1975,8 @@ export default {
       ]
       mappings.forEach(([formKey, responseKey, idField]) => {
         const currentRows = this.postForm[formKey] || []
-        const pendingRefs = refs[formKey] || []
-        const records = response?.[responseKey] || []
+        const pendingRefs = refs?.[formKey] || []
+        const records = response[responseKey] || []
         records.forEach((record, index) => {
           const item = pendingRefs[index]
           if (item && currentRows.includes(item) && !item[idField]) {
@@ -1847,35 +1991,20 @@ export default {
         this.postForm.id = response.id
       }
       const identifiersAreCurrent = this.postForm.project_code === submittedProjectCode
-      if (identifiersAreCurrent && response.project_code) {
-        this.postForm.project_code = response.project_code
+      if (identifiersAreCurrent && response.project_code !== undefined) {
+        this.postForm.project_code = response.project_code || ''
       }
       if (identifiersAreCurrent && response.experiment_id) {
         this.postForm.experiment_id = response.experiment_id
       }
-      if (response.project_revision) {
-        this.postForm.project_revision = response.project_revision
+      this.postForm.mouse_strain = response.mouse_strain || ''
+      this.postForm.mouse_strain_category = response.mouse_strain_category || ''
+      if (response.scheme_revision) {
+        this.postForm.scheme_revision = response.scheme_revision
       }
     },
-    async saveFormSnapshot() {
-      const refs = this.captureNewChildRefs()
-      const submitData = this.prepareSubmitData()
-      const response = await saveSerum(submitData)
-      this.applyingServerState = true
-      try {
-        this.applySaveResponse(response, submitData.project_code)
-        this.applyChildIds(response, refs)
-      } finally {
-        await this.$nextTick()
-        this.applyingServerState = false
-      }
-      if (response?.id) {
-        await this.syncEditRouteId()
-      }
-      return response
-    },
-    async queueFormSave({ force = false } = {}) {
-      if (!this.canSaveForm()) return null
+    async queueSchemeSave({ force = false } = {}) {
+      if (!this.canEdit || !this.activeWorkbenchId) return null
       this.clearAutoSaveTimer()
       if (force || this.formRevision > this.savedRevision) {
         this.saveQueued = true
@@ -1883,13 +2012,27 @@ export default {
       if (this.savePromise) return this.savePromise
       if (!this.saveQueued) return null
 
+      const workbenchId = this.activeWorkbenchId
       this.savePromise = (async () => {
         let lastResponse = null
-        while (this.saveQueued) {
+        while (this.saveQueued && this.activeWorkbenchId === workbenchId) {
           this.saveQueued = false
           const revision = this.formRevision
-          lastResponse = await this.saveFormSnapshot()
-          this.savedRevision = Math.max(this.savedRevision, revision)
+          const refs = this.captureNewChildRefs()
+          const submitData = this.prepareSubmitData()
+          const response = await saveWorkbenchScheme(submitData)
+          if (this.activeWorkbenchId !== workbenchId) break
+
+          this.applyingServerState = true
+          try {
+            this.applySaveResponse(response, submitData.project_code)
+            this.applyChildIds(response, refs)
+            this.savedRevision = Math.max(this.savedRevision, revision)
+          } finally {
+            await this.$nextTick()
+            this.applyingServerState = false
+          }
+          lastResponse = response
           if (this.formRevision > this.savedRevision) this.saveQueued = true
         }
         return lastResponse
@@ -1905,32 +2048,22 @@ export default {
     },
     async flushPendingSave() {
       this.clearAutoSaveTimer()
-      if (!this.canSaveForm() || !this.postForm.project_code || !this.postForm.owner) return
+      if (!this.canEdit || !this.activeWorkbenchId) return
       if (this.savePromise) {
         await this.savePromise
       }
       if (this.formRevision > this.savedRevision) {
-        await this.queueFormSave()
+        await this.doSubmit({ force: false })
       }
     },
     async doAutoSave() {
-      if (!this.canSaveForm()) return
-      if (this.loading || !this.postForm.project_code || !this.postForm.owner) return
+      if (!this.canEdit) return
+      if (this.loading || !this.activeWorkbenchId) return
       try {
-        await this.queueFormSave()
+        await this.doSubmit({ force: false })
       } catch (err) {
-        this.handleSaveFailure(err)
+        // doSubmit 已统一提示保存错误
       }
-    },
-    canSaveForm() {
-      if (this.loadFailed) return false
-      if (this.postForm.id) {
-        return canEditSerumProject(this.currentUserInfo, this.postForm)
-      }
-      return canCreateSerumProject(this.currentUserInfo)
-    },
-    canDeleteForm() {
-      return !this.loadFailed && Boolean(this.postForm.id) && canDeleteSerumProject(this.currentUserInfo)
     },
     updateProjectName() {
         const targetName = this.postForm.target_name || ''
@@ -1938,7 +2071,7 @@ export default {
             .map(g => g.mouse_strain)
             .filter(s => s && s.trim() !== '')
             .filter((value, index, self) => self.indexOf(value) === index)
-        
+
         this.postForm.project_name = `${targetName}基于${mouseStrains.join(',')}的抗体发现`
     }
   }
@@ -1946,7 +2079,7 @@ export default {
 </script>
 
 <style scoped>
-.createPost-main-container {
+.workbench-scheme-page {
   padding: 10px 20px;
   background-color: #f5f7fa;
   min-height: 100vh;
@@ -1957,27 +2090,50 @@ export default {
 
   margin-bottom: 20px;
 }
-.createPost-main-container :deep(.el-button--small) {
+.scheme-detail-editor.is-readonly {
+  pointer-events: none;
+}
+.scheme-detail-editor.is-readonly :deep(.el-input__wrapper),
+.scheme-detail-editor.is-readonly :deep(.el-select__wrapper) {
+  background-color: var(--el-disabled-bg-color);
+  box-shadow: 0 0 0 1px var(--el-disabled-border-color) inset;
+}
+.scheme-detail-editor.is-readonly :deep(input),
+.scheme-detail-editor.is-readonly :deep(textarea) {
+  color: var(--el-disabled-text-color);
+}
+.workbench-scheme-page :deep(.el-button--small) {
   height: 28px;
   padding: 7px 15px;
   font-size: 12px;
   border-radius: 4px;
 }
-.createPost-main-container :deep(.el-input--small) {
+.workbench-scheme-page :deep(.el-input--small) {
   --el-input-height: 28px;
 
   font-size: 12px;
 }
-.createPost-main-container :deep(.el-input--small .el-input__wrapper),
-.createPost-main-container :deep(.el-select--small .el-select__wrapper) {
+.workbench-scheme-page :deep(.el-input--small .el-input__wrapper),
+.workbench-scheme-page :deep(.el-select--small .el-select__wrapper) {
   min-height: 28px;
   font-size: 12px;
 }
-.createPost-main-container :deep(.el-table--small) {
+.workbench-scheme-page :deep(.el-table--small) {
   font-size: 12px;
 }
-.createPost-main-container :deep(.el-table--small .el-table__cell) {
+.workbench-scheme-page :deep(.el-table--small .el-table__cell) {
   padding: 6px 0;
+}
+.header-hint {
+  margin-left: 12px;
+  color: #909399;
+  font-size: 12px;
+  font-weight: normal;
+}
+.readonly-hint {
+  margin-right: 10px;
+  color: #909399;
+  font-size: 12px;
 }
 .basic-info-card :deep(.el-form-item__label) {
   font-weight: 700;
@@ -2070,49 +2226,6 @@ export default {
 
 .remark-icon:hover {
     color: #66b1ff;
-}
-
-/* Danger Zone Styling */
-.danger-zone-card {
-    border: 2px solid #F56C6C;
-    background-color: #FEF0F0;
-}
-
-.danger-zone-header {
-    color: #F56C6C;
-    font-weight: bold;
-}
-
-.danger-zone-header :deep(.el-icon) {
-    vertical-align: -2px;
-}
-
-.danger-zone-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 20px;
-}
-
-.danger-zone-text {
-    flex: 1;
-}
-
-.danger-zone-text h4 {
-    font-weight: bold;
-}
-
-.danger-zone-text h4 :deep(.el-icon),
-.danger-zone-content :deep(.el-button .el-icon) {
-    margin-right: 4px;
-    vertical-align: -2px;
-}
-
-@media (max-width: 768px) {
-    .danger-zone-content {
-        flex-direction: column;
-        align-items: flex-start;
-    }
 }
 
 /* Copy dialog styling */

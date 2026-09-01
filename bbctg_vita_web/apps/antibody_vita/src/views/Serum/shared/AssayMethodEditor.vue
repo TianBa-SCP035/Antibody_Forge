@@ -1,6 +1,7 @@
 <template>
   <el-popover
     v-model:visible="open"
+    :disabled="disabled"
     placement="bottom-start"
     :width="triggerWidth"
     trigger="click"
@@ -10,7 +11,7 @@
     @show="syncFromProps"
   >
     <template #reference>
-      <div ref="trigger" class="trigger" :class="{ open }">
+      <div ref="trigger" class="trigger" :class="{ disabled, open }">
         <span :class="{ placeholder: !assayMethod }">{{ assayMethod || '请选择检测方法' }}</span>
         <el-icon class="arrow"><ArrowDown /></el-icon>
       </div>
@@ -32,7 +33,7 @@
           <input
             type="text"
             inputmode="numeric"
-            :disabled="!items[method].on"
+            :disabled="disabled || !items[method].on"
             :value="items[method].plate"
             @input="setPlate(method, $event.target.value)"
           /> 板
@@ -142,6 +143,7 @@ export default {
     assayMethod: { type: String, default: '' },
     facsPlateCount: { type: Number, default: null },
     elisaPlateCount: { type: Number, default: null },
+    disabled: { type: Boolean, default: false },
   },
   emits: ['update:assayMethod', 'update:facsPlateCount', 'update:elisaPlateCount'],
   data() {
@@ -175,6 +177,7 @@ export default {
       this.items = fromModel(this.assayMethod, this.facsPlateCount, this.elisaPlateCount)
     },
     toggle(method) {
+      if (this.disabled) return
       const item = this.items[method]
       item.on = !item.on
       if (item.on && !item.species.length) {
@@ -183,6 +186,7 @@ export default {
       this.commit()
     },
     toggleSpecies(method, species) {
+      if (this.disabled) return
       const item = this.items[method]
       if (!item.on) {
         item.on = true
@@ -197,6 +201,7 @@ export default {
       this.commit()
     },
     setPlate(method, value) {
+      if (this.disabled) return
       const item = this.items[method]
       if (!item.on) {
         item.on = true
@@ -232,6 +237,13 @@ export default {
 }
 .trigger:hover { border-color: var(--el-border-color-hover); }
 .trigger.open { border-color: var(--el-color-primary); }
+.trigger.disabled {
+  border-color: var(--el-disabled-border-color);
+  background: var(--el-disabled-bg-color);
+  color: var(--el-disabled-text-color);
+  cursor: not-allowed;
+}
+.trigger.disabled:hover { border-color: var(--el-disabled-border-color); }
 .trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trigger .placeholder { color: var(--el-text-color-placeholder); }
 .trigger .arrow {

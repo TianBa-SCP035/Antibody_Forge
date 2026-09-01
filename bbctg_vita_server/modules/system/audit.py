@@ -323,6 +323,8 @@ def _resolve_operation_name(description: str | None, permission_name: str, path:
             return "编辑角色" if is_edit else "新增角色"
         if "permission_bundles/save" in path:
             return "编辑权限包" if is_edit else "新增权限包"
+        if path == "/api/serum/workbench/save":
+            return "编辑免疫工作台" if is_edit else "新建免疫工作台"
         if path == "/api/serum/save":
             return "编辑免疫项目" if is_edit else "新建免疫项目"
         if path == "/api/serum/titer/order/save":

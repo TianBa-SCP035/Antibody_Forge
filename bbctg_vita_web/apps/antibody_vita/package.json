@@ -42,6 +42,8 @@
     "sortablejs": "catalog:",
     "vue": "catalog:",
     "vue-router": "catalog:",
+    "vxe-pc-ui": "catalog:",
+    "vxe-table": "catalog:",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

@@ -100,6 +100,14 @@ export interface QuickNavPresetView extends QuickNavPresetDef {
 
 export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
   {
+    id: 'serum-workbench',
+    titleKey: 'page.home.presetSerumWorkbenchTitle',
+    subtitleKey: 'page.home.presetSerumWorkbenchSubtitle',
+    icon: 'lucide:layout-dashboard',
+    iconClass: 'bg-blue-500/15 text-blue-600',
+    url: '/serum/workbench',
+  },
+  {
     id: 'serum-list',
     titleKey: 'page.home.presetSerumTitle',
     subtitleKey: 'page.home.presetSerumSubtitle',
@@ -308,6 +316,9 @@ export function canAccessStartPath(
   path: string,
   hasAccessByCodes: (codes: string[]) => boolean,
 ): boolean {
+  if (path === '/serum/workbench') {
+    return hasAccessByCodes(['serum.page.workbench']);
+  }
   if (path === '/serum/list') {
     return hasAccessByCodes(['serum.page.list']);
   }

@@ -10,6 +10,7 @@ from db.session import get_db
 from models.immunology import SerumImmProject
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
+from modules.immunology import project_lifecycle
 from modules.immunology.serum import scheme_export, service
 from modules.system.permissions import (
     DEFAULT_PERMISSION_MESSAGE,
@@ -68,16 +69,6 @@ def detail(
     return success(data)
 
 
-@router.get("/next_id")
-def next_id(
-    code: str = Query(...),
-    db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
-) -> dict:
-    require_permission(db, current_user, "serum.project.create")
-    return success({"next_id": service.generate_next_id(db, code)})
-
-
 @router.get("/target_options")
 def target_options(
     keyword: str = Query(default=""),
@@ -86,8 +77,31 @@ def target_options(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.page.edit")
+    if not (
+        has_permission(db, current_user, "serum.page.edit")
+        or has_permission(db, current_user, "serum.page.workbench")
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=PERMISSION_MESSAGES.get("serum.page.edit", DEFAULT_PERMISSION_MESSAGE),
+        )
     return success(service.get_target_options(db, keyword, limit, codes.split(",")))
+
+
+@router.get("/user_options")
+def user_options(
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    if not (
+        has_permission(db, current_user, "serum.page.edit")
+        or has_permission(db, current_user, "serum.page.workbench")
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=PERMISSION_MESSAGES.get("serum.page.edit", DEFAULT_PERMISSION_MESSAGE),
+        )
+    return success({"items": service.get_user_options(db)})
 
 
 @router.get("/mouse-groups")
@@ -132,6 +146,14 @@ def save(
         return success(service.save_serum(db, save_data))
     except HTTPException:
         raise
+    except ValueError as exc:
+        db.rollback()
+        message = str(exc)
+        if "已被其他用户修改" in message:
+            raise HTTPException(status_code=409, detail=message) from exc
+        if "项目版本缺失" in message:
+            raise HTTPException(status_code=422, detail=message) from exc
+        return error(message)
     except Exception as exc:
         db.rollback()
         return error(str(exc))
@@ -145,8 +167,9 @@ def delete(
 ) -> dict:
     try:
         require_permission(db, current_user, "serum.project.delete")
-        service.delete_serum(db, int(data.get("id")))
-        return success({"message": "删除成功"})
+        action = project_lifecycle.delete_or_revert_project(db, int(data.get("id")))
+        message = "已撤回为工作台草稿" if action == "reverted" else "删除成功"
+        return success({"action": action, "message": message})
     except HTTPException:
         raise
     except Exception as exc:
@@ -369,18 +392,33 @@ def _require_project_save_permission(db: Session, user: SysUser, data: dict) -> 
     require_permission(db, user, "serum.project.edit_all")
 
 
-def _require_project_scheme_edit(db: Session, user: SysUser, project_id: int) -> None:
-    project = db.get(SerumImmProject, project_id)
-    if not project:
-        raise ValueError("项目不存在")
-    if has_permission(db, user, "serum.project.edit_all"):
-        return
-    if has_permission(db, user, "serum.project.edit") and _is_owner_name(user, project.owner):
+def require_serum_project_edit_permission(db: Session, user: SysUser) -> None:
+    if has_permission(db, user, "serum.project.edit_all") or has_permission(
+        db, user, "serum.project.edit"
+    ):
         return
     raise HTTPException(
         status_code=403,
         detail=PERMISSION_MESSAGES.get("serum.project.edit", DEFAULT_PERMISSION_MESSAGE),
     )
+
+
+def require_serum_project_editor(db: Session, user: SysUser, owner: str | None) -> None:
+    if has_permission(db, user, "serum.project.edit_all"):
+        return
+    if has_permission(db, user, "serum.project.edit") and _is_owner_name(user, owner):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=PERMISSION_MESSAGES.get("serum.project.edit", DEFAULT_PERMISSION_MESSAGE),
+    )
+
+
+def _require_project_scheme_edit(db: Session, user: SysUser, project_id: int) -> None:
+    project = db.get(SerumImmProject, project_id)
+    if not project:
+        raise ValueError("项目不存在")
+    require_serum_project_editor(db, user, project.owner)
 
 
 def _require_project_owner_or_edit_all(db: Session, user: SysUser, project_id: int) -> None:

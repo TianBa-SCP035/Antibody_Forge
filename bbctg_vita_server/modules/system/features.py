@@ -58,6 +58,20 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "config": {"path": "/serum", "icon": "lucide:test-tube"},
     },
     {
+        "code": "menu.serum.workbench",
+        "name": "项目工作台",
+        "category": "menu",
+        "description": "控制项目工作台菜单显示",
+        "enabled": True,
+        "visible": True,
+        "sort_order": 5,
+        "config": {
+            "path": "/serum/workbench",
+            "icon": "lucide:layout-dashboard",
+            "parent_code": "menu.serum",
+        },
+    },
+    {
         "code": "menu.serum.list",
         "name": "免疫实验列表",
         "category": "menu",

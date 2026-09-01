@@ -483,6 +483,7 @@ function formatLogTargetType(log: SystemOperationLog) {
     titer: '效价',
     titer_order: '效价工单',
     user: '用户',
+    serum_workbench: '免疫工作台',
   };
   return log.target_type ? map[log.target_type] || log.target_type : '-';
 }
@@ -1872,13 +1873,15 @@ onMounted(loadData);
 .system-header h2 {
   margin: 0;
   color: #1f2937;
-  font-size: 22px;
-  font-weight: 700;
+  font-size: var(--list-page-title-size);
+  font-weight: var(--list-page-title-weight);
 }
 
 .system-header p {
   margin: 4px 0 0;
-  color: #64748b;
+  color: var(--list-page-subtitle-color);
+  font-size: var(--list-page-subtitle-size);
+  font-weight: var(--list-page-subtitle-weight);
 }
 
 .summary-row {

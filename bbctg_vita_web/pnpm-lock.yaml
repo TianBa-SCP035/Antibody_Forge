@@ -582,6 +582,12 @@ importers:
       vue-router:
         specifier: 'catalog:'
         version: 5.0.4(@vue/compiler-sfc@3.5.32)(pinia@3.0.4(typescript@6.0.2)(vue@3.5.32(typescript@6.0.2)))(vue@3.5.32(typescript@6.0.2))
+      vxe-pc-ui:
+        specifier: 'catalog:'
+        version: 4.13.21(vue@3.5.32(typescript@6.0.2))
+      vxe-table:
+        specifier: 'catalog:'
+        version: 4.18.11(vue@3.5.32(typescript@6.0.2))
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5

@@ -9,6 +9,7 @@ from models.immunology import (
     SerumImmMouse,
     SerumImmProject,
     SerumImmStep,
+    SerumImmWorkbench,
     SerumTiterPc,
     SerumTiterTarget,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "SerumImmMouse",
     "SerumImmProject",
     "SerumImmStep",
+    "SerumImmWorkbench",
     "SerumTiterPc",
     "SerumTiterTarget",
     "SysOperationLog",

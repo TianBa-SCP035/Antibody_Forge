@@ -65,6 +65,10 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
 | 权限码 | 类型 | 说明 |
 |--------|------|------|
+| `serum.page.workbench` | page | 项目工作台（查看） |
+| `serum.workbench.edit` | action | 项目工作台全部编辑，供管理员使用 |
+| `serum.workbench.draft_edit` | action | 新建、复制及维护草稿；只能编辑/删除“草稿”，不能改状态、审核结果、是否可开展、审核人，不能开展或下架 |
+| `serum.workbench.support_edit` | action | 只编辑“小鼠后勤”和“抗原”字段，不能新增、复制、删除、开展、下架或修改其他分区 |
 | `serum.page.list` | page | 免疫实验列表 |
 | `serum.page.detail` | page | 详情页 |
 | `serum.page.edit` | page | 编辑页 |
@@ -130,14 +134,16 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
 ### 2.5 权限包与角色（示例种子）
 
-`docs/vita-database.sql` 文末的权限包 / 角色**仅为克隆空库示例**，生产环境在后台完全自定义；新增页面时只需在 `sys_permission` 登记权限点，**不必**同步改示例包。
+`docs/vita-database.sql` 文末的权限包 / 角色仅为空库示例；新增页面只加权限点，不要改现网角色/权限包。
+
+新模块首版可设置一个路由查看权限和一个全部编辑权限；二者长期保留，后续再按操作拆分更细权限。
 
 示例三档（角色 code 与权限包 code 相同，1:1 绑定）：
 
 | 角色 / 包 code | 名称 | 大致范围 |
 |----------------|------|----------|
 | `guest` | 访客 | 血清 / 镁伽 / 系统各 **page** 只读，外加 `serum.cell.view`、`system.operation_log.view` |
-| `operator` | 业务员 | 血清 + 镁伽日常编辑；无 `edit_all`、`auto_update`、删工单等管理权限 |
+| `operator` | 业务员 | 血清 + 镁伽日常编辑；工作台默认使用草稿编辑和实验保障权限，无工作台全部编辑、`edit_all`、`auto_update`、删工单等管理权限 |
 | `system_admin` | 系统管理 | `system.*` 全部 10 个权限点 |
 
 **超级管理员**不走上表：`sys_user.is_superuser=TRUE` 即 bypass 全部权限，**无需**绑定角色或权限包（见 `vita-database.sql` 文末注释）。
@@ -151,7 +157,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 ```mermaid
 flowchart TD
   U[sys_user] --> SU{is_superuser?}
-  SU -->|是| ALL[所有 active 的 sys_permission.code]
+  SU -->|是| ALL[所有 active 权限码与代码兜底权限的并集]
   SU -->|否| R[用户 active 角色]
   R --> B[角色绑定的 active 权限包]
   B --> P[包内 active 权限点并集]
@@ -162,7 +168,7 @@ flowchart TD
 
 规则摘要：
 
-1. **超级管理员**（`is_superuser=true`）：拥有库中全部 `active` 权限码；库为空时使用代码内 `ALL_FALLBACK_CODES`。**不依赖**角色与权限包。
+1. **超级管理员**（`is_superuser=true`）：拥有库中全部 `active` 权限码与代码内 `ALL_FALLBACK_CODES` 的并集。**不依赖**角色与权限包。
 2. **普通用户**：`角色 → 权限包 → 权限点` 去重；仅统计 `status=active` 的角色、包、权限点。
 3. **个人覆盖**：`allow` 并入集合，`deny` 从集合移除（deny 优先）。
 4. **组织字段**（部门、组别、职位等）不参与上述计算。
@@ -199,6 +205,12 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 
 | 场景 | 规则 |
 |------|------|
+| 项目工作台查看 | `serum.page.workbench` |
+| 项目工作台全部编辑 | `serum.workbench.edit`（无项目负责人二次校验） |
+| 工作台草稿维护 | `serum.workbench.draft_edit`；按草稿状态和字段白名单校验，可保存草稿方案 |
+| 工作台实验保障 | `serum.workbench.support_edit`；按“小鼠后勤”和“抗原”字段白名单校验，不限制项目状态 |
+| 工作台开展 | `serum.workbench.edit`，外加 `serum.project.edit` 或 `serum.project.edit_all`（此时尚无正式项目，不校验负责人） |
+| 靶点搜索 | `serum.page.edit` 或 `serum.page.workbench` |
 | 保存项目（有 id） | 当前负责人且改后仍为自己 → `serum.project.edit`；否则 `serum.project.edit_all` |
 | 新建项目 | `serum.project.create`；无 `edit_all` 时只能把自己设为 `owner` |
 | 改实验记录本 | 与方案编辑相同：`serum.project.edit_all`，或 `serum.project.edit` 且为项目负责人 |
@@ -257,6 +269,11 @@ flowchart LR
 
 血清页使用 `utils/serumPermission.ts`，大体与 §4.2 对齐，例如：
 
+- `canAccessWorkbench` → `serum.page.workbench`
+- `canEditWorkbench` → `serum.workbench.edit`
+- `canEditWorkbenchDraft` → `serum.workbench.draft_edit`
+- `canEditWorkbenchSupport` → `serum.workbench.support_edit`
+- 工作台开展按钮 → `canEditWorkbench` 且 `hasSerumProjectEditPermission`（`project.edit` 或 `edit_all`）
 - `canEditSerumProject` → `edit_all` 或（`project.edit` 且 owner）
 - `canUpdateSerumStatus` → `status.update` 且（owner 或 `edit_all`）；**比后端略严**（后端负责人还可凭 `titer.edit` 改状态，见 §4.2）
 - `canEditSerumTiter` → `titer.edit` 且（owner、效价负责人或 `titer.edit_all`）
@@ -303,7 +320,7 @@ flowchart LR
 | category | code | 作用 |
 |----------|------|------|
 | `menu` | `menu.discovery`、`menu.discovery.target_library` | 千鼠万抗侧栏 |
-| `menu` | `menu.serum`、`menu.serum.list`、`menu.serum.titer_order` | 免疫实验侧栏 |
+| `menu` | `menu.serum`、`menu.serum.workbench`、`menu.serum.list`、`menu.serum.titer_order` | 免疫实验侧栏 |
 | `menu` | `menu.mega_automation`、`menu.mega_automation.flow_work_orders` | 镁伽自动化侧栏 |
 | `menu` | `menu.system`、`menu.system.user_permission`、`menu.system.features` | 系统管理侧栏 |
 | `feature` | `feature.drm_file_security` | DRM 上传解密 / 下载加密（请求时读库，立即生效；另需 env 与 SDK） |

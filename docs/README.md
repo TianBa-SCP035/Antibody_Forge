@@ -30,13 +30,15 @@
 - **不为未开工功能建壳**：空菜单、空路由、空表、假数据接口等一律不做（路线图见下文「开发计划」）。
 - **单一数据源**：同一业务事实只存一处；跨模块用已有主键关联，避免双写与「两边各改一半」。
 - **分层清晰**：业务规则放 service / 领域模块；路由与页面只做参数、权限与展示；对外集成（如 Labillion）独立在 `integrations/`。
-- **权限与审计**：新增写接口须对照 [auth-permissions.md](./auth-permissions.md) 登记权限点与 `sys_permission_api`（若需记操作日志）。
+- **权限与审计**：新增写接口须对照 [auth-permissions.md](./auth-permissions.md) 登记权限点与 `sys_permission_api`（若需记操作日志）。新模块可先设路由查看权限和全部编辑权限，只加权限点，不改现网角色、权限包及其绑定。
 
 ### 数据库
 
+- **先确认再修改**：改表或增删改数据行前，先列出对象、操作、目的和影响，取得明确确认后再实现或执行。
+- **最小且长期有效**：新模块尽量少改数据库；新增表和字段必须有长期业务意义，不建临时占位。
 - **全表登记**：主库涉及的所有表（含权限/功能开关种子）须维护在 [vita-database.sql](./vita-database.sql)，与 ORM / 业务代码一致；**外部只读库**（细胞库、员工库等）在 SQL 文末注释说明，不在主库脚本中建表。
 - **只记录当前状态**：该文件是**空库一次性执行的完整 DDL + 种子**，直接改表定义即可；**不**在此文件堆叠历史 `ALTER`、升级脚本或迁移版本号。已有环境升级 SQL 仅在提交说明或当次 PR 中附带，由运维/开发手动执行，不写入本仓库 DDL 主文件。
-- **注释齐全一致**：每张表、每个字段写清楚 `COMMENT`；命名、COMMENT 风格与现有表保持一致（中文说明业务含义，枚举/状态写清取值）。改表时同步改 ORM 与相关模块文档。
+- **注释齐全一致**：每张表、每个字段都写简练的中文 `COMMENT`，只说明业务含义，不在括号中列举可能值。改表时同步改 ORM 与相关模块文档。
 
 ### 配置与密钥
 
@@ -82,6 +84,7 @@
 | 模块 | 状态 | 说明 |
 |------|------|------|
 | 千鼠万抗 · 靶点库 | 已上线 | 本地靶点主数据搜索、快速预览与完整档案 |
+| 项目工作台 | 已上线 | 开做前准备；草稿号 `SCP-YYYYMMDD-HHMMSS-XXXX`，开展后写入免疫实验列表 |
 | 免疫实验列表 | 已上线 | 项目维护、方案导出、笼位与状态 |
 | 效价数据 / 效价实验列表 | 已上线 | FACS、ELISA、附件；效价工单 |
 | 效价 → 镁伽流式工单 | 已上线 | 「工单」入口：选鼠向导、样本板预填、`source_id` 关联 |
@@ -96,13 +99,14 @@
 ### 流程与数据关联（简）
 
 ```text
-experiment_id（免疫实验）
+serum_imm_workbench（草稿 experiment_id=SCP-YYYYMMDD-HHMMSS-XXXX）
+  → 开展后写入 serum_imm_project（正式 experiment_id）
   → titer_order_id（效价工单）
   → 流式工单 source_id + orderType=TITER
   → dispatchId（镁伽下发，设备回传匹配）
 ```
 
-字段与交互细节见 [modules/mega-automation/titer-upstream-flow.md](./modules/mega-automation/titer-upstream-flow.md)、[modules/mega-automation/flow-work-order.md](./modules/mega-automation/flow-work-order.md)。
+字段与交互细节见 [modules/immunology/workbench.md](./modules/immunology/workbench.md)、[modules/mega-automation/titer-upstream-flow.md](./modules/mega-automation/titer-upstream-flow.md)、[modules/mega-automation/flow-work-order.md](./modules/mega-automation/flow-work-order.md)。
 
 ---
 
@@ -129,6 +133,7 @@ experiment_id（免疫实验）
 └─ 发现订单
 
 小鼠免疫
+├─ 项目工作台（已上线）
 ├─ 免疫实验列表
 └─ 效价实验列表
 

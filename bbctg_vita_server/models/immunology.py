@@ -379,3 +379,119 @@ class SerumTiterOrder(Base):
             "remark": self.remark,
             "priority": self.priority or "正常",
         }
+
+
+class SerumImmWorkbench(Base):
+    __tablename__ = "serum_imm_workbench"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str | None] = mapped_column(String(64), unique=True)
+    project_code: Mapped[str | None] = mapped_column(String(64))
+    project_name: Mapped[str | None] = mapped_column(String(255))
+    project_purpose: Mapped[str | None] = mapped_column(String(255))
+    start_date: Mapped[str | None] = mapped_column(String(32))
+    immunization_interval: Mapped[str | None] = mapped_column(String(32))
+    target_codes: Mapped[list[str] | None] = mapped_column(JSON)
+    target_name: Mapped[str | None] = mapped_column(String(128))
+    target_type: Mapped[str | None] = mapped_column(String(64))
+    target_size: Mapped[str | None] = mapped_column(String(64))
+    owner: Mapped[str | None] = mapped_column(String(64))
+    pm: Mapped[str | None] = mapped_column(String(64))
+    study_type: Mapped[str | None] = mapped_column(String(64))
+    assay_method: Mapped[str | None] = mapped_column(String(128))
+    facs_plate_count: Mapped[int | None] = mapped_column(Integer)
+    elisa_plate_count: Mapped[int | None] = mapped_column(Integer)
+    remark: Mapped[str | None] = mapped_column(String(255))
+    mouse_strain: Mapped[str | None] = mapped_column(String(128))
+    mouse_strain_category: Mapped[str | None] = mapped_column(String(128))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    priority: Mapped[str | None] = mapped_column(String(32))
+    plan_status: Mapped[str | None] = mapped_column(String(32))
+    project_set_code: Mapped[str | None] = mapped_column(String(64))
+    species_cross: Mapped[str | None] = mapped_column(String(64))
+    immuno_method: Mapped[str | None] = mapped_column(String(64))
+    reviewer: Mapped[str | None] = mapped_column(String(64))
+    review_status: Mapped[str | None] = mapped_column(String(32))
+    mouse_scheme_no: Mapped[str | None] = mapped_column(String(64))
+    mouse_count: Mapped[str | None] = mapped_column(String(32))
+    mouse_zygosity: Mapped[str | None] = mapped_column(String(32))
+    mouse_birth_date: Mapped[str | None] = mapped_column(String(32))
+    mouse_age_weeks: Mapped[str | None] = mapped_column(String(32))
+    mouse_expand_requested: Mapped[str | None] = mapped_column(String(16))
+    mouse_region: Mapped[str | None] = mapped_column(String(64))
+    mouse_room: Mapped[str | None] = mapped_column(String(64))
+    mouse_status: Mapped[str | None] = mapped_column(String(32))
+    mouse_arrive_date: Mapped[str | None] = mapped_column(String(32))
+    mouse_remark: Mapped[str | None] = mapped_column(String(255))
+    antigen_source: Mapped[str | None] = mapped_column(String(128))
+    antigen_ready: Mapped[str | None] = mapped_column(String(16))
+    antigen_eta: Mapped[str | None] = mapped_column(String(32))
+    lnp_ordered: Mapped[str | None] = mapped_column(String(16))
+    cell_prep_status: Mapped[str | None] = mapped_column(String(64))
+    antigen_remark: Mapped[str | None] = mapped_column(String(255))
+    can_start: Mapped[str | None] = mapped_column(String(16))
+    created_by: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[object | None] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[object | None] = mapped_column(
+        DateTime,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+    )
+
+    def to_dict(self) -> dict:
+        def format_time(dt):
+            if dt is None:
+                return None
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "project_code": self.project_code,
+            "project_name": self.project_name,
+            "project_purpose": self.project_purpose,
+            "start_date": self.start_date,
+            "immunization_interval": self.immunization_interval,
+            "target_codes": self.target_codes if isinstance(self.target_codes, list) else [],
+            "target_name": self.target_name,
+            "target_type": self.target_type,
+            "target_size": self.target_size,
+            "owner": self.owner,
+            "pm": self.pm,
+            "study_type": self.study_type,
+            "assay_method": self.assay_method,
+            "facs_plate_count": self.facs_plate_count,
+            "elisa_plate_count": self.elisa_plate_count,
+            "remark": self.remark,
+            "mouse_strain": self.mouse_strain,
+            "mouse_strain_category": self.mouse_strain_category,
+            "sort_order": self.sort_order or 0,
+            "priority": self.priority or "正常",
+            "plan_status": self.plan_status or "草稿",
+            "project_set_code": self.project_set_code,
+            "species_cross": self.species_cross,
+            "immuno_method": self.immuno_method,
+            "reviewer": self.reviewer,
+            "review_status": self.review_status or "未审",
+            "mouse_scheme_no": self.mouse_scheme_no,
+            "mouse_count": self.mouse_count,
+            "mouse_zygosity": self.mouse_zygosity,
+            "mouse_birth_date": self.mouse_birth_date,
+            "mouse_age_weeks": self.mouse_age_weeks,
+            "mouse_expand_requested": self.mouse_expand_requested,
+            "mouse_region": self.mouse_region,
+            "mouse_room": self.mouse_room,
+            "mouse_status": self.mouse_status or "未定",
+            "mouse_arrive_date": self.mouse_arrive_date,
+            "mouse_remark": self.mouse_remark,
+            "antigen_source": self.antigen_source,
+            "antigen_ready": self.antigen_ready or "否",
+            "antigen_eta": self.antigen_eta,
+            "lnp_ordered": self.lnp_ordered,
+            "cell_prep_status": self.cell_prep_status,
+            "antigen_remark": self.antigen_remark,
+            "can_start": self.can_start or "否",
+            "created_by": self.created_by,
+            "created_at": format_time(self.created_at),
+            "updated_at": format_time(self.updated_at),
+        }

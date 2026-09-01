@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container mega-flow-order-page">
+  <div class="mega-flow-order-page">
     <AdvancedOpsBar v-model="showAdvancedOps">
       <el-button type="warning" :icon="Download" @click="handleListExport">
         列表导出
@@ -16,12 +16,12 @@
           <span class="total-count">共 {{ total }} 条工单</span>
           <el-button
             type="primary"
+            :icon="Plus"
             :class="{ 'no-permission-btn': !canEdit() }"
             :title="!canEdit() ? '您没有权限新建流式工单' : ''"
             @click="createDraft"
           >
-            <el-icon><Plus /></el-icon>
-            新建工单
+            新建
           </el-button>
         </div>
       </div>
@@ -42,7 +42,7 @@
         </div>
       </div>
 
-      <div class="filter-strip">
+      <div class="filter-strip list-filter-controls">
         <el-input
           v-model="listQuery.keyword"
           class="filter-item filter-keyword"
@@ -107,12 +107,18 @@
           placeholder="细胞板条码"
           @keyup.enter="handleFilter"
         />
-        <span class="more-toggle-btn" title="高级操作" @click="showAdvancedOps = !showAdvancedOps">
+        <button
+          type="button"
+          class="list-advanced-trigger"
+          :class="{ 'is-active': showAdvancedOps }"
+          title="高级操作"
+          @click="showAdvancedOps = !showAdvancedOps"
+        >
           <el-icon><Tools /></el-icon>
-        </span>
-        <div class="filter-actions">
-          <el-button type="primary" :icon="Search" @click="handleFilter">查询</el-button>
-          <el-button :icon="Refresh" @click="resetFilter">重置</el-button>
+        </button>
+        <div class="filter-actions list-filter-actions">
+          <el-button class="list-filter-action-button" type="primary" :icon="Search" @click="handleFilter">查询</el-button>
+          <el-button class="list-filter-action-button" :icon="Refresh" @click="resetFilter">重置</el-button>
         </div>
       </div>
     </section>
@@ -121,31 +127,32 @@
       工单列表加载失败，请稍后重试或联系管理员确认接口与权限。
     </div>
 
-    <el-card shadow="never" class="table-card">
+    <el-card shadow="never" class="list-table-card">
       <el-table
         v-loading="listLoading"
         :data="list"
         border
         stripe
         highlight-current-row
+        size="large"
+        class="list-data-table"
         style="width: 100%"
-        :header-cell-style="{ background: '#F8FAFC', color: '#606266', fontWeight: '600' }"
       >
         <!-- 列宽：全部用 min-width，表格会按这些最小值动态分配剩余空间；总宽不够则横向滚动 -->
         <el-table-column label="订单编号" prop="orderNum" fixed min-width="120" show-overflow-tooltip>
           <template #default="{ row }">
-            <span class="link-text" @click="goView(row)">{{ row.orderNum || '—' }}</span>
+            <span class="list-code-text is-clickable" @click="goView(row)">{{ row.orderNum || '—' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="订单名称" prop="orderName" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">{{ row.orderName || '—' }}</template>
         </el-table-column>
-        <el-table-column label="检测类型" min-width="80" align="center">
+        <el-table-column label="类型" min-width="80" align="center">
           <template #default="{ row }">{{ orderTypeLabel(row.orderType) }}</template>
         </el-table-column>
         <el-table-column label="优先级" min-width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="priorityTagType(row.priority)" effect="plain" size="small">
+            <el-tag class="list-status-tag" :type="priorityTagType(row.priority)" effect="plain">
               {{ priorityLabel(row.priority) }}
             </el-tag>
           </template>
@@ -153,7 +160,7 @@
         <el-table-column label="项目号" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">{{ formatArray(row.project_nos) }}</template>
         </el-table-column>
-        <el-table-column label="靶点" min-width="80" show-overflow-tooltip>
+        <el-table-column label="靶点" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">{{ formatArray(row.targets) }}</template>
         </el-table-column>
         <el-table-column label="样本板" min-width="100" show-overflow-tooltip>
@@ -167,25 +174,25 @@
         </el-table-column>
         <el-table-column label="状态" prop="status" align="center" min-width="90">
           <template #default="{ row }">
-            <el-tag :type="statusTagType(row)" effect="plain">
+            <el-tag class="list-status-tag" :type="statusTagType(row)" effect="plain">
               {{ statusLabel(row) }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="创建人" prop="created_by" min-width="90" align="center" />
-        <el-table-column label="发送时间" prop="sent_at" min-width="150" align="center">
+        <el-table-column label="发送时间" prop="sent_at" min-width="160" align="center">
           <template #default="{ row }">{{ row.sent_at || '—' }}</template>
         </el-table-column>
-        <el-table-column label="更新时间" prop="updated_at" min-width="150" align="center" />
-        <el-table-column label="操作" fixed="right" min-width="180" align="center">
+        <el-table-column label="更新时间" prop="updated_at" min-width="160" align="center" />
+        <el-table-column label="操作" fixed="right" width="240" align="center">
           <template #default="{ row }">
             <el-button-group>
-              <el-button class="table-action-btn" size="small" type="primary" plain @click="goView(row)">详情</el-button>
+              <el-button class="list-table-action-btn" type="primary" plain :icon="View" @click="goView(row)">详情</el-button>
               <el-button
-                class="table-action-btn"
-                size="small"
+                class="list-table-action-btn"
                 type="warning"
                 plain
+                :icon="Edit"
                 :class="{ 'no-permission-btn': !canEdit() }"
                 :title="!canEdit() ? '您没有权限操作流式工单' : ''"
                 @click="goOperate(row)"
@@ -193,10 +200,10 @@
                 操作
               </el-button>
               <el-button
-                class="table-action-btn"
-                size="small"
+                class="list-table-action-btn"
                 type="success"
                 plain
+                :icon="CopyDocument"
                 :class="{ 'no-permission-btn': !canEdit() }"
                 :title="!canEdit() ? '您没有权限复制流式工单' : ''"
                 @click="copyRow(row)"
@@ -213,9 +220,9 @@
         v-model:current-page="listQuery.page"
         v-model:page-size="listQuery.limit"
         :total="total"
-        :page-sizes="[10, 20, 50, 100]"
+        :page-sizes="[20, 50, 100, 200]"
         layout="total, sizes, prev, pager, next, jumper"
-        class="pagination"
+        class="list-pagination"
         @size-change="fetchList"
         @current-change="fetchList"
       />
@@ -225,11 +232,14 @@
 
 <script>
 import {
+  CopyDocument,
   Download,
+  Edit,
   Plus,
   Refresh,
   Search,
   Tools,
+  View,
 } from '@element-plus/icons-vue';
 import {
   ElButton,
@@ -304,12 +314,20 @@ export default {
     ElTableColumn,
     ElTag,
     AdvancedOpsBar,
-    Plus,
     Tools,
   },
   setup() {
     const userStore = useUserStore();
-    return { userStore, Download, Refresh, Search };
+    return {
+      userStore,
+      CopyDocument,
+      Download,
+      Edit,
+      Plus,
+      Refresh,
+      Search,
+      View,
+    };
   },
   data() {
     return {
@@ -476,17 +494,11 @@ export default {
 
 /* 标题 + 统计 + 筛选同一白底，表格单独；比两两组合更不散 */
 .workbench-panel {
-  padding: 4px var(--list-surface-padding-x) var(--list-surface-padding-y);
+  padding: var(--list-surface-padding-y) var(--list-surface-padding-x);
   margin-bottom: var(--list-page-gap);
   background: var(--list-surface-bg);
   border: var(--list-surface-border);
   border-radius: var(--list-surface-radius);
-  box-shadow: var(--list-surface-shadow);
-}
-
-.table-card {
-  border-radius: var(--list-surface-radius);
-  border: var(--list-surface-border);
   box-shadow: var(--list-surface-shadow);
 }
 
@@ -495,21 +507,26 @@ export default {
   gap: 16px;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 2px 12px;
+  min-width: 0;
+  padding: 12px 16px;
+  margin: 0;
+  border: 1px solid rgb(191 219 254 / 45%);
+  border-radius: var(--list-mid-radius);
+  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, #ffffff 100%);
 }
 
 .page-title {
   margin: 0;
-  font-size: 18px;
-  font-weight: 700;
+  font-size: var(--list-page-title-size);
+  font-weight: var(--list-page-title-weight);
   letter-spacing: -0.01em;
 }
 
 .page-subtitle {
   margin: 4px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #909399;
+  color: var(--list-page-subtitle-color);
+  font-size: var(--list-page-subtitle-size);
+  font-weight: var(--list-page-subtitle-weight);
 }
 
 .header-actions {
@@ -541,7 +558,6 @@ export default {
   gap: 8px;
   padding: 12px 0;
   margin: 0;
-  border-top: 1px solid #eef0f4;
   border-bottom: 1px solid #eef0f4;
 }
 
@@ -668,7 +684,7 @@ export default {
 .filter-strip {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) repeat(6, minmax(0, 1fr)) auto auto;
-  gap: 10px;
+  gap: 10px var(--list-filter-action-gap);
   align-items: center;
   padding: 12px 2px 2px;
 }
@@ -684,43 +700,8 @@ export default {
   width: 100%;
 }
 
-.filter-strip > .more-toggle-btn {
-  margin: 0 8px;
-}
-
 .filter-actions {
-  display: flex;
   flex-shrink: 0;
-  gap: 8px;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.link-text {
-  font-weight: 600;
-  color: #409eff;
-  cursor: pointer;
-}
-
-.link-text:hover {
-  color: #66b1ff;
-  text-decoration: underline;
-}
-
-.pagination {
-  margin-top: 16px;
-  justify-content: flex-end;
-}
-
-.table-card :deep(.table-action-btn) {
-  height: 28px;
-  min-height: 26px;
-  padding: 0 12px;
-  font-size: 13px;
-}
-
-.no-permission-btn {
-  cursor: not-allowed;
 }
 
 @media (max-width: 960px) {

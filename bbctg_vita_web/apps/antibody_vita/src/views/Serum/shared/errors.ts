@@ -1,6 +1,39 @@
 import type { OperationMessages } from '#/api/errors';
 
 export const SERUM_ERRORS = {
+  workbench: {
+    load: {
+      default: '工作台列表加载失败',
+    } satisfies OperationMessages,
+    schemeLoad: {
+      default: '方案草稿加载失败',
+    } satisfies OperationMessages,
+    schemeSave: {
+      default: '方案草稿保存失败',
+      timeout: '保存超时，请重试',
+    } satisfies OperationMessages,
+    save: {
+      default: '工作台保存失败',
+    } satisfies OperationMessages,
+    delete: {
+      default: '工作台记录删除失败',
+    } satisfies OperationMessages,
+    start: {
+      default: '开展失败',
+    } satisfies OperationMessages,
+    unlist: {
+      default: '下架失败',
+    } satisfies OperationMessages,
+    copy: {
+      default: '复制失败',
+    } satisfies OperationMessages,
+    exportList: {
+      default: '列表导出失败，请重试',
+    } satisfies OperationMessages,
+    reorder: {
+      default: '排序失败',
+    } satisfies OperationMessages,
+  },
   cell: {
     load: {
       default: '细胞库存数据加载失败',
@@ -28,10 +61,6 @@ export const SERUM_ERRORS = {
     } satisfies OperationMessages,
     loadPage: {
       default: '页面数据加载失败',
-    } satisfies OperationMessages,
-    nextId: {
-      default: '获取实验 ID 失败',
-      timeout: '获取实验 ID 超时，请重试',
     } satisfies OperationMessages,
     save: {
       default: '保存失败',

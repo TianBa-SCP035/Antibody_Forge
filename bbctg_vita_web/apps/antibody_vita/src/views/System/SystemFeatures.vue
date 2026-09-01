@@ -616,10 +616,17 @@ onMounted(loadFeatures);
 
 .system-header h2 {
   margin: 0 0 6px;
-  font-size: 22px;
+  font-size: var(--list-page-title-size);
+  font-weight: var(--list-page-title-weight);
 }
 
-.system-header p,
+.system-header p {
+  margin: 4px 0 0;
+  color: var(--list-page-subtitle-color);
+  font-size: var(--list-page-subtitle-size);
+  font-weight: var(--list-page-subtitle-weight);
+}
+
 .section-title p,
 .setting-help {
   margin: 4px 0 0;

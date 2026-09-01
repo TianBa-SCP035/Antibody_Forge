@@ -60,12 +60,42 @@ export function getSerumUserRoles(userInfo: any): string[] {
   return normalizeRoles(userInfo?.roles);
 }
 
+export function canAccessWorkbench(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.page.workbench');
+}
+
+export function canEditWorkbench(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.workbench.edit');
+}
+
+export function canEditWorkbenchDraft(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.workbench.draft_edit');
+}
+
+export function canEditWorkbenchSupport(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.workbench.support_edit');
+}
+
+export function canAccessSerumDetail(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.page.detail');
+}
+
+export function canAccessSerumEdit(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'serum.page.edit');
+}
+
 export function canCreateSerumProject(userInfo: any): boolean {
   return hasAccessCode(userInfo, 'serum.project.create');
 }
 
 export function canEditAllSerumProjects(userInfo: any): boolean {
   return hasAccessCode(userInfo, 'serum.project.edit_all');
+}
+
+export function hasSerumProjectEditPermission(userInfo: any): boolean {
+  return (
+    canEditAllSerumProjects(userInfo) || hasAccessCode(userInfo, 'serum.project.edit')
+  );
 }
 
 export function canEditAllSerumTiter(userInfo: any): boolean {
@@ -77,6 +107,10 @@ export function canEditSerumProject(userInfo: any, project: any): boolean {
     return true;
   }
   return hasAccessCode(userInfo, 'serum.project.edit') && isProjectOwner(userInfo, project);
+}
+
+export function canOpenSerumEdit(userInfo: any, project: any): boolean {
+  return canAccessSerumEdit(userInfo) && canEditSerumProject(userInfo, project);
 }
 
 export function canDeleteSerumProject(userInfo: any): boolean {

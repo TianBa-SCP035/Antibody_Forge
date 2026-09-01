@@ -2907,7 +2907,10 @@ export default {
       }
     },
     async handleCopy(row) {
-      if (!this.canCopy) return
+      if (!this.canCopy) {
+        ElMessage.warning('您没有权限复制工作台记录')
+        return
+      }
       try {
         await ElMessageBox.confirm(
           `将「${row.target_name || row.experiment_id || row.id}」复制为新的草稿。只带方案骨架（靶点、品系、抗原、步骤等），不带项目编号、小鼠方案号和后勤/审核现场信息。`,
@@ -2931,7 +2934,10 @@ export default {
       }
     },
     async handleUnlist(row) {
-      if (!this.canFullEdit) return
+      if (!this.canFullEdit) {
+        ElMessage.warning('您没有权限下架工作台记录')
+        return
+      }
       try {
         await ElMessageBox.confirm(
           `确认下架「${row.target_name || row.experiment_id || row.id}」？将删除免疫实验主表，方案子表改回新的临时实验号，工作台回到草稿。仅规划中且无效应工单 / 板次数据时可下架。`,

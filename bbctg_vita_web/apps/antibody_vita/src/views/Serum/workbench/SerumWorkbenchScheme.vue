@@ -1,5 +1,9 @@
 <template>
-  <div class="workbench-scheme-page" v-loading="loading">
+  <div
+    class="workbench-scheme-page"
+    :class="{ 'is-readonly': !canEdit }"
+    v-loading="loading"
+  >
     <el-card class="box-card basic-info-card" :body-style="{ padding: '18px' }">
       <template #header>
         <div class="clearfix">
@@ -233,7 +237,6 @@
     <div
       class="scheme-detail-editor"
       :class="{ 'is-readonly': !canEdit }"
-      :inert="!canEdit"
     >
       <!-- 2. Antigens (Full Width) -->
       <el-card class="box-card" :body-style="{ padding: '15px' }">
@@ -243,7 +246,7 @@
                 <el-button v-if="canEdit" style="float: right; padding: 3px 0" link @click="addAntigen">添加抗原</el-button>
           </div>
         </template>
-        <el-table :data="postForm.antigens" border size="small" style="width: 100%">
+        <el-table :data="postForm.antigens" border size="small" style="width: 100%" :inert="!canEdit">
             <!-- Hidden IDs -->
             <el-table-column label="抗原ID" width="60">
                 <template #default="{ row }">
@@ -340,7 +343,7 @@
             <el-button v-if="canEdit" style="float: right; padding: 3px 0" link @click="addMouseGroup">添加分组</el-button>
           </div>
         </template>
-        <el-table :data="postForm.mouse_groups" border size="small" style="width: 100%">
+        <el-table :data="postForm.mouse_groups" border size="small" style="width: 100%" :inert="!canEdit">
             <el-table-column label="组别" min-width="80">
                 <template #default="{ row }">
                     <el-select v-model="row.group_id" size="small" filterable allow-create default-first-option style="width:100%" placeholder="选择组别" @focus="cacheGroupId(row)" @change="handleGroupIdChange(row, $event)">
@@ -456,7 +459,7 @@
                 </span>
               </template>
 
-              <el-table :data="getStepsForGroup(group.group_id)" border size="small" style="width:100%">
+              <el-table :data="getStepsForGroup(group.group_id)" border size="small" style="width:100%" :inert="!canEdit">
                 <el-table-column label="阶段" min-width="92">
                      <template #default="{ row }">
                         <el-select v-model="row.stage_name" size="small" filterable allow-create default-first-option placeholder="" style="width:100%" @change="handleStageChange(row)">
@@ -637,7 +640,7 @@
                       <el-icon><Plus /></el-icon>
                     </el-button>
                 </div>
-                 <el-table :data="postForm.titer_targets" border size="small">
+                 <el-table :data="postForm.titer_targets" border size="small" :inert="!canEdit">
                     <el-table-column label="名称" min-width="150">
                         <template #default="{ row }">
                             <el-input v-model="row.name" size="small" />
@@ -703,7 +706,7 @@
                       <el-icon><Plus /></el-icon>
                     </el-button>
                 </div>
-                 <el-table :data="postForm.titer_pcs" border size="small">
+                 <el-table :data="postForm.titer_pcs" border size="small" :inert="!canEdit">
                     <el-table-column label="PC名称">
                         <template #default="{ row }">
                             <el-input v-model="row.pc_name" size="small" />
@@ -2090,17 +2093,15 @@ export default {
 
   margin-bottom: 20px;
 }
-.scheme-detail-editor.is-readonly {
-  pointer-events: none;
+.workbench-scheme-page.is-readonly {
+  --el-disabled-bg-color: var(--el-fill-color-blank);
+  --el-disabled-border-color: var(--el-border-color);
+  --el-disabled-text-color: var(--el-text-color-regular);
 }
-.scheme-detail-editor.is-readonly :deep(.el-input__wrapper),
-.scheme-detail-editor.is-readonly :deep(.el-select__wrapper) {
-  background-color: var(--el-disabled-bg-color);
-  box-shadow: 0 0 0 1px var(--el-disabled-border-color) inset;
-}
-.scheme-detail-editor.is-readonly :deep(input),
-.scheme-detail-editor.is-readonly :deep(textarea) {
-  color: var(--el-disabled-text-color);
+.workbench-scheme-page.is-readonly :deep(.el-select__wrapper.is-disabled) {
+  background-color: var(--el-fill-color-blank);
+  color: var(--el-text-color-regular);
+  cursor: default;
 }
 .workbench-scheme-page :deep(.el-button--small) {
   height: 28px;

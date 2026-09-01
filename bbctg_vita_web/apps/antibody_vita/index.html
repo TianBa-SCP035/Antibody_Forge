@@ -2,8 +2,9 @@
 <html lang="zh">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1" />
     <meta name="renderer" content="webkit" />
+    <meta name="force-rendering" content="webkit" />
     <meta name="description" content="Antibody Vita" />
     <meta name="keywords" content="Antibody Vita, AID抗体研发, Antibody Forge" />
     <meta name="author" content="BBCTG" />
@@ -15,6 +16,40 @@
     <title>%VITE_APP_TITLE%</title>
     <link rel="icon" href="/Vita256.ico?v=v2" type="image/x-icon" sizes="256x256" />
     <link rel="apple-touch-icon" href="/Vita.png?v=v2" />
+    <style>
+      #unsupported-browser {
+        display: none;
+        position: fixed;
+        z-index: 2147483647;
+        left: 0;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        background: #f5f7fa;
+        color: #1f2937;
+        font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+        text-align: center;
+        padding: 88px 28px 28px;
+      }
+      #unsupported-browser.is-on {
+        display: block;
+      }
+      #unsupported-browser h1 {
+        font-size: 22px;
+        margin: 0 0 16px;
+      }
+      #unsupported-browser p {
+        font-size: 15px;
+        line-height: 1.7;
+        margin: 0 0 10px;
+        color: #4b5563;
+      }
+      #unsupported-browser .hint {
+        margin-top: 24px;
+        font-size: 13px;
+        color: #6b7280;
+      }
+    </style>
     <!-- 百度统计已停用：hm.js 与浏览器 Permissions policy 不兼容，且业务无依赖
     <script>
       if (window._VBEN_ADMIN_PRO_APP_CONF_) {
@@ -31,7 +66,44 @@
     -->
   </head>
   <body>
+    <div id="unsupported-browser">
+      <h1>当前浏览器无法正常使用 Antibody Vita</h1>
+      <p>请用 <b>Google Chrome</b> 或 <b>新版 Microsoft Edge</b> 打开。</p>
+      <p>360 浏览器和旧版 Edge 会出现页面错乱，这不是系统故障。</p>
+      <p class="hint">可把系统地址复制到 Chrome 或新版 Edge 打开。若从云之家进入，请把默认浏览器改成 Chrome。</p>
+    </div>
     <div id="app"></div>
+    <script>
+      (function () {
+        function chromeMajor(ua) {
+          var match = /Chrom(?:e|ium)\/(\d+)/.exec(ua);
+          return match ? parseInt(match[1], 10) : 0;
+        }
+        function isUnsupported() {
+          var ua = navigator.userAgent || '';
+          if (ua.indexOf('MSIE ') !== -1 || ua.indexOf('Trident/') !== -1) return true;
+          if (ua.indexOf('Edge/') !== -1) return true;
+          if (/360SE|360EE|360browser|Qihoo|QIHU/i.test(ua)) return true;
+          var chrome = chromeMajor(ua);
+          if (chrome && chrome < 87) return true;
+          if (!window.CSS || !CSS.supports) return true;
+          try {
+            if (!CSS.supports('selector(:is(*))')) return true;
+          } catch (error) {
+            return true;
+          }
+          return false;
+        }
+        if (!isUnsupported()) return;
+        window.__VITA_UNSUPPORTED_BROWSER__ = true;
+        var banner = document.getElementById('unsupported-browser');
+        if (banner) banner.className += ' is-on';
+        var loading = document.getElementById('__app-loading__');
+        if (loading && loading.parentNode) loading.parentNode.removeChild(loading);
+        var app = document.getElementById('app');
+        if (app && app.parentNode) app.parentNode.removeChild(app);
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

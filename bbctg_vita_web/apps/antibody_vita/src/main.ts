@@ -28,4 +28,8 @@ async function initApplication() {
   unmountGlobalLoading();
 }
 
-initApplication();
+if ((window as Window & { __VITA_UNSUPPORTED_BROWSER__?: boolean }).__VITA_UNSUPPORTED_BROWSER__) {
+  unmountGlobalLoading();
+} else {
+  initApplication();
+}

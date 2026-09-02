@@ -53,18 +53,14 @@
 ## 全流程示意
 
 ```mermaid
-%%{init: {'theme':'base','themeVariables':{'fontFamily':'Segoe UI, system-ui, sans-serif','fontSize':'13px','primaryColor':'#f6f8fa','primaryTextColor':'#1f2328','primaryBorderColor':'#d0d7de','lineColor':'#656d76','secondaryColor':'#ffffff','tertiaryColor':'#eef6ff','clusterBkg':'#fafbfc','clusterBorder':'#d0d7de'}}}%%
 flowchart TB
   subgraph MAIN["发现主链"]
     direction LR
-    I1["免疫实验列表"] --> I2["效价实验列表\nFACS · ELISA"]
-    I2 -->|"达标"| Q["千鼠万抗\n路线登记"]
-    Q --> SB["单 B 细胞筛选"]
-    Q --> PD["噬菌体展示筛选"]
-    SB --> LQ["文库构建 · 质检"]
-    PD --> LQ
-    LQ --> SEQ["Sanger / NGS 测序"]
-    SEQ --> SA["序列分析"]
+    I1["免疫实验列表"] --> I2["效价实验列表<br/>FACS · ELISA"]
+    I2 -->|达标| Q["千鼠万抗<br/>路线登记"]
+    Q --> SB["单 B 细胞筛选"] --> LQ["文库构建 · 质检"]
+    Q --> PD["噬菌体展示筛选"] --> LQ
+    LQ --> SEQ["Sanger / NGS 测序"] --> SA["序列分析"]
     SA --> E1["结合检测"] --> E2["分子互作"] --> E3["功能评价"] --> E4["成药性评价"]
   end
 
@@ -78,14 +74,7 @@ flowchart TB
     A1["工单创建 / 校验"] --> A2["设备执行"] --> A3["数据回传"]
   end
 
-  SB -.->|"细胞制备"| M3
-  SA -.->|"克隆表达"| M1
-  M6 -.->|"纯化样品"| E1
-
-  I2 <-.->|"流式上机"| A2
-  SB -.->|"筛选上机"| A1
-  E1 -.->|"评价上机"| A1
-  A3 -.->|"回写效价等"| I2
+  MAIN ~~~ MOL ~~~ AUTO
 
   classDef immune fill:#dafbe1,stroke:#1a7f37,color:#1f2328
   classDef discover fill:#ddf4ff,stroke:#0969da,color:#1f2328
@@ -104,7 +93,7 @@ flowchart TB
   class A1,A2,A3 auto
 ```
 
-三层结构：**发现主链**（横向实线）自免疫经筛选、测序至评价贯通；**分子与细胞** 与 **模组自动化** 作为共享支撑层按需接入（虚线表示），可在效价流式检测、单 B 细胞筛选、重组表达及评价上机等环节复用，不纳入主链时序。
+三层结构：**发现主链**（上排横向实线）自免疫经筛选、测序至评价贯通；**分子与细胞** 与 **模组自动化**（下两排）作为共享支撑层按需接入，不纳入主链时序。典型接入关系：单 B 筛选 → 细胞制备；序列分析 → 克隆表达（质粒构建）；纯化样品 → 结合检测；效价流式 / 筛选 / 评价上机 ↔ 模组工单下发与回写。
 
 ## 界面预览
 

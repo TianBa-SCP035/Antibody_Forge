@@ -370,27 +370,12 @@
         
         <el-table-column label="状态" prop="project_status" align="center" width="100" sortable="custom" class-name="status-column-cell">
             <template #default="{ row }">
-              <el-popover
-                :visible="activeStatusRowId === row.id"
-                placement="right"
-                trigger="manual"
-                transition="el-zoom-in-left"
-                :width="110"
-                :teleported="true"
-                popper-class="serum-status-popper"
-                @update:visible="visible => handleStatusPopoverVisible(row, visible)"
-              >
-                <div class="status-option-list">
-                  <div v-for="item in allStatusOptions" :key="item" class="status-option" @click="saveStatus(row, item)">
-                    {{ item }}
-                  </div>
-                </div>
-                <template #reference>
-                  <el-tag class="list-status-tag" :type="getSerumProjectStatusTagType(row.project_status)" effect="plain" :style="canUpdateStatus(row) ? 'cursor: pointer;' : 'cursor: default;'" @click="canUpdateStatus(row) && handleStatusClick(row)">
-                    {{ row.project_status }}
-                  </el-tag>
-                </template>
-              </el-popover>
+              <SerumProjectStatusEditor
+                :project-id="row.id"
+                :value="row.project_status"
+                :editable="canUpdateStatus(row)"
+                @change="status => onProjectStatusChange(row, status)"
+              />
             </template>
         </el-table-column>
 
@@ -502,19 +487,18 @@ import {
   ElMessageBox,
   ElOption,
   ElPagination,
-  ElPopover,
   ElRow,
   ElSelect,
   ElTable,
   ElTableColumn,
-  ElTag,
 } from 'element-plus'
 
 import { notifyApiError, resolveUserMessage } from '#/api/errors'
-import { fetchList, fetchStats, getSerumFilterOptions, updateSerumStatus, export_mouse, exportSerumList, autoUpdateStatus, updateCagePosition, updateLabNotebook, exportSchemePdf } from '#/api/serum'
+import { fetchList, fetchStats, getSerumFilterOptions, export_mouse, exportSerumList, autoUpdateStatus, updateCagePosition, updateLabNotebook, exportSchemePdf } from '#/api/serum'
 import { skipGlobalErrorHandler } from '#/api/request'
 import { SERUM_ERRORS } from '../shared/errors'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
+import SerumProjectStatusEditor from '../shared/SerumProjectStatusEditor.vue'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 import {
   canAutoUpdateSerumStatus,
@@ -528,7 +512,6 @@ import {
   getSerumUserName,
   getSerumUserRoles,
 } from '#/utils/serumPermission'
-import { getSerumProjectStatusTagType } from '#/utils/serumProjectStatus'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
 const SERUM_LIST_FILTER_KEY = 'serumListFilters'
@@ -547,13 +530,12 @@ export default {
     ElInput,
     ElOption,
     ElPagination,
-    ElPopover,
     ElRow,
     ElSelect,
     ElTable,
     ElTableColumn,
-    ElTag,
     AdvancedOpsBar,
+    SerumProjectStatusEditor,
     ArrowDown,
     ArrowUp,
     CircleCheck,
@@ -647,7 +629,6 @@ export default {
       statusFilterQuery: '',
       showAdvancedFilters: false,
       showExtraColumns: false,
-      activeStatusRowId: null,
       showAdvancedOps: false,
       isCageMode: false,
       editingRowId: null,
@@ -721,7 +702,6 @@ export default {
         /* ignore */
       }
     },
-    getSerumProjectStatusTagType,
     smoothScrollTableToRight() {
       const tableRef = this.$refs.serumTable
       const tableEl = tableRef?.$el
@@ -765,7 +745,6 @@ export default {
       this.$router.push('/serum/cell')
     },
     toggleAdvancedOps() {
-      this.activeStatusRowId = null
       this.showAdvancedOps = !this.showAdvancedOps
     },
     getCurrentFilterPayload() {
@@ -869,7 +848,6 @@ export default {
       })
     },
     toggleAdvanced() {
-        this.activeStatusRowId = null
         const next = !this.showAdvancedFilters
         this.showAdvancedFilters = next
         this.showExtraColumns = next
@@ -1013,18 +991,6 @@ export default {
                 const bStarts = b.toLowerCase().startsWith(queryLower);
                 return aStarts === bStarts ? a.localeCompare(b) : (aStarts ? -1 : 1);
             });
-    },
-    handleStatusClick(row) {
-      this.activeStatusRowId = (this.activeStatusRowId === row.id) ? null : row.id
-    },
-    handleStatusPopoverVisible(row, visible) {
-      if (visible) {
-        this.activeStatusRowId = row.id
-        return
-      }
-      if (this.activeStatusRowId === row.id) {
-        this.activeStatusRowId = null
-      }
     },
     handleMouseRightClick(event) {
       event.preventDefault()
@@ -1174,19 +1140,9 @@ export default {
         this.savingKeys[key] = false
       })
     },
-    saveStatus(row, newStatus) {
-      if (!this.canUpdateStatus(row)) {
-        ElMessage.warning('您没有权限编辑此项目')
-        return
-      }
-      updateSerumStatus({ id: row.id, project_status: newStatus }).then(() => {
-        row.project_status = newStatus
-        ElMessage.success('状态修改成功')
-        this.getStats()
-        this.activeStatusRowId = null
-      }).catch((error) => {
-        notifyApiError(error, { messages: SERUM_ERRORS.list.updateStatus })
-      })
+    onProjectStatusChange(row, newStatus) {
+      row.project_status = newStatus
+      this.getStats()
     },
     handleExport() {
         if (!this.canExportMouse()) {
@@ -1428,27 +1384,4 @@ export default {
 .green-panel { background: linear-gradient(135deg, #58d68d 0%, #2ecc71 100%); }
 .red-panel { background: linear-gradient(135deg, #8e44ad 0%, #9b59b6 100%); }
 .orange-panel { background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); }
-
-.status-option-list {
-    max-height: 250px;
-    overflow-y: auto;
-    padding: 4px;
-}
-.status-option {
-    padding: 8px 12px;
-    border-radius: var(--list-inner-radius);
-    cursor: pointer;
-    line-height: 18px;
-    transition: background-color .16s ease, color .16s ease;
-}
-.status-option:hover {
-    background-color: #f5f7fa;
-    color: #409EFF;
-}
-
-:global(.serum-status-popper) {
-    z-index: 3000 !important;
-    border-radius: var(--list-mid-radius);
-    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
-}
 </style>

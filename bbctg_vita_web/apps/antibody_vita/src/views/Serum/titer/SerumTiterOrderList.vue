@@ -621,15 +621,12 @@
         </el-table-column>
         <el-table-column label="免疫状态" prop="immune_status" align="center" min-width="100" class-name="status-column-cell">
           <template #default="{ row }">
-            <el-tag
-              v-if="row.immune_status"
-              class="list-status-tag"
-              :type="getSerumProjectStatusTagType(row.immune_status)"
-              effect="plain"
-            >
-              {{ row.immune_status }}
-            </el-tag>
-            <span v-else>-</span>
+            <SerumProjectStatusEditor
+              :project-id="row.project_id"
+              :value="row.immune_status"
+              :editable="canUpdateImmuneStatus(row)"
+              @change="status => onImmuneStatusChange(row, status)"
+            />
           </template>
         </el-table-column>
         <el-table-column label="操作" fixed="right" width="240" align="center">
@@ -822,7 +819,7 @@ import {
 } from '#/api/serum';
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
-import { getSerumProjectStatusTagType, getSerumTiterStatusTagType, getTiterPriorityTone, mergeTiterSerumStatusOptions, TITER_PRIORITY_DEFAULT, TITER_PRIORITY_OPTIONS, TITER_SERUM_STATUS_OPTIONS } from '#/utils/serumProjectStatus';
+import { getSerumTiterStatusTagType, getTiterPriorityTone, mergeTiterSerumStatusOptions, TITER_PRIORITY_DEFAULT, TITER_PRIORITY_OPTIONS, TITER_SERUM_STATUS_OPTIONS } from '#/utils/serumProjectStatus';
 import { FLOW_WORK_ORDER_STATUS_OPTIONS, orderStatusTagType } from '#/utils/megaFlowWorkOrderStatus';
 import {
   canDeleteTiterOrder,
@@ -831,6 +828,7 @@ import {
   canEditTiterOrderOwner,
   canEditTiterOrderRecord,
   canEditTiterOrderRecordOpen,
+  canUpdateSerumStatus,
   getSerumUserName,
 } from '#/utils/serumPermission';
 import { useUserStore } from '@vben/stores';
@@ -838,6 +836,7 @@ import { useUserStore } from '@vben/stores';
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
 import TiterInstrumentOrderDialogs from './TiterInstrumentOrderDialogs.vue';
 import TiterOrderCreateDialog from './TiterOrderCreateDialog.vue';
+import SerumProjectStatusEditor from '../shared/SerumProjectStatusEditor.vue';
 
 const TITER_ORDER_LIST_FILTER_KEY = 'titerOrderListFilters';
 
@@ -988,6 +987,7 @@ export default {
     ElTag,
     ElTooltip,
     AdvancedOpsBar,
+    SerumProjectStatusEditor,
     Tools,
     TiterInstrumentOrderDialogs,
     TiterOrderCreateDialog,
@@ -1217,7 +1217,6 @@ export default {
         /* ignore */
       }
     },
-    getSerumProjectStatusTagType,
     getSerumTiterStatusTagType,
     getTiterPriorityTone,
     orderStatusTagType,
@@ -2175,6 +2174,19 @@ export default {
       return canEditSerumTiter(this.currentUserInfo, {
         owner: row.immune_owner,
         titer_owners: row.titer_owners,
+      });
+    },
+    canUpdateImmuneStatus(row) {
+      if (!row?.project_id) {
+        return false;
+      }
+      return canUpdateSerumStatus(this.currentUserInfo, { owner: row.immune_owner });
+    },
+    onImmuneStatusChange(row, newStatus) {
+      this.list.forEach((item) => {
+        if (item.project_id === row.project_id) {
+          item.immune_status = newStatus;
+        }
       });
     },
     ownerTagName(data) {

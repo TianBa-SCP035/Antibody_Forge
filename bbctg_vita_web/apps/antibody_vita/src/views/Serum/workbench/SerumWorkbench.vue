@@ -274,8 +274,9 @@
           <el-button
             class="list-filter-action-button view-toggle-button"
             :class="{ 'is-sheet': viewMode === 'sheet' }"
-            :title="viewMode === 'workbench' ? '当前为快速编辑，点击切换到批量 Sheet' : '当前为批量 Sheet，点击切换到快速编辑'"
+            :title="viewMode === 'workbench' ? '当前为快速编辑，点击切换到批量 Sheet' : '当前为批量 Sheet。Shift 拖列表头可调列顺序，右键此按钮恢复默认。点击切换到快速编辑'"
             @click="toggleViewMode"
+            @contextmenu.prevent="resetSheetColumnOrder"
           >
             <el-icon><ViewIcon /></el-icon>
             <span>视图</span>
@@ -337,8 +338,8 @@
         <el-table-column prop="target_name" label="靶点名称" align="center" min-width="100" show-overflow-tooltip />
         <el-table-column prop="pm" label="PM" align="center" min-width="72" show-overflow-tooltip />
         <el-table-column prop="mouse_strain_category" label="归类鼠型" align="center" min-width="90" show-overflow-tooltip />
-        <el-table-column prop="project_set_code" label="项目集编号" align="center" min-width="110" show-overflow-tooltip />
         <el-table-column prop="project_code" label="免疫项目号" align="center" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="remark" label="备注" align="center" min-width="120" show-overflow-tooltip />
         <el-table-column label="状态" align="center" min-width="110" class-name="status-column-cell">
           <template #default="{ row }">
             <WorkbenchStatusEditor
@@ -438,6 +439,7 @@
         v-else
         ref="sheetWrap"
         class="sheet-wrap"
+        :class="{ 'is-column-moving': sheetDragMode === 'move-column' }"
         tabindex="0"
         @copy="onSheetCopy"
         @paste="onSheetPaste"
@@ -450,6 +452,7 @@
       >
         <div ref="sheetTableStage" class="sheet-table-stage">
           <vxe-table
+            :key="sheetColumnOrderKey"
             ref="sheetTable"
             :data="list"
             border
@@ -583,6 +586,8 @@
             :class="{ 'is-dragging': sheetDragging }"
             aria-hidden="true"
           />
+          <div ref="sheetColumnDropLine" class="sheet-column-drop-line" aria-hidden="true" />
+          <div ref="sheetColumnGhost" class="sheet-column-ghost" aria-hidden="true" />
         </div>
       </div>
 
@@ -891,7 +896,7 @@ const REQUIRED_STATUS_DEFAULTS = Object.freeze({
   antigen_ready: '否',
 })
 const REQUIRED_STATUS_FIELD_KEYS = new Set(Object.keys(REQUIRED_STATUS_DEFAULTS))
-const USER_FIELD_KEYS = new Set(['pm', 'owner', 'reviewer'])
+const USER_FIELD_KEYS = new Set(['pm', 'owner'])
 const DATE_FIELD_KEYS = new Set(['mouse_birth_date', 'mouse_arrive_date', 'antigen_eta'])
 const SHEET_RANGE_CLASS_NAMES = [
   'is-sheet-selected',
@@ -947,7 +952,7 @@ const EDITOR_SECTIONS = [
       { key: 'plan_status', label: '状态', type: 'status', optionsKey: 'plan_status', tone: 'status', lock: 'aligned' },
       { key: 'can_start', label: '可开展', type: 'yesno', tone: 'yesno' },
       { key: 'sort_order', label: '排序', type: 'text' },
-      { key: 'reviewer', label: '审核人', type: 'select', optionsKey: 'reviewers' },
+      { key: 'reviewer', label: '审核人', type: 'text', maxlength: 64 },
       { key: 'review_status', label: '审核结果', type: 'select', optionsKey: 'review_status', tone: 'review' },
     ],
   },
@@ -1019,7 +1024,7 @@ const SHEET_COLUMNS = [
   { key: 'study_type', label: '课题类型', edit: 'select', optionsKey: 'study_type' },
   { key: 'species_cross', label: '种属交叉', edit: 'species', minWidth: 160 },
   { key: 'owner', label: '开展人', width: 90, edit: 'select', optionsKey: 'owners' },
-  { key: 'reviewer', label: '审核人', width: 90, edit: 'select', optionsKey: 'reviewers' },
+  { key: 'reviewer', label: '审核人', width: 90, edit: 'text' },
   { key: 'review_status', label: '审核结果', width: 90, edit: 'select', optionsKey: 'review_status' },
   { key: 'immuno_method', label: '免疫方式', edit: 'select', optionsKey: 'immuno_method' },
   { key: 'remark', label: '备注', edit: 'text' },
@@ -1046,6 +1051,40 @@ const SHEET_COLUMNS = [
   { key: 'plan_status', label: '状态', width: 110, edit: 'select', optionsKey: 'plan_status' },
   { key: 'experiment_id', label: '实验号', width: 190, edit: 'readonly' },
 ]
+const SHEET_COLUMN_ORDER_KEY = 'workbenchSheetColumnOrder'
+let lastViewMode = 'workbench'
+
+function mergeSheetColumnOrder(cachedKeys) {
+  const remaining = new Map(SHEET_COLUMNS.map((column) => [column.key, column]))
+  const ordered = []
+  for (const key of cachedKeys || []) {
+    const column = remaining.get(String(key || ''))
+    if (!column) continue
+    ordered.push(column)
+    remaining.delete(column.key)
+  }
+  for (const column of SHEET_COLUMNS) {
+    if (remaining.has(column.key)) ordered.push(column)
+  }
+  return ordered
+}
+
+function loadSheetColumns() {
+  try {
+    const keys = JSON.parse(localStorage.getItem(SHEET_COLUMN_ORDER_KEY) || '[]')
+    return mergeSheetColumnOrder(Array.isArray(keys) ? keys : [])
+  } catch {
+    return [...SHEET_COLUMNS]
+  }
+}
+
+function saveSheetColumns(columns) {
+  try {
+    localStorage.setItem(SHEET_COLUMN_ORDER_KEY, JSON.stringify(columns.map((column) => column.key)))
+  } catch {
+    /* ignore */
+  }
+}
 const SHEET_HEADER_ALIASES = Object.freeze({
   优先级排序: 'sort_order',
   项目编号: 'project_code',
@@ -1095,7 +1134,7 @@ export default {
       list: [],
       total: 0,
       stats: { all: 0, planned: 0, ongoing: 0, completed: 0, cancelled: 0, can_start: 0 },
-      viewMode: 'workbench',
+      viewMode: lastViewMode,
       showAdvancedOps: false,
       drawerVisible: false,
       editingId: null,
@@ -1111,6 +1150,7 @@ export default {
       sheetDragMode: '',
       sheetPointerDown: false,
       sheetDragging: false,
+      sheetColumnMove: null,
       sortable: null,
       sortableInitToken: 0,
       targetOptions: [],
@@ -1180,7 +1220,7 @@ export default {
       speciesCrossOptions: SPECIES_CROSS_OPTIONS,
       editorSections: EDITOR_SECTIONS,
       statusViews: STATUS_VIEWS,
-      sheetColumns: SHEET_COLUMNS,
+      sheetColumns: loadSheetColumns(),
     }
   },
   computed: {
@@ -1297,9 +1337,13 @@ export default {
         beforeEditMethod: this.sheetBeforeEdit,
       }
     },
+    sheetColumnOrderKey() {
+      return this.sheetColumns.map((column) => column.key).join(',')
+    },
   },
   watch: {
     viewMode(value) {
+      lastViewMode = value
       this.clearSheetRange()
       if (value === 'workbench') {
         this.scheduleSortable()
@@ -1320,20 +1364,18 @@ export default {
   created() {
     this.loadFilterOptions()
     this.getList()
+    if (this.viewMode === 'sheet') this.loadAllUserOptions()
   },
   mounted() {
     this.scheduleSortable()
-    this.onWindowMouseUp = () => {
-      this.sheetPointerDown = false
-      this.sheetDragging = false
-      this.sheetDragMode = ''
-    }
+    this.onWindowMouseUp = () => this.finishSheetPointer()
     window.addEventListener('mouseup', this.onWindowMouseUp)
     document.addEventListener('mousedown', this.onDocumentPointerDown, true)
   },
   beforeUnmount() {
     this.destroySortable()
     window.removeEventListener('mouseup', this.onWindowMouseUp)
+    window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
     document.removeEventListener('mousedown', this.onDocumentPointerDown, true)
   },
   activated() {
@@ -1350,12 +1392,22 @@ export default {
     if (this.onWindowMouseUp) {
       window.removeEventListener('mouseup', this.onWindowMouseUp)
     }
+    window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
     document.removeEventListener('mousedown', this.onDocumentPointerDown, true)
   },
   methods: {
     async toggleViewMode() {
       if (this.viewMode === 'sheet' && !await this.flushPendingSheetEdits()) return
       this.viewMode = this.viewMode === 'workbench' ? 'sheet' : 'workbench'
+    },
+    resetSheetColumnOrder() {
+      try {
+        localStorage.removeItem(SHEET_COLUMN_ORDER_KEY)
+      } catch {
+        /* ignore */
+      }
+      this.sheetColumns = [...SHEET_COLUMNS]
+      this.clearSheetRange()
     },
     async loadAllUserOptions() {
       try {
@@ -1929,6 +1981,9 @@ export default {
       if (['remark', 'mouse_remark', 'antigen_remark'].includes(key) && raw.length > 255) {
         return { ok: false, reason: 'length' }
       }
+      if (key === 'reviewer' && raw.length > 64) {
+        return { ok: false, reason: 'length' }
+      }
       if (key === 'target_codes') return { ok: true, value: this.uniq(this.parseCodes(raw)) }
       if (DATE_FIELD_KEYS.has(key)) return this.normalizeSheetDate(raw)
       if (key === 'species_cross') {
@@ -2015,6 +2070,66 @@ export default {
     sheetHeaderCellClassName({ column }) {
       return column.field ? 'sheet-selectable-header' : ''
     },
+    paintSheetColumnMove(event) {
+      const wrap = this.$refs.sheetWrap
+      const stage = this.$refs.sheetTableStage
+      const line = this.$refs.sheetColumnDropLine
+      const ghost = this.$refs.sheetColumnGhost
+      const $table = this.$refs.sheetTable
+      const move = this.sheetDragMode === 'move-column' ? this.sheetColumnMove : null
+      wrap?.querySelectorAll('.is-column-from').forEach((el) => el.classList.remove('is-column-from'))
+      if (!move || !wrap || !stage || !line || !ghost || !$table?.getColumnByField) {
+        if (line) line.style.display = 'none'
+        if (ghost) ghost.style.display = 'none'
+        return
+      }
+      const fromId = $table.getColumnByField(this.sheetColumns[move.from]?.key)?.id
+      if (fromId) {
+        wrap.querySelectorAll(`[colid="${fromId}"]`).forEach((el) => el.classList.add('is-column-from'))
+      }
+      const stageRect = stage.getBoundingClientRect()
+      if (event) {
+        ghost.textContent = this.sheetColumns[move.from]?.label || ''
+        ghost.style.display = 'block'
+        ghost.style.transform = `translate3d(${event.clientX - stageRect.left + 12}px, ${event.clientY - stageRect.top + 16}px, 0)`
+      }
+      const toId = $table.getColumnByField(this.sheetColumns[move.to]?.key)?.id
+      const header = toId
+        && [...wrap.querySelectorAll(`.vxe-header--column[colid="${toId}"]`)]
+          .find((el) => el.getBoundingClientRect().width > 2)
+      if (!header || move.from === move.to) {
+        line.style.display = 'none'
+        return
+      }
+      const rect = header.getBoundingClientRect()
+      const top = Math.max(rect.top, stageRect.top) - stageRect.top
+      line.style.display = 'block'
+      line.style.height = `${stageRect.height - top}px`
+      line.style.transform = `translate3d(${(move.to > move.from ? rect.right : rect.left) - stageRect.left}px, ${top}px, 0)`
+    },
+    onSheetColumnPointerMove(event) {
+      if (this.sheetDragMode !== 'move-column' || !this.sheetColumnMove) return
+      const hit = this.hitSheetHeader(event.target) || this.hitSheetCell(event.target)
+      if (hit) this.sheetColumnMove.to = hit.colIndex
+      this.paintSheetColumnMove(event)
+    },
+    finishSheetPointer() {
+      const move = this.sheetDragMode === 'move-column' ? this.sheetColumnMove : null
+      window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
+      this.sheetPointerDown = false
+      this.sheetDragging = false
+      this.sheetDragMode = ''
+      this.sheetColumnMove = null
+      this.paintSheetColumnMove()
+      if (!move || move.from === move.to) return
+      const next = [...this.sheetColumns]
+      const [column] = next.splice(move.from, 1)
+      if (!column) return
+      next.splice(move.to, 0, column)
+      this.sheetColumns = next
+      saveSheetColumns(next)
+      this.clearSheetRange()
+    },
     syncPasteAnchorFromRange() {
       if (!this.sheetRange) return
       const column = this.sheetColumns[this.sheetRange.c1]
@@ -2033,7 +2148,9 @@ export default {
       this.sheetDragMode = ''
       this.sheetPointerDown = false
       this.sheetDragging = false
+      this.sheetColumnMove = null
       this.pasteAnchor = null
+      this.paintSheetColumnMove()
       this.$refs.sheetTable?.clearSelected?.()
       this.$nextTick(() => this.paintSheetRange())
     },
@@ -2100,6 +2217,7 @@ export default {
     },
     onSheetScroll() {
       this.paintSheetRange()
+      this.paintSheetColumnMove()
     },
     findSheetRowEl(row) {
       const $table = this.$refs.sheetTable
@@ -2262,6 +2380,23 @@ export default {
       if (event.target?.closest?.('.vxe-cell--col-resizable')) return
       this.$refs.sheetWrap?.focus?.()
       const headerHit = this.hitSheetHeader(event.target)
+      if (event.button !== 0) return
+      if (headerHit && event.shiftKey) {
+        event.preventDefault()
+        window.getSelection()?.removeAllRanges()
+        this.$refs.sheetTable?.clearEdit?.()
+        this.$refs.sheetTable?.clearSelected?.()
+        this.sheetRange = null
+        this.pasteAnchor = null
+        this.paintSheetRange()
+        this.sheetDragMode = 'move-column'
+        this.sheetPointerDown = true
+        this.sheetDragging = false
+        this.sheetColumnMove = { from: headerHit.colIndex, to: headerHit.colIndex }
+        this.paintSheetColumnMove(event)
+        window.addEventListener('mousemove', this.onSheetColumnPointerMove)
+        return
+      }
       if (headerHit && this.list.length) {
         event.preventDefault()
         window.getSelection()?.removeAllRanges()
@@ -2309,6 +2444,7 @@ export default {
     },
     onSheetWrapMouseOver(event) {
       if (!this.sheetPointerDown) return
+      if (this.sheetDragMode === 'move-column') return
       if (this.sheetDragMode === 'columns') {
         const headerHit = this.hitSheetHeader(event.target)
         if (!headerHit || !this.sheetRange || headerHit.colIndex === this.sheetRange.c2) return
@@ -2453,7 +2589,9 @@ export default {
       if (reason === 'locked') return `${label}当前不可编辑`
       if (reason === 'unknown') return '粘贴内容包含无法识别的列'
       if (reason === 'started') return '请到方案草稿页核对方案后再开展'
-      if (reason === 'length') return `${label}不能超过 255 个字符`
+      if (reason === 'length') {
+        return `${label}不能超过 ${key === 'reviewer' ? 64 : 255} 个字`
+      }
       return `${label}必须与可选项完全匹配`
     },
     async resolveTargetCodes(codes) {
@@ -3683,6 +3821,45 @@ export default {
 .sheet-wrap :deep(.sheet-selectable-header:hover) {
   background-color: var(--el-color-primary-light-9) !important;
 }
+.sheet-wrap.is-column-moving,
+.sheet-wrap.is-column-moving :deep(.sheet-selectable-header) {
+  cursor: grabbing;
+}
+.sheet-wrap :deep(.is-column-from) {
+  opacity: 0.4;
+}
+.sheet-column-drop-line {
+  position: absolute;
+  top: 0;
+  left: -1px;
+  z-index: 11;
+  display: none;
+  width: 2px;
+  pointer-events: none;
+  background: var(--el-color-primary);
+  box-shadow: 0 0 0 1px var(--el-color-primary-light-7);
+}
+.sheet-column-ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 12;
+  display: none;
+  max-width: 200px;
+  padding: 6px 10px;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--el-color-primary);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-color-primary-light-5);
+  border-radius: 4px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
 .sheet-wrap :deep(.vxe-body--column.col--active > .vxe-cell),
 .sheet-wrap :deep(.vxe-body--column.col--active > .vxe-cell > .vxe-cell--wrapper) {
   width: 100%;
@@ -3700,11 +3877,6 @@ export default {
   border: 0;
   border-radius: 0;
   box-shadow: none;
-}
-.sheet-wrap :deep(.sheet-grid-editor .vxe-input--inner),
-.sheet-wrap :deep(.sheet-grid-editor .vxe-number-input--input) {
-  padding: var(--vxe-ui-table-cell-padding-small);
-  background: transparent;
 }
 .sheet-picker-editor {
   position: relative;

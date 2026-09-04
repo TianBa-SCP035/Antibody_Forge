@@ -46,7 +46,8 @@ export default {
   right: 0;
   left: 0;
   z-index: 50;
-  height: 140px;
+  min-height: 140px;
+  height: auto;
   padding: 12px 16px;
   background: rgba(255, 255, 255, 0.98);
   border-radius: var(--list-mid-radius);

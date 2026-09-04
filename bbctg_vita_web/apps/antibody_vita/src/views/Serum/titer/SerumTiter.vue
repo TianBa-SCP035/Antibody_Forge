@@ -1785,7 +1785,7 @@ export default {
   line-height: 1.5;
 }
 
-.status-tag {
+.serum-titer-page :deep(.status-tag) {
   height: 25px;
   padding: 0 8px;
   font-size: 13px;

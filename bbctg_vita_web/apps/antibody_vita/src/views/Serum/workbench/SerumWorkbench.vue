@@ -457,7 +457,6 @@
             :data="list"
             border
             show-overflow
-            height="100%"
             size="small"
             :row-config="{ keyField: 'id', isHover: true, height: 48 }"
             :column-config="{ resizable: true }"
@@ -583,7 +582,6 @@
           <div
             ref="sheetRangeOverlay"
             class="sheet-range-overlay"
-            :class="{ 'is-dragging': sheetDragging }"
             aria-hidden="true"
           />
           <div ref="sheetColumnDropLine" class="sheet-column-drop-line" aria-hidden="true" />
@@ -898,10 +896,6 @@ const REQUIRED_STATUS_DEFAULTS = Object.freeze({
 const REQUIRED_STATUS_FIELD_KEYS = new Set(Object.keys(REQUIRED_STATUS_DEFAULTS))
 const USER_FIELD_KEYS = new Set(['pm', 'owner'])
 const DATE_FIELD_KEYS = new Set(['mouse_birth_date', 'mouse_arrive_date', 'antigen_eta'])
-const SHEET_RANGE_CLASS_NAMES = [
-  'is-sheet-selected',
-  'is-sheet-active',
-]
 const ALIGNED_FIELDS = new Set([
   'experiment_id',
   'project_code',
@@ -1149,7 +1143,6 @@ export default {
       sheetKeyboardChain: Promise.resolve(),
       sheetDragMode: '',
       sheetPointerDown: false,
-      sheetDragging: false,
       sheetColumnMove: null,
       sortable: null,
       sortableInitToken: 0,
@@ -1400,7 +1393,8 @@ export default {
       if (this.viewMode === 'sheet' && !await this.flushPendingSheetEdits()) return
       this.viewMode = this.viewMode === 'workbench' ? 'sheet' : 'workbench'
     },
-    resetSheetColumnOrder() {
+    async resetSheetColumnOrder() {
+      if (this.viewMode === 'sheet' && !await this.flushPendingSheetEdits()) return
       try {
         localStorage.removeItem(SHEET_COLUMN_ORDER_KEY)
       } catch {
@@ -2040,26 +2034,8 @@ export default {
         c2: Math.max(c1, c2),
       }
     },
-    isInSheetRange(rowIndex, colIndex) {
-      const range = this.normalizedSheetRange()
-      if (!range || rowIndex < 0 || colIndex < 0) return false
-      return rowIndex >= range.r1 && rowIndex <= range.r2 && colIndex >= range.c1 && colIndex <= range.c2
-    },
-    sheetRangeCellClasses(rowIndex, colIndex) {
-      const range = this.normalizedSheetRange()
-      if (!range || !this.isInSheetRange(rowIndex, colIndex)) return []
-      const classes = ['is-sheet-selected']
-      const activeColumn = this.sheetColumns.findIndex((item) => item.key === this.pasteAnchor?.colKey)
-      if (rowIndex === this.pasteAnchor?.rowIndex && colIndex === activeColumn) {
-        classes.push('is-sheet-active')
-      }
-      return classes
-    },
     sheetCellClassName({ row, column }) {
       const classes = []
-      const rowIndex = this.list.findIndex((item) => item.id === row.id)
-      const colIndex = this.sheetColumns.findIndex((item) => item.key === column.field)
-      classes.push(...this.sheetRangeCellClasses(rowIndex, colIndex))
       if (column.field === 'priority') classes.push(`sheet-tone-${this.priorityTone(row)}`)
       if (column.field === 'plan_status') classes.push(`sheet-tone-${this.statusTagType(row)}`)
       if (column.field === 'can_start' || column.field === 'antigen_ready') {
@@ -2117,7 +2093,6 @@ export default {
       const move = this.sheetDragMode === 'move-column' ? this.sheetColumnMove : null
       window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
       this.sheetPointerDown = false
-      this.sheetDragging = false
       this.sheetDragMode = ''
       this.sheetColumnMove = null
       this.paintSheetColumnMove()
@@ -2142,12 +2117,12 @@ export default {
       this.$nextTick(() => this.paintSheetRange())
     },
     clearSheetRange() {
+      window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
       this.sheetRange = null
       this.sheetEditOriginal = null
       this.sheetEditSource = ''
       this.sheetDragMode = ''
       this.sheetPointerDown = false
-      this.sheetDragging = false
       this.sheetColumnMove = null
       this.pasteAnchor = null
       this.paintSheetColumnMove()
@@ -2158,56 +2133,107 @@ export default {
       const wrap = this.$refs.sheetWrap
       const overlay = this.$refs.sheetRangeOverlay
       if (!wrap?.querySelectorAll || !overlay) return
-      const hideOverlay = () => {
-        overlay.style.display = 'none'
-      }
-      wrap.querySelectorAll('.vxe-body--column').forEach((el) => {
-        el.classList.remove(...SHEET_RANGE_CLASS_NAMES)
+      overlay.classList.remove('is-scrolling')
+      wrap.querySelectorAll('.is-sheet-selected, .is-sheet-active').forEach((el) => {
+        el.classList.remove('is-sheet-selected', 'is-sheet-active')
       })
       const range = this.normalizedSheetRange()
       const $table = this.$refs.sheetTable
       if (!range || !$table) {
-        hideOverlay()
+        overlay.style.display = 'none'
         return
       }
-      const selectedCells = []
-      for (let r = range.r1; r <= range.r2; r += 1) {
-        const row = this.list[r]
-        const tr = row ? this.findSheetRowEl(row) : null
-        if (!tr) continue
-        const cells = [...tr.querySelectorAll('.vxe-body--column')]
-        for (let c = range.c1; c <= range.c2; c += 1) {
-          const column = this.sheetColumns[c]
-          const meta = column && $table.getColumnByField ? $table.getColumnByField(column.key) : null
-          const td = meta ? cells.find((cell) => cell.getAttribute('colid') === meta.id) : null
-          const classes = this.sheetRangeCellClasses(r, c)
-          if (td && classes.length) {
-            td.classList.add(...classes)
-            selectedCells.push(td)
+      const rowIndexById = new Map(
+        this.list.map((row, index) => [String($table.getRowid?.(row) || row.id), index]),
+      )
+      const columnIndexById = new Map()
+      this.sheetColumns.forEach((column, index) => {
+        const id = $table.getColumnByField?.(column.key)?.id
+        if (id) columnIndexById.set(id, index)
+      })
+      const activeRow = this.pasteAnchor?.rowIndex
+      const activeColumn = this.sheetColumns.findIndex(
+        (column) => column.key === this.pasteAnchor?.colKey,
+      )
+      for (const tr of wrap.querySelectorAll('.vxe-table--body-wrapper tr[rowid]')) {
+        const r = rowIndexById.get(String(tr.getAttribute('rowid') || ''))
+        if (r == null || r < range.r1 || r > range.r2) continue
+        for (const td of tr.querySelectorAll('.vxe-body--column')) {
+          const c = columnIndexById.get(td.getAttribute('colid'))
+          if (c == null || c < range.c1 || c > range.c2) continue
+          td.classList.add('is-sheet-selected')
+          if (r === activeRow && c === activeColumn) td.classList.add('is-sheet-active')
+        }
+      }
+      this.syncSheetRangeOverlay()
+    },
+    syncSheetRangeOverlay() {
+      const wrap = this.$refs.sheetWrap
+      const overlay = this.$refs.sheetRangeOverlay
+      const $table = this.$refs.sheetTable
+      const range = this.normalizedSheetRange()
+      if (!wrap || !overlay || !$table || !range) {
+        if (overlay) overlay.style.display = 'none'
+        return
+      }
+      const rowIndexById = new Map(
+        this.list.map((row, index) => [String($table.getRowid?.(row) || row.id), index]),
+      )
+      const columnIndexById = new Map()
+      this.sheetColumns.forEach((column, index) => {
+        const id = $table.getColumnByField?.(column.key)?.id
+        if (id) columnIndexById.set(id, index)
+      })
+      let firstCell = null
+      let topCell = null
+      let bottomCell = null
+      let leftCell = null
+      let rightCell = null
+      let topRow = Number.POSITIVE_INFINITY
+      let bottomRow = Number.NEGATIVE_INFINITY
+      let leftColumn = Number.POSITIVE_INFINITY
+      let rightColumn = Number.NEGATIVE_INFINITY
+      for (const tr of wrap.querySelectorAll('.vxe-table--body-wrapper tr[rowid]')) {
+        const r = rowIndexById.get(String(tr.getAttribute('rowid') || ''))
+        if (r == null || r < range.r1 || r > range.r2) continue
+        for (const td of tr.querySelectorAll('.vxe-body--column')) {
+          const c = columnIndexById.get(td.getAttribute('colid'))
+          if (c == null || c < range.c1 || c > range.c2) continue
+          firstCell ||= td
+          if (r < topRow) {
+            topRow = r
+            topCell = td
+          }
+          if (r > bottomRow) {
+            bottomRow = r
+            bottomCell = td
+          }
+          if (c < leftColumn) {
+            leftColumn = c
+            leftCell = td
+          }
+          if (c > rightColumn) {
+            rightColumn = c
+            rightCell = td
           }
         }
       }
-      if (!selectedCells.length) {
-        hideOverlay()
-        return
-      }
       const stage = this.$refs.sheetTableStage
       const stageRect = stage?.getBoundingClientRect?.()
-      const bodyRect = selectedCells[0]
-        .closest('.vxe-table--body-wrapper')
+      const bodyRect = firstCell
+        ?.closest?.('.vxe-table--body-wrapper')
         ?.getBoundingClientRect?.()
-      if (!stageRect) {
-        hideOverlay()
+      if (!stageRect || !firstCell || !topCell || !bottomCell || !leftCell || !rightCell) {
+        overlay.style.display = 'none'
         return
       }
-      const cellRects = selectedCells.map((cell) => cell.getBoundingClientRect())
       const clipRect = bodyRect || stageRect
-      const left = Math.max(Math.min(...cellRects.map((rect) => rect.left)), clipRect.left)
-      const top = Math.max(Math.min(...cellRects.map((rect) => rect.top)), clipRect.top)
-      const right = Math.min(Math.max(...cellRects.map((rect) => rect.right)), clipRect.right)
-      const bottom = Math.min(Math.max(...cellRects.map((rect) => rect.bottom)), clipRect.bottom)
+      const left = Math.max(leftCell.getBoundingClientRect().left, clipRect.left)
+      const top = Math.max(topCell.getBoundingClientRect().top, clipRect.top)
+      const right = Math.min(rightCell.getBoundingClientRect().right, clipRect.right)
+      const bottom = Math.min(bottomCell.getBoundingClientRect().bottom, clipRect.bottom)
       if (right <= left || bottom <= top) {
-        hideOverlay()
+        overlay.style.display = 'none'
         return
       }
       overlay.style.display = 'block'
@@ -2216,14 +2242,10 @@ export default {
       overlay.style.transform = `translate3d(${left - stageRect.left - 1}px, ${top - stageRect.top - 1}px, 0)`
     },
     onSheetScroll() {
-      this.paintSheetRange()
-      this.paintSheetColumnMove()
-    },
-    findSheetRowEl(row) {
-      const $table = this.$refs.sheetTable
-      const wrap = this.$refs.sheetWrap
-      const rowid = $table?.getRowid?.(row) || row.id
-      return wrap?.querySelector?.(`tr[rowid="${rowid}"]`)
+      if (this.sheetDragMode === 'move-column') this.paintSheetColumnMove()
+      if (!this.sheetRange) return
+      this.$refs.sheetRangeOverlay?.classList.add('is-scrolling')
+      this.syncSheetRangeOverlay()
     },
     hitSheetCell(target) {
       const td = target?.closest?.('.vxe-body--column')
@@ -2391,7 +2413,6 @@ export default {
         this.paintSheetRange()
         this.sheetDragMode = 'move-column'
         this.sheetPointerDown = true
-        this.sheetDragging = false
         this.sheetColumnMove = { from: headerHit.colIndex, to: headerHit.colIndex }
         this.paintSheetColumnMove(event)
         window.addEventListener('mousemove', this.onSheetColumnPointerMove)
@@ -2403,7 +2424,6 @@ export default {
         this.$refs.sheetTable?.clearEdit?.()
         this.sheetDragMode = 'columns'
         this.sheetPointerDown = true
-        this.sheetDragging = false
         this.setSheetRange({
           r1: 0,
           c1: headerHit.colIndex,
@@ -2418,7 +2438,6 @@ export default {
       window.getSelection()?.removeAllRanges()
       this.sheetDragMode = hit.field === 'sort_order' ? 'rows' : 'cells'
       this.sheetPointerDown = true
-      this.sheetDragging = false
       if (event.shiftKey && this.sheetRange) {
         this.setSheetRange(this.sheetDragMode === 'rows'
           ? {
@@ -2448,7 +2467,6 @@ export default {
       if (this.sheetDragMode === 'columns') {
         const headerHit = this.hitSheetHeader(event.target)
         if (!headerHit || !this.sheetRange || headerHit.colIndex === this.sheetRange.c2) return
-        this.sheetDragging = true
         this.setSheetRange({ ...this.sheetRange, c2: headerHit.colIndex })
         return
       }
@@ -2456,7 +2474,6 @@ export default {
       if (!hit || !this.sheetRange) return
       if (this.sheetDragMode === 'rows') {
         if (hit.rowIndex === this.sheetRange.r2) return
-        this.sheetDragging = true
         this.setSheetRange({
           ...this.sheetRange,
           r2: hit.rowIndex,
@@ -2465,7 +2482,6 @@ export default {
         return
       }
       if (hit.rowIndex === this.sheetRange.r2 && hit.colIndex === this.sheetRange.c2) return
-      this.sheetDragging = true
       this.setSheetRange({ ...this.sheetRange, r2: hit.rowIndex, c2: hit.colIndex })
     },
     sheetRangeTsv() {
@@ -3208,8 +3224,8 @@ export default {
       const hasHeader = matchedHeaderCount >= 2 && matchedHeaderCount === nonEmptyHeaderCount
       let dataRows = hasHeader ? grid.slice(1) : grid
       let startIndex = this.pasteAnchor?.rowIndex ?? 0
-      const startColKey = this.pasteAnchor?.colKey || SHEET_COLUMNS[0].key
-      let startColIndex = SHEET_COLUMNS.findIndex((column) => column.key === startColKey)
+      const startColKey = this.pasteAnchor?.colKey || this.sheetColumns[0]?.key
+      let startColIndex = this.sheetColumns.findIndex((column) => column.key === startColKey)
       if (startColIndex < 0) return
       const selectedRange = this.normalizedSheetRange()
       const fillSelectedRange = !hasHeader
@@ -3250,7 +3266,7 @@ export default {
         const row = workingRows[rowIndex]
         if (!row) return
         cells.forEach((cell, cellIndex) => {
-          const key = hasHeader ? headerKeys[cellIndex] : SHEET_COLUMNS[startColIndex + cellIndex]?.key
+          const key = hasHeader ? headerKeys[cellIndex] : this.sheetColumns[startColIndex + cellIndex]?.key
           if (!key) {
             if (String(cell ?? '').trim()) invalidCells.push({ reason: 'unknown' })
             return
@@ -3357,7 +3373,7 @@ export default {
         const selectedCells = touchedCells
           .map(({ rowId, key }) => ({
             rowIndex: this.list.findIndex((row) => row.id === rowId),
-            colIndex: SHEET_COLUMNS.findIndex((column) => column.key === key),
+            colIndex: this.sheetColumns.findIndex((column) => column.key === key),
           }))
           .filter(({ rowIndex, colIndex }) => rowIndex >= 0 && colIndex >= 0)
         if (selectedCells.length) {
@@ -3371,7 +3387,7 @@ export default {
           }
           await this.$nextTick()
           const activeRow = this.list[range.r1]
-          const activeColumn = SHEET_COLUMNS[range.c1]
+          const activeColumn = this.sheetColumns[range.c1]
           if (activeRow && activeColumn) {
             await this.$refs.sheetTable?.setSelectCell?.(activeRow, activeColumn.key)
           }
@@ -3764,10 +3780,8 @@ export default {
   --vxe-ui-font-family: var(--font-family);
   --vxe-ui-font-size-small: 14px;
 
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 350px);
-  min-height: 480px;
+  width: 100%;
+  overflow: hidden;
   font-family: var(--font-family);
   outline: none;
   user-select: none;
@@ -3775,11 +3789,7 @@ export default {
 }
 .sheet-table-stage {
   position: relative;
-  flex: 1;
-  min-height: 0;
-}
-.sheet-table-stage :deep(.vxe-table) {
-  height: 100%;
+  width: 100%;
 }
 .sheet-wrap :deep(.vxe-table),
 .sheet-wrap :deep(.vxe-body--column),
@@ -3797,12 +3807,12 @@ export default {
   pointer-events: none;
   border: 2px solid var(--el-color-primary);
   transition:
-    width 120ms ease-out,
-    height 120ms ease-out,
-    transform 120ms ease-out;
+    width 80ms ease-out,
+    height 80ms ease-out,
+    transform 80ms ease-out;
   will-change: width, height, transform;
 }
-.sheet-range-overlay.is-dragging {
+.sheet-range-overlay.is-scrolling {
   transition: none;
 }
 .sheet-wrap :deep(.vxe-body--column.col--selected),
@@ -3877,6 +3887,11 @@ export default {
   border: 0;
   border-radius: 0;
   box-shadow: none;
+}
+.sheet-wrap :deep(.sheet-grid-editor .vxe-input--inner),
+.sheet-wrap :deep(.sheet-grid-editor .vxe-number-input--input) {
+  padding: var(--vxe-ui-table-cell-padding-small);
+  background: transparent;
 }
 .sheet-picker-editor {
   position: relative;

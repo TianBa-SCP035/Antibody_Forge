@@ -290,9 +290,6 @@ export function loadUserStartPagePath(): string | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { path?: string };
     const path = normalizeInternalPath(String(parsed?.path ?? ''));
-    if (path === '/discovery' || path === '/discovery/targets') {
-      return '/atlas/targets';
-    }
     return path || null;
   } catch {
     /* ignore */

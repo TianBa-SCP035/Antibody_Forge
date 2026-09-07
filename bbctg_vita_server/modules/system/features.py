@@ -183,9 +183,6 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
 
 DEFAULT_FEATURE_INDEX = {item["code"]: item for item in DEFAULT_FEATURE_FLAGS}
 OBSOLETE_FEATURE_CODES = {
-    # 千鼠万抗前缀已从 discovery 迁到 atlas；旧菜单码仅用于隐藏未迁移库中的残留行
-    "menu.discovery",
-    "menu.discovery.target_library",
     "feature.employee_sync",
     "setting.maintenance_enabled",
     "setting.site_title",

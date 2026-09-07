@@ -27,7 +27,7 @@ Antibody_Forge/
 | 模块 | 前端 | 后端 | 说明 |
 |------|------|------|------|
 | 认证 | `/auth/login`、`/auth/yunzhijia` | `/api/auth`、`/api/user/info` | 密码 / 云之家 ticket |
-| 千鼠万抗 · 靶点库 | `/discovery/targets` | `/api/discovery/targets/list` | 本地靶点主数据分页搜索与详情浏览 |
+| 千鼠万抗 · 靶点库 | `/atlas/targets` | `/api/atlas/targets/list` | 本地靶点主数据分页搜索与详情浏览 |
 | 小鼠免疫 | `/serum/workbench`、`/serum/list`、`/serum/detail`、`/serum/edit` 等 | `/api/serum`、`/api/serum/workbench` | 项目工作台（开做前准备）、实验列表、笼位、方案导出 |
 | 效价数据 | `/serum/titer` | `/api/serum/titer` | 靶点、FACS、ELISA、附件（可选 DRM） |
 | 效价实验列表 | `/serum/titer-orders` | `/api/serum/titer/order/*` | 效价工单；「工单」→ 镁伽流式 |

@@ -388,7 +388,7 @@ function ensureActiveTab() {
 function getPermissionModuleName(value: string) {
   const moduleCode = value.includes('.') ? value.split('.')[0] || '' : value;
   const map: Record<string, string> = {
-    discovery: '千鼠万抗',
+    atlas: '千鼠万抗',
     serum: '小鼠免疫',
     mega: '镁伽自动化',
     system: '系统管理',
@@ -1723,7 +1723,7 @@ onMounted(loadData);
             <el-col :span="12">
               <el-form-item label="业务模块">
                 <el-select v-model="bundleForm.module" style="width: 100%">
-                  <el-option label="千鼠万抗" value="discovery" />
+                  <el-option label="千鼠万抗" value="atlas" />
                   <el-option label="小鼠免疫" value="serum" />
                   <el-option label="镁伽自动化" value="mega" />
                   <el-option label="系统管理" value="system" />

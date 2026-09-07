@@ -314,7 +314,7 @@ import {
   type TargetItem,
   type TargetListQuery,
   type TargetStats,
-} from '#/api/discovery';
+} from '#/api/atlas';
 import { useStaleTabRefresh } from '#/utils/staleTabRefresh';
 
 interface DetailField {

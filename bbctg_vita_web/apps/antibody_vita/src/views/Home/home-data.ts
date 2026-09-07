@@ -137,7 +137,7 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
     subtitleKey: 'page.home.presetTargetLibrarySubtitle',
     icon: 'lucide:database',
     iconClass: 'bg-cyan-500/15 text-cyan-600',
-    url: '/discovery/targets',
+    url: '/atlas/targets',
   },
   {
     id: 'profile',
@@ -290,6 +290,9 @@ export function loadUserStartPagePath(): string | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { path?: string };
     const path = normalizeInternalPath(String(parsed?.path ?? ''));
+    if (path === '/discovery' || path === '/discovery/targets') {
+      return '/atlas/targets';
+    }
     return path || null;
   } catch {
     /* ignore */
@@ -328,8 +331,8 @@ export function canAccessStartPath(
   if (path === '/mega-automation/flow-work-orders') {
     return hasAccessByCodes(['mega.page.flow_work_order']);
   }
-  if (path === '/discovery/targets') {
-    return hasAccessByCodes(['discovery.page.target_library']);
+  if (path === '/atlas/targets') {
+    return hasAccessByCodes(['atlas.page.target_library']);
   }
   if (path.startsWith('/system')) {
     return hasAccessByCodes([...HOME_SYSTEM_ACCESS_CODES]);

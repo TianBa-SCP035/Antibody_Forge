@@ -73,5 +73,5 @@ export interface TargetListResult {
 }
 
 export function fetchTargetList(data: TargetListQuery, config?: PostConfig) {
-  return requestClient.post<TargetListResult>('/discovery/targets/list', data, config);
+  return requestClient.post<TargetListResult>('/atlas/targets/list', data, config);
 }

@@ -19,7 +19,7 @@
 
 ## 页面
 
-前端路径：`/discovery/targets`
+前端路径：`/atlas/targets`
 
 - 顶部提供有效总数和开发状态快捷筛选。
 - 搜索覆盖靶点编号、名称、官方全名、人/鼠基因名、别名、NCBI Gene ID、靶点分类、结构特性类别及治疗领域。
@@ -34,18 +34,18 @@
 ## API
 
 ```text
-POST /api/discovery/targets/list
+POST /api/atlas/targets/list
 ```
 
-请求体包含 `page`、`limit`、`keyword`、`status` 和 `include_inactive`。`status` 可为 `1`、`2`、`unknown` 或空。接口需要 `discovery.page.target_library` 权限。
+请求体包含 `page`、`limit`、`keyword`、`status` 和 `include_inactive`。`status` 可为 `1`、`2`、`unknown` 或空。接口需要 `atlas.page.target_library` 权限。
 
 ## 实现位置
 
 ```text
-bbctg_vita_server/modules/discovery/
-bbctg_vita_web/apps/antibody_vita/src/views/Discovery/TargetLibrary/
-bbctg_vita_web/apps/antibody_vita/src/api/discovery.ts
-bbctg_vita_web/apps/antibody_vita/src/router/routes/modules/discovery.ts
+bbctg_vita_server/modules/atlas/
+bbctg_vita_web/apps/antibody_vita/src/views/Atlas/TargetLibrary/
+bbctg_vita_web/apps/antibody_vita/src/api/atlas.ts
+bbctg_vita_web/apps/antibody_vita/src/router/routes/modules/atlas.ts
 ```
 
 靶点库只提供主数据查询，不在本页复制业务状态。

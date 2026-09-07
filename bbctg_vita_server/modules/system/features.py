@@ -14,17 +14,17 @@ from models.system import SysFeatureFlag, SysJobRunLog
 
 DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
     {
-        "code": "menu.discovery",
+        "code": "menu.atlas",
         "name": "千鼠万抗",
         "category": "menu",
         "description": "控制千鼠万抗父级菜单显示",
         "enabled": True,
         "visible": True,
         "sort_order": 5,
-        "config": {"path": "/discovery", "icon": "lucide:network"},
+        "config": {"path": "/atlas", "icon": "lucide:network"},
     },
     {
-        "code": "menu.discovery.target_library",
+        "code": "menu.atlas.target_library",
         "name": "靶点情报",
         "category": "menu",
         "description": "控制靶点情报页面显示",
@@ -32,9 +32,9 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "visible": True,
         "sort_order": 10,
         "config": {
-            "path": "/discovery/targets",
+            "path": "/atlas/targets",
             "icon": "lucide:database",
-            "parent_code": "menu.discovery",
+            "parent_code": "menu.atlas",
         },
     },
     {
@@ -183,6 +183,9 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
 
 DEFAULT_FEATURE_INDEX = {item["code"]: item for item in DEFAULT_FEATURE_FLAGS}
 OBSOLETE_FEATURE_CODES = {
+    # 千鼠万抗前缀已从 discovery 迁到 atlas；旧菜单码仅用于隐藏未迁移库中的残留行
+    "menu.discovery",
+    "menu.discovery.target_library",
     "feature.employee_sync",
     "setting.maintenance_enabled",
     "setting.site_title",

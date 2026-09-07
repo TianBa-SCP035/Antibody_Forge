@@ -5,12 +5,12 @@ from core.response import success
 from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
-from modules.discovery import service
+from modules.atlas import service
 from modules.system.permissions import require_permission
 
 
 router = APIRouter()
-TARGET_LIBRARY_PERMISSION = "discovery.page.target_library"
+TARGET_LIBRARY_PERMISSION = "atlas.page.target_library"
 
 
 @router.post("/targets/list")

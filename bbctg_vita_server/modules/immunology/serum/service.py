@@ -31,7 +31,7 @@ from models.immunology import (
 )
 from models.system import SysUser
 from models.target import Target
-from modules.discovery import service as discovery_service
+from modules.atlas import service as atlas_service
 from modules.immunology.project_lock import lock_experiment_owner, lock_project_by_id
 from modules.immunology.titer.service import (
     PENDING_BLOOD_COLLECTION_STATUS,
@@ -639,7 +639,7 @@ def get_target_options(
             if code in names
         ]
 
-    result = discovery_service.get_target_list(
+    result = atlas_service.get_target_list(
         db,
         {
             "page": 1,

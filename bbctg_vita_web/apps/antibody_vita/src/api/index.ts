@@ -1,4 +1,4 @@
 export * from './core';
-export * from './discovery';
+export * from './atlas';
 export * from './errors';
 export * from './serum';

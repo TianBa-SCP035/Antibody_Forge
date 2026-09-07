@@ -57,7 +57,7 @@
         style="width: 180px;"
         @change="handleFilter"
       >
-        <el-option v-for="item in speciesCrossOptions" :key="item" :label="item" :value="item" />
+        <el-option v-for="item in tokenMultiOptions('species_cross')" :key="item" :label="item" :value="item" />
       </el-select>
       <el-select
         v-model="listQuery.mouse_strain"
@@ -208,7 +208,7 @@
             class="filter-select"
             @change="handleFilter"
           >
-            <el-option v-for="item in optionLists.immuno_method" :key="item" :label="item" :value="item" />
+            <el-option v-for="item in tokenMultiOptions('immuno_method')" :key="item" :label="item" :value="item" />
           </el-select>
           <el-select
             v-model="listQuery.mouse_strain_category"
@@ -515,12 +515,12 @@
                 </template>
               </vxe-column>
               <vxe-column
-                v-else-if="column.edit === 'select' || column.edit === 'species'"
+                v-else-if="column.edit === 'select' || isMultiSelectColumn(column)"
                 :field="column.key"
                 :title="column.label"
                 :width="column.width"
                 :min-width="column.minWidth || column.width || 120"
-                :show-overflow="column.key !== 'species_cross'"
+                :show-overflow="!isTokenMultiKey(column.key)"
                 :edit-render="{ name: 'VxeInput' }"
                 :formatter="sheetFormatter(column)"
               >
@@ -533,7 +533,7 @@
                       v-model="row[column.key]"
                       class-name="sheet-grid-editor sheet-picker-control"
                       :filterable="isUserField(column)"
-                      :multiple="column.edit === 'species'"
+                      :multiple="isMultiSelectColumn(column)"
                       :options="sheetChoiceSelectOptions(column)"
                       :popup-config="{
                         className: 'sheet-picker-popup',
@@ -559,7 +559,7 @@
                 :min-width="column.minWidth || column.width || 120"
                 :align="column.key === 'sort_order' ? 'center' : undefined"
                 :header-align="column.key === 'sort_order' ? 'center' : undefined"
-                :show-overflow="column.key !== 'species_cross'"
+                :show-overflow="!isTokenMultiKey(column.key)"
                 :edit-render="sheetEditRender(column)"
                 :formatter="sheetFormatter(column)"
               />
@@ -709,21 +709,21 @@
                   placeholder="自动带出"
                 />
                 <el-select
-                  v-else-if="field.type === 'species'"
-                  :model-value="speciesCrossList(editingRow)"
-                  class="drawer-select species-cross-select"
+                  v-else-if="field.type === 'multi'"
+                  :model-value="tokenMultiList(editingRow, field.key)"
+                  class="drawer-select token-multi-select"
                   multiple
                   filterable
                   style="width: 100%;"
                   :disabled="isFieldLocked(editingRow, field)"
-                  @change="onSpeciesCrossChange(editingRow, $event)"
+                  @change="onTokenMultiChange(editingRow, field.key, $event)"
                 >
                   <template #tag>
-                    <span class="target-selected-text species-selected-text">
-                      {{ speciesCrossText(editingRow) }}
+                    <span class="target-selected-text token-multi-selected-text">
+                      {{ tokenMultiText(editingRow, field.key) }}
                     </span>
                   </template>
-                  <el-option v-for="item in speciesCrossOptions" :key="item" :label="item" :value="item" />
+                  <el-option v-for="item in tokenMultiOptions(field.key)" :key="item" :label="item" :value="item" />
                 </el-select>
                 <SerumUserSelect
                   v-else-if="isUserField(field)"
@@ -866,7 +866,7 @@ const PLAN_STATUS_OPTIONS = [...WORKBENCH_PLAN_STATUS_OPTIONS]
 const PRIORITY_OPTIONS = [...WORKBENCH_PRIORITY_OPTIONS]
 const REVIEW_STATUS_OPTIONS = ['未审', '已通过', '驳回']
 const MOUSE_STATUS_OPTIONS = ['未定', '扩繁中', '可运', '在途', '已到']
-const ZYGOSITY_OPTIONS = ['纯合', '杂合']
+const ZYGOSITY_OPTIONS = ['纯合', '杂合', '混合']
 const STUDY_TYPE_OPTIONS = [
   '数据包',
   '客户关注',
@@ -881,9 +881,13 @@ const STUDY_TYPE_OPTIONS = [
 const MOUSE_STRAIN_CATEGORY_OPTIONS = [...SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS]
 const SPECIES_CROSS_OPTIONS = ['人', '猴', '鼠', '狗', '猫', '空白']
 const IMMUNO_METHOD_OPTIONS = ['蛋白', 'DNA', 'LNP', '细胞', '混合']
+const TOKEN_MULTI_OPTIONS = {
+  species_cross: SPECIES_CROSS_OPTIONS,
+  immuno_method: IMMUNO_METHOD_OPTIONS,
+}
 const ANTIGEN_SOURCE_OPTIONS = ['内部制备', '外购', '客户提供']
 const CELL_PREP_OPTIONS = ['未开始', '进行中', '已完成', '不需要']
-const MOUSE_REGION_OPTIONS = ['北京', '海门', '苏州', '客户']
+const MOUSE_REGION_OPTIONS = ['北京', '海门', '客户']
 const YES_NO_OPTIONS = ['是', '否']
 const REQUIRED_STATUS_DEFAULTS = Object.freeze({
   priority: '正常',
@@ -965,10 +969,10 @@ const EDITOR_SECTIONS = [
     title: '方案要点',
     fields: [
       { key: 'study_type', label: '课题类型', type: 'select', optionsKey: 'study_type', lock: 'aligned' },
-      { key: 'immuno_method', label: '免疫方式', type: 'select', optionsKey: 'immuno_method' },
+      { key: 'immuno_method', label: '免疫方式', type: 'multi' },
       { key: 'mouse_strain_category', label: '归类鼠型', type: 'select', optionsKey: 'mouse_strain_category', lock: 'aligned' },
       { key: 'mouse_strain', label: '小鼠品系', type: 'text', lock: 'aligned' },
-      { key: 'species_cross', label: '种属交叉', type: 'species', wide: true },
+      { key: 'species_cross', label: '种属交叉', type: 'multi', wide: true },
       { key: 'remark', label: '备注', type: 'textarea', maxlength: 255, lock: 'aligned', wide: true },
     ],
   },
@@ -1016,11 +1020,11 @@ const SHEET_COLUMNS = [
   { key: 'project_set_code', label: '项目集编号', edit: 'text' },
   { key: 'project_code', label: '免疫项目号', edit: 'text' },
   { key: 'study_type', label: '课题类型', edit: 'select', optionsKey: 'study_type' },
-  { key: 'species_cross', label: '种属交叉', edit: 'species', minWidth: 160 },
+  { key: 'species_cross', label: '种属交叉', edit: 'multi', minWidth: 160 },
   { key: 'owner', label: '开展人', width: 90, edit: 'select', optionsKey: 'owners' },
   { key: 'reviewer', label: '审核人', width: 90, edit: 'text' },
   { key: 'review_status', label: '审核结果', width: 90, edit: 'select', optionsKey: 'review_status' },
-  { key: 'immuno_method', label: '免疫方式', edit: 'select', optionsKey: 'immuno_method' },
+  { key: 'immuno_method', label: '免疫方式', edit: 'multi', minWidth: 140 },
   { key: 'remark', label: '备注', edit: 'text' },
   { key: 'mouse_scheme_no', label: '小鼠方案号', edit: 'text' },
   { key: 'mouse_strain_category', label: '归类鼠型', edit: 'select', optionsKey: 'mouse_strain_category' },
@@ -1196,8 +1200,6 @@ export default {
         study_type: [...STUDY_TYPE_OPTIONS],
         mouse_strain: [],
         mouse_strain_category: [...MOUSE_STRAIN_CATEGORY_OPTIONS],
-        species_cross: [...SPECIES_CROSS_OPTIONS],
-        immuno_method: [...IMMUNO_METHOD_OPTIONS],
         antigen_source: [...ANTIGEN_SOURCE_OPTIONS],
         cell_prep_status: [...CELL_PREP_OPTIONS],
         mouse_region: [...MOUSE_REGION_OPTIONS],
@@ -1210,7 +1212,6 @@ export default {
         plan_status: [...PLAN_STATUS_OPTIONS],
       },
       yesNoOptions: YES_NO_OPTIONS,
-      speciesCrossOptions: SPECIES_CROSS_OPTIONS,
       editorSections: EDITOR_SECTIONS,
       statusViews: STATUS_VIEWS,
       sheetColumns: loadSheetColumns(),
@@ -1419,14 +1420,6 @@ export default {
         this.optionLists.pms = this.uniq(data?.pms || [])
         this.optionLists.owners = this.uniq(data?.owners || [])
         this.optionLists.reviewers = this.uniq(data?.reviewers || [])
-        this.optionLists.study_type = this.uniq([
-          ...STUDY_TYPE_OPTIONS,
-          ...(data?.study_types || []),
-        ])
-        this.optionLists.immuno_method = this.uniq([
-          ...IMMUNO_METHOD_OPTIONS,
-          ...(data?.immuno_methods || []),
-        ])
         this.optionLists.statuses = this.uniq([
           ...PLAN_STATUS_OPTIONS,
           '已开展',
@@ -1454,40 +1447,55 @@ export default {
     },
     fieldOptions(field, row = null) {
       if (field.type === 'yesno') return this.optionLists.yesno
-      if (field.type === 'species') return SPECIES_CROSS_OPTIONS
+      if (field.type === 'multi') return this.tokenMultiOptions(field.key)
+      if (field.key === 'study_type') return STUDY_TYPE_OPTIONS
       if (field.key === 'mouse_strain_category') return MOUSE_STRAIN_CATEGORY_OPTIONS
+      if (field.key === 'mouse_region') return MOUSE_REGION_OPTIONS
+      if (field.key === 'mouse_zygosity') return ZYGOSITY_OPTIONS
+      if (field.key === 'antigen_source') return ANTIGEN_SOURCE_OPTIONS
       if (field.type === 'status' || field.optionsKey === 'plan_status') {
         if (row?.aligned_locked && row.display_status) return [row.display_status]
         return this.planStatusOptions
       }
       return this.mergedOptions(field.optionsKey || field.key)
     },
-    splitSpeciesCross(value) {
-      if (Array.isArray(value)) return this.normalizeSpeciesCrossSelection(value)
+    isTokenMultiKey(key) {
+      return Boolean(TOKEN_MULTI_OPTIONS[key])
+    },
+    isMultiSelectColumn(column) {
+      return column?.edit === 'multi' || this.isTokenMultiKey(column?.key)
+    },
+    tokenMultiOptions(key) {
+      return TOKEN_MULTI_OPTIONS[key] || []
+    },
+    normalizeTokenMulti(key, values) {
+      const options = this.tokenMultiOptions(key)
+      const raw = (Array.isArray(values) ? values : [values]).map((item) => String(item || '').trim()).filter(Boolean)
+      if (!raw.length) return []
+      if (raw.some((item) => !options.includes(item))) return []
+      return options.filter((item) => raw.includes(item))
+    },
+    splitTokenMulti(key, value) {
+      if (Array.isArray(value)) return this.normalizeTokenMulti(key, value)
       const text = String(value || '').trim()
       if (!text) return []
-      return this.normalizeSpeciesCrossSelection(
+      return this.normalizeTokenMulti(
+        key,
         text.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
       )
     },
-    joinSpeciesCross(values) {
-      return this.normalizeSpeciesCrossSelection(values).join(',')
+    joinTokenMulti(key, values) {
+      return this.normalizeTokenMulti(key, values).join(',')
     },
-    normalizeSpeciesCrossSelection(values) {
-      const raw = (Array.isArray(values) ? values : [values]).map((item) => String(item || '').trim()).filter(Boolean)
-      if (!raw.length) return []
-      if (raw.some((item) => !SPECIES_CROSS_OPTIONS.includes(item))) return []
-      return SPECIES_CROSS_OPTIONS.filter((item) => raw.includes(item))
+    tokenMultiList(row, key) {
+      return this.splitTokenMulti(key, row?.[key])
     },
-    speciesCrossList(row) {
-      return this.splitSpeciesCross(row?.species_cross)
+    tokenMultiText(row, key) {
+      return this.tokenMultiList(row, key).join('，')
     },
-    speciesCrossText(row) {
-      return this.speciesCrossList(row).join('，')
-    },
-    onSpeciesCrossChange(row, values) {
-      row.species_cross = this.normalizeSpeciesCrossSelection(values)
-      this.persistRow(row, 'species_cross')
+    onTokenMultiChange(row, key, values) {
+      row[key] = this.normalizeTokenMulti(key, values)
+      this.persistRow(row, key)
     },
     async searchTargetOptions(keyword, selectedCodes) {
       const requestToken = ++this.targetRequestToken
@@ -1570,9 +1578,10 @@ export default {
       return this.isRequiredStatusField(field)
         || field?.type === 'yesno'
         || field?.key === 'study_type'
-        || field?.key === 'immuno_method'
         || field?.key === 'mouse_strain_category'
+        || field?.key === 'mouse_zygosity'
         || field?.key === 'mouse_region'
+        || field?.key === 'antigen_source'
         || field?.key === 'cell_prep_status'
     },
     drawerFieldValue(field, row) {
@@ -1729,8 +1738,8 @@ export default {
       if (field === 'target_codes') {
         return JSON.stringify(Array.isArray(value) ? value : this.parseCodes(value))
       }
-      if (field === 'species_cross') {
-        return this.joinSpeciesCross(value)
+      if (this.isTokenMultiKey(field)) {
+        return this.joinTokenMulti(field, value)
       }
       return String(value ?? '')
     },
@@ -1852,13 +1861,13 @@ export default {
     formatPlanStatus({ row, cellValue }) {
       return row?.display_status || cellValue || ''
     },
-    formatSpeciesCross({ cellValue }) {
-      return this.splitSpeciesCross(cellValue).join('，')
+    formatTokenMulti(key) {
+      return ({ cellValue }) => this.splitTokenMulti(key, cellValue).join('，')
     },
     sheetFormatter(column) {
       if (column.key === 'target_codes') return this.formatCodes
       if (column.key === 'plan_status') return this.formatPlanStatus
-      if (column.key === 'species_cross') return this.formatSpeciesCross
+      if (this.isTokenMultiKey(column.key)) return this.formatTokenMulti(column.key)
       if (column.key === 'mouse_age_weeks') return this.formatMouseAgeWeeks
       return undefined
     },
@@ -1869,8 +1878,12 @@ export default {
       const key = column.optionsKey === 'plan_status' ? 'plan_status' : (column.optionsKey || column.key)
       if (key === 'plan_status') return this.planStatusOptions
       if (key === 'priority') return [...PRIORITY_OPTIONS]
+      if (key === 'study_type') return [...STUDY_TYPE_OPTIONS]
       if (key === 'mouse_strain_category') return [...MOUSE_STRAIN_CATEGORY_OPTIONS]
-      if (key === 'species_cross' || column.edit === 'species') return SPECIES_CROSS_OPTIONS
+      if (key === 'mouse_region') return [...MOUSE_REGION_OPTIONS]
+      if (key === 'mouse_zygosity') return [...ZYGOSITY_OPTIONS]
+      if (key === 'antigen_source') return [...ANTIGEN_SOURCE_OPTIONS]
+      if (this.isMultiSelectColumn(column)) return this.tokenMultiOptions(key)
       if (this.isUserField(column)) {
         return this.uniq([
           ...this.usedUserOptions(column),
@@ -1883,17 +1896,17 @@ export default {
       return this.sheetSelectOptions(column).map((value) => ({ label: value, value }))
     },
     sheetChoiceDirectValue(row, column) {
-      if (column.edit !== 'species') return row[column.key]
+      if (!this.isMultiSelectColumn(column)) return row[column.key]
       const value = row[column.key]
       return Array.isArray(value)
-        ? this.normalizeSpeciesCrossSelection(value).join('，')
+        ? this.normalizeTokenMulti(column.key, value).join('，')
         : String(value ?? '')
     },
     sheetPickerDisplayValue(row, column) {
       if (column.key === 'target_codes') return this.formatCodesText(row.target_codes)
       if (column.key === 'target_name') return row.target_name || ''
       if (column.key === 'plan_status') return row.plan_status || row.display_status || ''
-      if (column.edit === 'species') return this.splitSpeciesCross(row[column.key]).join('，')
+      if (this.isMultiSelectColumn(column)) return this.splitTokenMulti(column.key, row[column.key]).join('，')
       return row[column.key] ?? ''
     },
     setSheetChoiceDirectValue(row, key, value) {
@@ -1980,9 +1993,12 @@ export default {
       }
       if (key === 'target_codes') return { ok: true, value: this.uniq(this.parseCodes(raw)) }
       if (DATE_FIELD_KEYS.has(key)) return this.normalizeSheetDate(raw)
-      if (key === 'species_cross') {
-        const next = this.splitSpeciesCross(raw)
-        return next.length || raw === '' ? { ok: true, value: next } : { ok: false, reason: 'option' }
+      if (this.isTokenMultiKey(key)) {
+        const next = this.splitTokenMulti(key, Array.isArray(text) ? text : raw)
+        const empty = Array.isArray(text)
+          ? text.every((item) => !String(item || '').trim())
+          : raw === ''
+        return next.length || empty ? { ok: true, value: next } : { ok: false, reason: 'option' }
       }
       if (column.edit === 'number') {
         const value = Number(raw)
@@ -2288,10 +2304,10 @@ export default {
     },
     sheetDirectTextValue(row, key) {
       if (key === 'target_codes') return this.formatCodesText(row.target_codes)
-      if (key === 'species_cross') {
-        return Array.isArray(row.species_cross)
-          ? this.normalizeSpeciesCrossSelection(row.species_cross).join('，')
-          : String(row.species_cross ?? '')
+      if (this.isTokenMultiKey(key)) {
+        return Array.isArray(row[key])
+          ? this.normalizeTokenMulti(key, row[key]).join('，')
+          : String(row[key] ?? '')
       }
       return String(row[key] ?? '')
     },
@@ -2497,7 +2513,7 @@ export default {
           if (!column) continue
           let value = row[column.key]
           if (column.key === 'target_codes') value = this.formatCodesText(value)
-          if (column.key === 'species_cross') value = this.joinSpeciesCross(value)
+          if (this.isTokenMultiKey(column.key)) value = this.joinTokenMulti(column.key, value)
           if (column.key === 'plan_status') value = row.display_status || value
           if (column.key === 'mouse_age_weeks') value = this.mouseAgeWeeksValue(row, value)
           cells.push(value == null ? '' : String(value))
@@ -2562,9 +2578,9 @@ export default {
         )
         return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right))
       }
-      if (key === 'species_cross') {
-        return JSON.stringify(this.splitSpeciesCross(left))
-          === JSON.stringify(this.splitSpeciesCross(right))
+      if (this.isTokenMultiKey(key)) {
+        return JSON.stringify(this.splitTokenMulti(key, left))
+          === JSON.stringify(this.splitTokenMulti(key, right))
       }
       return String(left ?? '').trim() === String(right ?? '').trim()
     },
@@ -2928,7 +2944,8 @@ export default {
         if (!String(next[key] ?? '').trim()) next[key] = fallback
       })
       next.priority = canonicalizeWorkbenchPriority(next.priority)
-      next.species_cross = this.splitSpeciesCross(next.species_cross)
+      next.species_cross = this.splitTokenMulti('species_cross', next.species_cross)
+      next.immuno_method = this.splitTokenMulti('immuno_method', next.immuno_method)
       return next
     },
     replaceRow(saved) {
@@ -2949,8 +2966,8 @@ export default {
     payloadRow(row, fields = []) {
       const payload = { id: row.id }
       fields.forEach((field) => {
-        payload[field] = field === 'species_cross'
-          ? this.joinSpeciesCross(row.species_cross)
+        payload[field] = this.isTokenMultiKey(field)
+          ? this.joinTokenMulti(field, row[field])
           : row[field]
       })
       return payload
@@ -3029,7 +3046,7 @@ export default {
           this.listQuery.page = Math.max(1, Math.ceil(nextTotal / this.listQuery.limit))
         }
         await this.getList()
-        if (saved?.id) this.openEditor(saved)
+        if (saved?.id && this.viewMode === 'workbench') this.openEditor(saved)
       } catch (err) {
         notifyApiError(err, { messages: SERUM_ERRORS.workbench.save })
       } finally {
@@ -4089,12 +4106,12 @@ export default {
   color: #606266;
   font-size: 13px;
 }
-.species-cross-select :deep(.el-select__selection),
-.species-cross-select :deep(.el-select__tags) {
+.token-multi-select :deep(.el-select__selection),
+.token-multi-select :deep(.el-select__tags) {
   flex-wrap: nowrap;
   min-width: 0;
 }
-.species-selected-text {
+.token-multi-selected-text {
   max-width: none;
   overflow: visible;
   text-overflow: clip;

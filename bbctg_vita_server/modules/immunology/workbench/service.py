@@ -54,9 +54,10 @@ MOUSE_STRAIN_CATEGORY_OPTIONS = (
     "RN-VR",
     "RN-VM-KO",
 )
-MOUSE_REGION_OPTIONS = ("北京", "海门", "苏州", "客户")
+MOUSE_REGION_OPTIONS = ("北京", "海门", "客户")
 REQUIRED_YES_NO_DEFAULTS = {"antigen_ready": "否", "can_start": "否"}
 SPECIES_CROSS_OPTIONS = ("人", "猴", "鼠", "狗", "猫", "空白")
+IMMUNO_METHOD_OPTIONS = ("蛋白", "DNA", "LNP", "细胞", "混合")
 DEFAULT_PROJECT_STATUS = "规划中"
 TEMP_ID_RANDOM_LEN = 4
 TEMP_ID_MAX_ATTEMPTS = 8
@@ -272,7 +273,7 @@ def _priority_rank(value: Any) -> int:
         return len(PRIORITY_ORDER)
 
 
-def _normalize_species_cross(value: Any) -> str | None:
+def _normalize_csv_options(value: Any, options: tuple[str, ...], error: str) -> str | None:
     if value is None:
         return None
     if isinstance(value, (list, tuple)):
@@ -281,12 +282,20 @@ def _normalize_species_cross(value: Any) -> str | None:
         text = str(value).strip()
         if not text:
             return None
-        tokens = [part.strip() for part in text.split(",") if part.strip()]
-    allowed = set(SPECIES_CROSS_OPTIONS)
+        tokens = [part.strip() for part in text.replace("，", ",").split(",") if part.strip()]
+    allowed = set(options)
     if any(token not in allowed for token in tokens):
-        raise ValueError("种属交叉包含不允许的选项")
-    ordered = [option for option in SPECIES_CROSS_OPTIONS if option in tokens]
+        raise ValueError(error)
+    ordered = [option for option in options if option in tokens]
     return ",".join(ordered) or None
+
+
+def _normalize_species_cross(value: Any) -> str | None:
+    return _normalize_csv_options(value, SPECIES_CROSS_OPTIONS, "种属交叉包含不允许的选项")
+
+
+def _normalize_immuno_method(value: Any) -> str | None:
+    return _normalize_csv_options(value, IMMUNO_METHOD_OPTIONS, "免疫方式包含不允许的选项")
 
 
 def _band_index_range(others: list[Any], priority: Any) -> tuple[int, int]:
@@ -442,6 +451,10 @@ def serialize_row(
 ) -> dict[str, Any]:
     data = _overlay_identity(row.to_dict(), project)
     data["species_cross"] = _normalize_species_cross(data.get("species_cross")) or ""
+    try:
+        data["immuno_method"] = _normalize_immuno_method(data.get("immuno_method")) or ""
+    except ValueError:
+        data["immuno_method"] = str(data.get("immuno_method") or "").strip()
     return data
 
 
@@ -460,6 +473,11 @@ def _comparison_value(field: str, value: Any) -> Any:
         return _normalize_target_codes(value)
     if field == "species_cross":
         return _normalize_species_cross(value)
+    if field == "immuno_method":
+        try:
+            return _normalize_immuno_method(value)
+        except ValueError:
+            return None
     if field == "priority":
         return _priority_value(value)
     if field in YES_NO_FIELDS:
@@ -523,6 +541,8 @@ def _apply_fields(row: SerumImmWorkbench, data: dict[str, Any], fields: list[str
                 raise ValueError("运输状态不在允许的选项中")
         elif field == "species_cross":
             value = _normalize_species_cross(value)
+        elif field == "immuno_method":
+            value = _normalize_immuno_method(value)
         elif field == "project_code":
             value = _compact_identifier(value) or None
         elif field in WORKBENCH_REMARK_FIELDS:
@@ -708,13 +728,21 @@ def _keyword_rank_expr(keyword: str):
     )
 
 
-def _species_cross_filter(value: str):
+def _csv_token_filter(column, value: str):
     return or_(
-        SerumImmWorkbench.species_cross == value,
-        SerumImmWorkbench.species_cross.like(f"{value},%"),
-        SerumImmWorkbench.species_cross.like(f"%,{value}"),
-        SerumImmWorkbench.species_cross.like(f"%,{value},%"),
+        column == value,
+        column.like(f"{value},%"),
+        column.like(f"%,{value}"),
+        column.like(f"%,{value},%"),
     )
+
+
+def _species_cross_filter(value: str):
+    return _csv_token_filter(SerumImmWorkbench.species_cross, value)
+
+
+def _immuno_method_filter(value: str):
+    return _csv_token_filter(SerumImmWorkbench.immuno_method, value)
 
 
 def _has_scheme_data_expr():
@@ -802,7 +830,7 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, skip_status: bool = False
     if display_status:
         stmt = stmt.where(_display_status_expr() == display_status)
     if immuno_method:
-        stmt = stmt.where(SerumImmWorkbench.immuno_method == immuno_method)
+        stmt = stmt.where(_immuno_method_filter(immuno_method))
     if mouse_strain:
         stmt = stmt.where(
             _composed_value_filter(
@@ -1066,7 +1094,12 @@ def get_options(db: Session) -> dict[str, list[str]]:
             SerumImmWorkbench.plan_status,
             SerumImmProject.project_status,
         ),
-        "immuno_methods": values(SerumImmWorkbench.immuno_method),
+        "immuno_methods": sorted({
+            part.strip()
+            for value in values(SerumImmWorkbench.immuno_method)
+            for part in str(value).replace("，", ",").split(",")
+            if part.strip()
+        }),
     }
 
 

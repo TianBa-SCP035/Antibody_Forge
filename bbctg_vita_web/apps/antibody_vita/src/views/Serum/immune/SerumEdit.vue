@@ -241,6 +241,7 @@
                         <el-option label="猴" value="猴" />
                         <el-option label="鼠" value="鼠" />
                         <el-option label="狗" value="狗" />
+                        <el-option label="猫" value="猫" />
                     </el-select>
                 </template>
             </el-table-column>

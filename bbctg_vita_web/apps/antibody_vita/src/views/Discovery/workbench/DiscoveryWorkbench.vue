@@ -336,10 +336,10 @@
             />
           </template>
         </el-table-column>
-        <el-table-column prop="target_name" label="靶点名称" align="center" min-width="100" show-overflow-tooltip />
         <el-table-column prop="pm" label="PM" align="center" min-width="100" show-overflow-tooltip />
-        <el-table-column prop="mouse_strain_category" label="归类鼠型" align="center" min-width="100" show-overflow-tooltip />
         <el-table-column prop="project_code" label="项目编号" align="center" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="target_name" label="靶点名称" align="center" min-width="100" show-overflow-tooltip />
+        <el-table-column prop="mouse_strain_category" label="归类鼠型" align="center" min-width="100" show-overflow-tooltip />
         <el-table-column label="筛选方式" align="center" min-width="140">
           <template #default="{ row }">
             <WorkbenchMultiTagEditor

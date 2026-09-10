@@ -118,7 +118,16 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
 靶点库首版只读；列表与详情接口均使用该页面权限，不登记 `sys_permission_api`。
 
-### 2.4 系统模块（`system.*`）
+### 2.4 抗体发现（`discovery.*`）
+
+| 权限码 | 类型 | 说明 |
+|--------|------|------|
+| `discovery.page.workbench` | page | 抗体发现项目工作台列表 |
+| `discovery.workbench.edit` | action | 新增、保存、复制、删除安排 |
+
+写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/copy`、`/delete`、`/reorder` 登记 `sys_permission_api`。字段与筛选方式见 [modules/discovery/workbench.md](./modules/discovery/workbench.md)。权限码在 `sys_permission`（`discovery.page.workbench` / `discovery.workbench.edit`），菜单开关在 `sys_feature_flag`（`menu.discovery` / `menu.discovery.workbench`）。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。发现工作台选靶点 / 人名时复用 `GET /api/serum/target_options` 与 `/user_options`，这两条目录接口同时接受发现工作台权限。
+
+### 2.5 系统模块（`system.*`）
 
 | 权限码 | 类型 | 说明 |
 |--------|------|------|
@@ -132,7 +141,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
 **page 与 action**：`page.*` 管进路由；Tab 与写接口靠对应的 `manage` / `view` action。
 
-### 2.5 权限包与角色（示例种子）
+### 2.6 权限包与角色（示例种子）
 
 `docs/vita-database.sql` 文末的权限包 / 角色仅为空库示例；新增页面只加权限点，不要改现网角色/权限包。
 
@@ -307,7 +316,22 @@ flowchart LR
 
 同一 path 何时需要多行：仅当审计文案需区分时（例如 `/save` 同时挂 `*.create` 与 `*.edit`，按 body 是否有 `id` 选型）。`edit` 与 `edit_all`（或多权限 OR 鉴权）**不必**各写一行，登记一条代表性写映射即可。
 
-**操作日志展示**：列表分 **目标类型**（如「系统功能」「工单」）与 **目标** 两列。目标列优先显示 `target_label`；若与 `target_id` 不同则拼为 `名称 / ID 编码`（不再重复目标类型前缀）。示例：手动执行镁伽同步 → 目标类型「系统功能」，目标「镁伽工单状态同步 / ID job.mega_labillion_status_sync」。
+**操作日志约定**（`modules/system/audit.py`）：一次写请求一行日志，不拆成 N 行，也不把整份请求体塞进 detail。库里分开放，列表再拼。
+
+| 存哪 | 是什么 |
+|------|--------|
+| `target_id` | 被改那一行的表主键（拖行用 `moved_id`；批量用第一条；没有主键才退到实验号） |
+| `target_label` | 一个业务号。优先实验号，否则项目编号，再否则项目名称；工单用订单编号；用户用显示名。按主键查库，不从正在改的框取值，也不写「等 N 条」 |
+| `detail.change` | 仅当请求体除身份 / 协议字段外只有一个可展示的标量（单字段保存）。`_` 开头（如免疫台 `_expected`）、`target_codes`（有靶点名时）、`reviewer`（有审核状态时）不算。整行保存、嵌套 JSON、与业务号相同则不写 |
+| `detail.count` | 仅当 `items` / `user_ids` / `targets` / `pcs` 多于 1 条 |
+
+列表把「改哪一条」和「这次写入的值」分成两列：
+
+- **目标**：`25D888888 / ID 4`；批量 `25D888888 等 12 条 / ID 4`，没有业务号时 `共 12 条`；定时任务「立即执行」等没有行对象时只显示任务名，不拼 `/ ID`；什么都解析不到则 `-`（操作列仍在）
+- **变更**：仅单字段保存有值，例如 `CD55`；整行 / 删除 / 复制 / 排序 / 批量为空（`-`），操作列已经说明做了什么
+- 旧日志没有 `detail.change` / `detail.count` 时，目标仍只显示当时存下的 `target_label`，变更列为 `-`
+
+`/ ID` 只拼数字主键，不拼实验号或 `job_code`。
 
 **不宜登记**的写接口示例：`POST .../sync-labillion-status`（详情页自动刷新，非人员操作）。**应登记**的示例：`POST /api/system/features/jobs/run`（人员点击「立即执行」）。
 
@@ -321,6 +345,7 @@ flowchart LR
 |----------|------|------|
 | `menu` | `menu.atlas`、`menu.atlas.target_library` | 千鼠万抗侧栏 |
 | `menu` | `menu.serum`、`menu.serum.workbench`、`menu.serum.list`、`menu.serum.titer_order` | 免疫实验侧栏 |
+| `menu` | `menu.discovery`、`menu.discovery.workbench` | 抗体发现侧栏 |
 | `menu` | `menu.mega_automation`、`menu.mega_automation.flow_work_orders` | 镁伽自动化侧栏 |
 | `menu` | `menu.system`、`menu.system.user_permission`、`menu.system.features` | 系统管理侧栏 |
 | `feature` | `feature.drm_file_security` | DRM 上传解密 / 下载加密（请求时读库，立即生效；另需 env 与 SDK） |
@@ -375,10 +400,12 @@ sequenceDiagram
 | 血清 API | `bbctg_vita_server/modules/immunology/serum/routes.py` |
 | 效价 API | `bbctg_vita_server/modules/immunology/titer/routes.py` |
 | 细胞库存 API | `bbctg_vita_server/modules/immunology/cell/routes.py` |
+| 抗体发现 API | `bbctg_vita_server/modules/discovery/workbench/routes.py` |
 | 镁伽 API | `bbctg_vita_server/modules/mega_automation/routes.py` |
 | 认证 | `bbctg_vita_server/modules/auth/` |
 | 路由守卫 | `bbctg_vita_web/apps/antibody_vita/src/router/guard.ts` |
 | 系统首页 | `bbctg_vita_web/apps/antibody_vita/src/views/Home/` |
 | 血清前端权限 | `bbctg_vita_web/apps/antibody_vita/src/utils/serumPermission.ts` |
 | 镁伽前端权限 | `bbctg_vita_web/apps/antibody_vita/src/utils/megaPermission.ts` |
+| 抗体发现前端权限 | `bbctg_vita_web/apps/antibody_vita/src/utils/discoveryPermission.ts` |
 | ORM 模型 | `bbctg_vita_server/models/system.py` |

@@ -1,0 +1,62 @@
+.drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+.drawer-heading {
+  min-width: 0;
+}
+.drawer-title {
+  margin: 0;
+  color: var(--el-text-color-primary);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.drawer-header-meta {
+  margin: 2px 0 0;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.drawer-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin: -2px -4px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #909399;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.drawer-close:hover {
+  color: var(--el-text-color-primary);
+}
+.drawer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0 0 8px;
+}
+.drawer-toolbar-actions,
+.drawer-nav {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+}
+.drawer-toolbar-actions :deep(.action-cell) {
+  justify-content: flex-start;
+}
+.drawer-nav :deep(.el-button) {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 10px;
+}

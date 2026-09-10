@@ -482,8 +482,32 @@ def _project_revision(snapshot: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def get_detail(db: Session, project_id: int) -> dict | None:
-    project = db.get(SerumImmProject, project_id)
+def get_detail(
+    db: Session,
+    project_id: int | None = None,
+    experiment_id: str | None = None,
+) -> dict | None:
+    project = None
+    if project_id:
+        project = db.get(SerumImmProject, project_id)
+    else:
+        normalized = str(experiment_id or "").strip()
+        compacted = "".join(normalized.split())
+        if not compacted:
+            return None
+        project = db.scalar(
+            select(SerumImmProject).where(
+                SerumImmProject.experiment_id == normalized,
+                SerumImmProject.project_status != "deleted",
+            )
+        )
+        if project is None and compacted != normalized:
+            project = db.scalar(
+                select(SerumImmProject).where(
+                    SerumImmProject.experiment_id == compacted,
+                    SerumImmProject.project_status != "deleted",
+                )
+            )
     if not project:
         return None
     exp_id = project.experiment_id

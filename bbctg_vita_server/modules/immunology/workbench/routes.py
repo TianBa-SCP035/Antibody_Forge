@@ -50,16 +50,9 @@ class WorkbenchIdRequest(BaseModel):
     id: int = Field(gt=0)
 
 
-class WorkbenchQueueSnapshot(BaseModel):
-    id: int = Field(gt=0)
-    sort_order: int = Field(gt=0)
-    priority: str
-
-
 class WorkbenchReorderRequest(BaseModel):
-    ids: list[int] = Field(min_length=2)
     moved_id: int = Field(gt=0)
-    expected_rows: list[WorkbenchQueueSnapshot] = Field(min_length=2)
+    target_id: int = Field(gt=0)
 
 
 def _actor_name(user: SysUser) -> str:
@@ -100,11 +93,7 @@ def _run_write(db: Session, fn):
         message = str(exc)
         if message == "工作台记录不存在":
             raise HTTPException(status_code=404, detail=message) from exc
-        if (
-            "不属于当前工作台" in message
-            or "已被其他用户修改" in message
-            or "队列已变化" in message
-        ):
+        if "不属于当前工作台" in message or "已被其他用户修改" in message:
             raise HTTPException(status_code=409, detail=message) from exc
         raise HTTPException(status_code=422, detail=message) from exc
     except Exception as exc:
@@ -291,9 +280,8 @@ def reorder_workbench(
     def _reorder():
         return service.reorder(
             db,
-            data.ids,
-            moved_id=data.moved_id,
-            expected_rows=[item.model_dump() for item in data.expected_rows],
+            data.moved_id,
+            data.target_id,
             edit_scopes=edit_scopes,
         )
 

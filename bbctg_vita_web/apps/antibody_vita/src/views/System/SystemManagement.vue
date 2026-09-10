@@ -389,6 +389,7 @@ function getPermissionModuleName(value: string) {
   const moduleCode = value.includes('.') ? value.split('.')[0] || '' : value;
   const map: Record<string, string> = {
     atlas: '千鼠万抗',
+    discovery: '抗体发现',
     serum: '小鼠免疫',
     mega: '镁伽自动化',
     system: '系统管理',
@@ -458,12 +459,24 @@ function formatLogAction(log: SystemOperationLog) {
 function formatLogTarget(log: SystemOperationLog) {
   const detail = getLogDetail(log);
   const label = log.target_label || detail.target_label;
-  if (label && log.target_id && String(label) !== String(log.target_id)) {
-    return `${label} / ID ${log.target_id}`;
+  const count = Number(detail.count) || 0;
+  let text = label || '';
+  if (count > 1) {
+    text = text ? `${text} 等 ${count} 条` : `共 ${count} 条`;
   }
-  if (label) return label;
-  if (log.target_id) return String(log.target_id);
+  const id = log.target_id != null && String(log.target_id).trim() ? String(log.target_id).trim() : '';
+  if (text && /^\d+$/.test(id) && id !== text) {
+    return `${text} / ID ${id}`;
+  }
+  if (text) return text;
+  if (id) return id;
   return '-';
+}
+
+function formatLogChange(log: SystemOperationLog) {
+  const detail = getLogDetail(log);
+  const change = typeof detail.change === 'string' ? detail.change.trim() : '';
+  return change || '-';
 }
 
 function formatLogTargetType(log: SystemOperationLog) {
@@ -485,6 +498,7 @@ function formatLogTargetType(log: SystemOperationLog) {
     titer_order: '效价工单',
     user: '用户',
     serum_workbench: '免疫工作台',
+    discovery_workbench: '发现工作台',
   };
   return log.target_type ? map[log.target_type] || log.target_type : '-';
 }
@@ -1305,7 +1319,7 @@ onMounted(loadData);
               <el-input
                 v-model="logQuery.keyword"
                 clearable
-                placeholder="搜索账号、权限动作、目标或结果"
+                placeholder="搜索账号、权限动作、目标、变更或结果"
                 style="width: 240px"
               />
               <el-input
@@ -1338,9 +1352,14 @@ onMounted(loadData);
                 {{ formatLogTargetType(row) }}
               </template>
             </el-table-column>
-            <el-table-column label="目标" min-width="160">
+            <el-table-column label="目标" min-width="180" show-overflow-tooltip>
               <template #default="{ row }">
                 {{ formatLogTarget(row) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="变更" min-width="140" show-overflow-tooltip>
+              <template #default="{ row }">
+                {{ formatLogChange(row) }}
               </template>
             </el-table-column>
             <el-table-column label="结果" width="100">
@@ -1724,6 +1743,7 @@ onMounted(loadData);
               <el-form-item label="业务模块">
                 <el-select v-model="bundleForm.module" style="width: 100%">
                   <el-option label="千鼠万抗" value="atlas" />
+                  <el-option label="抗体发现" value="discovery" />
                   <el-option label="小鼠免疫" value="serum" />
                   <el-option label="镁伽自动化" value="mega" />
                   <el-option label="系统管理" value="system" />

@@ -1,0 +1,47 @@
+.sheet-picker-popup {
+  --vxe-ui-font-size-small: 14px;
+
+  min-width: 220px !important;
+}
+.sheet-picker-popup .vxe-select--panel-wrapper {
+  overflow: hidden;
+  border-color: var(--el-border-color-light);
+  border-radius: 6px;
+  box-shadow: var(--el-box-shadow-light);
+}
+.sheet-picker-popup .vxe-select--panel-search {
+  padding: 8px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.sheet-picker-popup .vxe-select-search--input {
+  border-color: var(--el-border-color);
+  border-radius: 4px;
+}
+.sheet-picker-popup .vxe-select-option {
+  padding: 0 12px;
+}
+.sheet-picker-popup .vxe-select-option.is--selected {
+  background-color: var(--el-color-primary-light-9);
+}
+.workbench-drawer .el-drawer__header {
+  margin-bottom: 0;
+  padding: 10px 16px 6px;
+}
+.workbench-drawer .el-drawer__body {
+  padding: 4px 16px 16px;
+}
+.workbench-drawer-overlay,
+.el-overlay:has(.workbench-drawer) {
+  pointer-events: none !important;
+  background: transparent !important;
+}
+.workbench-drawer-overlay .el-overlay-dialog,
+.workbench-drawer-overlay .el-drawer__container,
+.el-overlay:has(.workbench-drawer) .el-overlay-dialog,
+.el-overlay:has(.workbench-drawer) .el-drawer__container {
+  pointer-events: none;
+}
+.workbench-drawer-overlay .el-drawer,
+.el-overlay:has(.workbench-drawer) .el-drawer {
+  pointer-events: auto;
+}

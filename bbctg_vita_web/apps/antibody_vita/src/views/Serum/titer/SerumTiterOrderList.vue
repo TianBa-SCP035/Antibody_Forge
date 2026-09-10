@@ -713,6 +713,17 @@
 
     <TiterInstrumentOrderDialogs ref="instrumentOrderDialogsRef" />
 
+    <TiterMouseSelectWizard
+      v-model="discoveryWizardVisible"
+      :titer-order="sequencingOrder"
+      title="抗体发现工单"
+      subtitle="勾选本批要剖的鼠，确认后写入一条发现安排"
+      footer-hint="至少选择一只小鼠"
+      :require-selection="true"
+      :confirming="discoverySubmitting"
+      @confirm="onDiscoveryWizardConfirm"
+    />
+
     <el-dialog
       v-model="ownerStatsVisible"
       title="效价实验统计Ciallo～(∠・ω< )⌒★"
@@ -834,7 +845,11 @@ import {
 import { useUserStore } from '@vben/stores';
 
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
+import { DISCOVERY_WORKBENCH_CREATED_KEY } from '#/api/discoveryWorkbench';
+import { canEditDiscoveryWorkbench } from '#/utils/discoveryPermission';
+import { handoffTiterToDiscovery } from '#/utils/titerDiscoveryHandoff';
 import TiterInstrumentOrderDialogs from './TiterInstrumentOrderDialogs.vue';
+import TiterMouseSelectWizard from './TiterMouseSelectWizard.vue';
 import TiterOrderCreateDialog from './TiterOrderCreateDialog.vue';
 import SerumProjectStatusEditor from '../shared/SerumProjectStatusEditor.vue';
 
@@ -990,6 +1005,7 @@ export default {
     SerumProjectStatusEditor,
     Tools,
     TiterInstrumentOrderDialogs,
+    TiterMouseSelectWizard,
     TiterOrderCreateDialog,
   },
   setup() {
@@ -1069,6 +1085,9 @@ export default {
       TrendCharts: markRaw(TrendCharts),
       _filterMethodCache: Object.create(null),
       createDialogVisible: false,
+      discoveryWizardVisible: false,
+      discoverySubmitting: false,
+      sequencingOrder: null,
       showAdvancedOps: false,
       dialogEditOrder: null,
       list: [],
@@ -1794,8 +1813,41 @@ export default {
         canEdit: this.canEditTiterOrderRecord(row),
       });
     },
-    goSequencing(_row) {
-      ElMessage.info('测序功能待接入');
+    goSequencing(row) {
+      if (!canEditDiscoveryWorkbench(this.currentUserInfo)) {
+        ElMessage.warning('您没有权限编辑抗体发现工作台');
+        return;
+      }
+      if (!row?.experiment_id) {
+        ElMessage.warning('缺少实验号');
+        return;
+      }
+      this.sequencingOrder = row;
+      this.discoveryWizardVisible = true;
+    },
+    async onDiscoveryWizardConfirm(selection) {
+      if (this.discoverySubmitting) return;
+      this.discoverySubmitting = true;
+      try {
+        const saved = await handoffTiterToDiscovery(selection);
+        if (!saved?.id) {
+          throw new Error('下发失败');
+        }
+        try {
+          sessionStorage.setItem(DISCOVERY_WORKBENCH_CREATED_KEY, JSON.stringify(saved));
+        } catch {
+          /* 没有暂存仍可按 id 打开 */
+        }
+        this.discoveryWizardVisible = false;
+        await this.$router.push({
+          path: '/discovery/workbench',
+          query: { created: String(saved.id) },
+        });
+      } catch (error) {
+        notifyApiError(error, { messages: { default: error?.message || '下发发现工作台失败' } });
+      } finally {
+        this.discoverySubmitting = false;
+      }
     },
     goTiterAudit(row) {
       if (!this.canEditTiter(row)) {

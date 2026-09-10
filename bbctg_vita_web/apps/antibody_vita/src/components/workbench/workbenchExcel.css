@@ -1,0 +1,159 @@
+.sheet-wrap {
+  --vxe-ui-font-family: var(--font-family);
+  --vxe-ui-font-size-small: 14px;
+
+  width: 100%;
+  overflow: hidden;
+  font-family: var(--font-family);
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sheet-table-stage {
+  position: relative;
+  width: 100%;
+}
+.sheet-wrap :deep(.vxe-table),
+.sheet-wrap :deep(.vxe-body--column),
+.sheet-wrap :deep(.vxe-cell) {
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sheet-wrap :deep(.vxe-body--column) {
+  cursor: cell;
+}
+.sheet-wrap :deep(.vxe-body--column.col--active),
+.sheet-wrap :deep(.sheet-grid-editor),
+.sheet-wrap :deep(.sheet-grid-editor input),
+.sheet-wrap :deep(.sheet-grid-editor textarea),
+.sheet-wrap :deep(.sheet-picker-editor) {
+  cursor: text;
+}
+.sheet-range-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 8;
+  display: none;
+  box-sizing: border-box;
+  pointer-events: none;
+  border: 2px solid var(--el-color-primary);
+  transition:
+    width 80ms ease-out,
+    height 80ms ease-out,
+    transform 80ms ease-out;
+  will-change: width, height, transform;
+}
+.sheet-range-overlay.is-scrolling {
+  transition: none;
+}
+.sheet-wrap :deep(.vxe-body--column.col--selected),
+.sheet-wrap :deep(.vxe-body--column.col--active) {
+  box-shadow: none !important;
+}
+.sheet-wrap :deep(.is-sheet-selected) {
+  background-color: var(--el-color-primary-light-9) !important;
+}
+.sheet-wrap :deep(.is-sheet-active) {
+  background-color: var(--el-bg-color) !important;
+}
+.sheet-wrap :deep(.sheet-selectable-header) {
+  cursor: pointer;
+}
+.sheet-wrap :deep(.sheet-selectable-header:hover) {
+  background-color: var(--el-color-primary-light-9) !important;
+}
+.sheet-wrap.is-column-moving,
+.sheet-wrap.is-column-moving :deep(.sheet-selectable-header) {
+  cursor: grabbing;
+}
+.sheet-wrap :deep(.is-column-from) {
+  opacity: 0.4;
+}
+.sheet-column-drop-line {
+  position: absolute;
+  top: 0;
+  left: -1px;
+  z-index: 11;
+  display: none;
+  width: 2px;
+  pointer-events: none;
+  background: var(--el-color-primary);
+  box-shadow: 0 0 0 1px var(--el-color-primary-light-7);
+}
+.sheet-column-ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 12;
+  display: none;
+  max-width: 200px;
+  padding: 6px 10px;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--el-color-primary);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-color-primary-light-5);
+  border-radius: 4px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+.sheet-wrap :deep(.vxe-body--column.col--active > .vxe-cell),
+.sheet-wrap :deep(.vxe-body--column.col--active > .vxe-cell > .vxe-cell--wrapper) {
+  width: 100%;
+  height: 100%;
+}
+.sheet-wrap :deep(.vxe-body--column.col--active > .vxe-cell) {
+  padding: 0 !important;
+}
+.sheet-wrap :deep(.sheet-grid-editor.vxe-input),
+.sheet-wrap :deep(.sheet-grid-editor.vxe-select) {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.sheet-wrap :deep(.sheet-grid-editor .vxe-input--inner) {
+  padding: var(--vxe-ui-table-cell-padding-small);
+  background: transparent;
+}
+.sheet-picker-editor {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: var(--vxe-ui-table-cell-padding-small);
+  overflow: hidden;
+  line-height: var(--vxe-ui-table-row-line-height);
+}
+.sheet-picker-editor__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-wrap :deep(.sheet-picker-control.vxe-select) {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.sheet-wrap :deep(.sheet-picker-control.vxe-select > .vxe-input) {
+  opacity: 0;
+}
+.sheet-wrap :deep(.sheet-grid-editor.vxe-select > .vxe-input) {
+  height: 100%;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.sheet-wrap :deep(.sheet-date-editor .vxe-input--suffix) {
+  display: none;
+}

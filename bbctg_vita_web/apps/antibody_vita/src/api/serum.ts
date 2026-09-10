@@ -29,6 +29,14 @@ export function fetchDetail(id: any, config?: RequestConfig) {
   });
 }
 
+export function fetchSerumDetailByExperimentId(experimentId: string, config?: RequestConfig) {
+  return requestClient.get('/serum/detail', {
+    params: { experiment_id: experimentId },
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
 export interface SerumTargetOption {
   name: string;
   snum: string;

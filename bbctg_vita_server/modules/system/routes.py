@@ -632,6 +632,7 @@ def list_operation_logs(
                 SysOperationLog.target_type.like(pattern),
                 SysOperationLog.target_id.like(pattern),
                 SysOperationLog.target_label.like(pattern),
+                func.json_unquote(func.json_extract(SysOperationLog.detail, "$.change")).like(pattern),
                 SysOperationLog.result.like(pattern),
             )
         )

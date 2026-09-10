@@ -7,7 +7,7 @@
 --   - 表、字段 COMMENT 须齐全且简练，只说明业务含义，不在括号中列举可能值。
 --   - 新模块尽量少改数据库；新增表和字段必须有长期业务意义，不建临时占位。
 --   - sys_permission / sys_permission_api / sys_feature_flag：与代码约定对齐，建议保持完整。
---   - 文末「权限包 / 角色」仅为空库示例；新模块只加权限点，不要改现网角色/权限包。
+--   - 文末「权限包 / 角色」仅为空库示例（血清 + 历史已写入的镁伽/系统）。免疫之后的新模块只加权限点，不要再写入 guest/operator，也不要改现网角色/权限包。
 --   - 外部细胞库 sam_sample 见文末注释（CELL_DB_URL，models/cell_inventory.py），勿在主库执行。
 --   - 外部员工库 org_emp / org_depart 见文末注释（EMPLOYEE_DB_URL，modules/system/employee_sync.py），勿在主库执行。
 --
@@ -367,7 +367,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_workbench (
   remark VARCHAR(255) NULL COMMENT '备注',
   mouse_strain VARCHAR(128) NULL COMMENT '确切鼠型',
   mouse_strain_category VARCHAR(128) NULL COMMENT '归类鼠型',
-  sort_order INT NOT NULL DEFAULT 0 COMMENT '排序',
+  sort_order INT NULL COMMENT '排序；终态为空',
   priority VARCHAR(32) NULL COMMENT '优先级',
   plan_status VARCHAR(32) NULL COMMENT '工作台状态；已开展后列表展示实验 project_status',
   project_set_code VARCHAR(64) NULL COMMENT '项目集编号',
@@ -562,10 +562,45 @@ CREATE TABLE IF NOT EXISTS serum_titer_order (
   KEY idx_serum_titer_order_experiment_id (experiment_id)
 ) COMMENT='效价工单';
 
+CREATE TABLE IF NOT EXISTS discovery_workbench (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  project_code VARCHAR(64) NULL COMMENT '项目管理编号',
+  experiment_id VARCHAR(64) NULL COMMENT '实验号',
+  target_name VARCHAR(128) NULL COMMENT '靶点名称',
+  target_codes JSON NULL COMMENT '靶点编号列表',
+  study_type VARCHAR(64) NULL COMMENT '课题类型',
+  pm VARCHAR(64) NULL COMMENT 'PM',
+  mouse_strain_category VARCHAR(128) NULL COMMENT '归类鼠型',
+  mouse_strain VARCHAR(128) NULL COMMENT '小鼠品系',
+  cage_position VARCHAR(64) NULL COMMENT '笼位',
+  mouse_count INT NULL COMMENT '小鼠只数',
+  mouse_nos VARCHAR(512) NULL COMMENT '鼠号',
+  serum_titer VARCHAR(255) NULL COMMENT '血清效价',
+  immune_antigen VARCHAR(255) NULL COMMENT '免疫用抗原',
+  screening_methods VARCHAR(64) NULL COMMENT '筛选方式',
+  screening_antigen VARCHAR(255) NULL COMMENT '筛选抗原',
+  positive_cell_count VARCHAR(64) NULL COMMENT '阳性细胞数',
+  plate_nos VARCHAR(512) NULL COMMENT '板号',
+  harvest_date VARCHAR(32) NULL COMMENT '剖鼠取细胞日',
+  boost_date VARCHAR(32) NULL COMMENT '冲击免日期',
+  boost_antigen VARCHAR(255) NULL COMMENT '冲击免抗原',
+  owner VARCHAR(64) NULL COMMENT '负责人',
+  status VARCHAR(32) NULL COMMENT '状态',
+  priority VARCHAR(32) NULL COMMENT '优先级',
+  sort_order INT NULL COMMENT '排序；终态为空',
+  remark VARCHAR(500) NULL COMMENT '备注',
+  created_by VARCHAR(64) NULL COMMENT '创建人',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id)
+) COMMENT='抗体发现项目工作台';
+
 INSERT IGNORE INTO sys_permission
   (code, name, type, module, resource, action, route_path, ui_key, parent_code, sort_order)
 VALUES
   ('atlas.page.target_library', '靶点情报', 'page', 'atlas', 'target', 'view', '/atlas/targets', NULL, NULL, 50),
+  ('discovery.page.workbench', '抗体发现工作台', 'page', 'discovery', 'discovery_workbench', 'view', '/discovery/workbench', NULL, NULL, 400),
+  ('discovery.workbench.edit', '编辑抗体发现工作台', 'action', 'discovery', 'discovery_workbench', 'edit', NULL, 'discovery.workbench.edit_button', 'discovery.page.workbench', 401),
   ('serum.page.workbench', '项目工作台', 'page', 'serum', 'serum_workbench', 'view', '/serum/workbench', NULL, NULL, 95),
   ('serum.workbench.edit', '编辑项目工作台', 'action', 'serum', 'serum_workbench', 'edit', NULL, 'serum.workbench.edit_button', 'serum.page.workbench', 96),
   ('serum.workbench.draft_edit', '编辑工作台草稿', 'action', 'serum', 'serum_workbench', 'draft_edit', NULL, NULL, 'serum.page.workbench', 97),
@@ -644,6 +679,11 @@ VALUES
   ('serum.titer_order.edit', 'POST', '/api/serum/titer/order/save', '保存效价工单'),
   ('serum.titer_order.delete', 'POST', '/api/serum/titer/order/delete', '删除效价工单'),
   ('serum.project.edit', 'POST', '/api/serum/mouse-registry/save', '保存小鼠鼠号明细'),
+  ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/save', '保存抗体发现工作台'),
+  ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/save_batch', '批量保存抗体发现工作台'),
+  ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/copy', '复制抗体发现工作台'),
+  ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/delete', '删除抗体发现工作台'),
+  ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/reorder', '调整抗体发现工作台排序'),
   ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/save', '保存流式工单'),
   ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/validate', '校验流式工单'),
   ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/dispatch', '发送流式工单'),
@@ -677,6 +717,8 @@ VALUES
   ('menu.serum.workbench', '项目工作台', 'menu', '控制项目工作台菜单显示', 1, 1, 5, JSON_OBJECT('path', '/serum/workbench', 'icon', 'lucide:layout-dashboard', 'parent_code', 'menu.serum')),
   ('menu.serum.list', '免疫实验列表', 'menu', '控制免疫实验列表菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum/list', 'icon', 'lucide:list', 'parent_code', 'menu.serum')),
   ('menu.serum.titer_order', '效价实验列表', 'menu', '控制效价实验列表菜单显示', 1, 1, 20, JSON_OBJECT('path', '/serum/titer-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.serum')),
+  ('menu.discovery', '抗体发现', 'menu', '控制抗体发现模块菜单显示', 1, 1, 15, JSON_OBJECT('path', '/discovery', 'icon', 'lucide:microscope')),
+  ('menu.discovery.workbench', '项目工作台', 'menu', '控制抗体发现项目工作台菜单显示', 1, 1, 5, JSON_OBJECT('path', '/discovery/workbench', 'icon', 'lucide:layout-dashboard', 'parent_code', 'menu.discovery')),
   ('menu.mega_automation', '镁伽自动化菜单', 'menu', '控制镁伽自动化模块菜单显示', 1, 1, 50, JSON_OBJECT('path', '/mega-automation', 'icon', 'lucide:workflow')),
   ('menu.mega_automation.flow_work_orders', '流式工单总览', 'menu', '控制流式工单总览页面显示', 1, 1, 10, JSON_OBJECT('path', '/mega-automation/flow-work-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.mega_automation')),
   ('menu.system', '系统管理', 'menu', '控制系统管理父级菜单显示', 1, 1, 90, JSON_OBJECT('path', '/system', 'icon', 'lucide:settings')),
@@ -691,6 +733,7 @@ VALUES
 
 -- =============================================================================
 -- 权限包 / 角色（仅示例三档：访客、业务员、系统管理；生产环境完全自定义）
+-- 免疫之后的新模块不要再往 guest/operator 里加。
 -- =============================================================================
 
 INSERT IGNORE INTO sys_permission_bundle (code, name, module, description, sort_order) VALUES

@@ -16,6 +16,8 @@ export type ConclusionCellValue = number | 'N/A' | '-'
 
 export interface ConclusionRow {
   targetKey: string
+  /** 标靶种属原文；空白 / 未填为空 */
+  species: string
   /** 种属 + 效价，如「人效价」；无种属时为空 */
   speciesTiterLabel: string
   targetName: string
@@ -257,16 +259,22 @@ export function buildSpeciesTiterLabel(species: string | undefined | null): stri
   return `${s}效价`
 }
 
+function normalizeSpecies(species: string | undefined | null): string {
+  const s = (species || '').trim()
+  return !s || s === '空白' ? '' : s
+}
+
 function rowTargetFields(
   targetKey: string,
   targets: TiterTargetLike[] | undefined,
-): Pick<ConclusionRow, 'targetName' | 'speciesTiterLabel'> {
+): Pick<ConclusionRow, 'targetName' | 'species' | 'speciesTiterLabel'> {
   if (targetKey === UNKNOWN_TARGET_KEY) {
-    return { targetName: UNKNOWN_TARGET_LABEL, speciesTiterLabel: '' }
+    return { targetName: UNKNOWN_TARGET_LABEL, species: '', speciesTiterLabel: '' }
   }
   const t = (targets || []).find((x) => (x.name || '').trim() === targetKey)
   return {
     targetName: targetDisplayName(targetKey),
+    species: normalizeSpecies(t?.species),
     speciesTiterLabel: buildSpeciesTiterLabel(t?.species),
   }
 }
@@ -457,7 +465,7 @@ function processElisaPlate(
   }
 }
 
-function sortMouseColumns(list: string[]): string[] {
+export function sortMouseColumns(list: string[]): string[] {
   return [...list].sort((a, b) => {
     const na = Number(a)
     const nb = Number(b)
@@ -686,4 +694,95 @@ export function buildFacsConclusion(input: BuildFacsConclusionInput): FacsConclu
   }).filter((stage) => stage.methods.length > 0)
 
   return { stages, warnings: [...new Set(warnings)] }
+}
+
+const SERUM_TITER_BRIEF_MAX = 255
+
+function isNumericConclusionCell(value: ConclusionCellValue | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+}
+
+function stageHasNumericForMice(stage: ConclusionStageBlock, selected: Set<string>): boolean {
+  for (const method of stage.methods) {
+    for (const table of method.groupTables) {
+      for (const row of table.rows) {
+        for (const mouseNo of table.mouseColumns) {
+          if (selected.has(mouseNo) && isNumericConclusionCell(row.cells[mouseNo])) {
+            return true
+          }
+        }
+      }
+    }
+  }
+  return false
+}
+
+function fitJoined(parts: string[], separator: string, max: number): string {
+  const kept: string[] = []
+  for (const part of parts) {
+    const next = kept.length ? `${kept.join(separator)}${separator}${part}` : part
+    if (next.length > max) break
+    kept.push(part)
+  }
+  return kept.join(separator)
+}
+
+/**
+ * 下发发现工作台用的效价简要说明。
+ * 只吃勾中的鼠、只吃数字格；取方案顺序里这些鼠还有数字的最晚阶段。
+ * 一行 = 方法 + 标靶种属原文（不把「人」「猴」捏成「人猴」）。
+ * 结论格里 FACS 已是 10^n、ELISA 已是稀释度，原样取 min–max。
+ */
+export function summarizeTiterBrief(
+  model: FacsConclusionModel | null | undefined,
+  selectedMouseNos: string[],
+): string {
+  const selected = new Set(
+    (selectedMouseNos || []).map((no) => String(no || '').trim()).filter(Boolean),
+  )
+  if (!selected.size || !model?.stages?.length) return ''
+
+  let latest: ConclusionStageBlock | undefined
+  for (const stage of model.stages) {
+    if (stageHasNumericForMice(stage, selected)) latest = stage
+  }
+  if (!latest) return ''
+
+  const buckets = new Map<string, { method: 'FACS' | 'ELISA'; species: string; values: number[] }>()
+  for (const methodBlock of latest.methods) {
+    for (const table of methodBlock.groupTables) {
+      for (const row of table.rows) {
+        const species = (row.species || '').trim()
+        const key = `${methodBlock.method}\0${species}`
+        let bucket = buckets.get(key)
+        if (!bucket) {
+          bucket = { method: methodBlock.method, species, values: [] }
+          buckets.set(key, bucket)
+        }
+        for (const mouseNo of table.mouseColumns) {
+          if (!selected.has(mouseNo)) continue
+          const value = row.cells[mouseNo]
+          if (isNumericConclusionCell(value)) bucket.values.push(value)
+        }
+      }
+    }
+  }
+
+  const lines = [...buckets.values()]
+    .filter((bucket) => bucket.values.length)
+    .sort((a, b) => {
+      if (a.method !== b.method) return a.method === 'FACS' ? -1 : 1
+      const rankA = speciesSortRank(a.species)
+      const rankB = speciesSortRank(b.species)
+      if (rankA !== rankB) return rankA - rankB
+      return a.species.localeCompare(b.species, 'zh-CN')
+    })
+    .map((bucket) => {
+      const min = Math.min(...bucket.values)
+      const max = Math.max(...bucket.values)
+      const range = min === max ? String(min) : `${min}-${max}`
+      return `${bucket.method}${bucket.species}:${range}`
+    })
+
+  return fitJoined(lines, '\n', SERUM_TITER_BRIEF_MAX)
 }

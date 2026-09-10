@@ -1,5 +1,6 @@
 from models.order_sync import OrderSync
 from models.target import Target
+from models.discovery import DiscoveryWorkbench
 from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
 from models.immunology import (
     SerumElisaPlate,
@@ -29,6 +30,7 @@ from models.system import (
 __all__ = [
     "OrderSync",
     "Target",
+    "DiscoveryWorkbench",
     "MegaFlowWorkOrder",
     "MegaFlowWorkOrderDispatch",
     "SerumElisaPlate",

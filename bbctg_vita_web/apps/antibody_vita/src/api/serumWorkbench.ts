@@ -83,14 +83,10 @@ export function copyWorkbench(id: number | string) {
   );
 }
 
-export function reorderWorkbench(
-  ids: Array<number | string>,
-  movedId: number | string,
-  expectedRows: Array<{ id: number | string; priority: string; sort_order: number }>,
-) {
+export function reorderWorkbench(movedId: number | string, targetId: number | string) {
   return requestClient.post(
     '/serum/workbench/reorder',
-    { ids, moved_id: movedId, expected_rows: expectedRows },
+    { moved_id: movedId, target_id: targetId },
     { timeout: SAVE_TIMEOUT, ...skipGlobalErrorHandler },
   );
 }

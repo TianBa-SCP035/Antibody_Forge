@@ -58,12 +58,15 @@ def list_serum(
 
 @router.get("/detail")
 def detail(
-    id: int = Query(...),
+    id: int | None = Query(default=None),
+    experiment_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, "serum.page.detail")
-    data = service.get_detail(db, id)
+    if id is None and not str(experiment_id or "").strip():
+        raise HTTPException(status_code=400, detail="id 或 experiment_id 必填")
+    data = service.get_detail(db, project_id=id, experiment_id=experiment_id)
     if data is None:
         raise HTTPException(status_code=404, detail="项目不存在")
     return success(data)
@@ -80,6 +83,8 @@ def target_options(
     if not (
         has_permission(db, current_user, "serum.page.edit")
         or has_permission(db, current_user, "serum.page.workbench")
+        or has_permission(db, current_user, "discovery.page.workbench")
+        or has_permission(db, current_user, "discovery.workbench.edit")
     ):
         raise HTTPException(
             status_code=403,
@@ -96,6 +101,8 @@ def user_options(
     if not (
         has_permission(db, current_user, "serum.page.edit")
         or has_permission(db, current_user, "serum.page.workbench")
+        or has_permission(db, current_user, "discovery.page.workbench")
+        or has_permission(db, current_user, "discovery.workbench.edit")
     ):
         raise HTTPException(
             status_code=403,

@@ -51,7 +51,7 @@
 |------|------|
 | 效价实验列表 | `bbctg_vita_web/.../Serum/titer/SerumTiterOrderList.vue` |
 | 「工单」入口 | `goInstrumentOrder`（左键）/ `openInstrumentFlowList`（右键） |
-| 工单列表 + 上机向导 | `bbctg_vita_web/.../Serum/titer/TiterInstrumentOrderDialogs.vue` |
+| 工单列表 + 上机向导 | `TiterInstrumentOrderDialogs.vue`（列表 / 跳转）；选鼠向导 `TiterMouseSelectWizard.vue` |
 | 鼠号/死活弹窗 | `bbctg_vita_web/.../Serum/shared/MouseRegistryDialog.vue` |
 | 免疫编辑里同款弹窗 | `Serum/immune/SerumEdit.vue` → `openMouseRegistryDialog` |
 | 小鼠分组表参考 | `SerumEdit.vue` 小鼠分组区域（向导上半抄此结构，只读） |
@@ -329,7 +329,7 @@ dispatchId → mega_flow_work_order_dispatch
 ```
 
 - `groups` 顺序 = 向导上表组顺序；组内 `selected_mouse_nos` = 该组原鼠序过滤已选（**不重排、不去重**；选鼠键为 `groupId::mouseIndex`，同鼠号可重复勾选）。
-- 实现：`TiterInstrumentOrderDialogs.vue` → `buildSelectionPayload` / `handleConfirm`。
+- 实现：`TiterMouseSelectWizard.vue` 组选择；`TiterInstrumentOrderDialogs.vue` 写入草稿并跳流式工单。效价列表「测序」复用同一向导，确定后走发现工作台下发，不写这份草稿。
 
 ---
 

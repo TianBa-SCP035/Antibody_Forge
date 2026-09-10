@@ -124,6 +124,14 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
     url: '/serum/titer-orders',
   },
   {
+    id: 'discovery-workbench',
+    titleKey: 'page.home.presetDiscoveryWorkbenchTitle',
+    subtitleKey: 'page.home.presetDiscoveryWorkbenchSubtitle',
+    icon: 'lucide:microscope',
+    iconClass: 'bg-teal-500/15 text-teal-600',
+    url: '/discovery/workbench',
+  },
+  {
     id: 'flow-work-order-list',
     titleKey: 'page.home.presetFlowWorkOrderTitle',
     subtitleKey: 'page.home.presetFlowWorkOrderSubtitle',
@@ -324,6 +332,9 @@ export function canAccessStartPath(
   }
   if (path === '/serum/titer-orders') {
     return hasAccessByCodes(['serum.page.titer_order']);
+  }
+  if (path === '/discovery/workbench') {
+    return hasAccessByCodes(['discovery.page.workbench']);
   }
   if (path === '/mega-automation/flow-work-orders') {
     return hasAccessByCodes(['mega.page.flow_work_order']);

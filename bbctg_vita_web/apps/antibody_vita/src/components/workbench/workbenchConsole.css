@@ -1,0 +1,166 @@
+.workbench-console {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: var(--list-page-gap);
+  background: linear-gradient(90deg, #ffffff 0%, #fbfcff 68%, #f6f9fd 100%);
+  border: var(--list-surface-border);
+  border-radius: var(--list-surface-radius);
+  box-shadow: var(--list-surface-shadow);
+}
+.console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 14px 18px 12px;
+}
+.console-brand {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.title-copy {
+  min-width: 0;
+}
+.page-title {
+  margin: 0;
+  color: var(--el-text-color-primary);
+  font-size: var(--list-page-title-size);
+  font-weight: var(--list-page-title-weight);
+  letter-spacing: 0.01em;
+}
+.page-subtitle {
+  max-width: 620px;
+  margin: 4px 0 0;
+  color: var(--list-page-subtitle-color);
+  font-size: var(--list-page-subtitle-size);
+  font-weight: var(--list-page-subtitle-weight);
+}
+.console-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.lifecycle-nav {
+  display: grid;
+  padding: 0;
+  margin: 0 12px 12px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid rgba(218, 225, 234, 0.92);
+  border-radius: 10px;
+}
+.lifecycle-item {
+  --stage-color: #8090a5;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 8px 14px;
+  border: 0;
+  border-right: 1px solid rgba(211, 220, 231, 0.78);
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+  user-select: none;
+}
+.lifecycle-item:last-child {
+  border-right: 0;
+}
+.lifecycle-item:not(.is-active):hover {
+  background: rgba(32, 45, 64, 0.035);
+}
+.lifecycle-item.is-active {
+  background: color-mix(in srgb, var(--stage-color) 7%, white);
+  color: var(--el-text-color-primary);
+}
+.stage-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--stage-color) 11%, white);
+  color: var(--stage-color);
+  font-size: 10px;
+  font-weight: 700;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+.lifecycle-item.is-active .stage-marker {
+  color: #fff;
+  background: var(--stage-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--stage-color) 12%, transparent);
+}
+.stage-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.stage-copy strong {
+  font-size: 13px;
+  font-weight: 620;
+}
+.lifecycle-item.is-active .stage-copy strong {
+  color: color-mix(in srgb, var(--stage-color) 72%, #172033);
+  font-weight: 680;
+}
+.stage-copy small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stage-count {
+  color: var(--stage-color);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 680;
+}
+.stage-all { --stage-color: #0f8b8d; }
+.stage-planned { --stage-color: #409eff; }
+.stage-ongoing { --stage-color: #8b5cf6; }
+.stage-completed { --stage-color: #43b97f; }
+.stage-cancelled { --stage-color: #8a94a6; }
+.ready-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid rgba(103, 194, 58, 0.2);
+  border-radius: 999px;
+  background: rgba(240, 249, 235, 0.68);
+  color: #5c7d4a;
+  font-size: 12px;
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+.ready-summary:hover,
+.ready-summary.is-active {
+  border-color: rgba(103, 194, 58, 0.42);
+  background: #f0f9eb;
+}
+.ready-summary.is-active {
+  box-shadow: 0 0 0 3px rgba(103, 194, 58, 0.12);
+}
+.ready-summary strong {
+  color: #3f6f2b;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.ready-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--el-color-success);
+  box-shadow: 0 0 0 4px rgba(103, 194, 58, 0.12);
+}

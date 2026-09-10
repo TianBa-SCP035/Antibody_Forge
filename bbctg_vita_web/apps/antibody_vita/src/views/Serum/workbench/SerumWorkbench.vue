@@ -141,7 +141,7 @@
       <header class="console-header">
         <div class="console-brand">
           <div class="title-copy">
-            <h1 class="page-title">项目工作台</h1>
+            <h1 class="page-title">免疫工作台</h1>
             <p class="page-subtitle">从计划筹备到实验结题，在同一队列中推进优先级、物料和方案。</p>
           </div>
         </div>
@@ -150,6 +150,7 @@
             type="button"
             class="ready-summary"
             :class="{ 'is-active': listQuery.can_start === '是' }"
+            :aria-pressed="listQuery.can_start === '是'"
             title="只看已经具备开展条件的计划"
             @click="showReadyPlans"
           >
@@ -271,16 +272,11 @@
             <el-icon><Search /></el-icon>
             <span>查询</span>
           </el-button>
-          <el-button
-            class="list-filter-action-button view-toggle-button"
-            :class="{ 'is-sheet': viewMode === 'sheet' }"
-            :title="viewMode === 'workbench' ? '当前为快速编辑，点击切换到批量 Sheet' : '当前为批量 Sheet。Shift 拖列表头可调列顺序，右键此按钮恢复默认。点击切换到快速编辑'"
-            @click="toggleViewMode"
-            @contextmenu.prevent="resetSheetColumnOrder"
-          >
-            <el-icon><ViewIcon /></el-icon>
-            <span>视图</span>
-          </el-button>
+          <WorkbenchViewToggle
+            :model-value="viewMode"
+            @toggle="toggleViewMode"
+            @reset-columns="resetSheetColumnOrder"
+          />
         </div>
       </div>
     </div>
@@ -307,11 +303,22 @@
         @row-click="onWorkbenchRowClick"
         @row-contextmenu="onWorkbenchRowContextMenu"
       >
-        <el-table-column label="排序" align="center" width="62" class-name="sort-column-cell">
-          <template #default="{ row }">
+        <el-table-column :label="sortColumnLabel" align="center" width="62" class-name="sort-column-cell">
+          <template #header>
+            <button
+              type="button"
+              class="sort-header-btn"
+              :class="{ 'is-active': isQueueSorted }"
+              :title="sortHeaderTitle"
+              @click.stop="toggleQueueSort"
+            >
+              {{ sortColumnLabel }}
+            </button>
+          </template>
+          <template #default="{ row, $index }">
             <div class="sort-cell">
               <el-input
-                v-if="canEditField(row, 'sort_order') && sortEditingId === row.id"
+                v-if="canEditSortCell(row) && sortEditingId === row.id"
                 :ref="(el) => bindSortInput(row.id, el)"
                 v-model="row.sort_order"
                 class="sort-order-input"
@@ -327,10 +334,10 @@
                 v-else
                 type="button"
                 class="sort-order-value"
-                :disabled="!canEditField(row, 'sort_order')"
+                :disabled="!canEditSortCell(row)"
                 @click.stop="startSortEdit(row)"
               >
-                {{ row.sort_order ?? '' }}
+                {{ formatSortColumn(row, $index) }}
               </button>
             </div>
           </template>
@@ -477,7 +484,7 @@
               <vxe-column
                 v-if="column.edit === 'target'"
                 :field="column.key"
-                :title="column.label"
+                :title="sheetColumnTitle(column)"
                 :width="column.width"
                 :min-width="column.minWidth || column.width || 120"
                 :edit-render="{ name: 'VxeInput' }"
@@ -517,7 +524,7 @@
               <vxe-column
                 v-else-if="column.edit === 'select' || isMultiSelectColumn(column)"
                 :field="column.key"
-                :title="column.label"
+                :title="sheetColumnTitle(column)"
                 :width="column.width"
                 :min-width="column.minWidth || column.width || 120"
                 :show-overflow="!isTokenMultiKey(column.key)"
@@ -554,7 +561,7 @@
               <vxe-column
                 v-else
                 :field="column.key"
-                :title="column.label"
+                :title="sheetColumnTitle(column)"
                 :width="column.width"
                 :min-width="column.minWidth || column.width || 120"
                 :align="column.key === 'sort_order' ? 'center' : undefined"
@@ -673,35 +680,14 @@
                   :disabled="isFieldLocked(editingRow, field)"
                   @change="persistRow(editingRow, field.key)"
                 />
-                <el-select
+                <WorkbenchTargetSelect
                   v-else-if="field.type === 'target'"
                   v-model="editingRow.target_codes"
-                  filterable
-                  multiple
-                  remote
-                  remote-show-suffix
-                  class="target-name-select"
-                  :remote-method="searchTargetOptions"
-                  :loading="targetLoading"
+                  :display-name="editingRow.target_name"
                   :placeholder="editingRow.target_name ? '' : '搜索靶点'"
-                  style="width: 100%;"
                   :disabled="isFieldLocked(editingRow, field)"
-                  @focus="searchTargetOptions('')"
-                  @change="onRowTargetChange(editingRow)"
-                >
-                  <template #tag>
-                    <span class="target-selected-text">{{ editingRow.target_name }}</span>
-                  </template>
-                  <el-option
-                    v-for="item in targetOptions"
-                    :key="item.snum"
-                    :label="`${item.name}（${item.snum}）`"
-                    :value="item.snum"
-                  >
-                    <span>{{ item.name }}</span>
-                    <span class="target-option-code">{{ item.snum }}</span>
-                  </el-option>
-                </el-select>
+                  @change="onDrawerTargetChange(editingRow, $event)"
+                />
                 <el-input
                   v-else-if="field.type === 'target_codes'"
                   :model-value="codesText(editingRow)"
@@ -770,6 +756,7 @@
                   :disabled="isFieldLocked(editingRow, field)"
                   @blur="persistRow(editingRow, field.key)"
                 />
+                <span v-else-if="field.key === 'sort_order' && isQueueTerminalRow(editingRow)">-</span>
                 <el-input
                   v-else
                   v-model="editingRow[field.key]"
@@ -795,7 +782,6 @@ import {
   Download,
   Search,
   Tools,
-  View as ViewIcon,
 } from '@element-plus/icons-vue'
 import {
   ElButton,
@@ -823,6 +809,16 @@ import 'vxe-pc-ui/styles/cssvar.scss'
 import 'vxe-table/styles/cssvar.scss'
 
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
+import {
+  coerceRequiredPositiveInt,
+  coerceWorkbenchViewMode,
+  createColumnOrder,
+  EXCEL_VIEW,
+  WORKBENCH_VIEW,
+  syncDrawerControlTooltip,
+  workbenchExcelMixin,
+} from '#/components/workbench'
+import WorkbenchViewToggle from '#/components/workbench/WorkbenchViewToggle.vue'
 import { notifyApiError } from '#/api/errors'
 import { fetchSerumTargetOptions } from '#/api/serum'
 import {
@@ -845,6 +841,7 @@ import {
   getSerumUserName,
 } from '#/utils/serumPermission'
 import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS } from '#/utils/serumMouseOptions'
+import { WORKBENCH_STUDY_TYPE_OPTIONS } from '#/utils/workbenchStudyTypes'
 import {
   WORKBENCH_PLAN_STATUS_OPTIONS,
   WORKBENCH_PRIORITY_OPTIONS,
@@ -859,25 +856,16 @@ import {
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 import { SERUM_ERRORS } from '../shared/errors'
 import SerumUserSelect from '../shared/SerumUserSelect.vue'
+import WorkbenchStatusEditor from '#/components/workbench/WorkbenchStatusEditor.vue'
+import WorkbenchTargetSelect from '#/components/workbench/WorkbenchTargetSelect.vue'
 import WorkbenchRowActions from './WorkbenchRowActions.vue'
-import WorkbenchStatusEditor from './WorkbenchStatusEditor.vue'
 
 const PLAN_STATUS_OPTIONS = [...WORKBENCH_PLAN_STATUS_OPTIONS]
 const PRIORITY_OPTIONS = [...WORKBENCH_PRIORITY_OPTIONS]
 const REVIEW_STATUS_OPTIONS = ['未审', '已通过', '驳回']
 const MOUSE_STATUS_OPTIONS = ['未定', '扩繁中', '可运', '在途', '已到']
 const ZYGOSITY_OPTIONS = ['纯合', '杂合', '混合']
-const STUDY_TYPE_OPTIONS = [
-  '数据包',
-  '客户关注',
-  '公司内部研发',
-  '公司重点',
-  '客户付钱',
-  'PCC过会',
-  '沈博关注',
-  '大客户关注',
-  '我也布吉岛',
-]
+const STUDY_TYPE_OPTIONS = [...WORKBENCH_STUDY_TYPE_OPTIONS]
 const MOUSE_STRAIN_CATEGORY_OPTIONS = [...SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS]
 const SPECIES_CROSS_OPTIONS = ['人', '猴', '鼠', '狗', '猫', '空白']
 const IMMUNO_METHOD_OPTIONS = ['蛋白', 'DNA', 'LNP', '细胞', '混合']
@@ -898,6 +886,8 @@ const REQUIRED_STATUS_DEFAULTS = Object.freeze({
   antigen_ready: '否',
 })
 const REQUIRED_STATUS_FIELD_KEYS = new Set(Object.keys(REQUIRED_STATUS_DEFAULTS))
+const QUEUE_TERMINAL_PLAN_STATUSES = ['已取消', '小鼠KO致死']
+const QUEUE_TERMINAL_PROJECT_STATUSES = ['结题', '无效价处死']
 const USER_FIELD_KEYS = new Set(['pm', 'owner'])
 const DATE_FIELD_KEYS = new Set(['mouse_birth_date', 'mouse_arrive_date', 'antigen_eta'])
 const ALIGNED_FIELDS = new Set([
@@ -1012,7 +1002,7 @@ const STATUS_VIEWS = [
   { key: 'cancelled', label: '已取消', hint: '未开展即关闭', valueKey: 'cancelled', tone: 'cancelled', step: '04' },
 ]
 const SHEET_COLUMNS = [
-  { key: 'sort_order', label: '排序', width: 50, edit: 'number' },
+  { key: 'sort_order', label: '排序', width: 50, edit: 'text' },
   { key: 'priority', label: '优先级', width: 90, edit: 'select', optionsKey: 'priority' },
   { key: 'target_name', label: '靶点名称', edit: 'target' },
   { key: 'target_codes', label: '靶点编号', edit: 'target' },
@@ -1049,41 +1039,11 @@ const SHEET_COLUMNS = [
   { key: 'plan_status', label: '状态', width: 110, edit: 'select', optionsKey: 'plan_status' },
   { key: 'experiment_id', label: '实验号', width: 190, edit: 'readonly' },
 ]
-const SHEET_COLUMN_ORDER_KEY = 'workbenchSheetColumnOrder'
-let lastViewMode = 'workbench'
-
-function mergeSheetColumnOrder(cachedKeys) {
-  const remaining = new Map(SHEET_COLUMNS.map((column) => [column.key, column]))
-  const ordered = []
-  for (const key of cachedKeys || []) {
-    const column = remaining.get(String(key || ''))
-    if (!column) continue
-    ordered.push(column)
-    remaining.delete(column.key)
-  }
-  for (const column of SHEET_COLUMNS) {
-    if (remaining.has(column.key)) ordered.push(column)
-  }
-  return ordered
-}
-
-function loadSheetColumns() {
-  try {
-    const keys = JSON.parse(localStorage.getItem(SHEET_COLUMN_ORDER_KEY) || '[]')
-    return mergeSheetColumnOrder(Array.isArray(keys) ? keys : [])
-  } catch {
-    return [...SHEET_COLUMNS]
-  }
-}
-
-function saveSheetColumns(columns) {
-  try {
-    localStorage.setItem(SHEET_COLUMN_ORDER_KEY, JSON.stringify(columns.map((column) => column.key)))
-  } catch {
-    /* ignore */
-  }
-}
+const SHEET_COLUMN_ORDER = createColumnOrder('workbenchSheetColumnOrder', SHEET_COLUMNS)
+let lastViewMode = WORKBENCH_VIEW
 const SHEET_HEADER_ALIASES = Object.freeze({
+  排序: 'sort_order',
+  序号: 'sort_order',
   优先级排序: 'sort_order',
   项目编号: 'project_code',
   运输状态: 'mouse_status',
@@ -1095,8 +1055,10 @@ const SHEET_HEADER_ALIASES = Object.freeze({
 })
 export default {
   name: 'SerumWorkbench',
+  mixins: [workbenchExcelMixin],
   components: {
     AdvancedOpsBar,
+    WorkbenchViewToggle,
     ElButton,
     ElCard,
     ElDatePicker,
@@ -1114,13 +1076,13 @@ export default {
     Search,
     SerumUserSelect,
     Tools,
-    ViewIcon,
     VxeColumn,
     VxeInput,
     VxeSelect,
     VxeTable,
     WorkbenchRowActions,
     WorkbenchStatusEditor,
+    WorkbenchTargetSelect,
   },
   setup() {
     const userStore = useUserStore()
@@ -1132,7 +1094,7 @@ export default {
       list: [],
       total: 0,
       stats: { all: 0, planned: 0, ongoing: 0, completed: 0, cancelled: 0, can_start: 0 },
-      viewMode: lastViewMode,
+      viewMode: coerceWorkbenchViewMode(lastViewMode),
       showAdvancedOps: false,
       drawerVisible: false,
       editingId: null,
@@ -1140,14 +1102,6 @@ export default {
       ageEditingRowId: null,
       sortEditingId: null,
       sortInputRefs: {},
-      pasteAnchor: null,
-      sheetRange: null,
-      sheetEditOriginal: null,
-      sheetEditSource: '',
-      sheetKeyboardChain: Promise.resolve(),
-      sheetDragMode: '',
-      sheetPointerDown: false,
-      sheetColumnMove: null,
       sortable: null,
       sortableInitToken: 0,
       targetOptions: [],
@@ -1156,7 +1110,6 @@ export default {
       allUserOptions: getCachedSerumUserOptions(),
       listRequestToken: 0,
       pendingDrawerSaves: new Set(),
-      pendingSheetOps: new Set(),
       rowSaveChains: new Map(),
       rowBaselines: new Map(),
       headerCellStyle: {
@@ -1171,6 +1124,7 @@ export default {
         limit: 20,
         keyword: '',
         view_group: null,
+        sort_field: '',
         can_start: '',
         study_type: '',
         immuno_method: '',
@@ -1214,7 +1168,7 @@ export default {
       yesNoOptions: YES_NO_OPTIONS,
       editorSections: EDITOR_SECTIONS,
       statusViews: STATUS_VIEWS,
-      sheetColumns: loadSheetColumns(),
+      sheetColumns: SHEET_COLUMN_ORDER.load(),
     }
   },
   computed: {
@@ -1268,14 +1222,6 @@ export default {
         'has_scheme_data',
       ].some((key) => Boolean(this.listQuery[key]))
     },
-    hasActiveFilters() {
-      return Boolean(this.activeViewGroup || this.hasSecondaryFilters)
-    },
-    canDragRows() {
-      return this.canFullEdit
-        && !this.hasActiveFilters
-        && this.list.length > 1
-    },
     editingRow() {
       return this.editingRowData
     },
@@ -1312,33 +1258,10 @@ export default {
         value: item.snum,
       }))
     },
-    sheetKeyboardConfig() {
-      return {
-        isArrow: true,
-        isDel: true,
-        isEnter: true,
-        isTab: true,
-        isShift: true,
-        isEdit: false,
-        isClip: false,
-      }
-    },
-    sheetEditConfig() {
-      return {
-        trigger: 'dblclick',
-        mode: 'cell',
-        showIcon: false,
-        beforeEditMethod: this.sheetBeforeEdit,
-      }
-    },
-    sheetColumnOrderKey() {
-      return this.sheetColumns.map((column) => column.key).join(',')
-    },
   },
   watch: {
     viewMode(value) {
-      lastViewMode = value
-      this.clearSheetRange()
+      lastViewMode = coerceWorkbenchViewMode(value)
       if (value === 'workbench') {
         this.scheduleSortable()
       } else {
@@ -1358,24 +1281,17 @@ export default {
   created() {
     this.loadFilterOptions()
     this.getList()
-    if (this.viewMode === 'sheet') this.loadAllUserOptions()
+    if (this.isExcelMode) this.loadAllUserOptions()
   },
   mounted() {
     this.scheduleSortable()
-    this.onWindowMouseUp = () => this.finishSheetPointer()
-    window.addEventListener('mouseup', this.onWindowMouseUp)
     document.addEventListener('mousedown', this.onDocumentPointerDown, true)
   },
   beforeUnmount() {
     this.destroySortable()
-    window.removeEventListener('mouseup', this.onWindowMouseUp)
-    window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
     document.removeEventListener('mousedown', this.onDocumentPointerDown, true)
   },
   activated() {
-    if (this.onWindowMouseUp) {
-      window.addEventListener('mouseup', this.onWindowMouseUp)
-    }
     document.addEventListener('mousedown', this.onDocumentPointerDown, true)
     if (this.loading) return
     this.getList()
@@ -1383,26 +1299,40 @@ export default {
   deactivated() {
     this.closeEditor()
     this.destroySortable()
-    if (this.onWindowMouseUp) {
-      window.removeEventListener('mouseup', this.onWindowMouseUp)
-    }
-    window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
     document.removeEventListener('mousedown', this.onDocumentPointerDown, true)
   },
   methods: {
     async toggleViewMode() {
-      if (this.viewMode === 'sheet' && !await this.flushPendingSheetEdits()) return
-      this.viewMode = this.viewMode === 'workbench' ? 'sheet' : 'workbench'
+      if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
+      this.viewMode = this.isExcelMode ? WORKBENCH_VIEW : EXCEL_VIEW
     },
     async resetSheetColumnOrder() {
-      if (this.viewMode === 'sheet' && !await this.flushPendingSheetEdits()) return
-      try {
-        localStorage.removeItem(SHEET_COLUMN_ORDER_KEY)
-      } catch {
-        /* ignore */
-      }
+      if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
+      SHEET_COLUMN_ORDER.clear()
       this.sheetColumns = [...SHEET_COLUMNS]
+      this.persistSheetColumnOrder(this.sheetColumns)
       this.clearSheetRange()
+    },
+    persistSheetColumnOrder(columns) {
+      SHEET_COLUMN_ORDER.save(columns)
+    },
+    createSheetEditOriginal(row, key) {
+      return {
+        key,
+        rowId: row.id,
+        targetCodes: this.cloneSheetValue(row.target_codes),
+        targetName: row.target_name,
+        value: this.cloneSheetValue(this.sheetValueSnapshot(row, key)),
+      }
+    },
+    async flushExcelKeyboardSwitch(previousKey, nextKey) {
+      if (
+        ['target_codes', 'target_name'].includes(previousKey)
+        && ['target_codes', 'target_name'].includes(nextKey)
+        && this.pendingSheetOps.size
+      ) {
+        await Promise.allSettled([...this.pendingSheetOps])
+      }
     },
     async loadAllUserOptions() {
       try {
@@ -1522,12 +1452,10 @@ export default {
       })
       this.targetOptions = [...map.values()]
     },
-    onRowTargetChange(row) {
-      const codes = Array.isArray(row.target_codes) ? row.target_codes : []
-      row.target_codes = codes
-      row.target_name = codes
-        .map((code) => this.targetOptions.find((item) => item.snum === code)?.name || code)
-        .join('&')
+    onDrawerTargetChange(row, payload) {
+      row.target_codes = payload.codes
+      row.target_name = payload.name
+      this.mergeTargetOptions(payload.items)
       this.saveRow(row, { fields: ['target_codes', 'target_name'] })
     },
     mergedOptions(key) {
@@ -1540,6 +1468,7 @@ export default {
     },
     canEditField(row, fieldKey) {
       const key = fieldKey === 'target' ? 'target_codes' : fieldKey
+      if (key === 'sort_order' && this.isQueueTerminalRow(row)) return false
       if (this.canFullEdit) return true
       if (this.canDraftEdit && this.isDraftRow(row) && !DRAFT_PROTECTED_FIELDS.has(key)) {
         return true
@@ -1590,28 +1519,7 @@ export default {
       }
       return row?.[field?.key]
     },
-    syncDrawerControlTooltip(event) {
-      const target = event.target
-      if (!(target instanceof Element)) return
-      const control = target.closest('.el-input, .el-select')
-      if (!(control instanceof HTMLElement)) return
-      const content = control.querySelector(
-        '.el-input__inner, .target-selected-text, .el-select__selected-item',
-      )
-      if (!(content instanceof HTMLElement)) {
-        control.removeAttribute('title')
-        return
-      }
-      const text = content instanceof HTMLInputElement
-        ? content.value.trim()
-        : String(content.textContent || '').trim()
-      const clip = content.closest('.el-select__selection') || content
-      const isOverflowing = content.scrollWidth > content.clientWidth
-        || clip.scrollWidth > clip.clientWidth
-        || content.getBoundingClientRect().right > clip.getBoundingClientRect().right
-      if (text && isOverflowing) control.setAttribute('title', text)
-      else control.removeAttribute('title')
-    },
+    syncDrawerControlTooltip,
     onDrawerSelectChange(row, field, value) {
       if (this.isFieldLocked(row, field)) return
       row[field.key] = value
@@ -1708,7 +1616,10 @@ export default {
     },
     openEditor(row) {
       if (!row?.id) return
-      if (this.drawerVisible && this.editingId === row.id) return
+      if (this.drawerVisible && this.editingId === row.id) {
+        this.closeEditor()
+        return
+      }
       if (this.editingId) {
         this.rememberDrawerSave(this.flushDirtyEditor())
       }
@@ -1785,13 +1696,6 @@ export default {
         resort: fields.includes('sort_order') || fields.includes('priority'),
       })
     },
-    async flushPendingSheetEdits() {
-      await this.sheetKeyboardChain
-      await this.$refs.sheetTable?.clearEdit?.()
-      if (!this.pendingSheetOps.size) return true
-      const results = await Promise.allSettled([...this.pendingSheetOps])
-      return !results.some((result) => result.status === 'rejected' || result.value === null)
-    },
     async flushEditorForAction(row) {
       if (!row?.id) return true
       if (!await this.flushPendingSheetEdits()) return false
@@ -1840,8 +1744,14 @@ export default {
       if (el) this.sortInputRefs[id] = el
       else delete this.sortInputRefs[id]
     },
+    isQueueTerminalRow(row) {
+      const plan = String(row?.plan_status || '').trim()
+      if (QUEUE_TERMINAL_PLAN_STATUSES.includes(plan)) return true
+      const projectStatus = String(row?.display_status || row?.project_status || '').trim()
+      return Boolean(row?.aligned_locked && QUEUE_TERMINAL_PROJECT_STATUSES.includes(projectStatus))
+    },
     startSortEdit(row) {
-      if (!this.canEditField(row, 'sort_order') || !row?.id) return
+      if (!this.canEditSortCell(row) || !row?.id) return
       this.sortEditingId = row.id
       this.$nextTick(() => {
         const input = this.sortInputRefs[row.id]
@@ -1861,13 +1771,14 @@ export default {
     formatPlanStatus({ row, cellValue }) {
       return row?.display_status || cellValue || ''
     },
-    formatTokenMulti(key) {
-      return ({ cellValue }) => this.splitTokenMulti(key, cellValue).join('，')
+    formatTokenMultiCell({ column, cellValue }) {
+      return this.splitTokenMulti(column?.field, cellValue).join('，')
     },
     sheetFormatter(column) {
+      if (column.key === 'sort_order') return this.formatSortColumnCell
       if (column.key === 'target_codes') return this.formatCodes
       if (column.key === 'plan_status') return this.formatPlanStatus
-      if (this.isTokenMultiKey(column.key)) return this.formatTokenMulti(column.key)
+      if (this.isTokenMultiKey(column.key)) return this.formatTokenMultiCell
       if (column.key === 'mouse_age_weeks') return this.formatMouseAgeWeeks
       return undefined
     },
@@ -1907,55 +1818,14 @@ export default {
       if (column.key === 'target_name') return row.target_name || ''
       if (column.key === 'plan_status') return row.plan_status || row.display_status || ''
       if (this.isMultiSelectColumn(column)) return this.splitTokenMulti(column.key, row[column.key]).join('，')
+      if (column.key === 'sort_order') return this.formatSortColumn(row)
       return row[column.key] ?? ''
     },
     setSheetChoiceDirectValue(row, key, value) {
       row[key] = value
     },
-    sheetEditRender(column) {
-      if (column.edit === 'readonly') return undefined
-      if (column.edit === 'number') {
-        return {
-          name: 'VxeNumberInput',
-          props: {
-            align: column.key === 'sort_order' ? 'center' : undefined,
-            className: 'sheet-grid-editor',
-            controlConfig: { showButton: false },
-            min: 1,
-            type: 'integer',
-          },
-        }
-      }
-      if (column.edit === 'date') {
-        return {
-          name: 'VxeInput',
-          props: {
-            className: 'sheet-grid-editor sheet-date-editor',
-            clearable: false,
-            editable: true,
-            labelFormat: 'yyyy-MM-dd',
-            placeholder: 'YYYY-MM-DD',
-            type: 'date',
-            valueFormat: 'yyyy-MM-dd',
-          },
-        }
-      }
-      return {
-        name: 'VxeInput',
-        props: {
-          className: 'sheet-grid-editor',
-          clearable: false,
-          placeholder: '',
-        },
-      }
-    },
-    sheetBeforeEdit({ row, column }) {
-      const key = column?.field
-      const allowed = Boolean(key) && !this.isSheetCellLocked(row, key)
-      if (!allowed) this.sheetEditSource = ''
-      return allowed
-    },
     isSheetCellLocked(row, key) {
+      if (key === 'sort_order' && !this.isQueueSorted) return true
       if (!this.canEditField(row, key)) return true
       const column = this.sheetColumns.find((item) => item.key === key)
       if (column?.edit === 'readonly') return true
@@ -2000,12 +1870,7 @@ export default {
           : raw === ''
         return next.length || empty ? { ok: true, value: next } : { ok: false, reason: 'option' }
       }
-      if (column.edit === 'number') {
-        const value = Number(raw)
-        return Number.isSafeInteger(value) && value > 0
-          ? { ok: true, value }
-          : { ok: false, reason: 'integer' }
-      }
+      if (key === 'sort_order') return coerceRequiredPositiveInt(raw)
       if (!raw && REQUIRED_STATUS_FIELD_KEYS.has(key)) {
         return { ok: false, reason: 'empty' }
       }
@@ -2040,16 +1905,6 @@ export default {
       row[key] = result.value
       return { ok: true }
     },
-    normalizedSheetRange() {
-      if (!this.sheetRange) return null
-      const { r1, c1, r2, c2 } = this.sheetRange
-      return {
-        r1: Math.min(r1, r2),
-        c1: Math.min(c1, c2),
-        r2: Math.max(r1, r2),
-        c2: Math.max(c1, c2),
-      }
-    },
     sheetCellClassName({ row, column }) {
       const classes = []
       if (column.field === 'priority') classes.push(`sheet-tone-${this.priorityTone(row)}`)
@@ -2059,517 +1914,21 @@ export default {
       }
       return classes.join(' ')
     },
-    sheetHeaderCellClassName({ column }) {
-      return column.field ? 'sheet-selectable-header' : ''
-    },
-    paintSheetColumnMove(event) {
-      const wrap = this.$refs.sheetWrap
-      const stage = this.$refs.sheetTableStage
-      const line = this.$refs.sheetColumnDropLine
-      const ghost = this.$refs.sheetColumnGhost
-      const $table = this.$refs.sheetTable
-      const move = this.sheetDragMode === 'move-column' ? this.sheetColumnMove : null
-      wrap?.querySelectorAll('.is-column-from').forEach((el) => el.classList.remove('is-column-from'))
-      if (!move || !wrap || !stage || !line || !ghost || !$table?.getColumnByField) {
-        if (line) line.style.display = 'none'
-        if (ghost) ghost.style.display = 'none'
-        return
-      }
-      const fromId = $table.getColumnByField(this.sheetColumns[move.from]?.key)?.id
-      if (fromId) {
-        wrap.querySelectorAll(`[colid="${fromId}"]`).forEach((el) => el.classList.add('is-column-from'))
-      }
-      const stageRect = stage.getBoundingClientRect()
-      if (event) {
-        ghost.textContent = this.sheetColumns[move.from]?.label || ''
-        ghost.style.display = 'block'
-        ghost.style.transform = `translate3d(${event.clientX - stageRect.left + 12}px, ${event.clientY - stageRect.top + 16}px, 0)`
-      }
-      const toId = $table.getColumnByField(this.sheetColumns[move.to]?.key)?.id
-      const header = toId
-        && [...wrap.querySelectorAll(`.vxe-header--column[colid="${toId}"]`)]
-          .find((el) => el.getBoundingClientRect().width > 2)
-      if (!header || move.from === move.to) {
-        line.style.display = 'none'
-        return
-      }
-      const rect = header.getBoundingClientRect()
-      const top = Math.max(rect.top, stageRect.top) - stageRect.top
-      line.style.display = 'block'
-      line.style.height = `${stageRect.height - top}px`
-      line.style.transform = `translate3d(${(move.to > move.from ? rect.right : rect.left) - stageRect.left}px, ${top}px, 0)`
-    },
-    onSheetColumnPointerMove(event) {
-      if (this.sheetDragMode !== 'move-column' || !this.sheetColumnMove) return
-      const hit = this.hitSheetHeader(event.target) || this.hitSheetCell(event.target)
-      if (hit) this.sheetColumnMove.to = hit.colIndex
-      this.paintSheetColumnMove(event)
-    },
-    finishSheetPointer() {
-      const move = this.sheetDragMode === 'move-column' ? this.sheetColumnMove : null
-      window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
-      this.sheetPointerDown = false
-      this.sheetDragMode = ''
-      this.sheetColumnMove = null
-      this.paintSheetColumnMove()
-      if (!move || move.from === move.to) return
-      const next = [...this.sheetColumns]
-      const [column] = next.splice(move.from, 1)
-      if (!column) return
-      next.splice(move.to, 0, column)
-      this.sheetColumns = next
-      saveSheetColumns(next)
-      this.clearSheetRange()
-    },
-    syncPasteAnchorFromRange() {
-      if (!this.sheetRange) return
-      const column = this.sheetColumns[this.sheetRange.c1]
-      if (!column) return
-      this.pasteAnchor = { rowIndex: this.sheetRange.r1, colKey: column.key }
-    },
-    setSheetRange(next) {
-      this.sheetRange = next
-      this.syncPasteAnchorFromRange()
-      this.$nextTick(() => this.paintSheetRange())
-    },
-    clearSheetRange() {
-      window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
-      this.sheetRange = null
-      this.sheetEditOriginal = null
-      this.sheetEditSource = ''
-      this.sheetDragMode = ''
-      this.sheetPointerDown = false
-      this.sheetColumnMove = null
-      this.pasteAnchor = null
-      this.paintSheetColumnMove()
-      this.$refs.sheetTable?.clearSelected?.()
-      this.$nextTick(() => this.paintSheetRange())
-    },
-    paintSheetRange() {
-      const wrap = this.$refs.sheetWrap
-      const overlay = this.$refs.sheetRangeOverlay
-      if (!wrap?.querySelectorAll || !overlay) return
-      overlay.classList.remove('is-scrolling')
-      wrap.querySelectorAll('.is-sheet-selected, .is-sheet-active').forEach((el) => {
-        el.classList.remove('is-sheet-selected', 'is-sheet-active')
-      })
-      const range = this.normalizedSheetRange()
-      const $table = this.$refs.sheetTable
-      if (!range || !$table) {
-        overlay.style.display = 'none'
-        return
-      }
-      const rowIndexById = new Map(
-        this.list.map((row, index) => [String($table.getRowid?.(row) || row.id), index]),
-      )
-      const columnIndexById = new Map()
-      this.sheetColumns.forEach((column, index) => {
-        const id = $table.getColumnByField?.(column.key)?.id
-        if (id) columnIndexById.set(id, index)
-      })
-      const activeRow = this.pasteAnchor?.rowIndex
-      const activeColumn = this.sheetColumns.findIndex(
-        (column) => column.key === this.pasteAnchor?.colKey,
-      )
-      for (const tr of wrap.querySelectorAll('.vxe-table--body-wrapper tr[rowid]')) {
-        const r = rowIndexById.get(String(tr.getAttribute('rowid') || ''))
-        if (r == null || r < range.r1 || r > range.r2) continue
-        for (const td of tr.querySelectorAll('.vxe-body--column')) {
-          const c = columnIndexById.get(td.getAttribute('colid'))
-          if (c == null || c < range.c1 || c > range.c2) continue
-          td.classList.add('is-sheet-selected')
-          if (r === activeRow && c === activeColumn) td.classList.add('is-sheet-active')
-        }
-      }
-      this.syncSheetRangeOverlay()
-    },
-    syncSheetRangeOverlay() {
-      const wrap = this.$refs.sheetWrap
-      const overlay = this.$refs.sheetRangeOverlay
-      const $table = this.$refs.sheetTable
-      const range = this.normalizedSheetRange()
-      if (!wrap || !overlay || !$table || !range) {
-        if (overlay) overlay.style.display = 'none'
-        return
-      }
-      const rowIndexById = new Map(
-        this.list.map((row, index) => [String($table.getRowid?.(row) || row.id), index]),
-      )
-      const columnIndexById = new Map()
-      this.sheetColumns.forEach((column, index) => {
-        const id = $table.getColumnByField?.(column.key)?.id
-        if (id) columnIndexById.set(id, index)
-      })
-      let firstCell = null
-      let topCell = null
-      let bottomCell = null
-      let leftCell = null
-      let rightCell = null
-      let topRow = Number.POSITIVE_INFINITY
-      let bottomRow = Number.NEGATIVE_INFINITY
-      let leftColumn = Number.POSITIVE_INFINITY
-      let rightColumn = Number.NEGATIVE_INFINITY
-      for (const tr of wrap.querySelectorAll('.vxe-table--body-wrapper tr[rowid]')) {
-        const r = rowIndexById.get(String(tr.getAttribute('rowid') || ''))
-        if (r == null || r < range.r1 || r > range.r2) continue
-        for (const td of tr.querySelectorAll('.vxe-body--column')) {
-          const c = columnIndexById.get(td.getAttribute('colid'))
-          if (c == null || c < range.c1 || c > range.c2) continue
-          firstCell ||= td
-          if (r < topRow) {
-            topRow = r
-            topCell = td
-          }
-          if (r > bottomRow) {
-            bottomRow = r
-            bottomCell = td
-          }
-          if (c < leftColumn) {
-            leftColumn = c
-            leftCell = td
-          }
-          if (c > rightColumn) {
-            rightColumn = c
-            rightCell = td
-          }
-        }
-      }
-      const stage = this.$refs.sheetTableStage
-      const stageRect = stage?.getBoundingClientRect?.()
-      const bodyRect = firstCell
-        ?.closest?.('.vxe-table--body-wrapper')
-        ?.getBoundingClientRect?.()
-      if (!stageRect || !firstCell || !topCell || !bottomCell || !leftCell || !rightCell) {
-        overlay.style.display = 'none'
-        return
-      }
-      const clipRect = bodyRect || stageRect
-      const left = Math.max(leftCell.getBoundingClientRect().left, clipRect.left)
-      const top = Math.max(topCell.getBoundingClientRect().top, clipRect.top)
-      const right = Math.min(rightCell.getBoundingClientRect().right, clipRect.right)
-      const bottom = Math.min(bottomCell.getBoundingClientRect().bottom, clipRect.bottom)
-      if (right <= left || bottom <= top) {
-        overlay.style.display = 'none'
-        return
-      }
-      overlay.style.display = 'block'
-      overlay.style.width = `${right - left + 2}px`
-      overlay.style.height = `${bottom - top + 2}px`
-      overlay.style.transform = `translate3d(${left - stageRect.left - 1}px, ${top - stageRect.top - 1}px, 0)`
-    },
-    onSheetScroll() {
-      if (this.sheetDragMode === 'move-column') this.paintSheetColumnMove()
-      if (!this.sheetRange) return
-      this.$refs.sheetRangeOverlay?.classList.add('is-scrolling')
-      this.syncSheetRangeOverlay()
-    },
-    hitSheetCell(target) {
-      const td = target?.closest?.('.vxe-body--column')
-      if (!td) return null
-      const $table = this.$refs.sheetTable
-      const colid = td.getAttribute('colid')
-      const column = colid && $table?.getColumnById ? $table.getColumnById(colid) : null
-      const field = column?.field
-      if (!field) return null
-      const colIndex = this.sheetColumns.findIndex((item) => item.key === field)
-      if (colIndex < 0) return null
-      const tr = td.closest('tr')
-      const node = tr && $table?.getRowNode ? $table.getRowNode(tr) : null
-      const row = node?.item
-      const rowIndex = row
-        ? this.list.findIndex((item) => item.id === row.id)
-        : this.list.findIndex((item) => String(item.id) === String(tr?.getAttribute('rowid')))
-      if (rowIndex < 0) return null
-      return { rowIndex, colIndex, field }
-    },
-    hitSheetHeader(target) {
-      const th = target?.closest?.('.vxe-header--column')
-      if (!th) return null
-      const $table = this.$refs.sheetTable
-      const colid = th.getAttribute('colid')
-      const column = colid && $table?.getColumnById ? $table.getColumnById(colid) : null
-      const field = column?.field
-      const colIndex = this.sheetColumns.findIndex((item) => item.key === field)
-      return colIndex < 0 ? null : { colIndex, field }
-    },
-    onSheetSelectStart(event) {
-      if (event.target?.closest?.('input, textarea')) return
-      event.preventDefault()
-    },
-    onSheetDblClickCapture(event) {
-      if (event.target?.closest?.('input, textarea, .vxe-input, .vxe-select, .vxe-number-input')) return
-      const hit = this.hitSheetCell(event.target)
-      const row = hit ? this.list[hit.rowIndex] : null
-      this.sheetEditSource = row && !this.isSheetCellLocked(row, hit.field) ? 'dblclick' : ''
-    },
     sheetDirectTextValue(row, key) {
+      if (!row) return ''
       if (key === 'target_codes') return this.formatCodesText(row.target_codes)
       if (this.isTokenMultiKey(key)) {
         return Array.isArray(row[key])
           ? this.normalizeTokenMulti(key, row[key]).join('，')
           : String(row[key] ?? '')
       }
-      return String(row[key] ?? '')
-    },
-    focusSheetCellInput(row, key) {
-      const input = this.$refs.sheetTable
-        ?.getCellElement?.(row, key)
-        ?.querySelector?.('input')
-      if (!input) return
-      input.focus()
-      const end = String(input.value || '').length
-      input.setSelectionRange?.(end, end)
-    },
-    startSheetTextEdit(event, mode, text = '') {
-      const rowIndex = this.pasteAnchor?.rowIndex
-      const key = this.pasteAnchor?.colKey
-      const row = this.list[rowIndex]
-      if (!row || !key) return
-      if (mode !== 'composition') event.preventDefault()
-      event.stopPropagation()
-      if (this.isSheetCellLocked(row, key)) return
-      const character = text || event.key
-      const run = async () => {
-        const continuing = this.sheetEditOriginal?.rowId === row.id
-          && this.sheetEditOriginal?.key === key
-        if (!continuing && this.sheetEditOriginal) {
-          const previousKey = this.sheetEditOriginal.key
-          await this.$refs.sheetTable?.clearEdit?.()
-          if (
-            ['target_codes', 'target_name'].includes(previousKey)
-            && ['target_codes', 'target_name'].includes(key)
-            && this.pendingSheetOps.size
-          ) {
-            await Promise.allSettled([...this.pendingSheetOps])
-          }
-        }
-        if (!continuing) {
-          this.sheetEditOriginal = {
-            key,
-            rowId: row.id,
-            targetCodes: this.cloneSheetValue(row.target_codes),
-            targetName: row.target_name,
-            value: this.cloneSheetValue(row[key]),
-          }
-        }
-        this.sheetEditSource = 'keyboard'
-        if (mode === 'backspace') {
-          row[key] = this.sheetDirectTextValue(row, key).slice(0, -1)
-        } else if (mode === 'character' || mode === 'composition-text') {
-          row[key] = `${this.sheetDirectTextValue(row, key)}${character}`
-        }
-        await this.$refs.sheetTable?.setEditCell?.(row, key)
-        await this.$nextTick()
-        if (
-          this.list[this.pasteAnchor?.rowIndex]?.id === row.id
-          && this.pasteAnchor?.colKey === key
-        ) {
-          this.focusSheetCellInput(row, key)
-        }
+      if (key === 'plan_status') return String(row.display_status || row[key] || '')
+      if (key === 'mouse_age_weeks') {
+        const value = this.mouseAgeWeeksValue(row, row[key])
+        return value == null ? '' : String(value)
       }
-      this.sheetKeyboardChain = this.sheetKeyboardChain.then(run, run).catch(() => undefined)
-      return this.sheetKeyboardChain
-    },
-    onSheetCompositionEnd(event) {
-      if (event.target?.closest?.('input, textarea, .vxe-input, .vxe-select, .vxe-number-input')) {
-        return
-      }
-      const text = String(event.data || '')
-      if (text) this.startSheetTextEdit(event, 'composition-text', text)
-    },
-    onSheetKeydownCapture(event) {
-      const editor = event.target?.closest?.(
-        'input, textarea, .vxe-input, .vxe-select, .vxe-number-input',
-      )
-      if (editor) return
-      if (event.key === 'Delete') {
-        const row = this.list[this.pasteAnchor?.rowIndex]
-        const key = this.pasteAnchor?.colKey
-        if (row && key && this.isSheetCellLocked(row, key)) {
-          event.preventDefault()
-          event.stopPropagation()
-        }
-        return
-      }
-      if (
-        event.key === 'Backspace'
-        && !event.ctrlKey
-        && !event.metaKey
-        && !event.altKey
-      ) {
-        event.preventDefault()
-        this.startSheetTextEdit(event, 'backspace')
-        return
-      }
-      if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 'a') {
-        event.preventDefault()
-        this.selectAllSheetCells()
-        return
-      }
-      const isComposition = event.key === 'Process' || event.keyCode === 229
-      const isCharacter = String(event.key || '').length === 1
-      if (event.ctrlKey || event.metaKey || event.altKey || (!isCharacter && !isComposition)) return
-      this.startSheetTextEdit(event, isComposition ? 'composition' : 'character')
-    },
-    onSheetWrapMouseDown(event) {
-      if (event.target?.closest?.('input, textarea, button, .el-button, .vxe-input, .vxe-select, .vxe-number-input')) {
-        return
-      }
-      if (event.target?.closest?.('.vxe-cell--col-resizable')) return
-      this.$refs.sheetWrap?.focus?.()
-      const headerHit = this.hitSheetHeader(event.target)
-      if (event.button !== 0) return
-      if (headerHit && event.shiftKey) {
-        event.preventDefault()
-        window.getSelection()?.removeAllRanges()
-        this.$refs.sheetTable?.clearEdit?.()
-        this.$refs.sheetTable?.clearSelected?.()
-        this.sheetRange = null
-        this.pasteAnchor = null
-        this.paintSheetRange()
-        this.sheetDragMode = 'move-column'
-        this.sheetPointerDown = true
-        this.sheetColumnMove = { from: headerHit.colIndex, to: headerHit.colIndex }
-        this.paintSheetColumnMove(event)
-        window.addEventListener('mousemove', this.onSheetColumnPointerMove)
-        return
-      }
-      if (headerHit && this.list.length) {
-        event.preventDefault()
-        window.getSelection()?.removeAllRanges()
-        this.$refs.sheetTable?.clearEdit?.()
-        this.sheetDragMode = 'columns'
-        this.sheetPointerDown = true
-        this.setSheetRange({
-          r1: 0,
-          c1: headerHit.colIndex,
-          r2: this.list.length - 1,
-          c2: headerHit.colIndex,
-        })
-        return
-      }
-      const hit = this.hitSheetCell(event.target)
-      if (!hit) return
-      event.preventDefault()
-      window.getSelection()?.removeAllRanges()
-      this.sheetDragMode = hit.field === 'sort_order' ? 'rows' : 'cells'
-      this.sheetPointerDown = true
-      if (event.shiftKey && this.sheetRange) {
-        this.setSheetRange(this.sheetDragMode === 'rows'
-          ? {
-              ...this.sheetRange,
-              c1: 0,
-              r2: hit.rowIndex,
-              c2: this.sheetColumns.length - 1,
-            }
-          : { ...this.sheetRange, r2: hit.rowIndex, c2: hit.colIndex })
-        return
-      }
-      const range = this.sheetDragMode === 'rows'
-        ? {
-            r1: hit.rowIndex,
-            c1: 0,
-            r2: hit.rowIndex,
-            c2: this.sheetColumns.length - 1,
-          }
-        : { r1: hit.rowIndex, c1: hit.colIndex, r2: hit.rowIndex, c2: hit.colIndex }
-      this.setSheetRange(range)
-      const row = this.list[hit.rowIndex]
-      if (row) this.$refs.sheetTable?.setSelectCell?.(row, hit.field)
-    },
-    onSheetWrapMouseOver(event) {
-      if (!this.sheetPointerDown) return
-      if (this.sheetDragMode === 'move-column') return
-      if (this.sheetDragMode === 'columns') {
-        const headerHit = this.hitSheetHeader(event.target)
-        if (!headerHit || !this.sheetRange || headerHit.colIndex === this.sheetRange.c2) return
-        this.setSheetRange({ ...this.sheetRange, c2: headerHit.colIndex })
-        return
-      }
-      const hit = this.hitSheetCell(event.target)
-      if (!hit || !this.sheetRange) return
-      if (this.sheetDragMode === 'rows') {
-        if (hit.rowIndex === this.sheetRange.r2) return
-        this.setSheetRange({
-          ...this.sheetRange,
-          r2: hit.rowIndex,
-          c2: this.sheetColumns.length - 1,
-        })
-        return
-      }
-      if (hit.rowIndex === this.sheetRange.r2 && hit.colIndex === this.sheetRange.c2) return
-      this.setSheetRange({ ...this.sheetRange, r2: hit.rowIndex, c2: hit.colIndex })
-    },
-    sheetRangeTsv() {
-      const range = this.normalizedSheetRange()
-      if (!range) return ''
-      const lines = []
-      for (let r = range.r1; r <= range.r2; r += 1) {
-        const row = this.list[r]
-        if (!row) continue
-        const cells = []
-        for (let c = range.c1; c <= range.c2; c += 1) {
-          const column = this.sheetColumns[c]
-          if (!column) continue
-          let value = row[column.key]
-          if (column.key === 'target_codes') value = this.formatCodesText(value)
-          if (this.isTokenMultiKey(column.key)) value = this.joinTokenMulti(column.key, value)
-          if (column.key === 'plan_status') value = row.display_status || value
-          if (column.key === 'mouse_age_weeks') value = this.mouseAgeWeeksValue(row, value)
-          cells.push(value == null ? '' : String(value))
-        }
-        lines.push(cells.join('\t'))
-      }
-      return lines.join('\n')
-    },
-    onSheetCopy(event) {
-      const text = this.sheetRangeTsv()
-      if (!text) return
-      if (event.target?.closest?.('input, textarea')) return
-      event.preventDefault()
-      event.clipboardData?.setData('text/plain', text)
-    },
-    onSheetCellSelected({ row, column, $event }) {
-      const key = column?.field
-      const rowIndex = this.list.findIndex((item) => item.id === row.id)
-      const colIndex = this.sheetColumns.findIndex((item) => item.key === key)
-      if (rowIndex < 0 || colIndex < 0) return
-      if (this.sheetPointerDown && this.sheetDragMode === 'rows') {
-        this.setSheetRange({
-          r1: this.sheetRange?.r1 ?? rowIndex,
-          c1: 0,
-          r2: rowIndex,
-          c2: this.sheetColumns.length - 1,
-        })
-        return
-      }
-      const extendsRange = $event?.shiftKey
-        && ($event.type !== 'keydown' || String($event.key).startsWith('Arrow'))
-      if (extendsRange && this.sheetRange) {
-        this.setSheetRange({ ...this.sheetRange, r2: rowIndex, c2: colIndex })
-        return
-      }
-      this.setSheetRange({ r1: rowIndex, c1: colIndex, r2: rowIndex, c2: colIndex })
-    },
-    async selectSheetRange(range) {
-      const row = this.list[range.r1]
-      const column = this.sheetColumns[range.c1]
-      if (!row || !column) return
-      await this.$refs.sheetTable?.setSelectCell?.(row, column.key)
-      this.setSheetRange(range)
-      this.$refs.sheetWrap?.focus?.()
-    },
-    selectAllSheetCells() {
-      if (!this.list.length || !this.sheetColumns.length) return
-      this.selectSheetRange({
-        r1: 0,
-        c1: 0,
-        r2: this.list.length - 1,
-        c2: this.sheetColumns.length - 1,
-      })
-    },
-    cloneSheetValue(value) {
-      return value == null ? value : JSON.parse(JSON.stringify(value))
+      if (row[key] === null || row[key] === undefined) return ''
+      return String(row[key])
     },
     sameSheetValue(key, left, right) {
       if (key === 'target_codes') {
@@ -2583,32 +1942,6 @@ export default {
           === JSON.stringify(this.splitTokenMulti(key, right))
       }
       return String(left ?? '').trim() === String(right ?? '').trim()
-    },
-    onSheetEditActived({ row, column }) {
-      const key = column?.field
-      if (!key) return
-      if (
-        this.sheetEditSource === 'keyboard'
-        && this.sheetEditOriginal?.rowId === row.id
-        && this.sheetEditOriginal?.key === key
-      ) {
-        return
-      }
-      this.sheetEditOriginal = {
-        key,
-        rowId: row.id,
-        targetCodes: this.cloneSheetValue(row.target_codes),
-        targetName: row.target_name,
-        value: this.cloneSheetValue(row[key]),
-      }
-    },
-    takeSheetEditOriginal(row, key) {
-      const original = this.sheetEditOriginal
-      this.sheetEditOriginal = null
-      if (original?.rowId === row.id && original.key === key) {
-        return this.cloneSheetValue(original.value)
-      }
-      return this.cloneSheetValue(this.rowBaselines.get(row.id)?.[key])
     },
     restoreSheetEditValue(row, key, value) {
       row[key] = this.cloneSheetValue(value)
@@ -2683,34 +2016,6 @@ export default {
       row.target_name = codes
         .map((code) => this.targetOptions.find((item) => item.snum === code)?.name || code)
         .join('&')
-    },
-    onSheetPickerVisibleChange({ visible }) {
-      if (!visible) this.$refs.sheetTable?.clearEdit?.()
-    },
-    async restoreSheetSelectedCell() {
-      const $table = this.$refs.sheetTable
-      if (!$table || $table.getEditRecord?.()) return
-      const row = this.list[this.pasteAnchor?.rowIndex]
-      const key = this.pasteAnchor?.colKey
-      if (!row || !key) return
-      await $table.setSelectCell?.(row, key)
-      if ($table.getEditRecord?.()) return
-      const activeElement = document.activeElement
-      const wrap = this.$refs.sheetWrap
-      if (
-        !activeElement
-        || activeElement === document.body
-        || wrap?.contains?.(activeElement)
-        || activeElement.closest?.('.sheet-picker-popup')
-      ) {
-        wrap?.focus?.()
-      }
-    },
-    onSheetEditClosed(context) {
-      const operation = this.finishSheetEdit(context)
-      this.pendingSheetOps.add(operation)
-      this.$nextTick(() => this.restoreSheetSelectedCell())
-      return operation.finally(() => this.pendingSheetOps.delete(operation))
     },
     async finishSheetEdit({ row, column }) {
       const key = column?.field
@@ -2949,11 +2254,7 @@ export default {
       return next
     },
     replaceRow(saved) {
-      const normalized = this.normalizeRow(saved)
-      const index = this.list.findIndex((item) => item.id === saved.id)
-      if (index >= 0) {
-        this.list.splice(index, 1, { ...this.list[index], ...normalized })
-      }
+      const { normalized } = this.patchExistingListRow(saved)
       if (this.editingId === saved.id && this.editingRowData) {
         Object.assign(this.editingRowData, normalized)
       }
@@ -3041,12 +2342,7 @@ export default {
       this.loading = true
       try {
         const saved = await saveWorkbench({})
-        if (!this.hasActiveFilters) {
-          const nextTotal = (this.total || 0) + 1
-          this.listQuery.page = Math.max(1, Math.ceil(nextTotal / this.listQuery.limit))
-        }
-        await this.getList()
-        if (saved?.id && this.viewMode === 'workbench') this.openEditor(saved)
+        await this.revealCreatedRow(saved)
       } catch (err) {
         notifyApiError(err, { messages: SERUM_ERRORS.workbench.save })
       } finally {
@@ -3096,8 +2392,7 @@ export default {
       try {
         const saved = await copyWorkbench(row.id)
         ElMessage.success(`已复制为新草稿，实验号 ${saved.experiment_id}`)
-        await this.getList()
-        if (saved?.id) this.openEditor(saved)
+        await this.revealCreatedRow(saved)
       } catch (err) {
         notifyApiError(err, { messages: SERUM_ERRORS.workbench.copy })
       } finally {
@@ -3142,11 +2437,15 @@ export default {
     },
     async initSortable() {
       const initToken = ++this.sortableInitToken
-      this.destroySortable()
-      if (this.viewMode !== 'workbench' || !this.canDragRows) return
+      if (this.viewMode !== 'workbench' || !this.canDragRows) {
+        this.destroySortable()
+        return
+      }
       await this.$nextTick()
       const tbody = this.workbenchTbody()
       if (!tbody || initToken !== this.sortableInitToken || !tbody.isConnected) return
+      if (this.sortable?.el === tbody) return
+      this.destroySortable()
       const Sortable = (await import('sortablejs')).default
       if (initToken !== this.sortableInitToken || !tbody.isConnected) return
       this.sortable = Sortable.create(tbody, {
@@ -3172,24 +2471,11 @@ export default {
       const { oldIndex, newIndex, item } = event
       this.revertDrag(item, oldIndex, newIndex)
       if (!this.canDragRows || oldIndex == null || newIndex == null || oldIndex === newIndex) return
-      const moved = this.list[oldIndex]
-      const target = this.list[newIndex]
-      if (!moved || !target) return
-      if (!this.canEditField(moved, 'sort_order')) {
-        ElMessage.warning('只能调整草稿状态的工作台记录')
-        return
-      }
-      const expectedRows = this.list.map((row) => ({
-        id: row.id,
-        sort_order: Number(row.sort_order),
-        priority: this.rowPriority(row),
-      }))
-      const ids = this.list.map((row) => row.id)
-      const [draggedId] = ids.splice(oldIndex, 1)
-      ids.splice(newIndex, 0, draggedId)
+      const payload = this.queueReorderPayload(oldIndex, newIndex)
+      if (!payload) return
       this.loading = true
       try {
-        await reorderWorkbench(ids, draggedId, expectedRows)
+        await reorderWorkbench(payload.movedId, payload.targetId)
         await this.getList()
       } catch (err) {
         notifyApiError(err, { messages: SERUM_ERRORS.workbench.reorder })
@@ -3420,6 +2706,11 @@ export default {
 }
 </script>
 
+<style scoped src="#/components/workbench/workbenchConsole.css"></style>
+<style scoped src="#/components/workbench/workbenchExcel.css"></style>
+<style scoped src="#/components/workbench/workbenchDrawerChrome.css"></style>
+<style src="#/components/workbench/workbenchDrawer.css"></style>
+
 <style scoped>
 .app-container {
   position: relative;
@@ -3427,170 +2718,9 @@ export default {
   background-color: var(--list-page-bg);
   min-height: 100%;
 }
-.workbench-console {
-  position: relative;
-  overflow: hidden;
-  margin-bottom: var(--list-page-gap);
-  background: linear-gradient(90deg, #ffffff 0%, #fbfcff 68%, #f6f9fd 100%);
-  border: var(--list-surface-border);
-  border-radius: var(--list-surface-radius);
-  box-shadow: var(--list-surface-shadow);
-}
-.console-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-width: 0;
-  padding: 14px 18px 12px;
-}
-.console-brand {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-.title-copy {
-  min-width: 0;
-}
-.page-title {
-  margin: 0;
-  color: var(--el-text-color-primary);
-  font-size: var(--list-page-title-size);
-  font-weight: var(--list-page-title-weight);
-  letter-spacing: 0.01em;
-}
-.page-subtitle {
-  max-width: 620px;
-  margin: 4px 0 0;
-  color: var(--list-page-subtitle-color);
-  font-size: var(--list-page-subtitle-size);
-  font-weight: var(--list-page-subtitle-weight);
-}
-.console-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.ready-summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 30px;
-  padding: 0 11px;
-  border: 1px solid rgba(103, 194, 58, 0.2);
-  border-radius: 999px;
-  background: rgba(240, 249, 235, 0.68);
-  color: #5c7d4a;
-  font-size: 12px;
-  cursor: pointer;
-  transition: 0.18s ease;
-}
-.ready-summary:hover,
-.ready-summary.is-active {
-  border-color: rgba(103, 194, 58, 0.42);
-  background: #f0f9eb;
-}
-.ready-summary strong {
-  color: #3f6f2b;
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-.ready-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--el-color-success);
-  box-shadow: 0 0 0 4px rgba(103, 194, 58, 0.12);
-}
 .lifecycle-nav {
-  display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  padding: 0;
-  margin: 0 12px 12px;
-  overflow: hidden;
-  background: #fff;
-  border: 1px solid rgba(218, 225, 234, 0.92);
-  border-radius: 10px;
 }
-.lifecycle-item {
-  --stage-color: #8090a5;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  min-height: 56px;
-  padding: 8px 14px;
-  border: 0;
-  border-right: 1px solid rgba(211, 220, 231, 0.78);
-  background: transparent;
-  color: var(--el-text-color-secondary);
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.16s ease, color 0.16s ease;
-  user-select: none;
-}
-.lifecycle-item:last-child {
-  border-right: 0;
-}
-.lifecycle-item:not(.is-active):hover {
-  background: rgba(32, 45, 64, 0.035);
-}
-.lifecycle-item.is-active {
-  background: color-mix(in srgb, var(--stage-color) 7%, white);
-  color: var(--el-text-color-primary);
-}
-.stage-marker {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--stage-color) 11%, white);
-  color: var(--stage-color);
-  font-size: 10px;
-  font-weight: 700;
-  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
-}
-.lifecycle-item.is-active .stage-marker {
-  color: #fff;
-  background: var(--stage-color);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--stage-color) 12%, transparent);
-}
-.stage-copy {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.stage-copy strong {
-  font-size: 13px;
-  font-weight: 620;
-}
-.lifecycle-item.is-active .stage-copy strong {
-  color: color-mix(in srgb, var(--stage-color) 72%, #172033);
-  font-weight: 680;
-}
-.stage-copy small {
-  margin-top: 2px;
-  overflow: hidden;
-  color: var(--el-text-color-secondary);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.stage-count {
-  color: var(--stage-color);
-  font-size: 18px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 680;
-}
-.stage-all { --stage-color: #0f8b8d; }
-.stage-planned { --stage-color: #409eff; }
-.stage-ongoing { --stage-color: #8b5cf6; }
-.stage-completed { --stage-color: #43b97f; }
-.stage-cancelled { --stage-color: #8a94a6; }
 .filter-panel {
   padding: var(--list-surface-padding-y) var(--list-surface-padding-x);
   margin-bottom: var(--list-page-gap);
@@ -3628,11 +2758,6 @@ export default {
   flex-shrink: 0;
   align-self: flex-start;
   margin-left: auto;
-}
-.view-toggle-button.is-sheet {
-  color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-  border-color: var(--el-color-primary-light-5);
 }
 @media (max-width: 1100px) {
   .console-header,
@@ -3757,6 +2882,18 @@ export default {
   padding-right: 6px;
   padding-left: 6px;
 }
+.sort-header-btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.sort-header-btn.is-active {
+  color: var(--el-color-primary);
+  font-weight: 650;
+}
 .sort-order-value {
   min-width: 22px;
   padding: 0;
@@ -3792,161 +2929,6 @@ export default {
 .app-container :deep(.wb-sortable-ghost) {
   opacity: 0.65;
   background: #ecf5ff;
-}
-.sheet-wrap {
-  --vxe-ui-font-family: var(--font-family);
-  --vxe-ui-font-size-small: 14px;
-
-  width: 100%;
-  overflow: hidden;
-  font-family: var(--font-family);
-  outline: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.sheet-table-stage {
-  position: relative;
-  width: 100%;
-}
-.sheet-wrap :deep(.vxe-table),
-.sheet-wrap :deep(.vxe-body--column),
-.sheet-wrap :deep(.vxe-cell) {
-  user-select: none;
-  -webkit-user-select: none;
-}
-.sheet-range-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 8;
-  display: none;
-  box-sizing: border-box;
-  pointer-events: none;
-  border: 2px solid var(--el-color-primary);
-  transition:
-    width 80ms ease-out,
-    height 80ms ease-out,
-    transform 80ms ease-out;
-  will-change: width, height, transform;
-}
-.sheet-range-overlay.is-scrolling {
-  transition: none;
-}
-.sheet-wrap :deep(.vxe-body--column.col--selected),
-.sheet-wrap :deep(.vxe-body--column.col--active) {
-  box-shadow: none !important;
-}
-.sheet-wrap :deep(.is-sheet-selected) {
-  background-color: var(--el-color-primary-light-9) !important;
-}
-.sheet-wrap :deep(.is-sheet-active) {
-  background-color: var(--el-bg-color) !important;
-}
-.sheet-wrap :deep(.sheet-selectable-header) {
-  cursor: pointer;
-}
-.sheet-wrap :deep(.sheet-selectable-header:hover) {
-  background-color: var(--el-color-primary-light-9) !important;
-}
-.sheet-wrap.is-column-moving,
-.sheet-wrap.is-column-moving :deep(.sheet-selectable-header) {
-  cursor: grabbing;
-}
-.sheet-wrap :deep(.is-column-from) {
-  opacity: 0.4;
-}
-.sheet-column-drop-line {
-  position: absolute;
-  top: 0;
-  left: -1px;
-  z-index: 11;
-  display: none;
-  width: 2px;
-  pointer-events: none;
-  background: var(--el-color-primary);
-  box-shadow: 0 0 0 1px var(--el-color-primary-light-7);
-}
-.sheet-column-ghost {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 12;
-  display: none;
-  max-width: 200px;
-  padding: 6px 10px;
-  overflow: hidden;
-  pointer-events: none;
-  color: var(--el-color-primary);
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 1.3;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-color-primary-light-5);
-  border-radius: 4px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
-}
-.sheet-wrap :deep(.vxe-body--column.col--active > .vxe-cell),
-.sheet-wrap :deep(.vxe-body--column.col--active > .vxe-cell > .vxe-cell--wrapper) {
-  width: 100%;
-  height: 100%;
-}
-.sheet-wrap :deep(.vxe-body--column.col--active > .vxe-cell) {
-  padding: 0 !important;
-}
-.sheet-wrap :deep(.sheet-grid-editor.vxe-input),
-.sheet-wrap :deep(.sheet-grid-editor.vxe-number-input),
-.sheet-wrap :deep(.sheet-grid-editor.vxe-select) {
-  width: 100%;
-  height: 100%;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-.sheet-wrap :deep(.sheet-grid-editor .vxe-input--inner),
-.sheet-wrap :deep(.sheet-grid-editor .vxe-number-input--input) {
-  padding: var(--vxe-ui-table-cell-padding-small);
-  background: transparent;
-}
-.sheet-picker-editor {
-  position: relative;
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  width: 100%;
-  height: 100%;
-  padding: var(--vxe-ui-table-cell-padding-small);
-  overflow: hidden;
-  line-height: var(--vxe-ui-table-row-line-height);
-}
-.sheet-picker-editor__value {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sheet-wrap :deep(.sheet-picker-control.vxe-select) {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-}
-.sheet-wrap :deep(.sheet-picker-control.vxe-select > .vxe-input) {
-  opacity: 0;
-}
-.sheet-wrap :deep(.sheet-grid-editor.vxe-select > .vxe-input) {
-  height: 100%;
-  border: 0 !important;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-.sheet-wrap :deep(.sheet-date-editor .vxe-input--suffix) {
-  display: none;
-}
-.sheet-wrap :deep(.sheet-grid-editor .vxe-number-input--prefix),
-.sheet-wrap :deep(.sheet-grid-editor .vxe-number-input--suffix) {
-  display: none;
 }
 .sheet-wrap :deep(.sheet-tone-info) {
   color: var(--el-color-info);
@@ -3993,68 +2975,6 @@ export default {
 .target-name-select :deep(.el-select__input-wrapper) {
   flex: 1 1 24px;
   min-width: 24px;
-}
-.drawer-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-}
-.drawer-heading {
-  min-width: 0;
-}
-.drawer-title {
-  margin: 0;
-  color: var(--el-text-color-primary);
-  font-size: 16px;
-  font-weight: 650;
-  line-height: 1.3;
-}
-.drawer-header-meta {
-  margin: 2px 0 0;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.3;
-}
-.drawer-close {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  margin: -2px -4px 0 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #909399;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-}
-.drawer-close:hover {
-  color: var(--el-text-color-primary);
-}
-.drawer-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 28px;
-  margin: 0 0 8px;
-}
-.drawer-toolbar-actions,
-.drawer-nav {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: 6px;
-}
-.drawer-toolbar-actions :deep(.action-cell) {
-  justify-content: flex-start;
-}
-.drawer-nav :deep(.el-button) {
-  height: 28px;
-  min-height: 28px;
-  padding: 0 10px;
 }
 .drawer-fieldset {
   margin: 0;
@@ -4120,54 +3040,6 @@ export default {
 </style>
 
 <style>
-.sheet-picker-popup {
-  --vxe-ui-font-size-small: 14px;
-
-  min-width: 220px !important;
-}
-.sheet-picker-popup .vxe-select--panel-wrapper {
-  overflow: hidden;
-  border-color: var(--el-border-color-light);
-  border-radius: 6px;
-  box-shadow: var(--el-box-shadow-light);
-}
-.sheet-picker-popup .vxe-select--panel-search {
-  padding: 8px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-.sheet-picker-popup .vxe-select-search--input {
-  border-color: var(--el-border-color);
-  border-radius: 4px;
-}
-.sheet-picker-popup .vxe-select-option {
-  padding: 0 12px;
-}
-.sheet-picker-popup .vxe-select-option.is--selected {
-  background-color: var(--el-color-primary-light-9);
-}
-/* append-to-body 抽屉即使关掉灰色遮罩，仍有全屏 overlay 会吃掉点击 */
-.workbench-drawer .el-drawer__header {
-  margin-bottom: 0;
-  padding: 10px 16px 6px;
-}
-.workbench-drawer .el-drawer__body {
-  padding: 4px 16px 16px;
-}
-.workbench-drawer-overlay,
-.el-overlay:has(.workbench-drawer) {
-  pointer-events: none !important;
-  background: transparent !important;
-}
-.workbench-drawer-overlay .el-overlay-dialog,
-.workbench-drawer-overlay .el-drawer__container,
-.el-overlay:has(.workbench-drawer) .el-overlay-dialog,
-.el-overlay:has(.workbench-drawer) .el-drawer__container {
-  pointer-events: none !important;
-}
-.workbench-drawer-overlay .el-drawer,
-.el-overlay:has(.workbench-drawer) .el-drawer {
-  pointer-events: auto;
-}
 .workbench-drawer .status-select.status-tone-info .el-select__wrapper,
 .workbench-drawer .drawer-select.status-tone-info .el-select__wrapper {
   background-color: var(--el-color-info-light-9);

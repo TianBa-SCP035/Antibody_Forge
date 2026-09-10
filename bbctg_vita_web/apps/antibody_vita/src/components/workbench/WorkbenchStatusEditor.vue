@@ -4,7 +4,7 @@
     placement="right"
     trigger="click"
     transition="el-zoom-in-left"
-    :width="116"
+    :width="132"
     :disabled="!editable"
     :teleported="true"
   >

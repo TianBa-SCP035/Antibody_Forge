@@ -30,6 +30,16 @@ from modules.immunology.serum.service import (
     rename_experiment_related_records,
     update_project_identifiers,
 )
+from utils.workbench_queue import (
+    DEFAULT_PRIORITY,
+    PRIORITY_ORDER,
+    apply_priority_constraints,
+    canonicalize_priority,
+    list_order_clauses,
+    place_row_among,
+    queued_sort,
+    renumber_queue,
+)
 
 PLAN_STATUS_DRAFT = "草稿"
 PLAN_STATUS_PREP = "筹备中"
@@ -37,8 +47,6 @@ PLAN_STATUS_STARTED = "已开展"
 PLAN_STATUS_CANCELLED = "已取消"
 CLOSED_PLAN_STATUSES = frozenset({PLAN_STATUS_CANCELLED, "小鼠KO致死"})
 EDITABLE_PLAN_STATUSES = frozenset({PLAN_STATUS_DRAFT, PLAN_STATUS_PREP, *CLOSED_PLAN_STATUSES})
-DEFAULT_PRIORITY = "正常"
-PRIORITY_ORDER = ("吉吉国王", "非常紧急", "加急", "正常")
 DEFAULT_REVIEW_STATUS = "未审"
 REVIEW_STATUS_OPTIONS = ("未审", "已通过", "驳回")
 DEFAULT_MOUSE_STATUS = "未定"
@@ -261,16 +269,7 @@ def _is_closed_plan(status: str | None) -> bool:
     return str(status or "").strip() in CLOSED_PLAN_STATUSES
 
 
-def _priority_value(value: Any) -> str:
-    return str(value or "").strip() or DEFAULT_PRIORITY
-
-
-def _priority_rank(value: Any) -> int:
-    canon = _priority_value(value)
-    try:
-        return PRIORITY_ORDER.index(canon)
-    except ValueError:
-        return len(PRIORITY_ORDER)
+_priority_value = canonicalize_priority
 
 
 def _normalize_csv_options(value: Any, options: tuple[str, ...], error: str) -> str | None:
@@ -298,34 +297,56 @@ def _normalize_immuno_method(value: Any) -> str | None:
     return _normalize_csv_options(value, IMMUNO_METHOD_OPTIONS, "免疫方式包含不允许的选项")
 
 
-def _band_index_range(others: list[Any], priority: Any) -> tuple[int, int]:
-    """Insert indices in ``others`` for priority P: first of band .. after last peer."""
-    rank = _priority_rank(priority)
-    first_insert = 0
-    last_peer_index = None
-    for index, item in enumerate(others or []):
-        item_rank = _priority_rank(getattr(item, "priority", None))
-        if item_rank < rank:
-            first_insert = index + 1
-        elif item_rank == rank:
-            last_peer_index = index
-    last_insert = last_peer_index + 1 if last_peer_index is not None else first_insert
-    return first_insert, last_insert
+def _list_order(data: dict[str, Any] | None = None):
+    return list_order_clauses(
+        (data or {}).get("sort_field"),
+        SerumImmWorkbench.sort_order,
+        SerumImmWorkbench.id,
+    )
 
 
-def _insert_index_for_target(others: list[Any], priority: Any, target_sort: int) -> int:
-    first_insert, last_insert = _band_index_range(others, priority)
-    desired = max(0, int(target_sort) - 1)
-    return min(max(desired, first_insert), last_insert)
+def _row_is_terminal(row: SerumImmWorkbench, project: SerumImmProject | None = None) -> bool:
+    if _is_closed_plan(row.plan_status):
+        return True
+    if _is_started(row) and project is not None:
+        return str(project.project_status or "").strip() in TERMINAL_PROJECT_STATUSES
+    return False
 
 
-def _renumber_queue(rows: list[Any]) -> None:
-    for index, row in enumerate(rows, start=1):
-        row.sort_order = index
+def _terminal_sql():
+    return or_(
+        SerumImmWorkbench.plan_status.in_(CLOSED_PLAN_STATUSES),
+        and_(
+            SerumImmWorkbench.plan_status == PLAN_STATUS_STARTED,
+            SerumImmProject.project_status.in_(TERMINAL_PROJECT_STATUSES),
+        ),
+    )
 
 
 def _queue_rows(db: Session) -> list[SerumImmWorkbench]:
-    return list(db.scalars(select(SerumImmWorkbench).order_by(*_list_order())).all())
+    return list(
+        db.scalars(
+            select(SerumImmWorkbench)
+            .outerjoin(
+                SerumImmProject,
+                SerumImmWorkbench.experiment_id == SerumImmProject.experiment_id,
+            )
+            .where(~_terminal_sql())
+            .order_by(SerumImmWorkbench.sort_order.asc(), SerumImmWorkbench.id.asc())
+        ).unique().all()
+    )
+
+
+def _projects_for_rows(db: Session, rows: list[SerumImmWorkbench]) -> dict[str, SerumImmProject]:
+    experiment_ids = [str(row.experiment_id or "").strip() for row in rows if row.experiment_id]
+    if not experiment_ids:
+        return {}
+    return {
+        str(item.experiment_id or "").strip(): item
+        for item in db.scalars(
+            select(SerumImmProject).where(SerumImmProject.experiment_id.in_(experiment_ids))
+        ).all()
+    }
 
 
 def _lock_queue(db: Session) -> None:
@@ -341,72 +362,69 @@ def _place_row(db: Session, row: SerumImmWorkbench, *, mode: str, target_sort: i
     if not getattr(row, "id", None):
         db.flush()
     others = [item for item in _queue_rows(db) if int(item.id) != int(row.id)]
-    first_insert, last_insert = _band_index_range(others, row.priority)
-    if mode == "first":
-        index = first_insert
-    elif mode == "last":
-        index = last_insert
-    else:
-        index = _insert_index_for_target(others, row.priority, int(target_sort if target_sort is not None else row.sort_order or 0))
-    others.insert(index, row)
-    _renumber_queue(others)
+    place_row_among(others, row, mode=mode, target_sort=target_sort)
 
 
-def _apply_queue_constraints(
+def _apply_queue(
     db: Session,
     row: SerumImmWorkbench,
     *,
-    previous_sort: int,
+    previous_sort: int | None,
     previous_priority: Any,
     payload: dict[str, Any],
     is_new: bool,
+    project: SerumImmProject | None = None,
 ) -> None:
-    if not getattr(row, "id", None):
-        db.flush()
-    current_sort = int(row.sort_order or 0)
-    sort_changed = current_sort != int(previous_sort or 0)
-    priority_changed = _priority_value(row.priority) != _priority_value(previous_priority)
-    explicit_sort = "sort_order" in payload and _normalize_int(payload.get("sort_order")) not in (None, 0)
-    if not sort_changed and not priority_changed and not (is_new and explicit_sort):
+    if _row_is_terminal(row, project):
+        leaving = queued_sort(previous_sort) is not None or queued_sort(row.sort_order) is not None
+        row.sort_order = None
+        if leaving:
+            renumber_queue(_queue_rows(db))
         return
-    if priority_changed and not sort_changed:
-        demote = _priority_rank(row.priority) > _priority_rank(previous_priority)
-        _place_row(db, row, mode="first" if demote else "last")
+    if is_new or queued_sort(previous_sort) is None:
+        target = queued_sort(payload.get("sort_order"))
+        _place_row(db, row, mode="snap" if target else "last", target_sort=target)
         return
-    _place_row(db, row, mode="snap", target_sort=current_sort)
-
-
-def _compact_all_sorts(db: Session) -> None:
-    _renumber_queue(_queue_rows(db))
-
-
-def _list_order():
-    return (
-        SerumImmWorkbench.sort_order.asc(),
-        SerumImmWorkbench.id.asc(),
+    apply_priority_constraints(
+        row,
+        previous_sort=previous_sort,
+        previous_priority=previous_priority,
+        place=lambda mode, target_sort=None: _place_row(db, row, mode=mode, target_sort=target_sort),
     )
 
 
-def _next_sort_order(db: Session, exclude_id: int | None = None) -> int:
-    stmt = select(func.coalesce(func.max(SerumImmWorkbench.sort_order), 0))
-    if exclude_id:
-        stmt = stmt.where(SerumImmWorkbench.id != int(exclude_id))
-    current = int(db.scalar(stmt) or 0)
-    for obj in list(db.new) + list(db.dirty):
-        if not isinstance(obj, SerumImmWorkbench):
-            continue
-        if exclude_id and obj.id == exclude_id:
-            continue
-        current = max(current, int(obj.sort_order or 0))
-    return current + 1
-
-
-def _assign_queue_sort(db: Session, row: SerumImmWorkbench, *, is_new: bool, payload: dict[str, Any]) -> None:
-    if not is_new:
-        return
-    explicit = "sort_order" in payload and _normalize_int(payload.get("sort_order")) not in (None, 0)
-    if not explicit:
-        row.sort_order = _next_sort_order(db, exclude_id=row.id)
+def _sync_queue(db: Session) -> bool:
+    dirty = db.scalar(
+        select(SerumImmWorkbench.id)
+        .select_from(SerumImmWorkbench)
+        .outerjoin(
+            SerumImmProject,
+            SerumImmWorkbench.experiment_id == SerumImmProject.experiment_id,
+        )
+        .where(
+            or_(
+                and_(SerumImmWorkbench.sort_order.is_not(None), _terminal_sql()),
+                and_(
+                    ~_terminal_sql(),
+                    or_(
+                        SerumImmWorkbench.sort_order.is_(None),
+                        SerumImmWorkbench.sort_order <= 0,
+                    ),
+                ),
+            )
+        )
+        .limit(1)
+    )
+    if dirty is None:
+        return False
+    _lock_queue(db)
+    rows = list(db.scalars(select(SerumImmWorkbench)).all())
+    projects = _projects_for_rows(db, rows)
+    for row in rows:
+        if _row_is_terminal(row, projects.get(str(row.experiment_id or "").strip())):
+            row.sort_order = None
+    renumber_queue(_queue_rows(db))
+    return True
 
 
 def _project_by_experiment(
@@ -519,7 +537,7 @@ def _apply_fields(row: SerumImmWorkbench, data: dict[str, Any], fields: list[str
         elif field in INT_FIELDS:
             value = _normalize_int(value)
             if field == "sort_order" and (value is None or value <= 0):
-                raise ValueError("排序必须是大于 0 的整数")
+                continue
         elif field == "plan_status":
             text = str(value or "").strip()
             if text == PLAN_STATUS_STARTED:
@@ -920,10 +938,12 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     page = max(int(data.get("page", 1) or 1), 1)
     limit = min(max(int(data.get("limit", 20) or 20), 1), 200)
     payload = data or {}
+    if _sync_queue(db):
+        db.commit()
     stmt = _apply_list_filters(_base_stmt(), payload)
     total = db.scalar(_apply_list_filters(_count_stmt(), payload)) or 0
     keyword = str(payload.get("keyword") or "").strip()
-    order_by = [*_list_order()]
+    order_by = [*_list_order(payload)]
     if keyword:
         order_by.insert(0, _keyword_rank_expr(keyword))
     rows = db.scalars(
@@ -963,8 +983,10 @@ def export_list_workbook(
     from utils.excel import build_list_workbook
 
     payload = data or {}
+    if _sync_queue(db):
+        db.commit()
     stmt = _apply_list_filters(_base_stmt(), payload)
-    order_by = [*_list_order()]
+    order_by = [*_list_order(payload)]
     keyword = str(payload.get("keyword") or "").strip()
     if keyword:
         order_by.insert(0, _keyword_rank_expr(keyword))
@@ -1171,7 +1193,7 @@ def save(
         payload.pop(key, None)
     payload.pop("id", None)
     expected = payload.pop("_expected", None)
-    if raw_id is None or "sort_order" in payload or "priority" in payload:
+    if raw_id is None or "sort_order" in payload or "priority" in payload or "plan_status" in payload:
         _lock_queue(db)
 
     row = None
@@ -1192,7 +1214,7 @@ def save(
             mouse_status=DEFAULT_MOUSE_STATUS,
             antigen_ready=REQUIRED_YES_NO_DEFAULTS["antigen_ready"],
             can_start=REQUIRED_YES_NO_DEFAULTS["can_start"],
-            sort_order=0,
+            sort_order=None,
             created_by=created_by,
         )
         db.add(row)
@@ -1203,7 +1225,7 @@ def save(
         is_new=is_new,
         edit_scopes=edit_scopes,
     )
-    previous_sort = int(row.sort_order or 0)
+    previous_sort = queued_sort(row.sort_order)
     previous_priority = row.priority
     _validate_expected_fields(row, expected)
 
@@ -1234,14 +1256,15 @@ def save(
             raise ValueError("提供地区不在允许的选项中")
         _apply_fields(row, payload, ALIGNED_FIELDS + PREP_FIELDS)
         _assign_temp_experiment_id(db, row)
-    _assign_queue_sort(db, row, is_new=is_new, payload=payload)
-    _apply_queue_constraints(
+    project = _project_by_experiment(db, row.experiment_id) if _is_started(row) else None
+    _apply_queue(
         db,
         row,
         previous_sort=previous_sort,
         previous_priority=previous_priority,
         payload=payload,
         is_new=is_new,
+        project=project,
     )
 
     if commit:
@@ -1273,7 +1296,7 @@ def save_batch(
             raise ValueError("工作台记录 ID 不正确")
         if row_id is not None:
             row_ids.append(row_id)
-        if row_id is None or "sort_order" in item or "priority" in item:
+        if row_id is None or "sort_order" in item or "priority" in item or "plan_status" in item:
             queue_mutation = True
     if len(row_ids) != len(set(row_ids)):
         raise ValueError("批量保存包含重复的工作台记录")
@@ -1344,7 +1367,7 @@ def delete(
         _delete_children(db, row.experiment_id)
     db.delete(row)
     db.flush()
-    _compact_all_sorts(db)
+    renumber_queue(_queue_rows(db))
     db.commit()
 
 
@@ -1550,8 +1573,15 @@ def copy_row(
     clone.plan_status = PLAN_STATUS_DRAFT
     if clone.project_name:
         clone.project_name = f"{clone.project_name}（副本）"
-    clone.sort_order = _next_sort_order(db)
     _assign_temp_experiment_id(db, clone)
+    _apply_queue(
+        db,
+        clone,
+        previous_sort=None,
+        previous_priority=DEFAULT_PRIORITY,
+        payload={},
+        is_new=True,
+    )
     _clone_children(db, source.experiment_id, clone.experiment_id)
     db.commit()
     db.refresh(clone)
@@ -1560,60 +1590,38 @@ def copy_row(
 
 def reorder(
     db: Session,
-    ordered_ids: list[Any],
     moved_id: Any,
-    expected_rows: list[dict[str, Any]],
+    target_id: Any,
     *,
     edit_scopes: set[str] | frozenset[str] | None = None,
 ) -> dict[str, Any]:
     _lock_queue(db)
-    ids = [_parse_row_id(raw) for raw in ordered_ids]
-    if any(value is None for value in ids) or len(ids) != len(set(ids)):
-        raise ValueError("排序记录 ID 不正确或重复")
-    ids = [int(value) for value in ids if value is not None]
-    if len(ids) < 2:
-        raise ValueError("请至少选择两条记录排序")
-    parsed_moved_id = _parse_row_id(moved_id)
-    if parsed_moved_id not in ids:
-        raise ValueError("被拖动的记录不在排序列表中")
-    rows = db.scalars(select(SerumImmWorkbench).where(SerumImmWorkbench.id.in_(ids))).all()
-    by_id = {int(row.id): row for row in rows}
-    missing = [item for item in ids if item not in by_id]
-    if missing:
-        raise ValueError("排序记录不存在")
-    scopes = _edit_scope_set(edit_scopes)
-    moved_row = by_id[parsed_moved_id]
-    if "full" not in scopes:
+    if "full" not in _edit_scope_set(edit_scopes):
         raise PermissionError("没有权限调整工作台队列排序")
-    expected_by_id = {
-        _parse_row_id(item.get("id")): item
-        for item in expected_rows
-        if isinstance(item, dict) and _parse_row_id(item.get("id")) is not None
-    }
-    if set(expected_by_id) != set(ids):
-        raise ValueError("排序快照不完整，请刷新后重试")
-    for row_id, expected in expected_by_id.items():
-        row = by_id[row_id]
-        if (
-            int(row.sort_order or 0) != int(expected.get("sort_order") or 0)
-            or _priority_value(row.priority) != _priority_value(expected.get("priority"))
-        ):
-            raise ValueError("工作台队列已变化，请刷新后重试")
-    ordered_rows = [by_id[item] for item in ids]
-    orders = sorted(int(row.sort_order or 0) for row in ordered_rows)
-    if len(set(orders)) != len(orders) or any(value <= 0 for value in orders):
-        raise ValueError("工作台队列序号异常，请刷新后重试")
-    for row, order in zip(ordered_rows, orders):
-        row.sort_order = order
-    _place_row(db, moved_row, mode="snap", target_sort=int(moved_row.sort_order or 0))
+    parsed_moved_id = _parse_row_id(moved_id)
+    parsed_target_id = _parse_row_id(target_id)
+    if parsed_moved_id is None or parsed_target_id is None:
+        raise ValueError("排序记录 ID 不正确")
+    moved = db.get(SerumImmWorkbench, parsed_moved_id)
+    target = db.get(SerumImmWorkbench, parsed_target_id)
+    if not moved or not target:
+        raise ValueError("工作台记录不存在")
+    if parsed_moved_id == parsed_target_id:
+        return {
+            "items": [
+                serialize_row(moved, _project_by_experiment(db, moved.experiment_id) if _is_started(moved) else None),
+            ]
+        }
+    projects = _projects_for_rows(db, [moved, target])
+    for row in (moved, target):
+        if _row_is_terminal(row, projects.get(str(row.experiment_id or "").strip())) or queued_sort(row.sort_order) is None:
+            raise ValueError("终态记录不参与排序")
+    _place_row(db, moved, mode="snap", target_sort=queued_sort(target.sort_order))
     db.commit()
     return {
         "items": [
-            serialize_row(
-                row,
-                _project_by_experiment(db, row.experiment_id) if _is_started(row) else None,
-            )
-            for row in ordered_rows
+            serialize_row(row, _project_by_experiment(db, row.experiment_id) if _is_started(row) else None)
+            for row in (moved, target)
         ]
     }
 

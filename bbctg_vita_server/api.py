@@ -8,6 +8,7 @@ from modules.auth.dependencies import get_current_user
 from modules.auth.routes import router as auth_router
 from modules.auth.service import build_user_info
 from modules.atlas.routes import router as atlas_router
+from modules.discovery.workbench.routes import router as discovery_workbench_router
 from modules.immunology.cell.routes import router as cell_router
 from modules.immunology.serum.routes import router as serum_router
 from modules.immunology.titer.routes import router as titer_router
@@ -26,6 +27,7 @@ def health_check() -> dict[str, str]:
 
 api_router.include_router(auth_router, prefix="/auth", tags=["认证"])
 api_router.include_router(atlas_router, prefix="/atlas", tags=["千鼠万抗"])
+api_router.include_router(discovery_workbench_router, prefix="/discovery/workbench", tags=["抗体发现-项目工作台"])
 api_router.include_router(serum_router, prefix="/serum", tags=["免疫部-血清"])
 api_router.include_router(workbench_router, prefix="/serum/workbench", tags=["免疫部-项目工作台"])
 api_router.include_router(titer_router, prefix="/serum/titer", tags=["免疫部-效价"])

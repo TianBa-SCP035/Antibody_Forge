@@ -57,6 +57,11 @@ ATLAS_PERMISSION_CODES = {
     "atlas.page.target_library",
 }
 
+DISCOVERY_PERMISSION_CODES = {
+    "discovery.page.workbench",
+    "discovery.workbench.edit",
+}
+
 DEFAULT_PERMISSION_MESSAGE = "没有权限执行此操作"
 
 PERMISSION_MESSAGES: dict[str, str] = {
@@ -92,6 +97,8 @@ PERMISSION_MESSAGES: dict[str, str] = {
     "mega.flow_work_order.edit": "没有权限编辑流式工单",
     "mega.flow_work_order.dispatch": "没有权限发送流式工单",
     "atlas.page.target_library": "没有权限查看靶点情报",
+    "discovery.page.workbench": "没有权限访问抗体发现工作台",
+    "discovery.workbench.edit": "没有权限编辑抗体发现工作台",
     "system.page.user": "没有权限访问用户管理",
     "system.page.role": "没有权限访问角色管理",
     "system.page.permission": "没有权限访问权限管理",
@@ -108,6 +115,7 @@ ALL_FALLBACK_CODES = sorted(
     SERUM_PERMISSION_CODES
     | MEGA_PERMISSION_CODES
     | ATLAS_PERMISSION_CODES
+    | DISCOVERY_PERMISSION_CODES
     | {
         "system.page.user",
         "system.page.role",

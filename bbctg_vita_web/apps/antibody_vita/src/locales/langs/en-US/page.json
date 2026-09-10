@@ -35,6 +35,8 @@
     "presetSerumSubtitle": "End-to-end tracking",
     "presetTiterOrderTitle": "Titer experiments",
     "presetTiterOrderSubtitle": "Orders and test scheduling",
+    "presetDiscoveryWorkbenchTitle": "Discovery workbench",
+    "presetDiscoveryWorkbenchSubtitle": "Harvest and screening schedule",
     "presetFlowWorkOrderTitle": "Flow work orders",
     "presetFlowWorkOrderSubtitle": "Mega automation flow orders",
     "presetTargetLibraryTitle": "Target intelligence",

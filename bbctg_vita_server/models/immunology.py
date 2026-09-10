@@ -404,7 +404,7 @@ class SerumImmWorkbench(Base):
     remark: Mapped[str | None] = mapped_column(String(255))
     mouse_strain: Mapped[str | None] = mapped_column(String(128))
     mouse_strain_category: Mapped[str | None] = mapped_column(String(128))
-    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    sort_order: Mapped[int | None] = mapped_column(Integer)
     priority: Mapped[str | None] = mapped_column(String(32))
     plan_status: Mapped[str | None] = mapped_column(String(32))
     project_set_code: Mapped[str | None] = mapped_column(String(64))
@@ -465,7 +465,7 @@ class SerumImmWorkbench(Base):
             "remark": self.remark,
             "mouse_strain": self.mouse_strain,
             "mouse_strain_category": self.mouse_strain_category,
-            "sort_order": self.sort_order or 0,
+            "sort_order": self.sort_order,
             "priority": self.priority or "正常",
             "plan_status": self.plan_status or "草稿",
             "project_set_code": self.project_set_code,

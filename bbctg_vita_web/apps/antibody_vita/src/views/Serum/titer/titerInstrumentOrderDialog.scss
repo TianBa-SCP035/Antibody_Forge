@@ -1,0 +1,34 @@
+.tio-dialog {
+  border-radius: 8px !important;
+  overflow: hidden;
+
+  .el-dialog__header {
+    padding: 16px 20px 12px;
+    margin-right: 0;
+    border-bottom: 1px solid #f0f2f5;
+  }
+
+  .el-dialog__body {
+    padding: 14px 20px 10px;
+  }
+
+  .el-dialog__footer {
+    padding: 12px 20px 16px;
+    background: #fff !important;
+    border-top: 1px solid #f0f2f5;
+  }
+
+  .el-dialog__headerbtn {
+    top: 14px;
+    right: 14px;
+  }
+
+  .tio-btn-accent {
+    --el-button-bg-color: #14b8a6;
+    --el-button-border-color: #14b8a6;
+    --el-button-hover-bg-color: #0d9488;
+    --el-button-hover-border-color: #0d9488;
+    --el-button-active-bg-color: #0f766e;
+    --el-button-active-border-color: #0f766e;
+  }
+}

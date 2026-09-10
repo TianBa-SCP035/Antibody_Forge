@@ -4,6 +4,9 @@ import type { VisibleDomRect } from '@vben-core/shared/utils';
 
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 
+/** 整页罩亮起时抬到表格 v-loading（2000）之上，关掉后回到下面，避免挡住下拉 */
+export const contentOverlayActive = ref(false);
+
 import {
   CSS_VARIABLE_LAYOUT_CONTENT_HEIGHT,
   CSS_VARIABLE_LAYOUT_CONTENT_WIDTH,
@@ -26,13 +29,15 @@ export function useLayoutContentStyle() {
 
   const overlayStyle = computed((): CSSProperties => {
     const { height, left, top, width } = visibleDomRect.value ?? {};
+    const active = contentOverlayActive.value;
     return {
       height: `${height}px`,
       left: `${left}px`,
+      pointerEvents: active ? 'auto' : 'none',
       position: 'fixed',
       top: `${top}px`,
       width: `${width}px`,
-      zIndex: 150,
+      zIndex: active ? 2200 : 150,
     };
   });
 

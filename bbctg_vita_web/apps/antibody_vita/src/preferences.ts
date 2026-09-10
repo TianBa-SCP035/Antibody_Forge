@@ -20,4 +20,11 @@ export const overridesPreferences = defineOverridesPreferences({
   theme: {
     mode: 'light',
   },
+  tabbar: {
+    maxCount: 10,
+  },
+  transition: {
+    enable: true,
+    name: 'fade-slide',
+  },
 });

@@ -1,9 +1,11 @@
 <template>
   <div class="mega-flow-order-page">
     <AdvancedOpsBar v-model="showAdvancedOps">
-      <el-button type="warning" :icon="Download" @click="handleListExport">
-        列表导出
-      </el-button>
+      <template #actions>
+        <el-button type="warning" :icon="Download" @click="handleListExport">
+          列表导出
+        </el-button>
+      </template>
     </AdvancedOpsBar>
 
     <section class="workbench-panel">
@@ -264,6 +266,7 @@ import {
 } from '#/api/megaAutomation';
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
+import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
 import {
   canEditMegaFlowWorkOrder,
 } from '#/utils/megaPermission';
@@ -346,7 +349,7 @@ export default {
       ],
       listLoadError: false,
       fetchSequence: 0,
-      listLoaded: false,
+      tabDataFetchedAt: 0,
     };
   },
   computed: {
@@ -355,13 +358,12 @@ export default {
     },
   },
   created() {
+    this.listLoading = true;
     this.loadMeta();
-    this.fetchList().finally(() => {
-      this.listLoaded = true;
-    });
+    this.fetchList();
   },
   activated() {
-    if (this.listLoaded) {
+    if (this.listLoadError || shouldRefreshTabData(this.tabDataFetchedAt)) {
       this.fetchList();
     }
   },
@@ -386,6 +388,7 @@ export default {
         this.total = data?.total || 0;
         this.stats = data?.stats || {};
         this.listLoadError = false;
+        this.tabDataFetchedAt = Date.now();
       } catch (error) {
         if (requestId !== this.fetchSequence) return;
         this.list = [];

@@ -1,47 +1,80 @@
-import { computed, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+
+import { contentOverlayActive } from '@vben-core/composables';
 
 import { preferences } from '@vben/preferences';
 
+function waitFrames(count = 2) {
+  return new Promise<void>((resolve) => {
+    const step = (left: number) => {
+      if (left <= 0) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(() => step(left - 1));
+    };
+    step(count);
+  });
+}
+
 function useContentSpinner() {
   const spinning = ref(false);
-  const startTime = ref(0);
   const router = useRouter();
-  const minShowTime = 500; // 最小显示时间
   const enableLoading = computed(() => preferences.transition.loading);
+  let hideGen = 0;
 
-  // 结束加载动画
-  const onEnd = () => {
-    if (!enableLoading.value) {
+  const shouldCover = (to: { meta: { loaded?: boolean; iframeSrc?: string } }) =>
+    !to.meta.loaded && enableLoading.value && !to.meta.iframeSrc;
+
+  const hideOverlay = (gen: number) => {
+    if (gen !== hideGen) {
       return;
     }
-    const processTime = performance.now() - startTime.value;
-    if (processTime < minShowTime) {
-      setTimeout(() => {
-        spinning.value = false;
-      }, minShowTime - processTime);
-    } else {
-      spinning.value = false;
-    }
+    spinning.value = false;
+    contentOverlayActive.value = false;
   };
 
-  // 路由前置守卫
-  router.beforeEach((to) => {
-    if (to.meta.loaded || !enableLoading.value || to.meta.iframeSrc) {
+  // 首屏一画完就淡，不等满多少毫秒，也不等表格接口。
+  const scheduleHide = (gen: number) => {
+    void nextTick(async () => {
+      await waitFrames(2);
+      if (gen !== hideGen) {
+        return;
+      }
+      hideOverlay(gen);
+    });
+  };
+
+  const cover = () => {
+    hideGen += 1;
+    spinning.value = true;
+    contentOverlayActive.value = true;
+    return hideGen;
+  };
+
+  router.beforeEach((to, from) => {
+    if (to.path === from.path) {
       return true;
     }
-    startTime.value = performance.now();
-    spinning.value = true;
+    if (shouldCover(to)) {
+      cover();
+    }
     return true;
   });
 
-  // 路由后置守卫
   router.afterEach((to) => {
-    if (to.meta.loaded || !enableLoading.value || to.meta.iframeSrc) {
-      return true;
+    if (shouldCover(to)) {
+      scheduleHide(hideGen);
     }
-    onEnd();
     return true;
+  });
+
+  onMounted(() => {
+    const route = router.currentRoute.value;
+    if (!spinning.value && shouldCover(route)) {
+      scheduleHide(cover());
+    }
   });
 
   return { spinning };

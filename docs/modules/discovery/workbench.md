@@ -2,7 +2,7 @@
 
 安排剖鼠取细胞与筛选路径。路径 `/discovery/workbench`，接口 `/api/discovery/workbench`。一行一条发现安排；展示用的项目 / 实验 / 靶点 / 鼠 / 效价等全部是本表列，不联查免疫表。文库 / NGS 进度列不在本页。本台没有开展 / 下架。效价列表「测序」按下发规则写入本表一行，之后两边各改各的。
 
-页内大标题为「发现工作台」；侧栏仍叫「项目工作台」。共用壳、Excel、优先级排队见 [../workbench.md](../workbench.md)。
+页内大标题和系统标签页为「发现工作台」；侧栏仍叫「项目工作台」。共用壳、Excel、优先级排队见 [../workbench.md](../workbench.md)。
 
 ## 表 `discovery_workbench`
 

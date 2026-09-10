@@ -1,12 +1,9 @@
 import type { VNode } from 'vue';
-import type {
-  RouteLocationNormalizedLoaded,
-  RouteLocationNormalizedLoadedGeneric,
-} from 'vue-router';
+import type { RouteLocationNormalizedLoadedGeneric } from 'vue-router';
 
 import { computed } from 'vue';
 
-import { preferences, usePreferences } from '@vben/preferences';
+import { preferences } from '@vben/preferences';
 
 /**
  * 转换组件，自动添加 name
@@ -53,7 +50,6 @@ export function transformComponent(
  * Layout相关hook
  */
 export function useLayoutHook() {
-  const { keepAlive } = usePreferences();
   /**
    * 是否使用动画
    */
@@ -65,30 +61,17 @@ export function useLayoutHook() {
 
   /**
    * 获取路由过渡动画
-   * @param _route
    */
-  function getTransitionName(_route: RouteLocationNormalizedLoaded) {
-    // 如果偏好设置未设置，则不使用动画
-    const { tabbar, transition } = preferences;
-    const transitionName = transition.name;
-    if (!transitionName || !transition.enable) {
+  function getTransitionName(route?: { meta?: { loaded?: boolean } }) {
+    const { transition } = preferences;
+    if (!transition.name || !transition.enable) {
       return;
     }
-
-    // 标签页未启用或者未开启缓存，则使用全局配置动画
-    if (!tabbar.enable || !keepAlive) {
-      return transitionName;
+    // 第一次进页由整页罩盖住，不再滑，避免底下排版抢主线程把方块卡顿
+    if (route && !route.meta?.loaded) {
+      return;
     }
-
-    // 如果页面已经加载过，则不使用动画
-    // if (route.meta.loaded) {
-    //   return;
-    // }
-    // 已经打开且已经加载过的页面不使用动画
-    // const inTabs = getCachedTabs.value.includes(route.name as string);
-
-    // return inTabs && route.meta.loaded ? undefined : transitionName;
-    return transitionName;
+    return transition.name;
   }
 
   return {

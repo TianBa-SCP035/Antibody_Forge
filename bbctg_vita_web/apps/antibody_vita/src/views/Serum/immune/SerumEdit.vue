@@ -8,7 +8,7 @@
               <span v-if="autoSaving" style="margin-right: 10px; color: #409EFF; font-size: 12px;">
                   <el-icon class="is-loading"><Loading /></el-icon> 自动保存中...
               </span>
-              <el-button size="small" type="primary" @click="submitForm" @contextmenu.prevent="submitForm($event, true)" :loading="loading" :disabled="loading || autoSaving || !canSaveForm()">保存</el-button>
+              <el-button size="small" type="primary" title="停 3 秒自动保存、右键保存并新建" @click="submitForm" @contextmenu.prevent="submitForm($event, true)" :loading="loading" :disabled="loading || autoSaving || !canSaveForm()">保存</el-button>
               <el-button size="small" @click="handleCancel">取消</el-button>
           </div>
         </div>
@@ -1551,7 +1551,7 @@ export default {
             ElMessage.warning('您没有权限保存此项目')
             return
         }
-        if (this.loading) return
+        if (this.loading || this.initializing) return
         this.loading = true
         this.doSubmit(isRightClick)
     },
@@ -1565,10 +1565,8 @@ export default {
                 await this.queueFormSave({ force: true })
                 ElNotification({ type: 'success', message: '保存成功' })
                 if (isRightClick) {
-                    this.$router.push('/serum/list')
-                    setTimeout(() => {
-                        this.$router.push('/serum/edit')
-                    }, 100)
+                    await this.initPage()
+                    this.$router.replace({ name: 'SerumEdit', query: {} })
                 }
             } catch (err) {
                 this.handleSaveFailure(err, SERUM_ERRORS.edit.save)
@@ -1881,7 +1879,11 @@ export default {
       if (force || this.formRevision > this.savedRevision) {
         this.saveQueued = true
       }
-      if (this.savePromise) return this.savePromise
+      if (this.savePromise) {
+        const result = await this.savePromise
+        if (this.formRevision <= this.savedRevision) return result
+        return this.queueFormSave({ force })
+      }
       if (!this.saveQueued) return null
 
       this.savePromise = (async () => {

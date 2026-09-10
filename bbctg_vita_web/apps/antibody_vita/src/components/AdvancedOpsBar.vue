@@ -10,6 +10,7 @@
       </div>
       <div class="ops-actions list-filter-controls">
         <slot />
+        <slot name="actions" />
       </div>
     </div>
   </transition>
@@ -70,10 +71,35 @@ export default {
 }
 
 .ops-actions {
+  --ops-cols: 8;
+  --ops-gap: 10px;
+  --ops-field-width: calc((100% - (var(--ops-cols) - 1) * var(--ops-gap)) / var(--ops-cols));
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--ops-gap);
   align-items: center;
+}
+
+.ops-actions > :not(.el-button) {
+  box-sizing: border-box;
+  flex: 0 0 var(--ops-field-width);
+  width: var(--ops-field-width);
+  min-width: 0;
+}
+
+.ops-actions > :not(.el-button) :deep(.el-select),
+.ops-actions > :not(.el-button) :deep(.el-input),
+.ops-actions > :not(.el-button) :deep(.el-date-editor) {
+  width: 100%;
+}
+
+.ops-actions > .el-date-editor {
+  --el-date-editor-width: 100%;
+}
+
+.ops-actions > .el-button {
+  flex: 0 0 auto;
+  width: auto;
 }
 
 .ops-slide-enter-active,
@@ -86,5 +112,4 @@ export default {
   transform: translateY(-110%);
   opacity: 0;
 }
-
 </style>

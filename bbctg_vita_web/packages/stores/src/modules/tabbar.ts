@@ -143,7 +143,6 @@ export const useTabbarStore = defineStore('core-tabbar', {
       });
 
       if (tabIndex === -1) {
-        const maxCount = preferences.tabbar.maxCount;
         // 获取动态路由打开数，超过 0 即代表需要控制打开数
         const maxNumOfOpenTab = (routeTab?.meta?.maxNumOfOpenTab ??
           -1) as number;
@@ -159,15 +158,9 @@ export const useTabbarStore = defineStore('core-tabbar', {
             (item) => item.name === routeTab.name,
           );
           index !== -1 && this.tabs.splice(index, 1);
-        } else if (maxCount > 0 && this.tabs.length >= maxCount) {
-          // 关闭第一个
-          const index = this.tabs.findIndex(
-            (item) =>
-              !Reflect.has(item.meta, 'affixTab') || !item.meta.affixTab,
-          );
-          index !== -1 && this.tabs.splice(index, 1);
         }
         this.tabs.push(tab);
+        this.trimTabsToMaxCount();
       } else {
         // 页面已经存在，不重复添加选项卡，只更新选项卡参数
         const currentTab = toRaw(this.tabs)[tabIndex];
@@ -495,6 +488,24 @@ export const useTabbarStore = defineStore('core-tabbar', {
       this.updateTime = Date.now();
     },
     /**
+     * 超出标签上限时关掉最左侧未固定页；会话恢复时也会裁一次
+     */
+    trimTabsToMaxCount() {
+      const maxCount = preferences.tabbar.maxCount;
+      if (maxCount <= 0) {
+        return;
+      }
+      while (this.tabs.length > maxCount) {
+        const index = this.tabs.findIndex(
+          (item) => !Reflect.has(item.meta, 'affixTab') || !item.meta.affixTab,
+        );
+        if (index === -1) {
+          break;
+        }
+        this.tabs.splice(index, 1);
+      }
+    },
+    /**
      * @zh_CN 设置标签页顺序
      * @param oldIndex
      * @param newIndex
@@ -615,6 +626,10 @@ export const useTabbarStore = defineStore('core-tabbar', {
     {
       pick: ['tabs', 'visitHistory'],
       storage: sessionStorage,
+      afterHydrate(ctx) {
+        ctx.store.trimTabsToMaxCount();
+        void ctx.store.updateCacheTabs();
+      },
       serializer: {
         serialize: JSON.stringify,
         deserialize(value: string) {

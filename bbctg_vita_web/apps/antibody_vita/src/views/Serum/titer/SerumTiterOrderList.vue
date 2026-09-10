@@ -5,7 +5,6 @@
         v-model="listQuery.order_status"
         clearable
         placeholder="工单状态"
-        style="width: 220px;"
         @change="handleFilter"
       >
         <el-option
@@ -15,9 +14,11 @@
           :value="item.value"
         />
       </el-select>
-      <el-button type="warning" :icon="Download" @click="handleListExport">
-        列表导出
-      </el-button>
+      <template #actions>
+        <el-button type="warning" :icon="Download" @click="handleListExport">
+          列表导出
+        </el-button>
+      </template>
     </AdvancedOpsBar>
 
     <section class="workbench-panel">
@@ -1091,7 +1092,7 @@ export default {
       showAdvancedOps: false,
       dialogEditOrder: null,
       list: [],
-      listLoading: false,
+      listLoading: true,
       listQuery: {
         limit: 20,
         page: 1,

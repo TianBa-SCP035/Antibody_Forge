@@ -23,7 +23,6 @@
         v-model="listQuery.cage_position"
         clearable
         placeholder="笼位"
-        style="width: 160px;"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
@@ -31,7 +30,6 @@
         v-model="listQuery.mouse_strain"
         clearable
         placeholder="小鼠品系"
-        style="width: 160px;"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
@@ -39,7 +37,6 @@
         v-model="listQuery.mouse_nos"
         clearable
         placeholder="鼠号"
-        style="width: 180px;"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
@@ -47,7 +44,6 @@
         v-model="listQuery.plate_nos"
         clearable
         placeholder="板号"
-        style="width: 180px;"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
@@ -58,7 +54,6 @@
         allow-create
         default-first-option
         placeholder="免疫抗原"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.immune_antigens" :key="item" :label="item" :value="item" />
@@ -70,7 +65,6 @@
         allow-create
         default-first-option
         placeholder="筛选抗原"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.screening_antigens" :key="item" :label="item" :value="item" />
@@ -82,7 +76,6 @@
         allow-create
         default-first-option
         placeholder="冲击免抗原"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.boost_antigens" :key="item" :label="item" :value="item" />
@@ -94,11 +87,12 @@
         start-placeholder="冲击免起始"
         end-placeholder="冲击免截止"
         value-format="YYYY-MM-DD"
-        style="width: 260px;"
         @change="handleFilter"
       />
-      <el-button v-if="hasSecondaryFilters" @click="resetFilters">重置全部筛选</el-button>
-      <el-button type="warning" :icon="Download" @click="handleListExport">列表导出</el-button>
+      <template #actions>
+        <el-button v-if="hasSecondaryFilters" @click="resetFilters">重置全部筛选</el-button>
+        <el-button type="warning" :icon="Download" @click="handleListExport">列表导出</el-button>
+      </template>
     </AdvancedOpsBar>
 
     <section class="workbench-console">
@@ -249,10 +243,11 @@
       </div>
     </div>
 
-    <el-card v-loading="loading" shadow="never" class="table-card list-table-card">
+    <el-card shadow="never" class="table-card list-table-card">
       <el-table
         v-if="viewMode === 'workbench'"
         ref="workbenchTable"
+        v-loading="loading"
         :data="list"
         border
         stripe
@@ -421,6 +416,7 @@
           <vxe-table
             :key="sheetColumnOrderKey"
             ref="sheetTable"
+            v-loading="loading"
             :data="list"
             border
             show-overflow
@@ -1156,6 +1152,7 @@ export default {
     },
   },
   created() {
+    this.loading = true
     this.loadOptions()
     this.getList().finally(() => {
       this.listLoaded = true
@@ -1674,16 +1671,17 @@ export default {
       }
     },
     async getList({ flushEditor = true } = {}) {
-      if (flushEditor) {
-        await this.flushPendingSheetEdits()
-        await this.rememberDrawerSave(this.flushDirtyEditor())
-        if (this.pendingDrawerSaves.size) {
-          await Promise.all([...this.pendingDrawerSaves])
-        }
-      }
-      const requestToken = ++this.listRequestToken
       this.loading = true
+      const requestToken = ++this.listRequestToken
       try {
+        if (flushEditor) {
+          await this.flushPendingSheetEdits()
+          await this.rememberDrawerSave(this.flushDirtyEditor())
+          if (this.pendingDrawerSaves.size) {
+            await Promise.all([...this.pendingDrawerSaves])
+          }
+        }
+        if (requestToken !== this.listRequestToken) return
         const data = await fetchDiscoveryWorkbenchList(this.buildQuery(), skipGlobalErrorHandler)
         if (requestToken !== this.listRequestToken) return
         this.list = (data?.items || []).map((row) => this.normalizeRow(row))
@@ -2437,7 +2435,7 @@ export default {
   min-width: 220px;
 }
 .ops-user-select {
-  width: 180px;
+  min-width: 0;
 }
 .filter-select {
   flex: 1 1 160px;

@@ -57,7 +57,6 @@ function setupCommonGuard(router: Router) {
 
     loadedPaths.add(to.path);
 
-    // 关闭页面加载进度条
     if (preferences.transition.progress) {
       stopProgress();
     }

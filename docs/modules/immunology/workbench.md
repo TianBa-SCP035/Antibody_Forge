@@ -1,6 +1,6 @@
 # 项目工作台
 
-开做前准备。路径 `/serum/workbench`，接口 `/api/serum/workbench`。页内大标题为「免疫工作台」；侧栏仍叫「项目工作台」。不存记录本 / 黄本蓝本 / `project_status`；方案页只读展示正式项目的初始状态「规划中」，未开展不插入 `serum_imm_project`。工作台 / Excel 共用壳见 [../workbench.md](../workbench.md)。
+开做前准备。路径 `/serum/workbench`，接口 `/api/serum/workbench`。页内大标题和系统标签页为「免疫工作台」；侧栏仍叫「项目工作台」。不存记录本 / 黄本蓝本 / `project_status`；方案页只读展示正式项目的初始状态「规划中」，未开展不插入 `serum_imm_project`。工作台 / Excel 共用壳见 [../workbench.md](../workbench.md)。
 
 ## 状态
 

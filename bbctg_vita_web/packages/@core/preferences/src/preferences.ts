@@ -136,11 +136,25 @@ class PreferenceManager {
       cachedPreferences,
       this.initialPreferences,
     );
-    // defu：后序对象只填补 undefined，已存在于缓存的 app.name 会挡住 initial 中的站点名；部署改名后须以代码为准
+    // defu：后序对象只填补 undefined；站点名、标签上限、转场以代码为准，避免旧缓存挡住
     if (this.initialPreferences.app?.name) {
-      mergedPreference.app ??= {};
-      mergedPreference.app.name = this.initialPreferences.app.name;
+      mergedPreference.app = {
+        ...this.initialPreferences.app,
+        ...mergedPreference.app,
+        name: this.initialPreferences.app.name,
+      };
     }
+    mergedPreference.tabbar = {
+      ...this.initialPreferences.tabbar,
+      ...mergedPreference.tabbar,
+      maxCount: this.initialPreferences.tabbar.maxCount,
+    };
+    mergedPreference.transition = {
+      ...this.initialPreferences.transition,
+      ...mergedPreference.transition,
+      enable: this.initialPreferences.transition.enable,
+      name: this.initialPreferences.transition.name,
+    };
 
     // 更新偏好设置
     this.updatePreferences(mergedPreference);

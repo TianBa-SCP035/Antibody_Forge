@@ -6,7 +6,6 @@
         clearable
         filterable
         placeholder="PM"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.pms" :key="item" :label="item" :value="item" />
@@ -15,7 +14,6 @@
         v-model="listQuery.priority"
         clearable
         placeholder="优先级"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.priority" :key="item" :label="item" :value="item" />
@@ -25,7 +23,6 @@
         clearable
         filterable
         placeholder="开展人"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.owners" :key="item" :label="item" :value="item" />
@@ -35,7 +32,6 @@
         clearable
         filterable
         placeholder="审核人"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.reviewers" :key="item" :label="item" :value="item" />
@@ -45,7 +41,6 @@
         clearable
         filterable
         placeholder="状态"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.statuses" :key="item" :label="item" :value="item" />
@@ -54,7 +49,6 @@
         v-model="listQuery.species_cross"
         clearable
         placeholder="种属交叉"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in tokenMultiOptions('species_cross')" :key="item" :label="item" :value="item" />
@@ -64,7 +58,6 @@
         clearable
         filterable
         placeholder="小鼠品系"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.mouse_strain" :key="item" :label="item" :value="item" />
@@ -73,7 +66,6 @@
         v-model="listQuery.mouse_zygosity"
         clearable
         placeholder="纯合/杂合"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.mouse_zygosity" :key="item" :label="item" :value="item" />
@@ -82,7 +74,6 @@
         v-model="listQuery.mouse_region"
         clearable
         placeholder="提供地区"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.mouse_region" :key="item" :label="item" :value="item" />
@@ -91,7 +82,6 @@
         v-model="listQuery.mouse_expand_requested"
         clearable
         placeholder="代下扩繁"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in yesNoOptions" :key="item" :label="item" :value="item" />
@@ -100,7 +90,6 @@
         v-model="listQuery.antigen_source"
         clearable
         placeholder="抗原来源"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.antigen_source" :key="item" :label="item" :value="item" />
@@ -109,7 +98,6 @@
         v-model="listQuery.lnp_ordered"
         clearable
         placeholder="LNP下单"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in yesNoOptions" :key="item" :label="item" :value="item" />
@@ -118,7 +106,6 @@
         v-model="listQuery.cell_prep_status"
         clearable
         placeholder="冲击细胞"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.cell_prep_status" :key="item" :label="item" :value="item" />
@@ -127,14 +114,15 @@
         v-model="listQuery.has_scheme_data"
         clearable
         placeholder="方案内容"
-        style="width: 180px;"
         @change="handleFilter"
       >
         <el-option label="有内容" value="是" />
         <el-option label="未填写" value="否" />
       </el-select>
-      <el-button v-if="hasSecondaryFilters" @click="resetFilters">重置全部筛选</el-button>
-      <el-button type="warning" :icon="Download" @click="handleListExport">列表导出</el-button>
+      <template #actions>
+        <el-button v-if="hasSecondaryFilters" @click="resetFilters">重置全部筛选</el-button>
+        <el-button type="warning" :icon="Download" @click="handleListExport">列表导出</el-button>
+      </template>
     </AdvancedOpsBar>
 
     <section class="workbench-console">
@@ -282,13 +270,13 @@
     </div>
 
     <el-card
-      v-loading="loading"
       shadow="never"
       class="table-card list-table-card"
     >
       <el-table
         v-if="viewMode === 'workbench'"
         ref="workbenchTable"
+        v-loading="loading"
         :data="list"
         border
         stripe
@@ -461,6 +449,7 @@
           <vxe-table
             :key="sheetColumnOrderKey"
             ref="sheetTable"
+            v-loading="loading"
             :data="list"
             border
             show-overflow
@@ -854,6 +843,7 @@ import {
   loadSerumUserOptions,
 } from '#/utils/serumUserOptions'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
+import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import { SERUM_ERRORS } from '../shared/errors'
 import SerumUserSelect from '../shared/SerumUserSelect.vue'
 import WorkbenchStatusEditor from '#/components/workbench/WorkbenchStatusEditor.vue'
@@ -1091,6 +1081,7 @@ export default {
   data() {
     return {
       loading: false,
+      tabDataFetchedAt: 0,
       list: [],
       total: 0,
       stats: { all: 0, planned: 0, ongoing: 0, completed: 0, cancelled: 0, can_start: 0 },
@@ -1279,6 +1270,7 @@ export default {
     },
   },
   created() {
+    this.loading = true
     this.loadFilterOptions()
     this.getList()
     if (this.isExcelMode) this.loadAllUserOptions()
@@ -1294,7 +1286,11 @@ export default {
   activated() {
     document.addEventListener('mousedown', this.onDocumentPointerDown, true)
     if (this.loading) return
-    this.getList()
+    if (shouldRefreshTabData(this.tabDataFetchedAt)) {
+      this.getList()
+    } else {
+      this.scheduleSortable()
+    }
   },
   deactivated() {
     this.closeEditor()
@@ -2198,19 +2194,20 @@ export default {
       }
     },
     async getList({ flushEditor = true } = {}) {
-      if (flushEditor) {
-        await this.flushPendingSheetEdits()
-        await this.rememberDrawerSave(this.flushDirtyEditor())
-        if (this.pendingDrawerSaves.size) {
-          await Promise.all([...this.pendingDrawerSaves])
-        }
-        if (this.rowSaveChains.size) {
-          await Promise.allSettled([...this.rowSaveChains.values()])
-        }
-      }
-      const requestToken = ++this.listRequestToken
       this.loading = true
+      const requestToken = ++this.listRequestToken
       try {
+        if (flushEditor) {
+          await this.flushPendingSheetEdits()
+          await this.rememberDrawerSave(this.flushDirtyEditor())
+          if (this.pendingDrawerSaves.size) {
+            await Promise.all([...this.pendingDrawerSaves])
+          }
+          if (this.rowSaveChains.size) {
+            await Promise.allSettled([...this.rowSaveChains.values()])
+          }
+        }
+        if (requestToken !== this.listRequestToken) return
         const data = await fetchWorkbenchList({ ...this.listQuery })
         if (requestToken !== this.listRequestToken) return
         this.list = (data?.items || []).map((row) => this.normalizeRow(row))
@@ -2229,6 +2226,7 @@ export default {
         if (selected && !editorIsDirty && !this.rowSaveChains.has(this.editingId)) {
           this.editingRowData = this.normalizeRow(JSON.parse(JSON.stringify(selected)))
         }
+        this.tabDataFetchedAt = Date.now()
         this.clearSheetRange()
         this.searchTargetOptions('')
         this.scheduleSortable()

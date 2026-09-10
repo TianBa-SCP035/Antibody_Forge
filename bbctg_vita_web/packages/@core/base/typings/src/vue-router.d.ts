@@ -126,9 +126,13 @@ interface RouteMeta {
    */
   query?: Recordable;
   /**
-   * 标题名称
+   * 标题名称（标签页、页头、浏览器标题）
    */
   title: string;
+  /**
+   * 侧栏菜单文案；不填则与 title 相同
+   */
+  menuTitle?: string;
 }
 
 // 定义递归类型以将 RouteRecordRaw 的 component 属性更改为 string

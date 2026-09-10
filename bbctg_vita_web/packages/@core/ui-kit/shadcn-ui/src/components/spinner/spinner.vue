@@ -5,14 +5,7 @@ import { cn } from '@vben-core/shared/utils';
 
 interface Props {
   class?: string;
-  /**
-   * @zh_CN 最小加载时间
-   * @en_US Minimum loading time
-   */
   minLoadingTime?: number;
-  /**
-   * @zh_CN loading状态开启
-   */
   spinning?: boolean;
 }
 
@@ -21,38 +14,45 @@ defineOptions({
 });
 
 const props = withDefaults(defineProps<Props>(), {
-  minLoadingTime: 50,
+  minLoadingTime: 0,
 });
-// const startTime = ref(0);
+
 const showSpinner = ref(false);
 const renderSpinner = ref(false);
+const fading = ref(false);
 const timer = ref<ReturnType<typeof setTimeout>>();
 
 watch(
   () => props.spinning,
   (show) => {
+    clearTimeout(timer.value);
     if (!show) {
+      fading.value = true;
       showSpinner.value = false;
-      clearTimeout(timer.value);
       return;
     }
 
-    // startTime.value = performance.now();
-    timer.value = setTimeout(() => {
-      // const loadingTime = performance.now() - startTime.value;
-
+    const reveal = () => {
+      fading.value = false;
       showSpinner.value = true;
-      if (showSpinner.value) {
-        renderSpinner.value = true;
-      }
-    }, props.minLoadingTime);
+      renderSpinner.value = true;
+    };
+
+    if (props.minLoadingTime > 0) {
+      timer.value = setTimeout(reveal, props.minLoadingTime);
+      return;
+    }
+    reveal();
   },
   {
     immediate: true,
   },
 );
 
-function onTransitionEnd() {
+function onTransitionEnd(event: TransitionEvent) {
+  if (event.propertyName !== 'opacity' || event.target !== event.currentTarget) {
+    return;
+  }
   if (!showSpinner.value) {
     renderSpinner.value = false;
   }
@@ -63,17 +63,15 @@ function onTransitionEnd() {
   <div
     :class="
       cn(
-        'flex-center bg-overlay-content absolute top-0 left-0 z-100 size-full backdrop-blur-xs transition-all duration-500',
-        {
-          'invisible opacity-0': !showSpinner,
-        },
+        'flex-center bg-background absolute top-0 left-0 z-100 size-full',
+        fading ? 'transition-opacity duration-300' : '',
+        showSpinner ? 'opacity-100' : 'pointer-events-none opacity-0',
         props.class,
       )
     "
     @transitionend="onTransitionEnd"
   >
     <div
-      :class="{ paused: !renderSpinner }"
       v-if="renderSpinner"
       class="loader before:bg-primary/50 after:bg-primary relative size-12 before:absolute before:top-15 before:left-0 before:h-1.25 before:w-12 before:rounded-full before:content-[''] after:absolute after:top-0 after:left-0 after:h-full after:w-full after:rounded after:content-['']"
     ></div>
@@ -81,17 +79,10 @@ function onTransitionEnd() {
 </template>
 
 <style scoped>
-.paused {
-  &::before {
-    animation-play-state: paused !important;
-  }
-
-  &::after {
-    animation-play-state: paused !important;
-  }
-}
-
 .loader {
+  transform: translateZ(0);
+  will-change: transform;
+
   &::before {
     animation: loader-shadow-ani 0.5s linear infinite;
   }
@@ -102,16 +93,11 @@ function onTransitionEnd() {
 }
 
 @keyframes loader-jump-ani {
-  15% {
-    border-bottom-right-radius: 3px;
-  }
-
   25% {
     transform: translateY(9px) rotate(22.5deg);
   }
 
   50% {
-    border-bottom-right-radius: 40px;
     transform: translateY(18px) scale(1, 0.9) rotate(45deg);
   }
 

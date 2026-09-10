@@ -8,7 +8,6 @@
         title="输入「空」可查找未填写"
         clearable
         :prefix-icon="Search"
-        style="width: 220px;"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
@@ -18,22 +17,23 @@
         title="输入「空」可查找未填写"
         clearable
         :prefix-icon="Search"
-        style="width: 220px;"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
-      <el-button
-        type="primary"
-        :class="{'no-permission-btn': !canViewCellInventory()}"
-        :icon="Search"
-        :title="!canViewCellInventory() ? '您没有权限查看细胞库存' : ''"
-        @click="handleCellInventory"
-      >
-        细胞库存查询
-      </el-button>
-      <el-button type="warning" :icon="Download" @click="handleListExport">
-        列表导出
-      </el-button>
+      <template #actions>
+        <el-button
+          type="primary"
+          :class="{'no-permission-btn': !canViewCellInventory()}"
+          :icon="Search"
+          :title="!canViewCellInventory() ? '您没有权限查看细胞库存' : ''"
+          @click="handleCellInventory"
+        >
+          细胞库存查询
+        </el-button>
+        <el-button type="warning" :icon="Download" @click="handleListExport">
+          列表导出
+        </el-button>
+      </template>
     </AdvancedOpsBar>
 
     <!-- Dashboard / Overview -->

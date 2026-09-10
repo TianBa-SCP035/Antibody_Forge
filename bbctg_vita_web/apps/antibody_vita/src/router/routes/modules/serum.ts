@@ -27,7 +27,8 @@ const routes: RouteRecordRaw[] = [
           keepAlive: true,
           order: 5,
           tabGroup: SERUM_WORKBENCH_TAB_GROUP,
-          title: '项目工作台',
+          menuTitle: '项目工作台',
+          title: '免疫工作台',
         },
       },
       {

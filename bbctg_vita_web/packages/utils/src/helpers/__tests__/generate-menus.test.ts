@@ -230,4 +230,21 @@ describe('generateMenus', () => {
     const menus = generateMenus(emptyRoutes, router);
     expect(menus).toEqual([]);
   });
+
+  it('uses menuTitle for the sidebar when it differs from title', () => {
+    const routesWithMenuTitle = [
+      {
+        meta: {
+          icon: 'workbench-icon',
+          menuTitle: '项目工作台',
+          title: '免疫工作台',
+        },
+        name: 'SerumWorkbench',
+        path: '/serum/workbench',
+      },
+    ] as RouteRecordRaw[];
+
+    const menus = generateMenus(routesWithMenuTitle, mockRouter as any);
+    expect(menus[0]?.name).toBe('项目工作台');
+  });
 });

@@ -27,7 +27,7 @@ export default {
       if (this.modelValue === 'excel') {
         return '当前为 Excel。Shift 拖列表头可调列顺序，右键此按钮恢复默认。点击切换到工作台。'
       }
-      return '当前为工作台。点击切换到 Excel。右键此按钮可恢复默认列顺序。'
+      return '当前为工作台。Shift 拖列表头可调列顺序，右键此按钮恢复默认列序和显示字段。点击切换到 Excel。'
     },
   },
 }

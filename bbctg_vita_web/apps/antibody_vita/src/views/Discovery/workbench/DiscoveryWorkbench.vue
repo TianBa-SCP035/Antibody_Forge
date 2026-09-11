@@ -91,6 +91,7 @@
       />
       <template #actions>
         <el-button v-if="hasSecondaryFilters" @click="resetFilters">重置全部筛选</el-button>
+        <el-button v-if="!isExcelMode" @click="openColumnPicker">显示字段</el-button>
         <el-button type="warning" :icon="Download" @click="handleListExport">列表导出</el-button>
       </template>
     </AdvancedOpsBar>
@@ -244,10 +245,12 @@
     </div>
 
     <el-card shadow="never" class="table-card list-table-card">
-      <el-table
+      <WorkbenchDataTable
         v-if="viewMode === 'workbench'"
         ref="workbenchTable"
         v-loading="loading"
+        storage-key="discoveryWorkbenchViewPrefs"
+        :columns="workbenchColumns"
         :data="list"
         border
         stripe
@@ -261,141 +264,121 @@
         :row-class-name="workbenchRowClassName"
         @row-click="onWorkbenchRowClick"
         @row-contextmenu="onWorkbenchRowContextMenu"
+        @reorder="scheduleSortable"
       >
-        <el-table-column :label="sortColumnLabel" align="center" width="62" class-name="sort-column-cell">
-          <template #header>
+        <template #header-sort_order>
+          <button
+            type="button"
+            class="sort-header-btn"
+            :class="{ 'is-active': isQueueSorted }"
+            :title="sortHeaderTitle"
+            @click.stop="toggleQueueSort"
+          >
+            {{ sortColumnLabel }}
+          </button>
+        </template>
+        <template #sort_order="{ row, $index }">
+          <div class="sort-cell">
+            <el-input
+              v-if="canEditSortCell(row) && sortEditingId === row.id"
+              :ref="(el) => bindSortInput(row.id, el)"
+              v-model="row.sort_order"
+              class="sort-order-input"
+              size="small"
+              type="number"
+              min="1"
+              @click.stop
+              @blur="finishSortEdit(row)"
+              @keyup.enter="finishSortEdit(row)"
+              @mousedown.stop
+            />
             <button
-              type="button"
-              class="sort-header-btn"
-              :class="{ 'is-active': isQueueSorted }"
-              :title="sortHeaderTitle"
-              @click.stop="toggleQueueSort"
-            >
-              {{ sortColumnLabel }}
-            </button>
-          </template>
-          <template #default="{ row, $index }">
-            <div class="sort-cell">
-              <el-input
-                v-if="canEditSortCell(row) && sortEditingId === row.id"
-                :ref="(el) => bindSortInput(row.id, el)"
-                v-model="row.sort_order"
-                class="sort-order-input"
-                size="small"
-                type="number"
-                min="1"
-                @click.stop
-                @blur="finishSortEdit(row)"
-                @keyup.enter="finishSortEdit(row)"
-                @mousedown.stop
-              />
-              <button
-                v-else
-                type="button"
-                class="sort-order-value"
-                :disabled="!canEditSortCell(row)"
-                @click.stop="startSortEdit(row)"
-              >
-                {{ formatSortColumn(row, $index) }}
-              </button>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="优先级" align="center" min-width="110">
-          <template #default="{ row }">
-            <el-select
-              v-if="canEdit"
-              v-model="row.priority"
-              size="small"
-              class="inline-select priority-select"
-              :class="'status-tone-' + priorityTone(row)"
-              @click.stop
-              @change="persistRow(row, 'priority')"
-            >
-              <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
-            </el-select>
-            <el-tag
               v-else
-              class="list-status-tag"
-              :class="{ 'status-tone-king': priorityTone(row) === 'king' }"
-              :type="priorityTone(row) === 'king' ? 'info' : priorityTone(row)"
-              effect="plain"
+              type="button"
+              class="sort-order-value"
+              :disabled="!canEditSortCell(row)"
+              @click.stop="startSortEdit(row)"
             >
-              {{ rowPriority(row) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" align="center" min-width="100" class-name="status-column-cell">
-          <template #default="{ row }">
-            <WorkbenchStatusEditor
-              :value="row.status || '规划中'"
-              :options="planStatusOptions"
-              :type="planStatusTone(row.status)"
-              :editable="canEdit"
-              @change="value => updatePlanStatus(row, value)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column prop="pm" label="PM" align="center" min-width="100" show-overflow-tooltip />
-        <el-table-column prop="project_code" label="项目编号" align="center" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="target_name" label="靶点名称" align="center" min-width="100" show-overflow-tooltip />
-        <el-table-column prop="mouse_strain_category" label="归类鼠型" align="center" min-width="100" show-overflow-tooltip />
-        <el-table-column label="筛选方式" align="center" min-width="140">
-          <template #default="{ row }">
-            <WorkbenchMultiTagEditor
-              v-model="row.screening_method_list"
-              :options="screeningMethodOptions"
-              :tones="screeningMethodTones"
-              :editable="canEdit"
-              @change="persistRow(row, 'screening_methods')"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column prop="screening_antigen" label="筛选抗原" align="center" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="boost_antigen" label="冲击抗原" align="center" min-width="120" show-overflow-tooltip />
-        <el-table-column label="剖鼠日期" align="center" min-width="135" class-name="date-column-cell">
-          <template #default="{ row }">
-            <el-date-picker
-              v-model="row.harvest_date"
-              class="inline-date"
-              type="date"
-              size="small"
-              value-format="YYYY-MM-DD"
-              placeholder="剖鼠/上机"
-              :disabled="!canEdit"
-              @click.stop
-              @change="persistRow(row, 'harvest_date')"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="冲击日期" align="center" min-width="135" class-name="date-column-cell">
-          <template #default="{ row }">
-            <el-date-picker
-              v-model="row.boost_date"
-              class="inline-date"
-              type="date"
-              size="small"
-              value-format="YYYY-MM-DD"
-              placeholder="冲击免疫"
-              :disabled="!canEdit"
-              @click.stop
-              @change="persistRow(row, 'boost_date')"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column prop="remark" label="备注" align="center" min-width="140" show-overflow-tooltip />
-        <el-table-column label="操作" align="center" width="240" class-name="action-column-cell" fixed="right">
-          <template #default="{ row }">
-            <DiscoveryRowActions
-              :row="row"
-              :can-edit="canEdit"
-              @detail="openSerumProject"
-              @copy="handleCopy"
-              @delete="handleDelete"
-            />
-          </template>
-        </el-table-column>
-      </el-table>
+              {{ formatSortColumn(row, $index) }}
+            </button>
+          </div>
+        </template>
+        <template #priority="{ row }">
+          <el-select
+            v-if="canEdit"
+            v-model="row.priority"
+            size="small"
+            class="inline-select priority-select"
+            :class="'status-tone-' + priorityTone(row)"
+            @click.stop
+            @change="persistRow(row, 'priority')"
+          >
+            <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+          <el-tag
+            v-else
+            class="list-status-tag"
+            :class="{ 'status-tone-king': priorityTone(row) === 'king' }"
+            :type="priorityTone(row) === 'king' ? 'info' : priorityTone(row)"
+            effect="plain"
+          >
+            {{ rowPriority(row) }}
+          </el-tag>
+        </template>
+        <template #status="{ row }">
+          <WorkbenchStatusEditor
+            :value="row.status || '规划中'"
+            :options="planStatusOptions"
+            :type="planStatusTone(row.status)"
+            :editable="canEdit"
+            @change="value => updatePlanStatus(row, value)"
+          />
+        </template>
+        <template #screening_methods="{ row }">
+          <WorkbenchMultiTagEditor
+            v-model="row.screening_method_list"
+            :options="screeningMethodOptions"
+            :tones="screeningMethodTones"
+            :editable="canEdit"
+            @change="persistRow(row, 'screening_methods')"
+          />
+        </template>
+        <template #harvest_date="{ row }">
+          <el-date-picker
+            v-model="row.harvest_date"
+            class="inline-date"
+            type="date"
+            size="small"
+            value-format="YYYY-MM-DD"
+            placeholder="剖鼠/上机"
+            :disabled="!canEdit"
+            @click.stop
+            @change="persistRow(row, 'harvest_date')"
+          />
+        </template>
+        <template #boost_date="{ row }">
+          <el-date-picker
+            v-model="row.boost_date"
+            class="inline-date"
+            type="date"
+            size="small"
+            value-format="YYYY-MM-DD"
+            placeholder="冲击免疫"
+            :disabled="!canEdit"
+            @click.stop
+            @change="persistRow(row, 'boost_date')"
+          />
+        </template>
+        <template #actions="{ row }">
+          <DiscoveryRowActions
+            :row="row"
+            :can-edit="canEdit"
+            @detail="openSerumProject"
+            @copy="handleCopy"
+            @delete="handleDelete"
+          />
+        </template>
+      </WorkbenchDataTable>
 
       <div
         v-else
@@ -719,8 +702,6 @@ import {
   ElOption,
   ElPagination,
   ElSelect,
-  ElTable,
-  ElTableColumn,
   ElTag,
 } from 'element-plus'
 import { VxeInput, VxeSelect } from 'vxe-pc-ui'
@@ -744,6 +725,7 @@ import {
   uniqueTargetCodes,
   WORKBENCH_VIEW,
   syncDrawerControlTooltip,
+  WorkbenchDataTable,
   workbenchExcelMixin,
 } from '#/components/workbench'
 import WorkbenchMultiTagEditor from '#/components/workbench/WorkbenchMultiTagEditor.vue'
@@ -906,6 +888,34 @@ const SHEET_COLUMN_ORDER = createColumnOrder(
   SHEET_COLUMNS,
   { pinFirstKey: 'sort_order' },
 )
+const WORKBENCH_COLUMNS = [
+  { key: 'sort_order', label: '序号', defaultVisible: true, width: 62, className: 'sort-column-cell' },
+  { key: 'priority', label: '优先级', defaultVisible: true, minWidth: 110 },
+  { key: 'status', label: '状态', defaultVisible: true, minWidth: 100, className: 'status-column-cell' },
+  { key: 'pm', label: 'PM', defaultVisible: true, prop: 'pm', minWidth: 100, showOverflowTooltip: true },
+  { key: 'project_code', label: '项目编号', defaultVisible: true, prop: 'project_code', minWidth: 120, showOverflowTooltip: true },
+  { key: 'target_name', label: '靶点名称', defaultVisible: true, prop: 'target_name', minWidth: 100, showOverflowTooltip: true },
+  { key: 'mouse_strain_category', label: '归类鼠型', defaultVisible: true, prop: 'mouse_strain_category', minWidth: 100, showOverflowTooltip: true },
+  { key: 'screening_methods', label: '筛选方式', defaultVisible: true, minWidth: 140 },
+  { key: 'screening_antigen', label: '筛选抗原', defaultVisible: true, prop: 'screening_antigen', minWidth: 120, showOverflowTooltip: true },
+  { key: 'boost_antigen', label: '冲击抗原', defaultVisible: true, prop: 'boost_antigen', minWidth: 120, showOverflowTooltip: true },
+  { key: 'harvest_date', label: '剖鼠日期', defaultVisible: true, minWidth: 135, className: 'date-column-cell' },
+  { key: 'boost_date', label: '冲击日期', defaultVisible: true, minWidth: 135, className: 'date-column-cell' },
+  { key: 'remark', label: '备注', defaultVisible: true, prop: 'remark', minWidth: 140, showOverflowTooltip: true },
+  { key: 'owner', label: '负责人', prop: 'owner', minWidth: 90, showOverflowTooltip: true },
+  { key: 'experiment_id', label: '实验号', prop: 'experiment_id', minWidth: 130, showOverflowTooltip: true },
+  { key: 'target_codes', label: '靶点编号', prop: 'target_codes', minWidth: 140, showOverflowTooltip: true },
+  { key: 'study_type', label: '课题类型', prop: 'study_type', minWidth: 110, showOverflowTooltip: true },
+  { key: 'mouse_strain', label: '小鼠品系', prop: 'mouse_strain', minWidth: 120, showOverflowTooltip: true },
+  { key: 'cage_position', label: '笼位', prop: 'cage_position', minWidth: 100, showOverflowTooltip: true },
+  { key: 'mouse_count', label: '只数', prop: 'mouse_count', minWidth: 80, showOverflowTooltip: true },
+  { key: 'mouse_nos', label: '鼠号', prop: 'mouse_nos', minWidth: 140, showOverflowTooltip: true },
+  { key: 'serum_titer', label: '血清效价', prop: 'serum_titer', minWidth: 110, showOverflowTooltip: true },
+  { key: 'immune_antigen', label: '免疫抗原', prop: 'immune_antigen', minWidth: 140, showOverflowTooltip: true },
+  { key: 'positive_cell_count', label: '阳性细胞数', prop: 'positive_cell_count', minWidth: 110, showOverflowTooltip: true },
+  { key: 'plate_nos', label: '板号', prop: 'plate_nos', minWidth: 140, showOverflowTooltip: true },
+  { key: 'actions', label: '操作', defaultVisible: true, width: 240, className: 'action-column-cell', fixed: 'right' },
+]
 const SHEET_HEADER_ALIASES = Object.freeze({
   排序: 'sort_order',
   序号: 'sort_order',
@@ -1007,9 +1017,8 @@ export default {
     ElOption,
     ElPagination,
     ElSelect,
-    ElTable,
-    ElTableColumn,
     ElTag,
+    WorkbenchDataTable,
     Search,
     SerumUserSelect,
     Tools,
@@ -1060,6 +1069,7 @@ export default {
       editorSections: EDITOR_SECTIONS,
       statusViews: STATUS_VIEWS,
       sheetColumns: SHEET_COLUMN_ORDER.load(),
+      workbenchColumns: WORKBENCH_COLUMNS,
       pendingDrawerSaves: new Set(),
       rowBaselines: new Map(),
       listRequestToken: 0,
@@ -1739,11 +1749,18 @@ export default {
       if (this.isExcelMode) this.closeEditor()
     },
     async resetSheetColumnOrder() {
-      if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
-      SHEET_COLUMN_ORDER.clear()
-      this.sheetColumns = [...SHEET_COLUMNS]
-      this.persistSheetColumnOrder(this.sheetColumns)
-      this.clearSheetRange()
+      if (this.isExcelMode) {
+        if (!await this.flushPendingSheetEdits()) return
+        SHEET_COLUMN_ORDER.clear()
+        this.sheetColumns = [...SHEET_COLUMNS]
+        this.persistSheetColumnOrder(this.sheetColumns)
+        this.clearSheetRange()
+        return
+      }
+      this.$refs.workbenchTable?.resetColumnOrder()
+    },
+    openColumnPicker() {
+      this.$refs.workbenchTable?.openColumnPicker()
     },
     persistSheetColumnOrder(columns) {
       SHEET_COLUMN_ORDER.save(columns)

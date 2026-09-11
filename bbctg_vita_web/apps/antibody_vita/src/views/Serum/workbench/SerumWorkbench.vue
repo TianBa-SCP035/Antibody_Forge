@@ -121,6 +121,7 @@
       </el-select>
       <template #actions>
         <el-button v-if="hasSecondaryFilters" @click="resetFilters">重置全部筛选</el-button>
+        <el-button v-if="!isExcelMode" @click="openColumnPicker">显示字段</el-button>
         <el-button type="warning" :icon="Download" @click="handleListExport">列表导出</el-button>
       </template>
     </AdvancedOpsBar>
@@ -273,10 +274,12 @@
       shadow="never"
       class="table-card list-table-card"
     >
-      <el-table
+      <WorkbenchDataTable
         v-if="viewMode === 'workbench'"
         ref="workbenchTable"
         v-loading="loading"
+        storage-key="serumWorkbenchViewPrefs"
+        :columns="workbenchColumns"
         :data="list"
         border
         stripe
@@ -290,145 +293,125 @@
         :row-class-name="workbenchRowClassName"
         @row-click="onWorkbenchRowClick"
         @row-contextmenu="onWorkbenchRowContextMenu"
+        @reorder="scheduleSortable"
       >
-        <el-table-column :label="sortColumnLabel" align="center" width="62" class-name="sort-column-cell">
-          <template #header>
-            <button
-              type="button"
-              class="sort-header-btn"
-              :class="{ 'is-active': isQueueSorted }"
-              :title="sortHeaderTitle"
-              @click.stop="toggleQueueSort"
-            >
-              {{ sortColumnLabel }}
-            </button>
-          </template>
-          <template #default="{ row, $index }">
-            <div class="sort-cell">
-              <el-input
-                v-if="canEditSortCell(row) && sortEditingId === row.id"
-                :ref="(el) => bindSortInput(row.id, el)"
-                v-model="row.sort_order"
-                class="sort-order-input"
-                size="small"
-                type="number"
-                min="1"
-                @click.stop
-                @blur="finishSortEdit(row)"
-                @keyup.enter="finishSortEdit(row)"
-                @mousedown.stop
-              />
-              <button
-                v-else
-                type="button"
-                class="sort-order-value"
-                :disabled="!canEditSortCell(row)"
-                @click.stop="startSortEdit(row)"
-              >
-                {{ formatSortColumn(row, $index) }}
-              </button>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="target_name" label="靶点名称" align="center" min-width="100" show-overflow-tooltip />
-        <el-table-column prop="pm" label="PM" align="center" min-width="72" show-overflow-tooltip />
-        <el-table-column prop="mouse_strain_category" label="归类鼠型" align="center" min-width="90" show-overflow-tooltip />
-        <el-table-column prop="project_code" label="免疫项目号" align="center" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="remark" label="备注" align="center" min-width="120" show-overflow-tooltip />
-        <el-table-column label="状态" align="center" min-width="110" class-name="status-column-cell">
-          <template #default="{ row }">
-            <WorkbenchStatusEditor
-              :value="row.aligned_locked ? row.display_status : row.plan_status"
-              :options="planStatusOptions"
-              :type="statusTagType(row) === 'king' ? 'info' : statusTagType(row)"
-              :editable="canEditField(row, 'plan_status') && !row.aligned_locked"
-              @change="value => updateStatusField(row, 'plan_status', value)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="小鼠运输" align="center" min-width="100" class-name="status-column-cell">
-          <template #default="{ row }">
-            <WorkbenchStatusEditor
-              :value="row.mouse_status"
-              :options="optionLists.mouse_status"
-              :type="mouseStatusTone(row.mouse_status)"
-              :editable="canEditField(row, 'mouse_status')"
-              @change="value => updateStatusField(row, 'mouse_status', value)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="抗原到货" align="center" min-width="90" class-name="status-column-cell">
-          <template #default="{ row }">
-            <WorkbenchStatusEditor
-              :value="row.antigen_ready"
-              :options="yesNoOptions"
-              :type="yesNoTagType(row.antigen_ready)"
-              :editable="canEditField(row, 'antigen_ready')"
-              @change="value => updateStatusField(row, 'antigen_ready', value)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column prop="review_status" label="审核结果" align="center" min-width="90" class-name="status-column-cell">
-          <template #default="{ row }">
-            <WorkbenchStatusEditor
-              :value="row.review_status"
-              :options="optionLists.review_status"
-              :type="reviewTone(row.review_status)"
-              :editable="canEditField(row, 'review_status')"
-              @change="value => updateStatusField(row, 'review_status', value)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="可否开展" align="center" min-width="90" class-name="status-column-cell">
-          <template #default="{ row }">
-            <WorkbenchStatusEditor
-              :value="row.can_start"
-              :options="yesNoOptions"
-              :type="yesNoTagType(row.can_start)"
-              :editable="canEditField(row, 'can_start')"
-              @change="value => updateStatusField(row, 'can_start', value)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="优先级" align="center" min-width="112">
-          <template #default="{ row }">
-            <el-select
-              v-if="canEditField(row, 'priority')"
-              v-model="row.priority"
+        <template #header-sort_order>
+          <button
+            type="button"
+            class="sort-header-btn"
+            :class="{ 'is-active': isQueueSorted }"
+            :title="sortHeaderTitle"
+            @click.stop="toggleQueueSort"
+          >
+            {{ sortColumnLabel }}
+          </button>
+        </template>
+        <template #sort_order="{ row, $index }">
+          <div class="sort-cell">
+            <el-input
+              v-if="canEditSortCell(row) && sortEditingId === row.id"
+              :ref="(el) => bindSortInput(row.id, el)"
+              v-model="row.sort_order"
+              class="sort-order-input"
               size="small"
-              class="inline-select priority-select"
-              :class="'status-tone-' + priorityTone(row)"
+              type="number"
+              min="1"
               @click.stop
-              @change="persistRow(row, 'priority')"
-            >
-              <el-option v-for="item in optionLists.priority" :key="item" :label="item" :value="item" />
-            </el-select>
-            <el-tag
-              v-else
-              class="list-status-tag"
-              :class="{ 'status-tone-king': priorityTone(row) === 'king' }"
-              :type="priorityTone(row) === 'king' ? 'info' : priorityTone(row)"
-              effect="plain"
-            >
-              {{ rowPriority(row) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" align="center" width="240" fixed="right" class-name="action-column-cell">
-          <template #default="{ row }">
-            <WorkbenchRowActions
-              :row="row"
-              :can-copy="canCopy"
-              :can-delete="canDeleteRow(row)"
-              :can-unlist="canFullEdit"
-              @scheme="openScheme"
-              @copy="handleCopy"
-              @delete="handleDelete"
-              @unlist="handleUnlist"
+              @blur="finishSortEdit(row)"
+              @keyup.enter="finishSortEdit(row)"
+              @mousedown.stop
             />
-          </template>
-        </el-table-column>
-      </el-table>
+            <button
+              v-else
+              type="button"
+              class="sort-order-value"
+              :disabled="!canEditSortCell(row)"
+              @click.stop="startSortEdit(row)"
+            >
+              {{ formatSortColumn(row, $index) }}
+            </button>
+          </div>
+        </template>
+        <template #status="{ row }">
+          <WorkbenchStatusEditor
+            :value="row.aligned_locked ? row.display_status : row.plan_status"
+            :options="planStatusOptions"
+            :type="statusTagType(row) === 'king' ? 'info' : statusTagType(row)"
+            :editable="canEditField(row, 'plan_status') && !row.aligned_locked"
+            @change="value => updateStatusField(row, 'plan_status', value)"
+          />
+        </template>
+        <template #mouse_status="{ row }">
+          <WorkbenchStatusEditor
+            :value="row.mouse_status"
+            :options="optionLists.mouse_status"
+            :type="mouseStatusTone(row.mouse_status)"
+            :editable="canEditField(row, 'mouse_status')"
+            @change="value => updateStatusField(row, 'mouse_status', value)"
+          />
+        </template>
+        <template #antigen_ready="{ row }">
+          <WorkbenchStatusEditor
+            :value="row.antigen_ready"
+            :options="yesNoOptions"
+            :type="yesNoTagType(row.antigen_ready)"
+            :editable="canEditField(row, 'antigen_ready')"
+            @change="value => updateStatusField(row, 'antigen_ready', value)"
+          />
+        </template>
+        <template #review_status="{ row }">
+          <WorkbenchStatusEditor
+            :value="row.review_status"
+            :options="optionLists.review_status"
+            :type="reviewTone(row.review_status)"
+            :editable="canEditField(row, 'review_status')"
+            @change="value => updateStatusField(row, 'review_status', value)"
+          />
+        </template>
+        <template #can_start="{ row }">
+          <WorkbenchStatusEditor
+            :value="row.can_start"
+            :options="yesNoOptions"
+            :type="yesNoTagType(row.can_start)"
+            :editable="canEditField(row, 'can_start')"
+            @change="value => updateStatusField(row, 'can_start', value)"
+          />
+        </template>
+        <template #priority="{ row }">
+          <el-select
+            v-if="canEditField(row, 'priority')"
+            v-model="row.priority"
+            size="small"
+            class="inline-select priority-select"
+            :class="'status-tone-' + priorityTone(row)"
+            @click.stop
+            @change="persistRow(row, 'priority')"
+          >
+            <el-option v-for="item in optionLists.priority" :key="item" :label="item" :value="item" />
+          </el-select>
+          <el-tag
+            v-else
+            class="list-status-tag"
+            :class="{ 'status-tone-king': priorityTone(row) === 'king' }"
+            :type="priorityTone(row) === 'king' ? 'info' : priorityTone(row)"
+            effect="plain"
+          >
+            {{ rowPriority(row) }}
+          </el-tag>
+        </template>
+        <template #actions="{ row }">
+          <WorkbenchRowActions
+            :row="row"
+            :can-copy="canCopy"
+            :can-delete="canDeleteRow(row)"
+            :can-unlist="canFullEdit"
+            @scheme="openScheme"
+            @copy="handleCopy"
+            @delete="handleDelete"
+            @unlist="handleUnlist"
+          />
+        </template>
+      </WorkbenchDataTable>
 
       <div
         v-else
@@ -786,8 +769,6 @@ import {
   ElOption,
   ElPagination,
   ElSelect,
-  ElTable,
-  ElTableColumn,
   ElTag,
 } from 'element-plus'
 import { VxeInput, VxeSelect } from 'vxe-pc-ui'
@@ -805,6 +786,7 @@ import {
   EXCEL_VIEW,
   WORKBENCH_VIEW,
   syncDrawerControlTooltip,
+  WorkbenchDataTable,
   workbenchExcelMixin,
 } from '#/components/workbench'
 import WorkbenchViewToggle from '#/components/workbench/WorkbenchViewToggle.vue'
@@ -1030,6 +1012,45 @@ const SHEET_COLUMNS = [
   { key: 'experiment_id', label: '实验号', width: 190, edit: 'readonly' },
 ]
 const SHEET_COLUMN_ORDER = createColumnOrder('workbenchSheetColumnOrder', SHEET_COLUMNS)
+const WORKBENCH_COLUMNS = [
+  { key: 'sort_order', label: '序号', defaultVisible: true, width: 62, className: 'sort-column-cell' },
+  { key: 'target_name', label: '靶点名称', defaultVisible: true, prop: 'target_name', minWidth: 100, showOverflowTooltip: true },
+  { key: 'pm', label: 'PM', defaultVisible: true, prop: 'pm', minWidth: 72, showOverflowTooltip: true },
+  { key: 'mouse_strain_category', label: '归类鼠型', defaultVisible: true, prop: 'mouse_strain_category', minWidth: 90, showOverflowTooltip: true },
+  { key: 'project_code', label: '免疫项目号', defaultVisible: true, prop: 'project_code', minWidth: 120, showOverflowTooltip: true },
+  { key: 'remark', label: '备注', defaultVisible: true, prop: 'remark', minWidth: 120, showOverflowTooltip: true },
+  { key: 'status', label: '状态', defaultVisible: true, minWidth: 110, className: 'status-column-cell' },
+  { key: 'mouse_status', label: '小鼠运输', defaultVisible: true, minWidth: 100, className: 'status-column-cell' },
+  { key: 'antigen_ready', label: '抗原到货', defaultVisible: true, minWidth: 90, className: 'status-column-cell' },
+  { key: 'review_status', label: '审核结果', defaultVisible: true, minWidth: 90, className: 'status-column-cell' },
+  { key: 'can_start', label: '可否开展', defaultVisible: true, minWidth: 90, className: 'status-column-cell' },
+  { key: 'priority', label: '优先级', defaultVisible: true, minWidth: 112 },
+  { key: 'target_codes', label: '靶点编号', prop: 'target_codes', minWidth: 140, showOverflowTooltip: true },
+  { key: 'project_set_code', label: '项目集编号', prop: 'project_set_code', minWidth: 120, showOverflowTooltip: true },
+  { key: 'study_type', label: '课题类型', prop: 'study_type', minWidth: 110, showOverflowTooltip: true },
+  { key: 'species_cross', label: '种属交叉', prop: 'species_cross', minWidth: 160, showOverflowTooltip: true },
+  { key: 'owner', label: '开展人', prop: 'owner', minWidth: 90, showOverflowTooltip: true },
+  { key: 'reviewer', label: '审核人', prop: 'reviewer', minWidth: 90, showOverflowTooltip: true },
+  { key: 'immuno_method', label: '免疫方式', prop: 'immuno_method', minWidth: 140, showOverflowTooltip: true },
+  { key: 'mouse_scheme_no', label: '小鼠方案号', prop: 'mouse_scheme_no', minWidth: 120, showOverflowTooltip: true },
+  { key: 'mouse_strain', label: '小鼠品系', prop: 'mouse_strain', minWidth: 110, showOverflowTooltip: true },
+  { key: 'mouse_count', label: '数量', prop: 'mouse_count', minWidth: 80, showOverflowTooltip: true },
+  { key: 'mouse_zygosity', label: '纯合/杂合', prop: 'mouse_zygosity', minWidth: 90, showOverflowTooltip: true },
+  { key: 'mouse_birth_date', label: '出生日期', prop: 'mouse_birth_date', minWidth: 110, showOverflowTooltip: true },
+  { key: 'mouse_age_weeks', label: '周龄', prop: 'mouse_age_weeks', minWidth: 80, showOverflowTooltip: true },
+  { key: 'mouse_region', label: '提供地区', prop: 'mouse_region', minWidth: 100, showOverflowTooltip: true },
+  { key: 'mouse_room', label: '房间号', prop: 'mouse_room', minWidth: 90, showOverflowTooltip: true },
+  { key: 'mouse_arrive_date', label: '到鼠时间', prop: 'mouse_arrive_date', minWidth: 110, showOverflowTooltip: true },
+  { key: 'mouse_remark', label: '小鼠备注', prop: 'mouse_remark', minWidth: 160, showOverflowTooltip: true },
+  { key: 'antigen_source', label: '抗原来源', prop: 'antigen_source', minWidth: 110, showOverflowTooltip: true },
+  { key: 'antigen_eta', label: '抗原预计日', prop: 'antigen_eta', minWidth: 110, showOverflowTooltip: true },
+  { key: 'mouse_expand_requested', label: '代下扩繁', prop: 'mouse_expand_requested', minWidth: 110, showOverflowTooltip: true },
+  { key: 'lnp_ordered', label: 'LNP下单', prop: 'lnp_ordered', minWidth: 110, showOverflowTooltip: true },
+  { key: 'cell_prep_status', label: '冲击细胞', prop: 'cell_prep_status', minWidth: 110, showOverflowTooltip: true },
+  { key: 'antigen_remark', label: '抗原备注', prop: 'antigen_remark', minWidth: 160, showOverflowTooltip: true },
+  { key: 'experiment_id', label: '实验号', prop: 'experiment_id', minWidth: 190, showOverflowTooltip: true },
+  { key: 'actions', label: '操作', defaultVisible: true, width: 240, className: 'action-column-cell', fixed: 'right' },
+]
 let lastViewMode = WORKBENCH_VIEW
 const SHEET_HEADER_ALIASES = Object.freeze({
   排序: 'sort_order',
@@ -1060,9 +1081,8 @@ export default {
     ElOption,
     ElPagination,
     ElSelect,
-    ElTable,
-    ElTableColumn,
     ElTag,
+    WorkbenchDataTable,
     Search,
     SerumUserSelect,
     Tools,
@@ -1160,6 +1180,7 @@ export default {
       editorSections: EDITOR_SECTIONS,
       statusViews: STATUS_VIEWS,
       sheetColumns: SHEET_COLUMN_ORDER.load(),
+      workbenchColumns: WORKBENCH_COLUMNS,
     }
   },
   computed: {
@@ -1303,11 +1324,18 @@ export default {
       this.viewMode = this.isExcelMode ? WORKBENCH_VIEW : EXCEL_VIEW
     },
     async resetSheetColumnOrder() {
-      if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
-      SHEET_COLUMN_ORDER.clear()
-      this.sheetColumns = [...SHEET_COLUMNS]
-      this.persistSheetColumnOrder(this.sheetColumns)
-      this.clearSheetRange()
+      if (this.isExcelMode) {
+        if (!await this.flushPendingSheetEdits()) return
+        SHEET_COLUMN_ORDER.clear()
+        this.sheetColumns = [...SHEET_COLUMNS]
+        this.persistSheetColumnOrder(this.sheetColumns)
+        this.clearSheetRange()
+        return
+      }
+      this.$refs.workbenchTable?.resetColumnOrder()
+    },
+    openColumnPicker() {
+      this.$refs.workbenchTable?.openColumnPicker()
     },
     persistSheetColumnOrder(columns) {
       SHEET_COLUMN_ORDER.save(columns)

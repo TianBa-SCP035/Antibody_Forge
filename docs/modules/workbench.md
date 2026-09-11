@@ -9,7 +9,7 @@
 | **工作台**（默认） | `workbench` | 扫读表格；关键字段行内改；左键点行开右侧抽屉，再点同一行或右键任意行关闭（无全屏遮罩） |
 | **Excel** | `excel` | 当前分页内划选、复制、事务性粘贴、键入续写 |
 
-「视图」按钮切换；Excel 下 `Shift` 拖列表头调列顺序，右键该按钮恢复默认。实现：`apps/antibody_vita/src/components/workbench/`。旧稿里的「快速编辑 / Sheet」即这一对，新文档与界面统一用上表。
+「视图」按钮切换；工作台和 Excel 都是 `Shift` 拖列表头调列顺序，右键该按钮恢复**当前视图**的默认列序（工作台还会恢复显示字段）。两套列序分开存。实现：`apps/antibody_vita/src/components/workbench/`。旧稿里的「快速编辑 / Sheet」即这一对，新文档与界面统一用上表。
 
 ## 只抽肯定共用的
 
@@ -25,13 +25,16 @@
 | `WorkbenchStatusEditor.vue` | 状态标签点选 |
 | `WorkbenchMultiTagEditor.vue` | 多选标签（筛选方式） |
 | `WorkbenchTargetSelect.vue` | 抽屉靶点远程搜索；检索逻辑在 `targetOptions.js` |
-| `columnOrder.js` | 列序 `localStorage` |
+| `columnOrder.js` | 列序 `localStorage`；可钉首列 / 末列；工作台另记隐藏列 `{ order, hidden }` |
+| `WorkbenchDataTable.vue` | 工作台视图表：一份字段目录、默认勾选、`Shift` 拖表头；单元格用按 key 的插槽 |
 | `viewMode.js` | `workbench` / `excel`（兼容旧值 `sheet`） |
 | `workbenchConsole.css` | 页头、阶段条、绿色胶囊 |
 
 优先级排队算法在后端 `utils/workbench_queue.py`（四档、只给未完成行的 `sort_order`、改档挤位；终态 `NULL`）。列表默认 `id` 倒序，表头为「序号」，格子里是本页行号 1..n。点该表头改为「排序」，按队列值排列并显示 `sort_order`，此时才能改号、拖行。拖行是把被拖行放到落点行当前的队列位，筛不筛选都能拖，终态行不参与。再点表头恢复默认。新建 / 复制 / 效价「测序」下发后按当前排序跳到该行所在页并打开抽屉。免疫和发现都用它。人名选择复用 `SerumUserSelect`（系统用户显示名）。抽屉靶点用 `WorkbenchTargetSelect`。Excel 里的靶点远程格、开展 / 下架仍在各页。该列表头左键只切换这两种显示，不再全选该列。
 
 新工作台：`mixins: [workbenchExcelMixin]`，提供 `list`、`sheetColumns`、`canEdit`、`persistSheetColumnOrder`、`finishSheetEdit`、`normalizeRow`。键入默认 `row[key] = 文本`；有双字段或展示转换时再覆写 `sheetDirectTextValue` / `sheetValueSnapshot`。行选择列用 `excelRowSelectKey`（免疫和发现都是 `sort_order`）。粘贴校验与保存仍写在本页。
+
+工作台视图用 `WorkbenchDataTable`：本页给一份 `WORKBENCH_COLUMNS`（与 Excel 同一组业务 key，外加操作列；免疫台「状态」只用 `status`，不要再并列 `plan_status`）。`defaultVisible: true` 的是默认短列，其余默认藏。排序列钉左、操作列钉右，单元格按 key 插槽。不要复用 Excel 的列序 key。右键「视图」按 `viewMode` 清当前这份。高级操作「显示字段」勾选这份目录；序号和操作列不能藏。新字段标了 `defaultVisible` 才默认出现。Excel 仍用自己的 `SHEET_COLUMNS`。
 
 不要把整张 Excel 收成一个组件。列、选项、coerce、接口各台不同，抽出去只会把字段绑定搬来搬去。选项格 `#edit` 模板可以抄免疫 / 发现，不要做成万能选择器。
 

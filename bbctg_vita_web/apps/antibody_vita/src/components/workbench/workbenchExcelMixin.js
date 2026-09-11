@@ -303,9 +303,42 @@ export default {
       line.style.height = `${stageRect.height - top}px`
       line.style.transform = `translate3d(${(move.to > move.from ? rect.right : rect.left) - stageRect.left}px, ${top}px, 0)`
     },
+    hitSheetColumnByX(clientX) {
+      const wrap = this.$refs.sheetWrap
+      const $table = this.$refs.sheetTable
+      if (!wrap || !$table?.getColumnById) return null
+      const byIndex = new Map()
+      for (const el of wrap.querySelectorAll('.vxe-header--column')) {
+        const column = $table.getColumnById(el.getAttribute('colid'))
+        const field = column?.field
+        const colIndex = this.sheetColumns.findIndex((item) => item.key === field)
+        const rect = el.getBoundingClientRect()
+        if (colIndex < 0 || rect.width <= 2) continue
+        const prev = byIndex.get(colIndex)
+        if (!prev || rect.width > prev.rect.width) {
+          byIndex.set(colIndex, { colIndex, field, rect })
+        }
+      }
+      const headers = [...byIndex.values()].sort((a, b) => a.rect.left - b.rect.left)
+      if (!headers.length) return null
+      let nearest = headers[0]
+      let best = Infinity
+      for (const item of headers) {
+        if (clientX >= item.rect.left && clientX <= item.rect.right) return item
+        const dist = clientX < item.rect.left
+          ? item.rect.left - clientX
+          : clientX - item.rect.right
+        if (dist < best) {
+          best = dist
+          nearest = item
+        }
+      }
+      return nearest
+    },
     onSheetColumnPointerMove(event) {
       if (this.sheetDragMode !== 'move-column' || !this.sheetColumnMove) return
-      const hit = this.hitSheetHeader(event.target) || this.hitSheetCell(event.target)
+      event.preventDefault()
+      const hit = this.hitSheetColumnByX(event.clientX)
       if (hit) this.sheetColumnMove.to = hit.colIndex
       this.paintSheetColumnMove(event)
     },
@@ -608,7 +641,7 @@ export default {
         return
       }
       if (event.target?.closest?.('.vxe-cell--col-resizable')) return
-      this.$refs.sheetWrap?.focus?.()
+      this.focusSheetWrap()
       const headerHit = this.hitSheetHeader(event.target)
       if (event.button !== 0) return
       if (headerHit && event.shiftKey) {
@@ -623,7 +656,7 @@ export default {
         this.sheetPointerDown = true
         this.sheetColumnMove = { from: headerHit.colIndex, to: headerHit.colIndex }
         this.paintSheetColumnMove(event)
-        window.addEventListener('mousemove', this.onSheetColumnPointerMove)
+        window.addEventListener('mousemove', this.onSheetColumnPointerMove, { passive: false })
         return
       }
       if (headerHit && this.isExcelRowSelectField(this.sheetColumns[headerHit.colIndex]?.key)) {
@@ -724,6 +757,7 @@ export default {
       event.clipboardData?.setData('text/plain', text)
     },
     onSheetCellSelected({ row, column, $event }) {
+      if (this.sheetDragMode === 'move-column') return
       const key = column?.field
       const rowIndex = this.list.findIndex((item) => item.id === row.id)
       const colIndex = this.sheetColumns.findIndex((item) => item.key === key)
@@ -751,7 +785,7 @@ export default {
       if (!row || !column) return
       await this.$refs.sheetTable?.setSelectCell?.(row, column.key)
       this.setSheetRange(range)
-      this.$refs.sheetWrap?.focus?.()
+      this.focusSheetWrap()
     },
     selectAllSheetCells() {
       if (!this.list.length || !this.sheetColumns.length) return
@@ -798,8 +832,11 @@ export default {
         || wrap?.contains?.(activeElement)
         || activeElement.closest?.('.sheet-picker-popup')
       ) {
-        wrap?.focus?.()
+        this.focusSheetWrap()
       }
+    },
+    focusSheetWrap() {
+      this.$refs.sheetWrap?.focus?.({ preventScroll: true })
     },
     onSheetEditClosed(context) {
       const operation = this.finishSheetEdit(context)

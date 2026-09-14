@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
@@ -32,7 +33,6 @@ EMPLOYEE_SOURCE_SQL = text(
     FROM org_emp e
     LEFT JOIN org_depart d ON e.depart_id = d.id
     LEFT JOIN org_depart p ON d.top_id = p.id
-    WHERE e.cloud_open_id IS NOT NULL AND e.cloud_open_id <> ''
     """
 )
 
@@ -56,17 +56,17 @@ class ExternalEmployee:
 def sync_employee_profiles(db: Session, employee_db: Session, *, dry_run: bool = False) -> dict[str, Any]:
     """Sync basic employee profile fields from the external project-management DB.
 
+    Identity is resolved in three short passes:
+    1. unique Yunzhijia openid (if several source rows share one, keep the unlocked row)
+    2. leftover local users by exact name + job number
+    3. create only when unlocked and unmatched; reuse one local user with the same name + mobile
+
     The sync intentionally does not touch passwords, roles, permission overrides, or superuser flags.
     """
     external_employees = _load_external_employees(employee_db)
-    duplicate_openids = _find_duplicate_values([employee.openid for employee in external_employees])
-    duplicate_mobiles = _find_duplicate_values(
-        [employee.mobile for employee in external_employees if employee.mobile]
-    )
-
-    existing_users = db.scalars(select(SysUser).where(SysUser.openid.is_not(None))).all()
+    existing_users = list(db.scalars(select(SysUser)).all())
     users_by_openid = {str(user.openid).strip(): user for user in existing_users if user.openid}
-    existing_usernames = set(db.scalars(select(SysUser.username)).all())
+    existing_usernames = {user.username for user in existing_users if user.username}
 
     result: dict[str, Any] = {
         "source_total": len(external_employees),
@@ -80,36 +80,100 @@ def sync_employee_profiles(db: Session, employee_db: Session, *, dry_run: bool =
             "missing_mobile": 0,
             "duplicate_mobile": 0,
             "username_exists": 0,
+            "ambiguous_local_user": 0,
         },
         "disabled_on_resignation": 0,
     }
 
+    processed_users: set[int] = set()
+    used_employees: set[int] = set()
+    ambiguous_openids: set[str] = set()
+
+    def mark_updated(user: SysUser, employee: ExternalEmployee, changed: bool, disabled_account: bool) -> None:
+        processed_users.add(id(user))
+        used_employees.add(id(employee))
+        if changed:
+            result["updated"] += 1
+        if disabled_account:
+            result["disabled_on_resignation"] += 1
+
+    for openid, group in _group_by(external_employees, lambda item: item.openid or None).items():
+        chosen = _choose_openid_employee(group)
+        if chosen is None:
+            ambiguous_openids.add(openid)
+            result["skipped"]["duplicate_openid"] += len(group)
+            continue
+        user = users_by_openid.get(openid)
+        if not user:
+            continue
+        if not chosen.job_no:
+            result["skipped"]["missing_job_no"] += 1
+            continue
+        openid_to_write = _openid_for_update(user, chosen, users_by_openid)
+        _bind_openid(user, openid_to_write, users_by_openid)
+        changed, disabled_account = _apply_employee_update(user, chosen, openid=openid_to_write)
+        mark_updated(user, chosen, changed, disabled_account)
+
+    local_by_name_job = _group_by(existing_users, _user_name_job)
+    source_by_name_job = _group_by(external_employees, _employee_name_job)
+    for user in existing_users:
+        if id(user) in processed_users:
+            continue
+        key = _user_name_job(user)
+        if key is None or len(local_by_name_job.get(key, [])) != 1:
+            continue
+        hits = source_by_name_job.get(key, [])
+        if len(hits) != 1:
+            continue
+        employee = hits[0]
+        openid_to_write = _openid_for_update(user, employee, users_by_openid)
+        _bind_openid(user, openid_to_write, users_by_openid)
+        changed, disabled_account = _apply_employee_update(user, employee, openid=openid_to_write)
+        mark_updated(user, employee, changed, disabled_account)
+
+    create_candidates = [
+        employee
+        for employee in external_employees
+        if employee.openid
+        and id(employee) not in used_employees
+        and employee.openid not in ambiguous_openids
+        and not employee.is_locked
+    ]
+    duplicate_mobiles = _find_duplicate_values(
+        [employee.mobile for employee in create_candidates if employee.mobile]
+    )
+
     for employee in external_employees:
-        if employee.openid in duplicate_openids:
-            result["skipped"]["duplicate_openid"] += 1
+        if id(employee) in used_employees or employee.openid in ambiguous_openids:
             continue
-
-        user = users_by_openid.get(employee.openid)
-        if user:
-            if not employee.job_no:
-                result["skipped"]["missing_job_no"] += 1
-                continue
-            if user.job_no and user.job_no != employee.job_no:
-                result["skipped"]["job_no_mismatch"] += 1
-                continue
-            changed, disabled_account = _apply_employee_update(user, employee)
-            if changed:
-                result["updated"] += 1
-            if disabled_account:
-                result["disabled_on_resignation"] += 1
+        if not employee.openid:
             continue
-
+        if users_by_openid.get(employee.openid):
+            continue
         if employee.is_locked:
             result["skipped"]["locked_new_user"] += 1
             continue
         if not employee.mobile:
             result["skipped"]["missing_mobile"] += 1
             continue
+
+        reuse_candidates = [
+            user
+            for user in existing_users
+            if _clean(user.mobile) == employee.mobile
+            and _clean(user.display_name) == employee.display_name
+        ]
+        if len(reuse_candidates) > 1:
+            result["skipped"]["ambiguous_local_user"] += 1
+            continue
+        if len(reuse_candidates) == 1:
+            user = reuse_candidates[0]
+            openid_to_write = _openid_for_update(user, employee, users_by_openid)
+            _bind_openid(user, openid_to_write, users_by_openid)
+            changed, disabled_account = _apply_employee_update(user, employee, openid=openid_to_write)
+            mark_updated(user, employee, changed, disabled_account)
+            continue
+
         if employee.mobile in duplicate_mobiles:
             result["skipped"]["duplicate_mobile"] += 1
             continue
@@ -133,8 +197,10 @@ def sync_employee_profiles(db: Session, employee_db: Session, *, dry_run: bool =
             status="active",
         )
         db.add(user)
+        existing_users.append(user)
         users_by_openid[employee.openid] = user
         existing_usernames.add(employee.mobile)
+        used_employees.add(id(employee))
         result["created"] += 1
 
     if dry_run:
@@ -166,19 +232,26 @@ def _external_employee_from_row(row: dict[str, Any]) -> ExternalEmployee:
     )
 
 
-def _apply_employee_update(user: SysUser, employee: ExternalEmployee) -> tuple[bool, bool]:
+def _apply_employee_update(
+    user: SysUser,
+    employee: ExternalEmployee,
+    *,
+    openid: str | None = None,
+) -> tuple[bool, bool]:
     changed = False
     disabled_account = False
     updates = {
-        "job_no": employee.job_no or user.job_no,
-        "display_name": employee.display_name,
-        "department": employee.department,
-        "group_name": employee.group_name,
-        "position_title": employee.position_title,
-        "gender": employee.gender,
-        "email": employee.email,
-        "mobile": employee.mobile,
+        "job_no": _prefer(employee.job_no, user.job_no),
+        "display_name": _prefer(employee.display_name, user.display_name),
+        "department": _prefer(employee.department, user.department),
+        "group_name": _prefer(employee.group_name, user.group_name),
+        "position_title": _prefer(employee.position_title, user.position_title),
+        "gender": _prefer_gender(employee.gender, user.gender),
+        "email": _prefer(employee.email, user.email),
+        "mobile": _prefer(employee.mobile, user.mobile),
     }
+    if openid:
+        updates["openid"] = openid
     if employee.leave_date:
         updates["employment_status"] = "resigned"
         # 仅当本次由在职变为离职时禁用账号；已是离职但仍为启用的历史数据不改动
@@ -191,6 +264,71 @@ def _apply_employee_update(user: SysUser, employee: ExternalEmployee) -> tuple[b
             setattr(user, field, value)
             changed = True
     return changed, disabled_account
+
+
+def _prefer(new_value: Any, old_value: Any) -> Any:
+    return new_value if _clean(new_value) is not None else old_value
+
+
+def _prefer_gender(new_value: str, old_value: str | None) -> str | None:
+    if new_value and new_value != "unknown":
+        return new_value
+    return old_value or new_value
+
+
+def _choose_openid_employee(group: list[ExternalEmployee]) -> ExternalEmployee | None:
+    if len(group) == 1:
+        return group[0]
+    unlocked = [employee for employee in group if not employee.is_locked]
+    if len(unlocked) == 1:
+        return unlocked[0]
+    return None
+
+
+def _openid_for_update(
+    user: SysUser,
+    employee: ExternalEmployee,
+    users_by_openid: dict[str, SysUser],
+) -> str | None:
+    if not employee.openid:
+        return None
+    current = users_by_openid.get(employee.openid)
+    if current is None or current is user:
+        return employee.openid
+    return None
+
+
+def _bind_openid(user: SysUser, openid: str | None, users_by_openid: dict[str, SysUser]) -> None:
+    if not openid:
+        return
+    previous = _clean(user.openid)
+    if previous and users_by_openid.get(previous) is user and previous != openid:
+        del users_by_openid[previous]
+    users_by_openid[openid] = user
+
+
+def _user_name_job(user: SysUser) -> tuple[str, str] | None:
+    name = _clean(user.display_name)
+    job_no = _clean(user.job_no)
+    if not name or not job_no:
+        return None
+    return name, job_no
+
+
+def _employee_name_job(employee: ExternalEmployee) -> tuple[str, str] | None:
+    if not employee.display_name or not employee.job_no:
+        return None
+    return employee.display_name, employee.job_no
+
+
+def _group_by(items: list[Any], key_fn) -> dict[Any, list[Any]]:
+    groups: dict[Any, list[Any]] = defaultdict(list)
+    for item in items:
+        key = key_fn(item)
+        if key is None:
+            continue
+        groups[key].append(item)
+    return groups
 
 
 def _clean(value: Any) -> str | None:

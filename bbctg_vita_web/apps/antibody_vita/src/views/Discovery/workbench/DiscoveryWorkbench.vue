@@ -896,7 +896,7 @@ const WORKBENCH_COLUMNS = [
   { key: 'project_code', label: '项目编号', defaultVisible: true, prop: 'project_code', minWidth: 120, showOverflowTooltip: true },
   { key: 'target_name', label: '靶点名称', defaultVisible: true, prop: 'target_name', minWidth: 100, showOverflowTooltip: true },
   { key: 'mouse_strain_category', label: '归类鼠型', defaultVisible: true, prop: 'mouse_strain_category', minWidth: 100, showOverflowTooltip: true },
-  { key: 'screening_methods', label: '筛选方式', defaultVisible: true, minWidth: 140 },
+  { key: 'screening_methods', label: '筛选方式', defaultVisible: true, minWidth: 145 },
   { key: 'screening_antigen', label: '筛选抗原', defaultVisible: true, prop: 'screening_antigen', minWidth: 120, showOverflowTooltip: true },
   { key: 'boost_antigen', label: '冲击抗原', defaultVisible: true, prop: 'boost_antigen', minWidth: 120, showOverflowTooltip: true },
   { key: 'harvest_date', label: '剖鼠日期', defaultVisible: true, minWidth: 135, className: 'date-column-cell' },

@@ -21,7 +21,7 @@ const MSG = {
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
-const message = ref(MSG.loading);
+const message = ref<(typeof MSG)[keyof typeof MSG]>(MSG.loading);
 const showRetryHint = ref(false);
 
 function resolveFailure(err: unknown) {

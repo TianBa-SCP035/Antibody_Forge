@@ -16,7 +16,7 @@ from utils.workbench_queue import (
     renumber_queue,
 )
 
-SCREENING_METHOD_OPTIONS = ("达普", "噬菌体", "Beacon")
+SCREENING_METHOD_OPTIONS = ("达普", "噬菌体", "Beacon", "NGS")
 PLAN_STATUS_PLANNING = "规划中"
 PLAN_STATUS_WAIT_BOOST = "待冲击"
 PLAN_STATUS_WAIT_HARVEST = "待剖鼠"
@@ -44,7 +44,6 @@ VIEW_GROUP_STATUSES = {
     "sequencing": frozenset({PLAN_STATUS_WAIT_SEQ}),
     "cancelled": frozenset({PLAN_STATUS_CANCELLED}),
 }
-COPY_CLEAR_FIELDS = ("harvest_date", "boost_date", "boost_antigen")
 MISSING_ROW = "发现工作台记录不存在"
 STRING_FIELDS = {
     "project_code": 64,
@@ -673,42 +672,6 @@ def save_batch(
         if row:
             saved.append(row.to_dict())
     return {"items": saved}
-
-
-def copy_row(db: Session, row_id: int, created_by: str | None = None) -> dict[str, Any]:
-    source = db.get(DiscoveryWorkbench, int(row_id))
-    if not source:
-        raise ValueError(MISSING_ROW)
-    payload = {
-        field: getattr(source, field)
-        for field in WRITABLE_FIELDS
-        if field not in COPY_CLEAR_FIELDS and field != "sort_order"
-    }
-    if isinstance(payload.get("target_codes"), list):
-        payload["target_codes"] = list(payload["target_codes"])
-    payload["status"] = PLAN_STATUS_PLANNING
-    payload["priority"] = DEFAULT_PRIORITY
-    _lock_queue(db)
-    row = DiscoveryWorkbench(
-        created_by=(created_by or "").strip() or None,
-        status=PLAN_STATUS_PLANNING,
-        priority=DEFAULT_PRIORITY,
-        sort_order=None,
-    )
-    db.add(row)
-    db.flush()
-    _apply_fields(row, payload)
-    _apply_queue(
-        db,
-        row,
-        previous_sort=None,
-        previous_priority=DEFAULT_PRIORITY,
-        payload={},
-        is_new=True,
-    )
-    db.commit()
-    db.refresh(row)
-    return row.to_dict()
 
 
 def delete(db: Session, row_id: int) -> None:

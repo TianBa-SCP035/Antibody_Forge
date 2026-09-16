@@ -48,8 +48,6 @@ const orgLine = computed(() =>
   [profile.value?.department, profile.value?.groupName].filter(Boolean).join(' · '),
 );
 
-const signaturePreview = computed(() => profile.value?.profileSignature?.trim() || '');
-
 const hasPassword = computed(() => Boolean(profile.value?.hasPassword));
 
 const passwordMismatch = computed(() => {

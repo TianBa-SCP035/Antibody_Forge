@@ -16,10 +16,10 @@
         plain
         :icon="CopyDocument"
         :class="{ 'no-permission-btn': !canEdit }"
-        :title="!canEdit ? '您没有权限复制安排' : ''"
-        @click="$emit('copy', row)"
+        :title="!canEdit ? '您没有权限交接安排' : '交接至下游模块'"
+        @click="$emit('handoff', row)"
       >
-        复制
+        交接
       </el-button>
       <el-button
         class="list-table-action-btn"
@@ -47,7 +47,7 @@ export default {
     row: { type: Object, required: true },
     canEdit: { type: Boolean, default: false },
   },
-  emits: ['detail', 'copy', 'delete'],
+  emits: ['detail', 'handoff', 'delete'],
   setup() {
     return { CopyDocument, Delete, Document }
   },

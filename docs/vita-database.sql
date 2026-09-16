@@ -681,7 +681,6 @@ VALUES
   ('serum.project.edit', 'POST', '/api/serum/mouse-registry/save', '保存小鼠鼠号明细'),
   ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/save', '保存抗体发现工作台'),
   ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/save_batch', '批量保存抗体发现工作台'),
-  ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/copy', '复制抗体发现工作台'),
   ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/delete', '删除抗体发现工作台'),
   ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/reorder', '调整抗体发现工作台排序'),
   ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/save', '保存流式工单'),

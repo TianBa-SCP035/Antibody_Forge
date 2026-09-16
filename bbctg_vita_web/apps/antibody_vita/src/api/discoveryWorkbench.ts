@@ -42,10 +42,6 @@ export function saveDiscoveryWorkbenchBatch(data: any) {
   });
 }
 
-export function copyDiscoveryWorkbench(id: number | string) {
-  return requestClient.post('/discovery/workbench/copy', { id }, skipGlobalErrorHandler);
-}
-
 export function deleteDiscoveryWorkbench(id: number | string) {
   return requestClient.post('/discovery/workbench/delete', { id }, skipGlobalErrorHandler);
 }

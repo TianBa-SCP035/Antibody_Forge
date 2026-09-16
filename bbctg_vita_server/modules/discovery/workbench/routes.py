@@ -132,19 +132,6 @@ def save_workbench_batch(
     )
 
 
-@router.post("/copy")
-def copy_workbench(
-    data: WorkbenchIdRequest,
-    db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
-) -> dict:
-    require_permission(db, current_user, WORKBENCH_EDIT_PERMISSION)
-    return _run_write(
-        db,
-        lambda: service.copy_row(db, data.id, created_by=_actor_name(current_user)),
-    )
-
-
 @router.post("/delete")
 def delete_workbench(
     data: WorkbenchIdRequest,

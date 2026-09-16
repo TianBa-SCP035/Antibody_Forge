@@ -76,10 +76,12 @@ function extractMatrix(rows: ExcelRow[], fromRow = 0): number[][] | null {
     const label = cellStr(row[0]).toUpperCase()
     if (label.length !== 1 || label < 'A' || label > 'H') continue
     const ri = label.charCodeAt(0) - 65
+    const matrixRow = matrix[ri]
+    if (!matrixRow) continue
     for (let c = 0; c < 12; c += 1) {
       const v = parseNum(row[cs + c])
       if (v != null) {
-        matrix[ri][c] = v
+        matrixRow[c] = v
         any = true
       }
     }
@@ -98,7 +100,10 @@ function toPositiveWells(matrix: number[][], threshold = POSITIVE_RATE_THRESHOLD
   const wells: string[] = []
   for (let r = 0; r < 8; r += 1) {
     for (let c = 0; c < 12; c += 1) {
-      if (matrix[r][c] > threshold) wells.push(`${String.fromCharCode(65 + r)}${c + 1}`)
+      const value = matrix[r]?.[c]
+      if (value != null && value > threshold) {
+        wells.push(`${String.fromCharCode(65 + r)}${c + 1}`)
+      }
     }
   }
   return wells

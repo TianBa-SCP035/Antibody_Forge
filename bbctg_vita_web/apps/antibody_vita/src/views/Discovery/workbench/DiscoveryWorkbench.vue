@@ -374,7 +374,7 @@
             :row="row"
             :can-edit="canEdit"
             @detail="openSerumProject"
-            @copy="handleCopy"
+            @handoff="handleHandoff"
             @delete="handleDelete"
           />
         </template>
@@ -511,7 +511,7 @@
                   :row="row"
                   :can-edit="canEdit"
                   @detail="openSerumProject"
-                  @copy="handleCopy"
+                  @handoff="handleHandoff"
                   @delete="handleDelete"
                 />
               </template>
@@ -562,7 +562,7 @@
             :row="editingRow"
             :can-edit="canEdit"
             @detail="openSerumProject"
-            @copy="handleCopy"
+            @handoff="handleHandoff"
             @delete="handleDelete"
           />
         </div>
@@ -736,7 +736,6 @@ import { notifyApiError } from '#/api/errors'
 import { skipGlobalErrorHandler } from '#/api/request'
 import {
   DISCOVERY_WORKBENCH_CREATED_KEY,
-  copyDiscoveryWorkbench,
   deleteDiscoveryWorkbench,
   exportDiscoveryWorkbenchList,
   fetchDiscoveryWorkbenchList,
@@ -764,11 +763,12 @@ import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
 import DiscoveryRowActions from './DiscoveryRowActions.vue'
 
-const SCREENING_METHOD_OPTIONS = ['达普', '噬菌体', 'Beacon']
+const SCREENING_METHOD_OPTIONS = ['达普', '噬菌体', 'Beacon', 'NGS']
 const SCREENING_METHOD_TONES = {
   达普: 'primary',
   噬菌体: 'warning',
   Beacon: 'success',
+  NGS: 'info',
 }
 const PLAN_STATUS_OPTIONS = ['规划中', '待冲击', '待剖鼠', '待建库', '待噬菌体', '待测序', '已完成', '已取消']
 const PRIORITY_OPTIONS = [...WORKBENCH_PRIORITY_OPTIONS]
@@ -1833,28 +1833,20 @@ export default {
         this.loading = false
       }
     },
-    async handleCopy(row) {
+    handleHandoff(row) {
       if (!this.canEdit) {
-        ElMessage.warning('您没有权限复制抗体发现工作台')
+        ElMessage.warning('您没有权限交接抗体发现安排')
         return
       }
-      try {
-        await ElMessageBox.confirm(
-          `将「${row.target_name || row.project_code || row.id}」复制为新安排。`,
-          '复制安排',
-          { type: 'info' },
-        )
-      } catch {
-        return
-      }
-      if (!await this.flushEditorForAction(row)) return
-      try {
-        const saved = await copyDiscoveryWorkbench(row.id)
-        ElMessage.success('已复制')
-        await this.revealCreatedRow(saved)
-      } catch (error) {
-        notifyApiError(error, { messages: { default: '复制失败' } })
-      }
+      const rowName = row.target_name || row.project_code || `#${row.id}`
+      ElMessageBox.alert(
+        `「${rowName}」后续可从这里交接至文库构建或 NGS 测序模块。当前下游模块尚未接入，本操作不会创建或修改数据。`,
+        '交接安排（待接入）',
+        {
+          type: 'info',
+          confirmButtonText: '知道了',
+        },
+      ).catch(() => {})
     },
     async handleDelete(row) {
       if (!this.canEdit) {

@@ -25,6 +25,8 @@ fi
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "$CONDA_ENV"
 
+python "$ROOT/ensure_deps.py"
+
 echo "Building frontend..."
 (cd "$ROOT/bbctg_vita_web" && pnpm -F @bbctg/antibody-vita run build)
 

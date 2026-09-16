@@ -220,7 +220,7 @@ def _finalize_attempt(
     if context.has_committed_result(result):
         return
     if result == "failed" or context.explicitly_audited:
-        _write_attempt_log(context, result, error_message)
+        _write_attempt_log(context, result, error_message, body)
 
 
 def _parse_result(
@@ -262,8 +262,31 @@ def _error_message(data: Any) -> str | None:
     return str(value)[:2000] if value else None
 
 
-def _write_attempt_log(context: AuditContext, result: str, error_message: str | None) -> None:
+def _target_from_response(body: bytes) -> tuple[str | None, str | None]:
+    try:
+        data = json.loads(body.decode("utf-8")).get("data")
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+        return None, None
+    if not isinstance(data, dict):
+        return None, None
+    entity_id = data.get("id")
+    label = data.get("experiment_id") or data.get("name")
+    return (
+        str(entity_id)[:64] if entity_id not in (None, "") else None,
+        str(label)[:255] if label not in (None, "") else None,
+    )
+
+
+def _write_attempt_log(
+    context: AuditContext,
+    result: str,
+    error_message: str | None,
+    body: bytes = b"",
+) -> None:
     action = context.select_action("update")
+    target_id, target_label = (
+        _target_from_response(body) if result == "success" else (None, None)
+    )
     try:
         with SessionLocal() as db:
             write_operation_log(
@@ -274,10 +297,11 @@ def _write_attempt_log(context: AuditContext, result: str, error_message: str | 
                 operation_name=(action.name or action.code)[:128],
                 operation_type=_normalized_operation_type(action.operation_type),
                 target_type=action.resource,
+                target_id=target_id,
+                target_label=target_label,
                 result=result,
                 detail={
                     "changed": False,
-                    "change_summary": "请求未产生可检测的数据变化",
                     "method": context.method,
                     "path": context.path,
                 },

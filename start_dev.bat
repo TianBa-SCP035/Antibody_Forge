@@ -8,6 +8,10 @@ for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":8888 .*LISTENING" /C:
   taskkill /PID %%P /T /F >nul 2>nul
 )
 
+call conda activate %CONDA_ENV%
+python "%ROOT%ensure_deps.py"
+if errorlevel 1 exit /b 1
+
 start "Antibody Forge Backend" cmd /k "pushd ""%ROOT%bbctg_vita_server"" && call conda activate %CONDA_ENV% && python server.py"
 timeout /t 1 /nobreak >nul
 start "Antibody Forge Frontend" cmd /k "pushd ""%ROOT%bbctg_vita_web"" && pnpm -F @bbctg/antibody-vita run dev"

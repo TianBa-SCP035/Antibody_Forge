@@ -59,15 +59,15 @@ Windows： 无需路径约定，固定环境为 local。
 
 ### Windows 本地
 
-首次：配好 `config/local/vita_server.env`；`bbctg_vita_server` 内 `pip install -r requirements.txt`；`bbctg_vita_web` 内 `pnpm install`。
+首次：配好 `config/local/vita_server.env`（conda 环境、pnpm 需事先装好）。
 
-日常执行 `start_dev.bat`。前端 `5555`，后端 `8888`。健康检查：`GET /api/health`。
+日常执行 `start_dev.bat`。启动时会对照 `requirements.txt` / `pnpm-lock.yaml`，只补当前环境缺少的包。前端 `5555`，后端 `8888`。健康检查：`GET /api/health`。
 
 ### Linux 服务器
 
 1. 按「环境与端口」放置仓库；维护 `config/test|prod/vita_server.env`（`PORT`：9527 / 8848）。
-2. 首次：`bbctg_vita_web` 下 `pnpm install`；在 conda 环境内安装 `bbctg_vita_server/requirements.txt`。
-3. 日常：仓库根 `./start_dev.sh`（构建前端 dist、nohup 起后端）。日志：`repository/logs/backend.nohup.log`。
+2. 首次：本机已有 conda 环境 `Bender`（可用 `CONDA_ENV` 覆盖）和 `pnpm`。
+3. 日常：仓库根 `./start_dev.sh`。启动时对照 `requirements.txt` / `pnpm-lock.yaml` 补齐缺失依赖，再构建前端 dist、nohup 起后端。日志：`repository/logs/backend.nohup.log`。
 4. 配置 Nginx 代理，对外 test `:9958`、prod `:1314`。
 
 ## Nginx配置

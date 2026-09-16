@@ -480,9 +480,10 @@ function formatLogTarget(log: SystemOperationLog) {
 }
 
 function formatLogChange(log: SystemOperationLog) {
-  const detail = getLogDetail(log);
-  const summary = typeof detail.change_summary === 'string' ? detail.change_summary.trim() : '';
-  return summary || (detail.changed === false ? '无实际数据变化' : '-');
+  const summary = typeof getLogDetail(log).change_summary === 'string'
+    ? getLogDetail(log).change_summary.trim()
+    : '';
+  return summary || '-';
 }
 
 function formatAuditTruncation(log: SystemOperationLog) {

@@ -39,6 +39,7 @@ INTENTIONALLY_IGNORED_ROUTES = frozenset(
         ("POST", "/api/mega-automation/flow-work-orders/export"),
         ("POST", "/api/mega-automation/flow-work-orders/list"),
         ("POST", "/api/serum/export_list"),
+        ("POST", "/api/serum/export_mouse"),
         ("POST", "/api/serum/export_scheme"),
         ("POST", "/api/serum/export_scheme_pdf"),
         ("POST", "/api/serum/list"),

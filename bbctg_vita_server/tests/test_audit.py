@@ -5,8 +5,6 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import MagicMock, patch
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from sqlalchemy import BigInteger, Integer, JSON, String, create_engine, event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.compiler import compiles
@@ -23,7 +21,7 @@ from core.logging import (
     _redact_sensitive_values,
     _sanitize_body_for_log,
 )
-from db.session import AuditedSession, Base, get_db
+from db.session import AuditedSession, Base
 from models.system import SysOperationLog, SysOperationLogItem, SysUserRole
 from modules.system.audit import write_operation_log
 from modules.system.audit_config import audit_path_matches
@@ -701,13 +699,7 @@ class AuditSessionTests(unittest.TestCase):
             self.assertEqual(log.detail["change_summary"], "dispatch_terminal")
 
     def test_labillion_non_object_body_is_failed_audit_with_200_ack(self):
-        test_app = FastAPI()
-        test_app.include_router(
-            mega_routes.router,
-            prefix="/api/mega-automation",
-        )
         db = MagicMock()
-        test_app.dependency_overrides[get_db] = lambda: db
         with (
             patch.object(
                 mega_routes.callback,
@@ -716,10 +708,7 @@ class AuditSessionTests(unittest.TestCase):
             patch.object(mega_routes, "write_operation_log") as write_log,
             patch.object(mega_routes.logger, "exception"),
         ):
-            response = TestClient(test_app).post(
-                "/api/mega-automation/labillion/callback",
-                json=["invalid"],
-            )
+            response = mega_routes.labillion_status_callback(["invalid"], db)
         callback_handler.assert_not_called()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(write_log.call_args.kwargs["result"], "failed")
@@ -819,6 +808,7 @@ class AuditMiddlewareTests(unittest.TestCase):
                 "/api/mega-automation/flow-work-orders/42/complete",
             )
         )
+
 
 class AuditCoverageTests(unittest.TestCase):
     def test_all_write_routes_are_classified_from_versioned_schema_seed(self):

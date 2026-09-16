@@ -33,7 +33,7 @@ class Target(Base):
     ko_lethal_info: Mapped[int | None] = mapped_column(comment="KO致死情况")
     ko_lethal_info_desc: Mapped[str | None] = mapped_column(String(1000), comment="KO致死信息备注")
     structural_properties: Mapped[str | None] = mapped_column(String(200), comment="结构特性类别")
-    structure_feature: Mapped[str | None] = mapped_column(String(100), comment="结构特性（跨膜次数）")
+    structure_feature: Mapped[str | None] = mapped_column(String(100), comment="跨膜次数")
     shape_remark: Mapped[str | None] = mapped_column(String(200), comment="形式备注")
     structure_feature_remark: Mapped[str | None] = mapped_column(
         String(1000),

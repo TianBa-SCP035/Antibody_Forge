@@ -76,23 +76,53 @@ export interface SystemUserPermissionOverrides {
 
 export interface SystemOperationLogQuery {
   action?: string;
+  date_end?: string;
+  date_start?: string;
   keyword?: string;
+  operation_type?: string;
   page?: number;
   page_size?: number;
+  request_id?: string;
   result?: string;
+  source?: string;
+  target_type?: string;
   username?: string;
+}
+
+export interface SystemOperationLogChange {
+  after?: any;
+  before?: any;
+  change_kind?: 'add' | 'remove' | 'update';
+  label: string;
+  path: string;
+}
+
+export interface SystemOperationLogItem {
+  change_count: number;
+  change_type: string;
+  changes: SystemOperationLogChange[];
+  entity_id?: string;
+  entity_label?: string;
+  entity_type: string;
+  id: number;
+  table_name: string;
 }
 
 export interface SystemOperationLog {
   action: string;
+  affected_count?: number;
   created_at?: string;
   detail?: Record<string, any>;
   error_message?: string;
   id: number;
+  ip_address?: string;
+  items?: SystemOperationLogItem[];
   operation_name?: string;
   operation_type?: string;
   operator_name?: string;
+  request_id?: string;
   result: string;
+  source?: string;
   target_id?: string;
   target_label?: string;
   target_type?: string;
@@ -294,16 +324,6 @@ export function deleteSystemPermissionBundleApi(
   return requestClient.post('/system/permission_bundles/delete', { id, ...snapshot });
 }
 
-export function getSystemOperationLogsApi(params: number | SystemOperationLogQuery = 100) {
-  const query = typeof params === 'number' ? { limit: params } : params;
-  return requestClient.get<{ items: SystemOperationLog[]; page?: number; page_size?: number; total?: number }>(
-    '/system/operation_logs',
-    {
-      params: query,
-    },
-  );
-}
-
 export function getSystemOperationLogsByQueryApi(
   params: SystemOperationLogQuery,
   config?: RequestConfig,
@@ -315,4 +335,8 @@ export function getSystemOperationLogsByQueryApi(
       ...config,
     },
   );
+}
+
+export function getSystemOperationLogDetailApi(id: number, config?: RequestConfig) {
+  return requestClient.get<SystemOperationLog>(`/system/operation_logs/${id}`, config);
 }

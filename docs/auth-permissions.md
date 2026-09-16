@@ -46,9 +46,10 @@ erDiagram
 | `sys_user_role` | 用户 ↔ 角色 |
 | `sys_role_permission_bundle` | 角色 ↔ 权限包 |
 | `sys_user_permission_override` | 个人例外：`allow` / `deny` |
-| `sys_permission_api` | 接口路径 ↔ 权限点映射（**仅审计**，见 §6） |
+| `sys_permission_api` | 接口路径 ↔ 权限点映射（**仅审计动作名**，见 §6） |
 | `sys_feature_flag` | 菜单/功能/任务开关（**非** RBAC） |
-| `sys_operation_log` | 写操作审计 |
+| `sys_operation_log` | 操作日志摘要 |
+| `sys_operation_log_item` | 操作日志实体/字段明细 |
 
 DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
@@ -104,7 +105,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
 **Labillion 回调** `POST /api/mega-automation/labillion/callback` **无需登录**（镁伽服务器推送）；路由层不调用 `require_permission`，响应恒为 HTTP 200。
 
-**主动状态同步** `POST .../sync-labillion-status` 使用 `mega.page.flow_work_order`（与详情只读同级），供详情页进入时拉取镁伽最新状态；**不登记** `sys_permission_api`（非人员主动操作，不进操作日志）。
+**主动状态同步** `POST .../sync-labillion-status` 使用 `mega.page.flow_work_order`（与详情只读同级），供详情页进入时拉取镁伽最新状态；不登记人员权限动作映射，实际数据变化仍由通用审计自动记录。
 
 **手动执行定时任务** `POST /api/system/features/jobs/run` 需 `system.feature.manage`；body `{ "job_code": "job.xxx" }`。后台线程执行，结果记入 `sys_job_run_log` 与操作日志。
 
@@ -123,9 +124,9 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | 权限码 | 类型 | 说明 |
 |--------|------|------|
 | `discovery.page.workbench` | page | 抗体发现项目工作台列表 |
-| `discovery.workbench.edit` | action | 新增、保存、复制、删除安排 |
+| `discovery.workbench.edit` | action | 新增、保存、删除、排序安排 |
 
-写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/copy`、`/delete`、`/reorder` 登记 `sys_permission_api`。字段与筛选方式见 [modules/discovery/workbench.md](./modules/discovery/workbench.md)。权限码在 `sys_permission`（`discovery.page.workbench` / `discovery.workbench.edit`），菜单开关在 `sys_feature_flag`（`menu.discovery` / `menu.discovery.workbench`）。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。发现工作台选靶点 / 人名时复用 `GET /api/serum/target_options` 与 `/user_options`，这两条目录接口同时接受发现工作台权限。
+写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/delete`、`/reorder` 登记 `sys_permission_api`。字段与筛选方式见 [modules/discovery/workbench.md](./modules/discovery/workbench.md)。权限码在 `sys_permission`（`discovery.page.workbench` / `discovery.workbench.edit`），菜单开关在 `sys_feature_flag`（`menu.discovery` / `menu.discovery.workbench`）。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。发现工作台选靶点 / 人名时复用 `GET /api/serum/target_options` 与 `/user_options`，这两条目录接口同时接受发现工作台权限。
 
 ### 2.5 系统模块（`system.*`）
 
@@ -151,7 +152,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
 | 角色 / 包 code | 名称 | 大致范围 |
 |----------------|------|----------|
-| `guest` | 访客 | 血清 / 镁伽 / 系统各 **page** 只读，外加 `serum.cell.view`、`system.operation_log.view` |
+| `guest` | 访客 | 血清 / 镁伽普通页面只读及 `serum.cell.view`；不含操作日志权限 |
 | `operator` | 业务员 | 血清 + 镁伽日常编辑；工作台默认使用草稿编辑和实验保障权限，无工作台全部编辑、`edit_all`、`auto_update`、删工单等管理权限 |
 | `system_admin` | 系统管理 | `system.*` 全部 10 个权限点 |
 
@@ -308,34 +309,20 @@ flowchart LR
 
 路由与页面：`apps/antibody_vita/src/router/routes/modules/home.ts`、`views/Home/`。
 
-## 6. `sys_permission_api` 的真实用途
+## 6. 操作审计
 
-该表**不用于**请求拦截鉴权。
+主库 ORM 写入会自动记操作日志；新模块一般不必写审计代码。系统管理页看摘要与字段明细。
 
-用途：HTTP **写请求**审计中间件（`modules/system/audit.py`）根据 `method + path` 匹配映射，写入 `sys_operation_log`。未登记的写接口不会自动记日志。本表**只应登记会实际落日志的写接口**；`GET` 以及挂在 `page`/`view` 上的查询类接口不要写入（即使写了也不会记）。
+- **谁在记**：HTTP 写请求由审计中间件带上用户、路径和权限动作名；实体变化由 `AuditedSession` 在事务提交时写入。
+- **记什么**：`sys_operation_log` 一条请求/事务的摘要；`sys_operation_log_item` 每个实体的变更。编辑展开 JSON 到变化路径；新建和删除只记表字段快照，大 JSON 记规模不展开孔位。
+- **何时显式调用**：登录、设备回调等没有实体变化的事件用 `write_operation_log()`；与 ORM 变化同事务时会合并明细。
+- **不记**：`GET`、查询型 `POST`（忽略清单）、无变化的写请求。密码、token、secret、cookie、私钥等只记“已变化”。
+- **事务**：SAVEPOINT 归入根事务；只有根事务提交成功才算日志已持久化。
+- **容量**：单事务最多 200 个实体、每实体 500 处变化；超限截断详情，不限制日志表总量。启动时校验审计表字段并缓存数据库注释。
 
-同一 path 何时需要多行：仅当审计文案需区分时（例如 `/save` 同时挂 `*.create` 与 `*.edit`，按 body 是否有 `id` 选型）。`edit` 与 `edit_all`（或多权限 OR 鉴权）**不必**各写一行，登记一条代表性写映射即可。
+`sys_permission_api` **不拦截请求**。它只给写接口提供动作名称和资源分类；未映射时用请求路径或后台动作名。同一路由若同时挂 create/edit，以是否插入了对应主资源为准，避免已有项目加子记录被标成新建。
 
-**操作日志约定**（`modules/system/audit.py`）：一次写请求一行日志，不拆成 N 行，也不把整份请求体塞进 detail。库里分开放，列表再拼。
-
-| 存哪 | 是什么 |
-|------|--------|
-| `target_id` | 被改那一行的表主键（拖行用 `moved_id`；批量用第一条；没有主键才退到实验号） |
-| `target_label` | 一个业务号。优先实验号，否则项目编号，再否则项目名称；工单用订单编号；用户用显示名。按主键查库，不从正在改的框取值，也不写「等 N 条」 |
-| `detail.change` | 仅当请求体除身份 / 协议字段外只有一个可展示的标量（单字段保存）。`_` 开头（如免疫台 `_expected`）、`target_codes`（有靶点名时）、`reviewer`（有审核状态时）不算。整行保存、嵌套 JSON、与业务号相同则不写 |
-| `detail.count` | 仅当 `items` / `user_ids` / `targets` / `pcs` 多于 1 条 |
-
-列表把「改哪一条」和「这次写入的值」分成两列：
-
-- **目标**：`25D888888 / ID 4`；批量 `25D888888 等 12 条 / ID 4`，没有业务号时 `共 12 条`；定时任务「立即执行」等没有行对象时只显示任务名，不拼 `/ ID`；什么都解析不到则 `-`（操作列仍在）
-- **变更**：仅单字段保存有值，例如 `CD55`；整行 / 删除 / 复制 / 排序 / 批量为空（`-`），操作列已经说明做了什么
-- 旧日志没有 `detail.change` / `detail.count` 时，目标仍只显示当时存下的 `target_label`，变更列为 `-`
-
-`/ ID` 只拼数字主键，不拼实验号或 `job_code`。
-
-**不宜登记**的写接口示例：`POST .../sync-labillion-status`（详情页自动刷新，非人员操作）。**应登记**的示例：`POST /api/system/features/jobs/run`（人员点击「立即执行」）。
-
-权限校验始终在业务路由中显式调用 `require_permission`。
+新增写接口继续走主库 ORM，并放入权限映射、忽略清单或系统来源清单之一。权限校验仍在路由里显式调用 `require_permission`。`python -m pytest` 会检查审计事务、敏感值和写接口覆盖。
 
 ## 7. 功能开关（`sys_feature_flag`）
 
@@ -353,6 +340,7 @@ flowchart LR
 | `job` | `job.employee_profile_sync` | 员工资料定时同步（默认 00:30） |
 | `job` | `job.target_master_sync` | 靶点主数据定时同步（默认 00:45） |
 | `job` | `job.serum_auto_update_status` | 免疫状态定时更新（默认 01:00） |
+| `job` | `job.discovery_auto_update_status` | 抗体发现过期冲击免状态更新（默认 01:15，启动时补跑） |
 | `job` | `job.mega_labillion_status_sync` | 镁伽工单状态同步（默认 02:00；未配 Labillion 地址时 skip） |
 
 **定时任务页（系统功能）**：启用开关与执行时间**改完即写库**；cron 变更需**重启后端**后生效（配置项 `restart_required`）。「立即执行」随时可点，直接调对应 job 函数，local 未开 scheduler 也可用。
@@ -394,7 +382,7 @@ sequenceDiagram
 |  Concern | 路径 |
 |----------|------|
 | 权限汇总 | `bbctg_vita_server/modules/system/permissions.py` |
-| 写操作审计 | `bbctg_vita_server/modules/system/audit.py` |
+| 写操作审计 | `bbctg_vita_server/modules/system/audit.py`（入口）、`audit_session.py`、`audit_middleware.py`、`audit_config.py` |
 | 功能开关 | `bbctg_vita_server/modules/system/features.py` |
 | 系统管理 API | `bbctg_vita_server/modules/system/routes.py` |
 | 血清 API | `bbctg_vita_server/modules/immunology/serum/routes.py` |

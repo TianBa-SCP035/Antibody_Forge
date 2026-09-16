@@ -25,7 +25,6 @@ bbctg_vita_server/
   integrations/        # 云之家、Labillion、drm_service（SDK 在 drm/，gitignore）
   jobs/                # 定时任务实现与 registry（含手动触发入口）
   utils/               # 通用工具（Excel 导入导出等）
-  scripts/             # 预留：一次性脚本
   tests/
 ```
 

@@ -16,6 +16,7 @@ from models.immunology import (
 )
 from models.system import (
     SysOperationLog,
+    SysOperationLogItem,
     SysPermission,
     SysPermissionApi,
     SysPermissionBundle,
@@ -44,6 +45,7 @@ __all__ = [
     "SerumTiterPc",
     "SerumTiterTarget",
     "SysOperationLog",
+    "SysOperationLogItem",
     "SysPermission",
     "SysPermissionApi",
     "SysPermissionBundle",

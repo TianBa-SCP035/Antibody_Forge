@@ -21,6 +21,7 @@ import {
   ElCheckbox,
   ElCheckboxGroup,
   ElCol,
+  ElDatePicker,
   ElDialog,
   ElEmpty,
   ElForm,
@@ -48,6 +49,7 @@ import {
   deleteSystemRoleApi,
   deleteSystemUserApi,
   getSystemOperationLogsByQueryApi,
+  getSystemOperationLogDetailApi,
   getSystemPermissionBundlesApi,
   getSystemPermissionsApi,
   getSystemRolesApi,
@@ -81,9 +83,14 @@ const roleDialogVisible = ref(false);
 const bundleDialogVisible = ref(false);
 const batchRoleDialogVisible = ref(false);
 const overrideDialogVisible = ref(false);
+const logDetailVisible = ref(false);
+const logDetailLoading = ref(false);
 const overrideLoading = ref(false);
 const selectedOverrideUser = ref<SystemUser | null>(null);
 const selectedPasswordUser = ref<SystemUser | null>(null);
+const selectedLog = ref<SystemOperationLog | null>(null);
+const expandedAuditEntities = ref<Set<number>>(new Set());
+const AUDIT_CHANGE_PREVIEW = 40;
 const userOverrideData = ref<SystemUserPermissionOverrides | null>(null);
 
 const logQuery = reactive<SystemOperationLogQuery>({
@@ -93,6 +100,7 @@ const logQuery = reactive<SystemOperationLogQuery>({
   result: '',
   username: '',
 });
+const logDateRange = ref<string[]>([]);
 const userQuery = reactive({
   page: 1,
   page_size: 50,
@@ -452,14 +460,12 @@ function formatLogOperator(log: SystemOperationLog) {
 }
 
 function formatLogAction(log: SystemOperationLog) {
-  const detail = getLogDetail(log);
-  return log.operation_name || detail.operation_name || detail.permission_name || log.action || '-';
+  return log.operation_name || log.action || '-';
 }
 
 function formatLogTarget(log: SystemOperationLog) {
-  const detail = getLogDetail(log);
-  const label = log.target_label || detail.target_label;
-  const count = Number(detail.count) || 0;
+  const label = log.target_label;
+  const count = Number(log.affected_count) || 0;
   let text = label || '';
   if (count > 1) {
     text = text ? `${text} 等 ${count} 条` : `共 ${count} 条`;
@@ -475,8 +481,54 @@ function formatLogTarget(log: SystemOperationLog) {
 
 function formatLogChange(log: SystemOperationLog) {
   const detail = getLogDetail(log);
-  const change = typeof detail.change === 'string' ? detail.change.trim() : '';
-  return change || '-';
+  const summary = typeof detail.change_summary === 'string' ? detail.change_summary.trim() : '';
+  return summary || (detail.changed === false ? '无实际数据变化' : '-');
+}
+
+function formatAuditTruncation(log: SystemOperationLog) {
+  const detail = getLogDetail(log);
+  const entities = Number(detail.omitted_entity_count) || 0;
+  const changes = Number(detail.omitted_change_count) || 0;
+  return `明细已截断，省略 ${entities} 个对象、${changes} 处变化`;
+}
+
+function formatLogSource(source?: string) {
+  const map: Record<string, string> = {
+    device: '设备',
+    job: '定时任务',
+    system: '系统',
+    user: '用户',
+  };
+  return source ? map[source] || source : '-';
+}
+
+function formatLogChangeType(type?: string) {
+  const map: Record<string, string> = {
+    create: '新增',
+    delete: '删除',
+    update: '修改',
+  };
+  return type ? map[type] || type : '-';
+}
+
+function formatAuditValue(
+  value: any,
+  changeKind?: 'add' | 'remove' | 'update',
+  side?: 'after' | 'before',
+) {
+  if (
+    (changeKind === 'add' && side === 'before') ||
+    (changeKind === 'remove' && side === 'after')
+  ) {
+    return '不存在';
+  }
+  if (value === null || value === undefined || value === '') return '空';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function formatLogTargetType(log: SystemOperationLog) {
@@ -637,6 +689,8 @@ const { markTabDataFetched } = useStaleTabRefresh(loadData);
 
 async function loadLogs() {
   if (!canViewLogs.value) return;
+  logQuery.date_start = logDateRange.value?.[0] || '';
+  logQuery.date_end = logDateRange.value?.[1] || '';
   loading.value = true;
   try {
     const result = await getSystemOperationLogsByQueryApi(logQuery);
@@ -645,6 +699,38 @@ async function loadLogs() {
   } finally {
     loading.value = false;
   }
+}
+
+async function openLogDetail(log: SystemOperationLog) {
+  logDetailVisible.value = true;
+  logDetailLoading.value = true;
+  selectedLog.value = log;
+  expandedAuditEntities.value = new Set();
+  try {
+    selectedLog.value = await getSystemOperationLogDetailApi(log.id, skipGlobalErrorHandler);
+  } catch (error: unknown) {
+    notifyApiError(error, { messages: { default: '加载操作日志详情失败' } });
+  } finally {
+    logDetailLoading.value = false;
+  }
+}
+
+function visibleAuditChanges(item: NonNullable<SystemOperationLog['items']>[number]) {
+  const changes = item.changes || [];
+  if (
+    changes.length <= AUDIT_CHANGE_PREVIEW ||
+    expandedAuditEntities.value.has(item.id)
+  ) {
+    return changes;
+  }
+  return changes.slice(0, AUDIT_CHANGE_PREVIEW);
+}
+
+function toggleAuditChanges(itemId: number) {
+  const next = new Set(expandedAuditEntities.value);
+  if (next.has(itemId)) next.delete(itemId);
+  else next.add(itemId);
+  expandedAuditEntities.value = next;
 }
 
 function handleUserSearch() {
@@ -1332,43 +1418,77 @@ onMounted(loadData);
                 <el-option label="成功" value="success" />
                 <el-option label="失败" value="failed" />
               </el-select>
+              <el-select v-model="logQuery.source" clearable placeholder="来源" style="width: 120px">
+                <el-option label="用户" value="user" />
+                <el-option label="设备" value="device" />
+                <el-option label="定时任务" value="job" />
+                <el-option label="系统" value="system" />
+              </el-select>
+              <el-select v-model="logQuery.operation_type" clearable placeholder="类型" style="width: 120px">
+                <el-option label="新增" value="create" />
+                <el-option label="修改" value="update" />
+                <el-option label="删除" value="delete" />
+              </el-select>
+              <el-date-picker
+                v-model="logDateRange"
+                end-placeholder="结束日期"
+                range-separator="至"
+                start-placeholder="开始日期"
+                type="daterange"
+                value-format="YYYY-MM-DD"
+              />
               <el-button :loading="loading" @click="loadLogs">查询</el-button>
             </el-space>
           </div>
 
           <el-table v-loading="loading" :data="logs" border stripe>
-            <el-table-column label="操作人" min-width="160">
+            <el-table-column label="操作人" min-width="190" show-overflow-tooltip>
               <template #default="{ row }">
                 {{ formatLogOperator(row) }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" min-width="190">
+            <el-table-column label="操作" min-width="140" show-overflow-tooltip>
               <template #default="{ row }">
                 {{ formatLogAction(row) }}
               </template>
             </el-table-column>
-            <el-table-column label="目标类型" min-width="120">
+            <el-table-column label="目标类型" min-width="100" show-overflow-tooltip>
               <template #default="{ row }">
                 {{ formatLogTargetType(row) }}
               </template>
             </el-table-column>
-            <el-table-column label="目标" min-width="180" show-overflow-tooltip>
+            <el-table-column label="目标" min-width="280" show-overflow-tooltip>
               <template #default="{ row }">
                 {{ formatLogTarget(row) }}
               </template>
             </el-table-column>
-            <el-table-column label="变更" min-width="140" show-overflow-tooltip>
+            <el-table-column label="来源" min-width="60">
+              <template #default="{ row }">
+                {{ formatLogSource(row.source) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="变更" min-width="400" show-overflow-tooltip>
               <template #default="{ row }">
                 {{ formatLogChange(row) }}
               </template>
             </el-table-column>
-            <el-table-column label="结果" width="100">
+            <el-table-column label="结果" min-width="60">
               <template #default="{ row }">
                 {{ formatLogResult(row.result) }}
               </template>
             </el-table-column>
-            <el-table-column prop="error_message" label="失败原因" min-width="220" />
-            <el-table-column prop="created_at" label="时间" min-width="170" />
+            <el-table-column
+              prop="error_message"
+              label="失败原因"
+              min-width="120"
+              show-overflow-tooltip
+            />
+            <el-table-column prop="created_at" label="时间" min-width="180" />
+            <el-table-column label="详情" fixed="right" min-width="60">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openLogDetail(row)">查看</el-button>
+              </template>
+            </el-table-column>
           </el-table>
           <div class="pagination-line">
             <el-pagination
@@ -1383,6 +1503,85 @@ onMounted(loadData);
         </el-tab-pane>
       </el-tabs>
     </el-card>
+
+    <el-dialog
+      v-model="logDetailVisible"
+      title="操作日志详情"
+      width="980px"
+      align-center
+    >
+      <div v-loading="logDetailLoading" class="audit-detail">
+        <div v-if="selectedLog" class="audit-detail__meta">
+          <span><strong>操作：</strong>{{ formatLogAction(selectedLog) }}</span>
+          <span><strong>操作人：</strong>{{ formatLogOperator(selectedLog) }}</span>
+          <span><strong>来源：</strong>{{ formatLogSource(selectedLog.source) }}</span>
+          <span><strong>结果：</strong>{{ formatLogResult(selectedLog.result) }}</span>
+          <span><strong>Request ID：</strong>{{ selectedLog.request_id || '-' }}</span>
+          <span><strong>来源 IP：</strong>{{ selectedLog.ip_address || '-' }}</span>
+        </div>
+        <el-alert
+          v-if="selectedLog?.error_message"
+          :closable="false"
+          :title="selectedLog.error_message"
+          class="section-gap"
+          show-icon
+          type="error"
+        />
+        <el-alert
+          v-if="selectedLog?.detail?.truncated"
+          :closable="false"
+          :title="formatAuditTruncation(selectedLog)"
+          class="section-gap"
+          show-icon
+          type="warning"
+        />
+        <template v-if="selectedLog?.items?.length">
+          <section v-for="item in selectedLog.items" :key="item.id" class="audit-entity">
+            <header class="audit-entity__header">
+              <strong>{{ item.entity_label || item.entity_id || item.entity_type }}</strong>
+              <el-tag size="small">{{ formatLogChangeType(item.change_type) }}</el-tag>
+              <span>{{ item.table_name }} · {{ item.change_count }} 处变化</span>
+            </header>
+            <el-table
+              v-if="item.changes?.length"
+              :data="visibleAuditChanges(item)"
+              border
+              size="small"
+            >
+              <el-table-column prop="label" label="字段 / 单元格" min-width="220" show-overflow-tooltip />
+              <el-table-column label="变更前" min-width="300" show-overflow-tooltip>
+                <template #default="{ row }">
+                  {{ formatAuditValue(row.before, row.change_kind, 'before') }}
+                </template>
+              </el-table-column>
+              <el-table-column label="变更后" min-width="300" show-overflow-tooltip>
+                <template #default="{ row }">
+                  {{ formatAuditValue(row.after, row.change_kind, 'after') }}
+                </template>
+              </el-table-column>
+            </el-table>
+            <div
+              v-if="(item.changes?.length || 0) > AUDIT_CHANGE_PREVIEW"
+              class="audit-entity__more"
+            >
+              <el-button link type="primary" @click="toggleAuditChanges(item.id)">
+                {{
+                  expandedAuditEntities.has(item.id)
+                    ? '收起'
+                    : `展开全部（共 ${item.changes?.length || 0} 处）`
+                }}
+              </el-button>
+            </div>
+            <el-empty
+              v-if="!item.changes?.length"
+              :image-size="48"
+              description="该操作没有字段级差异"
+            />
+          </section>
+        </template>
+        <el-empty v-else description="本次操作没有实体变更明细" />
+      </div>
+    </el-dialog>
 
     <el-dialog v-model="userDialogVisible" title="用户资料" width="820px">
       <el-form :model="userForm" label-width="110px">
@@ -1952,6 +2151,43 @@ onMounted(loadData);
 
 .section-gap {
   margin-bottom: 12px;
+}
+
+.audit-detail__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 20px;
+  padding: 12px;
+  margin-bottom: 14px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+}
+
+.audit-detail {
+  max-height: min(70vh, 720px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.audit-entity + .audit-entity {
+  margin-top: 18px;
+}
+
+.audit-entity__header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.audit-entity__header span:last-child {
+  color: var(--el-text-color-secondary);
+}
+
+.audit-entity__more {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
 }
 
 .dialog-section {

@@ -23,9 +23,9 @@ def login_with_password(db: Session, username: str, password: str) -> dict:
         write_operation_log(
             db,
             "auth.password_login",
-            "sys_user",
-            str(user.id) if user else None,
-            {"username": username},
+            target_type="sys_user",
+            target_id=str(user.id) if user else None,
+            detail={"username": username},
             user=user,
             username=username,
             operation_name="账号密码登录",
@@ -40,9 +40,9 @@ def login_with_password(db: Session, username: str, password: str) -> dict:
         write_operation_log(
             db,
             "auth.password_login",
-            "sys_user",
-            str(user.id),
-            {"username": username},
+            target_type="sys_user",
+            target_id=str(user.id),
+            detail={"username": username},
             user=user,
             username=username,
             operation_name="账号密码登录",
@@ -56,9 +56,9 @@ def login_with_password(db: Session, username: str, password: str) -> dict:
     write_operation_log(
         db,
         "auth.password_login",
-        "sys_user",
-        str(user.id),
-        {"username": user.username},
+        target_type="sys_user",
+        target_id=str(user.id),
+        detail={"username": user.username},
         user=user,
         operation_name="账号密码登录",
         operation_type="login",
@@ -78,9 +78,9 @@ def login_with_yunzhijia_ticket(db: Session, ticket: str) -> dict:
         write_operation_log(
             db,
             "auth.yunzhijia_login",
-            "sys_user",
-            None,
-            {},
+            target_type="sys_user",
+            target_id=None,
+            detail={},
             operation_name="云之家登录",
             operation_type="login",
             result="failed",
@@ -95,9 +95,9 @@ def login_with_yunzhijia_ticket(db: Session, ticket: str) -> dict:
             write_operation_log(
                 db,
                 "auth.yunzhijia_auto_provision",
-                "sys_user",
-                str(user.id) if user.id else None,
-                {"openid": openid, "job_no": user.job_no},
+                target_type="sys_user",
+                target_id=str(user.id) if user.id else None,
+                detail={"openid": openid, "job_no": user.job_no},
                 user=user,
                 operation_name="云之家自动创建用户",
                 operation_type="create",
@@ -107,9 +107,9 @@ def login_with_yunzhijia_ticket(db: Session, ticket: str) -> dict:
             write_operation_log(
                 db,
                 "auth.yunzhijia_login",
-                "sys_user",
-                None,
-                {"openid": openid},
+                target_type="sys_user",
+                target_id=None,
+                detail={"openid": openid},
                 username=openid,
                 operation_name="云之家登录",
                 operation_type="login",
@@ -123,9 +123,9 @@ def login_with_yunzhijia_ticket(db: Session, ticket: str) -> dict:
         write_operation_log(
             db,
             "auth.yunzhijia_login",
-            "sys_user",
-            None,
-            {"openid": openid},
+            target_type="sys_user",
+            target_id=None,
+            detail={"openid": openid},
             username=openid,
             operation_name="云之家登录",
             operation_type="login",
@@ -138,9 +138,9 @@ def login_with_yunzhijia_ticket(db: Session, ticket: str) -> dict:
     write_operation_log(
         db,
         "auth.yunzhijia_login",
-        "sys_user",
-        str(user.id),
-        {"openid": openid},
+        target_type="sys_user",
+        target_id=str(user.id),
+        detail={"openid": openid},
         user=user,
         operation_name="云之家登录",
         operation_type="login",
@@ -181,17 +181,6 @@ def update_profile_signature(db: Session, user: SysUser, signature: str | None) 
     if len(normalized) > 255:
         raise ValueError("个性名片不能超过 255 个字符")
     user.profile_signature = normalized or None
-    write_operation_log(
-        db,
-        "auth.update_profile_signature",
-        "sys_user",
-        str(user.id),
-        {"field": "profile_signature"},
-        user=user,
-        operation_name="更新个性名片",
-        operation_type="update",
-        target_label=user.display_name or user.username,
-    )
     db.commit()
     db.refresh(user)
     return build_user_info(db, user)
@@ -201,19 +190,7 @@ def change_user_password(db: Session, user: SysUser, new_password: str) -> None:
     password = (new_password or "").strip()
     if len(password) < 6:
         raise ValueError("密码至少需要 6 位")
-    mode = "change" if user.password_hash else "set"
     user.password_hash = hash_password(password)
-    write_operation_log(
-        db,
-        "auth.change_password",
-        "sys_user",
-        str(user.id),
-        {"mode": mode},
-        user=user,
-        operation_name="修改登录密码",
-        operation_type="update",
-        target_label=user.display_name or user.username,
-    )
     db.commit()
 
 

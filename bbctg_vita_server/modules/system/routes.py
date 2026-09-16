@@ -1,13 +1,15 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import delete, func, or_, select
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import String, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from core.response import success
 from db.session import get_db
 from models.system import (
     SysOperationLog,
+    SysOperationLogItem,
     SysPermission,
     SysPermissionBundle,
     SysPermissionBundleItem,
@@ -355,8 +357,8 @@ def delete_user(
         raise ValueError("用户不存在")
     if user.id == current_user.id:
         raise ValueError("不能删除当前登录账号")
-    db.execute(delete(SysUserRole).where(SysUserRole.user_id == user.id))
-    db.execute(delete(SysUserPermissionOverride).where(SysUserPermissionOverride.user_id == user.id))
+    _delete_matching(db, SysUserRole, SysUserRole.user_id == user.id)
+    _delete_matching(db, SysUserPermissionOverride, SysUserPermissionOverride.user_id == user.id)
     db.delete(user)
     db.commit()
     return success({"message": "ok"})
@@ -450,11 +452,34 @@ def save_user_permission_overrides(
     reason = (data.get("reason") or "").strip() or None
     _ensure_permission_codes_exist(db, sorted(allow_codes | deny_codes))
 
-    db.execute(delete(SysUserPermissionOverride).where(SysUserPermissionOverride.user_id == user.id))
-    for code in sorted(allow_codes - deny_codes):
-        db.add(SysUserPermissionOverride(user_id=user.id, permission_code=code, effect="allow", reason=reason))
-    for code in sorted(deny_codes):
-        db.add(SysUserPermissionOverride(user_id=user.id, permission_code=code, effect="deny", reason=reason))
+    desired = {
+        **{code: "allow" for code in allow_codes - deny_codes},
+        **{code: "deny" for code in deny_codes},
+    }
+    existing = {
+        row.permission_code: row
+        for row in db.scalars(
+            select(SysUserPermissionOverride).where(
+                SysUserPermissionOverride.user_id == user.id
+            )
+        ).all()
+    }
+    for code, row in existing.items():
+        if code not in desired:
+            db.delete(row)
+        else:
+            row.effect = desired[code]
+            row.reason = reason
+    for code, effect in sorted(desired.items()):
+        if code not in existing:
+            db.add(
+                SysUserPermissionOverride(
+                    user_id=user.id,
+                    permission_code=code,
+                    effect=effect,
+                    reason=reason,
+                )
+            )
     db.commit()
     return success({"message": "ok"})
 
@@ -514,8 +539,8 @@ def delete_role(
     role = db.get(SysRole, int(data.get("id") or 0))
     if not role:
         raise ValueError("角色不存在")
-    db.execute(delete(SysUserRole).where(SysUserRole.role_id == role.id))
-    db.execute(delete(SysRolePermissionBundle).where(SysRolePermissionBundle.role_id == role.id))
+    _delete_matching(db, SysUserRole, SysUserRole.role_id == role.id)
+    _delete_matching(db, SysRolePermissionBundle, SysRolePermissionBundle.role_id == role.id)
     db.delete(role)
     db.commit()
     return success({"message": "ok"})
@@ -592,8 +617,8 @@ def delete_permission_bundle(
         bundle = db.scalar(select(SysPermissionBundle).where(SysPermissionBundle.code == str(data.get("code"))))
     if not bundle:
         raise ValueError("权限包不存在")
-    db.execute(delete(SysRolePermissionBundle).where(SysRolePermissionBundle.bundle_code == bundle.code))
-    db.execute(delete(SysPermissionBundleItem).where(SysPermissionBundleItem.bundle_code == bundle.code))
+    _delete_matching(db, SysRolePermissionBundle, SysRolePermissionBundle.bundle_code == bundle.code)
+    _delete_matching(db, SysPermissionBundleItem, SysPermissionBundleItem.bundle_code == bundle.code)
     db.delete(bundle)
     db.commit()
     return success({"message": "ok"})
@@ -601,26 +626,54 @@ def delete_permission_bundle(
 
 @router.get("/operation_logs")
 def list_operation_logs(
-    limit: int = 100,
     page: int = 1,
     page_size: int = 50,
     keyword: str = "",
     username: str = "",
     action: str = "",
     result: str = "",
+    operation_type: str = "",
+    target_type: str = "",
+    source: str = "",
+    request_id: str = "",
+    date_start: str = "",
+    date_end: str = "",
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, "system.operation_log.view")
     page = max(int(page or 1), 1)
-    page_size = min(max(int(page_size or limit or 50), 1), 500)
+    page_size = min(max(int(page_size or 50), 1), 500)
     stmt = select(SysOperationLog)
+    username = username.strip()
     if username:
         stmt = stmt.where(SysOperationLog.username.like(f"%{username}%"))
     if action:
         stmt = stmt.where(SysOperationLog.action.like(f"%{action}%"))
     if result:
         stmt = stmt.where(SysOperationLog.result == result)
+    if operation_type:
+        stmt = stmt.where(SysOperationLog.operation_type == operation_type)
+    if target_type:
+        stmt = stmt.where(
+            or_(
+                SysOperationLog.target_type == target_type,
+                exists(
+                    select(SysOperationLogItem.id).where(
+                        SysOperationLogItem.log_id == SysOperationLog.id,
+                        SysOperationLogItem.entity_type == target_type,
+                    )
+                ),
+            )
+        )
+    if source:
+        stmt = stmt.where(SysOperationLog.source == source)
+    if request_id:
+        stmt = stmt.where(SysOperationLog.request_id == request_id)
+    if date_start:
+        stmt = stmt.where(SysOperationLog.created_at >= _parse_log_datetime(date_start, end=False))
+    if date_end:
+        stmt = stmt.where(SysOperationLog.created_at <= _parse_log_datetime(date_end, end=True))
     if keyword:
         pattern = f"%{keyword}%"
         stmt = stmt.where(
@@ -632,13 +685,44 @@ def list_operation_logs(
                 SysOperationLog.target_type.like(pattern),
                 SysOperationLog.target_id.like(pattern),
                 SysOperationLog.target_label.like(pattern),
-                func.json_unquote(func.json_extract(SysOperationLog.detail, "$.change")).like(pattern),
+                func.json_unquote(
+                    func.json_extract(SysOperationLog.detail, "$.change_summary")
+                ).like(pattern),
                 SysOperationLog.result.like(pattern),
+                SysOperationLog.request_id.like(pattern),
+                exists(
+                    select(SysOperationLogItem.id).where(
+                        SysOperationLogItem.log_id == SysOperationLog.id,
+                        or_(
+                            SysOperationLogItem.entity_id.like(pattern),
+                            SysOperationLogItem.entity_label.like(pattern),
+                            cast(SysOperationLogItem.changes, String).like(pattern),
+                        ),
+                    )
+                ),
             )
         )
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     logs = db.scalars(stmt.order_by(SysOperationLog.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
     return success({"items": [_log_to_dict(log) for log in logs], "total": total, "page": page, "page_size": page_size})
+
+
+@router.get("/operation_logs/{log_id}")
+def get_operation_log_detail(
+    log_id: int,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "system.operation_log.view")
+    log = db.get(SysOperationLog, int(log_id))
+    if not log:
+        raise HTTPException(status_code=404, detail="操作日志不存在")
+    items = db.scalars(
+        select(SysOperationLogItem)
+        .where(SysOperationLogItem.log_id == log.id)
+        .order_by(SysOperationLogItem.id)
+    ).all()
+    return success({**_log_to_dict(log), "items": [_log_item_to_dict(item) for item in items]})
 
 
 def _get_user_role_map(db: Session, user_ids: list[int]) -> dict[int, list[int]]:
@@ -697,22 +781,60 @@ def _get_role_permissions_for_user(db: Session, user_id: int) -> list[str]:
     return sorted({row[0] for row in bundle_rows})
 
 
+def _delete_matching(db: Session, model, *criteria) -> None:
+    for row in db.scalars(select(model).where(*criteria)).all():
+        db.delete(row)
+
+
 def _replace_user_roles(db: Session, user_id: int, role_ids: list[int]) -> None:
-    db.execute(delete(SysUserRole).where(SysUserRole.user_id == user_id))
-    for role_id in role_ids:
+    existing = {
+        row.role_id: row
+        for row in db.scalars(
+            select(SysUserRole).where(SysUserRole.user_id == user_id)
+        ).all()
+    }
+    desired = set(role_ids)
+    for role_id in sorted(existing.keys() - desired):
+        db.delete(existing[role_id])
+    for role_id in sorted(desired - existing.keys()):
         db.add(SysUserRole(user_id=user_id, role_id=role_id))
 
 
 def _replace_role_bundles(db: Session, role_id: int, bundle_codes: list[str]) -> None:
-    db.execute(delete(SysRolePermissionBundle).where(SysRolePermissionBundle.role_id == role_id))
-    for bundle_code in bundle_codes:
+    existing = {
+        row.bundle_code: row
+        for row in db.scalars(
+            select(SysRolePermissionBundle).where(
+                SysRolePermissionBundle.role_id == role_id
+            )
+        ).all()
+    }
+    desired = set(bundle_codes)
+    for bundle_code in sorted(existing.keys() - desired):
+        db.delete(existing[bundle_code])
+    for bundle_code in sorted(desired - existing.keys()):
         db.add(SysRolePermissionBundle(role_id=role_id, bundle_code=bundle_code))
 
 
 def _replace_bundle_permissions(db: Session, bundle_code: str, permission_codes: list[str]) -> None:
-    db.execute(delete(SysPermissionBundleItem).where(SysPermissionBundleItem.bundle_code == bundle_code))
-    for permission_code in dict.fromkeys(permission_codes):
-        db.add(SysPermissionBundleItem(bundle_code=bundle_code, permission_code=permission_code))
+    existing = {
+        row.permission_code: row
+        for row in db.scalars(
+            select(SysPermissionBundleItem).where(
+                SysPermissionBundleItem.bundle_code == bundle_code
+            )
+        ).all()
+    }
+    desired = set(permission_codes)
+    for permission_code in sorted(existing.keys() - desired):
+        db.delete(existing[permission_code])
+    for permission_code in sorted(desired - existing.keys()):
+        db.add(
+            SysPermissionBundleItem(
+                bundle_code=bundle_code,
+                permission_code=permission_code,
+            )
+        )
 
 
 def _unique_ints(values: list) -> list[int]:
@@ -821,9 +943,12 @@ def _override_to_dict(override: SysUserPermissionOverride) -> dict:
 def _log_to_dict(log: SysOperationLog) -> dict:
     return {
         "id": log.id,
+        "request_id": log.request_id,
         "user_id": log.user_id,
         "username": log.username,
         "operator_name": log.operator_name,
+        "source": log.source,
+        "ip_address": log.ip_address,
         "action": log.action,
         "operation_name": log.operation_name,
         "operation_type": log.operation_type,
@@ -831,7 +956,35 @@ def _log_to_dict(log: SysOperationLog) -> dict:
         "target_id": log.target_id,
         "target_label": log.target_label,
         "result": log.result,
+        "affected_count": log.affected_count,
         "detail": log.detail,
         "error_message": log.error_message,
         "created_at": log.created_at,
     }
+
+
+def _log_item_to_dict(item: SysOperationLogItem) -> dict:
+    return {
+        "id": item.id,
+        "entity_type": item.entity_type,
+        "table_name": item.table_name,
+        "entity_id": item.entity_id,
+        "entity_label": item.entity_label,
+        "change_type": item.change_type,
+        "change_count": item.change_count,
+        "changes": item.changes or [],
+    }
+
+
+def _parse_log_datetime(value: str, *, end: bool) -> datetime:
+    text = str(value or "").strip()
+    try:
+        if len(text) == 10:
+            suffix = " 23:59:59.999999" if end else " 00:00:00"
+            return datetime.fromisoformat(f"{text}{suffix}")
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo:
+            return parsed.astimezone(ZoneInfo("Asia/Shanghai")).replace(tzinfo=None)
+        return parsed
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="日志时间格式不正确") from exc

@@ -64,8 +64,7 @@ class ProfileAuthTests(TestCase):
         self.assertNotIn("status", info)
 
     @patch("modules.auth.service.build_user_context")
-    @patch("modules.auth.service.write_operation_log")
-    def test_update_profile_signature(self, mock_log, mock_context):
+    def test_update_profile_signature(self, mock_context):
         mock_context.return_value = MagicMock(
             id=1,
             roles=[],
@@ -80,23 +79,17 @@ class ProfileAuthTests(TestCase):
         self.assertTrue(db.committed)
         self.assertEqual(user.profile_signature, "new sig")
         self.assertEqual(result["profileSignature"], "new sig")
-        mock_log.assert_called_once()
 
-    @patch("modules.auth.service.write_operation_log")
-    def test_change_password_without_old_when_no_existing(self, mock_log):
+    def test_change_password_without_old_when_no_existing(self):
         db = _FakeDb()
         user = self._user(password_hash=None)
         change_user_password(db, user, "secret12")
         self.assertTrue(db.committed)
         self.assertTrue(user.password_hash.startswith("pbkdf2_sha256$"))
-        detail = mock_log.call_args[0][4]
-        self.assertEqual(detail, {"mode": "set"})
 
-    @patch("modules.auth.service.write_operation_log")
-    def test_change_password_logged_in_without_old(self, mock_log):
+    def test_change_password_logged_in_without_old(self):
         db = _FakeDb()
         user = self._user(password_hash="pbkdf2_sha256$260000$salt$old")
         change_user_password(db, user, "newpass9")
         self.assertTrue(db.committed)
-        detail = mock_log.call_args[0][4]
-        self.assertEqual(detail, {"mode": "change"})
+        self.assertTrue(user.password_hash.startswith("pbkdf2_sha256$"))

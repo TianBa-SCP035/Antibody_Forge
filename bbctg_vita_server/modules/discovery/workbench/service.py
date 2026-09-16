@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import String, and_, case, cast, func, or_, select, update
+from sqlalchemy import String, and_, case, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from models.discovery import DiscoveryWorkbench
@@ -290,19 +290,18 @@ def _apply_status_from_dates(row: DiscoveryWorkbench, payload: dict[str, Any]) -
         row.status = PLAN_STATUS_WAIT_HARVEST
 
 
-def _advance_expired_boosts(db: Session) -> None:
-    result = db.execute(
-        update(DiscoveryWorkbench)
-        .where(
+def advance_expired_boosts(db: Session) -> int:
+    rows = db.scalars(
+        select(DiscoveryWorkbench).where(
             DiscoveryWorkbench.status == PLAN_STATUS_WAIT_BOOST,
             DiscoveryWorkbench.boost_date.is_not(None),
             DiscoveryWorkbench.boost_date != "",
             DiscoveryWorkbench.boost_date < _today_text(),
-        )
-        .values(status=PLAN_STATUS_WAIT_HARVEST)
-    )
-    if result.rowcount:
-        db.commit()
+        ).with_for_update()
+    ).all()
+    for row in rows:
+        row.status = PLAN_STATUS_WAIT_HARVEST
+    return len(rows)
 
 
 def _view_group_for_status(status: str) -> str | None:
@@ -544,7 +543,6 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
 
 
 def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
-    _advance_expired_boosts(db)
     payload = data or {}
     page, limit = _page_limit(payload)
     stmt = _apply_list_filters(select(DiscoveryWorkbench), payload)
@@ -738,7 +736,6 @@ EXPORT_COLUMNS = (
 def export_list_workbook(db: Session, data: dict[str, Any]):
     from utils.excel import build_list_workbook, cell_text
 
-    _advance_expired_boosts(db)
     payload = data or {}
     rows = db.scalars(
         _apply_list_filters(select(DiscoveryWorkbench), payload).order_by(*_list_order(payload))

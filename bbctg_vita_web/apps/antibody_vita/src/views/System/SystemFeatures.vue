@@ -214,9 +214,10 @@ function replaceFeature(feature: SystemFeatureFlag) {
 function normalizeBeforeSave(feature: SystemFeatureFlag) {
   if (feature.category === 'job') {
     const { hour, minute } = parseRunTime(feature.config?.run_time, feature.config?.hour, feature.config?.minute);
+    const config = { ...(feature.config || {}) };
+    delete config.cron;
     feature.config = {
-      ...(feature.config || {}),
-      cron: `${minute} ${hour} * * *`,
+      ...config,
       hour,
       minute,
       restart_required: true,

@@ -54,7 +54,10 @@ def handle_labillion_status_push(db: Session, data: dict[str, Any]) -> dict[str,
     labillion_status = normalize_labillion_status(data.get("status"))
 
     if not dispatch_id:
-        logger.warning("labillion callback ignored: missing dispatchId body=%s", data)
+        logger.warning(
+            "labillion callback ignored: missing dispatchId status=%s",
+            clean_text(data.get("status"))[:64] or "-",
+        )
         return {"applied": False, "reason": "missing_dispatch_id"}
 
     if not labillion_status:

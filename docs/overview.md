@@ -52,6 +52,7 @@ Antibody_Forge/
 | `employee_profile_sync` | 00:30 | 同步外部员工资料 |
 | `target_master_sync` | 00:45 | 同步外部靶点主数据至本地 `target` |
 | `serum_auto_update_status` | 01:00 | 自动更新免疫实验状态 |
+| `discovery_auto_update_status` | 01:15，启动时补跑 | 自动推进已过期的抗体发现冲击免状态 |
 | `labillion_status_sync` | 02:00 | 镁伽非终态工单状态批量同步（未配 `LABILLION_BASE_URL` 时 skip） |
 
 启用条件与运维见 [deploy.md](./deploy.md)；系统功能页可改开关/时间（改完即写库）并立即执行。实现位于 `bbctg_vita_server/jobs/`。

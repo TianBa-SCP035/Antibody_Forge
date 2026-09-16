@@ -73,6 +73,7 @@ PROJECT_FIELDS = (
     "project_status",
     "remark",
 )
+
 PROJECT_CHILD_FIELDS = (
     "mouse_groups",
     "antigens",
@@ -80,6 +81,25 @@ PROJECT_CHILD_FIELDS = (
     "titer_targets",
     "titer_pcs",
 )
+
+
+def _sync_queue_if_terminal_status_changed(
+    db: Session,
+    experiment_id: str,
+    previous_status: Any,
+    current_status: Any,
+) -> None:
+    was_terminal = str(previous_status or "").strip() in TERMINAL_PROJECT_STATUSES
+    is_terminal = str(current_status or "").strip() in TERMINAL_PROJECT_STATUSES
+    if was_terminal == is_terminal:
+        return
+    from modules.immunology.workbench.service import sync_project_queue_status
+
+    sync_project_queue_status(
+        db,
+        experiment_id,
+        is_terminal=is_terminal,
+    )
 
 
 def _compact_identifier(raw: Any) -> str:
@@ -737,7 +757,8 @@ def rename_experiment_related_records(db: Session, old_eid: str | None, new_eid:
         record.file_path = _rewrite_titer_file_path(record.file_path, old_eid, new_eid, path_map)
         record.experiment_id = new_eid
     for model in EXPERIMENT_CHILD_MODELS:
-        db.query(model).filter(model.experiment_id == old_eid).update({"experiment_id": new_eid}, synchronize_session=False)
+        for record in db.scalars(select(model).where(model.experiment_id == old_eid)).all():
+            record.experiment_id = new_eid
 
 
 def update_project_identifiers(
@@ -816,6 +837,7 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
             raise ValueError("项目版本缺失，请刷新后重试")
         if expected_revision != _project_revision(_project_snapshot(db, project)):
             raise ValueError("项目已被其他用户修改，请刷新后重试")
+        previous_project_status = str(project.project_status or "").strip()
         new_eid = update_project_identifiers(
             db,
             project,
@@ -851,6 +873,13 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
     project.mouse_strain = "+".join(sorted({m.get("mouse_strain", "").strip() for m in mouse_groups if m.get("mouse_strain")}))
     project.mouse_strain_category = "+".join(sorted({m.get("mouse_strain_category", "").strip() for m in mouse_groups if m.get("mouse_strain_category")}))
     db.flush()
+    if project_id:
+        _sync_queue_if_terminal_status_changed(
+            db,
+            str(project.experiment_id or ""),
+            previous_project_status,
+            project.project_status,
+        )
     project_revision = _project_revision(_project_snapshot(db, project))
     db.commit()
 
@@ -879,7 +908,8 @@ def delete_serum(db: Session, project_id: int) -> None:
         raise ValueError("项目不存在")
     exp_id = project.experiment_id
     for model in EXPERIMENT_RELATED_MODELS:
-        db.query(model).filter(model.experiment_id == exp_id).delete(synchronize_session=False)
+        for record in db.scalars(select(model).where(model.experiment_id == exp_id)).all():
+            db.delete(record)
     db.delete(project)
     db.commit()
 
@@ -888,7 +918,14 @@ def update_status(db: Session, project_id: int, project_status: str) -> None:
     project = db.get(SerumImmProject, project_id)
     if not project:
         raise ValueError("项目不存在")
+    previous_project_status = str(project.project_status or "").strip()
     project.project_status = project_status
+    _sync_queue_if_terminal_status_changed(
+        db,
+        str(project.experiment_id or ""),
+        previous_project_status,
+        project_status,
+    )
     db.commit()
 
 
@@ -908,13 +945,13 @@ def update_cage_position(db: Session, project_id: int, cage_position: str | None
     project = lock_project_by_id(db, project_id)
     if not project:
         raise ValueError("项目不存在")
-    count = db.scalar(select(func.count(SerumImmMouse.id)).where(SerumImmMouse.experiment_id == project.experiment_id)) or 0
-    if count == 0:
+    mice = db.scalars(
+        select(SerumImmMouse).where(SerumImmMouse.experiment_id == project.experiment_id)
+    ).all()
+    if not mice:
         raise BusinessError("鼠鼠不存在", error_code=SERUM_CAGE_NO_MOUSE)
-    db.query(SerumImmMouse).filter(SerumImmMouse.experiment_id == project.experiment_id).update(
-        {"cage_position": cage_position},
-        synchronize_session=False,
-    )
+    for mouse in mice:
+        mouse.cage_position = cage_position
     db.commit()
 
 

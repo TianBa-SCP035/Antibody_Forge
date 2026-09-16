@@ -1,12 +1,16 @@
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
+from datetime import datetime
 import threading
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+
 from db.session import SessionLocal
+from jobs.discovery_status import discovery_auto_update_status_job
 from jobs.employee_profile_sync import employee_profile_sync_job
 from jobs.labillion_status_sync import labillion_status_sync_job
 from jobs.serum_status import auto_update_status_job
 from jobs.target_master_sync import target_master_sync_job
+from modules.system.audit_context import audit_scope
 from modules.system.features import get_job_schedule
 
 _scheduler: BackgroundScheduler | None = None
@@ -34,6 +38,15 @@ SCHEDULED_JOBS = [
         "default_hour": 0,
         "default_minute": 45,
         "func": target_master_sync_job,
+    },
+    {
+        "id": "discovery_auto_update_status",
+        "description": "每天 01:15 自动更新抗体发现状态",
+        "feature_code": "job.discovery_auto_update_status",
+        "default_hour": 1,
+        "default_minute": 15,
+        "run_on_startup": True,
+        "func": discovery_auto_update_status_job,
     },
     {
         "id": "labillion_status_sync",
@@ -66,10 +79,12 @@ def get_scheduler() -> BackgroundScheduler:
             if not enabled:
                 continue
             _scheduler.add_job(
-                job["func"],
+                _run_job_with_audit,
+                args=[job],
                 trigger=CronTrigger(hour=hour, minute=minute),
                 id=job["id"],
                 replace_existing=True,
+                **({"next_run_time": datetime.now()} if job.get("run_on_startup") else {}),
             )
     return _scheduler
 
@@ -98,11 +113,22 @@ def run_scheduled_job_now(job_code: str) -> None:
     if not callable(func):
         raise ValueError("定时任务未配置执行函数")
     thread = threading.Thread(
-        target=func,
+        target=_run_job_with_audit,
+        args=(job,),
         name=f"manual-{job['id']}",
         daemon=True,
     )
     thread.start()
+
+
+def _run_job_with_audit(job: dict) -> None:
+    func = job.get("func")
+    if not callable(func):
+        raise ValueError("定时任务未配置执行函数")
+    action = str(job.get("feature_code") or job.get("id") or "job.unknown")
+    name = str(job.get("description") or action)
+    with audit_scope(action, name, source="job", operation_type="update"):
+        func()
 
 
 def _scheduled_job_config(feature_code: str, default_hour: int, default_minute: int) -> tuple[bool, int, int]:

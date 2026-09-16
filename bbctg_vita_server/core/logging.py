@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import time
 import uuid
 from logging.handlers import RotatingFileHandler
@@ -9,24 +10,37 @@ from fastapi import FastAPI, Request
 
 from core.config import get_settings
 
-MAX_BODY_LOG = 2000
 REDACTED = "[REDACTED]"
 SENSITIVE_FIELD_NAMES = {
     "access_token",
+    "api_key",
     "appsecret",
     "authorization",
+    "cookie",
     "new_password",
     "old_password",
+    "passwd",
     "password",
+    "password_hash",
+    "private_key",
     "refresh_token",
     "secret",
+    "session",
+    "session_id",
+    "ticket",
     "token",
 }
 
 
-def _is_sensitive_key(key: object) -> bool:
-    normalized = str(key).lower().replace("-", "_")
-    return normalized in SENSITIVE_FIELD_NAMES or normalized.endswith("_secret") or normalized.endswith("_token")
+def is_sensitive_key(key: object) -> bool:
+    normalized = re.sub(r"(?<!^)(?=[A-Z])", "_", str(key)).lower().replace("-", "_")
+    return (
+        normalized in SENSITIVE_FIELD_NAMES
+        or normalized.endswith(("_password", "_password_hash", "_private_key", "_secret", "_token"))
+    )
+
+
+_is_sensitive_key = is_sensitive_key
 
 
 def _redact_sensitive_values(value):
@@ -46,8 +60,14 @@ def _sanitize_body_for_log(raw: bytes, content_type: str):
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         return {"note": "invalid json body skipped", "bytes": len(raw)}
-    text = json.dumps(_redact_sensitive_values(data), ensure_ascii=False)
-    return text[:MAX_BODY_LOG]
+    summary = {"bytes": len(raw), "json_type": type(data).__name__}
+    if isinstance(data, dict):
+        summary["fields"] = sorted(str(key) for key in data)
+    elif isinstance(data, list):
+        summary["items"] = len(data)
+        if data and isinstance(data[0], dict):
+            summary["item_fields"] = sorted(str(key) for key in data[0])
+    return summary
 
 
 def setup_logging(app: FastAPI) -> None:
@@ -70,9 +90,9 @@ def setup_logging(app: FastAPI) -> None:
 
     @app.middleware("http")
     async def request_logging_middleware(request: Request, call_next):
-        request_id = uuid.uuid4().hex[:12]
-        start_time = time.time()
+        request_id = getattr(request.state, "request_id", None) or uuid.uuid4().hex
         request.state.request_id = request_id
+        start_time = time.time()
 
         body_info = None
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
@@ -102,7 +122,7 @@ def setup_logging(app: FastAPI) -> None:
                     "request_id": request_id,
                     "method": request.method,
                     "path": request.url.path,
-                    "query": dict(request.query_params),
+                    "query": _redact_sensitive_values(dict(request.query_params)),
                     "remote_addr": request.client.host if request.client else None,
                     "content_type": request.headers.get("content-type"),
                     "body": body_info,

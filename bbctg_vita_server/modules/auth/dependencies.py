@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from db.session import get_db
 from models.system import SysUser
 from modules.auth.security import decode_access_token
+from modules.system.audit_context import bind_audit_actor
 
 
 def get_current_user(
@@ -20,6 +21,7 @@ def get_current_user(
     user = db.scalar(select(SysUser).where(SysUser.id == int(user_id), SysUser.status == "active"))
     if not user:
         raise HTTPException(status_code=401, detail="用户不存在或已禁用")
+    bind_audit_actor(user)
     return user
 
 

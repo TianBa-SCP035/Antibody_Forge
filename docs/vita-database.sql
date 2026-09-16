@@ -127,9 +127,12 @@ CREATE TABLE IF NOT EXISTS sys_user_permission_override (
 
 CREATE TABLE IF NOT EXISTS sys_operation_log (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  request_id VARCHAR(64) NULL COMMENT '请求或任务追踪ID',
   user_id BIGINT NULL COMMENT '操作用户ID',
   username VARCHAR(64) NULL COMMENT '操作账号',
   operator_name VARCHAR(128) NULL COMMENT '操作人姓名',
+  source VARCHAR(16) NOT NULL DEFAULT 'user' COMMENT '操作来源',
+  ip_address VARCHAR(64) NULL COMMENT '来源IP',
   action VARCHAR(128) NOT NULL COMMENT '操作动作',
   operation_name VARCHAR(128) NULL COMMENT '操作名称',
   operation_type VARCHAR(32) NULL COMMENT '操作类型',
@@ -137,14 +140,33 @@ CREATE TABLE IF NOT EXISTS sys_operation_log (
   target_id VARCHAR(128) NULL COMMENT '目标ID',
   target_label VARCHAR(255) NULL COMMENT '目标名称',
   result VARCHAR(16) NOT NULL DEFAULT 'success' COMMENT '操作结果',
+  affected_count INT NOT NULL DEFAULT 0 COMMENT '受影响实体数量',
   detail JSON NULL COMMENT '操作详情',
   error_message TEXT NULL COMMENT '错误信息',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
-  KEY idx_sys_operation_log_user (user_id),
-  KEY idx_sys_operation_log_action (action),
-  KEY idx_sys_operation_log_operation_type (operation_type),
-  KEY idx_sys_operation_log_created_at (created_at)
+  KEY idx_sys_operation_log_created_at (created_at),
+  KEY idx_sys_operation_log_request (request_id),
+  KEY idx_sys_operation_log_source_time (source, created_at),
+  KEY idx_sys_operation_log_target_time (target_type, target_id, created_at),
+  KEY idx_sys_operation_log_user_time (username, created_at),
+  KEY idx_sys_operation_log_result_time (result, created_at)
 ) COMMENT='系统操作日志表';
+
+CREATE TABLE IF NOT EXISTS sys_operation_log_item (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  log_id BIGINT NOT NULL COMMENT '操作日志ID',
+  entity_type VARCHAR(128) NOT NULL COMMENT '实体类型',
+  table_name VARCHAR(128) NOT NULL COMMENT '数据表名',
+  entity_id VARCHAR(128) NULL COMMENT '实体主键',
+  entity_label VARCHAR(255) NULL COMMENT '实体业务标识',
+  change_type VARCHAR(16) NOT NULL COMMENT '变更类型',
+  change_count INT NOT NULL DEFAULT 0 COMMENT '变更字段数量',
+  changes JSON NULL COMMENT '字段前后值差异',
+  CONSTRAINT fk_sys_operation_log_item_log
+    FOREIGN KEY (log_id) REFERENCES sys_operation_log(id) ON DELETE CASCADE,
+  KEY idx_sys_operation_log_item_log (log_id),
+  KEY idx_sys_operation_log_item_entity (entity_type, entity_id)
+) COMMENT='操作日志实体变更明细';
 
 CREATE TABLE IF NOT EXISTS sys_permission_api (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
@@ -171,7 +193,7 @@ CREATE TABLE IF NOT EXISTS sys_feature_flag (
   config JSON NULL COMMENT '扩展配置',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
-) COMMENT='运行时功能配置（菜单可见性、功能开关、定时任务参数、站点偏好等）';
+) COMMENT='运行时功能配置表';
 
 CREATE TABLE IF NOT EXISTS sys_job_run_log (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
@@ -185,7 +207,7 @@ CREATE TABLE IF NOT EXISTS sys_job_run_log (
   detail JSON NULL COMMENT '执行详情',
   error_message TEXT NULL COMMENT '错误信息',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
-) COMMENT='定时任务运行日志（起止时间、耗时、结果摘要与结构化详情）';
+) COMMENT='定时任务运行日志表';
 
 -- ---------------------------------------------------------------------------
 -- 工单数据回传（models/order_sync.py）
@@ -222,7 +244,7 @@ CREATE TABLE IF NOT EXISTS target (
   ko_lethal_info INT NULL COMMENT 'KO致死情况',
   ko_lethal_info_desc VARCHAR(1000) NULL COMMENT 'KO致死信息备注',
   structural_properties VARCHAR(200) NULL COMMENT '结构特性类别',
-  structure_feature VARCHAR(100) NULL COMMENT '结构特性（跨膜次数）',
+  structure_feature VARCHAR(100) NULL COMMENT '跨膜次数',
   shape_remark VARCHAR(200) NULL COMMENT '形式备注',
   structure_feature_remark VARCHAR(1000) NULL COMMENT '结构特性备注',
   ko_mgi TEXT NULL COMMENT 'KO鼠表型MGI',
@@ -262,7 +284,7 @@ CREATE TABLE IF NOT EXISTS target (
   KEY idx_target_human_gene_name (human_gene_official_name),
   KEY idx_target_mouse_gene_name (mouse_gene_official_name),
   KEY idx_target_status_type (status, type)
-) COMMENT='靶点表（项目管理同步）';
+) COMMENT='靶点同步表';
 
 -- ---------------------------------------------------------------------------
 -- 镁伽自动化 / 流式工单（models/mega_automation.py）
@@ -367,9 +389,9 @@ CREATE TABLE IF NOT EXISTS serum_imm_workbench (
   remark VARCHAR(255) NULL COMMENT '备注',
   mouse_strain VARCHAR(128) NULL COMMENT '确切鼠型',
   mouse_strain_category VARCHAR(128) NULL COMMENT '归类鼠型',
-  sort_order INT NULL COMMENT '排序；终态为空',
+  sort_order INT NULL COMMENT '排序值',
   priority VARCHAR(32) NULL COMMENT '优先级',
-  plan_status VARCHAR(32) NULL COMMENT '工作台状态；已开展后列表展示实验 project_status',
+  plan_status VARCHAR(32) NULL COMMENT '工作台状态',
   project_set_code VARCHAR(64) NULL COMMENT '项目集编号',
   species_cross VARCHAR(64) NULL COMMENT '种属交叉',
   immuno_method VARCHAR(64) NULL COMMENT '免疫方式',
@@ -410,7 +432,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_mouse (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
   group_id VARCHAR(32) NULL COMMENT '组别',
-  mouse_strain VARCHAR(128) NULL COMMENT '小鼠名称/品系',
+  mouse_strain VARCHAR(128) NULL COMMENT '小鼠品系',
   mouse_strain_category VARCHAR(128) NULL COMMENT '归类鼠型',
   mouse_count VARCHAR(32) NULL COMMENT '免疫数量',
   age_weeks VARCHAR(32) NULL COMMENT '周龄',
@@ -477,7 +499,7 @@ CREATE TABLE IF NOT EXISTS serum_titer_pc (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
   pc_name VARCHAR(255) NULL COMMENT 'PC名称',
-  catalog_batch VARCHAR(128) NULL COMMENT '货号/批次',
+  catalog_batch VARCHAR(128) NULL COMMENT '货号批次',
   source VARCHAR(128) NULL COMMENT '来源',
   concentration VARCHAR(64) NULL COMMENT '浓度',
   PRIMARY KEY (id)
@@ -525,17 +547,17 @@ CREATE TABLE IF NOT EXISTS serum_elisa_plate (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
   experiment_id VARCHAR(64) NOT NULL COMMENT '实验ID',
   qr_code VARCHAR(128) NULL COMMENT '二维码编号',
-  excel_file_id BIGINT NULL COMMENT 'Excel文件id(serum_file)',
+  excel_file_id BIGINT NULL COMMENT 'Excel文件ID',
   immune_stage VARCHAR(64) NOT NULL DEFAULT '' COMMENT '免疫阶段',
-  protein_target_id BIGINT NULL COMMENT '检测标靶id(serum_titer_target)',
-  pc_id BIGINT NULL COMMENT 'PC记录id(serum_titer_pc)',
+  protein_target_id BIGINT NULL COMMENT '检测标靶ID',
+  pc_id BIGINT NULL COMMENT '阳性对照ID',
   mouse_group VARCHAR(64) NULL COMMENT '组别-品系',
   antigen_type VARCHAR(64) NULL COMMENT '抗原类型',
   slot_groups JSON NULL COMMENT '上方分组标题',
-  upper_slot_list JSON NULL COMMENT '上方鼠号槽位{layout,values}',
-  lower_slot_list JSON NULL COMMENT '下方NC/PC槽位{layout,values}',
+  upper_slot_list JSON NULL COMMENT '上方小鼠槽位',
+  lower_slot_list JSON NULL COMMENT '下方对照槽位',
   positive_well_list JSON NULL COMMENT '阳性孔列表',
-  absorbance_1 JSON NULL COMMENT '吸光度1:{wavelength,matrix}',
+  absorbance_1 JSON NULL COMMENT '吸光度数据',
   PRIMARY KEY (id),
   KEY idx_experiment (experiment_id)
 ) COMMENT='ELISA效价板信息表';
@@ -587,7 +609,7 @@ CREATE TABLE IF NOT EXISTS discovery_workbench (
   owner VARCHAR(64) NULL COMMENT '负责人',
   status VARCHAR(32) NULL COMMENT '状态',
   priority VARCHAR(32) NULL COMMENT '优先级',
-  sort_order INT NULL COMMENT '排序；终态为空',
+  sort_order INT NULL COMMENT '排序值',
   remark VARCHAR(500) NULL COMMENT '备注',
   created_by VARCHAR(64) NULL COMMENT '创建人',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -659,7 +681,6 @@ VALUES
   ('serum.project.create', 'POST', '/api/serum/save', '新建免疫项目'),
   ('serum.project.edit', 'POST', '/api/serum/save', '编辑免疫项目'),
   ('serum.project.edit', 'POST', '/api/serum/update_lab_notebook', '更新实验记录本'),
-  ('serum.project.edit_all', 'POST', '/api/serum/update_lab_notebook', '更新他人实验记录本'),
   ('serum.project.delete', 'POST', '/api/serum/delete', '删除免疫项目'),
   ('serum.status.update', 'POST', '/api/serum/update_status', '快速修改状态'),
   ('serum.cage.update', 'POST', '/api/serum/update_cage_position', '更新笼位信息'),
@@ -725,10 +746,11 @@ VALUES
   ('menu.system.features', '系统功能菜单', 'menu', '控制系统管理下系统功能页面显示', 1, 1, 20, JSON_OBJECT('path', '/system/features', 'icon', 'lucide:sliders-horizontal', 'parent_code', 'menu.system')),
   ('feature.yunzhijia_auto_provision', '云之家自动创建用户', 'feature', '允许云之家登录时自动创建未绑定用户', 0, 1, 110, JSON_OBJECT()),
   ('feature.drm_file_security', 'DRM 文件安全模块', 'feature', '控制上传自动解密、下载前加密等 DRM 文件安全能力', 0, 1, 120, JSON_OBJECT()),
-  ('job.employee_profile_sync', '员工资料定时同步', 'job', '每天 00:30 同步外部员工基础资料', 1, 1, 200, JSON_OBJECT('hour', 0, 'minute', 30, 'cron', '30 0 * * *', 'restart_required', true)),
-  ('job.target_master_sync', '靶点主数据定时同步', 'job', '每天 00:45 同步外部靶点主数据', 1, 1, 205, JSON_OBJECT('hour', 0, 'minute', 45, 'cron', '45 0 * * *', 'restart_required', true)),
-  ('job.serum_auto_update_status', '免疫状态自动更新', 'job', '每天 01:00 自动更新免疫实验状态', 1, 1, 210, JSON_OBJECT('hour', 1, 'minute', 0, 'cron', '0 1 * * *', 'restart_required', true)),
-  ('job.mega_labillion_status_sync', '镁伽工单状态同步', 'job', '每天 02:00 同步镁伽非终态工单状态', 1, 1, 220, JSON_OBJECT('hour', 2, 'minute', 0, 'cron', '0 2 * * *', 'restart_required', true));
+  ('job.employee_profile_sync', '员工资料定时同步', 'job', '每天 00:30 同步外部员工基础资料', 1, 1, 200, JSON_OBJECT('hour', 0, 'minute', 30, 'restart_required', true)),
+  ('job.target_master_sync', '靶点主数据定时同步', 'job', '每天 00:45 同步外部靶点主数据', 1, 1, 205, JSON_OBJECT('hour', 0, 'minute', 45, 'restart_required', true)),
+  ('job.serum_auto_update_status', '免疫状态自动更新', 'job', '每天 01:00 自动更新免疫实验状态', 1, 1, 210, JSON_OBJECT('hour', 1, 'minute', 0, 'restart_required', true)),
+  ('job.discovery_auto_update_status', '抗体发现状态自动更新', 'job', '每天 01:15 自动更新已过期的冲击免状态', 1, 1, 215, JSON_OBJECT('hour', 1, 'minute', 15, 'restart_required', true)),
+  ('job.mega_labillion_status_sync', '镁伽工单状态同步', 'job', '每天 02:00 同步镁伽非终态工单状态', 1, 1, 220, JSON_OBJECT('hour', 2, 'minute', 0, 'restart_required', true));
 
 -- =============================================================================
 -- 权限包 / 角色（仅示例三档：访客、业务员、系统管理；生产环境完全自定义）
@@ -752,9 +774,7 @@ INSERT IGNORE INTO sys_permission_bundle_item (bundle_code, permission_code) VAL
   ('guest', 'system.page.user'),
   ('guest', 'system.page.role'),
   ('guest', 'system.page.permission'),
-  ('guest', 'system.page.operation_log'),
   ('guest', 'system.page.feature'),
-  ('guest', 'system.operation_log.view'),
   ('operator', 'serum.page.workbench'),
   ('operator', 'serum.workbench.draft_edit'),
   ('operator', 'serum.workbench.support_edit'),
@@ -819,7 +839,7 @@ SELECT r.id, r.code FROM sys_role r WHERE r.code IN ('guest', 'operator', 'syste
 --   generations VARCHAR(20) NULL COMMENT '代次',
 --   batch_no VARCHAR(50) NULL COMMENT '批次号',
 --   PRIMARY KEY (id)
--- ) COMMENT='细胞样本（外部库，只读）';
+-- ) COMMENT='细胞样本表';
 
 -- =============================================================================
 -- 外部员工库 EMPLOYEE_DB_URL：org_emp / org_depart（employee_sync.py，勿在主库执行，仅备查）
@@ -829,7 +849,7 @@ SELECT r.id, r.code FROM sys_role r WHERE r.code IN ('guest', 'operator', 'syste
 --   sname VARCHAR(255) NULL COMMENT '部门名称',
 --   top_id BIGINT NULL COMMENT '上级部门ID',
 --   PRIMARY KEY (id)
--- ) COMMENT='部门（外部库，只读）';
+-- ) COMMENT='部门表';
 --
 -- CREATE TABLE IF NOT EXISTS org_emp (
 --   id BIGINT NOT NULL COMMENT '员工ID',
@@ -842,11 +862,11 @@ SELECT r.id, r.code FROM sys_role r WHERE r.code IN ('guest', 'operator', 'syste
 --   is_locked TINYINT(1) NULL COMMENT '是否锁定',
 --   post VARCHAR(128) NULL COMMENT '职位',
 --   cloud_open_id VARCHAR(100) NULL COMMENT '云之家OpenID',
---   depart_id BIGINT NULL COMMENT '部门ID(org_depart.id)',
+--   depart_id BIGINT NULL COMMENT '部门ID',
 --   PRIMARY KEY (id),
 --   KEY idx_org_emp_depart (depart_id),
 --   KEY idx_org_emp_openid (cloud_open_id)
--- ) COMMENT='员工（外部库，只读）';
+-- ) COMMENT='员工表';
 --
 -- 同一 EMPLOYEE_DB_URL 外部平台库还包含正式靶点表
 -- xdida_platform_biocytogen.target；本系统只读全量同步至主库 target，

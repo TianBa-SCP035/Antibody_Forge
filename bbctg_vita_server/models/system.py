@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, JSON, String, Text, UniqueConstraint, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.session import Base
 
@@ -229,11 +229,22 @@ class SysJobRunLog(Base):
 
 class SysOperationLog(Base):
     __tablename__ = "sys_operation_log"
+    __table_args__ = (
+        Index("idx_sys_operation_log_created_at", "created_at"),
+        Index("idx_sys_operation_log_request", "request_id"),
+        Index("idx_sys_operation_log_source_time", "source", "created_at"),
+        Index("idx_sys_operation_log_target_time", "target_type", "target_id", "created_at"),
+        Index("idx_sys_operation_log_user_time", "username", "created_at"),
+        Index("idx_sys_operation_log_result_time", "result", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    request_id: Mapped[str | None] = mapped_column(String(64), comment="请求或任务追踪ID")
     user_id: Mapped[int | None] = mapped_column(BigInteger, comment="操作用户ID")
     username: Mapped[str | None] = mapped_column(String(64), comment="操作账号")
     operator_name: Mapped[str | None] = mapped_column(String(128), comment="操作人姓名")
+    source: Mapped[str] = mapped_column(String(16), default="user", comment="操作来源")
+    ip_address: Mapped[str | None] = mapped_column(String(64), comment="来源IP")
     action: Mapped[str] = mapped_column(String(128), nullable=False, comment="操作动作")
     operation_name: Mapped[str | None] = mapped_column(String(128), comment="操作名称")
     operation_type: Mapped[str | None] = mapped_column(String(32), comment="操作类型")
@@ -241,6 +252,35 @@ class SysOperationLog(Base):
     target_id: Mapped[str | None] = mapped_column(String(128), comment="目标ID")
     target_label: Mapped[str | None] = mapped_column(String(255), comment="目标名称")
     result: Mapped[str] = mapped_column(String(16), default="success", comment="操作结果")
+    affected_count: Mapped[int] = mapped_column(Integer, default=0, comment="受影响实体数量")
     detail: Mapped[object | None] = mapped_column(JSON, comment="操作详情")
     error_message: Mapped[str | None] = mapped_column(Text, comment="错误信息")
     created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="操作时间")
+    items: Mapped[list["SysOperationLogItem"]] = relationship(
+        back_populates="log",
+        cascade="all, delete-orphan",
+    )
+
+
+class SysOperationLogItem(Base):
+    __tablename__ = "sys_operation_log_item"
+    __table_args__ = (
+        Index("idx_sys_operation_log_item_log", "log_id"),
+        Index("idx_sys_operation_log_item_entity", "entity_type", "entity_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    log_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("sys_operation_log.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="操作日志ID",
+    )
+    entity_type: Mapped[str] = mapped_column(String(128), nullable=False, comment="实体类型")
+    table_name: Mapped[str] = mapped_column(String(128), nullable=False, comment="数据表名")
+    entity_id: Mapped[str | None] = mapped_column(String(128), comment="实体主键")
+    entity_label: Mapped[str | None] = mapped_column(String(255), comment="实体业务标识")
+    change_type: Mapped[str] = mapped_column(String(16), nullable=False, comment="变更类型")
+    change_count: Mapped[int] = mapped_column(Integer, default=0, comment="变更字段数量")
+    changes: Mapped[object | None] = mapped_column(JSON, comment="字段前后值差异")
+    log: Mapped[SysOperationLog] = relationship(back_populates="items")

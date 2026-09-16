@@ -32,7 +32,7 @@ class DiscoveryWorkbench(Base):
     owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
     status: Mapped[str | None] = mapped_column(String(32), comment="状态")
     priority: Mapped[str | None] = mapped_column(String(32), comment="优先级")
-    sort_order: Mapped[int | None] = mapped_column(Integer, comment="排序；终态为空")
+    sort_order: Mapped[int | None] = mapped_column(Integer, comment="排序值")
     remark: Mapped[str | None] = mapped_column(String(500), comment="备注")
     created_by: Mapped[str | None] = mapped_column(String(64), comment="创建人")
     created_at: Mapped[object | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")

@@ -171,7 +171,7 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "enabled": True,
         "visible": True,
         "sort_order": 200,
-        "config": {"hour": 0, "minute": 30, "cron": "30 0 * * *", "restart_required": True},
+        "config": {"hour": 0, "minute": 30, "restart_required": True},
     },
     {
         "code": "job.target_master_sync",
@@ -181,7 +181,7 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "enabled": True,
         "visible": True,
         "sort_order": 205,
-        "config": {"hour": 0, "minute": 45, "cron": "45 0 * * *", "restart_required": True},
+        "config": {"hour": 0, "minute": 45, "restart_required": True},
     },
     {
         "code": "job.serum_auto_update_status",
@@ -191,7 +191,17 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "enabled": True,
         "visible": True,
         "sort_order": 210,
-        "config": {"hour": 1, "minute": 0, "cron": "0 1 * * *", "restart_required": True},
+        "config": {"hour": 1, "minute": 0, "restart_required": True},
+    },
+    {
+        "code": "job.discovery_auto_update_status",
+        "name": "抗体发现状态自动更新",
+        "category": "job",
+        "description": "每天 01:15 自动更新已过期的冲击免状态",
+        "enabled": True,
+        "visible": True,
+        "sort_order": 215,
+        "config": {"hour": 1, "minute": 15, "restart_required": True},
     },
     {
         "code": "job.mega_labillion_status_sync",
@@ -201,7 +211,7 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "enabled": True,
         "visible": True,
         "sort_order": 220,
-        "config": {"hour": 2, "minute": 0, "cron": "0 2 * * *", "restart_required": True},
+        "config": {"hour": 2, "minute": 0, "restart_required": True},
     },
 ]
 
@@ -417,10 +427,9 @@ def _normalize_config(category: str, config: dict[str, Any]) -> dict[str, Any]:
         hour = _bounded_int(config.get("hour"), 0, 23, 0)
         minute = _bounded_int(config.get("minute"), 0, 59, 0)
         return {
-            **config,
+            **{key: value for key, value in config.items() if key != "cron"},
             "hour": hour,
             "minute": minute,
-            "cron": f"{minute} {hour} * * *",
             "restart_required": bool(config.get("restart_required", True)),
         }
     return config

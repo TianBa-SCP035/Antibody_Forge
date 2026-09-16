@@ -314,37 +314,46 @@ def _row_is_terminal(row: SerumImmWorkbench, project: SerumImmProject | None = N
 
 
 def _terminal_sql():
+    plan_status = func.coalesce(SerumImmWorkbench.plan_status, PLAN_STATUS_DRAFT)
+    project_status = func.coalesce(SerumImmProject.project_status, "")
     return or_(
-        SerumImmWorkbench.plan_status.in_(CLOSED_PLAN_STATUSES),
+        plan_status.in_(CLOSED_PLAN_STATUSES),
         and_(
-            SerumImmWorkbench.plan_status == PLAN_STATUS_STARTED,
-            SerumImmProject.project_status.in_(TERMINAL_PROJECT_STATUSES),
+            plan_status == PLAN_STATUS_STARTED,
+            project_status.in_(TERMINAL_PROJECT_STATUSES),
         ),
     )
 
 
 def _queue_rows(db: Session) -> list[SerumImmWorkbench]:
-    return list(
-        db.scalars(
-            select(SerumImmWorkbench)
-            .outerjoin(
-                SerumImmProject,
-                SerumImmWorkbench.experiment_id == SerumImmProject.experiment_id,
-            )
-            .where(~_terminal_sql())
-            .order_by(SerumImmWorkbench.sort_order.asc(), SerumImmWorkbench.id.asc())
-        ).unique().all()
-    )
+    return db.scalars(
+        select(SerumImmWorkbench)
+        .outerjoin(
+            SerumImmProject,
+            SerumImmWorkbench.experiment_id == SerumImmProject.experiment_id,
+        )
+        .where(~_terminal_sql())
+        .order_by(SerumImmWorkbench.sort_order.asc(), SerumImmWorkbench.id.asc())
+    ).unique().all()
 
 
-def _projects_for_rows(db: Session, rows: list[SerumImmWorkbench]) -> dict[str, SerumImmProject]:
-    experiment_ids = [str(row.experiment_id or "").strip() for row in rows if row.experiment_id]
+def _projects_for_rows(
+    db: Session,
+    rows: list[SerumImmWorkbench],
+) -> dict[str, SerumImmProject]:
+    experiment_ids = [
+        str(row.experiment_id or "").strip()
+        for row in rows
+        if row.experiment_id
+    ]
     if not experiment_ids:
         return {}
     return {
         str(item.experiment_id or "").strip(): item
         for item in db.scalars(
-            select(SerumImmProject).where(SerumImmProject.experiment_id.in_(experiment_ids))
+            select(SerumImmProject).where(
+                SerumImmProject.experiment_id.in_(experiment_ids)
+            )
         ).all()
     }
 
@@ -356,6 +365,36 @@ def _lock_queue(db: Session) -> None:
         .order_by(SerumImmWorkbench.id.asc())
         .with_for_update()
     ).all()
+
+
+def sync_project_queue_status(
+    db: Session,
+    experiment_id: str,
+    *,
+    is_terminal: bool,
+) -> None:
+    """Apply one project's terminal transition without rebuilding the full queue."""
+    _lock_queue(db)
+    row = db.scalar(
+        select(SerumImmWorkbench)
+        .where(SerumImmWorkbench.experiment_id == experiment_id)
+        .with_for_update()
+    )
+    if row is None or not _is_started(row):
+        return
+    if is_terminal:
+        if queued_sort(row.sort_order) is None:
+            return
+        row.sort_order = None
+        renumber_queue(
+            [
+                item
+                for item in _queue_rows(db)
+                if int(item.id) != int(row.id)
+            ]
+        )
+    elif queued_sort(row.sort_order) is None:
+        _place_row(db, row, mode="last")
 
 
 def _place_row(db: Session, row: SerumImmWorkbench, *, mode: str, target_sort: int | None = None) -> None:
@@ -391,40 +430,6 @@ def _apply_queue(
         previous_priority=previous_priority,
         place=lambda mode, target_sort=None: _place_row(db, row, mode=mode, target_sort=target_sort),
     )
-
-
-def _sync_queue(db: Session) -> bool:
-    dirty = db.scalar(
-        select(SerumImmWorkbench.id)
-        .select_from(SerumImmWorkbench)
-        .outerjoin(
-            SerumImmProject,
-            SerumImmWorkbench.experiment_id == SerumImmProject.experiment_id,
-        )
-        .where(
-            or_(
-                and_(SerumImmWorkbench.sort_order.is_not(None), _terminal_sql()),
-                and_(
-                    ~_terminal_sql(),
-                    or_(
-                        SerumImmWorkbench.sort_order.is_(None),
-                        SerumImmWorkbench.sort_order <= 0,
-                    ),
-                ),
-            )
-        )
-        .limit(1)
-    )
-    if dirty is None:
-        return False
-    _lock_queue(db)
-    rows = list(db.scalars(select(SerumImmWorkbench)).all())
-    projects = _projects_for_rows(db, rows)
-    for row in rows:
-        if _row_is_terminal(row, projects.get(str(row.experiment_id or "").strip())):
-            row.sort_order = None
-    renumber_queue(_queue_rows(db))
-    return True
 
 
 def _project_by_experiment(
@@ -631,7 +636,8 @@ def _delete_children(db: Session, experiment_id: str | None) -> None:
     if not exp_id:
         return
     for model in EXPERIMENT_RELATED_MODELS:
-        db.query(model).filter(model.experiment_id == exp_id).delete(synchronize_session=False)
+        for item in db.scalars(select(model).where(model.experiment_id == exp_id)).all():
+            db.delete(item)
 
 
 def _resolve_view_group(plan_status: Any, project_status: Any) -> str:
@@ -938,8 +944,6 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     page = max(int(data.get("page", 1) or 1), 1)
     limit = min(max(int(data.get("limit", 20) or 20), 1), 200)
     payload = data or {}
-    if _sync_queue(db):
-        db.commit()
     stmt = _apply_list_filters(_base_stmt(), payload)
     total = db.scalar(_apply_list_filters(_count_stmt(), payload)) or 0
     keyword = str(payload.get("keyword") or "").strip()
@@ -983,8 +987,6 @@ def export_list_workbook(
     from utils.excel import build_list_workbook
 
     payload = data or {}
-    if _sync_queue(db):
-        db.commit()
     stmt = _apply_list_filters(_base_stmt(), payload)
     order_by = [*_list_order(payload)]
     keyword = str(payload.get("keyword") or "").strip()

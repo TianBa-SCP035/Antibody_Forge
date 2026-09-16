@@ -102,9 +102,14 @@ class SerumFile(Base):
     upload_user: Mapped[str | None] = mapped_column(String(64))
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
-    created_time: Mapped[object | None] = mapped_column(DateTime, server_default=func.current_timestamp())
-    updated_time: Mapped[object | None] = mapped_column(
+    created_time: Mapped[object] = mapped_column(
         DateTime,
+        nullable=False,
+        server_default=func.current_timestamp(),
+    )
+    updated_time: Mapped[object] = mapped_column(
+        DateTime,
+        nullable=False,
         server_default=func.current_timestamp(),
         onupdate=func.current_timestamp(),
     )
@@ -296,7 +301,7 @@ class SerumFacsPlate(Base):
     qr_code: Mapped[str | None] = mapped_column(String(128))
     image_file_id: Mapped[int | None] = mapped_column(BigInteger)
     excel_file_id: Mapped[int | None] = mapped_column(BigInteger)
-    immune_stage: Mapped[str | None] = mapped_column(String(64))
+    immune_stage: Mapped[str] = mapped_column(String(64), nullable=False)
     x_axis: Mapped[str | None] = mapped_column(String(64))
     y_axis: Mapped[str | None] = mapped_column(String(64))
     cell_target_id: Mapped[int | None] = mapped_column(BigInteger)

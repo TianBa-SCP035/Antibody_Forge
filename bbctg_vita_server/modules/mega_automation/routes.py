@@ -11,6 +11,8 @@ from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
 from modules.mega_automation import callback, service
+from modules.system.audit import write_operation_log
+from modules.system.audit_config import LABILLION_CALLBACK_AUDIT_ACTION
 from modules.system.permissions import require_permission
 
 router = APIRouter()
@@ -35,16 +37,54 @@ def _run(db: Session, operation: Callable[[], Any]) -> dict:
 
 @router.post("/labillion/callback")
 def labillion_status_callback(
-    data: dict | None = Body(default=None),
+    data: Any = Body(default=None),
     db: Session = Depends(get_db),
 ) -> JSONResponse:
     """Labillion 订单状态推送；无需登录，响应须在 5 秒内返回 2xx。"""
+    payload = data if isinstance(data, dict) else {}
     try:
-        result = callback.handle_labillion_status_push(db, data or {})
+        if data is not None and not isinstance(data, dict):
+            raise ValueError("callback body must be a JSON object")
+        result = callback.handle_labillion_status_push(db, payload)
+        if not result.get("applied"):
+            write_operation_log(
+                db,
+                LABILLION_CALLBACK_AUDIT_ACTION.code,
+                operation_name=LABILLION_CALLBACK_AUDIT_ACTION.name,
+                operation_type="update",
+                target_type=LABILLION_CALLBACK_AUDIT_ACTION.resource,
+                target_id=str(result.get("dispatchId") or "")[:128] or None,
+                result="success",
+                detail={
+                    "changed": False,
+                    "change_summary": str(result.get("reason") or "状态未变化"),
+                    "callback_result": result,
+                },
+            )
+            db.commit()
         return labillion_callback_success(result)
-    except Exception:
+    except Exception as exc:
         db.rollback()
-        logger.exception("labillion callback failed body=%s", data)
+        logger.exception(
+            "labillion callback failed dispatchId=%s",
+            str(payload.get("dispatchId") or "")[:128] or "-",
+        )
+        try:
+            write_operation_log(
+                db,
+                LABILLION_CALLBACK_AUDIT_ACTION.code,
+                operation_name=LABILLION_CALLBACK_AUDIT_ACTION.name,
+                operation_type="update",
+                target_type=LABILLION_CALLBACK_AUDIT_ACTION.resource,
+                target_id=str(payload.get("dispatchId") or "")[:128] or None,
+                result="failed",
+                detail={"changed": False, "reason": "internal_error"},
+                error_message=str(exc)[:2000] or "internal_error",
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("labillion callback failure audit could not be persisted")
         return labillion_callback_success({"applied": False, "reason": "internal_error"})
 
 

@@ -8,6 +8,7 @@
 
 | 列 | 说明 |
 |---|---|
+| `discovery_id` | 发现安排号。创建时后端生成，之后只读；页面不展示，请求里带了也忽略 |
 | `project_code` / `experiment_id` / `target_name` / `target_codes` / `study_type` / `pm` | 项目侧，本台可改 |
 | `owner` | 本台负责人，不在工作台表显示 |
 | `mouse_strain_category` / `mouse_strain` / `cage_position` | 归类鼠型（可手打，可多值拼接）、小鼠品系、笼位；笼位不在工作台表显示 |
@@ -25,7 +26,7 @@
 | `remark` | 备注 |
 | `created_by` / `created_at` / `updated_at` | 审计 |
 
-`experiment_id` 不加唯一约束。本台不预留来源键。实验数据量小，DDL 只建主键，不加二级索引。若本地曾按旧稿建过 `idx_*`，可自行 `DROP INDEX`，不要对正式库执行。已有本地库自行执行本仓库 DDL 中的 `CREATE TABLE discovery_workbench` 与对应权限 / 菜单 `INSERT IGNORE`。
+`experiment_id` 不加唯一约束。`discovery_id` 是本台业务键，库内唯一。格式 `DSC-yyMMdd-` + 6 位大写字母数字（`A-Z0-9`），例如 `DSC-260917-A3K9Q2`。手工新建、Excel 批量、「测序」下发都由后端发号。实验数据量小，DDL 只建主键和发现安排号唯一索引。若本地曾按旧稿建过 `idx_*`，可自行 `DROP INDEX`，不要对正式库执行。已有本地库自行执行本仓库 DDL 中的 `CREATE TABLE discovery_workbench` 与对应权限 / 菜单 `INSERT IGNORE`。已有表可先清空再补列：`TRUNCATE` 后 `ADD COLUMN discovery_id VARCHAR(32) NOT NULL` 并加 `uk_discovery_workbench_discovery_id`。
 
 ## 状态
 
@@ -68,7 +69,7 @@
 | `POST /list` | 分页列表；默认 `id` 倒序；`sort_field=sort_order` 按队列；`view_group` / `boost_filter` 与统计 | `discovery.page.workbench` |
 | `GET /options` | 状态、优先级、筛选方式、已有 PM / 负责人、筛选与冲击免抗原、免疫抗原（筛选用） | `discovery.page.workbench` |
 | `POST /export_list` | 按当前筛选导出 | `discovery.page.workbench` |
-| `POST /save` | 无 `id` 新增；有 `id` 只更新请求中出现的字段 | `discovery.workbench.edit` |
+| `POST /save` | 无 `id` 新增并生成 `discovery_id`；有 `id` 只更新请求中出现的字段，忽略 `discovery_id` | `discovery.workbench.edit` |
 | `POST /save_batch` | Excel 粘贴批量保存 | `discovery.workbench.edit` |
 | `POST /delete` | 按主键删除并重编号 | `discovery.workbench.edit` |
 | `POST /reorder` | `moved_id` 放到 `target_id` 当前队列位，再重编号未完成行；终态不参与 | `discovery.workbench.edit` |
@@ -90,7 +91,7 @@
 
 ## 效价「测序」下发
 
-效价实验列表点「测序」：无 `discovery.workbench.edit` 时警告，按钮保持可点。有权限则打开与上机相同的选鼠向导（`TiterMouseSelectWizard.vue`），标题为「抗体发现工单」；**至少选一只**。确定后前端用现有 `buildFacsConclusion` 只对勾中的鼠收一版简要说明，再 `POST /discovery/workbench/save` 无 id 新增一行，跳到本台并用 `?created=` 打开该行。不按实验号去重，再点再开一条。不写 `titer_order_id`。
+效价实验列表点「测序」：无 `discovery.workbench.edit` 时警告，按钮保持可点。有权限则打开与上机相同的选鼠向导（`TiterMouseSelectWizard.vue`），标题为「抗体发现工单」；**至少选一只**。确定后前端用现有 `buildFacsConclusion` 只对勾中的鼠收一版简要说明，再 `POST /discovery/workbench/save` 无 id 新增一行，跳到本台并用 `?created=` 打开该行。不按实验号去重，再点再开一条。不写 `titer_order_id`。后端生成 `discovery_id`。
 
 | 发现列 | 下发时 |
 |---|---|

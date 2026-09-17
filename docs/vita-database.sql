@@ -586,6 +586,7 @@ CREATE TABLE IF NOT EXISTS serum_titer_order (
 
 CREATE TABLE IF NOT EXISTS discovery_workbench (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  discovery_id VARCHAR(32) NOT NULL COMMENT '发现安排号',
   project_code VARCHAR(64) NULL COMMENT '项目管理编号',
   experiment_id VARCHAR(64) NULL COMMENT '实验号',
   target_name VARCHAR(128) NULL COMMENT '靶点名称',
@@ -614,7 +615,8 @@ CREATE TABLE IF NOT EXISTS discovery_workbench (
   created_by VARCHAR(64) NULL COMMENT '创建人',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_discovery_workbench_discovery_id (discovery_id)
 ) COMMENT='抗体发现项目工作台';
 
 INSERT IGNORE INTO sys_permission

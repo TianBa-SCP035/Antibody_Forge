@@ -1,4 +1,6 @@
 from datetime import date, datetime
+import secrets
+import string
 from typing import Any
 
 from sqlalchemy import String, and_, case, cast, func, or_, select
@@ -45,6 +47,10 @@ VIEW_GROUP_STATUSES = {
     "cancelled": frozenset({PLAN_STATUS_CANCELLED}),
 }
 MISSING_ROW = "发现工作台记录不存在"
+DISCOVERY_ID_PREFIX = "DSC"
+DISCOVERY_ID_RANDOM_LEN = 6
+DISCOVERY_ID_MAX_ATTEMPTS = 20
+DISCOVERY_ID_ALPHABET = string.ascii_uppercase + string.digits
 STRING_FIELDS = {
     "project_code": 64,
     "experiment_id": 64,
@@ -79,6 +85,27 @@ WRITABLE_FIELDS = (
 
 def _today_text() -> str:
     return date.today().isoformat()
+
+
+def generate_discovery_id(now: datetime | None = None) -> str:
+    stamp = (now or datetime.now()).strftime("%y%m%d")
+    suffix = "".join(secrets.choice(DISCOVERY_ID_ALPHABET) for _ in range(DISCOVERY_ID_RANDOM_LEN))
+    return f"{DISCOVERY_ID_PREFIX}-{stamp}-{suffix}"
+
+
+def _next_discovery_id(db: Session) -> str:
+    for _ in range(DISCOVERY_ID_MAX_ATTEMPTS):
+        candidate = generate_discovery_id()
+        exists = db.scalar(
+            select(DiscoveryWorkbench.id).where(DiscoveryWorkbench.discovery_id == candidate)
+        )
+        if not exists:
+            return candidate
+    raise ValueError("无法分配发现安排号")
+
+
+def _assign_discovery_id(db: Session, row: DiscoveryWorkbench) -> None:
+    row.discovery_id = _next_discovery_id(db)
 
 
 def _normalize_csv_options(value: Any, options: tuple[str, ...], error: str) -> str | None:
@@ -591,6 +618,7 @@ def save(
     commit: bool = True,
 ) -> dict[str, Any]:
     payload = dict(data or {})
+    payload.pop("discovery_id", None)
     row_id = _parse_row_id(payload.get("id"))
     if payload.get("id") not in (None, "") and row_id is None:
         raise ValueError("工作台记录 ID 不正确")
@@ -604,7 +632,7 @@ def save(
             sort_order=None,
         )
         db.add(row)
-        db.flush()
+        _assign_discovery_id(db, row)
         is_new = True
         previous_sort = None
         previous_priority = DEFAULT_PRIORITY

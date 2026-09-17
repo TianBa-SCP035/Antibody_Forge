@@ -1264,6 +1264,7 @@ export default {
       if (list.includes('target_codes') && !list.includes('target_name')) list.push('target_name')
       if (list.includes('target_name') && !list.includes('target_codes')) list.push('target_codes')
       list.forEach((field) => {
+        if (field === 'discovery_id') return
         if (field === 'target_codes') {
           payload.target_codes = uniqueTargetCodes(row.target_codes)
         } else if (field === 'screening_methods') {

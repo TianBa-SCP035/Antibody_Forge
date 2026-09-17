@@ -105,7 +105,7 @@ serum_imm_workbench（草稿 experiment_id=SCP-YYYYMMDD-HHMMSS-XXXX）
   → titer_order_id（效价工单）
   → 流式工单 source_id + orderType=TITER
   → dispatchId（镁伽下发，设备回传匹配）
-  → 效价「测序」下发拷贝 → discovery_workbench
+  → 效价「测序」下发拷贝 → discovery_workbench（discovery_id）
 ```
 
 字段与交互细节见 [modules/workbench.md](./modules/workbench.md)、[modules/immunology/workbench.md](./modules/immunology/workbench.md)、[modules/discovery/workbench.md](./modules/discovery/workbench.md)、[modules/mega-automation/titer-upstream-flow.md](./modules/mega-automation/titer-upstream-flow.md)、[modules/mega-automation/flow-work-order.md](./modules/mega-automation/flow-work-order.md)。

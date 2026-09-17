@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, DateTime, Integer, JSON, String, func
+from sqlalchemy import BigInteger, DateTime, Integer, JSON, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
@@ -6,9 +6,13 @@ from db.session import Base
 
 class DiscoveryWorkbench(Base):
     __tablename__ = "discovery_workbench"
-    __table_args__ = {"comment": "抗体发现项目工作台"}
+    __table_args__ = (
+        UniqueConstraint("discovery_id", name="uk_discovery_workbench_discovery_id"),
+        {"comment": "抗体发现项目工作台"},
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    discovery_id: Mapped[str] = mapped_column(String(32), nullable=False, comment="发现安排号")
     project_code: Mapped[str | None] = mapped_column(String(64), comment="项目管理编号")
     experiment_id: Mapped[str | None] = mapped_column(String(64), comment="实验号")
     target_name: Mapped[str | None] = mapped_column(String(128), comment="靶点名称")
@@ -54,6 +58,7 @@ class DiscoveryWorkbench(Base):
         codes = self.target_codes if isinstance(self.target_codes, list) else []
         return {
             "id": self.id,
+            "discovery_id": self.discovery_id,
             "project_code": self.project_code,
             "experiment_id": self.experiment_id,
             "target_name": self.target_name,

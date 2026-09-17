@@ -1,5 +1,7 @@
 <!-- Showcase only. Implementation status & ops → docs/README.md -->
 
+# Antibody Vita — 百奥赛图抗体发现全流程协作平台
+
 <p align="center">
   <img src="./docs/assets/biocytogen-logo.png" alt="百奥赛图 Biocytogen" height="52" />
 </p>
@@ -28,6 +30,10 @@
   <a href="./docs/overview.md">仓库地图</a> ·
   <a href="./docs/deploy.md">部署</a>
 </p>
+
+> **百奥赛图（Biocytogen）Antibody Vita** 是面向“千鼠万抗”（Project Integrum）与 RenMice® 全人抗体发现研发场景的全流程实验协作平台，贯通免疫、效价、筛选、测序、表达、评价及实验室自动化。
+>
+> **Antibody Vita** is an end-to-end antibody discovery workflow and laboratory collaboration platform built for Biocytogen's Project Integrum and RenMice®-based R&D, connecting immunization, titer assessment, screening, sequencing, expression, characterization, and laboratory automation.
 
 ---
 

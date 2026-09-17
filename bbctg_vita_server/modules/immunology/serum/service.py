@@ -772,58 +772,43 @@ def update_project_identifiers(
         raise ValueError("项目编号不能为空")
 
     stored_eid = str(project.experiment_id or "")
-    old_eid = _compact_identifier(stored_eid)
+    compact_eid = _compact_identifier(stored_eid)
     requested_eid = _compact_identifier(experiment_id)
     code_changed = code != _compact_identifier(project.project_code)
-    if code_changed and (not requested_eid or requested_eid == old_eid):
+    if code_changed and (not requested_eid or requested_eid == compact_eid):
         requested_eid = generate_next_id(db, code) or ""
-    new_eid = requested_eid or old_eid
+    new_eid = requested_eid or compact_eid
     if not new_eid:
         raise ValueError("实验 ID 不能为空")
 
-    source_eids = [eid for eid in dict.fromkeys([stored_eid, old_eid]) if str(eid).strip()]
-    identifiers_changed = code_changed or stored_eid != new_eid
-    linked_workbenches = (
-        list(
-            db.scalars(
-                select(SerumImmWorkbench).where(
-                    SerumImmWorkbench.experiment_id.in_(source_eids)
-                )
-            ).all()
-        )
-        if identifiers_changed and source_eids
-        else []
-    )
-    linked_workbench_ids = {item.id for item in linked_workbenches}
-
-    if stored_eid != new_eid:
-        existing_project = db.scalar(
+    eid_changed = stored_eid != new_eid
+    if eid_changed:
+        if db.scalar(
             select(SerumImmProject).where(
                 SerumImmProject.experiment_id == new_eid,
                 SerumImmProject.id != project.id,
             )
-        )
-        if existing_project:
+        ):
             raise ValueError("实验 ID 已存在")
-        workbench_conflict = select(SerumImmWorkbench).where(
-            SerumImmWorkbench.experiment_id == new_eid
-        )
-        if linked_workbench_ids:
-            workbench_conflict = workbench_conflict.where(
-                SerumImmWorkbench.id.notin_(linked_workbench_ids)
-            )
-        if db.scalar(workbench_conflict):
+        if db.scalar(
+            select(SerumImmWorkbench).where(SerumImmWorkbench.experiment_id == new_eid)
+        ):
             raise ValueError("实验 ID 已被工作台记录占用")
 
     project.project_code = code
     project.experiment_id = new_eid
-    if stored_eid != new_eid:
+    if eid_changed:
         rename_experiment_related_records(db, stored_eid, new_eid)
-        if old_eid and old_eid not in {stored_eid, new_eid}:
-            rename_experiment_related_records(db, old_eid, new_eid)
-    for workbench in linked_workbenches:
-        workbench.project_code = code
-        workbench.experiment_id = new_eid
+    if code_changed or eid_changed:
+        if stored_eid:
+            for workbench in db.scalars(
+                select(SerumImmWorkbench).where(
+                    SerumImmWorkbench.experiment_id == stored_eid
+                )
+            ).all():
+                workbench.project_code = code
+                workbench.experiment_id = new_eid
+        db.flush()
     return new_eid
 
 

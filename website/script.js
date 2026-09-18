@@ -25,6 +25,15 @@ const updateHeader = () => {
   const progress = available > 0 ? Math.min(1, Math.max(0, window.scrollY / available)) : 0;
   pageProgress.style.transform = `scaleY(${progress})`;
 };
+let headerFrame;
+
+const requestHeaderUpdate = () => {
+  if (headerFrame) return;
+  headerFrame = window.requestAnimationFrame(() => {
+    updateHeader();
+    headerFrame = undefined;
+  });
+};
 
 const closeMenu = () => {
   if (!menuToggle || !mobileNav) return;
@@ -85,9 +94,10 @@ document.addEventListener("keydown", (event) => {
 
 window.addEventListener("resize", () => {
   if (window.innerWidth > 900) closeMenu();
+  requestHeaderUpdate();
 });
 
-window.addEventListener("scroll", updateHeader, { passive: true });
+window.addEventListener("scroll", requestHeaderUpdate, { passive: true });
 document.addEventListener("visibilitychange", () => {
   document.body.classList.toggle("motion-paused", document.hidden);
 });
@@ -365,6 +375,7 @@ const workflowPhases = [
   },
 ];
 let workflowInspectorTimer;
+let workflowInteractionMode = "scroll";
 
 const updateWorkflowInspector = (index) => {
   if (!workflowInspector) return;
@@ -415,9 +426,18 @@ const setActiveWorkflowStep = (requestedIndex) => {
 };
 
 workflowSteps.forEach((step, index) => {
-  step.addEventListener("mouseenter", () => setActiveWorkflowStep(index));
-  step.addEventListener("focusin", () => setActiveWorkflowStep(index));
-  step.addEventListener("click", () => setActiveWorkflowStep(index));
+  step.addEventListener("mouseenter", () => {
+    if (workflowInteractionMode !== "manual") workflowInteractionMode = "hover";
+    setActiveWorkflowStep(index);
+  });
+  step.addEventListener("focusin", () => {
+    workflowInteractionMode = "manual";
+    setActiveWorkflowStep(index);
+  });
+  step.addEventListener("click", () => {
+    workflowInteractionMode = "manual";
+    setActiveWorkflowStep(index);
+  });
   step.addEventListener("keydown", (event) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
@@ -426,17 +446,24 @@ workflowSteps.forEach((step, index) => {
     if (event.key === "ArrowRight") targetIndex = Math.min(workflowSteps.length - 1, index + 1);
     if (event.key === "Home") targetIndex = 0;
     if (event.key === "End") targetIndex = workflowSteps.length - 1;
+    workflowInteractionMode = "manual";
     workflowSteps[targetIndex]?.focus();
     setActiveWorkflowStep(targetIndex);
   });
 });
 
 workflowInspector?.querySelector("[data-workflow-prev]")?.addEventListener("click", () => {
+  workflowInteractionMode = "manual";
   setActiveWorkflowStep((activeWorkflowIndex - 1 + workflowSteps.length) % workflowSteps.length);
 });
 
 workflowInspector?.querySelector("[data-workflow-next]")?.addEventListener("click", () => {
+  workflowInteractionMode = "manual";
   setActiveWorkflowStep((activeWorkflowIndex + 1) % workflowSteps.length);
+});
+
+workflow?.addEventListener("mouseleave", () => {
+  if (workflowInteractionMode === "hover") workflowInteractionMode = "scroll";
 });
 
 window.addEventListener("resize", () => setActiveWorkflowStep(activeWorkflowIndex));
@@ -445,7 +472,11 @@ if (workflow && "IntersectionObserver" in window) {
   const workflowObserver = new IntersectionObserver(
     (entries) => {
       entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
+        if (!entry.isIntersecting) {
+          workflowInteractionMode = "scroll";
+          return;
+        }
+        if (workflowInteractionMode !== "scroll") return;
         const progress = Math.min(
           1,
           Math.max(0, (window.innerHeight - entry.boundingClientRect.top) / window.innerHeight),

@@ -100,6 +100,7 @@
   let lastRenderedTime = 0;
   let animationFrame;
   let modeCopyTimer;
+  let stageBounds;
 
   const interpolate = (start, end, progress) => ({
     x: start.x + (end.x - start.x) * progress,
@@ -428,6 +429,7 @@
 
   const resize = () => {
     const bounds = stage.getBoundingClientRect();
+    stageBounds = bounds;
     width = Math.max(1, bounds.width);
     height = Math.max(1, bounds.height);
     pixelRatio = Math.min(window.devicePixelRatio || 1, width < 620 ? 1.5 : 2);
@@ -539,10 +541,15 @@
     button.addEventListener("click", () => setMode(button.dataset.moleculeView));
   });
 
+  stage.addEventListener("pointerenter", () => {
+    stageBounds = stage.getBoundingClientRect();
+  });
+
   stage.addEventListener("pointermove", (event) => {
     if (event.pointerType === "touch") return;
     if (event.target.closest?.(".molecule-console, .molecule-stage-footer")) return;
-    const bounds = stage.getBoundingClientRect();
+    const bounds = stageBounds ?? stage.getBoundingClientRect();
+    stageBounds = bounds;
     const horizontal = (event.clientX - bounds.left) / bounds.width - 0.5;
     const vertical = (event.clientY - bounds.top) / bounds.height - 0.5;
     pointerOffsetX = vertical * 0.12;
@@ -553,6 +560,7 @@
   });
 
   stage.addEventListener("pointerleave", () => {
+    stageBounds = undefined;
     pointerOffsetX = 0;
     pointerOffsetY = 0;
     targetRotationX = modes[activeMode].rotation[0];
@@ -587,6 +595,14 @@
   } else {
     window.addEventListener("resize", resize);
   }
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      stageBounds = undefined;
+    },
+    { passive: true },
+  );
 
   document.addEventListener("visibilitychange", startAnimation);
   updateToggle();

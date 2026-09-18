@@ -23,6 +23,7 @@
   let isVisible = true;
   let isPaused = reducedMotion;
   let previousTime = performance.now();
+  let lastRenderedTime = 0;
   let animationFrame;
 
   const interpolate = (start, end, progress) => ({
@@ -255,6 +256,12 @@
 
   function animate(time) {
     animationFrame = undefined;
+    const frameInterval = width < 620 ? 1000 / 30 : 0;
+    if (frameInterval && time - lastRenderedTime < frameInterval) {
+      animationFrame = window.requestAnimationFrame(animate);
+      return;
+    }
+    lastRenderedTime = time;
     const delta = Math.min(40, time - previousTime);
     previousTime = time;
     currentRotationX += (targetRotationX - currentRotationX) * 0.045;

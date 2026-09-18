@@ -373,8 +373,8 @@ p {
   font-family: var(--display);
   font-size: clamp(48px, 4.4vw, 70px);
   font-weight: 600;
-  letter-spacing: -0.045em;
-  line-height: 1.07;
+  letter-spacing: -0.035em;
+  line-height: 1.14;
   text-wrap: balance;
 }
 
@@ -398,9 +398,11 @@ p {
 .hero-english {
   max-width: 620px;
   margin: 12px 0 0;
-  color: rgba(255, 255, 255, 0.48);
+  color: rgba(255, 255, 255, 0.64);
   font-size: 12px;
+  font-weight: 400;
   letter-spacing: 0.02em;
+  line-height: 1.65;
 }
 
 .hero-actions,
@@ -3173,6 +3175,14 @@ p {
     grid-template-columns: 6px auto;
   }
 
+  .stage-node strong {
+    font-size: 13px;
+  }
+
+  .stage-node small {
+    font-size: 11px;
+  }
+
   .node-sequence,
   .node-express {
     display: none;
@@ -3505,6 +3515,14 @@ p {
   .footer-contact a,
   .footer-contact span {
     font-size: 13px;
+  }
+
+  .footer-column a,
+  .footer-contact a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 8px 0;
   }
 
   .footer-locations > span {

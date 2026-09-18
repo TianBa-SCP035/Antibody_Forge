@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://tianba-scp035.github.io/Antibody_Forge/sitemap.xml

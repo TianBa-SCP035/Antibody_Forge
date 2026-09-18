@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#071316" />
+    <meta
+      name="description"
+      content="Antibody Vita 是百奥赛图 AI 驱动抗体发现体系中的实验流程、数据和协作基础平台，连接 RenMice、Project Integrum、RenSuper Workstation 与高通量实验室自动化。"
+    />
+    <meta
+      name="keywords"
+      content="百奥赛图, Biocytogen, Antibody Vita, Antibody Forge, AI 抗体发现, RenSuper Workstation, RenMice, 千鼠万抗, Project Integrum, 实验室自动化"
+    />
+    <meta name="author" content="Biocytogen Pharmaceuticals (Beijing) Co., Ltd." />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:site_name" content="Antibody Vita" />
+    <meta property="og:title" content="Antibody Vita｜AI 抗体发现协作基础平台" />
+    <meta
+      property="og:description"
+      content="连接免疫、筛选、测序、表达、评价与实验室自动化，让抗体发现沿同一条可信数据链路向前。"
+    />
+    <meta
+      property="og:url"
+      content="https://tianba-scp035.github.io/Antibody_Forge/"
+    />
+    <meta
+      property="og:image"
+      content="https://raw.githubusercontent.com/TianBa-SCP035/Antibody_Forge/main/bbctg_vita_web/apps/antibody_vita/public/Vita.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link
+      rel="canonical"
+      href="https://tianba-scp035.github.io/Antibody_Forge/"
+    />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Antibody Vita",
+        "alternateName": "Antibody Forge",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "description": "An end-to-end workflow, data and collaboration foundation for AI-powered antibody discovery at Biocytogen.",
+        "url": "https://tianba-scp035.github.io/Antibody_Forge/",
+        "codeRepository": "https://github.com/TianBa-SCP035/Antibody_Forge",
+        "creator": {
+          "@type": "Organization",
+          "name": "Biocytogen Pharmaceuticals (Beijing) Co., Ltd.",
+          "url": "https://biocytogen.com.cn/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳转到主要内容</a>
+
+    <header class="site-header" data-header>
+      <a class="brand" href="#top" aria-label="Antibody Vita 首页">
+        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+          <defs>
+            <linearGradient id="brand-gradient" x1="4" y1="4" x2="44" y2="44">
+              <stop stop-color="#12d6c5" />
+              <stop offset=".5" stop-color="#2d72ff" />
+              <stop offset="1" stop-color="#c640ff" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M9 10c5 0 10 7 15 14 5-7 10-14 15-14 4 0 7 3 7 7 0 6-8 11-14 15-3 2-5 6-5 11h-6c0-5-2-9-5-11C10 28 2 23 2 17c0-4 3-7 7-7Z"
+            fill="none"
+            stroke="url(#brand-gradient)"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="5"
+          />
+        </svg>
+        <span>
+          <strong>Antibody Vita</strong>
+          <small>Discovery connected</small>
+        </span>
+      </a>
+
+      <nav class="desktop-nav" aria-label="主要导航">
+        <a href="#platform">平台</a>
+        <a href="#workflow">工作流</a>
+        <a href="#capabilities">能力</a>
+        <a href="#experience">界面</a>
+      </nav>
+
+      <a
+        class="header-action"
+        href="https://github.com/TianBa-SCP035/Antibody_Forge"
+        target="_blank"
+        rel="noreferrer"
+      >
+        查看项目
+        <span aria-hidden="true">↗</span>
+      </a>
+
+      <button
+        class="menu-toggle"
+        type="button"
+        aria-label="打开导航菜单"
+        aria-expanded="false"
+        data-menu-toggle
+      >
+        <span></span><span></span>
+      </button>
+
+      <div class="mobile-nav" data-mobile-nav>
+        <a href="#platform">平台</a>
+        <a href="#workflow">工作流</a>
+        <a href="#capabilities">能力</a>
+        <a href="#experience">界面</a>
+        <a href="https://github.com/TianBa-SCP035/Antibody_Forge">GitHub 项目 ↗</a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="hero-glow hero-glow-a"></div>
+        <div class="hero-glow hero-glow-b"></div>
+        <div class="hero-grid" aria-hidden="true"></div>
+
+        <div class="hero-copy">
+          <p class="eyebrow reveal">
+            <span></span>
+            Biocytogen · AI-powered antibody discovery
+          </p>
+          <h1 class="reveal">
+            让每一次抗体发现，
+            <em>沿同一条数据链路向前。</em>
+          </h1>
+          <p class="hero-lead reveal">
+            Antibody Vita
+            将免疫、筛选、测序、表达、评价与实验室自动化连接为一个可追溯、可协作的研发工作流。
+          </p>
+          <p class="hero-english reveal">
+            One workflow foundation connecting scientific decisions, experimental
+            data and high-throughput automation.
+          </p>
+          <div class="hero-actions reveal">
+            <a class="button button-primary" href="#platform">
+              探索平台
+              <span aria-hidden="true">↓</span>
+            </a>
+            <a
+              class="button button-secondary"
+              href="https://biocytogen.com.cn/drug-development/renSuper-workstation-ai-antibody-discovery"
+              target="_blank"
+              rel="noreferrer"
+            >
+              了解 RenSuper™
+              <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="hero-visual reveal" aria-label="Antibody Vita 连接式发现工作流示意">
+          <div class="orbit orbit-one"></div>
+          <div class="orbit orbit-two"></div>
+          <div class="orbit orbit-three"></div>
+
+          <div class="core">
+            <div class="core-mark" aria-hidden="true">
+              <svg viewBox="0 0 64 64">
+                <defs>
+                  <linearGradient id="core-gradient" x1="8" y1="8" x2="56" y2="56">
+                    <stop stop-color="#5af2dc" />
+                    <stop offset=".48" stop-color="#3283ff" />
+                    <stop offset="1" stop-color="#d856ff" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M12 12c7 0 13 9 20 20 7-11 13-20 20-20 5 0 9 4 9 9 0 8-11 15-18 20-5 3-8 9-8 16h-6c0-7-3-13-8-16C14 36 3 29 3 21c0-5 4-9 9-9Z"
+                  fill="none"
+                  stroke="url(#core-gradient)"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="6"
+                />
+              </svg>
+            </div>
+            <span>ANTIBODY</span>
+            <strong>VITA</strong>
+            <small>one source of truth</small>
+          </div>
+
+          <div class="stage-node node-immune">
+            <i></i><span>01</span><strong>免疫</strong><small>Immunize</small>
+          </div>
+          <div class="stage-node node-screen">
+            <i></i><span>02</span><strong>筛选</strong><small>Screen</small>
+          </div>
+          <div class="stage-node node-sequence">
+            <i></i><span>03</span><strong>测序</strong><small>Sequence</small>
+          </div>
+          <div class="stage-node node-express">
+            <i></i><span>04</span><strong>表达</strong><small>Express</small>
+          </div>
+          <div class="stage-node node-evaluate">
+            <i></i><span>05</span><strong>评价</strong><small>Evaluate</small>
+          </div>
+          <div class="stage-node node-automate">
+            <i></i><span>06</span><strong>自动化</strong><small>Automate</small>
+          </div>
+
+          <svg class="signal-lines" viewBox="0 0 720 720" aria-hidden="true">
+            <defs>
+              <linearGradient id="signal-gradient" x1="0" y1="0" x2="1" y2="1">
+                <stop stop-color="#36e3cc" stop-opacity=".1" />
+                <stop offset=".5" stop-color="#5c8cff" />
+                <stop offset="1" stop-color="#d657ff" stop-opacity=".1" />
+              </linearGradient>
+            </defs>
+            <path d="M360 360 C250 220 200 200 110 174" />
+            <path d="M360 360 C470 218 540 208 620 180" />
+            <path d="M360 360 C190 350 132 370 70 420" />
+            <path d="M360 360 C530 350 590 365 656 416" />
+            <path d="M360 360 C260 490 210 520 150 575" />
+            <path d="M360 360 C460 490 505 530 570 585" />
+          </svg>
+        </div>
+
+        <div class="hero-foot reveal" aria-hidden="true">
+          <span>RenMice®</span>
+          <i></i>
+          <span>Project Integrum</span>
+          <i></i>
+          <span>RenSuper™ Workstation</span>
+          <i></i>
+          <span>Laboratory Automation</span>
+        </div>
+      </section>
+
+      <section class="manifesto section" id="platform">
+        <div class="section-label reveal">
+          <span>01</span>
+          <p>Platform vision</p>
+        </div>
+        <div class="manifesto-copy">
+          <p class="kicker reveal">从实验现场，到数据智能</p>
+          <h2 class="reveal">
+            发现不是一串孤立步骤，
+            <span>而是一条持续生长的证据链。</span>
+          </h2>
+          <p class="body-large reveal">
+            Antibody Vita
+            以真实实验路径组织数据和工单，让每一个样本、序列、候选分子和评价结果保持上下文连续，为规模化、AI
+            驱动的抗体发现提供可信的数据与协作基础。
+          </p>
+        </div>
+
+        <div class="principles">
+          <article class="principle reveal">
+            <span class="principle-index">01</span>
+            <div class="principle-icon">
+              <svg viewBox="0 0 40 40" aria-hidden="true">
+                <circle cx="8" cy="20" r="4" />
+                <circle cx="32" cy="9" r="4" />
+                <circle cx="32" cy="31" r="4" />
+                <path d="M12 18 28 11M12 22l16 7" />
+              </svg>
+            </div>
+            <h3>全流程连接</h3>
+            <p>以发现主链串联免疫、筛选、序列、表达与评价，减少信息在环节间断裂。</p>
+            <small>Connected workflow</small>
+          </article>
+          <article class="principle reveal">
+            <span class="principle-index">02</span>
+            <div class="principle-icon">
+              <svg viewBox="0 0 40 40" aria-hidden="true">
+                <path d="M20 4 5 12v16l15 8 15-8V12L20 4Z" />
+                <path d="m5 12 15 8 15-8M20 20v16" />
+              </svg>
+            </div>
+            <h3>单一数据源</h3>
+            <p>项目、样本、实验和结果共享同一语义，让团队看到一致、可追溯的事实。</p>
+            <small>One source of truth</small>
+          </article>
+          <article class="principle reveal">
+            <span class="principle-index">03</span>
+            <div class="principle-icon">
+              <svg viewBox="0 0 40 40" aria-hidden="true">
+                <path d="M8 20A12 12 0 0 1 29 12l3 4" />
+                <path d="m32 9 .5 7-7-.5M32 20A12 12 0 0 1 11 28l-3-4" />
+                <path d="m8 31-.5-7 7 .5" />
+              </svg>
+            </div>
+            <h3>自动化闭环</h3>
+            <p>工单创建、设备执行与结果回传形成闭环，使高通量实验可管理、可复用。</p>
+            <small>Automation loop</small>
+          </article>
+        </div>
+      </section>
+
+      <section class="workflow section-dark" id="workflow">
+        <div class="workflow-head section">
+          <div class="section-label section-label-light reveal">
+            <span>02</span>
+            <p>Discovery workflow</p>
+          </div>
+          <div>
+            <p class="kicker kicker-light reveal">一条主链，贯通发现全程</p>
+            <h2 class="reveal">从免疫应答到候选分子，<br />每一步都有来处和去向。</h2>
+          </div>
+        </div>
+
+        <div class="workflow-track" data-workflow>
+          <div class="track-line"><span data-track-progress></span></div>
+          <article class="workflow-step active" data-step>
+            <span class="step-number">01</span>
+            <div class="step-dot"></div>
+            <div>
+              <small>IMMUNITY</small>
+              <h3>免疫与效价</h3>
+              <p>免疫计划、笼位、进度与 FACS / ELISA 效价结果统一进入发现入口。</p>
+            </div>
+          </article>
+          <article class="workflow-step" data-step>
+            <span class="step-number">02</span>
+            <div class="step-dot"></div>
+            <div>
+              <small>SCREENING</small>
+              <h3>筛选与发现</h3>
+              <p>单 B 细胞、噬菌体展示等路径并行推进，并保持项目上下文连续。</p>
+            </div>
+          </article>
+          <article class="workflow-step" data-step>
+            <span class="step-number">03</span>
+            <div class="step-dot"></div>
+            <div>
+              <small>SEQUENCING</small>
+              <h3>文库与测序</h3>
+              <p>衔接文库构建、质检、Sanger / NGS 测序与候选序列分析。</p>
+            </div>
+          </article>
+          <article class="workflow-step" data-step>
+            <span class="step-number">04</span>
+            <div class="step-dot"></div>
+            <div>
+              <small>EXPRESSION</small>
+              <h3>表达与纯化</h3>
+              <p>将质粒、细胞、转染、表达和纯化纳入共享的分子与细胞支撑层。</p>
+            </div>
+          </article>
+          <article class="workflow-step" data-step>
+            <span class="step-number">05</span>
+            <div class="step-dot"></div>
+            <div>
+              <small>CHARACTERIZATION</small>
+              <h3>评价与决策</h3>
+              <p>整合结合、亲和力、功能及成药性结果，支撑候选分子持续收敛。</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="capabilities section" id="capabilities">
+        <div class="section-label reveal">
+          <span>03</span>
+          <p>Platform capabilities</p>
+        </div>
+        <div class="capabilities-intro">
+          <div>
+            <p class="kicker reveal">实验、数据、协作，统一发生</p>
+            <h2 class="reveal">为科学工作而设计，<br />为规模化发现而连接。</h2>
+          </div>
+          <p class="body-large reveal">
+            平台不改变科学判断，而是让判断所依赖的信息更完整，让跨团队协作和设备执行更自然地发生。
+          </p>
+        </div>
+
+        <div class="capability-grid">
+          <article class="capability-card card-wide card-gradient reveal">
+            <div class="card-copy">
+              <span class="card-tag">DISCOVERY MAINLINE</span>
+              <h3>围绕实验路径组织工作，<br />而不是围绕菜单组织数据。</h3>
+              <p>从项目入口到候选评价，数据随研发对象向前流动，保留每个决策节点的完整上下文。</p>
+            </div>
+            <div class="flow-mini" aria-hidden="true">
+              <span>免疫</span><i></i><span>筛选</span><i></i><span>序列</span><i></i
+              ><span>表达</span><i></i><span>评价</span>
+            </div>
+          </article>
+
+          <article class="capability-card card-tall reveal">
+            <span class="card-tag">TRACEABILITY</span>
+            <h3>每个结果，<br />都能回到源头。</h3>
+            <div class="trace-visual" aria-hidden="true">
+              <div><span>PROJECT</span><strong>PRJ-26-018</strong></div>
+              <i></i>
+              <div><span>SAMPLE</span><strong>CALR · R3</strong></div>
+              <i></i>
+              <div><span>RESULT</span><strong>KD 2.4 nM</strong></div>
+            </div>
+            <p>统一项目、实验、样本、序列与结果之间的关联，支撑审计和科学复盘。</p>
+          </article>
+
+          <article class="capability-card reveal">
+            <span class="card-tag">COLLABORATION</span>
+            <h3>让不同团队共享同一进度。</h3>
+            <p>清晰的工单、状态和权限边界，减少跨实验环节的重复沟通。</p>
+            <div class="team-row" aria-hidden="true">
+              <span>IM</span><span>SB</span><span>NG</span><span>EX</span><span>QA</span>
+            </div>
+          </article>
+
+          <article class="capability-card card-dark reveal">
+            <span class="card-tag">AUTOMATION</span>
+            <h3>把设备接入工作流，<br />把结果带回数据链。</h3>
+            <p>通过工单校验、任务下发和结果回写连接实验室自动化模组。</p>
+            <div class="automation-status" aria-hidden="true">
+              <span><i></i> ORDER VALIDATED</span>
+              <span><i></i> DEVICE RUNNING</span>
+              <span><i></i> DATA RETURNED</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="experience" id="experience">
+        <div class="experience-copy section">
+          <div class="section-label reveal">
+            <span>04</span>
+            <p>Product experience</p>
+          </div>
+          <div class="experience-title">
+            <div>
+              <p class="kicker reveal">复杂流程，清晰呈现</p>
+              <h2 class="reveal">让研发团队专注于下一步，<br />而不是寻找上一份数据。</h2>
+            </div>
+            <p class="body-large reveal">
+              统一工作台以实验对象和流程状态为核心，在保持专业信息密度的同时，提供一致、可预期的操作体验。
+            </p>
+          </div>
+        </div>
+
+        <div class="product-stage reveal">
+          <div class="product-aura"></div>
+          <div class="browser-frame">
+            <div class="browser-bar">
+              <span></span><span></span><span></span>
+              <div>vita.biocytogen · discovery workspace</div>
+            </div>
+            <img
+              src="./assets/vita_view.gif"
+              data-fallback-src="https://raw.githubusercontent.com/TianBa-SCP035/Antibody_Forge/main/docs/assets/vita_view.gif"
+              alt="Antibody Vita 抗体发现工作台界面预览"
+              loading="lazy"
+            />
+          </div>
+          <div class="float-note float-note-left">
+            <span>LIVE WORKFLOW</span>
+            <strong>1310</strong>
+            <small>实验总数</small>
+          </div>
+          <div class="float-note float-note-right">
+            <span>CONNECTED</span>
+            <strong>06</strong>
+            <small>发现阶段</small>
+          </div>
+        </div>
+      </section>
+
+      <section class="ecosystem section">
+        <div class="ecosystem-panel reveal">
+          <div class="ecosystem-grid" aria-hidden="true"></div>
+          <div class="ecosystem-copy">
+            <p class="eyebrow">
+              <span></span>
+              Built for the next scale of discovery
+            </p>
+            <h2>连接 RenMice® 生物学、<br />AI 决策与自动化验证。</h2>
+            <p>
+              Antibody Vita
+              提供贯穿实验执行、数据沉淀与团队协作的基础能力，支撑“千鼠万抗”（Project
+              Integrum）与 RenSuper™ Workstation 相关研发场景持续规模化。
+            </p>
+            <div class="ecosystem-actions">
+              <a
+                class="button button-light"
+                href="https://biocytogen.com.cn/drug-development/renSuper-workstation-ai-antibody-discovery"
+                target="_blank"
+                rel="noreferrer"
+              >
+                探索 RenSuper™
+                <span aria-hidden="true">↗</span>
+              </a>
+              <a
+                class="text-link"
+                href="https://biocytogen.com.cn/drug-development/fully-human-antibody-library"
+                target="_blank"
+                rel="noreferrer"
+              >
+                了解 RenMice® <span aria-hidden="true">→</span>
+              </a>
+            </div>
+          </div>
+          <div class="ecosystem-orbit" aria-hidden="true">
+            <div class="eco-core">VITA</div>
+            <div class="eco-ring ring-a"><span>RENMICE®</span></div>
+            <div class="eco-ring ring-b"><span>AI</span></div>
+            <div class="eco-ring ring-c"><span>AUTOMATION</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="closing section">
+        <p class="kicker reveal">Antibody discovery, connected.</p>
+        <h2 class="reveal">让科学数据保持生命力，<br />让下一次发现更快发生。</h2>
+        <div class="closing-actions reveal">
+          <a
+            class="button button-ink"
+            href="https://github.com/TianBa-SCP035/Antibody_Forge"
+            target="_blank"
+            rel="noreferrer"
+          >
+            查看 GitHub 项目
+            <span aria-hidden="true">↗</span>
+          </a>
+          <a
+            class="text-link text-link-dark"
+            href="https://github.com/TianBa-SCP035/Antibody_Forge/tree/main/docs"
+            target="_blank"
+            rel="noreferrer"
+          >
+            阅读项目文档 <span aria-hidden="true">→</span>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <a class="brand brand-footer" href="#top">
+        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+          <path
+            d="M9 10c5 0 10 7 15 14 5-7 10-14 15-14 4 0 7 3 7 7 0 6-8 11-14 15-3 2-5 6-5 11h-6c0-5-2-9-5-11C10 28 2 23 2 17c0-4 3-7 7-7Z"
+            fill="none"
+            stroke="url(#brand-gradient)"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="5"
+          />
+        </svg>
+        <span><strong>Antibody Vita</strong><small>Discovery connected</small></span>
+      </a>
+      <p>
+        © 2024–2026 Biocytogen Pharmaceuticals (Beijing) Co., Ltd.<br />
+        Proprietary software. All rights reserved.
+      </p>
+      <div>
+        <a href="https://biocytogen.com.cn/" target="_blank" rel="noreferrer"
+          >Biocytogen ↗</a
+        >
+        <a
+          href="https://github.com/TianBa-SCP035/Antibody_Forge"
+          target="_blank"
+          rel="noreferrer"
+          >GitHub ↗</a
+        >
+      </div>
+    </footer>
+
+    <script src="./script.js" defer></script>
+  </body>
+</html>

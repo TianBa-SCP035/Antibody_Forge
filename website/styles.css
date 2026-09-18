@@ -1676,12 +1676,41 @@ p {
   font-size: 10px;
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 50%;
+  opacity: 0.46;
+  transition:
+    color var(--motion-fast) ease,
+    background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    opacity var(--motion-fast) ease,
+    transform var(--motion-base) var(--motion-ease);
+}
+
+.flow-mini span.is-complete {
+  border-color: rgba(99, 243, 217, 0.64);
+  opacity: 1;
+}
+
+.flow-mini span.is-current {
+  color: var(--ink);
+  background: var(--mint);
+  border-color: var(--mint);
+  box-shadow: 0 0 24px rgba(99, 243, 217, 0.22);
+  transform: scale(1.07);
 }
 
 .flow-mini i {
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.12), var(--mint));
+  background: rgba(255, 255, 255, 0.12);
+  transition:
+    background var(--motion-base) ease,
+    box-shadow var(--motion-base) ease;
+}
+
+.flow-mini i.is-complete {
+  background: var(--mint);
+  box-shadow: 0 0 9px rgba(99, 243, 217, 0.36);
 }
 
 .card-tall {
@@ -1704,6 +1733,25 @@ p {
   border: 1px solid rgba(7, 19, 22, 0.1);
   border-radius: 3px;
   box-shadow: 0 10px 30px rgba(7, 19, 22, 0.05);
+  opacity: 0.48;
+  transition:
+    background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-base) ease,
+    opacity var(--motion-fast) ease,
+    transform var(--motion-base) var(--motion-ease);
+}
+
+.trace-visual div.is-complete {
+  border-color: rgba(0, 169, 157, 0.28);
+  opacity: 1;
+}
+
+.trace-visual div.is-current {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(0, 169, 157, 0.55);
+  box-shadow: 0 14px 34px rgba(0, 169, 157, 0.11);
+  transform: translateX(5px);
 }
 
 .trace-visual div span {
@@ -1723,7 +1771,15 @@ p {
 .trace-visual i {
   width: 1px;
   height: 34px;
-  background: linear-gradient(var(--teal), rgba(0, 169, 157, 0.2));
+  background: rgba(0, 169, 157, 0.18);
+  transition:
+    background var(--motion-base) ease,
+    box-shadow var(--motion-base) ease;
+}
+
+.trace-visual i.is-complete {
+  background: var(--teal);
+  box-shadow: 0 0 8px rgba(0, 169, 157, 0.26);
 }
 
 .team-row {
@@ -1746,6 +1802,20 @@ p {
   border-radius: 50%;
   font-size: 10px;
   font-weight: 700;
+  opacity: 0.4;
+  transition:
+    box-shadow var(--motion-fast) ease,
+    opacity var(--motion-fast) ease,
+    transform var(--motion-base) var(--motion-ease);
+}
+
+.team-row span.is-complete {
+  opacity: 1;
+}
+
+.team-row span.is-current {
+  box-shadow: 0 10px 24px rgba(7, 19, 22, 0.16);
+  transform: translateY(-7px);
 }
 
 .team-row span:nth-child(2) {
@@ -1790,6 +1860,21 @@ p {
   border: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 10px;
   letter-spacing: 0.11em;
+  transition:
+    color var(--motion-fast) ease,
+    background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
+}
+
+.automation-status span.is-complete {
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(99, 243, 217, 0.055);
+  border-color: rgba(99, 243, 217, 0.22);
+}
+
+.automation-status span.is-current {
+  color: var(--white);
+  border-color: rgba(99, 243, 217, 0.55);
 }
 
 .automation-status span::after {
@@ -1800,17 +1885,22 @@ p {
   height: 1px;
   content: "";
   background: linear-gradient(90deg, transparent, var(--mint), transparent);
-  opacity: 0.6;
+  opacity: 0;
   transform: translateX(-110%);
-  animation: automation-scan var(--motion-loop) var(--motion-ease) infinite;
+}
+
+.automation-status span.is-current::after {
+  opacity: 0.72;
+  animation: automation-scan 0.72s var(--motion-ease) 1 both;
+  animation-delay: 0s;
 }
 
 .automation-status span:nth-child(2)::after {
-  animation-delay: 0.6s;
+  animation-delay: 0s;
 }
 
 .automation-status span:nth-child(3)::after {
-  animation-delay: 1.2s;
+  animation-delay: 0s;
 }
 
 .automation-status i {
@@ -1818,16 +1908,29 @@ p {
   height: 5px;
   background: var(--mint);
   border-radius: 50%;
+  box-shadow: none;
+  opacity: 0.3;
+  transition:
+    box-shadow var(--motion-fast) ease,
+    opacity var(--motion-fast) ease,
+    transform var(--motion-fast) ease;
+}
+
+.automation-status span.is-complete i {
   box-shadow: 0 0 8px var(--mint);
-  animation: status-pulse 4s var(--motion-smooth) infinite;
+  opacity: 1;
+}
+
+.automation-status span.is-current i {
+  transform: scale(1.35);
 }
 
 .automation-status span:nth-child(2) i {
-  animation-delay: 0.6s;
+  animation-delay: 0s;
 }
 
 .automation-status span:nth-child(3) i {
-  animation-delay: 1.2s;
+  animation-delay: 0s;
 }
 
 .capability-console {

@@ -586,6 +586,31 @@ const capabilityDetails = {
 let capabilityTimer;
 let capabilitySimulationTimers = [];
 let activeCapabilityKey = "mainline";
+const capabilityPreviews = [...document.querySelectorAll("[data-capability-preview]")];
+
+const updateCapabilityPreview = (key, stepIndex, stepCount) => {
+  capabilityPreviews.forEach((preview) => {
+    const isActive = preview.dataset.capabilityPreview === key;
+    preview.classList.toggle("is-active-preview", isActive);
+    const items = [...preview.children].filter((element) => element.tagName !== "I");
+    const connectors = [...preview.children].filter((element) => element.tagName === "I");
+    const lastItemIndex = Math.max(0, items.length - 1);
+    const lastStepIndex = Math.max(1, stepCount - 1);
+    const previewIndex = isActive
+      ? Math.round((stepIndex / lastStepIndex) * lastItemIndex)
+      : -1;
+
+    items.forEach((item, itemIndex) => {
+      item.classList.toggle("is-complete", isActive && itemIndex <= previewIndex);
+      item.classList.toggle("is-current", isActive && itemIndex === previewIndex);
+    });
+    connectors.forEach((connector, connectorIndex) => {
+      connector.classList.toggle("is-complete", isActive && connectorIndex < previewIndex);
+    });
+    if (isActive) preview.dataset.previewStep = String(previewIndex + 1);
+    else delete preview.dataset.previewStep;
+  });
+};
 
 const clearCapabilitySimulation = () => {
   capabilitySimulationTimers.forEach((timer) => window.clearTimeout(timer));
@@ -608,6 +633,7 @@ const runCapabilitySimulation = (detail) => {
     );
     if (status) status.textContent = detail.states[index] ?? "";
     capabilityConsole.dataset.simulationStep = String(index + 1);
+    updateCapabilityPreview(activeCapabilityKey, index, detail.states.length);
   };
 
   if (reducedMotion) {
@@ -626,6 +652,7 @@ const setActiveCapability = (key, revealConsole = false) => {
   if (!capabilityConsole || !detail) return;
   activeCapabilityKey = key;
   clearCapabilitySimulation();
+  updateCapabilityPreview(key, 0, detail.states.length);
 
   capabilityTriggers.forEach((trigger) => {
     const active = trigger.dataset.capabilityTrigger === key;

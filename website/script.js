@@ -12,6 +12,8 @@ const pageProgress = document.querySelector("[data-scroll-progress-rail]");
 const cursorAura = document.querySelector("[data-cursor-aura]");
 const cursorRing = document.querySelector("[data-cursor-ring]");
 const cursorDot = document.querySelector("[data-cursor-dot]");
+const quickTools = document.querySelector("[data-quick-tools]");
+const quickToolsTrigger = document.querySelector("[data-quick-tools-trigger]");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const precisePointer = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 let activeWorkflowIndex = 0;
@@ -45,10 +47,40 @@ mobileNav?.querySelectorAll("a").forEach((link) => {
   link.addEventListener("click", closeMenu);
 });
 
+const closeQuickTools = () => {
+  if (!quickTools || !quickToolsTrigger) return;
+  quickTools.classList.remove("open");
+  quickToolsTrigger.setAttribute("aria-expanded", "false");
+  quickToolsTrigger.setAttribute("aria-label", "打开工具快捷入口");
+};
+
+quickToolsTrigger?.addEventListener("click", () => {
+  const willOpen = !quickTools.classList.contains("open");
+  quickTools.classList.toggle("open", willOpen);
+  quickToolsTrigger.setAttribute("aria-expanded", String(willOpen));
+  quickToolsTrigger.setAttribute("aria-label", willOpen ? "关闭工具快捷入口" : "打开工具快捷入口");
+});
+
+quickTools?.querySelectorAll("a").forEach((link) => {
+  link.addEventListener("click", closeQuickTools);
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (quickTools?.classList.contains("open") && !quickTools.contains(event.target)) {
+    closeQuickTools();
+  }
+});
+
 document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape" || menuToggle?.getAttribute("aria-expanded") !== "true") return;
-  closeMenu();
-  menuToggle.focus();
+  if (event.key !== "Escape") return;
+  if (menuToggle?.getAttribute("aria-expanded") === "true") {
+    closeMenu();
+    menuToggle.focus();
+  }
+  if (quickTools?.classList.contains("open")) {
+    closeQuickTools();
+    quickToolsTrigger.focus();
+  }
 });
 
 window.addEventListener("resize", () => {
@@ -287,7 +319,9 @@ if (sectionNavLinks.length) {
     sectionLinks.set(target, links);
   });
 
-  const sections = [...sectionLinks.keys()].sort((a, b) => a.offsetTop - b.offsetTop);
+  const sections = [
+    ...new Set([...sectionLinks.keys(), ...document.querySelectorAll("[data-nav-break]")]),
+  ].sort((a, b) => a.offsetTop - b.offsetTop);
   let navFrame;
 
   const updateSectionNav = () => {

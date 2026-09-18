@@ -299,7 +299,129 @@
     return { sequence, flags };
   };
 
-  const api = { cleanRawSequence, deduplicateFasta, inferSequenceType, needlemanWunsch, parseFasta, scanLiabilities };
+  const DNA_COMPLEMENT = {
+    A: "T", C: "G", G: "C", T: "A", U: "A", R: "Y", Y: "R", S: "S",
+    W: "W", K: "M", M: "K", B: "V", D: "H", H: "D", V: "B", N: "N",
+  };
+  const CODON_TABLE = {
+    TTT: "F", TTC: "F", TTA: "L", TTG: "L", TCT: "S", TCC: "S", TCA: "S", TCG: "S",
+    TAT: "Y", TAC: "Y", TAA: "*", TAG: "*", TGT: "C", TGC: "C", TGA: "*", TGG: "W",
+    CTT: "L", CTC: "L", CTA: "L", CTG: "L", CCT: "P", CCC: "P", CCA: "P", CCG: "P",
+    CAT: "H", CAC: "H", CAA: "Q", CAG: "Q", CGT: "R", CGC: "R", CGA: "R", CGG: "R",
+    ATT: "I", ATC: "I", ATA: "I", ATG: "M", ACT: "T", ACC: "T", ACA: "T", ACG: "T",
+    AAT: "N", AAC: "N", AAA: "K", AAG: "K", AGT: "S", AGC: "S", AGA: "R", AGG: "R",
+    GTT: "V", GTC: "V", GTA: "V", GTG: "V", GCT: "A", GCC: "A", GCA: "A", GCG: "A",
+    GAT: "D", GAC: "D", GAA: "E", GAG: "E", GGT: "G", GGC: "G", GGA: "G", GGG: "G",
+  };
+  const RESTRICTION_ENZYMES = {
+    EcoRI: { motif: "GAATTC", cut: 1 },
+    BamHI: { motif: "GGATCC", cut: 1 },
+    HindIII: { motif: "AAGCTT", cut: 1 },
+    NotI: { motif: "GCGGCCGC", cut: 2 },
+    XhoI: { motif: "CTCGAG", cut: 1 },
+    NheI: { motif: "GCTAGC", cut: 1 },
+    KpnI: { motif: "GGTACC", cut: 5 },
+    PstI: { motif: "CTGCAG", cut: 5 },
+  };
+
+  const normalizeDna = (raw) => {
+    const sequence = cleanRawSequence(raw).replaceAll("U", "T");
+    if (!sequence) throw new Error("请输入 DNA 序列。");
+    const invalid = [...sequence].find((character) => !DNA_ALPHABET.replace("U", "").includes(character));
+    if (invalid) throw new Error(`DNA 序列包含不支持的字符 ${invalid}。`);
+    return sequence;
+  };
+
+  const reverseComplement = (sequence) =>
+    [...sequence].reverse().map((base) => DNA_COMPLEMENT[base] ?? "N").join("");
+
+  const translateDna = (sequence) => {
+    let peptide = "";
+    for (let index = 0; index <= sequence.length - 3; index += 3) {
+      peptide += CODON_TABLE[sequence.slice(index, index + 3)] ?? "X";
+    }
+    return peptide;
+  };
+
+  const findOrfs = (raw, minimumAminoAcids = 20) => {
+    const sequence = normalizeDna(raw);
+    const strands = [
+      { sequence, sign: 1 },
+      { sequence: reverseComplement(sequence), sign: -1 },
+    ];
+    const orfs = [];
+
+    strands.forEach(({ sequence: strand, sign }) => {
+      for (let frame = 0; frame < 3; frame += 1) {
+        const starts = [];
+        for (let index = frame; index <= strand.length - 3; index += 3) {
+          const codon = strand.slice(index, index + 3);
+          if (codon === "ATG") starts.push(index);
+          if (!["TAA", "TAG", "TGA"].includes(codon)) continue;
+
+          starts.forEach((start) => {
+            const peptide = translateDna(strand.slice(start, index));
+            if (peptide.length < minimumAminoAcids) return;
+            const coordinates =
+              sign === 1
+                ? [start + 1, index + 3]
+                : [sequence.length - (index + 2), sequence.length - start];
+            orfs.push({
+              frame: `${sign > 0 ? "+" : "−"}${frame + 1}`,
+              start: Math.min(...coordinates),
+              end: Math.max(...coordinates),
+              strand: sign,
+              peptide,
+              aminoAcids: peptide.length,
+            });
+          });
+          starts.length = 0;
+        }
+      }
+    });
+
+    orfs.sort((first, second) => second.aminoAcids - first.aminoAcids || first.start - second.start);
+    const gc = [...sequence].filter((base) => base === "G" || base === "C").length;
+    return { sequence, gc: (gc / sequence.length) * 100, orfs };
+  };
+
+  const scanRestrictionSites = (raw, enzymeNames = Object.keys(RESTRICTION_ENZYMES)) => {
+    const sequence = normalizeDna(raw);
+    const hits = enzymeNames.map((name) => {
+      const enzyme = RESTRICTION_ENZYMES[name];
+      if (!enzyme) return null;
+      const positions = [];
+      let index = sequence.indexOf(enzyme.motif);
+      while (index !== -1) {
+        positions.push(index + 1);
+        index = sequence.indexOf(enzyme.motif, index + 1);
+      }
+      return {
+        name,
+        motif: enzyme.motif,
+        positions,
+        cuts: positions.map((position) => position - 1 + enzyme.cut),
+      };
+    }).filter(Boolean);
+    const cuts = [...new Set(hits.flatMap((hit) => hit.cuts))]
+      .filter((position) => position > 0 && position < sequence.length)
+      .sort((first, second) => first - second);
+    const boundaries = [0, ...cuts, sequence.length];
+    const fragments = boundaries.slice(1).map((boundary, index) => boundary - boundaries[index]);
+    return { sequence, hits, cuts, fragments };
+  };
+
+  const api = {
+    cleanRawSequence,
+    deduplicateFasta,
+    findOrfs,
+    inferSequenceType,
+    needlemanWunsch,
+    parseFasta,
+    reverseComplement,
+    scanLiabilities,
+    scanRestrictionSites,
+  };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   if (typeof document === "undefined") return;
 
@@ -397,7 +519,7 @@
 
     try {
       await wait(420);
-      action();
+      await action();
       revealResults(...surfaces);
     } finally {
       surfaces.filter(Boolean).forEach((surface) => surface.classList.remove("is-calculating"));
@@ -830,6 +952,361 @@
       } finally {
         resultElement.classList.remove("loading");
       }
+    });
+  }
+
+  const orfTool = document.querySelector("[data-orf-tool]");
+  if (orfTool) {
+    const input = orfTool.querySelector("[data-orf-input]");
+    const minimumInput = orfTool.querySelector("[data-orf-min-length]");
+    const counter = orfTool.querySelector("[data-orf-counter]");
+    const feedback = orfTool.querySelector("[data-orf-feedback]");
+    const table = orfTool.querySelector("[data-orf-table]");
+    const runButton = orfTool.querySelector("[data-orf-run]");
+    const resultSurface = orfTool.querySelector("[data-orf-results]");
+
+    const setOrfFeedback = (message, error = false) => {
+      setText(feedback, message);
+      feedback.classList.toggle("error", error);
+    };
+
+    const updateOrfCounter = () => {
+      const length = cleanRawSequence(input.value).length;
+      setText(counter, `${length.toLocaleString()} nt`);
+    };
+
+    const resetOrfResults = () => {
+      ["length", "gc", "count", "longest"].forEach((name) =>
+        setText(orfTool.querySelector(`[data-orf-metric="${name}"]`), "—"),
+      );
+      table.replaceChildren();
+      const row = table.insertRow();
+      const cell = row.insertCell();
+      cell.colSpan = 4;
+      cell.textContent = "扫描后将在这里显示候选阅读框。";
+    };
+
+    const runOrfAnalysis = () => {
+      try {
+        const minimum = Math.max(1, Math.min(1000, Number(minimumInput.value) || 20));
+        minimumInput.value = String(minimum);
+        const result = findOrfs(input.value, minimum);
+        const longest = result.orfs[0]?.aminoAcids ?? 0;
+        const values = {
+          length: result.sequence.length.toLocaleString(),
+          gc: `${result.gc.toFixed(1)}%`,
+          count: result.orfs.length.toLocaleString(),
+          longest: `${longest.toLocaleString()} aa`,
+        };
+        Object.entries(values).forEach(([name, value]) =>
+          setText(orfTool.querySelector(`[data-orf-metric="${name}"]`), value),
+        );
+
+        table.replaceChildren();
+        if (!result.orfs.length) {
+          const row = table.insertRow();
+          const cell = row.insertCell();
+          cell.colSpan = 4;
+          cell.textContent = `未发现长度达到 ${minimum} aa 的完整 ORF。`;
+        } else {
+          result.orfs.slice(0, 100).forEach((orf) => {
+            const row = table.insertRow();
+            [
+              orf.frame,
+              `${orf.start.toLocaleString()}–${orf.end.toLocaleString()}`,
+              `${orf.aminoAcids.toLocaleString()} aa`,
+              `${orf.peptide.slice(0, 34)}${orf.peptide.length > 34 ? "…" : ""}`,
+            ].forEach((value) => {
+              row.insertCell().textContent = value;
+            });
+          });
+        }
+        setOrfFeedback(
+          `六阅读框扫描完成，共找到 ${result.orfs.length} 个达到阈值的完整 ORF。`,
+        );
+      } catch (error) {
+        resetOrfResults();
+        setOrfFeedback(error.message, true);
+      }
+    };
+
+    input.addEventListener("input", updateOrfCounter);
+    input.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") runButton.click();
+    });
+    runButton.addEventListener("click", () =>
+      runToolAction(runButton, [resultSurface], "扫描中…", runOrfAnalysis),
+    );
+    orfTool.querySelector("[data-orf-example]").addEventListener("click", () => {
+      input.value = `GGGATG${"GCT".repeat(32)}TAACCCATG${"GAA".repeat(24)}TAG`;
+      updateOrfCounter();
+      resetOrfResults();
+      setOrfFeedback("已载入包含两个候选阅读框的示例；点击“扫描阅读框”开始分析。");
+    });
+    resetOrfResults();
+    updateOrfCounter();
+  }
+
+  const restrictionTool = document.querySelector("[data-restriction-tool]");
+  if (restrictionTool) {
+    const input = restrictionTool.querySelector("[data-restriction-input]");
+    const counter = restrictionTool.querySelector("[data-restriction-counter]");
+    const feedback = restrictionTool.querySelector("[data-restriction-feedback]");
+    const table = restrictionTool.querySelector("[data-restriction-table]");
+    const map = restrictionTool.querySelector("[data-fragment-map]");
+    const runButton = restrictionTool.querySelector("[data-restriction-run]");
+    const resultSurface = restrictionTool.querySelector("[data-restriction-results]");
+
+    const setRestrictionFeedback = (message, error = false) => {
+      setText(feedback, message);
+      feedback.classList.toggle("error", error);
+    };
+
+    const updateRestrictionCounter = () => {
+      setText(counter, `${cleanRawSequence(input.value).length.toLocaleString()} bp`);
+    };
+
+    const resetRestrictionResults = () => {
+      ["length", "enzymes", "sites", "fragments"].forEach((name) =>
+        setText(restrictionTool.querySelector(`[data-restriction-metric="${name}"]`), "—"),
+      );
+      map.replaceChildren();
+      const placeholder = document.createElement("span");
+      placeholder.textContent = "运行后生成片段图谱";
+      map.append(placeholder);
+      table.replaceChildren();
+      const row = table.insertRow();
+      const cell = row.insertCell();
+      cell.colSpan = 4;
+      cell.textContent = "扫描后将在这里显示酶切位点。";
+    };
+
+    const runRestrictionAnalysis = () => {
+      try {
+        const selected = [
+          ...restrictionTool.querySelectorAll('.enzyme-grid input[type="checkbox"]:checked'),
+        ].map((checkbox) => checkbox.value);
+        if (!selected.length) throw new Error("请至少选择一种限制性内切酶。");
+        const result = scanRestrictionSites(input.value, selected);
+        const detected = result.hits.filter((hit) => hit.positions.length);
+        const siteCount = detected.reduce((total, hit) => total + hit.positions.length, 0);
+        const values = {
+          length: result.sequence.length.toLocaleString(),
+          enzymes: detected.length.toLocaleString(),
+          sites: siteCount.toLocaleString(),
+          fragments: result.fragments.length.toLocaleString(),
+        };
+        Object.entries(values).forEach(([name, value]) =>
+          setText(restrictionTool.querySelector(`[data-restriction-metric="${name}"]`), value),
+        );
+
+        table.replaceChildren();
+        result.hits.forEach((hit) => {
+          const row = table.insertRow();
+          [
+            hit.name,
+            hit.motif,
+            hit.positions.length.toLocaleString(),
+            hit.positions.length ? hit.positions.join(", ") : "—",
+          ].forEach((value) => {
+            row.insertCell().textContent = value;
+          });
+        });
+
+        map.replaceChildren();
+        const total = result.sequence.length;
+        result.fragments.forEach((length, index) => {
+          const segment = document.createElement("div");
+          segment.style.flexGrow = String(Math.max(1, length));
+          segment.style.setProperty("--fragment-index", String(index));
+          segment.title = `片段 ${index + 1}: ${length.toLocaleString()} bp`;
+          const label = document.createElement("span");
+          label.textContent = `${length.toLocaleString()} bp`;
+          segment.append(label);
+          map.append(segment);
+        });
+        setRestrictionFeedback(
+          `酶切图谱已生成：${siteCount} 个切割位点，形成 ${result.fragments.length} 个线性片段。`,
+        );
+      } catch (error) {
+        resetRestrictionResults();
+        setRestrictionFeedback(error.message, true);
+      }
+    };
+
+    input.addEventListener("input", updateRestrictionCounter);
+    input.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") runButton.click();
+    });
+    runButton.addEventListener("click", () =>
+      runToolAction(runButton, [resultSurface], "绘制中…", runRestrictionAnalysis),
+    );
+    restrictionTool.querySelector("[data-restriction-example]").addEventListener("click", () => {
+      input.value =
+        "ATGCGTGAATTCGCTAGCGGATCCAAGCTTGCGGCCGCCTCGAGGGTACCCTGCAGTACGATCGATCG";
+      updateRestrictionCounter();
+      resetRestrictionResults();
+      setRestrictionFeedback("已载入包含多种常用酶切位点的示例；点击“生成酶切图谱”。");
+    });
+    resetRestrictionResults();
+    updateRestrictionCounter();
+  }
+
+  const structureTool = document.querySelector("[data-structure-tool]");
+  if (structureTool) {
+    const form = structureTool.querySelector("[data-structure-form]");
+    const input = structureTool.querySelector("[data-structure-input]");
+    const label = structureTool.querySelector("[data-structure-label]");
+    const feedback = structureTool.querySelector("[data-structure-feedback]");
+    const result = structureTool.querySelector("[data-structure-result]");
+    const modeButtons = [...structureTool.querySelectorAll("[data-structure-mode]")];
+    let mode = "pdb";
+    let controller;
+
+    const setStructureFeedback = (message, error = false) => {
+      setText(feedback, message);
+      feedback.classList.toggle("error", error);
+    };
+
+    const setStructureMode = (nextMode) => {
+      mode = nextMode;
+      modeButtons.forEach((button) => {
+        const active = button.dataset.structureMode === mode;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+      if (mode === "pdb") {
+        setText(label, "PDB ID");
+        input.value = "4HHB";
+        input.placeholder = "例如 4HHB";
+        setStructureFeedback("输入四位 PDB ID，例如 4HHB、1HZH 或 7KMG。");
+      } else {
+        setText(label, "UniProt accession");
+        input.value = "P00533";
+        input.placeholder = "例如 P00533";
+        setStructureFeedback("输入 UniProt accession，例如 P00533、P04637 或 P0DTC2。");
+      }
+    };
+
+    const renderStructure = ({ eyebrow, title, subtitle, facts, href, linkText }) => {
+      result.replaceChildren();
+      const entry = document.createElement("div");
+      entry.className = "uniprot-entry structure-entry";
+      const eyebrowNode = document.createElement("span");
+      eyebrowNode.textContent = eyebrow;
+      const titleNode = document.createElement("h4");
+      titleNode.textContent = title;
+      const subtitleNode = document.createElement("p");
+      subtitleNode.textContent = subtitle;
+      const factsNode = document.createElement("div");
+      factsNode.className = "uniprot-facts";
+      facts.forEach(([factLabel, factValue]) => {
+        const fact = document.createElement("div");
+        const small = document.createElement("small");
+        const strong = document.createElement("strong");
+        small.textContent = factLabel;
+        strong.textContent = factValue ?? "—";
+        fact.append(small, strong);
+        factsNode.append(fact);
+      });
+      const link = document.createElement("a");
+      link.href = href;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = linkText;
+      entry.append(eyebrowNode, titleNode, subtitleNode, factsNode, link);
+      result.append(entry);
+    };
+
+    const queryStructure = async () => {
+      const query = input.value.trim().toUpperCase();
+      const valid = mode === "pdb" ? /^[A-Z0-9]{4}$/.test(query) : /^[A-Z0-9]{6,10}$/.test(query);
+      if (!valid) {
+        throw new Error(
+          mode === "pdb"
+            ? "请输入四位 PDB ID，例如 4HHB。"
+            : "请输入 6–10 位 UniProt accession，例如 P00533。",
+        );
+      }
+
+      controller?.abort();
+      controller = new AbortController();
+      result.classList.add("loading");
+      setStructureFeedback(`正在查询 ${query}…`);
+
+      try {
+        if (mode === "pdb") {
+          const response = await fetch(
+            `https://data.rcsb.org/rest/v1/core/entry/${encodeURIComponent(query)}`,
+            { signal: controller.signal },
+          );
+          if (!response.ok) throw new Error(`未找到 PDB 结构 ${query}。`);
+          const entry = await response.json();
+          const method = entry.exptl?.map((item) => item.method).join(" · ") ?? "实验方法未标注";
+          const resolution = entry.rcsb_entry_info?.resolution_combined?.[0];
+          renderStructure({
+            eyebrow: `${query} · EXPERIMENTAL STRUCTURE`,
+            title: entry.struct?.title ?? `PDB ${query}`,
+            subtitle: method,
+            facts: [
+              ["Resolution", resolution ? `${resolution} Å` : "—"],
+              ["Polymer entities", String(entry.rcsb_entry_container_identifiers?.polymer_entity_ids?.length ?? "—")],
+              ["Atom count", entry.rcsb_entry_info?.deposited_atom_count?.toLocaleString() ?? "—"],
+              ["Release date", entry.rcsb_accession_info?.initial_release_date?.slice(0, 10) ?? "—"],
+            ],
+            href: `https://www.rcsb.org/structure/${encodeURIComponent(query)}`,
+            linkText: "打开结构视图 ↗",
+          });
+        } else {
+          const response = await fetch(
+            `https://alphafold.ebi.ac.uk/api/prediction/${encodeURIComponent(query)}`,
+            { signal: controller.signal },
+          );
+          if (!response.ok) throw new Error(`未找到 AlphaFold 模型 ${query}。`);
+          const models = await response.json();
+          const model = models[0];
+          if (!model) throw new Error(`未找到 AlphaFold 模型 ${query}。`);
+          renderStructure({
+            eyebrow: `${query} · PREDICTED STRUCTURE`,
+            title: model.uniprotDescription ?? model.uniprotId ?? query,
+            subtitle: [model.gene, model.organismScientificName].filter(Boolean).join(" · ") || "预测模型",
+            facts: [
+              ["Mean pLDDT", model.globalMetricValue ? Number(model.globalMetricValue).toFixed(1) : "—"],
+              ["Model version", model.latestVersion ? `v${model.latestVersion}` : "—"],
+              ["Model date", model.modelCreatedDate ?? "—"],
+              ["Fragment", String(model.uniprotStart && model.uniprotEnd ? `${model.uniprotStart}–${model.uniprotEnd}` : "—")],
+            ],
+            href: `https://alphafold.ebi.ac.uk/entry/${encodeURIComponent(query)}`,
+            linkText: "打开结构模型 ↗",
+          });
+        }
+        setStructureFeedback(`${query} 的结构信息已加载。`);
+      } catch (error) {
+        if (error.name === "AbortError") return;
+        result.replaceChildren();
+        const placeholder = document.createElement("div");
+        placeholder.className = "uniprot-placeholder";
+        const state = document.createElement("span");
+        state.textContent = "QUERY FAILED";
+        const title = document.createElement("strong");
+        title.textContent = "暂时无法读取结构信息";
+        const detail = document.createElement("p");
+        detail.textContent = error.message;
+        placeholder.append(state, title, detail);
+        result.append(placeholder);
+        setStructureFeedback(error.message, true);
+      } finally {
+        result.classList.remove("loading");
+      }
+    };
+
+    modeButtons.forEach((button) =>
+      button.addEventListener("click", () => setStructureMode(button.dataset.structureMode)),
+    );
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const button = form.querySelector(".primary-action");
+      runToolAction(button, [result], "查询中…", queryStructure);
     });
   }
 })();

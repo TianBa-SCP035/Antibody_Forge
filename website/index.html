@@ -45,7 +45,7 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20260918-10" />
+    <link rel="stylesheet" href="./styles.css?v=20260918-12" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
       {
@@ -64,7 +64,10 @@
           "Client-side DNA reverse complement and translation",
           "Local FASTA deduplication and pairwise sequence alignment",
           "Antibody sequence liability motif scanning",
-          "UniProt public knowledge lookup"
+          "UniProt protein knowledge lookup",
+          "Six-frame ORF analysis",
+          "Restriction enzyme site mapping",
+          "PDB and AlphaFold structure lookup"
         ],
         "creator": {
           "@type": "Organization",
@@ -90,6 +93,42 @@
     <div class="cursor-aura" data-cursor-aura aria-hidden="true"></div>
     <div class="cursor-ring" data-cursor-ring aria-hidden="true"></div>
     <div class="cursor-dot" data-cursor-dot aria-hidden="true"></div>
+    <aside class="quick-tools" data-quick-tools>
+      <nav class="quick-tools-menu" aria-label="工具快捷入口">
+        <a href="./tools/">
+          <span>01</span>
+          <strong>全部工具</strong>
+          <i>8 workspaces</i>
+        </a>
+        <a href="./tools/#sequence">
+          <span>02</span>
+          <strong>序列分析</strong>
+          <i>Protein · DNA</i>
+        </a>
+        <a href="./tools/#compare">
+          <span>03</span>
+          <strong>序列比对</strong>
+          <i>Alignment</i>
+        </a>
+        <a href="./tools/#structure">
+          <span>04</span>
+          <strong>结构检索</strong>
+          <i>PDB · AlphaFold</i>
+        </a>
+      </nav>
+      <button
+        type="button"
+        class="quick-tools-trigger"
+        data-quick-tools-trigger
+        aria-expanded="false"
+        aria-label="打开工具快捷入口"
+      >
+        <span aria-hidden="true">
+          <i></i><i></i><i></i>
+        </span>
+        工具
+      </button>
+    </aside>
 
     <header class="site-header" data-header>
       <a class="brand" href="#top" aria-label="Antibody Vita 首页">
@@ -122,7 +161,7 @@
         <a href="#capabilities" data-section-nav>能力</a>
         <a href="#experience" data-section-nav>数据空间</a>
         <a href="#ecosystem" data-section-nav>生态</a>
-        <a href="#tools" data-section-nav>工具</a>
+        <a href="./tools/">工具</a>
         <a href="#company" data-section-nav>公司</a>
       </nav>
 
@@ -153,7 +192,7 @@
         <a href="#capabilities" data-section-nav>能力</a>
         <a href="#experience" data-section-nav>数据空间</a>
         <a href="#ecosystem" data-section-nav>生态</a>
-        <a href="#tools" data-section-nav>工具</a>
+        <a href="./tools/">工具</a>
         <a href="#company" data-section-nav>公司</a>
         <a href="https://github.com/TianBa-SCP035/Antibody_Forge">GitHub 项目 ↗</a>
       </div>
@@ -582,7 +621,7 @@
         </div>
       </section>
 
-      <section class="tool-gateway section" id="tools">
+      <section class="tool-gateway section" id="tools" data-nav-break>
         <div class="section-label reveal">
           <span>06</span>
           <p>Vita bioinformatics</p>
@@ -594,8 +633,8 @@
           </div>
           <div class="tool-gateway-copy reveal">
             <p>
-              Vita Bioinformatics 集成序列理化性质、FASTA 整理去重、全局比对、抗体开发性位点扫描与蛋白条目查询，
-              覆盖从输入整理到结果复核的常用分析任务。
+              Vita Bioinformatics 集成序列理化性质、FASTA 整理、全局比对、ORF、酶切位点、
+              抗体开发性扫描与结构检索，覆盖从输入整理到序列和结构分析的常用任务。
             </p>
             <a class="text-link text-link-dark" href="./tools/">
               进入 Vita Bioinformatics <span aria-hidden="true">→</span>
@@ -664,8 +703,32 @@
               </div>
               <i class="live">SEARCH</i>
             </a>
+            <a href="./tools/#orf">
+              <span>06</span>
+              <div>
+                <strong>开放阅读框分析</strong>
+                <small>六阅读框 · 候选肽段</small>
+              </div>
+              <i>ORF</i>
+            </a>
+            <a href="./tools/#restriction">
+              <span>07</span>
+              <div>
+                <strong>限制性酶切位点</strong>
+                <small>位点 · 片段图谱</small>
+              </div>
+              <i>MAP</i>
+            </a>
+            <a href="./tools/#structure">
+              <span>08</span>
+              <div>
+                <strong>蛋白结构检索</strong>
+                <small>PDB · AlphaFold</small>
+              </div>
+              <i class="live">SEARCH</i>
+            </a>
             <div class="tool-gateway-footer">
-              <p><i></i> 五类任务 · 一站完成</p>
+              <p><i></i> 八类任务 · 一站完成</p>
               <a href="./tools/">查看全部工具与方法说明 <span aria-hidden="true">↗</span></a>
             </div>
           </div>
@@ -838,7 +901,7 @@
       </div>
     </footer>
 
-    <script src="./script.js?v=20260918-10" defer></script>
-    <script src="./molecular-visual.js?v=20260918-10" defer></script>
+    <script src="./script.js?v=20260918-12" defer></script>
+    <script src="./molecular-visual.js?v=20260918-12" defer></script>
   </body>
 </html>

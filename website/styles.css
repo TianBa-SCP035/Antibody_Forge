@@ -170,13 +170,134 @@ body.motion-paused *::after {
   background: rgba(99, 243, 217, 0.24);
 }
 
+.quick-tools {
+  position: fixed;
+  z-index: 180;
+  right: 24px;
+  bottom: 24px;
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
+.quick-tools-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 18px;
+  color: var(--white);
+  cursor: pointer;
+  background: rgba(7, 19, 22, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  box-shadow: 0 16px 46px rgba(7, 19, 22, 0.24);
+  backdrop-filter: blur(18px);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  transition:
+    background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+.quick-tools-trigger:hover,
+.quick-tools-trigger:focus-visible,
+.quick-tools.open .quick-tools-trigger {
+  background: #0b292d;
+  border-color: rgba(99, 243, 217, 0.42);
+  transform: translateY(-2px);
+}
+
+.quick-tools-trigger > span {
+  display: grid;
+  grid-template-columns: repeat(3, 4px);
+  gap: 3px;
+}
+
+.quick-tools-trigger > span i {
+  width: 4px;
+  height: 4px;
+  background: var(--mint);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(99, 243, 217, 0.7);
+}
+
+.quick-tools-menu {
+  display: grid;
+  width: 278px;
+  padding: 8px;
+  visibility: hidden;
+  background: rgba(7, 19, 22, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(7, 19, 22, 0.3);
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transform-origin: bottom right;
+  backdrop-filter: blur(22px);
+  transition:
+    visibility 0s linear var(--motion-base),
+    opacity var(--motion-base) ease,
+    transform var(--motion-base) var(--motion-ease);
+}
+
+.quick-tools.open .quick-tools-menu {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  transition-delay: 0s;
+}
+
+.quick-tools-menu a {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 8px 10px;
+  color: rgba(255, 255, 255, 0.78);
+  border-radius: 10px;
+  transition:
+    color var(--motion-fast) ease,
+    background var(--motion-fast) ease,
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+.quick-tools-menu a:hover,
+.quick-tools-menu a:focus-visible {
+  color: var(--white);
+  background: rgba(255, 255, 255, 0.07);
+  transform: translateX(3px);
+}
+
+.quick-tools-menu a > span {
+  color: rgba(99, 243, 217, 0.54);
+  font-family: var(--display);
+  font-size: 10px;
+}
+
+.quick-tools-menu strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.quick-tools-menu i {
+  color: rgba(255, 255, 255, 0.34);
+  font-size: 9px;
+  font-style: normal;
+  letter-spacing: 0.04em;
+}
+
 @media (hover: hover) and (pointer: fine) {
   html.cursor-enabled,
   html.cursor-enabled body,
   html.cursor-enabled a,
   html.cursor-enabled button,
   html.cursor-enabled [role="button"],
-  html.cursor-enabled .molecule-stage {
+  html.cursor-enabled .molecule-stage,
+  html.cursor-enabled .quick-tools {
     cursor: none;
   }
 
@@ -3403,6 +3524,20 @@ p {
 @media (max-width: 600px) {
   :root {
     --page: calc(100% - 36px);
+  }
+
+  .quick-tools {
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .quick-tools-menu {
+    width: min(300px, calc(100vw - 32px));
+  }
+
+  .quick-tools-trigger {
+    min-height: 44px;
+    padding: 0 16px;
   }
 
   .hero {

@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://rest.uniprot.org; object-src 'none'; base-uri 'self'; form-action 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://rest.uniprot.org https://data.rcsb.org https://alphafold.ebi.ac.uk; object-src 'none'; base-uri 'self'; form-action 'none'"
     />
     <meta name="theme-color" content="#071316" />
     <meta
       name="description"
-      content="Antibody Vita Bioinformatics：面向蛋白、DNA、FASTA 与抗体序列的分析工作台，提供理化统计、序列整理、全局比对、开发性位点扫描与蛋白条目查询。"
+      content="Antibody Vita Bioinformatics：面向蛋白、DNA、FASTA 与抗体序列的分析工作台，提供理化统计、序列整理、全局比对、ORF、酶切位点、开发性扫描与结构检索。"
     />
     <meta
       name="keywords"
-      content="生物信息学工具, 抗体序列分析, FASTA 去重, 序列比对, 抗体 PTM, UniProt, 蛋白序列工具"
+      content="生物信息学工具, 抗体序列分析, FASTA 去重, 序列比对, ORF 分析, 限制性酶切位点, PDB, AlphaFold, UniProt"
     />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="zh_CN" />
@@ -22,7 +22,7 @@
     <meta property="og:title" content="Vita Bioinformatics｜抗体与序列分析工作台" />
     <meta
       property="og:description"
-      content="覆盖蛋白、DNA、FASTA 与抗体序列理化统计、整理、比对、位点扫描和条目查询的专业分析工作台。"
+      content="覆盖蛋白、DNA、FASTA 与抗体序列统计、比对、ORF、酶切图谱、开发性扫描和结构检索的专业分析工作台。"
     />
     <meta
       property="og:url"
@@ -38,8 +38,8 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/tools/"
     />
     <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="../styles.css?v=20260918-10" />
-    <link rel="stylesheet" href="./tools.css?v=20260918-10" />
+    <link rel="stylesheet" href="../styles.css?v=20260918-12" />
+    <link rel="stylesheet" href="./tools.css?v=20260918-12" />
     <title>Vita Bioinformatics｜抗体与序列分析工作台</title>
     <script type="application/ld+json">
       {
@@ -48,7 +48,7 @@
         "name": "Vita Bioinformatics",
         "applicationCategory": "ScienceApplication",
         "operatingSystem": "Web",
-        "description": "An integrated workspace for antibody, protein, DNA and FASTA sequence analysis.",
+        "description": "An integrated workspace for sequence properties, alignment, ORF analysis, restriction mapping and protein structure lookup.",
         "url": "https://tianba-scp035.github.io/Antibody_Forge/tools/",
         "codeRepository": "https://github.com/TianBa-SCP035/Antibody_Forge"
       }
@@ -127,7 +127,7 @@
           <p class="eyebrow reveal"><span></span> VITA · BIOINFORMATICS WORKSPACE</p>
           <h1 class="reveal">把常用序列操作，<br />带到一个高效的分析工作台。</h1>
           <p class="reveal">
-            汇集 Antibody Vita 高频序列任务，覆盖输入整理、指标计算、序列比对、位点扫描与条目检索，
+            汇集 Antibody Vita 高频分析任务，覆盖输入整理、指标计算、序列比对、ORF、酶切图谱与结构检索，
             提供顺畅、清晰、即开即用的分析体验。
           </p>
           <div class="tools-hero-actions reveal">
@@ -154,7 +154,7 @@
           </div>
           <div class="tools-core">
             <small>WORKSPACE</small>
-            <strong>05</strong>
+          <strong>08</strong>
             <span>TOOLS READY</span>
           </div>
           <div class="tools-signal signal-one"><b></b><span>PARSE</span></div>
@@ -166,8 +166,8 @@
       <section class="tool-platform" id="workspace" data-tool-platform>
         <div class="tool-platform-head">
           <div>
-            <p class="kicker reveal">五类任务 · 一站完成</p>
-            <h2 class="reveal">五个专业工作区，<br />覆盖常用序列任务。</h2>
+            <p class="kicker reveal">八类任务 · 一站完成</p>
+            <h2 class="reveal">八个专业工作区，<br />覆盖序列与结构任务。</h2>
           </div>
           <p class="reveal">
             清晰的任务目录连接独立工作区，让输入、计算与结果有序衔接，
@@ -179,7 +179,7 @@
           <aside class="tool-directory">
             <div class="tool-directory-head">
               <span>TOOL DIRECTORY</span>
-              <strong>5 个工作区</strong>
+              <strong>8 个工作区</strong>
             </div>
             <nav aria-label="生信工具目录">
               <a href="#sequence" data-tool-link="sequence" aria-current="page">
@@ -222,10 +222,34 @@
                 </div>
                 <i class="remote">SEARCH</i>
               </a>
+              <a href="#orf" data-tool-link="orf">
+                <span>06</span>
+                <div>
+                  <strong>开放阅读框分析</strong>
+                  <small>Six-frame · Translation</small>
+                </div>
+                <i>ORF</i>
+              </a>
+              <a href="#restriction" data-tool-link="restriction">
+                <span>07</span>
+                <div>
+                  <strong>限制性酶切位点</strong>
+                  <small>Sites · Fragment map</small>
+                </div>
+                <i>MAP</i>
+              </a>
+              <a href="#structure" data-tool-link="structure">
+                <span>08</span>
+                <div>
+                  <strong>蛋白结构检索</strong>
+                  <small>PDB · AlphaFold</small>
+                </div>
+                <i class="remote">SEARCH</i>
+              </a>
             </nav>
             <p>
               <span></span>
-              从序列输入到指标分析、比对、扫描和条目检索，任务在同一工作区连续完成。
+              从序列输入到理化分析、比对、ORF、酶切图谱与结构检索，任务在同一工作区连续完成。
             </p>
           </aside>
 
@@ -564,13 +588,203 @@
                 查看扩展注释与标准引用信息。
               </p>
             </section>
+
+            <section class="tool-panel" id="orf" data-tool-panel="orf" hidden>
+              <div class="tool-panel-intro">
+                <div>
+                  <span>06 · SIX-FRAME ORF</span>
+                  <h3>开放阅读框分析</h3>
+                </div>
+                <p>扫描正向与反向互补链的六个阅读框，定位起始、终止位置并生成候选肽段。</p>
+              </div>
+
+              <div class="utility-workbench analysis-workbench" data-orf-tool>
+                <div class="utility-input">
+                  <div class="utility-heading">
+                    <label for="orf-input">DNA 序列</label>
+                    <span data-orf-counter>0 nt</span>
+                  </div>
+                  <textarea
+                    id="orf-input"
+                    data-orf-input
+                    rows="14"
+                    spellcheck="false"
+                    placeholder="直接粘贴 DNA 序列，FASTA 标题可选…"
+                  ></textarea>
+                  <div class="analysis-options">
+                    <label>
+                      最短肽段
+                      <input data-orf-min-length type="number" min="1" max="1000" value="20" />
+                      aa
+                    </label>
+                    <span>起始 ATG · 终止 TAA / TAG / TGA</span>
+                  </div>
+                  <div class="utility-actions">
+                    <button type="button" class="ghost-action" data-orf-example>载入示例</button>
+                    <button type="button" class="primary-action" data-orf-run>
+                      扫描阅读框 <span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                  <p class="utility-feedback" data-orf-feedback aria-live="polite">
+                    将同时分析 +1、+2、+3、−1、−2、−3 六个阅读框。
+                  </p>
+                </div>
+                <div class="utility-results" data-orf-results>
+                  <div class="utility-metrics">
+                    <article><small>序列长度</small><strong data-orf-metric="length">—</strong></article>
+                    <article><small>GC 含量</small><strong data-orf-metric="gc">—</strong></article>
+                    <article><small>候选 ORF</small><strong data-orf-metric="count">—</strong></article>
+                    <article><small>最长肽段</small><strong data-orf-metric="longest">—</strong></article>
+                  </div>
+                  <div class="result-table-shell">
+                    <div class="result-table-head"><span>ORF 候选</span></div>
+                    <div class="result-table-scroll">
+                      <table>
+                        <thead>
+                          <tr><th>阅读框</th><th>核苷酸范围</th><th>长度</th><th>肽段预览</th></tr>
+                        </thead>
+                        <tbody data-orf-table>
+                          <tr><td colspan="4">扫描后将在这里显示候选阅读框。</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p class="tool-method-note">
+                候选按肽段长度排序；坐标基于原始输入序列，反向链以负阅读框标记。
+              </p>
+            </section>
+
+            <section class="tool-panel" id="restriction" data-tool-panel="restriction" hidden>
+              <div class="tool-panel-intro">
+                <div>
+                  <span>07 · RESTRICTION MAP</span>
+                  <h3>限制性酶切位点</h3>
+                </div>
+                <p>扫描常用限制性内切酶识别序列，生成位点清单与线性片段分布。</p>
+              </div>
+
+              <div class="utility-workbench analysis-workbench" data-restriction-tool>
+                <div class="utility-input">
+                  <div class="utility-heading">
+                    <label for="restriction-input">DNA 序列</label>
+                    <span data-restriction-counter>0 bp</span>
+                  </div>
+                  <textarea
+                    id="restriction-input"
+                    data-restriction-input
+                    rows="12"
+                    spellcheck="false"
+                    placeholder="直接粘贴质粒片段或 DNA 序列…"
+                  ></textarea>
+                  <fieldset class="enzyme-selector">
+                    <legend>选择酶</legend>
+                    <div class="enzyme-grid">
+                      <label><input type="checkbox" value="EcoRI" checked />EcoRI</label>
+                      <label><input type="checkbox" value="BamHI" checked />BamHI</label>
+                      <label><input type="checkbox" value="HindIII" checked />HindIII</label>
+                      <label><input type="checkbox" value="NotI" checked />NotI</label>
+                      <label><input type="checkbox" value="XhoI" checked />XhoI</label>
+                      <label><input type="checkbox" value="NheI" checked />NheI</label>
+                      <label><input type="checkbox" value="KpnI" checked />KpnI</label>
+                      <label><input type="checkbox" value="PstI" checked />PstI</label>
+                    </div>
+                  </fieldset>
+                  <div class="utility-actions">
+                    <button type="button" class="ghost-action" data-restriction-example>载入示例</button>
+                    <button type="button" class="primary-action" data-restriction-run>
+                      生成酶切图谱 <span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                  <p class="utility-feedback" data-restriction-feedback aria-live="polite">
+                    选择目标酶后扫描识别位点并计算线性片段长度。
+                  </p>
+                </div>
+                <div class="utility-results" data-restriction-results>
+                  <div class="utility-metrics">
+                    <article><small>序列长度</small><strong data-restriction-metric="length">—</strong></article>
+                    <article><small>命中酶数</small><strong data-restriction-metric="enzymes">—</strong></article>
+                    <article><small>酶切位点</small><strong data-restriction-metric="sites">—</strong></article>
+                    <article><small>生成片段</small><strong data-restriction-metric="fragments">—</strong></article>
+                  </div>
+                  <div class="fragment-map" data-fragment-map aria-label="线性酶切片段图谱">
+                    <span>运行后生成片段图谱</span>
+                  </div>
+                  <div class="result-table-shell">
+                    <div class="result-table-head"><span>位点清单</span></div>
+                    <div class="result-table-scroll">
+                      <table>
+                        <thead>
+                          <tr><th>酶</th><th>识别序列</th><th>位点数</th><th>位置</th></tr>
+                        </thead>
+                        <tbody data-restriction-table>
+                          <tr><td colspan="4">扫描后将在这里显示酶切位点。</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p class="tool-method-note">
+                图谱按线性 DNA 计算，位置采用 1-based 坐标；片段长度依据各识别序列的标准切割位置生成。
+              </p>
+            </section>
+
+            <section class="tool-panel" id="structure" data-tool-panel="structure" hidden>
+              <div class="tool-panel-intro">
+                <div>
+                  <span>08 · STRUCTURE SEARCH</span>
+                  <h3>蛋白结构检索</h3>
+                </div>
+                <p>使用 PDB ID 或 UniProt accession 查询实验结构与预测模型的关键信息。</p>
+              </div>
+
+              <div class="uniprot-workbench structure-workbench" data-structure-tool>
+                <form class="uniprot-search" data-structure-form>
+                  <div class="structure-mode-switch" role="group" aria-label="选择结构数据库">
+                    <button type="button" class="active" data-structure-mode="pdb" aria-pressed="true">PDB</button>
+                    <button type="button" data-structure-mode="alphafold" aria-pressed="false">AlphaFold</button>
+                  </div>
+                  <label for="structure-query" data-structure-label>PDB ID</label>
+                  <div>
+                    <input
+                      id="structure-query"
+                      data-structure-input
+                      type="text"
+                      value="4HHB"
+                      maxlength="20"
+                      autocomplete="off"
+                      spellcheck="false"
+                    />
+                    <button type="submit" class="primary-action">
+                      查询结构 <span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                  <p data-structure-feedback aria-live="polite">
+                    输入四位 PDB ID，例如 4HHB、1HZH 或 7KMG。
+                  </p>
+                </form>
+
+                <article class="uniprot-result structure-result" data-structure-result aria-live="polite">
+                  <div class="uniprot-placeholder">
+                    <span>STRUCTURE KNOWLEDGE</span>
+                    <strong>输入标识符后查询</strong>
+                    <p>查看实验方法、分辨率、发布日期和模型置信度等信息。</p>
+                  </div>
+                </article>
+              </div>
+              <p class="tool-method-note">
+                PDB 模式呈现实验结构摘要；AlphaFold 模式展示对应 accession 的预测模型与置信度。
+              </p>
+            </section>
           </div>
         </div>
       </section>
 
       <section class="service-directory section" id="services">
         <div class="section-label reveal">
-          <span>06</span>
+          <span>09</span>
           <p>Extended analysis resources</p>
         </div>
         <div class="service-intro">
@@ -646,6 +860,9 @@
           <a href="#fasta" data-tool-link="fasta">FASTA 整理与去重</a>
           <a href="#compare" data-tool-link="compare">双序列全局比对</a>
           <a href="#liability" data-tool-link="liability">抗体开发性位点扫描</a>
+          <a href="#orf" data-tool-link="orf">开放阅读框分析</a>
+          <a href="#restriction" data-tool-link="restriction">限制性酶切位点</a>
+          <a href="#structure" data-tool-link="structure">蛋白结构检索</a>
         </nav>
         <nav class="footer-column" aria-label="资源链接">
           <strong>资源</strong>
@@ -666,8 +883,8 @@
       </div>
     </footer>
 
-    <script src="../script.js?v=20260918-10" defer></script>
-    <script src="../sequence-tools.js?v=20260918-10" defer></script>
-    <script src="./tools.js?v=20260918-10" defer></script>
+    <script src="../script.js?v=20260918-12" defer></script>
+    <script src="../sequence-tools.js?v=20260918-12" defer></script>
+    <script src="./tools.js?v=20260918-12" defer></script>
   </body>
 </html>

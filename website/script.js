@@ -708,10 +708,12 @@ const capabilityDetails = {
 const capabilityKeys = Object.keys(capabilityDetails);
 let activeCapabilityKey = "mainline";
 const capabilityStepByKey = new Map(Object.keys(capabilityDetails).map((key) => [key, 0]));
+let capabilityStoryTransitionId = 0;
 
-const setCapabilityStep = (requestedIndex, focusTab = false) => {
+const setCapabilityStep = (requestedIndex, focusTab = false, animateStory = true) => {
   const detail = capabilityDetails[activeCapabilityKey];
   if (!capabilityWorkspace || !detail) return;
+  const previousStepIndex = capabilityStepByKey.get(activeCapabilityKey) ?? 0;
   const stepIndex = Math.max(0, Math.min(requestedIndex, detail.steps.length - 1));
   const step = detail.steps[stepIndex];
   capabilityStepByKey.set(activeCapabilityKey, stepIndex);
@@ -734,10 +736,12 @@ const setCapabilityStep = (requestedIndex, focusTab = false) => {
     "[data-capability-step-action]": step.action,
     "[data-capability-step-evidence]": step.evidence,
   };
-  Object.entries(values).forEach(([selector, value]) => {
-    const target = capabilityWorkspace.querySelector(selector);
-    if (target) target.textContent = value;
-  });
+  const applyValues = () => {
+    Object.entries(values).forEach(([selector, value]) => {
+      const target = capabilityWorkspace.querySelector(selector);
+      if (target) target.textContent = value;
+    });
+  };
 
   capabilityWorkspace.dataset.stageIndex = String(stepIndex);
   const routeProgress = capabilityWorkspace.querySelector("[data-capability-route-progress]");
@@ -747,29 +751,59 @@ const setCapabilityStep = (requestedIndex, focusTab = false) => {
   }
 
   const panel = capabilityWorkspace.querySelector("[data-capability-step-title]")?.closest("section");
-  if (panel && !reducedMotion) {
-    panel.animate(
+  if (!panel || reducedMotion || !animateStory || previousStepIndex === stepIndex) {
+    capabilityStoryTransitionId += 1;
+    applyValues();
+    return;
+  }
+
+  const transitionId = ++capabilityStoryTransitionId;
+  const storyCopy = panel.querySelector(".capability-story-copy");
+  const storyCards = [...panel.querySelectorAll(".story-card")];
+  const transitionTargets = [storyCopy, ...storyCards].filter(Boolean);
+  transitionTargets.forEach((target) => target.getAnimations().forEach((animation) => animation.cancel()));
+
+  const exits = transitionTargets.map((target, index) =>
+    target.animate(
       [
-        { opacity: 0.55, transform: "translateY(5px)" },
-        { opacity: 1, transform: "translateY(0)" },
+        { opacity: 1, filter: "blur(0)", translate: "0 0" },
+        {
+          opacity: 0,
+          filter: "blur(3px)",
+          translate: index === 0 ? "-10px 0" : "0 8px",
+        },
       ],
-      { duration: 180, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-    );
-    panel.querySelectorAll(".story-card").forEach((card, index) => {
-      card.animate(
+      {
+        duration: 130,
+        delay: index * 16,
+        easing: "cubic-bezier(0.4, 0, 1, 1)",
+        fill: "forwards",
+      },
+    ).finished,
+  );
+
+  Promise.allSettled(exits).then(() => {
+    if (transitionId !== capabilityStoryTransitionId) return;
+    applyValues();
+    transitionTargets.forEach((target, index) => {
+      target.animate(
         [
-          { opacity: 0.35, filter: "blur(4px)" },
-          { opacity: 1, filter: "blur(0)" },
+          {
+            opacity: 0,
+            filter: "blur(4px)",
+            translate: index === 0 ? "14px 0" : "0 12px",
+          },
+          { opacity: 1, filter: "blur(0)", translate: "0 0" },
         ],
         {
-          duration: 280,
-          delay: index * 45,
+          duration: index === 0 ? 300 : 340,
+          delay: index * 48,
           easing: "cubic-bezier(0.22, 1, 0.36, 1)",
           fill: "both",
         },
       );
     });
-  }
+  });
 };
 
 const buildCapabilityPath = (detail) => {
@@ -850,7 +884,7 @@ const setActiveCapability = (key, focusTab = false) => {
   });
 
   buildCapabilityPath(detail);
-  setCapabilityStep(capabilityStepByKey.get(key) ?? 0);
+  setCapabilityStep(capabilityStepByKey.get(key) ?? 0, false, false);
   if (changed && capabilityContent && !reducedMotion) {
     const direction = nextIndex >= previousIndex ? 1 : -1;
     capabilityContent.animate(

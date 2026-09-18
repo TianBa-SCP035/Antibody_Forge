@@ -1219,8 +1219,7 @@ p {
   position: relative;
 }
 
-.hero::after,
-.workflow::after {
+.hero::after {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -1263,11 +1262,15 @@ p {
   text-wrap: balance;
 }
 
+.workflow {
+  padding-bottom: 32px;
+}
+
 .workflow-track {
   position: relative;
   width: var(--page);
   margin: 0 auto;
-  padding-bottom: 44px;
+  padding-bottom: 32px;
 }
 
 .track-line {
@@ -1294,7 +1297,7 @@ p {
 
 .workflow-step {
   position: relative;
-  min-height: 270px;
+  min-height: 250px;
   padding: 0 26px 0 0;
   cursor: pointer;
   border-radius: 2px;
@@ -1376,7 +1379,7 @@ p {
 
 .workflow-inspector {
   width: var(--page);
-  margin: 0 auto 96px;
+  margin: 0 auto;
   padding: 26px 28px;
   color: var(--white);
   background:
@@ -1515,6 +1518,28 @@ p {
   grid-template-columns: 1.25fr 0.75fr;
   align-items: end;
   gap: 8vw;
+}
+
+.capabilities {
+  padding-top: clamp(56px, 5.2vw, 72px);
+}
+
+.capabilities > .section-label {
+  margin-bottom: clamp(18px, 1.8vw, 24px);
+}
+
+.capabilities-intro {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7vw;
+}
+
+.capabilities-intro h2 {
+  font-size: clamp(32px, 3.2vw, 46px);
+  line-height: 1.12;
+}
+
+.capabilities-intro .kicker {
+  margin-bottom: 12px;
 }
 
 .capabilities-intro .body-large,
@@ -2306,8 +2331,8 @@ p {
 
 .capability-theatre {
   position: relative;
-  padding: 12px;
-  margin-top: var(--feature-gap);
+  padding: 10px;
+  margin-top: clamp(28px, 2.8vw, 38px);
   overflow: hidden;
   color: var(--white);
   background: #061519;
@@ -2369,8 +2394,8 @@ p {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
-  min-height: 72px;
-  padding: 13px 16px;
+  min-height: 64px;
+  padding: 11px 15px;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.48);
   text-align: left;
@@ -2481,8 +2506,8 @@ p {
   grid-template-columns: minmax(300px, 0.86fr) minmax(480px, 1.14fr);
   gap: clamp(28px, 3.6vw, 52px);
   align-items: center;
-  min-height: 430px;
-  padding: clamp(34px, 4.4vw, 56px) clamp(26px, 4.4vw, 58px);
+  min-height: 390px;
+  padding: clamp(28px, 2.6vw, 36px) clamp(24px, 4vw, 52px);
 }
 
 .capability-theatre-copy {
@@ -2510,7 +2535,7 @@ p {
 }
 
 .capability-theatre-copy h3 {
-  margin: 24px 0 18px;
+  margin: 20px 0 15px;
   font-family: var(--display);
   font-size: clamp(32px, 3.5vw, 48px);
   font-weight: 590;
@@ -2531,7 +2556,7 @@ p {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 26px;
+  margin-top: 22px;
 }
 
 .capability-signal-cloud > div {
@@ -2580,7 +2605,7 @@ p {
 
 .capability-route-visual {
   position: relative;
-  min-height: 350px;
+  min-height: 310px;
   overflow: hidden;
   background:
     radial-gradient(circle at 50% 42%, rgba(92, 207, 205, 0.11), transparent 42%),
@@ -2913,8 +2938,8 @@ p {
   grid-template-columns: minmax(240px, 0.62fr) minmax(0, 1.38fr);
   gap: clamp(26px, 3.4vw, 46px);
   align-items: center;
-  min-height: 250px;
-  padding: clamp(28px, 3.3vw, 42px);
+  min-height: 220px;
+  padding: clamp(24px, 2.8vw, 34px);
   color: var(--ink);
   background:
     radial-gradient(circle at 90% 20%, rgba(117, 170, 255, 0.16), transparent 32%),
@@ -2930,7 +2955,7 @@ p {
 }
 
 .capability-story-copy h4 {
-  margin: 18px 0 12px;
+  margin: 14px 0 10px;
   font-family: var(--display);
   font-size: clamp(25px, 2.5vw, 34px);
   font-weight: 590;
@@ -2958,8 +2983,8 @@ p {
   position: relative;
   display: grid;
   align-content: space-between;
-  min-height: 166px;
-  padding: 18px;
+  min-height: 150px;
+  padding: 16px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid rgba(7, 19, 22, 0.08);
@@ -5691,8 +5716,12 @@ p {
   }
 
   .workflow-inspector {
-    margin-bottom: 72px;
+    margin-bottom: 0;
     padding: 24px 22px;
+  }
+
+  .workflow {
+    padding-bottom: 48px;
   }
 
   .capability-theatre-tabs {
@@ -6173,7 +6202,7 @@ p {
   }
 
   .workflow-inspector {
-    margin-bottom: 56px;
+    margin-bottom: 0;
     padding: 20px 16px;
   }
 

@@ -809,6 +809,21 @@ class AuditMiddlewareTests(unittest.TestCase):
             )
         )
 
+    def test_labillion_status_sync_uses_chinese_audit_name(self):
+        with patch.object(audit_middleware, "_get_action_mappings", return_value=()):
+            context = audit_middleware._build_context(
+                "POST",
+                "/api/mega-automation/flow-work-orders/12/sync-labillion-status",
+                {},
+                {},
+            )
+        action = context.actions[0]
+        self.assertEqual(
+            action.code,
+            audit_config.LABILLION_STATUS_SYNC_AUDIT_ACTION.code,
+        )
+        self.assertEqual(action.name, "同步镁伽工单状态")
+
 
 class AuditCoverageTests(unittest.TestCase):
     def test_all_write_routes_are_classified_from_versioned_schema_seed(self):

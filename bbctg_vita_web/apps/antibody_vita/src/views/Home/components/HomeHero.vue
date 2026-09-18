@@ -6,7 +6,7 @@ import { useUserStore } from '@vben/stores';
 import { $t } from '#/locales';
 
 import { useHomeWeather } from '../composables/useHomeWeather';
-import { getHomeGreeting } from '../home-data';
+import { getHomeGreeting, HOME_SHOWCASE_SITE_URL } from '../home-data';
 
 defineOptions({ name: 'HomeHero' });
 
@@ -89,7 +89,18 @@ watch(
         <span class="home-hero-wave ml-1" aria-hidden="true">👋</span>
       </h1>
       <p class="mt-1 text-sm text-foreground/55">
-        {{ $t('page.home.heroStatus') }}
+        <template
+          v-for="(chunk, idx) in $t('page.home.heroStatus').split('Antibody Vita')"
+          :key="idx"
+        >
+          <a
+            v-if="idx"
+            class="cursor-pointer text-inherit no-underline hover:underline hover:underline-offset-2 focus-visible:underline focus-visible:outline-none"
+            :href="HOME_SHOWCASE_SITE_URL"
+            target="_blank"
+            rel="noopener noreferrer"
+          >Antibody Vita</a>{{ chunk }}
+        </template>
       </p>
       <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/50">
         <span>{{ $t('page.home.metricTodo') }} 0</span>

@@ -105,7 +105,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
 **Labillion 回调** `POST /api/mega-automation/labillion/callback` **无需登录**（镁伽服务器推送）；路由层不调用 `require_permission`，响应恒为 HTTP 200。
 
-**主动状态同步** `POST .../sync-labillion-status` 使用 `mega.page.flow_work_order`（与详情只读同级），供详情页进入时拉取镁伽最新状态；不登记人员权限动作映射，实际数据变化仍由通用审计自动记录。
+**主动状态同步** `POST .../sync-labillion-status` 使用 `mega.page.flow_work_order`（与详情只读同级），供详情页进入时拉取镁伽最新状态；不登记人员权限动作映射，审计操作名为「同步镁伽工单状态」，实际数据变化仍由通用审计自动记录。
 
 **手动执行定时任务** `POST /api/system/features/jobs/run` 需 `system.feature.manage`；body `{ "job_code": "job.xxx" }`。后台线程执行，结果记入 `sys_job_run_log` 与操作日志。
 
@@ -303,6 +303,7 @@ flowchart LR
 - **`/home`** 为系统级默认落地页（`defaultHomePath`、`build_user_info` 的 `homePath`）；用户可在首页快捷导航弹窗中覆盖为本机偏好路径；**不设 `meta.authority`**，凡已登录用户可访问（含零角色账号）。
 - 侧栏「首页」`order: 0`；**门户 Hero** → **三列等宽**：公告中心+站内信 | 快捷导航+好书推荐+暖心便签 | 日历+使用提示。
 - **系统快捷导航** 6 格（3×2）：右上角「自定义配置」弹窗内排布快捷入口；**点击已填入的格子**可勾选为登录后默认页（`HOME_START_PAGE_STORAGE_KEY`），新模块只需加入下方预设列表即可被用户选为默认，无需单独维护默认页清单。配置仅存浏览器 `localStorage`，**不落库**；未勾选时仍用服务端 `homePath`。
+- 「使用提示」底部外链打开 GitHub Pages 展示站；Hero 问候语与欢迎公告里的 `Antibody Vita` 默认与正文同色，悬浮/键盘聚焦时出现下划线并可点开同一站点。
 - 公告中心 / 站内信为固定高度列表区，超出滚动；点击查看全部（列表页待接 API）。
 - 静态数据在 `views/Home/home-data.ts`；暖心便签仅存浏览器 `localStorage`。
 - **北京天气**：前端 `useHomeWeather` 直连 **Open-Meteo** 与 **weather-api.site**，并行竞速取先返回者；30 分钟浏览器缓存；均无需注册或 API Key。

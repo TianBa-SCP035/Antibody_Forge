@@ -71,6 +71,10 @@ export const HOME_WARM_NOTE_STORAGE_KEY = 'antibody-vita-home-warm-note';
 /** 登录后默认打开的站内路径（空则跟随服务端 homePath / 系统默认） */
 export const HOME_START_PAGE_STORAGE_KEY = 'antibody-vita-user-start-page';
 
+/** 对外展示站（GitHub Pages），首页品牌名与「使用提示」底部外链 */
+export const HOME_SHOWCASE_SITE_URL =
+  'https://tianba-scp035.github.io/Antibody_Forge/';
+
 export interface QuickNavSlot {
   comingSoon?: boolean;
   external?: boolean;

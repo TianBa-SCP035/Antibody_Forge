@@ -157,7 +157,7 @@ POST /api/mega-automation/flow-work-orders/{order_id}/sync-labillion-status
 POST /api/mega-automation/labillion/callback          # 镁伽推送，无需登录，恒 200
 ```
 
-`sync-labillion-status`：详情页进入时对 `sent/running/paused` 工单异步调用；单工单 10 分钟节流；返回 `execution_progress`（仅 Running 且有值时，供页面展示）。
+`sync-labillion-status`：详情页进入时对 `sent/running/paused` 工单异步调用；单工单 10 分钟节流；返回 `execution_progress`（仅 Running 且有值时，供页面展示）。审计操作名为「同步镁伽工单状态」。
 
 ## 6.1 Labillion 集成（环境变量）
 

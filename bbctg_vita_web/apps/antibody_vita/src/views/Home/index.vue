@@ -12,6 +12,7 @@ import HomeHero from './components/HomeHero.vue';
 import HomeQuickNav from './components/HomeQuickNav.vue';
 import {
   HOME_FEATURED_READ_URL,
+  HOME_SHOWCASE_SITE_URL,
   HOME_WARM_NOTE_STORAGE_KEY,
   homePlatformTips,
   useHomeLocalizedMocks,
@@ -216,6 +217,15 @@ function onViewAllMessages() {
               <span>{{ $t(tipKey) }}</span>
             </li>
           </ul>
+          <a
+            :href="HOME_SHOWCASE_SITE_URL"
+            class="mt-3 flex items-center gap-1 border-t border-border/50 pt-2.5 text-xs text-foreground/45 transition-colors hover:text-foreground/70"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {{ $t('page.home.tipsShowcaseLink') }}
+            <span aria-hidden="true">↗</span>
+          </a>
         </div>
       </div>
     </div>

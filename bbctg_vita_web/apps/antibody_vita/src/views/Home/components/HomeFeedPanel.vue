@@ -5,7 +5,11 @@ import { IconifyIcon as Icon } from '@vben/icons';
 
 import { $t } from '#/locales';
 
-import type { HomeAnnouncement, HomeMessage } from '../home-data';
+import {
+  HOME_SHOWCASE_SITE_URL,
+  type HomeAnnouncement,
+  type HomeMessage,
+} from '../home-data';
 
 defineOptions({ name: 'HomeFeedPanel' });
 
@@ -70,7 +74,18 @@ const showFooter = computed(() =>
               </time>
             </div>
             <p class="mt-1.5 line-clamp-3 text-sm leading-relaxed text-foreground/65">
-              {{ item.content }}
+              <template
+                v-for="(chunk, idx) in item.content.split('Antibody Vita')"
+                :key="idx"
+              >
+                <a
+                  v-if="idx"
+                  class="cursor-pointer text-inherit no-underline hover:underline hover:underline-offset-2 focus-visible:underline focus-visible:outline-none"
+                  :href="HOME_SHOWCASE_SITE_URL"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >Antibody Vita</a>{{ chunk }}
+              </template>
             </p>
           </article>
         </li>

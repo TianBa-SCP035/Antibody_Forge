@@ -60,6 +60,12 @@ LABILLION_CALLBACK_AUDIT_ACTION = AuditAction(
     operation_type="update",
     resource="MegaFlowWorkOrderDispatch",
 )
+LABILLION_STATUS_SYNC_AUDIT_ACTION = AuditAction(
+    code="mega.labillion.status_sync",
+    name="同步镁伽工单状态",
+    operation_type="update",
+    resource="MegaFlowWorkOrder",
+)
 SYSTEM_OR_MANUAL_AUDIT_ROUTES: dict[
     tuple[str, str],
     AuditAction | None,
@@ -70,7 +76,7 @@ SYSTEM_OR_MANUAL_AUDIT_ROUTES: dict[
     (
         "POST",
         "/api/mega-automation/flow-work-orders/{order_id}/sync-labillion-status",
-    ): None,
+    ): LABILLION_STATUS_SYNC_AUDIT_ACTION,
     (
         "POST",
         "/api/mega-automation/labillion/callback",

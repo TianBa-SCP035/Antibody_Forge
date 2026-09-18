@@ -5,6 +5,8 @@ const revealItems = document.querySelectorAll(".reveal");
 const workflow = document.querySelector("[data-workflow]");
 const workflowSteps = document.querySelectorAll("[data-step]");
 const trackProgress = document.querySelector("[data-track-progress]");
+const sectionNavLinks = document.querySelectorAll("[data-section-nav]");
+const ecosystemOrbit = document.querySelector(".ecosystem-orbit");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const updateHeader = () => {
@@ -25,10 +27,17 @@ menuToggle?.addEventListener("click", () => {
   menuToggle.setAttribute("aria-label", willOpen ? "关闭导航菜单" : "打开导航菜单");
   mobileNav?.classList.toggle("open", willOpen);
   document.body.classList.toggle("menu-open", willOpen);
+  if (willOpen) mobileNav?.querySelector("a")?.focus();
 });
 
 mobileNav?.querySelectorAll("a").forEach((link) => {
   link.addEventListener("click", closeMenu);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || menuToggle?.getAttribute("aria-expanded") !== "true") return;
+  closeMenu();
+  menuToggle.focus();
 });
 
 window.addEventListener("resize", () => {
@@ -36,6 +45,9 @@ window.addEventListener("resize", () => {
 });
 
 window.addEventListener("scroll", updateHeader, { passive: true });
+document.addEventListener("visibilitychange", () => {
+  document.body.classList.toggle("motion-paused", document.hidden);
+});
 updateHeader();
 
 if (reducedMotion || !("IntersectionObserver" in window)) {
@@ -75,6 +87,7 @@ const setActiveWorkflowStep = (index) => {
 workflowSteps.forEach((step, index) => {
   step.addEventListener("mouseenter", () => setActiveWorkflowStep(index));
   step.addEventListener("focusin", () => setActiveWorkflowStep(index));
+  step.addEventListener("click", () => setActiveWorkflowStep(index));
 });
 
 if (workflow && "IntersectionObserver" in window) {
@@ -97,6 +110,62 @@ if (workflow && "IntersectionObserver" in window) {
   );
 
   workflowObserver.observe(workflow);
+}
+
+if (sectionNavLinks.length) {
+  const sectionLinks = new Map();
+
+  sectionNavLinks.forEach((link) => {
+    const target = document.querySelector(link.getAttribute("href"));
+    if (!target) return;
+    const links = sectionLinks.get(target) ?? [];
+    links.push(link);
+    sectionLinks.set(target, links);
+  });
+
+  const sections = [...sectionLinks.keys()].sort((a, b) => a.offsetTop - b.offsetTop);
+  let navFrame;
+
+  const updateSectionNav = () => {
+    const marker = window.scrollY + window.innerHeight * 0.34;
+    const activeSection = [...sections].reverse().find((section) => section.offsetTop <= marker);
+
+    sectionNavLinks.forEach((link) => {
+      link.classList.remove("active");
+      link.removeAttribute("aria-current");
+    });
+    sectionLinks.get(activeSection)?.forEach((link) => {
+      link.classList.add("active");
+      link.setAttribute("aria-current", "location");
+    });
+  };
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (navFrame) return;
+      navFrame = window.requestAnimationFrame(() => {
+        updateSectionNav();
+        navFrame = undefined;
+      });
+    },
+    { passive: true },
+  );
+
+  window.addEventListener("resize", updateSectionNav);
+  updateSectionNav();
+}
+
+if (ecosystemOrbit) {
+  if (reducedMotion || !("IntersectionObserver" in window)) {
+    ecosystemOrbit.classList.add("in-view");
+  } else {
+    const motionObserver = new IntersectionObserver(
+      ([entry]) => ecosystemOrbit.classList.toggle("in-view", entry.isIntersecting),
+      { rootMargin: "15% 0px", threshold: 0.08 },
+    );
+    motionObserver.observe(ecosystemOrbit);
+  }
 }
 
 setActiveWorkflowStep(0);

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="no-js">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -35,6 +35,9 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <script>
+      document.documentElement.classList.replace("no-js", "js");
+    </script>
     <link rel="stylesheet" href="./styles.css" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
@@ -51,7 +54,15 @@
         "creator": {
           "@type": "Organization",
           "name": "Biocytogen Pharmaceuticals (Beijing) Co., Ltd.",
-          "url": "https://biocytogen.com.cn/"
+          "url": "https://biocytogen.com.cn/",
+          "email": "info@biocytogen.com.cn",
+          "telephone": "+86-10-56967680",
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "宝参南街12号",
+            "addressLocality": "北京市大兴区",
+            "addressCountry": "CN"
+          }
         }
       }
     </script>
@@ -85,10 +96,11 @@
       </a>
 
       <nav class="desktop-nav" aria-label="主要导航">
-        <a href="#platform">平台</a>
-        <a href="#workflow">工作流</a>
-        <a href="#capabilities">能力</a>
-        <a href="#experience">界面</a>
+        <a href="#platform" data-section-nav>平台</a>
+        <a href="#workflow" data-section-nav>工作流</a>
+        <a href="#capabilities" data-section-nav>能力</a>
+        <a href="#experience" data-section-nav>界面</a>
+        <a href="#company" data-section-nav>公司</a>
       </nav>
 
       <a
@@ -106,16 +118,18 @@
         type="button"
         aria-label="打开导航菜单"
         aria-expanded="false"
+        aria-controls="mobile-navigation"
         data-menu-toggle
       >
         <span></span><span></span>
       </button>
 
-      <div class="mobile-nav" data-mobile-nav>
-        <a href="#platform">平台</a>
-        <a href="#workflow">工作流</a>
-        <a href="#capabilities">能力</a>
-        <a href="#experience">界面</a>
+      <div class="mobile-nav" id="mobile-navigation" data-mobile-nav>
+        <a href="#platform" data-section-nav>平台</a>
+        <a href="#workflow" data-section-nav>工作流</a>
+        <a href="#capabilities" data-section-nav>能力</a>
+        <a href="#experience" data-section-nav>界面</a>
+        <a href="#company" data-section-nav>公司</a>
         <a href="https://github.com/TianBa-SCP035/Antibody_Forge">GitHub 项目 ↗</a>
       </div>
     </header>
@@ -312,7 +326,7 @@
 
         <div class="workflow-track" data-workflow>
           <div class="track-line"><span data-track-progress></span></div>
-          <article class="workflow-step active" data-step>
+          <article class="workflow-step active" data-step tabindex="0">
             <span class="step-number">01</span>
             <div class="step-dot"></div>
             <div>
@@ -321,7 +335,7 @@
               <p>免疫计划、笼位、进度与 FACS / ELISA 效价结果统一进入发现入口。</p>
             </div>
           </article>
-          <article class="workflow-step" data-step>
+          <article class="workflow-step" data-step tabindex="0">
             <span class="step-number">02</span>
             <div class="step-dot"></div>
             <div>
@@ -330,7 +344,7 @@
               <p>单 B 细胞、噬菌体展示等路径并行推进，并保持项目上下文连续。</p>
             </div>
           </article>
-          <article class="workflow-step" data-step>
+          <article class="workflow-step" data-step tabindex="0">
             <span class="step-number">03</span>
             <div class="step-dot"></div>
             <div>
@@ -339,7 +353,7 @@
               <p>衔接文库构建、质检、Sanger / NGS 测序与候选序列分析。</p>
             </div>
           </article>
-          <article class="workflow-step" data-step>
+          <article class="workflow-step" data-step tabindex="0">
             <span class="step-number">04</span>
             <div class="step-dot"></div>
             <div>
@@ -348,7 +362,7 @@
               <p>将质粒、细胞、转染、表达和纯化纳入共享的分子与细胞支撑层。</p>
             </div>
           </article>
-          <article class="workflow-step" data-step>
+          <article class="workflow-step" data-step tabindex="0">
             <span class="step-number">05</span>
             <div class="step-dot"></div>
             <div>
@@ -392,11 +406,11 @@
             <span class="card-tag">TRACEABILITY</span>
             <h3>每个结果，<br />都能回到源头。</h3>
             <div class="trace-visual" aria-hidden="true">
-              <div><span>PROJECT</span><strong>PRJ-26-018</strong></div>
+              <div><span>PROJECT</span><strong>项目上下文</strong></div>
               <i></i>
-              <div><span>SAMPLE</span><strong>CALR · R3</strong></div>
+              <div><span>SAMPLE</span><strong>样本与来源</strong></div>
               <i></i>
-              <div><span>RESULT</span><strong>KD 2.4 nM</strong></div>
+              <div><span>RESULT</span><strong>实验结论</strong></div>
             </div>
             <p>统一项目、实验、样本、序列与结果之间的关联，支撑审计和科学复盘。</p>
           </article>
@@ -456,9 +470,9 @@
             />
           </div>
           <div class="float-note float-note-left">
-            <span>LIVE WORKFLOW</span>
-            <strong>1310</strong>
-            <small>实验总数</small>
+            <span>TRACEABLE</span>
+            <strong>E2E</strong>
+            <small>全链追踪</small>
           </div>
           <div class="float-note float-note-right">
             <span>CONNECTED</span>
@@ -468,7 +482,7 @@
         </div>
       </section>
 
-      <section class="ecosystem section">
+      <section class="ecosystem section" id="ecosystem">
         <div class="ecosystem-panel reveal">
           <div class="ecosystem-grid" aria-hidden="true"></div>
           <div class="ecosystem-copy">
@@ -478,7 +492,7 @@
             </p>
             <h2>连接 RenMice® 生物学、<br />AI 决策与自动化验证。</h2>
             <p>
-              Antibody Vita
+              在本项目的定位中，Antibody Vita
               提供贯穿实验执行、数据沉淀与团队协作的基础能力，支撑“千鼠万抗”（Project
               Integrum）与 RenSuper™ Workstation 相关研发场景持续规模化。
             </p>
@@ -505,10 +519,71 @@
           <div class="ecosystem-orbit" aria-hidden="true">
             <div class="eco-core">VITA</div>
             <div class="eco-ring ring-a"><span>RENMICE®</span></div>
-            <div class="eco-ring ring-b"><span>AI</span></div>
+            <div class="eco-ring ring-b"><span>PROJECT INTEGRUM</span></div>
             <div class="eco-ring ring-c"><span>AUTOMATION</span></div>
           </div>
         </div>
+      </section>
+
+      <section class="company section" id="company">
+        <div class="section-label reveal">
+          <span>05</span>
+          <p>Biocytogen at a glance</p>
+        </div>
+        <div class="company-intro">
+          <div>
+            <p class="kicker reveal">立足真实生物学，连接全球新药研发</p>
+            <h2 class="reveal">
+              全人抗体分子库，<br />与靶点人源化小鼠库<br />构成双引擎。
+            </h2>
+          </div>
+          <div class="company-summary reveal">
+            <p>
+              百奥赛图（SSE：688796；HKEX：02315）是一家创新技术驱动新药研发的国际性生物技术公司。
+              公司以自主研发的基因编辑技术为核心，构建覆盖抗体发现、模型与临床前研究的研发体系。
+            </p>
+            <a
+              class="text-link text-link-dark"
+              href="https://biocytogen.com.cn/about-us/about-the-company"
+              target="_blank"
+              rel="noreferrer"
+            >
+              查看公司简介 <span aria-hidden="true">→</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="company-metrics">
+          <article class="metric reveal">
+            <strong>1M<sup>+</sup></strong>
+            <span>真实全人抗体序列库</span>
+            <small>Fully human antibody sequences</small>
+          </article>
+          <article class="metric reveal">
+            <strong>1,000<sup>+</sup></strong>
+            <span>潜在可成药靶点</span>
+            <small>Potential therapeutic targets</small>
+          </article>
+          <article class="metric reveal">
+            <strong>350<sup>+</sup></strong>
+            <span>药物合作开发 / 授权 / 转让协议</span>
+            <small>As of December 31, 2025</small>
+          </article>
+          <article class="metric reveal">
+            <strong>7</strong>
+            <span>全球研发与运营布局</span>
+            <small>China · US · Germany</small>
+          </article>
+        </div>
+        <p class="metric-source reveal">
+          数据来源：百奥赛图公司简介与全人抗体库官方页面；动态业务数据以
+          <a
+            href="https://biocytogen.com.cn/"
+            target="_blank"
+            rel="noreferrer"
+          >百奥赛图官网</a>
+          最新披露为准。
+        </p>
       </section>
 
       <section class="closing section">
@@ -537,33 +612,78 @@
     </main>
 
     <footer class="site-footer">
-      <a class="brand brand-footer" href="#top">
-        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
-          <path
-            d="M9 10c5 0 10 7 15 14 5-7 10-14 15-14 4 0 7 3 7 7 0 6-8 11-14 15-3 2-5 6-5 11h-6c0-5-2-9-5-11C10 28 2 23 2 17c0-4 3-7 7-7Z"
-            fill="none"
-            stroke="url(#brand-gradient)"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="5"
-          />
-        </svg>
-        <span><strong>Antibody Vita</strong><small>Discovery connected</small></span>
-      </a>
-      <p>
-        © 2024–2026 Biocytogen Pharmaceuticals (Beijing) Co., Ltd.<br />
-        Proprietary software. All rights reserved.
-      </p>
-      <div>
-        <a href="https://biocytogen.com.cn/" target="_blank" rel="noreferrer"
-          >Biocytogen ↗</a
-        >
-        <a
-          href="https://github.com/TianBa-SCP035/Antibody_Forge"
-          target="_blank"
-          rel="noreferrer"
-          >GitHub ↗</a
-        >
+      <div class="footer-main">
+        <div class="footer-brand">
+          <a class="brand brand-footer" href="#top">
+            <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+              <path
+                d="M9 10c5 0 10 7 15 14 5-7 10-14 15-14 4 0 7 3 7 7 0 6-8 11-14 15-3 2-5 6-5 11h-6c0-5-2-9-5-11C10 28 2 23 2 17c0-4 3-7 7-7Z"
+                fill="none"
+                stroke="url(#brand-gradient)"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="5"
+              />
+            </svg>
+            <span><strong>Antibody Vita</strong><small>Discovery connected</small></span>
+          </a>
+          <p>连接科学决策、实验数据与高通量自动化的抗体发现协作基础平台。</p>
+        </div>
+
+        <nav class="footer-column" aria-label="平台链接">
+          <strong>平台与技术</strong>
+          <a href="#workflow">发现工作流</a>
+          <a
+            href="https://biocytogen.com.cn/drug-development/renSuper-workstation-ai-antibody-discovery"
+            target="_blank"
+            rel="noreferrer"
+          >RenSuper™ Workstation ↗</a>
+          <a
+            href="https://biocytogen.com.cn/drug-development/fully-human-antibody-library"
+            target="_blank"
+            rel="noreferrer"
+          >RenMice® 与全人抗体库 ↗</a>
+        </nav>
+
+        <nav class="footer-column" aria-label="项目链接">
+          <strong>项目</strong>
+          <a
+            href="https://github.com/TianBa-SCP035/Antibody_Forge"
+            target="_blank"
+            rel="noreferrer"
+          >GitHub 仓库 ↗</a>
+          <a
+            href="https://github.com/TianBa-SCP035/Antibody_Forge/tree/main/docs"
+            target="_blank"
+            rel="noreferrer"
+          >项目文档 ↗</a>
+          <a
+            href="https://biocytogen.com.cn/contact-us"
+            target="_blank"
+            rel="noreferrer"
+          >百奥赛图联系我们 ↗</a>
+        </nav>
+
+        <address class="footer-contact">
+          <strong>联系百奥赛图</strong>
+          <span>北京市大兴区宝参南街12号</span>
+          <a href="tel:+861056967680">010-56967680 · 业务咨询</a>
+          <a href="mailto:info@biocytogen.com.cn">info@biocytogen.com.cn</a>
+          <a href="mailto:BD-Licensing@biocytogen.com">BD-Licensing@biocytogen.com · 抗体平台与资产</a>
+        </address>
+      </div>
+
+      <div class="footer-locations">
+        <span>Global network</span>
+        <p>北京 · 上海 · 江苏海门 · 波士顿 · 旧金山 · 圣地亚哥 · 海德堡</p>
+      </div>
+
+      <div class="footer-legal">
+        <p>
+          © 2024–2026 Biocytogen Pharmaceuticals (Beijing) Co., Ltd.
+          Proprietary software. All rights reserved.
+        </p>
+        <p>本页面为 Antibody Vita 项目介绍；公司及业务信息以百奥赛图官网最新披露为准。</p>
       </div>
     </footer>
 

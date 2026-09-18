@@ -99,6 +99,7 @@
   let previousTime = performance.now();
   let lastRenderedTime = 0;
   let animationFrame;
+  let modeCopyTimer;
 
   const interpolate = (start, end, progress) => ({
     x: start.x + (end.x - start.x) * progress,
@@ -517,7 +518,8 @@
     );
 
     modeCopy?.classList.add("is-changing");
-    window.setTimeout(() => modeCopy?.classList.remove("is-changing"), 280);
+    window.clearTimeout(modeCopyTimer);
+    modeCopyTimer = window.setTimeout(() => modeCopy?.classList.remove("is-changing"), 280);
 
     if (reducedMotion) {
       currentRotationX = targetRotationX;

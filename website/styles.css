@@ -22,6 +22,7 @@
   --motion-slow: 760ms;
   --motion-loop: 8s;
   --motion-loop-slow: 24s;
+  --motion-orbit: 32s;
 }
 
 * {
@@ -93,6 +94,8 @@ body.motion-paused *::after {
   opacity: 0;
   transform: translate3d(-50%, -50%, 0);
   transition: opacity 0.4s ease;
+  contain: strict;
+  will-change: transform, opacity;
 }
 
 .cursor-aura.visible {
@@ -168,6 +171,22 @@ body.motion-paused *::after {
   height: 26px;
   margin: 4px;
   background: rgba(99, 243, 217, 0.24);
+}
+
+.pointer-burst {
+  position: fixed;
+  z-index: 299;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  border: 1px solid rgba(99, 243, 217, 0.82);
+  border-radius: 50%;
+  box-shadow:
+    0 0 18px rgba(99, 243, 217, 0.28),
+    inset 0 0 10px rgba(52, 120, 246, 0.16);
+  transform: translate(-50%, -50%) scale(0.45);
+  animation: pointer-burst 0.56s var(--motion-ease) forwards;
+  will-change: transform, opacity;
 }
 
 .quick-tools {
@@ -332,6 +351,22 @@ a {
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+}
+
+button,
+.button,
+.site-header,
+.quick-tools,
+.hero-visual,
+.ecosystem-orbit,
+.tool-gateway-visual,
+.tools-hero-visual,
+.molecule-canvas,
+.molecule-grid,
+.molecule-identity,
+.molecule-readouts {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 button:focus-visible,
@@ -2016,6 +2051,7 @@ p {
 
 .eco-ring {
   border: 1px solid rgba(255, 255, 255, 0.16);
+  transform-origin: center;
 }
 
 .eco-ring span {
@@ -2035,32 +2071,38 @@ p {
 .ring-a {
   width: 48%;
   aspect-ratio: 1;
+  animation: eco-orbit var(--motion-loop-slow) linear infinite;
 }
 
 .ring-a span {
   top: 7%;
   left: 74%;
+  animation: eco-label-counter var(--motion-loop-slow) linear infinite;
 }
 
 .ring-b {
   width: 72%;
   aspect-ratio: 1;
   border-style: dashed;
+  animation: eco-orbit var(--motion-orbit) linear infinite reverse;
 }
 
 .ring-b span {
   top: 52%;
   left: -5%;
+  animation: eco-label-counter var(--motion-orbit) linear infinite reverse;
 }
 
 .ring-c {
   width: 96%;
   aspect-ratio: 1;
+  animation: eco-orbit 40s linear infinite;
 }
 
 .ring-c span {
   right: -4%;
   bottom: 16%;
+  animation: eco-label-counter 40s linear infinite;
 }
 
 .tool-gateway {
@@ -2992,12 +3034,40 @@ p {
   }
 }
 
+@keyframes pointer-burst {
+  55% {
+    opacity: 0.72;
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.4);
+  }
+}
+
 @keyframes orbit-drift {
   from {
     transform: translate(-50%, -50%) rotate(0deg);
   }
   to {
     transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes eco-orbit {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes eco-label-counter {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
   }
 }
 

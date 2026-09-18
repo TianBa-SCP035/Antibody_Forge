@@ -101,19 +101,63 @@ if (!reducedMotion && precisePointer) {
     let pointerY = -400;
     let ringX = -400;
     let ringY = -400;
+    let auraX = -400;
+    let auraY = -400;
+    let cursorVisible = false;
+    let cursorInteractive = false;
+    const activeBursts = [];
 
     const renderCursor = () => {
       ringX += (pointerX - ringX) * 0.22;
       ringY += (pointerY - ringY) * 0.22;
+      auraX += (pointerX - auraX) * 0.11;
+      auraY += (pointerY - auraY) * 0.11;
       cursorRing.style.transform = `translate3d(${ringX - 17}px, ${ringY - 17}px, 0)`;
       cursorDot.style.transform = `translate3d(${pointerX - 3}px, ${pointerY - 3}px, 0)`;
-      cursorAura.style.transform = `translate3d(${pointerX - 180}px, ${pointerY - 180}px, 0)`;
+      cursorAura.style.transform = `translate3d(${auraX - 180}px, ${auraY - 180}px, 0)`;
 
-      if (Math.abs(pointerX - ringX) > 0.1 || Math.abs(pointerY - ringY) > 0.1) {
+      const ringSettling = Math.abs(pointerX - ringX) > 0.1 || Math.abs(pointerY - ringY) > 0.1;
+      const auraSettling = Math.abs(pointerX - auraX) > 0.2 || Math.abs(pointerY - auraY) > 0.2;
+      if (ringSettling || auraSettling) {
         cursorFrame = window.requestAnimationFrame(renderCursor);
       } else {
         cursorFrame = undefined;
       }
+    };
+
+    const setCursorState = (visible, interactive) => {
+      if (visible !== cursorVisible) {
+        cursorVisible = visible;
+        cursorAura.classList.toggle("visible", visible);
+        cursorRing.classList.toggle("visible", visible);
+        cursorDot.classList.toggle("visible", visible);
+      }
+      if (interactive !== cursorInteractive) {
+        cursorInteractive = interactive;
+        cursorRing.classList.toggle("interactive", interactive);
+        cursorDot.classList.toggle("interactive", interactive);
+      }
+    };
+
+    const createPointerBurst = (event) => {
+      if (event.button !== 0 || event.target.closest?.("input, textarea, select")) return;
+      if (activeBursts.length >= 8) activeBursts.shift()?.remove();
+      const burst = document.createElement("span");
+      burst.className = "pointer-burst";
+      burst.style.left = `${event.clientX}px`;
+      burst.style.top = `${event.clientY}px`;
+      burst.setAttribute("aria-hidden", "true");
+      document.body.append(burst);
+      activeBursts.push(burst);
+      burst.addEventListener(
+        "animationend",
+        () => {
+          burst.remove();
+          const index = activeBursts.indexOf(burst);
+          if (index >= 0) activeBursts.splice(index, 1);
+        },
+        { once: true },
+      );
     };
 
     window.addEventListener(
@@ -127,42 +171,52 @@ if (!reducedMotion && precisePointer) {
             "a, button, [role='button'], .pointer-tilt, [data-molecule-stage]",
           ),
         );
-        cursorAura.classList.toggle("visible", !overTextField);
-        cursorRing.classList.toggle("visible", !overTextField);
-        cursorDot.classList.toggle("visible", !overTextField);
-        cursorRing.classList.toggle("interactive", overInteractive && !overTextField);
-        cursorDot.classList.toggle("interactive", overInteractive && !overTextField);
+        setCursorState(!overTextField, overInteractive && !overTextField);
         if (!cursorFrame) cursorFrame = window.requestAnimationFrame(renderCursor);
       },
       { passive: true },
     );
 
-    window.addEventListener("pointerdown", () => cursorRing.classList.add("pressed"), {
-      passive: true,
-    });
+    window.addEventListener(
+      "pointerdown",
+      (event) => {
+        if (event.button !== 0) return;
+        cursorRing.classList.add("pressed");
+        createPointerBurst(event);
+      },
+      { passive: true },
+    );
     window.addEventListener("pointerup", () => cursorRing.classList.remove("pressed"), {
       passive: true,
     });
 
     document.documentElement.addEventListener("mouseleave", () => {
+      cursorVisible = false;
+      cursorInteractive = false;
       cursorAura.classList.remove("visible");
       cursorRing.classList.remove("visible", "pressed");
-      cursorDot.classList.remove("visible");
+      cursorRing.classList.remove("interactive");
+      cursorDot.classList.remove("visible", "interactive");
     });
   }
 
   const tiltTargets = document.querySelectorAll(
-    ".capability-card, .tool-gateway-shell, .service-card",
+    ".capability-card, .service-card",
   );
 
   tiltTargets.forEach((target) => {
     target.classList.add("pointer-tilt");
     let tiltFrame;
+    let bounds;
     let nextX = 0;
     let nextY = 0;
 
+    target.addEventListener("pointerenter", () => {
+      bounds = target.getBoundingClientRect();
+    });
+
     target.addEventListener("pointermove", (event) => {
-      const bounds = target.getBoundingClientRect();
+      bounds ??= target.getBoundingClientRect();
       const relativeX = (event.clientX - bounds.left) / bounds.width;
       const relativeY = (event.clientY - bounds.top) / bounds.height;
       nextX = relativeX;
@@ -179,6 +233,7 @@ if (!reducedMotion && precisePointer) {
     });
 
     target.addEventListener("pointerleave", () => {
+      bounds = undefined;
       target.classList.remove("pointer-active");
       target.style.setProperty("--tilt-x", "0deg");
       target.style.setProperty("--tilt-y", "0deg");
@@ -191,13 +246,18 @@ if (!reducedMotion && precisePointer) {
   const parallaxVisual = parallaxStage?.querySelector(".hero-visual, .tools-hero-visual");
   if (parallaxStage && parallaxVisual) {
     let parallaxFrame;
+    let parallaxBounds;
     let moveX = 0;
     let moveY = 0;
 
+    parallaxStage.addEventListener("pointerenter", () => {
+      parallaxBounds = parallaxStage.getBoundingClientRect();
+    });
+
     parallaxStage.addEventListener("pointermove", (event) => {
-      const bounds = parallaxStage.getBoundingClientRect();
-      moveX = ((event.clientX - bounds.left) / bounds.width - 0.5) * 12;
-      moveY = ((event.clientY - bounds.top) / bounds.height - 0.5) * 12;
+      parallaxBounds ??= parallaxStage.getBoundingClientRect();
+      moveX = ((event.clientX - parallaxBounds.left) / parallaxBounds.width - 0.5) * 12;
+      moveY = ((event.clientY - parallaxBounds.top) / parallaxBounds.height - 0.5) * 12;
       if (parallaxFrame) return;
       parallaxFrame = window.requestAnimationFrame(() => {
         parallaxVisual.style.translate = `${moveX.toFixed(1)}px ${moveY.toFixed(1)}px`;
@@ -206,6 +266,7 @@ if (!reducedMotion && precisePointer) {
     });
 
     parallaxStage.addEventListener("pointerleave", () => {
+      parallaxBounds = undefined;
       parallaxVisual.style.translate = "0 0";
     });
   }

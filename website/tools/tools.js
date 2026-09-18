@@ -1219,22 +1219,23 @@
     };
 
     const queryStructure = async () => {
-      const query = input.value.trim().toUpperCase();
-      const valid = mode === "pdb" ? /^[A-Z0-9]{4}$/.test(query) : /^[A-Z0-9]{6,10}$/.test(query);
-      if (!valid) {
-        throw new Error(
-          mode === "pdb"
-            ? "请输入四位 PDB ID，例如 4HHB。"
-            : "请输入 6–10 位 UniProt accession，例如 P00533。",
-        );
-      }
-
-      controller?.abort();
-      controller = new AbortController();
-      result.classList.add("loading");
-      setStructureFeedback(`正在查询 ${query}…`);
-
       try {
+        const query = input.value.trim().toUpperCase();
+        const valid =
+          mode === "pdb" ? /^[A-Z0-9]{4}$/.test(query) : /^[A-Z0-9]{6,10}$/.test(query);
+        if (!valid) {
+          throw new Error(
+            mode === "pdb"
+              ? "请输入四位 PDB ID，例如 4HHB。"
+              : "请输入 6–10 位 UniProt accession，例如 P00533。",
+          );
+        }
+
+        controller?.abort();
+        controller = new AbortController();
+        result.classList.add("loading");
+        setStructureFeedback(`正在查询 ${query}…`);
+
         if (mode === "pdb") {
           const response = await fetch(
             `https://data.rcsb.org/rest/v1/core/entry/${encodeURIComponent(query)}`,

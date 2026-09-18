@@ -683,7 +683,319 @@ capabilityConsole?.querySelector("[data-capability-replay]")?.addEventListener("
   runCapabilitySimulation(capabilityDetails[activeCapabilityKey]);
 });
 
-if (capabilityConsole) setActiveCapability(activeCapabilityKey);
+if (capabilityConsole) {
+  if (!reducedMotion && "IntersectionObserver" in window) {
+    const capabilityObserver = new IntersectionObserver(
+      ([entry], observer) => {
+        if (!entry.isIntersecting) return;
+        runCapabilitySimulation(capabilityDetails[activeCapabilityKey]);
+        observer.unobserve(entry.target);
+      },
+      { threshold: 0.3 },
+    );
+    capabilityObserver.observe(capabilityConsole);
+  } else {
+    runCapabilitySimulation(capabilityDetails[activeCapabilityKey]);
+  }
+}
+
+const roleExplorer = document.querySelector("[data-role-explorer]");
+const roleDetail = roleExplorer?.querySelector("[data-role-detail]");
+const roleTriggers = [...(roleExplorer?.querySelectorAll("[data-role-trigger]") ?? [])];
+const roleDetails = {
+  im: {
+    phase: "01 · IMMUNIZATION",
+    title: "从抗原与动物队列建立发现入口",
+    summary: "统一查看免疫方案、给药计划、笼位、采样和效价曲线，及时确定进入筛选的动物与样本。",
+    receives: "抗原信息 · 项目目标 · 动物队列",
+    acts: "免疫计划 · 采样 · 效价判断",
+    delivers: "入选动物 · 样本批次 · 效价证据",
+  },
+  sb: {
+    phase: "02 · SCREENING",
+    title: "在完整来源上下文中识别阳性克隆",
+    summary: "筛选团队直接读取动物、样本与效价背景，将门控条件、阳性孔位和复核结果写回同一候选链。",
+    receives: "样本批次 · 效价结果 · 分选策略",
+    acts: "单 B 筛选 · 门控复核 · 克隆选择",
+    delivers: "阳性孔位 · 命中轨迹 · 候选样本",
+  },
+  ng: {
+    phase: "03 · SEQUENCING",
+    title: "把实验命中转化为可追踪的 VH / VL",
+    summary: "序列团队围绕阳性孔位完成读段质控、链配对与候选注释，并保留序列和样本之间的双向关系。",
+    receives: "阳性孔位 · 文库样本 · 测序读段",
+    acts: "质控拼接 · VH/VL 配对 · 聚类注释",
+    delivers: "候选序列 · 克隆簇 · 版本记录",
+  },
+  ex: {
+    phase: "04 · EXPRESSION",
+    title: "让每个蛋白批次都能回到原始序列",
+    summary: "构建、转染、培养和纯化围绕候选序列展开，产量、纯度和异常状态随批次持续回传。",
+    receives: "候选序列 · 载体模板 · 板位设计",
+    acts: "构建转染 · 表达培养 · 纯化质检",
+    delivers: "蛋白批次 · 产量纯度 · 质控状态",
+  },
+  qa: {
+    phase: "05 · CHARACTERIZATION",
+    title: "将分散实验结果收敛为候选决策",
+    summary: "评价团队汇集结合、亲和力、功能与开发性证据，在同一版本快照中完成排序和 Go / No-Go 判断。",
+    receives: "蛋白批次 · 实验方案 · 决策阈值",
+    acts: "结合评价 · 功能验证 · 开发性复核",
+    delivers: "证据矩阵 · 候选排序 · 决策记录",
+  },
+};
+let roleTimer;
+
+const setActiveRole = (key) => {
+  const detail = roleDetails[key];
+  if (!roleDetail || !detail) return;
+  roleTriggers.forEach((trigger) => {
+    const active = trigger.dataset.roleTrigger === key;
+    trigger.classList.toggle("active", active);
+    trigger.setAttribute("aria-selected", String(active));
+  });
+  window.clearTimeout(roleTimer);
+  roleDetail.classList.add("is-updating");
+  roleTimer = window.setTimeout(() => {
+    const values = {
+      "[data-role-phase]": detail.phase,
+      "[data-role-title]": detail.title,
+      "[data-role-summary]": detail.summary,
+      "[data-role-receives]": detail.receives,
+      "[data-role-acts]": detail.acts,
+      "[data-role-delivers]": detail.delivers,
+    };
+    Object.entries(values).forEach(([selector, value]) => {
+      const target = roleDetail.querySelector(selector);
+      if (target) target.textContent = value;
+    });
+    roleDetail.classList.remove("is-updating");
+  }, reducedMotion ? 0 : 100);
+};
+
+roleTriggers.forEach((trigger, index) => {
+  trigger.addEventListener("click", () => setActiveRole(trigger.dataset.roleTrigger));
+  trigger.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    let targetIndex = index;
+    if (event.key === "ArrowLeft") targetIndex = (index - 1 + roleTriggers.length) % roleTriggers.length;
+    if (event.key === "ArrowRight") targetIndex = (index + 1) % roleTriggers.length;
+    if (event.key === "Home") targetIndex = 0;
+    if (event.key === "End") targetIndex = roleTriggers.length - 1;
+    roleTriggers[targetIndex]?.focus();
+    setActiveRole(roleTriggers[targetIndex]?.dataset.roleTrigger);
+  });
+});
+
+const candidate = document.querySelector("[data-candidate]");
+const candidateStory = candidate?.querySelector("[data-candidate-story]");
+const candidateSteps = [...(candidate?.querySelectorAll("[data-candidate-step]") ?? [])];
+const candidateLineageNodes = [...(candidate?.querySelectorAll(".candidate-lineage span") ?? [])];
+const candidateLineageLinks = [...(candidate?.querySelectorAll(".candidate-lineage i") ?? [])];
+const candidatePhases = [
+  {
+    phase: "PHASE 01 · IMMUNITY",
+    title: "建立 VITA-024 的第一段实验上下文",
+    state: "IN PROGRESS",
+    summary: "抗原构建、免疫方案与动物队列进入同一项目对象，后续样本将自动继承该项目背景。",
+    context: "Program VITA-024 · Antigen AG-024",
+    contextNote: "项目目标、抗原版本与动物队列保持关联。",
+    evidence: "免疫队列 IM-024 · 第 28 天效价",
+    evidenceNote: "FACS / ELISA 结果形成可比较的响应曲线。",
+    decision: "选择高应答动物进入单 B 筛选",
+    decisionNote: "决策与阈值、操作者和时间一并留痕。",
+    moleculeMode: "overview",
+  },
+  {
+    phase: "PHASE 02 · SCREENING",
+    title: "SMP-091 从阳性孔位进入候选主线",
+    state: "HIT CONFIRMED",
+    summary: "单 B 细胞筛选记录门控条件、孔位与复核结论，命中样本不再脱离其动物和免疫来源。",
+    context: "VITA-024 · IM-024 · Animal RM-17",
+    contextNote: "免疫响应、采样时间与筛选条件持续可查。",
+    evidence: "Sample SMP-091 · Well B07 · Positive",
+    evidenceNote: "阳性信号与门控快照形成筛选证据。",
+    decision: "将命中样本送入 VH / VL 序列恢复",
+    decisionNote: "筛选结论直接生成下游测序请求。",
+    moleculeMode: "paratope",
+  },
+  {
+    phase: "PHASE 03 · SEQUENCE",
+    title: "VH / VL 配对将实验命中转化为分子对象",
+    state: "SEQUENCE LOCKED",
+    summary: "经过质控与配对的重链、轻链序列形成候选分子版本，并与 SMP-091 保持双向追溯。",
+    context: "VITA-024 · SMP-091 · Well B07",
+    contextNote: "原始读段、质控结果和样本来源保持关联。",
+    evidence: "VITA-H024 · VITA-L024 · Clone 024-7",
+    evidenceNote: "六段 CDR 与 VH / VL 版本完成注释。",
+    decision: "锁定 024-7 并进入重组表达",
+    decisionNote: "序列版本成为构建和表达批次的唯一来源。",
+    moleculeMode: "sequence",
+  },
+  {
+    phase: "PHASE 04 · EXPRESSION",
+    title: "RUN-2481 将序列版本连接到蛋白实物",
+    state: "QC PASSED",
+    summary: "构建、转染、表达和纯化状态围绕 Clone 024-7 展开，蛋白批次携带完整序列与工艺上下文。",
+    context: "Clone 024-7 · Vector VEC-31 · Plate P12",
+    contextNote: "构建版本、细胞批次和板位可相互定位。",
+    evidence: "RUN-2481 · Yield 32 mg/L · Purity 96.8%",
+    evidenceNote: "演示批次产量、纯度与质控状态同步归档。",
+    decision: "释放蛋白批次进入结合与功能评价",
+    decisionNote: "通过状态门禁后自动生成评价任务。",
+    moleculeMode: "overview",
+  },
+  {
+    phase: "PHASE 05 · DECISION",
+    title: "Vita-RS-024 汇聚为可解释的 Go 决策",
+    state: "GO CANDIDATE",
+    summary: "结合、亲和力、功能与开发性结果回到同一候选对象，团队可以从结论直接追至任一实验和样本。",
+    context: "RUN-2481 · Clone 024-7 · SMP-091",
+    contextNote: "最终结论继承完整实验、序列与批次谱系。",
+    evidence: "Vita-RS-024 · KD 1.8 nM · Functional hit",
+    evidenceNote: "演示结果展示亲和力与功能证据的联合收敛。",
+    decision: "GO · 进入候选优化与扩展验证",
+    decisionNote: "决策快照保留阈值、证据版本和参与角色。",
+    moleculeMode: "binding",
+  },
+];
+let activeCandidateIndex = 0;
+let candidateTimer;
+
+const setActiveCandidate = (requestedIndex) => {
+  if (!candidateStory || !candidateSteps.length) return;
+  const index = Math.max(0, Math.min(candidateSteps.length - 1, requestedIndex));
+  const phase = candidatePhases[index];
+  activeCandidateIndex = index;
+  candidateSteps.forEach((step, stepIndex) => {
+    const active = stepIndex === index;
+    step.classList.toggle("active", active);
+    step.setAttribute("aria-selected", String(active));
+  });
+  candidateLineageNodes.forEach((node, nodeIndex) => node.classList.toggle("active", nodeIndex <= index));
+  candidateLineageLinks.forEach((link, linkIndex) => link.classList.toggle("active", linkIndex < index));
+  window.clearTimeout(candidateTimer);
+  candidateStory.classList.add("is-updating");
+  candidateTimer = window.setTimeout(() => {
+    const values = {
+      "[data-candidate-phase]": phase.phase,
+      "[data-candidate-title]": phase.title,
+      "[data-candidate-state]": phase.state,
+      "[data-candidate-summary]": phase.summary,
+      "[data-candidate-context]": phase.context,
+      "[data-candidate-context-note]": phase.contextNote,
+      "[data-candidate-evidence]": phase.evidence,
+      "[data-candidate-evidence-note]": phase.evidenceNote,
+      "[data-candidate-decision]": phase.decision,
+      "[data-candidate-decision-note]": phase.decisionNote,
+      "[data-candidate-current]": String(index + 1).padStart(2, "0"),
+    };
+    Object.entries(values).forEach(([selector, value]) => {
+      const target = candidateStory.querySelector(selector);
+      if (target) target.textContent = value;
+    });
+    candidateStory.dataset.moleculeMode = phase.moleculeMode;
+    candidateStory.classList.remove("is-updating");
+  }, reducedMotion ? 0 : 110);
+};
+
+candidateSteps.forEach((step, index) => {
+  step.addEventListener("click", () => setActiveCandidate(index));
+  step.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    let targetIndex = index;
+    if (event.key === "ArrowLeft") targetIndex = Math.max(0, index - 1);
+    if (event.key === "ArrowRight") targetIndex = Math.min(candidateSteps.length - 1, index + 1);
+    if (event.key === "Home") targetIndex = 0;
+    if (event.key === "End") targetIndex = candidateSteps.length - 1;
+    candidateSteps[targetIndex]?.focus();
+    setActiveCandidate(targetIndex);
+  });
+});
+
+candidate?.querySelector("[data-candidate-prev]")?.addEventListener("click", () => {
+  setActiveCandidate((activeCandidateIndex - 1 + candidatePhases.length) % candidatePhases.length);
+});
+candidate?.querySelector("[data-candidate-next]")?.addEventListener("click", () => {
+  setActiveCandidate((activeCandidateIndex + 1) % candidatePhases.length);
+});
+candidate?.querySelector("[data-candidate-molecule]")?.addEventListener("click", () => {
+  const phase = candidatePhases[activeCandidateIndex];
+  document.dispatchEvent(
+    new CustomEvent("vita:molecule-view", {
+      detail: { mode: phase.moleculeMode, region: phase.moleculeMode === "sequence" ? "H3" : null },
+    }),
+  );
+  document.querySelector("#experience")?.scrollIntoView({
+    behavior: reducedMotion ? "auto" : "smooth",
+    block: "start",
+  });
+});
+
+const ecosystem = document.querySelector("#ecosystem");
+const ecosystemDetail = ecosystem?.querySelector("[data-ecosystem-detail]");
+const ecosystemTriggers = [...(ecosystem?.querySelectorAll("[data-ecosystem-layer]") ?? [])];
+const ecosystemDetails = {
+  renmice: {
+    tag: "BIOLOGICAL FOUNDATION",
+    title: "RenMice® 提供全人抗体发现起点",
+    description: "靶点人源化与全人抗体小鼠平台构成发现的生物学基础，为后续筛选与分子开发提供多样化来源。",
+  },
+  integrum: {
+    tag: "SCALED ANTIBODY RESOURCE",
+    title: "Project Integrum 沉淀规模化抗体资源",
+    description: "“千鼠万抗”将广泛靶点与全人抗体资源持续积累，为候选检索、比较和后续开发建立规模基础。",
+  },
+  rensuper: {
+    tag: "AI + AUTOMATED VALIDATION",
+    title: "RenSuper™ 连接 AI 决策与高通量验证",
+    description: "通过 AI 驱动的候选筛选与自动化实验验证，让大规模抗体资源更快收敛为可推进的研发选择。",
+  },
+  vita: {
+    tag: "WORKFLOW + DATA FOUNDATION",
+    title: "Antibody Vita 让实验、数据与协作连续发生",
+    description: "本项目聚焦执行工单、研发对象、实验结果和团队交接，为相关发现场景提供可追溯的流程与数据基础。",
+  },
+};
+let ecosystemTimer;
+
+const setActiveEcosystemLayer = (key) => {
+  const detail = ecosystemDetails[key];
+  if (!ecosystemDetail || !detail) return;
+  ecosystemTriggers.forEach((trigger) => {
+    const active = trigger.dataset.ecosystemLayer === key;
+    trigger.classList.toggle("active", active);
+    trigger.setAttribute("aria-selected", String(active));
+  });
+  ecosystem.dataset.ecosystemActive = key;
+  window.clearTimeout(ecosystemTimer);
+  ecosystemDetail.classList.add("is-updating");
+  ecosystemTimer = window.setTimeout(() => {
+    const tag = ecosystemDetail.querySelector("[data-ecosystem-tag]");
+    const title = ecosystemDetail.querySelector("[data-ecosystem-title]");
+    const description = ecosystemDetail.querySelector("[data-ecosystem-description]");
+    if (tag) tag.textContent = detail.tag;
+    if (title) title.textContent = detail.title;
+    if (description) description.textContent = detail.description;
+    ecosystemDetail.classList.remove("is-updating");
+  }, reducedMotion ? 0 : 100);
+};
+
+ecosystemTriggers.forEach((trigger, index) => {
+  trigger.addEventListener("click", () => setActiveEcosystemLayer(trigger.dataset.ecosystemLayer));
+  trigger.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    const targetIndex =
+      event.key === "ArrowRight"
+        ? (index + 1) % ecosystemTriggers.length
+        : (index - 1 + ecosystemTriggers.length) % ecosystemTriggers.length;
+    ecosystemTriggers[targetIndex]?.focus();
+    setActiveEcosystemLayer(ecosystemTriggers[targetIndex]?.dataset.ecosystemLayer);
+  });
+});
 
 if (sectionNavLinks.length) {
   const sectionLinks = new Map();

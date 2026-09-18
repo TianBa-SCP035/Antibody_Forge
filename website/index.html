@@ -45,7 +45,7 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20260918-17" />
+    <link rel="stylesheet" href="./styles.css?v=20260918-18" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
       {
@@ -573,6 +573,131 @@
             </div>
           </section>
         </div>
+
+        <section class="role-explorer reveal" data-role-explorer>
+          <div class="role-explorer-head">
+            <div>
+              <span>CONNECTED TEAMS</span>
+              <h3>同一条数据链，为每个研发角色提供下一步。</h3>
+            </div>
+            <p>选择团队，查看它接收的上下文、推进的工作与交付给下游的研发对象。</p>
+          </div>
+          <div class="role-explorer-body">
+            <div class="role-tabs" role="tablist" aria-label="切换研发角色">
+              <button type="button" class="active" data-role-trigger="im" role="tab" aria-selected="true">
+                <span>IM</span><strong>免疫团队</strong><small>Immunization</small>
+              </button>
+              <button type="button" data-role-trigger="sb" role="tab" aria-selected="false">
+                <span>SB</span><strong>筛选团队</strong><small>Screening</small>
+              </button>
+              <button type="button" data-role-trigger="ng" role="tab" aria-selected="false">
+                <span>NG</span><strong>序列团队</strong><small>Sequencing</small>
+              </button>
+              <button type="button" data-role-trigger="ex" role="tab" aria-selected="false">
+                <span>EX</span><strong>表达团队</strong><small>Expression</small>
+              </button>
+              <button type="button" data-role-trigger="qa" role="tab" aria-selected="false">
+                <span>QA</span><strong>评价团队</strong><small>Characterization</small>
+              </button>
+            </div>
+            <div class="role-detail" data-role-detail role="tabpanel" aria-label="当前研发角色说明" aria-live="polite">
+              <div class="role-detail-title">
+                <span data-role-phase>01 · IMMUNIZATION</span>
+                <h3 data-role-title>从抗原与动物队列建立发现入口</h3>
+                <p data-role-summary>统一查看免疫方案、给药计划、笼位、采样和效价曲线，及时确定进入筛选的动物与样本。</p>
+              </div>
+              <div class="role-detail-grid">
+                <article><span>RECEIVES</span><strong data-role-receives>抗原信息 · 项目目标 · 动物队列</strong></article>
+                <article><span>ACTS</span><strong data-role-acts>免疫计划 · 采样 · 效价判断</strong></article>
+                <article><span>DELIVERS</span><strong data-role-delivers>入选动物 · 样本批次 · 效价证据</strong></article>
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="candidate-journey section" id="candidate" data-candidate>
+        <div class="section-label reveal">
+          <span>CASE</span>
+          <p>Follow one candidate</p>
+        </div>
+        <div class="candidate-intro">
+          <div>
+            <p class="kicker reveal">让抽象流程落到一个候选分子</p>
+            <h2 class="reveal">跟随 VITA-024，<br />看证据如何逐步汇聚。</h2>
+          </div>
+          <p class="body-large reveal">
+            从免疫应答到候选决策，每一步都继承上游上下文并生成新的研发证据。以下编号与结果均为交互演示数据。
+          </p>
+        </div>
+        <div class="candidate-shell reveal">
+          <aside class="candidate-rail">
+            <div class="candidate-program">
+              <span>ILLUSTRATIVE PROGRAM</span>
+              <strong>VITA-024</strong>
+              <p>Fully human antibody discovery</p>
+            </div>
+            <div class="candidate-steps" role="tablist" aria-label="候选分子研发阶段">
+              <button type="button" class="active" data-candidate-step="0" role="tab" aria-selected="true">
+                <span>01</span><strong>免疫入组</strong><small>IMMUNITY</small>
+              </button>
+              <button type="button" data-candidate-step="1" role="tab" aria-selected="false">
+                <span>02</span><strong>筛选命中</strong><small>SCREENING</small>
+              </button>
+              <button type="button" data-candidate-step="2" role="tab" aria-selected="false">
+                <span>03</span><strong>序列确认</strong><small>SEQUENCE</small>
+              </button>
+              <button type="button" data-candidate-step="3" role="tab" aria-selected="false">
+                <span>04</span><strong>表达验证</strong><small>EXPRESSION</small>
+              </button>
+              <button type="button" data-candidate-step="4" role="tab" aria-selected="false">
+                <span>05</span><strong>候选决策</strong><small>DECISION</small>
+              </button>
+            </div>
+          </aside>
+          <div class="candidate-story" data-candidate-story role="tabpanel" aria-label="当前候选分子阶段" aria-live="polite">
+            <div class="candidate-story-head">
+              <div>
+                <span data-candidate-phase>PHASE 01 · IMMUNITY</span>
+                <strong data-candidate-title>建立 VITA-024 的第一段实验上下文</strong>
+              </div>
+              <span class="candidate-state"><i></i><b data-candidate-state>IN PROGRESS</b></span>
+            </div>
+            <p class="candidate-summary" data-candidate-summary>
+              抗原构建、免疫方案与动物队列进入同一项目对象，后续样本将自动继承该项目背景。
+            </p>
+            <div class="candidate-evidence">
+              <article>
+                <span>CONTEXT CARRIED</span>
+                <strong data-candidate-context>Program VITA-024 · Antigen AG-024</strong>
+                <p data-candidate-context-note>项目目标、抗原版本与动物队列保持关联。</p>
+              </article>
+              <article>
+                <span>NEW EVIDENCE</span>
+                <strong data-candidate-evidence>免疫队列 IM-024 · 第 28 天效价</strong>
+                <p data-candidate-evidence-note>FACS / ELISA 结果形成可比较的响应曲线。</p>
+              </article>
+              <article>
+                <span>DECISION</span>
+                <strong data-candidate-decision>选择高应答动物进入单 B 筛选</strong>
+                <p data-candidate-decision-note>决策与阈值、操作者和时间一并留痕。</p>
+              </article>
+            </div>
+            <div class="candidate-lineage" aria-label="当前候选证据链">
+              <span class="active">PROGRAM</span><i></i><span>SAMPLE</span><i></i><span>SEQUENCE</span><i></i><span>RUN</span><i></i><span>RESULT</span>
+            </div>
+            <div class="candidate-story-actions">
+              <div class="candidate-nav">
+                <button type="button" data-candidate-prev aria-label="上一个候选阶段">←</button>
+                <span><b data-candidate-current>01</b> / 05</span>
+                <button type="button" data-candidate-next aria-label="下一个候选阶段">→</button>
+              </div>
+              <button type="button" class="candidate-molecule-action" data-candidate-molecule>
+                在三维结构中查看 <span aria-hidden="true">↘</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section class="experience" id="experience">
@@ -607,7 +732,7 @@
             <strong data-molecule-identity>ANTIBODY STRUCTURE EXPLORER</strong>
             <p data-molecule-subtitle>Interactive molecular data model</p>
           </div>
-          <div class="molecule-readouts" aria-live="polite">
+          <div class="molecule-readouts">
             <div><span>VIEW</span><strong data-molecule-readout="view">OVERVIEW</strong></div>
             <div><span>FOCUS</span><strong data-molecule-readout="focus">FULL MOLECULE</strong></div>
             <div><span>STATE</span><strong data-molecule-readout="state">EXPLORING</strong></div>
@@ -633,12 +758,15 @@
                 <strong data-molecule-mode-title>全分子结构视图</strong>
               </div>
               <p data-molecule-mode-description>
-                拖动指针探索重链、轻链与铰链区域；选择视图，镜头将平滑聚焦到对应结构状态。
+                移动或拖动指针探索重链、轻链与铰链区域；触摸设备可横向拖动模型。
               </p>
-              <div class="molecule-sequence-map" data-molecule-sequence-map aria-label="抗体链序列片段映射">
-                <span><i></i>VH <b>QVQLVESGGG...</b></span>
-                <span><i></i>VL <b>DIQMTQSPSS...</b></span>
-                <span><i></i>CDR-H3 <b>ARGLYFDYW</b></span>
+              <div class="molecule-sequence-map" data-molecule-sequence-map role="group" aria-label="选择互补决定区">
+                <button type="button" data-molecule-region="H1" aria-pressed="false"><i></i>H1 <b>GFTFSSYA</b></button>
+                <button type="button" data-molecule-region="H2" aria-pressed="false"><i></i>H2 <b>ISGSGGST</b></button>
+                <button type="button" class="active" data-molecule-region="H3" aria-pressed="true"><i></i>H3 <b>ARGLYFDYW</b></button>
+                <button type="button" data-molecule-region="L1" aria-pressed="false"><i></i>L1 <b>QSLVHSNG</b></button>
+                <button type="button" data-molecule-region="L2" aria-pressed="false"><i></i>L2 <b>KVSNRFS</b></button>
+                <button type="button" data-molecule-region="L3" aria-pressed="false"><i></i>L3 <b>SQSTHVP</b></button>
               </div>
             </div>
           </div>
@@ -651,7 +779,11 @@
         </div>
       </section>
 
-      <section class="ecosystem section" id="ecosystem">
+      <section class="ecosystem section" id="ecosystem" data-ecosystem-active="renmice">
+        <div class="section-label reveal">
+          <span>05</span>
+          <p>Connected discovery ecosystem</p>
+        </div>
         <div class="ecosystem-panel reveal">
           <div class="ecosystem-grid" aria-hidden="true"></div>
           <div class="ecosystem-copy">
@@ -661,11 +793,19 @@
             </p>
             <h2>连接 RenMice® 生物学、<br />AI 决策与自动化验证。</h2>
             <p>
-              RenMice® 提供全人抗体发现的生物学基础；“千鼠万抗”（Project
-              Integrum）据此沉淀规模化抗体资源；RenSuper™ Workstation
-              进一步连接 AI 筛选、实验验证与高通量自动化。在本项目中，Antibody Vita
-              聚焦实验执行、数据沉淀与团队协作，为相关研发场景提供流程和数据基础。
+              从全人抗体生物学基础到规模化资源、AI 决策和自动化验证，每一层都通过统一的实验与数据上下文连接。
             </p>
+            <div class="ecosystem-layers" role="tablist" aria-label="探索抗体发现生态层级">
+              <button type="button" class="active" data-ecosystem-layer="renmice" role="tab" aria-selected="true">RENMICE®</button>
+              <button type="button" data-ecosystem-layer="integrum" role="tab" aria-selected="false">PROJECT INTEGRUM</button>
+              <button type="button" data-ecosystem-layer="rensuper" role="tab" aria-selected="false">RENSUPER™</button>
+              <button type="button" data-ecosystem-layer="vita" role="tab" aria-selected="false">ANTIBODY VITA</button>
+            </div>
+            <div class="ecosystem-layer-detail" data-ecosystem-detail role="tabpanel" aria-label="当前生态层说明" aria-live="polite">
+              <span data-ecosystem-tag>BIOLOGICAL FOUNDATION</span>
+              <strong data-ecosystem-title>RenMice® 提供全人抗体发现起点</strong>
+              <p data-ecosystem-description>靶点人源化与全人抗体小鼠平台构成发现的生物学基础，为后续筛选与分子开发提供多样化来源。</p>
+            </div>
             <div class="ecosystem-actions">
               <a
                 class="button button-light"
@@ -690,7 +830,7 @@
             <div class="eco-core">VITA</div>
             <div class="eco-ring ring-a"><span><b>RENMICE®</b></span></div>
             <div class="eco-ring ring-b"><span><b>PROJECT INTEGRUM</b></span></div>
-            <div class="eco-ring ring-c"><span><b>AUTOMATION</b></span></div>
+            <div class="eco-ring ring-c"><span><b>RENSUPER™</b></span></div>
           </div>
         </div>
       </section>
@@ -975,7 +1115,7 @@
       </div>
     </footer>
 
-    <script src="./script.js?v=20260918-17" defer></script>
-    <script src="./molecular-visual.js?v=20260918-17" defer></script>
+    <script src="./script.js?v=20260918-18" defer></script>
+    <script src="./molecular-visual.js?v=20260918-18" defer></script>
   </body>
 </html>

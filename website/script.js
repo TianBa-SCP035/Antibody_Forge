@@ -8,6 +8,7 @@ const trackProgress = document.querySelector("[data-track-progress]");
 const sectionNavLinks = document.querySelectorAll("[data-section-nav]");
 const ecosystemOrbit = document.querySelector(".ecosystem-orbit");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let activeWorkflowIndex = 0;
 
 const updateHeader = () => {
   header?.classList.toggle("scrolled", window.scrollY > 24);
@@ -68,6 +69,7 @@ if (reducedMotion || !("IntersectionObserver" in window)) {
 }
 
 const setActiveWorkflowStep = (index) => {
+  activeWorkflowIndex = index;
   workflowSteps.forEach((step, stepIndex) => {
     step.classList.toggle("active", stepIndex <= index);
   });
@@ -75,7 +77,7 @@ const setActiveWorkflowStep = (index) => {
   if (!trackProgress || workflowSteps.length < 2) return;
   const percentage = (index / (workflowSteps.length - 1)) * 100;
 
-  if (window.innerWidth <= 900) {
+  if (window.innerWidth <= 1050) {
     trackProgress.style.width = "1px";
     trackProgress.style.height = `${percentage}%`;
   } else {
@@ -89,6 +91,8 @@ workflowSteps.forEach((step, index) => {
   step.addEventListener("focusin", () => setActiveWorkflowStep(index));
   step.addEventListener("click", () => setActiveWorkflowStep(index));
 });
+
+window.addEventListener("resize", () => setActiveWorkflowStep(activeWorkflowIndex));
 
 if (workflow && "IntersectionObserver" in window) {
   const workflowObserver = new IntersectionObserver(

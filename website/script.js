@@ -518,6 +518,7 @@ if (workflow && "IntersectionObserver" in window) {
 const capabilityWorkspace = document.querySelector("[data-capability-workspace]");
 const capabilityContent = capabilityWorkspace?.querySelector("[data-capability-content]");
 const capabilityTriggers = document.querySelectorAll("[data-capability-trigger]");
+const capabilityAutoplayButton = capabilityWorkspace?.querySelector("[data-capability-autoplay]");
 const capabilityDetails = {
   mainline: {
     tag: "DISCOVERY MAINLINE · CONNECTED OBJECTS",
@@ -789,7 +790,10 @@ const buildCapabilityPath = (detail) => {
     name.textContent = label;
     state.textContent = detail.states[index];
     button.append(number, name, state);
-    button.addEventListener("click", () => setCapabilityStep(index));
+    button.addEventListener("click", () => {
+      disableCapabilityAutoplay();
+      setCapabilityStep(index);
+    });
     button.addEventListener("keydown", (event) => {
       let nextIndex;
       if (event.key === "ArrowDown" || event.key === "ArrowRight") {
@@ -803,6 +807,7 @@ const buildCapabilityPath = (detail) => {
       }
       if (nextIndex === undefined) return;
       event.preventDefault();
+      disableCapabilityAutoplay();
       setCapabilityStep(nextIndex, true);
     });
     path.append(button);
@@ -858,8 +863,61 @@ const setActiveCapability = (key, focusTab = false) => {
   }
 };
 
+let capabilityAutoplayEnabled = !reducedMotion;
+let capabilityAutoplayVisible = false;
+let capabilityAutoplayTimer;
+
+const updateCapabilityAutoplayControl = () => {
+  if (!capabilityAutoplayButton) return;
+  capabilityAutoplayButton.classList.toggle("active", capabilityAutoplayEnabled);
+  capabilityAutoplayButton.setAttribute("aria-pressed", String(capabilityAutoplayEnabled));
+  capabilityAutoplayButton.setAttribute(
+    "aria-label",
+    capabilityAutoplayEnabled ? "暂停能力路径自动演示" : "播放能力路径自动演示",
+  );
+  const label = capabilityAutoplayButton.querySelector("small");
+  if (label) label.textContent = capabilityAutoplayEnabled ? "PAUSE STORY" : "PLAY STORY";
+};
+
+const clearCapabilityAutoplay = () => {
+  window.clearTimeout(capabilityAutoplayTimer);
+};
+
+const scheduleCapabilityAutoplay = (delay = 4000) => {
+  clearCapabilityAutoplay();
+  if (!capabilityAutoplayEnabled || !capabilityAutoplayVisible || document.hidden) return;
+  capabilityAutoplayTimer = window.setTimeout(() => {
+    const detail = capabilityDetails[activeCapabilityKey];
+    const stepIndex = capabilityStepByKey.get(activeCapabilityKey) ?? 0;
+    if (stepIndex < detail.steps.length - 1) {
+      setCapabilityStep(stepIndex + 1);
+    } else {
+      const capabilityIndex = capabilityKeys.indexOf(activeCapabilityKey);
+      const nextKey = capabilityKeys[(capabilityIndex + 1) % capabilityKeys.length];
+      capabilityStepByKey.set(nextKey, 0);
+      setActiveCapability(nextKey);
+    }
+    scheduleCapabilityAutoplay();
+  }, delay);
+};
+
+const setCapabilityAutoplay = (enabled) => {
+  capabilityAutoplayEnabled = enabled && !reducedMotion;
+  updateCapabilityAutoplayControl();
+  if (capabilityAutoplayEnabled) {
+    scheduleCapabilityAutoplay(1600);
+  } else {
+    clearCapabilityAutoplay();
+  }
+};
+
+function disableCapabilityAutoplay() {
+  if (capabilityAutoplayEnabled) setCapabilityAutoplay(false);
+}
+
 capabilityTriggers.forEach((trigger, index) => {
   trigger.addEventListener("click", () => {
+    disableCapabilityAutoplay();
     setActiveCapability(trigger.dataset.capabilityTrigger);
   });
   trigger.addEventListener("keydown", (event) => {
@@ -875,11 +933,40 @@ capabilityTriggers.forEach((trigger, index) => {
     }
     if (nextIndex === undefined) return;
     event.preventDefault();
+    disableCapabilityAutoplay();
     setActiveCapability(capabilityKeys[nextIndex], true);
   });
 });
 
 setActiveCapability(activeCapabilityKey);
+updateCapabilityAutoplayControl();
+
+capabilityAutoplayButton?.addEventListener("click", () => {
+  setCapabilityAutoplay(!capabilityAutoplayEnabled);
+});
+
+if (capabilityWorkspace) {
+  const capabilityAutoplayObserver = new IntersectionObserver(
+    ([entry]) => {
+      capabilityAutoplayVisible = entry.isIntersecting && entry.intersectionRatio >= 0.28;
+      if (capabilityAutoplayVisible) {
+        scheduleCapabilityAutoplay(2200);
+      } else {
+        clearCapabilityAutoplay();
+      }
+    },
+    { threshold: [0, 0.28, 0.6] },
+  );
+  capabilityAutoplayObserver.observe(capabilityWorkspace);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    clearCapabilityAutoplay();
+  } else {
+    scheduleCapabilityAutoplay(1800);
+  }
+});
 
 const roleExplorer = document.querySelector("[data-role-explorer]");
 const roleDetail = roleExplorer?.querySelector("[data-role-detail]");
@@ -1154,6 +1241,7 @@ heroStages.forEach((stage) => {
       });
       return;
     }
+    disableCapabilityAutoplay();
     setActiveCapability(stage.dataset.heroCapability);
     capabilityWorkspace?.scrollIntoView({
       behavior: reducedMotion ? "auto" : "smooth",

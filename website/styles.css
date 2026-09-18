@@ -23,6 +23,9 @@
   --motion-loop: 8s;
   --motion-loop-slow: 24s;
   --motion-orbit: 32s;
+  --section-space: clamp(84px, 7.2vw, 116px);
+  --feature-gap: clamp(48px, 4.8vw, 64px);
+  --component-gap: clamp(20px, 2vw, 28px);
 }
 
 * {
@@ -1049,15 +1052,15 @@ p {
 .section {
   width: var(--page);
   margin: 0 auto;
-  padding-top: clamp(88px, 8vw, 128px);
-  padding-bottom: clamp(88px, 8vw, 128px);
+  padding-top: var(--section-space);
+  padding-bottom: var(--section-space);
 }
 
 .section-label {
   display: flex;
   align-items: center;
   gap: 18px;
-  margin-bottom: clamp(44px, 4.5vw, 64px);
+  margin-bottom: clamp(40px, 3.8vw, 56px);
   color: rgba(7, 19, 22, 0.5);
   font-size: 11px;
   font-weight: 650;
@@ -1101,6 +1104,7 @@ p {
 
 .manifesto h2,
 .capabilities h2,
+.candidate-journey h2,
 .experience h2,
 .sequence-lab h2,
 .tool-gateway h2,
@@ -1130,7 +1134,7 @@ p {
 .principles {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  margin-top: 72px;
+  margin-top: var(--feature-gap);
   border-top: 1px solid var(--line);
 }
 
@@ -1210,10 +1214,28 @@ p {
   background: var(--ink);
 }
 
+.hero,
+.workflow {
+  position: relative;
+}
+
+.hero::after,
+.workflow::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 4;
+  height: 72px;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(245, 247, 245, 0), var(--paper));
+}
+
 .workflow-head {
   display: grid;
   grid-template-columns: 0.55fr 1.45fr;
-  padding-bottom: 64px;
+  padding-bottom: var(--feature-gap);
 }
 
 .section-label-light {
@@ -2284,7 +2306,8 @@ p {
 
 .capability-theatre {
   position: relative;
-  padding: 14px;
+  padding: 12px;
+  margin-top: var(--feature-gap);
   overflow: hidden;
   color: var(--white);
   background: #061519;
@@ -2346,8 +2369,8 @@ p {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
-  min-height: 82px;
-  padding: 16px 18px;
+  min-height: 72px;
+  padding: 13px 16px;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.48);
   text-align: left;
@@ -2455,11 +2478,11 @@ p {
 
 .capability-theatre-scene {
   display: grid;
-  grid-template-columns: minmax(300px, 0.82fr) minmax(480px, 1.18fr);
-  gap: clamp(28px, 4vw, 62px);
+  grid-template-columns: minmax(300px, 0.86fr) minmax(480px, 1.14fr);
+  gap: clamp(28px, 3.6vw, 52px);
   align-items: center;
-  min-height: 520px;
-  padding: clamp(44px, 6vw, 78px) clamp(28px, 5vw, 70px);
+  min-height: 430px;
+  padding: clamp(34px, 4.4vw, 56px) clamp(26px, 4.4vw, 58px);
 }
 
 .capability-theatre-copy {
@@ -2489,7 +2512,7 @@ p {
 .capability-theatre-copy h3 {
   margin: 24px 0 18px;
   font-family: var(--display);
-  font-size: clamp(34px, 4.1vw, 58px);
+  font-size: clamp(32px, 3.5vw, 48px);
   font-weight: 590;
   letter-spacing: -0.055em;
   line-height: 1.08;
@@ -2508,13 +2531,13 @@ p {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 34px;
+  margin-top: 26px;
 }
 
 .capability-signal-cloud > div {
   flex: 1 1 132px;
   min-width: 0;
-  padding: 14px 15px;
+  padding: 12px 14px;
   background: rgba(255, 255, 255, 0.045);
   border: 1px solid rgba(255, 255, 255, 0.075);
   border-radius: 14px;
@@ -2557,7 +2580,7 @@ p {
 
 .capability-route-visual {
   position: relative;
-  min-height: 420px;
+  min-height: 350px;
   overflow: hidden;
   background:
     radial-gradient(circle at 50% 42%, rgba(92, 207, 205, 0.11), transparent 42%),
@@ -2612,7 +2635,7 @@ p {
 
 .capability-route-topline {
   position: absolute;
-  top: 24px;
+  top: 20px;
   right: 26px;
   left: 26px;
   z-index: 3;
@@ -2646,9 +2669,50 @@ p {
   letter-spacing: 0.1em;
 }
 
+.capability-autoplay {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 10px;
+  color: rgba(255, 255, 255, 0.48);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  transition:
+    color var(--motion-fast) ease,
+    background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
+}
+
+.capability-autoplay:hover,
+.capability-autoplay:focus-visible {
+  color: var(--white);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(99, 243, 217, 0.28);
+}
+
+.capability-autoplay > i {
+  width: 8px;
+  height: 9px;
+  background: linear-gradient(90deg, var(--mint) 0 30%, transparent 30% 68%, var(--mint) 68% 100%);
+  opacity: 0.72;
+}
+
+.capability-autoplay:not(.active) > i {
+  background: var(--mint);
+  clip-path: polygon(10% 0, 100% 50%, 10% 100%);
+}
+
+.capability-autoplay.active {
+  color: rgba(255, 255, 255, 0.7);
+  border-color: rgba(99, 243, 217, 0.18);
+}
+
 .capability-route-map {
   position: absolute;
-  top: 68px;
+  top: 52px;
   left: 4%;
   width: 92%;
   height: 250px;
@@ -2679,6 +2743,7 @@ p {
   position: absolute;
   inset: 0;
   z-index: 4;
+  pointer-events: none;
 }
 
 .capability-route-nodes button {
@@ -2693,6 +2758,7 @@ p {
   color: rgba(255, 255, 255, 0.58);
   text-align: left;
   cursor: pointer;
+  pointer-events: auto;
   background: rgba(5, 20, 24, 0.86);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
@@ -2782,7 +2848,7 @@ p {
 .capability-route-status {
   position: absolute;
   right: 24px;
-  bottom: 22px;
+  bottom: 18px;
   left: 24px;
   z-index: 3;
   display: flex;
@@ -2845,10 +2911,10 @@ p {
 .capability-story {
   display: grid;
   grid-template-columns: minmax(240px, 0.62fr) minmax(0, 1.38fr);
-  gap: clamp(28px, 4vw, 56px);
+  gap: clamp(26px, 3.4vw, 46px);
   align-items: center;
-  min-height: 300px;
-  padding: clamp(34px, 4vw, 54px);
+  min-height: 250px;
+  padding: clamp(28px, 3.3vw, 42px);
   color: var(--ink);
   background:
     radial-gradient(circle at 90% 20%, rgba(117, 170, 255, 0.16), transparent 32%),
@@ -2866,7 +2932,7 @@ p {
 .capability-story-copy h4 {
   margin: 18px 0 12px;
   font-family: var(--display);
-  font-size: clamp(27px, 2.8vw, 40px);
+  font-size: clamp(25px, 2.5vw, 34px);
   font-weight: 590;
   letter-spacing: -0.045em;
   line-height: 1.14;
@@ -2892,8 +2958,8 @@ p {
   position: relative;
   display: grid;
   align-content: space-between;
-  min-height: 190px;
-  padding: 22px;
+  min-height: 166px;
+  padding: 18px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid rgba(7, 19, 22, 0.08);
@@ -2997,7 +3063,7 @@ p {
 }
 
 .role-explorer {
-  margin-top: 18px;
+  margin-top: var(--component-gap);
   overflow: hidden;
   background: #e9eeeb;
   border: 1px solid rgba(7, 19, 22, 0.1);
@@ -3205,7 +3271,7 @@ p {
   display: grid;
   grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.28fr);
   min-height: 610px;
-  margin-top: 68px;
+  margin-top: var(--feature-gap);
   overflow: hidden;
   color: var(--white);
   background:
@@ -4955,7 +5021,7 @@ p {
 .company-metrics {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  margin-top: 72px;
+  margin-top: var(--feature-gap);
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
@@ -5654,7 +5720,7 @@ p {
   }
 
   .capability-route-visual {
-    min-height: 430px;
+    min-height: 390px;
   }
 
   .capability-story {
@@ -6212,7 +6278,7 @@ p {
   }
 
   .capability-theatre-copy h3 {
-    font-size: clamp(32px, 10vw, 42px);
+    font-size: clamp(30px, 8.8vw, 36px);
   }
 
   .capability-signal-cloud {
@@ -6245,6 +6311,13 @@ p {
 
   .capability-route-topline small {
     display: none;
+  }
+
+  .capability-autoplay {
+    width: 40px;
+    min-height: 36px;
+    padding: 0;
+    justify-content: center;
   }
 
   .capability-route-map {

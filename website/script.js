@@ -321,11 +321,86 @@ if (!reducedMotion && "IntersectionObserver" in window && countElements.length) 
   countElements.forEach((element) => countObserver.observe(element));
 }
 
-const setActiveWorkflowStep = (index) => {
+const workflowInspector = document.querySelector("[data-workflow-inspector]");
+const workflowPhases = [
+  {
+    phase: "PHASE 01 · IMMUNITY",
+    title: "免疫与效价",
+    summary: "建立抗原、动物、免疫计划与效价结果之间的第一段证据链。",
+    input: "抗原 · 免疫方案 · 动物队列",
+    process: "给药计划 · 采样 · FACS / ELISA",
+    output: "效价曲线 · 入选动物 · 样本批次",
+  },
+  {
+    phase: "PHASE 02 · SCREENING",
+    title: "筛选与发现",
+    summary: "让单 B 细胞与噬菌体展示等发现路径共享样本来源、筛选条件与命中记录。",
+    input: "B 细胞样本 · 分选门控 · 文库设计",
+    process: "单 B 细胞筛选 · 噬菌体展示 · 命中复核",
+    output: "阳性克隆 · 筛选轨迹 · 初选候选",
+  },
+  {
+    phase: "PHASE 03 · SEQUENCING",
+    title: "文库与测序",
+    summary: "把实验命中转化为经过质控、组装和配对的候选序列集合。",
+    input: "阳性孔位 · 文库样本 · Sanger / NGS 读段",
+    process: "序列质控 · 拼接配对 · 聚类与注释",
+    output: "VH / VL 序列 · 克隆簇 · 候选清单",
+  },
+  {
+    phase: "PHASE 04 · EXPRESSION",
+    title: "表达与纯化",
+    summary: "将候选序列映射到构建、转染、培养和纯化批次，持续记录产量与质量。",
+    input: "候选序列 · 载体模板 · 板位设计",
+    process: "构建 · 转染 · 表达 · 纯化与质检",
+    output: "质粒与细胞 · 蛋白批次 · 产量纯度",
+  },
+  {
+    phase: "PHASE 05 · CHARACTERIZATION",
+    title: "评价与决策",
+    summary: "汇集结合、亲和力、功能及成药性证据，让候选排序与决策依据保持同步。",
+    input: "蛋白批次 · 实验方案 · 对照与阈值",
+    process: "结合 · 亲和力 · 功能 · 开发性评价",
+    output: "证据矩阵 · 候选排序 · Go / No-Go 决策",
+  },
+];
+let workflowInspectorTimer;
+
+const updateWorkflowInspector = (index) => {
+  if (!workflowInspector) return;
+  const phase = workflowPhases[index];
+  if (!phase) return;
+
+  window.clearTimeout(workflowInspectorTimer);
+  workflowInspector.classList.add("is-updating");
+  workflowInspectorTimer = window.setTimeout(() => {
+    const values = {
+      "[data-workflow-phase]": phase.phase,
+      "[data-workflow-title]": phase.title,
+      "[data-workflow-summary]": phase.summary,
+      "[data-workflow-input]": phase.input,
+      "[data-workflow-process]": phase.process,
+      "[data-workflow-output]": phase.output,
+      "[data-workflow-current]": String(index + 1).padStart(2, "0"),
+    };
+    Object.entries(values).forEach(([selector, value]) => {
+      const target = workflowInspector.querySelector(selector);
+      if (target) target.textContent = value;
+    });
+    workflowInspector.classList.remove("is-updating");
+  }, reducedMotion ? 0 : 110);
+};
+
+const setActiveWorkflowStep = (requestedIndex) => {
+  if (!workflowSteps.length) return;
+  const index = Math.max(0, Math.min(workflowSteps.length - 1, requestedIndex));
   activeWorkflowIndex = index;
   workflowSteps.forEach((step, stepIndex) => {
     step.classList.toggle("active", stepIndex <= index);
+    step.classList.toggle("selected", stepIndex === index);
+    step.setAttribute("aria-pressed", String(stepIndex === index));
   });
+  updateWorkflowInspector(index);
 
   if (!trackProgress || workflowSteps.length < 2) return;
   const percentage = (index / (workflowSteps.length - 1)) * 100;
@@ -343,6 +418,25 @@ workflowSteps.forEach((step, index) => {
   step.addEventListener("mouseenter", () => setActiveWorkflowStep(index));
   step.addEventListener("focusin", () => setActiveWorkflowStep(index));
   step.addEventListener("click", () => setActiveWorkflowStep(index));
+  step.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    let targetIndex = index;
+    if (event.key === "ArrowLeft") targetIndex = Math.max(0, index - 1);
+    if (event.key === "ArrowRight") targetIndex = Math.min(workflowSteps.length - 1, index + 1);
+    if (event.key === "Home") targetIndex = 0;
+    if (event.key === "End") targetIndex = workflowSteps.length - 1;
+    workflowSteps[targetIndex]?.focus();
+    setActiveWorkflowStep(targetIndex);
+  });
+});
+
+workflowInspector?.querySelector("[data-workflow-prev]")?.addEventListener("click", () => {
+  setActiveWorkflowStep((activeWorkflowIndex - 1 + workflowSteps.length) % workflowSteps.length);
+});
+
+workflowInspector?.querySelector("[data-workflow-next]")?.addEventListener("click", () => {
+  setActiveWorkflowStep((activeWorkflowIndex + 1) % workflowSteps.length);
 });
 
 window.addEventListener("resize", () => setActiveWorkflowStep(activeWorkflowIndex));
@@ -368,6 +462,107 @@ if (workflow && "IntersectionObserver" in window) {
 
   workflowObserver.observe(workflow);
 }
+
+const capabilityConsole = document.querySelector("[data-capability-console]");
+const capabilityTriggers = document.querySelectorAll("[data-capability-trigger]");
+const capabilityDetails = {
+  mainline: {
+    tag: "DISCOVERY MAINLINE · CONNECTED OBJECTS",
+    title: "研发对象沿主线持续携带上下文",
+    description:
+      "项目、样本、序列、表达批次与评价结果通过同一对象关系向前传递，阶段切换不会丢失来源与决策依据。",
+    objects: "PROJECT · SAMPLE · SEQUENCE · ASSAY",
+    control: "阶段状态 · 依赖校验 · 版本记录",
+    outcome: "连续、可查询的候选证据链",
+    path: ["PROJECT", "SAMPLE", "SEQUENCE", "ASSAY"],
+  },
+  traceability: {
+    tag: "TRACEABILITY · BIDIRECTIONAL LINEAGE",
+    title: "从结果回到实验，从实验追至来源",
+    description:
+      "任一评价结果都可沿运行批次、实验样本和项目上下文反向定位，同时保留操作者、时间与版本信息。",
+    objects: "RESULT · RUN · SAMPLE · PROJECT",
+    control: "版本快照 · 操作记录 · 变更时间线",
+    outcome: "快速审计、异常定位与科学复盘",
+    path: ["RESULT", "RUN", "SAMPLE", "PROJECT"],
+  },
+  collaboration: {
+    tag: "COLLABORATION · SHARED EXECUTION",
+    title: "跨团队交接成为可见、可推进的执行链",
+    description:
+      "请求、责任人、状态与交付物在同一界面同步，前后环节可以直接读取所需信息并继续推进。",
+    objects: "REQUEST · OWNER · STATUS · DELIVERABLE",
+    control: "权限边界 · 状态门禁 · 交接确认",
+    outcome: "更少等待与重复沟通，更清晰的进度",
+    path: ["REQUEST", "OWNER", "STATUS", "HANDOFF"],
+  },
+  automation: {
+    tag: "AUTOMATION · CLOSED-LOOP EXECUTION",
+    title: "工单、设备运行与结果回写形成闭环",
+    description:
+      "经过校验的实验工单进入设备执行队列，运行状态和数据结果自动回到对应项目与样本上下文。",
+    objects: "ORDER · DEVICE · RUN · RESULT",
+    control: "参数校验 · 队列状态 · 异常标记",
+    outcome: "稳定执行、实时进度与自动数据归档",
+    path: ["ORDER", "DEVICE", "RUN", "RESULT"],
+  },
+};
+let capabilityTimer;
+
+const setActiveCapability = (key, revealConsole = false) => {
+  const detail = capabilityDetails[key];
+  if (!capabilityConsole || !detail) return;
+
+  capabilityTriggers.forEach((trigger) => {
+    const active = trigger.dataset.capabilityTrigger === key;
+    trigger.classList.toggle("active", active);
+    trigger.setAttribute("aria-pressed", String(active));
+  });
+
+  window.clearTimeout(capabilityTimer);
+  capabilityConsole.classList.add("is-updating");
+  capabilityTimer = window.setTimeout(() => {
+    const values = {
+      "[data-capability-tag]": detail.tag,
+      "[data-capability-title]": detail.title,
+      "[data-capability-description]": detail.description,
+      "[data-capability-objects]": detail.objects,
+      "[data-capability-control]": detail.control,
+      "[data-capability-outcome]": detail.outcome,
+    };
+    Object.entries(values).forEach(([selector, value]) => {
+      const target = capabilityConsole.querySelector(selector);
+      if (target) target.textContent = value;
+    });
+
+    const path = capabilityConsole.querySelector("[data-capability-path]");
+    if (path) {
+      path.replaceChildren();
+      detail.path.forEach((label, index) => {
+        const node = document.createElement("span");
+        node.textContent = label;
+        path.append(node);
+        if (index < detail.path.length - 1) path.append(document.createElement("i"));
+      });
+    }
+    capabilityConsole.classList.remove("is-updating");
+  }, reducedMotion ? 0 : 110);
+
+  if (revealConsole) {
+    window.setTimeout(() => {
+      capabilityConsole.scrollIntoView({
+        behavior: reducedMotion ? "auto" : "smooth",
+        block: "center",
+      });
+    }, reducedMotion ? 0 : 130);
+  }
+};
+
+capabilityTriggers.forEach((trigger) => {
+  trigger.addEventListener("click", () => {
+    setActiveCapability(trigger.dataset.capabilityTrigger, true);
+  });
+});
 
 if (sectionNavLinks.length) {
   const sectionLinks = new Map();

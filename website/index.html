@@ -45,7 +45,7 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20260918-13" />
+    <link rel="stylesheet" href="./styles.css?v=20260918-14" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
       {
@@ -390,7 +390,7 @@
 
         <div class="workflow-track" data-workflow>
           <div class="track-line"><span data-track-progress></span></div>
-          <article class="workflow-step active" data-step tabindex="0">
+          <article class="workflow-step active selected" data-step tabindex="0" role="button" aria-pressed="true">
             <span class="step-number">01</span>
             <div class="step-dot"></div>
             <div>
@@ -399,7 +399,7 @@
               <p>免疫计划、笼位、进度与 FACS / ELISA 效价结果统一进入发现入口。</p>
             </div>
           </article>
-          <article class="workflow-step" data-step tabindex="0">
+          <article class="workflow-step" data-step tabindex="0" role="button" aria-pressed="false">
             <span class="step-number">02</span>
             <div class="step-dot"></div>
             <div>
@@ -408,7 +408,7 @@
               <p>单 B 细胞、噬菌体展示等路径并行推进，并保持项目上下文连续。</p>
             </div>
           </article>
-          <article class="workflow-step" data-step tabindex="0">
+          <article class="workflow-step" data-step tabindex="0" role="button" aria-pressed="false">
             <span class="step-number">03</span>
             <div class="step-dot"></div>
             <div>
@@ -417,7 +417,7 @@
               <p>衔接文库构建、质检、Sanger / NGS 测序与候选序列分析。</p>
             </div>
           </article>
-          <article class="workflow-step" data-step tabindex="0">
+          <article class="workflow-step" data-step tabindex="0" role="button" aria-pressed="false">
             <span class="step-number">04</span>
             <div class="step-dot"></div>
             <div>
@@ -426,7 +426,7 @@
               <p>将质粒、细胞、转染、表达和纯化纳入共享的分子与细胞支撑层。</p>
             </div>
           </article>
-          <article class="workflow-step" data-step tabindex="0">
+          <article class="workflow-step" data-step tabindex="0" role="button" aria-pressed="false">
             <span class="step-number">05</span>
             <div class="step-dot"></div>
             <div>
@@ -435,6 +435,34 @@
               <p>整合结合、亲和力、功能及成药性结果，支撑候选分子持续收敛。</p>
             </div>
           </article>
+        </div>
+        <div class="workflow-inspector" data-workflow-inspector aria-live="polite">
+          <div class="workflow-inspector-head">
+            <div>
+              <span data-workflow-phase>PHASE 01 · IMMUNITY</span>
+              <strong data-workflow-title>免疫与效价</strong>
+              <p data-workflow-summary>建立抗原、动物、免疫计划与效价结果之间的第一段证据链。</p>
+            </div>
+            <div class="workflow-inspector-nav">
+              <button type="button" data-workflow-prev aria-label="查看上一个研发阶段">←</button>
+              <span><b data-workflow-current>01</b> / 05</span>
+              <button type="button" data-workflow-next aria-label="查看下一个研发阶段">→</button>
+            </div>
+          </div>
+          <div class="workflow-inspector-grid">
+            <article>
+              <span>INPUT</span>
+              <strong data-workflow-input>抗原 · 免疫方案 · 动物队列</strong>
+            </article>
+            <article>
+              <span>PROCESS</span>
+              <strong data-workflow-process>给药计划 · 采样 · FACS / ELISA</strong>
+            </article>
+            <article>
+              <span>OUTPUT</span>
+              <strong data-workflow-output>效价曲线 · 入选动物 · 样本批次</strong>
+            </article>
+          </div>
         </div>
       </section>
 
@@ -459,6 +487,9 @@
               <span class="card-tag">DISCOVERY MAINLINE</span>
               <h3>围绕实验路径组织工作，<br />让数据沿发现主线持续流动。</h3>
               <p>从项目入口到候选评价，数据随研发对象向前流动，保留每个决策节点的完整上下文。</p>
+              <button type="button" class="card-explore active" data-capability-trigger="mainline" aria-pressed="true">
+                探索发现主线 <span aria-hidden="true">→</span>
+              </button>
             </div>
             <div class="flow-mini" aria-hidden="true">
               <span>免疫</span><i></i><span>筛选</span><i></i><span>序列</span><i></i
@@ -477,12 +508,18 @@
               <div><span>RESULT</span><strong>实验结论</strong></div>
             </div>
             <p>统一项目、实验、样本、序列与结果之间的关联，支撑审计和科学复盘。</p>
+            <button type="button" class="card-explore" data-capability-trigger="traceability" aria-pressed="false">
+              查看追溯路径 <span aria-hidden="true">→</span>
+            </button>
           </article>
 
           <article class="capability-card reveal">
             <span class="card-tag">COLLABORATION</span>
             <h3>让不同团队共享同一进度。</h3>
             <p>清晰的工单、状态和权限边界，减少跨实验环节的重复沟通。</p>
+            <button type="button" class="card-explore" data-capability-trigger="collaboration" aria-pressed="false">
+              查看协作界面 <span aria-hidden="true">→</span>
+            </button>
             <div class="team-row" aria-hidden="true">
               <span>IM</span><span>SB</span><span>NG</span><span>EX</span><span>QA</span>
             </div>
@@ -492,12 +529,42 @@
             <span class="card-tag">AUTOMATION</span>
             <h3>把设备接入工作流，<br />把结果带回数据链。</h3>
             <p>通过工单校验、任务下发和结果回写连接实验室自动化模组。</p>
+            <button type="button" class="card-explore" data-capability-trigger="automation" aria-pressed="false">
+              查看自动化闭环 <span aria-hidden="true">→</span>
+            </button>
             <div class="automation-status" aria-hidden="true">
               <span><i></i> ORDER VALIDATED</span>
               <span><i></i> DEVICE RUNNING</span>
               <span><i></i> DATA RETURNED</span>
             </div>
           </article>
+
+          <section class="capability-console" data-capability-console aria-live="polite">
+            <div class="capability-console-copy">
+              <span data-capability-tag>DISCOVERY MAINLINE · CONNECTED OBJECTS</span>
+              <h3 data-capability-title>研发对象沿主线持续携带上下文</h3>
+              <p data-capability-description>
+                项目、样本、序列、表达批次与评价结果通过同一对象关系向前传递，阶段切换不会丢失来源与决策依据。
+              </p>
+            </div>
+            <div class="capability-console-data">
+              <div>
+                <span>OBJECTS</span>
+                <strong data-capability-objects>PROJECT · SAMPLE · SEQUENCE · ASSAY</strong>
+              </div>
+              <div>
+                <span>CONTROL</span>
+                <strong data-capability-control>阶段状态 · 依赖校验 · 版本记录</strong>
+              </div>
+              <div>
+                <span>OUTCOME</span>
+                <strong data-capability-outcome>连续、可查询的候选证据链</strong>
+              </div>
+            </div>
+            <div class="capability-path" data-capability-path aria-label="当前能力数据路径">
+              <span>PROJECT</span><i></i><span>SAMPLE</span><i></i><span>SEQUENCE</span><i></i><span>ASSAY</span>
+            </div>
+          </section>
         </div>
       </section>
 
@@ -614,9 +681,9 @@
           </div>
           <div class="ecosystem-orbit" aria-hidden="true">
             <div class="eco-core">VITA</div>
-            <div class="eco-ring ring-a"><span>RENMICE®</span></div>
-            <div class="eco-ring ring-b"><span>PROJECT INTEGRUM</span></div>
-            <div class="eco-ring ring-c"><span>AUTOMATION</span></div>
+            <div class="eco-ring ring-a"><span><b>RENMICE®</b></span></div>
+            <div class="eco-ring ring-b"><span><b>PROJECT INTEGRUM</b></span></div>
+            <div class="eco-ring ring-c"><span><b>AUTOMATION</b></span></div>
           </div>
         </div>
       </section>
@@ -901,7 +968,7 @@
       </div>
     </footer>
 
-    <script src="./script.js?v=20260918-13" defer></script>
-    <script src="./molecular-visual.js?v=20260918-13" defer></script>
+    <script src="./script.js?v=20260918-14" defer></script>
+    <script src="./molecular-visual.js?v=20260918-14" defer></script>
   </body>
 </html>

@@ -1171,7 +1171,7 @@ p {
   position: relative;
   width: var(--page);
   margin: 0 auto;
-  padding-bottom: 96px;
+  padding-bottom: 44px;
 }
 
 .track-line {
@@ -1200,7 +1200,7 @@ p {
   position: relative;
   min-height: 270px;
   padding: 0 26px 0 0;
-  cursor: default;
+  cursor: pointer;
   border-radius: 2px;
 }
 
@@ -1268,6 +1268,139 @@ p {
   color: rgba(255, 255, 255, 0.62);
   font-size: 14px;
   line-height: 1.75;
+}
+
+.workflow-step.selected {
+  background: linear-gradient(180deg, rgba(99, 243, 217, 0.055), transparent 82%);
+}
+
+.workflow-step.selected h3 {
+  color: var(--mint);
+}
+
+.workflow-inspector {
+  width: var(--page);
+  margin: 0 auto 96px;
+  padding: 26px 28px;
+  color: var(--white);
+  background:
+    radial-gradient(circle at 86% 0%, rgba(52, 120, 246, 0.16), transparent 32%),
+    rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+}
+
+.workflow-inspector-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 36px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.workflow-inspector-head > div:first-child {
+  display: grid;
+  gap: 7px;
+}
+
+.workflow-inspector-head span,
+.workflow-inspector-grid span {
+  color: rgba(99, 243, 217, 0.68);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+}
+
+.workflow-inspector-head strong {
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 590;
+}
+
+.workflow-inspector-head p {
+  max-width: 720px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 13px;
+}
+
+.workflow-inspector-nav {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.workflow-inspector-nav button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 50%;
+  transition:
+    color var(--motion-fast) ease,
+    background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
+}
+
+.workflow-inspector-nav button:hover,
+.workflow-inspector-nav button:focus-visible {
+  color: var(--ink);
+  background: var(--mint);
+  border-color: var(--mint);
+}
+
+.workflow-inspector-nav > span {
+  min-width: 46px;
+  color: rgba(255, 255, 255, 0.42);
+  text-align: center;
+}
+
+.workflow-inspector-nav b {
+  color: var(--white);
+  font: inherit;
+}
+
+.workflow-inspector-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.workflow-inspector-grid article {
+  min-height: 112px;
+  padding: 24px 22px 8px 0;
+}
+
+.workflow-inspector-grid article + article {
+  padding-left: 22px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.workflow-inspector-grid strong {
+  display: block;
+  margin-top: 12px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  font-weight: 540;
+  line-height: 1.6;
+}
+
+.workflow-inspector.is-updating .workflow-inspector-head > div:first-child,
+.workflow-inspector.is-updating .workflow-inspector-grid {
+  opacity: 0.28;
+  transform: translateY(4px);
+}
+
+.workflow-inspector-head > div:first-child,
+.workflow-inspector-grid {
+  transition:
+    opacity var(--motion-fast) ease,
+    transform var(--motion-base) var(--motion-ease);
 }
 
 .capabilities-intro,
@@ -1359,6 +1492,54 @@ p {
   color: rgba(7, 19, 22, 0.64);
   font-size: 14px;
   line-height: 1.75;
+}
+
+.card-explore {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 38px;
+  margin-top: 18px;
+  padding: 0 14px;
+  color: rgba(7, 19, 22, 0.68);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(7, 19, 22, 0.1);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  transition:
+    color var(--motion-fast) ease,
+    background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+.card-explore:hover,
+.card-explore:focus-visible,
+.card-explore.active {
+  color: var(--ink);
+  background: var(--mint);
+  border-color: rgba(0, 169, 157, 0.35);
+  transform: translateY(-1px);
+}
+
+.card-gradient .card-explore,
+.card-dark .card-explore {
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.card-gradient .card-explore:hover,
+.card-gradient .card-explore:focus-visible,
+.card-gradient .card-explore.active,
+.card-dark .card-explore:hover,
+.card-dark .card-explore:focus-visible,
+.card-dark .card-explore.active {
+  color: var(--ink);
+  background: var(--mint);
+  border-color: var(--mint);
 }
 
 .card-tag {
@@ -1563,6 +1744,131 @@ p {
 
 .automation-status span:nth-child(3) i {
   animation-delay: 1.2s;
+}
+
+.capability-console {
+  position: relative;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(280px, 0.76fr) minmax(420px, 1.24fr);
+  gap: 48px;
+  min-height: 320px;
+  padding: clamp(30px, 4vw, 54px);
+  overflow: hidden;
+  color: var(--white);
+  background:
+    linear-gradient(rgba(99, 243, 217, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 243, 217, 0.055) 1px, transparent 1px),
+    #0a1b1f;
+  background-size: 56px 56px;
+  border: 1px solid rgba(7, 19, 22, 0.08);
+  border-radius: 16px;
+}
+
+.capability-console-copy {
+  position: relative;
+  z-index: 1;
+}
+
+.capability-console-copy > span {
+  color: var(--mint);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+}
+
+.capability-console-copy h3 {
+  margin: 18px 0 14px;
+  font-family: var(--display);
+  font-size: clamp(25px, 2.2vw, 34px);
+  font-weight: 590;
+  letter-spacing: -0.035em;
+  line-height: 1.25;
+}
+
+.capability-console-copy p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.capability-console-data {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  align-content: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.capability-console-data > div {
+  min-height: 126px;
+  padding: 22px 18px 12px 0;
+}
+
+.capability-console-data > div + div {
+  padding-left: 18px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.capability-console-data span {
+  color: rgba(99, 243, 217, 0.62);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.13em;
+}
+
+.capability-console-data strong {
+  display: block;
+  margin-top: 15px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  font-weight: 540;
+  line-height: 1.65;
+}
+
+.capability-path {
+  position: absolute;
+  z-index: 1;
+  right: clamp(30px, 4vw, 54px);
+  bottom: 38px;
+  display: flex;
+  align-items: center;
+  width: calc(62% - 78px);
+}
+
+.capability-path span {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  color: rgba(255, 255, 255, 0.58);
+  background: #0a1b1f;
+  border: 1px solid rgba(99, 243, 217, 0.22);
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.capability-path i {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(99, 243, 217, 0.18), var(--mint));
+}
+
+.capability-console.is-updating .capability-console-copy,
+.capability-console.is-updating .capability-console-data,
+.capability-console.is-updating .capability-path {
+  opacity: 0.25;
+  transform: translateY(5px);
+}
+
+.capability-console-copy,
+.capability-console-data,
+.capability-path {
+  transition:
+    opacity var(--motion-fast) ease,
+    transform var(--motion-base) var(--motion-ease);
 }
 
 .experience {
@@ -2056,6 +2362,14 @@ p {
 
 .eco-ring span {
   position: absolute;
+  top: 50%;
+  left: 100%;
+  display: block;
+  width: 0;
+  height: 0;
+}
+
+.eco-ring span b {
   display: block;
   padding: 5px 10px;
   color: rgba(255, 255, 255, 0.6);
@@ -2064,20 +2378,23 @@ p {
   border-radius: 999px;
   font-size: 10px;
   font-weight: 700;
+  font-style: normal;
   letter-spacing: 0.12em;
   white-space: nowrap;
+  transform: translate(-50%, -50%);
+  transform-origin: center;
 }
 
 .ring-a {
   width: 48%;
   aspect-ratio: 1;
   animation: eco-orbit var(--motion-loop-slow) linear infinite;
+  animation-delay: -3s;
 }
 
-.ring-a span {
-  top: 7%;
-  left: 74%;
+.ring-a span b {
   animation: eco-label-counter var(--motion-loop-slow) linear infinite;
+  animation-delay: -3s;
 }
 
 .ring-b {
@@ -2085,24 +2402,24 @@ p {
   aspect-ratio: 1;
   border-style: dashed;
   animation: eco-orbit var(--motion-orbit) linear infinite reverse;
+  animation-delay: -11s;
 }
 
-.ring-b span {
-  top: 52%;
-  left: -5%;
+.ring-b span b {
   animation: eco-label-counter var(--motion-orbit) linear infinite reverse;
+  animation-delay: -11s;
 }
 
 .ring-c {
   width: 96%;
   aspect-ratio: 1;
   animation: eco-orbit 40s linear infinite;
+  animation-delay: -22s;
 }
 
-.ring-c span {
-  right: -4%;
-  bottom: 16%;
+.ring-c span b {
   animation: eco-label-counter 40s linear infinite;
+  animation-delay: -22s;
 }
 
 .tool-gateway {
@@ -3064,10 +3381,10 @@ p {
 
 @keyframes eco-label-counter {
   from {
-    transform: rotate(0deg);
+    transform: translate(-50%, -50%) rotate(0deg);
   }
   to {
-    transform: rotate(-360deg);
+    transform: translate(-50%, -50%) rotate(-360deg);
   }
 }
 
@@ -3443,6 +3760,21 @@ p {
     padding-left: 22px;
   }
 
+  .workflow-inspector {
+    margin-bottom: 72px;
+    padding: 24px 22px;
+  }
+
+  .capability-console {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+
+  .capability-path {
+    position: static;
+    width: 100%;
+  }
+
   .capability-grid {
     grid-template-columns: 1fr;
   }
@@ -3774,6 +4106,33 @@ p {
     bottom: 56px;
   }
 
+  .workflow-inspector {
+    margin-bottom: 56px;
+    padding: 20px 16px;
+  }
+
+  .workflow-inspector-head {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .workflow-inspector-nav {
+    justify-content: space-between;
+  }
+
+  .workflow-inspector-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-inspector-grid article,
+  .workflow-inspector-grid article + article {
+    min-height: 0;
+    padding: 18px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-left: 0;
+  }
+
   .capability-grid {
     margin-top: 48px;
   }
@@ -3823,6 +4182,32 @@ p {
 
   .automation-status span {
     padding: 9px 11px;
+  }
+
+  .capability-console {
+    min-height: 0;
+    padding: 26px 20px;
+  }
+
+  .capability-console-data {
+    grid-template-columns: 1fr;
+  }
+
+  .capability-console-data > div,
+  .capability-console-data > div + div {
+    min-height: 0;
+    padding: 16px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-left: 0;
+  }
+
+  .capability-path {
+    overflow: hidden;
+  }
+
+  .capability-path span {
+    padding: 5px 6px;
+    font-size: 7px;
   }
 
   .molecule-stage {

@@ -69,6 +69,38 @@ if (reducedMotion || !("IntersectionObserver" in window)) {
   revealItems.forEach((item) => revealObserver.observe(item));
 }
 
+const countElements = document.querySelectorAll("[data-count-end]");
+
+if (!reducedMotion && "IntersectionObserver" in window && countElements.length) {
+  const countObserver = new IntersectionObserver(
+    (entries, observer) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const element = entry.target;
+        const endValue = Number(element.dataset.countEnd);
+        const suffix = element.dataset.countSuffix ?? "";
+        const textNode = element.firstChild;
+        const startedAt = performance.now();
+        const duration = 1050;
+
+        const updateCount = (now) => {
+          const progress = Math.min(1, (now - startedAt) / duration);
+          const eased = 1 - (1 - progress) ** 3;
+          const current = Math.round(endValue * eased);
+          if (textNode) textNode.nodeValue = `${current.toLocaleString()}${suffix}`;
+          if (progress < 1) window.requestAnimationFrame(updateCount);
+        };
+
+        window.requestAnimationFrame(updateCount);
+        observer.unobserve(element);
+      });
+    },
+    { threshold: 0.55 },
+  );
+
+  countElements.forEach((element) => countObserver.observe(element));
+}
+
 const setActiveWorkflowStep = (index) => {
   activeWorkflowIndex = index;
   workflowSteps.forEach((step, stepIndex) => {

@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="zh-CN" class="no-js">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://rest.uniprot.org; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta name="theme-color" content="#071316" />
+    <meta
+      name="description"
+      content="Antibody Vita Bioinformatics：在浏览器本地完成蛋白与 DNA 理化统计、FASTA 整理去重、序列比对和抗体开发风险位点扫描，并连接可信公共生信服务。"
+    />
+    <meta
+      name="keywords"
+      content="生物信息学工具, 抗体序列分析, FASTA 去重, 序列比对, 抗体 PTM, UniProt, 本地生信工具"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:site_name" content="Antibody Vita Bioinformatics" />
+    <meta property="og:title" content="Vita Bioinformatics｜浏览器端抗体与序列工具" />
+    <meta
+      property="og:description"
+      content="本地优先的蛋白、DNA、FASTA 与抗体序列工作台，并连接 UniProt、EMBL-EBI、IMGT 等可信资源。"
+    />
+    <meta
+      property="og:url"
+      content="https://tianba-scp035.github.io/Antibody_Forge/tools/"
+    />
+    <meta
+      property="og:image"
+      content="https://tianba-scp035.github.io/Antibody_Forge/assets/social-preview.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link
+      rel="canonical"
+      href="https://tianba-scp035.github.io/Antibody_Forge/tools/"
+    />
+    <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../styles.css?v=20260918-5" />
+    <link rel="stylesheet" href="./tools.css?v=20260918-5" />
+    <title>Vita Bioinformatics｜浏览器端抗体与序列工具</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Vita Bioinformatics",
+        "applicationCategory": "ScienceApplication",
+        "operatingSystem": "Web",
+        "description": "A local-first browser workspace for antibody, protein, DNA and FASTA sequence analysis.",
+        "url": "https://tianba-scp035.github.io/Antibody_Forge/tools/",
+        "codeRepository": "https://github.com/TianBa-SCP035/Antibody_Forge"
+      }
+    </script>
+  </head>
+  <body class="tools-page">
+    <a class="skip-link" href="#workspace">跳转到工具工作区</a>
+
+    <header class="site-header tools-header" data-header>
+      <a class="brand" href="../" aria-label="返回 Antibody Vita 首页">
+        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+          <defs>
+            <linearGradient id="brand-gradient" x1="4" y1="4" x2="44" y2="44">
+              <stop stop-color="#12d6c5" />
+              <stop offset=".5" stop-color="#2d72ff" />
+              <stop offset="1" stop-color="#c640ff" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M9 10c5 0 10 7 15 14 5-7 10-14 15-14 4 0 7 3 7 7 0 6-8 11-14 15-3 2-5 6-5 11h-6c0-5-2-9-5-11C10 28 2 23 2 17c0-4 3-7 7-7Z"
+            fill="none"
+            stroke="url(#brand-gradient)"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="5"
+          />
+        </svg>
+        <span>
+          <strong>Vita Bioinformatics</strong>
+          <small>Local-first tools</small>
+        </span>
+      </a>
+
+      <nav class="desktop-nav" aria-label="工具平台导航">
+        <a href="#workspace">本地工具</a>
+        <a href="#services">公共服务</a>
+        <a href="../#platform">Vita 平台</a>
+        <a href="../#company">公司</a>
+      </nav>
+
+      <a class="header-action" href="../">
+        返回项目首页
+        <span aria-hidden="true">↗</span>
+      </a>
+
+      <button
+        class="menu-toggle"
+        type="button"
+        aria-label="打开导航菜单"
+        aria-expanded="false"
+        aria-controls="mobile-navigation"
+        data-menu-toggle
+      >
+        <span></span><span></span>
+      </button>
+
+      <div class="mobile-nav" id="mobile-navigation" data-mobile-nav>
+        <a href="#workspace">本地工具</a>
+        <a href="#services">公共服务</a>
+        <a href="../#platform">Vita 平台</a>
+        <a href="../#company">公司</a>
+        <a href="../">返回项目首页 ↗</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="tools-hero" id="top">
+        <div class="tools-hero-grid" aria-hidden="true"></div>
+        <div class="tools-hero-copy">
+          <p class="eyebrow reveal"><span></span> VITA · BIOINFORMATICS WORKSPACE</p>
+          <h1 class="reveal">把常用序列操作，<br />带到一个可信的浏览器工作台。</h1>
+          <p class="reveal">
+            从 Antibody Vita 与既有 Gradio 小工具中重构常用能力。
+            本地任务不上传序列；公共数据库查询明确标注数据去向。
+          </p>
+          <div class="tools-hero-actions reveal">
+            <a class="button button-primary" href="#workspace">
+              打开工作台 <span aria-hidden="true">↓</span>
+            </a>
+            <a class="text-link" href="#services">
+              浏览公共服务 <span aria-hidden="true">→</span>
+            </a>
+          </div>
+          <ul class="tools-trust-row reveal" aria-label="工具平台特性">
+            <li><i></i> LOCAL FIRST</li>
+            <li><i></i> NO ACCOUNT</li>
+            <li><i></i> OPEN METHODS</li>
+          </ul>
+        </div>
+
+        <div class="tools-hero-visual reveal" aria-label="序列处理数据流示意">
+          <div class="sequence-stream stream-a">
+            <span>A</span><span>C</span><span>G</span><span>T</span><span>N</span><span>R</span>
+          </div>
+          <div class="sequence-stream stream-b">
+            <span>E</span><span>V</span><span>Q</span><span>L</span><span>V</span><span>E</span>
+          </div>
+          <div class="tools-core">
+            <small>WORKSPACE</small>
+            <strong>05</strong>
+            <span>TOOLS READY</span>
+          </div>
+          <div class="tools-signal signal-one"><b></b><span>PARSE</span></div>
+          <div class="tools-signal signal-two"><b></b><span>ANALYZE</span></div>
+          <div class="tools-signal signal-three"><b></b><span>CONNECT</span></div>
+        </div>
+      </section>
+
+      <section class="tool-platform" id="workspace" data-tool-platform>
+        <div class="tool-platform-head">
+          <div>
+            <p class="kicker reveal">本地优先 · 按需连接</p>
+            <h2 class="reveal">选择一个任务，<br />只打开当前需要的工作区。</h2>
+          </div>
+          <p class="reveal">
+            工具不会全部堆在项目首页。这里采用目录与独立工作区两层结构，
+            输入在切换工具时保留于当前标签页内存。
+          </p>
+        </div>
+
+        <div class="tool-platform-shell reveal">
+          <aside class="tool-directory">
+            <div class="tool-directory-head">
+              <span>TOOL DIRECTORY</span>
+              <strong>5 个工作区</strong>
+            </div>
+            <nav aria-label="生信工具目录">
+              <a href="#sequence" data-tool-link="sequence" aria-current="page">
+                <span>01</span>
+                <div>
+                  <strong>序列理化性质</strong>
+                  <small>Protein · DNA</small>
+                </div>
+                <i>LOCAL</i>
+              </a>
+              <a href="#fasta" data-tool-link="fasta">
+                <span>02</span>
+                <div>
+                  <strong>FASTA 整理与去重</strong>
+                  <small>Parse · Dedupe · Export</small>
+                </div>
+                <i>LOCAL</i>
+              </a>
+              <a href="#compare" data-tool-link="compare">
+                <span>03</span>
+                <div>
+                  <strong>双序列全局比对</strong>
+                  <small>Identity · Alignment</small>
+                </div>
+                <i>LOCAL</i>
+              </a>
+              <a href="#liability" data-tool-link="liability">
+                <span>04</span>
+                <div>
+                  <strong>抗体序列风险扫描</strong>
+                  <small>Motif · Position · Context</small>
+                </div>
+                <i>LOCAL</i>
+              </a>
+              <a href="#uniprot" data-tool-link="uniprot">
+                <span>05</span>
+                <div>
+                  <strong>UniProt 条目查询</strong>
+                  <small>Public knowledge lookup</small>
+                </div>
+                <i class="remote">LIVE</i>
+              </a>
+            </nav>
+            <p>
+              <span></span>
+              LOCAL 表示序列不离开浏览器；LIVE 表示仅向标注的公共数据库发送查询词。
+            </p>
+          </aside>
+
+          <div class="tool-panels">
+            <section class="tool-panel active" id="sequence" data-tool-panel="sequence">
+              <div class="tool-panel-intro">
+                <div>
+                  <span>01 · SEQUENCE PROPERTIES</span>
+                  <h3>序列理化性质</h3>
+                </div>
+                <p>计算常用一级序列指标；蛋白和 DNA 使用不同的明确方法与适用边界。</p>
+              </div>
+
+              <div class="lab-shell embedded-lab" data-sequence-lab>
+                <noscript>
+                  <p class="lab-noscript">本地序列计算需要启用 JavaScript。</p>
+                </noscript>
+                <div class="lab-toolbar">
+                  <div class="lab-mode-switch" aria-label="选择序列类型">
+                    <button type="button" data-sequence-mode="protein" aria-pressed="true">
+                      蛋白质 / 抗体
+                    </button>
+                    <button type="button" data-sequence-mode="dna" aria-pressed="false">DNA</button>
+                  </div>
+                  <p><span></span>序列仅在本地内存中处理</p>
+                </div>
+
+                <div class="lab-workspace">
+                  <div class="lab-input-panel">
+                    <div class="lab-panel-heading">
+                      <label for="sequence-input">输入序列</label>
+                      <span data-sequence-counter>0 aa</span>
+                    </div>
+                    <textarea
+                      id="sequence-input"
+                      data-sequence-input
+                      rows="12"
+                      spellcheck="false"
+                      autocomplete="off"
+                      placeholder="粘贴单字母氨基酸序列或 FASTA 内容…"
+                    ></textarea>
+                    <div class="lab-input-actions">
+                      <button type="button" class="lab-text-button" data-sequence-example>载入示例</button>
+                      <button type="button" class="lab-text-button" data-sequence-clear>清空</button>
+                      <button type="button" class="lab-run-button" data-sequence-run>
+                        开始计算 <span aria-hidden="true">→</span>
+                      </button>
+                    </div>
+                    <p class="lab-feedback" data-sequence-feedback aria-live="polite">
+                      支持标准 20 种氨基酸单字母代码。
+                    </p>
+                  </div>
+
+                  <div class="lab-results-panel" aria-live="polite">
+                    <div class="lab-panel-heading">
+                      <span>计算结果</span>
+                      <span data-result-kind>PROTEIN</span>
+                    </div>
+                    <div class="lab-metrics">
+                      <article>
+                        <small data-metric-label="0">序列长度</small>
+                        <strong data-metric-value="0">—</strong>
+                        <span data-metric-unit="0">aa</span>
+                      </article>
+                      <article>
+                        <small data-metric-label="1">近似分子量</small>
+                        <strong data-metric-value="1">—</strong>
+                        <span data-metric-unit="1">kDa</span>
+                      </article>
+                      <article>
+                        <small data-metric-label="2">理论等电点</small>
+                        <strong data-metric-value="2">—</strong>
+                        <span data-metric-unit="2">pI</span>
+                      </article>
+                      <article>
+                        <small data-metric-label="3">平均疏水性</small>
+                        <strong data-metric-value="3">—</strong>
+                        <span data-metric-unit="3">GRAVY</span>
+                      </article>
+                      <article>
+                        <small data-metric-label="4">280 nm 最大氧化态</small>
+                        <strong data-metric-value="4">—</strong>
+                        <span data-metric-unit="4">M⁻¹cm⁻¹</span>
+                      </article>
+                    </div>
+                    <div class="lab-output-block">
+                      <div>
+                        <span data-output-title>组成概览</span>
+                        <button type="button" data-sequence-copy>复制结果</button>
+                      </div>
+                      <pre data-sequence-output tabindex="0">输入序列后将在这里显示摘要。</pre>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="lab-disclaimer">
+                  <p>
+                    一级序列理论计算仅供研究与教育参考；重链、轻链及其他多肽链应分别输入。
+                  </p>
+                  <details>
+                    <summary>计算方法与适用边界</summary>
+                    <p>
+                      蛋白使用平均残基质量、Kyte–Doolittle 尺度与 Bjellqvist pKa；
+                      DNA 使用标准遗传密码表，Wallace Tm 仅适用于短寡核苷酸粗估。
+                    </p>
+                  </details>
+                </div>
+              </div>
+            </section>
+
+            <section class="tool-panel" id="fasta" data-tool-panel="fasta" hidden>
+              <div class="tool-panel-intro">
+                <div>
+                  <span>02 · FASTA WORKSPACE</span>
+                  <h3>FASTA 整理与去重</h3>
+                </div>
+                <p>从原 Gradio 批量处理思路重构：解析多记录、检查字符、按序列去重并导出。</p>
+              </div>
+
+              <div class="utility-workbench" data-fasta-tool>
+                <div class="utility-input">
+                  <div class="utility-heading">
+                    <label for="fasta-input">FASTA 记录</label>
+                    <span data-fasta-counter>0 records</span>
+                  </div>
+                  <label class="file-drop" for="fasta-files">
+                    <input
+                      id="fasta-files"
+                      data-fasta-files
+                      type="file"
+                      accept=".fa,.fasta,.faa,.fna,.txt,text/plain"
+                      multiple
+                    />
+                    <strong>拖入或选择 FASTA 文件</strong>
+                    <span>文件只在当前浏览器读取</span>
+                  </label>
+                  <textarea
+                    id="fasta-input"
+                    data-fasta-input
+                    rows="15"
+                    spellcheck="false"
+                    placeholder=">sequence_1&#10;EVQLVESGGGLVQPGGSLRLSC…"
+                  ></textarea>
+                  <div class="utility-actions">
+                    <button type="button" class="ghost-action" data-fasta-example>载入示例</button>
+                    <button type="button" class="ghost-action" data-fasta-clear>清空</button>
+                    <button type="button" class="primary-action" data-fasta-run>
+                      整理记录 <span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                  <p class="utility-feedback" data-fasta-feedback aria-live="polite">
+                    接受标准 FASTA；重复序列保留首次出现的记录名。
+                  </p>
+                </div>
+
+                <div class="utility-results">
+                  <div class="utility-metrics">
+                    <article><small>输入记录</small><strong data-fasta-metric="records">—</strong></article>
+                    <article><small>唯一序列</small><strong data-fasta-metric="unique">—</strong></article>
+                    <article><small>重复记录</small><strong data-fasta-metric="duplicates">—</strong></article>
+                    <article><small>总残基数</small><strong data-fasta-metric="residues">—</strong></article>
+                  </div>
+                  <div class="result-table-shell">
+                    <div class="result-table-head">
+                      <span>记录预览</span>
+                      <div>
+                        <button type="button" data-fasta-download="fasta" disabled>下载 FASTA</button>
+                        <button type="button" data-fasta-download="csv" disabled>下载 CSV</button>
+                      </div>
+                    </div>
+                    <div class="result-table-scroll">
+                      <table>
+                        <thead>
+                          <tr><th>ID</th><th>长度</th><th>类型</th><th>状态</th></tr>
+                        </thead>
+                        <tbody data-fasta-table>
+                          <tr><td colspan="4">整理后将在这里显示前 100 条记录。</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p class="tool-method-note">
+                去重键为移除空白并转为大写后的完整序列；不做近似聚类，也不根据记录名判断重复。
+              </p>
+            </section>
+
+            <section class="tool-panel" id="compare" data-tool-panel="compare" hidden>
+              <div class="tool-panel-intro">
+                <div>
+                  <span>03 · GLOBAL ALIGNMENT</span>
+                  <h3>双序列全局比对</h3>
+                </div>
+                <p>面向抗体可变区和常规 DNA 片段，以 Needleman–Wunsch 全局比对替代简单字符串相似度。</p>
+              </div>
+
+              <div class="compare-workbench" data-compare-tool>
+                <div class="compare-inputs">
+                  <label>
+                    <span>序列 A</span>
+                    <textarea data-compare-a rows="10" spellcheck="false" placeholder="输入蛋白或 DNA 序列…"></textarea>
+                  </label>
+                  <label>
+                    <span>序列 B</span>
+                    <textarea data-compare-b rows="10" spellcheck="false" placeholder="输入用于比较的序列…"></textarea>
+                  </label>
+                </div>
+                <div class="compare-controls">
+                  <p>评分：匹配 +2 · 错配 −1 · 缺口 −2</p>
+                  <div>
+                    <button type="button" class="ghost-action" data-compare-example>载入抗体示例</button>
+                    <button type="button" class="primary-action" data-compare-run>
+                      开始比对 <span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                </div>
+                <p class="utility-feedback" data-compare-feedback aria-live="polite">
+                  每条序列最长 2,000 个字符；计算完全在本地完成。
+                </p>
+                <div class="utility-metrics compare-metrics">
+                  <article><small>一致性</small><strong data-compare-metric="identity">—</strong></article>
+                  <article><small>匹配位点</small><strong data-compare-metric="matches">—</strong></article>
+                  <article><small>比对长度</small><strong data-compare-metric="length">—</strong></article>
+                  <article><small>缺口数</small><strong data-compare-metric="gaps">—</strong></article>
+                </div>
+                <div class="alignment-output">
+                  <div><span>ALIGNMENT</span><button type="button" data-compare-copy>复制结果</button></div>
+                  <pre data-compare-output tabindex="0">运行后将在这里显示对齐结果。</pre>
+                </div>
+              </div>
+              <p class="tool-method-note">
+                使用固定匹配 / 错配分数与线性缺口罚分，不使用 BLOSUM、PAM 或仿射缺口；
+                适合快速一致性检查，不应用于推断同源性或进化关系。
+              </p>
+            </section>
+
+            <section class="tool-panel" id="liability" data-tool-panel="liability" hidden>
+              <div class="tool-panel-intro">
+                <div>
+                  <span>04 · LIABILITY SCAN</span>
+                  <h3>抗体序列风险位点扫描</h3>
+                </div>
+                <p>快速标记常见序列基序与敏感残基，帮助决定后续需要重点复核的位置。</p>
+              </div>
+
+              <div class="liability-workbench" data-liability-tool>
+                <div class="liability-input">
+                  <label for="liability-input">蛋白质 / 抗体单链序列</label>
+                  <textarea
+                    id="liability-input"
+                    data-liability-input
+                    rows="10"
+                    spellcheck="false"
+                    placeholder="输入标准 20 种氨基酸单字母序列…"
+                  ></textarea>
+                  <div class="utility-actions">
+                    <button type="button" class="ghost-action" data-liability-example>载入示例</button>
+                    <button type="button" class="primary-action" data-liability-run>
+                      扫描位点 <span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                  <p class="utility-feedback" data-liability-feedback aria-live="polite">
+                    风险基序不等同于实际修饰；结果必须结合结构、暴露度、制剂与实验数据判断。
+                  </p>
+                </div>
+                <div class="liability-summary">
+                  <div class="liability-score">
+                    <span>FLAGGED SITES</span>
+                    <strong data-liability-count>—</strong>
+                    <small>context flags</small>
+                  </div>
+                  <div class="result-table-shell">
+                    <div class="result-table-head"><span>位点清单</span></div>
+                    <div class="result-table-scroll">
+                      <table>
+                        <thead>
+                          <tr><th>类别</th><th>位置</th><th>基序</th><th>解释</th></tr>
+                        </thead>
+                        <tbody data-liability-table>
+                          <tr><td colspan="4">扫描后将在这里显示结果。</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p class="tool-method-note">
+                方法仅做一级序列规则扫描：N-X-S/T（X≠P）、NG/NS/NT、DG/DS/DT/DD/DH、
+                Met/Trp 与 Cys 配对提示；不替代 LC–MS、稳定性或成药性实验。
+              </p>
+            </section>
+
+            <section class="tool-panel" id="uniprot" data-tool-panel="uniprot" hidden>
+              <div class="tool-panel-intro">
+                <div>
+                  <span>05 · UNIPROT LIVE</span>
+                  <h3>UniProt 公共条目查询</h3>
+                </div>
+                <p>通过官方 REST API 读取公开蛋白知识；仅发送 accession，不发送你的序列。</p>
+              </div>
+
+              <div class="uniprot-workbench" data-uniprot-tool>
+                <form class="uniprot-search" data-uniprot-form>
+                  <label for="uniprot-accession">UniProt accession</label>
+                  <div>
+                    <input
+                      id="uniprot-accession"
+                      data-uniprot-input
+                      type="text"
+                      value="P04637"
+                      maxlength="20"
+                      autocomplete="off"
+                      spellcheck="false"
+                    />
+                    <button type="submit" class="primary-action">
+                      查询公开条目 <span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                  <p data-uniprot-feedback aria-live="polite">
+                    数据来源：UniProt REST API。请避免自动化批量请求。
+                  </p>
+                </form>
+
+                <article class="uniprot-result" data-uniprot-result aria-live="polite">
+                  <div class="uniprot-placeholder">
+                    <span>LIVE KNOWLEDGE</span>
+                    <strong>输入 accession 后查询</strong>
+                    <p>例如 P04637（人 TP53）或 P21802（人 FGFR2）。</p>
+                  </div>
+                </article>
+              </div>
+              <p class="tool-method-note">
+                公共数据可能随 UniProt release 更新。关键注释请回到
+                <a href="https://www.uniprot.org/" target="_blank" rel="noreferrer">UniProt 官方条目 ↗</a>
+                核对并按官方要求引用。
+              </p>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="service-directory section" id="services">
+        <div class="section-label reveal">
+          <span>06</span>
+          <p>Trusted public services</p>
+        </div>
+        <div class="service-intro">
+          <div>
+            <p class="kicker reveal">需要服务器计算时，回到可信来源</p>
+            <h2 class="reveal">不伪装成自有能力，<br />清楚告诉你数据将去哪里。</h2>
+          </div>
+          <p class="reveal">
+            下列任务依赖数据库、HMM、结构模型或大规模计算。当前版本采用官方入口跳转，
+            避免未经许可抓取网页，也避免在没有明确同意时上传未公开序列。
+          </p>
+        </div>
+
+        <div class="service-grid">
+          <a class="service-card reveal" href="https://www.ebi.ac.uk/jdispatcher/sequenceanalysis" target="_blank" rel="noreferrer">
+            <span>EMBL-EBI</span><strong>BLAST+ 与序列搜索</strong>
+            <p>在官方 Job Dispatcher 选择 NCBI BLAST+、FASTA、HMMER 等任务。</p>
+            <i>提交序列到 EMBL-EBI ↗</i>
+          </a>
+          <a class="service-card reveal" href="https://www.ebi.ac.uk/jdispatcher/msa/clustalo" target="_blank" rel="noreferrer">
+            <span>EMBL-EBI</span><strong>Clustal Omega 多序列比对</strong>
+            <p>适合多条蛋白或核酸序列的服务端多序列比对。</p>
+            <i>打开官方工具 ↗</i>
+          </a>
+          <a class="service-card reveal" href="https://www.ebi.ac.uk/interpro/search/sequence/" target="_blank" rel="noreferrer">
+            <span>INTERPRO</span><strong>结构域与家族注释</strong>
+            <p>使用 InterProScan 检索蛋白家族、结构域、位点与功能签名。</p>
+            <i>提交到 InterPro ↗</i>
+          </a>
+          <a class="service-card reveal" href="https://www.imgt.org/3Dstructure-DB/cgi/DomainGapAlign.cgi" target="_blank" rel="noreferrer">
+            <span>IMGT®</span><strong>抗体结构域编号</strong>
+            <p>通过 IMGT/DomainGapAlign 获取 IMGT 编号、FR/CDR 边界与近似胚系。</p>
+            <i>打开官方表单 ↗</i>
+          </a>
+          <a class="service-card reveal" href="https://opig.stats.ox.ac.uk/webapps/sabdab-sabpred/sabpred/anarci/" target="_blank" rel="noreferrer">
+            <span>OXFORD · OPIG</span><strong>ANARCI 抗体编号</strong>
+            <p>支持 IMGT、Kabat、Chothia、Martin 与 AHo 等编号方案。</p>
+            <i>打开 SAbPred ↗</i>
+          </a>
+          <a class="service-card reveal" href="https://alphafold.ebi.ac.uk/" target="_blank" rel="noreferrer">
+            <span>ALPHAFOLD DB</span><strong>公开结构预测查询</strong>
+            <p>按 UniProt accession 或基因名称检索公开预测结构与置信度。</p>
+            <i>查询公开结构 ↗</i>
+          </a>
+        </div>
+        <p class="service-privacy-note reveal">
+          外部服务具有各自的隐私、保留期限、配额与引用规则。涉及未公开候选序列时，请先确认组织政策。
+        </p>
+      </section>
+    </main>
+
+    <footer class="site-footer tools-footer">
+      <div class="footer-main">
+        <div class="footer-brand">
+          <a class="brand brand-footer" href="#top">
+            <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+              <path
+                d="M9 10c5 0 10 7 15 14 5-7 10-14 15-14 4 0 7 3 7 7 0 6-8 11-14 15-3 2-5 6-5 11h-6c0-5-2-9-5-11C10 28 2 23 2 17c0-4 3-7 7-7Z"
+                fill="none"
+                stroke="url(#brand-gradient)"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="5"
+              />
+            </svg>
+            <span><strong>Vita Bioinformatics</strong><small>Local-first tools</small></span>
+          </a>
+          <p>从 Antibody Vita 工作流与常用研发任务中提炼的轻量生信工作台。</p>
+        </div>
+        <nav class="footer-column" aria-label="工具链接">
+          <strong>本地工具</strong>
+          <a href="#sequence" data-tool-link="sequence">序列理化性质</a>
+          <a href="#fasta" data-tool-link="fasta">FASTA 整理与去重</a>
+          <a href="#compare" data-tool-link="compare">双序列全局比对</a>
+          <a href="#liability" data-tool-link="liability">抗体序列风险扫描</a>
+        </nav>
+        <nav class="footer-column" aria-label="资源链接">
+          <strong>资源</strong>
+          <a href="#services">公共生信服务</a>
+          <a href="../">Antibody Vita 首页</a>
+          <a href="https://github.com/TianBa-SCP035/Antibody_Forge" target="_blank" rel="noreferrer">GitHub 仓库 ↗</a>
+        </nav>
+        <div class="footer-contact">
+          <strong>数据边界</strong>
+          <span>本地工具不上传输入内容</span>
+          <span>UniProt 查询仅发送 accession</span>
+          <span>外部跳转遵循服务方政策</span>
+        </div>
+      </div>
+      <div class="footer-legal">
+        <p>© 2024–2026 Biocytogen Pharmaceuticals (Beijing) Co., Ltd.</p>
+        <p>研究与教育参考工具；不构成实验测量、临床、治疗或监管依据。</p>
+      </div>
+    </footer>
+
+    <script src="../script.js?v=20260918-5" defer></script>
+    <script src="../sequence-tools.js?v=20260918-5" defer></script>
+    <script src="./tools.js?v=20260918-5" defer></script>
+  </body>
+</html>

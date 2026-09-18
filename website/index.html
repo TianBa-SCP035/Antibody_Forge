@@ -45,7 +45,7 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20260918-4" />
+    <link rel="stylesheet" href="./styles.css?v=20260918-5" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
       {
@@ -61,7 +61,10 @@
         "featureList": [
           "Antibody discovery workflow visualization",
           "Client-side protein sequence properties",
-          "Client-side DNA reverse complement and translation"
+          "Client-side DNA reverse complement and translation",
+          "Local FASTA deduplication and pairwise sequence alignment",
+          "Antibody sequence liability motif scanning",
+          "UniProt public knowledge lookup"
         ],
         "creator": {
           "@type": "Organization",
@@ -543,120 +546,92 @@
         </div>
       </section>
 
-      <section class="sequence-lab section" id="tools">
+      <section class="tool-gateway section" id="tools">
         <div class="section-label reveal">
           <span>06</span>
-          <p>Local sequence lab</p>
+          <p>Vita bioinformatics</p>
         </div>
-        <div class="lab-intro">
+        <div class="tool-gateway-intro">
           <div>
-            <p class="kicker reveal">无需服务器的轻量计算</p>
-            <h2 class="reveal">让序列在离开浏览器之前，<br />先给出一些答案。</h2>
+            <p class="kicker reveal">从协作平台，进入轻量生信工作台</p>
+            <h2 class="reveal">工具不必堆满首页，<br />但应该随时可达。</h2>
           </div>
-          <div class="lab-intro-copy reveal">
+          <div class="tool-gateway-copy reveal">
             <p>
-              粘贴蛋白质或 DNA FASTA 序列，快速获得常用理化统计、反向互补与阅读框翻译。
-              所有计算仅在当前设备完成，不上传、不保存。
+              独立工具中心承载序列理化性质、FASTA 整理去重、全局比对与抗体风险位点扫描，
+              并以明确的数据边界连接 UniProt、EMBL-EBI、IMGT 等公共服务。
             </p>
-            <span><i></i> CLIENT-SIDE ONLY</span>
+            <a class="text-link text-link-dark" href="./tools/">
+              进入 Vita Bioinformatics <span aria-hidden="true">→</span>
+            </a>
           </div>
         </div>
 
-        <div class="lab-shell reveal" data-sequence-lab>
-          <noscript>
-            <p class="lab-noscript">本地序列计算需要启用 JavaScript；页面其余内容仍可正常浏览。</p>
-          </noscript>
-          <div class="lab-toolbar">
-            <div class="lab-mode-switch" aria-label="选择序列类型">
-              <button type="button" data-sequence-mode="protein" aria-pressed="true">
-                蛋白质 / 抗体
-              </button>
-              <button type="button" data-sequence-mode="dna" aria-pressed="false">DNA</button>
+        <div class="tool-gateway-shell reveal">
+          <div class="tool-gateway-visual" aria-hidden="true">
+            <div class="gateway-grid"></div>
+            <div class="gateway-core">
+              <small>VITA</small>
+              <strong>BIO</strong>
+              <span>WORKSPACE</span>
             </div>
-            <p><span></span>序列仅在本地内存中处理</p>
+            <div class="gateway-node gateway-node-a"><i></i><span>LOCAL</span><strong>Sequence</strong></div>
+            <div class="gateway-node gateway-node-b"><i></i><span>LOCAL</span><strong>FASTA</strong></div>
+            <div class="gateway-node gateway-node-c"><i></i><span>LOCAL</span><strong>Alignment</strong></div>
+            <div class="gateway-node gateway-node-d"><i></i><span>LIVE</span><strong>UniProt</strong></div>
+            <svg class="gateway-path" viewBox="0 0 600 500" preserveAspectRatio="none">
+              <path d="M300 250 C220 180 160 125 85 95" />
+              <path d="M300 250 C390 180 450 120 525 95" />
+              <path d="M300 250 C215 325 155 380 85 415" />
+              <path d="M300 250 C385 325 450 382 525 415" />
+            </svg>
           </div>
 
-          <div class="lab-workspace">
-            <div class="lab-input-panel">
-              <div class="lab-panel-heading">
-                <label for="sequence-input">输入序列</label>
-                <span data-sequence-counter>0 aa</span>
+          <div class="tool-gateway-list">
+            <a href="./tools/#sequence">
+              <span>01</span>
+              <div>
+                <strong>序列理化性质</strong>
+                <small>蛋白 · 抗体 · DNA</small>
               </div>
-              <textarea
-                id="sequence-input"
-                data-sequence-input
-                rows="12"
-                spellcheck="false"
-                autocomplete="off"
-                placeholder="粘贴单字母氨基酸序列或 FASTA 内容…"
-              ></textarea>
-              <div class="lab-input-actions">
-                <button type="button" class="lab-text-button" data-sequence-example>载入示例</button>
-                <button type="button" class="lab-text-button" data-sequence-clear>清空</button>
-                <button type="button" class="lab-run-button" data-sequence-run>
-                  开始计算 <span aria-hidden="true">→</span>
-                </button>
+              <i>LOCAL</i>
+            </a>
+            <a href="./tools/#fasta">
+              <span>02</span>
+              <div>
+                <strong>FASTA 整理与去重</strong>
+                <small>批量解析 · 检查 · 导出</small>
               </div>
-              <p class="lab-feedback" data-sequence-feedback aria-live="polite">
-                支持标准 20 种氨基酸单字母代码。
-              </p>
-            </div>
-
-            <div class="lab-results-panel" aria-live="polite">
-              <div class="lab-panel-heading">
-                <span>计算结果</span>
-                <span data-result-kind>PROTEIN</span>
+              <i>LOCAL</i>
+            </a>
+            <a href="./tools/#compare">
+              <span>03</span>
+              <div>
+                <strong>双序列全局比对</strong>
+                <small>一致性 · 缺口 · 对齐</small>
               </div>
-              <div class="lab-metrics">
-                <article>
-                  <small data-metric-label="0">序列长度</small>
-                  <strong data-metric-value="0">—</strong>
-                  <span data-metric-unit="0">aa</span>
-                </article>
-                <article>
-                  <small data-metric-label="1">近似分子量</small>
-                  <strong data-metric-value="1">—</strong>
-                  <span data-metric-unit="1">kDa</span>
-                </article>
-                <article>
-                  <small data-metric-label="2">理论等电点</small>
-                  <strong data-metric-value="2">—</strong>
-                  <span data-metric-unit="2">pI</span>
-                </article>
-                <article>
-                  <small data-metric-label="3">平均疏水性</small>
-                  <strong data-metric-value="3">—</strong>
-                  <span data-metric-unit="3">GRAVY</span>
-                </article>
-                <article>
-                  <small data-metric-label="4">280 nm 最大氧化态消光系数</small>
-                  <strong data-metric-value="4">—</strong>
-                  <span data-metric-unit="4">M⁻¹cm⁻¹</span>
-                </article>
-              </div>
-              <div class="lab-output-block">
+              <i>LOCAL</i>
+            </a>
+            <a href="./tools/#liability">
+              <span>04</span>
                 <div>
-                  <span data-output-title>组成概览</span>
-                  <button type="button" data-sequence-copy>复制结果</button>
-                </div>
-                <pre data-sequence-output tabindex="0">输入序列后将在这里显示摘要。</pre>
+                <strong>抗体序列风险扫描</strong>
+                <small>基序 · 位点 · 复核提示</small>
               </div>
+              <i>LOCAL</i>
+            </a>
+            <a href="./tools/#uniprot">
+              <span>05</span>
+              <div>
+                <strong>UniProt 公共条目查询</strong>
+                <small>官方 REST API · 实时数据</small>
+              </div>
+              <i class="live">LIVE</i>
+            </a>
+            <div class="tool-gateway-footer">
+              <p><i></i> 本地工具不上传输入序列</p>
+              <a href="./tools/">查看全部工具与方法说明 <span aria-hidden="true">↗</span></a>
             </div>
-          </div>
-
-          <div class="lab-disclaimer">
-            <p>
-              本工具仅根据输入的一级序列进行本地理论计算，适合快速检查与教学演示，不构成实验测量、临床、治疗或监管依据。
-            </p>
-            <details>
-              <summary>计算方法与适用边界</summary>
-              <p>
-                蛋白质结果采用平均氨基酸质量、Kyte–Doolittle 疏水性尺度及
-                Bjellqvist pKa 参数，不考虑糖基化、其他翻译后修饰、构象、缓冲液或链间相互作用。
-                重链、轻链及其他多肽链应分别输入。消光系数显示假设 Cys 最大配对时的上界。
-                DNA 使用标准遗传密码表；Wallace Tm 仅为短寡核苷酸粗估，未校正离子浓度、链浓度、错配、添加剂与相邻效应。
-              </p>
-            </details>
           </div>
         </div>
       </section>
@@ -691,22 +666,22 @@
 
         <div class="company-metrics">
           <article class="metric reveal">
-            <strong>1M<sup>+</sup></strong>
+            <strong data-count-end="1" data-count-suffix="M">1M<sup>+</sup></strong>
             <span>真实全人抗体序列库</span>
             <small>Fully human antibody sequences</small>
           </article>
           <article class="metric reveal">
-            <strong>1,000<sup>+</sup></strong>
+            <strong data-count-end="1000">1,000<sup>+</sup></strong>
             <span>潜在可成药靶点</span>
             <small>Potential therapeutic targets</small>
           </article>
           <article class="metric reveal">
-            <strong>455<sup>+</sup></strong>
+            <strong data-count-end="455">455<sup>+</sup></strong>
             <span>药物合作开发 / 授权 / 转让协议</span>
             <small>As of June 30, 2026</small>
           </article>
           <article class="metric reveal">
-            <strong>7</strong>
+            <strong data-count-end="7">7</strong>
             <span>全球研发与运营布局</span>
             <small>China · US · Germany</small>
           </article>
@@ -769,7 +744,7 @@
           <strong>平台与技术</strong>
           <a href="#workflow">发现工作流</a>
           <a href="#experience">分子数据空间</a>
-          <a href="#tools">本地序列工具</a>
+          <a href="./tools/">Vita Bioinformatics</a>
           <a
             href="https://biocytogen.com.cn/drug-development/renSuper-workstation-ai-antibody-discovery"
             target="_blank"
@@ -827,8 +802,7 @@
       </div>
     </footer>
 
-    <script src="./molecular-visual.js?v=20260918-4" defer></script>
-    <script src="./sequence-tools.js?v=20260918-4" defer></script>
-    <script src="./script.js?v=20260918-4" defer></script>
+    <script src="./script.js?v=20260918-5" defer></script>
+    <script src="./molecular-visual.js?v=20260918-5" defer></script>
   </body>
 </html>

@@ -242,7 +242,7 @@
         sequence,
         "N[GST]",
         "脱酰胺提示",
-        "该 Asn 邻域常被列为脱酰胺复核位点，不能仅凭基序判断反应速率。",
+        "该 Asn 邻域是脱酰胺复核重点，反应速率可结合结构暴露度与工艺条件评估。",
       ),
       ...findOverlappingMotifs(
         sequence,
@@ -261,7 +261,7 @@
           category: "氧化敏感残基",
           position: positions.join(", "),
           motif: residue,
-          interpretation: `${residue} 残基可能发生氧化；真实风险取决于溶剂暴露、制剂和应力条件。`,
+          interpretation: `${residue} 残基为氧化敏感位点，可结合溶剂暴露、制剂和应力条件评估。`,
         });
       }
     });
@@ -274,7 +274,7 @@
         category: "Cys 配对提示",
         position: cysteinePositions.join(", "),
         motif: `${cysteinePositions.length} Cys`,
-        interpretation: "Cys 总数为奇数；不代表必然存在游离巯基，但建议核对链边界与二硫键配对。",
+        interpretation: "Cys 总数为奇数，建议优先核对链边界、游离巯基与二硫键配对。",
       });
     }
 
@@ -667,7 +667,7 @@
           const row = table.insertRow();
           const cell = row.insertCell();
           cell.colSpan = 4;
-          cell.textContent = "当前规则未标记位点；这不代表序列不存在其他开发风险。";
+          cell.textContent = "当前规则范围内未发现需优先复核的位点。";
         } else {
           result.flags.forEach((flag) => {
             const row = table.insertRow();
@@ -677,7 +677,7 @@
           });
         }
         setLiabilityFeedback(
-          `已扫描 ${result.sequence.length.toLocaleString()} aa；标记结果用于确定复核优先级，不是修饰预测。`,
+          `已扫描 ${result.sequence.length.toLocaleString()} aa；结果可与结构、制剂和实验数据联合解读。`,
         );
       } catch (error) {
         resetLiabilityResults();
@@ -759,7 +759,7 @@
       const functionLabel = document.createElement("strong");
       functionLabel.textContent = "FUNCTION";
       const functionParagraph = document.createElement("p");
-      functionParagraph.textContent = valueAt(functionText, "该精简响应中没有可用的功能注释。");
+      functionParagraph.textContent = valueAt(functionText, "功能注释可在 UniProt 完整条目中继续查看。");
       functionBlock.append(functionLabel, functionParagraph);
       entryNode.append(functionBlock);
 
@@ -812,7 +812,7 @@
         const entry = payload.results?.[0];
         if (!entry) throw new Error(`没有找到 accession ${accession}。`);
         renderUniprotEntry(entry, response.headers.get("x-uniprot-release"));
-        setUniprotFeedback(`已读取 ${accession} 的公开条目；序列输入未发送。`);
+        setUniprotFeedback(`已读取 ${accession} 的公开条目；accession 查询完成，输入序列保留在本地。`);
       } catch (error) {
         if (error.name === "AbortError") return;
         resultElement.replaceChildren();

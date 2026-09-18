@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#071316" />
     <meta
       name="description"
-      content="Antibody Vita Bioinformatics：在浏览器本地完成蛋白与 DNA 理化统计、FASTA 整理去重、序列比对和抗体开发风险位点扫描，并连接可信公共生信服务。"
+      content="Antibody Vita Bioinformatics：在浏览器完成蛋白与 DNA 理化统计、FASTA 整理去重、序列比对和抗体开发性位点扫描，并连接权威公共生信服务。"
     />
     <meta
       name="keywords"
@@ -38,8 +38,8 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/tools/"
     />
     <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="../styles.css?v=20260918-6" />
-    <link rel="stylesheet" href="./tools.css?v=20260918-6" />
+    <link rel="stylesheet" href="../styles.css?v=20260918-7" />
+    <link rel="stylesheet" href="./tools.css?v=20260918-7" />
     <title>Vita Bioinformatics｜浏览器端抗体与序列工具</title>
     <script type="application/ld+json">
       {
@@ -125,8 +125,8 @@
           <p class="eyebrow reveal"><span></span> VITA · BIOINFORMATICS WORKSPACE</p>
           <h1 class="reveal">把常用序列操作，<br />带到一个可信的浏览器工作台。</h1>
           <p class="reveal">
-            从 Antibody Vita 与既有 Gradio 小工具中重构常用能力。
-            本地任务不上传序列；公共数据库查询明确标注数据去向。
+            汇集 Antibody Vita 高频序列任务，融合浏览器本地计算与权威公共数据库连接能力，
+            提供顺畅、清晰、即开即用的分析体验。
           </p>
           <div class="tools-hero-actions reveal">
             <a class="button button-primary" href="#workspace">
@@ -164,12 +164,12 @@
       <section class="tool-platform" id="workspace" data-tool-platform>
         <div class="tool-platform-head">
           <div>
-            <p class="kicker reveal">本地优先 · 按需连接</p>
-            <h2 class="reveal">选择一个任务，<br />只打开当前需要的工作区。</h2>
+            <p class="kicker reveal">五类任务 · 一站完成</p>
+            <h2 class="reveal">五个专业工作区，<br />覆盖常用序列任务。</h2>
           </div>
           <p class="reveal">
-            工具不会全部堆在项目首页。这里采用目录与独立工作区两层结构，
-            输入在切换工具时保留于当前标签页内存。
+            清晰的任务目录连接独立工作区，输入、计算与结果保持在当前标签页，
+            让每一次分析都专注而连贯。
           </p>
         </div>
 
@@ -207,7 +207,7 @@
               <a href="#liability" data-tool-link="liability">
                 <span>04</span>
                 <div>
-                  <strong>抗体序列风险扫描</strong>
+                  <strong>抗体开发性位点扫描</strong>
                   <small>Motif · Position · Context</small>
                 </div>
                 <i>LOCAL</i>
@@ -223,7 +223,7 @@
             </nav>
             <p>
               <span></span>
-              LOCAL 表示序列不离开浏览器；LIVE 表示仅向标注的公共数据库发送查询词。
+              LOCAL 在浏览器完成计算；LIVE 连接标注的权威公共数据库。
             </p>
           </aside>
 
@@ -248,7 +248,7 @@
                     </button>
                     <button type="button" data-sequence-mode="dna" aria-pressed="false">DNA</button>
                   </div>
-                  <p><span></span>序列仅在本地内存中处理</p>
+                  <p><span></span>浏览器内存计算 · 全程本地</p>
                 </div>
 
                 <div class="lab-workspace">
@@ -263,7 +263,7 @@
                       rows="12"
                       spellcheck="false"
                       autocomplete="off"
-                      placeholder="直接粘贴氨基酸序列即可，无需添加 > 标题…"
+                      placeholder="直接粘贴氨基酸序列，FASTA 标题可选…"
                     ></textarea>
                     <div class="lab-input-actions">
                       <button type="button" class="lab-text-button" data-sequence-example>载入示例</button>
@@ -321,13 +321,13 @@
 
                 <div class="lab-disclaimer">
                   <p>
-                    一级序列理论计算仅供研究与教育参考；重链、轻链及其他多肽链应分别输入。
+                    面向一级序列的快速研究评估；重链、轻链及其他多肽链分别输入可获得链级指标。
                   </p>
                   <details>
                     <summary>计算方法与适用边界</summary>
                     <p>
                       蛋白使用平均残基质量、Kyte–Doolittle 尺度与 Bjellqvist pKa；
-                      DNA 使用标准遗传密码表，Wallace Tm 仅适用于短寡核苷酸粗估。
+                      DNA 使用标准遗传密码表，Wallace Tm 面向约 14–20 nt 的短寡核苷酸估算。
                     </p>
                   </details>
                 </div>
@@ -358,14 +358,14 @@
                       multiple
                     />
                     <strong>拖入序列文本或 FASTA 文件</strong>
-                    <span>标题可选，文件只在当前浏览器读取</span>
+                    <span>标题可选 · 浏览器本地读取</span>
                   </label>
                   <textarea
                     id="fasta-input"
                     data-fasta-input
                     rows="15"
                     spellcheck="false"
-                    placeholder="每行一条序列，无需添加名称或 > 标题&#10;EVQLVESGGGLVQPGGSLRLSC…&#10;QVQLVQSGAEVKKPGASVKVSC…"
+                    placeholder="每行一条序列，名称与 FASTA 标题均为可选项&#10;EVQLVESGGGLVQPGGSLRLSC…&#10;QVQLVQSGAEVKKPGASVKVSC…"
                   ></textarea>
                   <div class="utility-actions">
                     <button type="button" class="ghost-action" data-fasta-example>载入示例</button>
@@ -456,8 +456,8 @@
                 </div>
               </div>
               <p class="tool-method-note">
-                使用固定匹配 / 错配分数与线性缺口罚分，不使用 BLOSUM、PAM 或仿射缺口；
-                适合快速一致性检查，不应用于推断同源性或进化关系。
+                采用固定匹配 / 错配分数与线性缺口罚分，专注快速一致性检查；
+                同源与进化分析可进一步连接专业替换矩阵和仿射缺口模型。
               </p>
             </section>
 
@@ -465,7 +465,7 @@
               <div class="tool-panel-intro">
                 <div>
                   <span>04 · LIABILITY SCAN</span>
-                  <h3>抗体序列风险位点扫描</h3>
+                  <h3>抗体开发性位点扫描</h3>
                 </div>
                 <p>快速标记常见序列基序与敏感残基，帮助决定后续需要重点复核的位置。</p>
               </div>
@@ -487,14 +487,14 @@
                     </button>
                   </div>
                   <p class="utility-feedback" data-liability-feedback aria-live="polite">
-                    风险基序不等同于实际修饰；结果必须结合结构、暴露度、制剂与实验数据判断。
+                    按常用开发性规则定位优先复核位点，并支持与结构、制剂和实验数据联合解读。
                   </p>
                 </div>
                 <div class="liability-summary">
                   <div class="liability-score">
-                    <span>FLAGGED SITES</span>
+                    <span>REVIEW SITES</span>
                     <strong data-liability-count>—</strong>
-                    <small>context flags</small>
+                    <small>development context</small>
                   </div>
                   <div class="result-table-shell">
                     <div class="result-table-head"><span>位点清单</span></div>
@@ -512,8 +512,8 @@
                 </div>
               </div>
               <p class="tool-method-note">
-                方法仅做一级序列规则扫描：N-X-S/T（X≠P）、NG/NS/NT、DG/DS/DT/DD/DH、
-                Met/Trp 与 Cys 配对提示；不替代 LC–MS、稳定性或成药性实验。
+                规则覆盖 N-X-S/T（X≠P）、NG/NS/NT、DG/DS/DT/DD/DH、Met/Trp 与 Cys 配对提示，
+                可与 LC–MS、稳定性及成药性实验协同形成完整评估。
               </p>
             </section>
 
@@ -523,7 +523,7 @@
                   <span>05 · UNIPROT LIVE</span>
                   <h3>UniProt 公共条目查询</h3>
                 </div>
-                <p>通过官方 REST API 读取公开蛋白知识；仅发送 accession，不发送你的序列。</p>
+                <p>通过 UniProt REST API 连接公开蛋白知识，以 accession 精准获取权威条目。</p>
               </div>
 
               <div class="uniprot-workbench" data-uniprot-tool>
@@ -544,7 +544,7 @@
                     </button>
                   </div>
                   <p data-uniprot-feedback aria-live="polite">
-                    数据来源：UniProt REST API。请避免自动化批量请求。
+                    数据来源：UniProt REST API · 实时访问公开条目。
                   </p>
                 </form>
 
@@ -557,9 +557,9 @@
                 </article>
               </div>
               <p class="tool-method-note">
-                公共数据可能随 UniProt release 更新。关键注释请回到
-                <a href="https://www.uniprot.org/" target="_blank" rel="noreferrer">UniProt 官方条目 ↗</a>
-                核对并按官方要求引用。
+                结果同步 UniProt 当前 release；
+                <a href="https://www.uniprot.org/" target="_blank" rel="noreferrer">UniProt 完整条目 ↗</a>
+                提供扩展注释与标准引用信息。
               </p>
             </section>
           </div>
@@ -573,12 +573,12 @@
         </div>
         <div class="service-intro">
           <div>
-            <p class="kicker reveal">需要服务器计算时，回到可信来源</p>
-            <h2 class="reveal">不伪装成自有能力，<br />清楚告诉你数据将去哪里。</h2>
+            <p class="kicker reveal">连接全球公共生信基础设施</p>
+            <h2 class="reveal">权威数据库与专业分析服务，<br />一站直达。</h2>
           </div>
           <p class="reveal">
-            下列任务依赖数据库、HMM、结构模型或大规模计算。当前版本采用官方入口跳转，
-            避免未经许可抓取网页，也避免在没有明确同意时上传未公开序列。
+            Vita Bioinformatics 连接 EMBL-EBI、InterPro、IMGT、ANARCI 与 AlphaFold DB，
+            覆盖序列搜索、多序列比对、结构域注释、抗体编号与结构预测查询。
           </p>
         </div>
 
@@ -615,7 +615,7 @@
           </a>
         </div>
         <p class="service-privacy-note reveal">
-          外部服务具有各自的隐私、保留期限、配额与引用规则。涉及未公开候选序列时，请先确认组织政策。
+          公共服务由各权威机构提供并遵循其数据政策、配额与引用规范；企业级数据可按组织治理策略接入。
         </p>
       </section>
     </main>
@@ -636,14 +636,14 @@
             </svg>
             <span><strong>Vita Bioinformatics</strong><small>Local-first tools</small></span>
           </a>
-          <p>从 Antibody Vita 工作流与常用研发任务中提炼的轻量生信工作台。</p>
+          <p>从 Antibody Vita 工作流与高频研发任务中构建的专业生信工作台。</p>
         </div>
         <nav class="footer-column" aria-label="工具链接">
           <strong>本地工具</strong>
           <a href="#sequence" data-tool-link="sequence">序列理化性质</a>
           <a href="#fasta" data-tool-link="fasta">FASTA 整理与去重</a>
           <a href="#compare" data-tool-link="compare">双序列全局比对</a>
-          <a href="#liability" data-tool-link="liability">抗体序列风险扫描</a>
+          <a href="#liability" data-tool-link="liability">抗体开发性位点扫描</a>
         </nav>
         <nav class="footer-column" aria-label="资源链接">
           <strong>资源</strong>
@@ -652,20 +652,20 @@
           <a href="https://github.com/TianBa-SCP035/Antibody_Forge" target="_blank" rel="noreferrer">GitHub 仓库 ↗</a>
         </nav>
         <div class="footer-contact">
-          <strong>数据边界</strong>
-          <span>本地工具不上传输入内容</span>
-          <span>UniProt 查询仅发送 accession</span>
-          <span>外部跳转遵循服务方政策</span>
+          <strong>计算与连接</strong>
+          <span>本地序列计算在浏览器完成</span>
+          <span>UniProt accession 精准查询</span>
+          <span>权威生信服务官方入口直达</span>
         </div>
       </div>
       <div class="footer-legal">
         <p>© 2024–2026 Biocytogen Pharmaceuticals (Beijing) Co., Ltd.</p>
-        <p>研究与教育参考工具；不构成实验测量、临床、治疗或监管依据。</p>
+        <p>面向研究与教育场景，结果与实验测量及专业判断协同使用。</p>
       </div>
     </footer>
 
-    <script src="../script.js?v=20260918-6" defer></script>
-    <script src="../sequence-tools.js?v=20260918-6" defer></script>
-    <script src="./tools.js?v=20260918-6" defer></script>
+    <script src="../script.js?v=20260918-7" defer></script>
+    <script src="../sequence-tools.js?v=20260918-7" defer></script>
+    <script src="./tools.js?v=20260918-7" defer></script>
   </body>
 </html>

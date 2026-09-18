@@ -340,11 +340,11 @@
         formatSequence(complement),
         "",
         ">translation_frame_1_standard_code",
-        formatSequence(translation) || "(没有完整密码子)",
+        formatSequence(translation) || "(输入至少 3 nt 后生成完整密码子翻译)",
         "",
         `A / C / G / T / ambiguous  ${counts.A ?? 0} / ${counts.C ?? 0} / ${counts.G ?? 0} / ${counts.T ?? 0} / ${ambiguousBases}`,
         "",
-        "粗略 Tm 使用 Wallace 规则：2 × (A+T) + 4 × (G+C)。",
+        "Wallace Tm：2 × (A+T) + 4 × (G+C)。",
         ...warnings.map((warning) => `注意：${warning}`),
       ].join("\n"),
     };
@@ -385,8 +385,8 @@
     protein: {
       kind: "PROTEIN",
       unit: "aa",
-      placeholder: "直接粘贴氨基酸序列即可，无需添加 > 标题…",
-      hint: "直接粘贴序列即可；空格、换行、行号与 FASTA 标题会自动清理。",
+      placeholder: "直接粘贴氨基酸序列，FASTA 标题可选…",
+      hint: "支持直接粘贴；空格、换行、行号与 FASTA 标题自动清理。",
       outputTitle: "组成概览",
       labels: [
         "序列长度",
@@ -401,9 +401,9 @@
       kind: "DNA",
       unit: "nt",
       placeholder: "直接粘贴 DNA 序列即可；U 将按 T 处理…",
-      hint: "无需 FASTA 标题；支持 IUPAC DNA 代码，U 将按界面约定转换为 T。",
+      hint: "FASTA 标题可选；支持 IUPAC DNA 代码，U 将按界面约定转换为 T。",
       outputTitle: "反向互补与阅读框 1",
-      labels: ["序列长度", "GC 含量", "粗略 Tm", "阅读框 1", "模糊位点"],
+      labels: ["序列长度", "GC 含量", "Wallace Tm", "阅读框 1", "模糊位点"],
       units: ["nt", "%", "°C", "aa", "nt"],
     },
   };

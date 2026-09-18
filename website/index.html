@@ -45,7 +45,7 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20260918-22" />
+    <link rel="stylesheet" href="./styles.css?v=20260918-23" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
       {
@@ -484,12 +484,10 @@
           </p>
         </div>
 
-        <section class="capability-workspace reveal" data-capability-workspace aria-label="平台能力浏览器">
-          <div class="capability-switcher" role="tablist" aria-label="选择平台能力">
-            <div class="capability-switcher-head">
-              <span>CAPABILITY INDEX</span>
-              <p>选择一个能力，在右侧查看对象、控制规则与阶段证据。</p>
-            </div>
+        <section class="capability-theatre reveal" data-capability-workspace aria-label="平台能力体验">
+          <div class="capability-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+
+          <div class="capability-theatre-tabs" role="tablist" aria-label="选择平台能力">
             <button
               type="button"
               class="active"
@@ -499,9 +497,9 @@
               aria-selected="true"
               aria-controls="capability-panel"
             >
-              <span><i>01</i> DISCOVERY MAINLINE</span>
-              <strong>数据沿发现主线持续流动</strong>
-              <small>PROJECT → SAMPLE → SEQUENCE → ASSAY</small>
+              <span>01</span>
+              <div><small>DISCOVERY MAINLINE</small><strong>发现主线</strong></div>
+              <i aria-hidden="true">↗</i>
             </button>
             <button
               type="button"
@@ -511,9 +509,9 @@
               aria-selected="false"
               aria-controls="capability-panel"
             >
-              <span><i>02</i> TRACEABILITY</span>
-              <strong>从结果反向定位完整来源</strong>
-              <small>RESULT → RUN → SAMPLE → PROJECT</small>
+              <span>02</span>
+              <div><small>TRACEABILITY</small><strong>结果追溯</strong></div>
+              <i aria-hidden="true">↗</i>
             </button>
             <button
               type="button"
@@ -523,9 +521,9 @@
               aria-selected="false"
               aria-controls="capability-panel"
             >
-              <span><i>03</i> COLLABORATION</span>
-              <strong>跨团队交接成为执行链</strong>
-              <small>REQUEST → OWNER → STATUS → HANDOFF</small>
+              <span>03</span>
+              <div><small>COLLABORATION</small><strong>团队协作</strong></div>
+              <i aria-hidden="true">↗</i>
             </button>
             <button
               type="button"
@@ -535,63 +533,96 @@
               aria-selected="false"
               aria-controls="capability-panel"
             >
-              <span><i>04</i> AUTOMATION</span>
-              <strong>设备任务与结果形成闭环</strong>
-              <small>ORDER → DEVICE → RUN → RESULT</small>
+              <span>04</span>
+              <div><small>AUTOMATION</small><strong>自动化闭环</strong></div>
+              <i aria-hidden="true">↗</i>
             </button>
           </div>
 
           <div
-            class="capability-explorer-panel"
+            class="capability-theatre-content"
             id="capability-panel"
             data-capability-content
             role="tabpanel"
             aria-labelledby="capability-tab-mainline"
           >
-            <header class="capability-explorer-head">
-              <div>
-                <span data-capability-tag>DISCOVERY MAINLINE · CONNECTED OBJECTS</span>
+            <div class="capability-theatre-scene">
+              <article class="capability-theatre-copy">
+                <div class="capability-theatre-eyebrow">
+                  <span data-capability-tag>DISCOVERY MAINLINE · CONNECTED OBJECTS</span>
+                  <b data-capability-panel-index aria-hidden="true">01 / 04</b>
+                </div>
                 <h3 id="capability-explorer-title" data-capability-title>研发对象沿主线持续携带上下文</h3>
                 <p data-capability-description>
                   项目、样本、序列、表达批次与评价结果通过同一对象关系向前传递，阶段切换不会丢失来源与决策依据。
                 </p>
-              </div>
-              <span class="capability-panel-index" data-capability-panel-index aria-hidden="true">01 / 04</span>
-            </header>
+                <div class="capability-signal-cloud">
+                  <div><span>OBJECTS</span><strong data-capability-objects>PROJECT · SAMPLE · SEQUENCE · ASSAY</strong></div>
+                  <div><span>CONTROL</span><strong data-capability-control>阶段状态 · 依赖校验 · 版本记录</strong></div>
+                  <div><span>OUTCOME</span><strong data-capability-outcome>连续、可查询的候选证据链</strong></div>
+                </div>
+              </article>
 
-            <div class="capability-explorer-meta">
-              <div><span>OBJECTS</span><strong data-capability-objects>PROJECT · SAMPLE · SEQUENCE · ASSAY</strong></div>
-              <div><span>CONTROL</span><strong data-capability-control>阶段状态 · 依赖校验 · 版本记录</strong></div>
-              <div><span>OUTCOME</span><strong data-capability-outcome>连续、可查询的候选证据链</strong></div>
-            </div>
-
-            <div class="capability-explorer-body">
-              <div class="capability-explorer-path" data-capability-path role="tablist" aria-label="能力路径阶段"></div>
-              <section class="capability-step-detail" id="capability-step-detail" role="tabpanel" aria-live="polite">
-                <div class="capability-step-head">
+              <div class="capability-route-visual" data-capability-visual data-capability-mode="mainline">
+                <div class="capability-route-topline">
+                  <span><i></i> LIVE DATA PATH</span>
+                  <small>SELECT A NODE TO INSPECT</small>
+                </div>
+                <svg class="capability-route-map" viewBox="0 0 600 250" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="capability-route-gradient" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0" stop-color="#63f3d9" />
+                      <stop offset="0.55" stop-color="#69a9ff" />
+                      <stop offset="1" stop-color="#c58bff" />
+                    </linearGradient>
+                    <filter id="capability-route-glow" x="-50%" y="-50%" width="200%" height="200%">
+                      <feGaussianBlur stdDeviation="4" result="blur" />
+                      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                    </filter>
+                  </defs>
+                  <path class="capability-route-base" d="M42 188 C142 188 156 78 274 92 S438 60 558 176" pathLength="100" />
+                  <path
+                    class="capability-route-progress"
+                    data-capability-route-progress
+                    d="M42 188 C142 188 156 78 274 92 S438 60 558 176"
+                    pathLength="100"
+                  />
+                </svg>
+                <div class="capability-route-particles" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+                <div class="capability-route-nodes" data-capability-path role="tablist" aria-label="能力路径阶段"></div>
+                <div class="capability-route-status">
                   <span data-capability-step-index>STEP 01</span>
                   <strong data-capability-step-state>项目上下文已建立</strong>
                 </div>
+              </div>
+            </div>
+
+            <section class="capability-story" id="capability-step-detail" role="tabpanel" aria-live="polite">
+              <div class="capability-story-copy">
+                <span>STAGE INTELLIGENCE</span>
                 <h4 data-capability-step-title>建立项目边界与版本基线</h4>
                 <p data-capability-step-description>
                   在实验开始前固定靶点、抗原版本、项目目标和责任团队，让后续对象从同一上下文出发。
                 </p>
-                <div class="capability-step-grid">
-                  <article>
-                    <span>INPUT</span>
-                    <strong data-capability-step-input>Target profile · Antigen version · Program owner</strong>
-                  </article>
-                  <article>
-                    <span>PLATFORM ACTION</span>
-                    <strong data-capability-step-action>创建项目对象、版本基线与阶段门禁</strong>
-                  </article>
-                  <article>
-                    <span>VISIBLE EVIDENCE</span>
-                    <strong data-capability-step-evidence>Program VITA-024 · Scope v1.3</strong>
-                  </article>
-                </div>
-              </section>
-            </div>
+              </div>
+              <div class="capability-story-deck">
+                <article class="story-card story-card-input">
+                  <span><i>01</i> INPUT</span>
+                  <strong data-capability-step-input>Target profile · Antigen version · Program owner</strong>
+                  <small>进入当前阶段的完整上下文</small>
+                </article>
+                <article class="story-card story-card-action">
+                  <span><i>02</i> PLATFORM ACTION</span>
+                  <strong data-capability-step-action>创建项目对象、版本基线与阶段门禁</strong>
+                  <small>平台在此阶段执行的关键动作</small>
+                </article>
+                <article class="story-card story-card-evidence">
+                  <span><i>03</i> VISIBLE EVIDENCE</span>
+                  <strong data-capability-step-evidence>Program VITA-024 · Scope v1.3</strong>
+                  <small>可查询、可复用的阶段交付物</small>
+                </article>
+              </div>
+            </section>
           </div>
         </section>
 
@@ -1146,7 +1177,7 @@
       </div>
     </footer>
 
-    <script src="./script.js?v=20260918-22" defer></script>
-    <script src="./molecular-visual.js?v=20260918-22" defer></script>
+    <script src="./script.js?v=20260918-23" defer></script>
+    <script src="./molecular-visual.js?v=20260918-23" defer></script>
   </body>
 </html>

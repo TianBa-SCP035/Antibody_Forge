@@ -738,6 +738,13 @@ const setCapabilityStep = (requestedIndex, focusTab = false) => {
     if (target) target.textContent = value;
   });
 
+  capabilityWorkspace.dataset.stageIndex = String(stepIndex);
+  const routeProgress = capabilityWorkspace.querySelector("[data-capability-route-progress]");
+  if (routeProgress) {
+    const progress = 8 + (stepIndex / Math.max(1, detail.steps.length - 1)) * 92;
+    routeProgress.style.strokeDasharray = `${progress} 100`;
+  }
+
   const panel = capabilityWorkspace.querySelector("[data-capability-step-title]")?.closest("section");
   if (panel && !reducedMotion) {
     panel.animate(
@@ -747,6 +754,20 @@ const setCapabilityStep = (requestedIndex, focusTab = false) => {
       ],
       { duration: 180, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
     );
+    panel.querySelectorAll(".story-card").forEach((card, index) => {
+      card.animate(
+        [
+          { opacity: 0.35, filter: "blur(4px)" },
+          { opacity: 1, filter: "blur(0)" },
+        ],
+        {
+          duration: 280,
+          delay: index * 45,
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          fill: "both",
+        },
+      );
+    });
   }
 };
 
@@ -804,6 +825,8 @@ const setActiveCapability = (key, focusTab = false) => {
   });
   if (focusTab) capabilityWorkspace.querySelector(`[data-capability-trigger="${key}"]`)?.focus();
   capabilityContent?.setAttribute("aria-labelledby", `capability-tab-${key}`);
+  const routeVisual = capabilityWorkspace.querySelector("[data-capability-visual]");
+  if (routeVisual) routeVisual.dataset.capabilityMode = key;
 
   const values = {
     "[data-capability-tag]": detail.tag,

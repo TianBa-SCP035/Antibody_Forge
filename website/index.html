@@ -45,7 +45,7 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20260918-15" />
+    <link rel="stylesheet" href="./styles.css?v=20260918-17" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
       {
@@ -488,7 +488,7 @@
               <h3>围绕实验路径组织工作，<br />让数据沿发现主线持续流动。</h3>
               <p>从项目入口到候选评价，数据随研发对象向前流动，保留每个决策节点的完整上下文。</p>
               <button type="button" class="card-explore active" data-capability-trigger="mainline" aria-pressed="true">
-                探索发现主线 <span aria-hidden="true">→</span>
+                播放主线流转 <span aria-hidden="true">→</span>
               </button>
             </div>
             <div class="flow-mini" aria-hidden="true">
@@ -509,7 +509,7 @@
             </div>
             <p>统一项目、实验、样本、序列与结果之间的关联，支撑审计和科学复盘。</p>
             <button type="button" class="card-explore" data-capability-trigger="traceability" aria-pressed="false">
-              查看追溯路径 <span aria-hidden="true">→</span>
+              追溯一个结果 <span aria-hidden="true">→</span>
             </button>
           </article>
 
@@ -518,7 +518,7 @@
             <h3>让不同团队共享同一进度。</h3>
             <p>清晰的工单、状态和权限边界，减少跨实验环节的重复沟通。</p>
             <button type="button" class="card-explore" data-capability-trigger="collaboration" aria-pressed="false">
-              查看协作界面 <span aria-hidden="true">→</span>
+              模拟团队交接 <span aria-hidden="true">→</span>
             </button>
             <div class="team-row" aria-hidden="true">
               <span>IM</span><span>SB</span><span>NG</span><span>EX</span><span>QA</span>
@@ -530,7 +530,7 @@
             <h3>把设备接入工作流，<br />把结果带回数据链。</h3>
             <p>通过工单校验、任务下发和结果回写连接实验室自动化模组。</p>
             <button type="button" class="card-explore" data-capability-trigger="automation" aria-pressed="false">
-              查看自动化闭环 <span aria-hidden="true">→</span>
+              运行自动化闭环 <span aria-hidden="true">→</span>
             </button>
             <div class="automation-status" aria-hidden="true">
               <span><i></i> ORDER VALIDATED</span>
@@ -561,8 +561,15 @@
                 <strong data-capability-outcome>连续、可查询的候选证据链</strong>
               </div>
             </div>
-            <div class="capability-path" data-capability-path aria-label="当前能力数据路径">
-              <span>PROJECT</span><i></i><span>SAMPLE</span><i></i><span>SEQUENCE</span><i></i><span>ASSAY</span>
+            <div class="capability-simulation">
+              <div class="capability-simulation-head">
+                <span><i></i> FLOW SIMULATION</span>
+                <strong data-capability-status>项目已建立，正在关联样本</strong>
+                <button type="button" data-capability-replay>重播</button>
+              </div>
+              <div class="capability-path" data-capability-path aria-label="当前能力数据路径">
+                <span class="active">PROJECT</span><i></i><span>SAMPLE</span><i></i><span>SEQUENCE</span><i></i><span>ASSAY</span>
+              </div>
             </div>
           </section>
         </div>
@@ -968,7 +975,7 @@
       </div>
     </footer>
 
-    <script src="./script.js?v=20260918-15" defer></script>
-    <script src="./molecular-visual.js?v=20260918-15" defer></script>
+    <script src="./script.js?v=20260918-17" defer></script>
+    <script src="./molecular-visual.js?v=20260918-17" defer></script>
   </body>
 </html>

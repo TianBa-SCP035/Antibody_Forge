@@ -92,6 +92,27 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+const selectableContentSelector = [
+  "input",
+  "textarea",
+  "select",
+  "[contenteditable='true']",
+  "pre",
+  "code",
+  "table",
+  ".result-table-scroll",
+  ".uniprot-entry",
+  ".structure-entry",
+  ".lab-output-block",
+  ".alignment-output",
+  ".molecule-sequence-map b",
+].join(",");
+
+document.addEventListener("selectstart", (event) => {
+  if (event.target.closest?.(selectableContentSelector)) return;
+  event.preventDefault();
+});
+
 window.addEventListener("resize", () => {
   if (window.innerWidth > 900) closeMenu();
   requestHeaderUpdate();
@@ -506,6 +527,12 @@ const capabilityDetails = {
     control: "阶段状态 · 依赖校验 · 版本记录",
     outcome: "连续、可查询的候选证据链",
     path: ["PROJECT", "SAMPLE", "SEQUENCE", "ASSAY"],
+    states: [
+      "项目上下文已建立",
+      "样本已进入发现主线",
+      "候选序列已完成关联",
+      "评价结果已回写证据链",
+    ],
   },
   traceability: {
     tag: "TRACEABILITY · BIDIRECTIONAL LINEAGE",
@@ -516,6 +543,12 @@ const capabilityDetails = {
     control: "版本快照 · 操作记录 · 变更时间线",
     outcome: "快速审计、异常定位与科学复盘",
     path: ["RESULT", "RUN", "SAMPLE", "PROJECT"],
+    states: [
+      "锁定评价结果 Vita-RS-024",
+      "定位实验运行批次 RUN-2481",
+      "确认来源样本 SMP-091",
+      "已回溯至完整项目上下文",
+    ],
   },
   collaboration: {
     tag: "COLLABORATION · SHARED EXECUTION",
@@ -526,6 +559,12 @@ const capabilityDetails = {
     control: "权限边界 · 状态门禁 · 交接确认",
     outcome: "更少等待与重复沟通，更清晰的进度",
     path: ["REQUEST", "OWNER", "STATUS", "HANDOFF"],
+    states: [
+      "分析请求已创建",
+      "责任团队已接单",
+      "实验状态已同步",
+      "交付物已完成跨团队交接",
+    ],
   },
   automation: {
     tag: "AUTOMATION · CLOSED-LOOP EXECUTION",
@@ -536,13 +575,57 @@ const capabilityDetails = {
     control: "参数校验 · 队列状态 · 异常标记",
     outcome: "稳定执行、实时进度与自动数据归档",
     path: ["ORDER", "DEVICE", "RUN", "RESULT"],
+    states: [
+      "实验工单参数校验完成",
+      "任务已下发至自动化设备",
+      "设备运行完成，数据开始回传",
+      "结果已归档至项目数据链",
+    ],
   },
 };
 let capabilityTimer;
+let capabilitySimulationTimers = [];
+let activeCapabilityKey = "mainline";
+
+const clearCapabilitySimulation = () => {
+  capabilitySimulationTimers.forEach((timer) => window.clearTimeout(timer));
+  capabilitySimulationTimers = [];
+};
+
+const runCapabilitySimulation = (detail) => {
+  if (!capabilityConsole || !detail) return;
+  clearCapabilitySimulation();
+  const path = capabilityConsole.querySelector("[data-capability-path]");
+  const status = capabilityConsole.querySelector("[data-capability-status]");
+  const nodes = [...(path?.querySelectorAll("span") ?? [])];
+  const connectors = [...(path?.querySelectorAll("i") ?? [])];
+  if (!nodes.length) return;
+
+  const showStep = (index) => {
+    nodes.forEach((node, nodeIndex) => node.classList.toggle("active", nodeIndex <= index));
+    connectors.forEach((connector, connectorIndex) =>
+      connector.classList.toggle("active", connectorIndex < index),
+    );
+    if (status) status.textContent = detail.states[index] ?? "";
+    capabilityConsole.dataset.simulationStep = String(index + 1);
+  };
+
+  if (reducedMotion) {
+    showStep(nodes.length - 1);
+    return;
+  }
+
+  detail.states.forEach((_, index) => {
+    const timer = window.setTimeout(() => showStep(index), index * 620);
+    capabilitySimulationTimers.push(timer);
+  });
+};
 
 const setActiveCapability = (key, revealConsole = false) => {
   const detail = capabilityDetails[key];
   if (!capabilityConsole || !detail) return;
+  activeCapabilityKey = key;
+  clearCapabilitySimulation();
 
   capabilityTriggers.forEach((trigger) => {
     const active = trigger.dataset.capabilityTrigger === key;
@@ -577,6 +660,7 @@ const setActiveCapability = (key, revealConsole = false) => {
       });
     }
     capabilityConsole.classList.remove("is-updating");
+    runCapabilitySimulation(detail);
   }, reducedMotion ? 0 : 110);
 
   if (revealConsole) {
@@ -594,6 +678,12 @@ capabilityTriggers.forEach((trigger) => {
     setActiveCapability(trigger.dataset.capabilityTrigger, true);
   });
 });
+
+capabilityConsole?.querySelector("[data-capability-replay]")?.addEventListener("click", () => {
+  runCapabilitySimulation(capabilityDetails[activeCapabilityKey]);
+});
+
+if (capabilityConsole) setActiveCapability(activeCapabilityKey);
 
 if (sectionNavLinks.length) {
   const sectionLinks = new Map();

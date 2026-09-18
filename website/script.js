@@ -7,17 +7,6 @@ const workflowSteps = document.querySelectorAll("[data-step]");
 const trackProgress = document.querySelector("[data-track-progress]");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-document.querySelectorAll("img[data-fallback-src]").forEach((image) => {
-  image.addEventListener(
-    "error",
-    () => {
-      const fallbackSource = image.dataset.fallbackSrc;
-      if (fallbackSource && image.src !== fallbackSource) image.src = fallbackSource;
-    },
-    { once: true },
-  );
-});
-
 const updateHeader = () => {
   header?.classList.toggle("scrolled", window.scrollY > 24);
 };

@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - "website/**"
-      - "docs/assets/vita_view.gif"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -32,9 +31,8 @@ jobs:
       - name: Assemble static site
         shell: bash
         run: |
-          mkdir -p _site/assets
+          mkdir -p _site
           cp -R website/. _site/
-          cp docs/assets/vita_view.gif _site/assets/vita_view.gif
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

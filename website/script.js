@@ -1,3 +1,5 @@
+document.documentElement.classList.replace("no-js", "js-ready");
+
 const header = document.querySelector("[data-header]");
 const menuToggle = document.querySelector("[data-menu-toggle]");
 const mobileNav = document.querySelector("[data-mobile-nav]");
@@ -6,7 +8,6 @@ const workflow = document.querySelector("[data-workflow]");
 const workflowSteps = document.querySelectorAll("[data-step]");
 const trackProgress = document.querySelector("[data-track-progress]");
 const sectionNavLinks = document.querySelectorAll("[data-section-nav]");
-const ecosystemOrbit = document.querySelector(".ecosystem-orbit");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let activeWorkflowIndex = 0;
 
@@ -158,18 +159,6 @@ if (sectionNavLinks.length) {
 
   window.addEventListener("resize", updateSectionNav);
   updateSectionNav();
-}
-
-if (ecosystemOrbit) {
-  if (reducedMotion || !("IntersectionObserver" in window)) {
-    ecosystemOrbit.classList.add("in-view");
-  } else {
-    const motionObserver = new IntersectionObserver(
-      ([entry]) => ecosystemOrbit.classList.toggle("in-view", entry.isIntersecting),
-      { rootMargin: "15% 0px", threshold: 0.08 },
-    );
-    motionObserver.observe(ecosystemOrbit);
-  }
 }
 
 setActiveWorkflowStep(0);

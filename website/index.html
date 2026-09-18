@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
     <meta name="theme-color" content="#071316" />
     <meta
       name="description"
@@ -10,7 +14,7 @@
     />
     <meta
       name="keywords"
-      content="百奥赛图, Biocytogen, Antibody Vita, Antibody Forge, AI 抗体发现, RenSuper Workstation, RenMice, 千鼠万抗, Project Integrum, 实验室自动化"
+      content="百奥赛图, Biocytogen, Antibody Vita, Antibody Forge, AI 抗体发现, RenSuper Workstation, RenMice, 千鼠万抗, Project Integrum, 实验室自动化, 抗体序列分析, 生物信息学工具"
     />
     <meta name="author" content="Biocytogen Pharmaceuticals (Beijing) Co., Ltd." />
     <meta property="og:type" content="website" />
@@ -27,7 +31,13 @@
     />
     <meta
       property="og:image"
-      content="https://raw.githubusercontent.com/TianBa-SCP035/Antibody_Forge/main/bbctg_vita_web/apps/antibody_vita/public/Vita.png"
+      content="https://tianba-scp035.github.io/Antibody_Forge/assets/social-preview.png"
+    />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Antibody Vita AI 抗体发现协作基础平台与原创抗体数据结构视觉"
     />
     <meta name="twitter:card" content="summary_large_image" />
     <link
@@ -35,10 +45,7 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <script>
-      document.documentElement.classList.replace("no-js", "js");
-    </script>
-    <link rel="stylesheet" href="./styles.css?v=20260918-2" />
+    <link rel="stylesheet" href="./styles.css?v=20260918-4" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
       {
@@ -51,6 +58,11 @@
         "description": "An end-to-end workflow, data and collaboration foundation for AI-powered antibody discovery.",
         "url": "https://tianba-scp035.github.io/Antibody_Forge/",
         "codeRepository": "https://github.com/TianBa-SCP035/Antibody_Forge",
+        "featureList": [
+          "Antibody discovery workflow visualization",
+          "Client-side protein sequence properties",
+          "Client-side DNA reverse complement and translation"
+        ],
         "creator": {
           "@type": "Organization",
           "name": "Biocytogen Pharmaceuticals (Beijing) Co., Ltd.",
@@ -99,8 +111,9 @@
         <a href="#platform" data-section-nav>平台</a>
         <a href="#workflow" data-section-nav>工作流</a>
         <a href="#capabilities" data-section-nav>能力</a>
-        <a href="#experience" data-section-nav>界面</a>
+        <a href="#experience" data-section-nav>数据空间</a>
         <a href="#ecosystem" data-section-nav>生态</a>
+        <a href="#tools" data-section-nav>工具</a>
         <a href="#company" data-section-nav>公司</a>
       </nav>
 
@@ -129,8 +142,9 @@
         <a href="#platform" data-section-nav>平台</a>
         <a href="#workflow" data-section-nav>工作流</a>
         <a href="#capabilities" data-section-nav>能力</a>
-        <a href="#experience" data-section-nav>界面</a>
+        <a href="#experience" data-section-nav>数据空间</a>
         <a href="#ecosystem" data-section-nav>生态</a>
+        <a href="#tools" data-section-nav>工具</a>
         <a href="#company" data-section-nav>公司</a>
         <a href="https://github.com/TianBa-SCP035/Antibody_Forge">GitHub 项目 ↗</a>
       </div>
@@ -443,51 +457,44 @@
         <div class="experience-copy section">
           <div class="section-label reveal">
             <span>04</span>
-            <p>Product experience</p>
+            <p>Molecular data space</p>
           </div>
           <div class="experience-title">
             <div>
-              <p class="kicker reveal">复杂流程，清晰呈现</p>
-              <h2 class="reveal">让研发团队专注于下一步，<br />而不是寻找上一份数据。</h2>
+              <p class="kicker reveal">让关系可见，让证据可探索</p>
+              <h2 class="reveal">把复杂的发现关系，<br />转化为可探索的数据空间。</h2>
             </div>
             <p class="body-large reveal">
-              统一工作台以实验对象和流程状态为核心，在保持专业信息密度的同时，提供一致、可预期的操作体验。
+              原创轻量级三维视觉将抗体结构、序列与实验阶段抽象为同一数据场，展示平台如何连接科学对象与发现证据。
             </p>
           </div>
         </div>
 
-        <div class="product-stage reveal">
-          <div class="product-aura"></div>
-          <div class="browser-frame">
-            <div class="browser-bar">
-              <span></span><span></span><span></span>
-              <div>Antibody Vita · discovery workspace</div>
-            </div>
-            <a
-              class="product-preview-link"
-              href="./assets/vita-preview.webp"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="查看 Antibody Vita 抗体发现工作台大图"
-            >
-              <img
-                src="./assets/vita-preview.webp"
-                alt="Antibody Vita 抗体发现工作台界面预览"
-                loading="lazy"
-                width="1080"
-                height="582"
-              />
-            </a>
+        <div class="molecule-stage reveal" data-molecule-stage>
+          <canvas
+            class="molecule-canvas"
+            data-molecule-canvas
+            role="img"
+            aria-label="由序列节点和证据链组成的三维抗体数据结构"
+          >
+            三维抗体数据结构视觉
+          </canvas>
+          <div class="molecule-grid" aria-hidden="true"></div>
+          <div class="molecule-identity">
+            <span>DISCOVERY OBJECT / 01</span>
+            <strong>HUMAN ANTIBODY</strong>
+            <p>Sequence · structure · evidence</p>
           </div>
-          <div class="float-note float-note-left">
-            <span>TRACEABLE</span>
-            <strong>E2E</strong>
-            <small>全链追踪</small>
+          <div class="molecule-readouts" aria-hidden="true">
+            <div><span>SEQUENCE</span><strong>CONNECTED</strong></div>
+            <div><span>STRUCTURE</span><strong>PROJECTED</strong></div>
+            <div><span>EVIDENCE</span><strong>TRACEABLE</strong></div>
           </div>
-          <div class="float-note float-note-right">
-            <span>CONNECTED</span>
-            <strong>06</strong>
-            <small>发现阶段</small>
+          <div class="molecule-stage-footer">
+            <p><span></span>LOCAL CANVAS RENDER · MOVE POINTER TO EXPLORE</p>
+            <button type="button" class="motion-toggle" data-molecule-toggle aria-pressed="false">
+              暂停动态
+            </button>
           </div>
         </div>
       </section>
@@ -536,9 +543,127 @@
         </div>
       </section>
 
+      <section class="sequence-lab section" id="tools">
+        <div class="section-label reveal">
+          <span>06</span>
+          <p>Local sequence lab</p>
+        </div>
+        <div class="lab-intro">
+          <div>
+            <p class="kicker reveal">无需服务器的轻量计算</p>
+            <h2 class="reveal">让序列在离开浏览器之前，<br />先给出一些答案。</h2>
+          </div>
+          <div class="lab-intro-copy reveal">
+            <p>
+              粘贴蛋白质或 DNA FASTA 序列，快速获得常用理化统计、反向互补与阅读框翻译。
+              所有计算仅在当前设备完成，不上传、不保存。
+            </p>
+            <span><i></i> CLIENT-SIDE ONLY</span>
+          </div>
+        </div>
+
+        <div class="lab-shell reveal" data-sequence-lab>
+          <noscript>
+            <p class="lab-noscript">本地序列计算需要启用 JavaScript；页面其余内容仍可正常浏览。</p>
+          </noscript>
+          <div class="lab-toolbar">
+            <div class="lab-mode-switch" aria-label="选择序列类型">
+              <button type="button" data-sequence-mode="protein" aria-pressed="true">
+                蛋白质 / 抗体
+              </button>
+              <button type="button" data-sequence-mode="dna" aria-pressed="false">DNA</button>
+            </div>
+            <p><span></span>序列仅在本地内存中处理</p>
+          </div>
+
+          <div class="lab-workspace">
+            <div class="lab-input-panel">
+              <div class="lab-panel-heading">
+                <label for="sequence-input">输入序列</label>
+                <span data-sequence-counter>0 aa</span>
+              </div>
+              <textarea
+                id="sequence-input"
+                data-sequence-input
+                rows="12"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="粘贴单字母氨基酸序列或 FASTA 内容…"
+              ></textarea>
+              <div class="lab-input-actions">
+                <button type="button" class="lab-text-button" data-sequence-example>载入示例</button>
+                <button type="button" class="lab-text-button" data-sequence-clear>清空</button>
+                <button type="button" class="lab-run-button" data-sequence-run>
+                  开始计算 <span aria-hidden="true">→</span>
+                </button>
+              </div>
+              <p class="lab-feedback" data-sequence-feedback aria-live="polite">
+                支持标准 20 种氨基酸单字母代码。
+              </p>
+            </div>
+
+            <div class="lab-results-panel" aria-live="polite">
+              <div class="lab-panel-heading">
+                <span>计算结果</span>
+                <span data-result-kind>PROTEIN</span>
+              </div>
+              <div class="lab-metrics">
+                <article>
+                  <small data-metric-label="0">序列长度</small>
+                  <strong data-metric-value="0">—</strong>
+                  <span data-metric-unit="0">aa</span>
+                </article>
+                <article>
+                  <small data-metric-label="1">近似分子量</small>
+                  <strong data-metric-value="1">—</strong>
+                  <span data-metric-unit="1">kDa</span>
+                </article>
+                <article>
+                  <small data-metric-label="2">理论等电点</small>
+                  <strong data-metric-value="2">—</strong>
+                  <span data-metric-unit="2">pI</span>
+                </article>
+                <article>
+                  <small data-metric-label="3">平均疏水性</small>
+                  <strong data-metric-value="3">—</strong>
+                  <span data-metric-unit="3">GRAVY</span>
+                </article>
+                <article>
+                  <small data-metric-label="4">280 nm 最大氧化态消光系数</small>
+                  <strong data-metric-value="4">—</strong>
+                  <span data-metric-unit="4">M⁻¹cm⁻¹</span>
+                </article>
+              </div>
+              <div class="lab-output-block">
+                <div>
+                  <span data-output-title>组成概览</span>
+                  <button type="button" data-sequence-copy>复制结果</button>
+                </div>
+                <pre data-sequence-output tabindex="0">输入序列后将在这里显示摘要。</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="lab-disclaimer">
+            <p>
+              本工具仅根据输入的一级序列进行本地理论计算，适合快速检查与教学演示，不构成实验测量、临床、治疗或监管依据。
+            </p>
+            <details>
+              <summary>计算方法与适用边界</summary>
+              <p>
+                蛋白质结果采用平均氨基酸质量、Kyte–Doolittle 疏水性尺度及
+                Bjellqvist pKa 参数，不考虑糖基化、其他翻译后修饰、构象、缓冲液或链间相互作用。
+                重链、轻链及其他多肽链应分别输入。消光系数显示假设 Cys 最大配对时的上界。
+                DNA 使用标准遗传密码表；Wallace Tm 仅为短寡核苷酸粗估，未校正离子浓度、链浓度、错配、添加剂与相邻效应。
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
       <section class="company section" id="company">
         <div class="section-label reveal">
-          <span>05</span>
+          <span>07</span>
           <p>Biocytogen at a glance</p>
         </div>
         <div class="company-intro">
@@ -643,6 +768,8 @@
         <nav class="footer-column" aria-label="平台链接">
           <strong>平台与技术</strong>
           <a href="#workflow">发现工作流</a>
+          <a href="#experience">分子数据空间</a>
+          <a href="#tools">本地序列工具</a>
           <a
             href="https://biocytogen.com.cn/drug-development/renSuper-workstation-ai-antibody-discovery"
             target="_blank"
@@ -700,6 +827,8 @@
       </div>
     </footer>
 
-    <script src="./script.js?v=20260918-2" defer></script>
+    <script src="./molecular-visual.js?v=20260918-4" defer></script>
+    <script src="./sequence-tools.js?v=20260918-4" defer></script>
+    <script src="./script.js?v=20260918-4" defer></script>
   </body>
 </html>

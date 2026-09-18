@@ -82,6 +82,10 @@ document.addEventListener("pointerdown", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (capabilityDialog?.open) {
+    capabilityDialog.close();
+    return;
+  }
   if (menuToggle?.getAttribute("aria-expanded") === "true") {
     closeMenu();
     menuToggle.focus();
@@ -515,7 +519,7 @@ if (workflow && "IntersectionObserver" in window) {
   workflowObserver.observe(workflow);
 }
 
-const capabilityConsole = document.querySelector("[data-capability-console]");
+const capabilityDialog = document.querySelector("[data-capability-dialog]");
 const capabilityTriggers = document.querySelectorAll("[data-capability-trigger]");
 const capabilityDetails = {
   mainline: {
@@ -533,6 +537,36 @@ const capabilityDetails = {
       "候选序列已完成关联",
       "评价结果已回写证据链",
     ],
+    steps: [
+      {
+        title: "建立项目边界与版本基线",
+        description: "在实验开始前固定靶点、抗原版本、项目目标和责任团队，让后续对象从同一上下文出发。",
+        input: "Target profile · Antigen version · Program owner",
+        action: "创建项目对象、版本基线与阶段门禁",
+        evidence: "Program VITA-024 · Scope v1.3",
+      },
+      {
+        title: "让样本继承完整实验来源",
+        description: "采样时间、动物队列、免疫方案和效价结果随样本一并进入筛选环节，不再依赖人工补充背景。",
+        input: "Animal RM-17 · Day 28 · Titer result",
+        action: "生成样本批次并继承免疫上下文",
+        evidence: "Sample SMP-091 · Chain intact",
+      },
+      {
+        title: "把实验命中锁定为分子版本",
+        description: "阳性孔位、读段质控、VH/VL 配对和 CDR 注释共同形成可复现的候选序列版本。",
+        input: "Well B07 · VH/VL reads · QC report",
+        action: "完成链配对、注释和候选版本锁定",
+        evidence: "Clone 024-7 · Sequence v2.1",
+      },
+      {
+        title: "让评价结论回到候选主线",
+        description: "表达批次、结合、功能与开发性结果汇聚到同一候选对象，直接支撑排序和 Go / No-Go 决策。",
+        input: "RUN-2481 · Binding · Function · Developability",
+        action: "汇总证据矩阵并保存决策快照",
+        evidence: "Vita-RS-024 · GO · Snapshot 05",
+      },
+    ],
   },
   traceability: {
     tag: "TRACEABILITY · BIDIRECTIONAL LINEAGE",
@@ -548,6 +582,36 @@ const capabilityDetails = {
       "定位实验运行批次 RUN-2481",
       "确认来源样本 SMP-091",
       "已回溯至完整项目上下文",
+    ],
+    steps: [
+      {
+        title: "从待解释结论开始追溯",
+        description: "选择评价结果后，立即看到指标值、判定阈值、算法或人工结论以及对应结果版本。",
+        input: "Vita-RS-024 · KD 1.8 nM · Functional hit",
+        action: "锁定结果版本与判定依据",
+        evidence: "Result snapshot · Reviewer · Timestamp",
+      },
+      {
+        title: "定位产生结果的实验运行",
+        description: "沿结果关系进入具体运行批次，查看方案、设备、板位、操作者与原始文件。",
+        input: "Result ID · Assay type · Data file",
+        action: "解析结果到运行批次的直接关系",
+        evidence: "RUN-2481 · Plate P12 · QC passed",
+      },
+      {
+        title: "确认样本、批次与上游来源",
+        description: "将实验运行继续反向连接到蛋白批次、候选序列、阳性孔位与原始样本。",
+        input: "RUN-2481 · Clone 024-7",
+        action: "恢复样本与分子对象的完整谱系",
+        evidence: "SMP-091 · Well B07 · Animal RM-17",
+      },
+      {
+        title: "回到项目目标和历史决策",
+        description: "最终回到项目边界、抗原版本和阶段决策，完整解释这个结果为何产生、如何被使用。",
+        input: "Sample lineage · Decision history",
+        action: "汇总双向谱系与版本时间线",
+        evidence: "Program VITA-024 · Audit chain complete",
+      },
     ],
   },
   collaboration: {
@@ -565,6 +629,36 @@ const capabilityDetails = {
       "实验状态已同步",
       "交付物已完成跨团队交接",
     ],
+    steps: [
+      {
+        title: "把口头需求转化为标准请求",
+        description: "明确请求类型、目标对象、优先级、期望交付物和前置依赖，减少信息反复确认。",
+        input: "Clone 024-7 · Expression request · Priority P1",
+        action: "创建请求并校验必需上下文",
+        evidence: "REQ-4102 · Ready for assignment",
+      },
+      {
+        title: "将责任、时限和权限一次对齐",
+        description: "责任团队接单时同时获得完整上游信息、服务时限和允许执行的操作范围。",
+        input: "Request · Team capacity · Permission scope",
+        action: "分配 Owner、SLA 与协作边界",
+        evidence: "Expression team · Owner EX-07 · Due Sep 21",
+      },
+      {
+        title: "让进度变化成为共享事实",
+        description: "实验开始、等待、异常和完成状态由执行端持续更新，前后团队无需重复询问。",
+        input: "Work order · Instrument event · Exception flag",
+        action: "同步状态、阻塞原因和预计完成时间",
+        evidence: "RUN-2481 · Purification · On schedule",
+      },
+      {
+        title: "以可验收交付物完成交接",
+        description: "下游团队接收的不只是完成提示，还包括批次、质控结果、文件和下一步建议。",
+        input: "Batch result · QC package · Handoff checklist",
+        action: "执行交付确认并触发下游任务",
+        evidence: "Protein batch released · Characterization queued",
+      },
+    ],
   },
   automation: {
     tag: "AUTOMATION · CLOSED-LOOP EXECUTION",
@@ -581,12 +675,41 @@ const capabilityDetails = {
       "设备运行完成，数据开始回传",
       "结果已归档至项目数据链",
     ],
+    steps: [
+      {
+        title: "在下发前完成工单门禁",
+        description: "系统检查样本、板位、体积、方法版本和设备能力，只有满足约束的工单才能进入队列。",
+        input: "ORDER-731 · Plate P12 · Method ELISA-v4",
+        action: "执行参数、依赖与资源可用性校验",
+        evidence: "Validated · 12 checks passed · 0 blockers",
+      },
+      {
+        title: "把结构化任务下发到正确设备",
+        description: "通过设备适配层转换任务参数，保留工单、设备任务和项目对象之间的唯一关联。",
+        input: "Validated order · Device profile · Queue priority",
+        action: "生成设备任务并锁定执行版本",
+        evidence: "DEVICE-A03 · JOB-9821 · Queued",
+      },
+      {
+        title: "将运行状态和异常持续带回平台",
+        description: "关键节点、进度、耗材和异常事件形成可观察时间线，支持人工接管与安全恢复。",
+        input: "Telemetry · Runtime events · Exception codes",
+        action: "监控运行、标记异常并保存处置记录",
+        evidence: "RUN-2481 · 100% · QC gate passed",
+      },
+      {
+        title: "让结果自动归档并触发下一步",
+        description: "原始文件、结构化结果和质控结论回写到原工单与样本上下文，并生成后续评价任务。",
+        input: "Raw files · Parsed result · QC decision",
+        action: "回写结果、关闭工单并创建下游请求",
+        evidence: "Vita-RS-024 · Archived · Next task created",
+      },
+    ],
   },
 };
-let capabilityTimer;
-let capabilitySimulationTimers = [];
 let activeCapabilityKey = "mainline";
 const capabilityPreviews = [...document.querySelectorAll("[data-capability-preview]")];
+const capabilityStepByKey = new Map(Object.keys(capabilityDetails).map((key) => [key, 0]));
 
 const updateCapabilityPreview = (key, stepIndex, stepCount) => {
   capabilityPreviews.forEach((preview) => {
@@ -612,47 +735,91 @@ const updateCapabilityPreview = (key, stepIndex, stepCount) => {
   });
 };
 
-const clearCapabilitySimulation = () => {
-  capabilitySimulationTimers.forEach((timer) => window.clearTimeout(timer));
-  capabilitySimulationTimers = [];
+const setCapabilityStep = (requestedIndex, focusTab = false) => {
+  const detail = capabilityDetails[activeCapabilityKey];
+  if (!capabilityDialog || !detail) return;
+  const stepIndex = Math.max(0, Math.min(requestedIndex, detail.steps.length - 1));
+  const step = detail.steps[stepIndex];
+  capabilityStepByKey.set(activeCapabilityKey, stepIndex);
+
+  const tabs = [...capabilityDialog.querySelectorAll("[data-capability-step]")];
+  tabs.forEach((tab, index) => {
+    const active = index === stepIndex;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
+    tab.tabIndex = active ? 0 : -1;
+  });
+  if (focusTab) tabs[stepIndex]?.focus();
+
+  const values = {
+    "[data-capability-step-index]": `STEP ${String(stepIndex + 1).padStart(2, "0")}`,
+    "[data-capability-step-state]": detail.states[stepIndex],
+    "[data-capability-step-title]": step.title,
+    "[data-capability-step-description]": step.description,
+    "[data-capability-step-input]": step.input,
+    "[data-capability-step-action]": step.action,
+    "[data-capability-step-evidence]": step.evidence,
+  };
+  Object.entries(values).forEach(([selector, value]) => {
+    const target = capabilityDialog.querySelector(selector);
+    if (target) target.textContent = value;
+  });
+
+  updateCapabilityPreview(activeCapabilityKey, stepIndex, detail.steps.length);
+  const panel = capabilityDialog.querySelector("[data-capability-step-title]")?.closest("section");
+  if (panel && !reducedMotion) {
+    panel.animate(
+      [
+        { opacity: 0.55, transform: "translateY(5px)" },
+        { opacity: 1, transform: "translateY(0)" },
+      ],
+      { duration: 180, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    );
+  }
 };
 
-const runCapabilitySimulation = (detail) => {
-  if (!capabilityConsole || !detail) return;
-  clearCapabilitySimulation();
-  const path = capabilityConsole.querySelector("[data-capability-path]");
-  const status = capabilityConsole.querySelector("[data-capability-status]");
-  const nodes = [...(path?.querySelectorAll("span") ?? [])];
-  const connectors = [...(path?.querySelectorAll("i") ?? [])];
-  if (!nodes.length) return;
+const buildCapabilityPath = (detail) => {
+  const path = capabilityDialog?.querySelector("[data-capability-path]");
+  if (!path) return;
+  path.replaceChildren();
 
-  const showStep = (index) => {
-    nodes.forEach((node, nodeIndex) => node.classList.toggle("active", nodeIndex <= index));
-    connectors.forEach((connector, connectorIndex) =>
-      connector.classList.toggle("active", connectorIndex < index),
-    );
-    if (status) status.textContent = detail.states[index] ?? "";
-    capabilityConsole.dataset.simulationStep = String(index + 1);
-    updateCapabilityPreview(activeCapabilityKey, index, detail.states.length);
-  };
-
-  if (reducedMotion) {
-    showStep(nodes.length - 1);
-    return;
-  }
-
-  detail.states.forEach((_, index) => {
-    const timer = window.setTimeout(() => showStep(index), index * 620);
-    capabilitySimulationTimers.push(timer);
+  detail.path.forEach((label, index) => {
+    const button = document.createElement("button");
+    const number = document.createElement("span");
+    const name = document.createElement("strong");
+    const state = document.createElement("small");
+    button.type = "button";
+    button.dataset.capabilityStep = String(index);
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-controls", "capability-step-detail");
+    number.textContent = String(index + 1).padStart(2, "0");
+    name.textContent = label;
+    state.textContent = detail.states[index];
+    button.append(number, name, state);
+    button.addEventListener("click", () => setCapabilityStep(index));
+    button.addEventListener("keydown", (event) => {
+      let nextIndex;
+      if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+        nextIndex = (index + 1) % detail.path.length;
+      } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+        nextIndex = (index - 1 + detail.path.length) % detail.path.length;
+      } else if (event.key === "Home") {
+        nextIndex = 0;
+      } else if (event.key === "End") {
+        nextIndex = detail.path.length - 1;
+      }
+      if (nextIndex === undefined) return;
+      event.preventDefault();
+      setCapabilityStep(nextIndex, true);
+    });
+    path.append(button);
   });
 };
 
-const setActiveCapability = (key, revealConsole = false) => {
+const setActiveCapability = (key, openExplorer = false) => {
   const detail = capabilityDetails[key];
-  if (!capabilityConsole || !detail) return;
+  if (!capabilityDialog || !detail) return;
   activeCapabilityKey = key;
-  clearCapabilitySimulation();
-  updateCapabilityPreview(key, 0, detail.states.length);
 
   capabilityTriggers.forEach((trigger) => {
     const active = trigger.dataset.capabilityTrigger === key;
@@ -660,43 +827,24 @@ const setActiveCapability = (key, revealConsole = false) => {
     trigger.setAttribute("aria-pressed", String(active));
   });
 
-  window.clearTimeout(capabilityTimer);
-  capabilityConsole.classList.add("is-updating");
-  capabilityTimer = window.setTimeout(() => {
-    const values = {
-      "[data-capability-tag]": detail.tag,
-      "[data-capability-title]": detail.title,
-      "[data-capability-description]": detail.description,
-      "[data-capability-objects]": detail.objects,
-      "[data-capability-control]": detail.control,
-      "[data-capability-outcome]": detail.outcome,
-    };
-    Object.entries(values).forEach(([selector, value]) => {
-      const target = capabilityConsole.querySelector(selector);
-      if (target) target.textContent = value;
-    });
+  const values = {
+    "[data-capability-tag]": detail.tag,
+    "[data-capability-title]": detail.title,
+    "[data-capability-description]": detail.description,
+    "[data-capability-objects]": detail.objects,
+    "[data-capability-control]": detail.control,
+    "[data-capability-outcome]": detail.outcome,
+  };
+  Object.entries(values).forEach(([selector, value]) => {
+    const target = capabilityDialog.querySelector(selector);
+    if (target) target.textContent = value;
+  });
 
-    const path = capabilityConsole.querySelector("[data-capability-path]");
-    if (path) {
-      path.replaceChildren();
-      detail.path.forEach((label, index) => {
-        const node = document.createElement("span");
-        node.textContent = label;
-        path.append(node);
-        if (index < detail.path.length - 1) path.append(document.createElement("i"));
-      });
-    }
-    capabilityConsole.classList.remove("is-updating");
-    runCapabilitySimulation(detail);
-  }, reducedMotion ? 0 : 110);
-
-  if (revealConsole) {
-    window.setTimeout(() => {
-      capabilityConsole.scrollIntoView({
-        behavior: reducedMotion ? "auto" : "smooth",
-        block: "center",
-      });
-    }, reducedMotion ? 0 : 130);
+  buildCapabilityPath(detail);
+  setCapabilityStep(capabilityStepByKey.get(key) ?? 0);
+  if (openExplorer && !capabilityDialog.open) {
+    capabilityDialog.showModal();
+    document.documentElement.classList.add("dialog-open");
   }
 };
 
@@ -706,25 +854,19 @@ capabilityTriggers.forEach((trigger) => {
   });
 });
 
-capabilityConsole?.querySelector("[data-capability-replay]")?.addEventListener("click", () => {
-  runCapabilitySimulation(capabilityDetails[activeCapabilityKey]);
+capabilityDialog?.querySelector("[data-capability-close]")?.addEventListener("click", () => {
+  capabilityDialog.close();
 });
 
-if (capabilityConsole) {
-  if (!reducedMotion && "IntersectionObserver" in window) {
-    const capabilityObserver = new IntersectionObserver(
-      ([entry], observer) => {
-        if (!entry.isIntersecting) return;
-        runCapabilitySimulation(capabilityDetails[activeCapabilityKey]);
-        observer.unobserve(entry.target);
-      },
-      { threshold: 0.3 },
-    );
-    capabilityObserver.observe(capabilityConsole);
-  } else {
-    runCapabilitySimulation(capabilityDetails[activeCapabilityKey]);
-  }
-}
+capabilityDialog?.addEventListener("click", (event) => {
+  if (event.target === capabilityDialog) capabilityDialog.close();
+});
+
+capabilityDialog?.addEventListener("close", () => {
+  document.documentElement.classList.remove("dialog-open");
+});
+
+setActiveCapability(activeCapabilityKey);
 
 const roleExplorer = document.querySelector("[data-role-explorer]");
 const roleDetail = roleExplorer?.querySelector("[data-role-detail]");
@@ -820,8 +962,6 @@ const candidateStory = candidate?.querySelector("[data-candidate-story]");
 const candidateSteps = [...(candidate?.querySelectorAll("[data-candidate-step]") ?? [])];
 const candidateLineageNodes = [...(candidate?.querySelectorAll(".candidate-lineage span") ?? [])];
 const candidateLineageLinks = [...(candidate?.querySelectorAll(".candidate-lineage i") ?? [])];
-const candidatePlay = candidate?.querySelector("[data-candidate-play]");
-const candidateAutoProgress = candidate?.querySelector("[data-candidate-auto-progress]");
 const candidatePhases = [
   {
     phase: "PHASE 01 · IMMUNITY",
@@ -891,8 +1031,6 @@ const candidatePhases = [
 ];
 let activeCandidateIndex = 0;
 let candidateTimer;
-let candidatePlaybackTimer;
-let candidatePlaybackActive = false;
 
 const setActiveCandidate = (requestedIndex) => {
   if (!candidateStory || !candidateSteps.length) return;
@@ -906,9 +1044,6 @@ const setActiveCandidate = (requestedIndex) => {
   });
   candidateLineageNodes.forEach((node, nodeIndex) => node.classList.toggle("active", nodeIndex <= index));
   candidateLineageLinks.forEach((link, linkIndex) => link.classList.toggle("active", linkIndex < index));
-  if (candidateAutoProgress) {
-    candidateAutoProgress.style.transform = `scaleX(${(index + 1) / candidateSteps.length})`;
-  }
   window.clearTimeout(candidateTimer);
   candidateStory.classList.add("is-updating");
   candidateTimer = window.setTimeout(() => {
@@ -934,37 +1069,8 @@ const setActiveCandidate = (requestedIndex) => {
   }, reducedMotion ? 0 : 110);
 };
 
-const setCandidatePlayback = (active) => {
-  candidatePlaybackActive = active;
-  candidateStory?.classList.toggle("is-playing", active);
-  if (candidatePlay) {
-    candidatePlay.setAttribute("aria-pressed", String(active));
-    candidatePlay.textContent = active ? "暂停播放" : "播放证据链";
-  }
-};
-
-const stopCandidatePlayback = () => {
-  window.clearTimeout(candidatePlaybackTimer);
-  candidatePlaybackTimer = undefined;
-  setCandidatePlayback(false);
-};
-
-const scheduleCandidatePlayback = () => {
-  window.clearTimeout(candidatePlaybackTimer);
-  if (!candidatePlaybackActive) return;
-  if (activeCandidateIndex >= candidatePhases.length - 1) {
-    stopCandidatePlayback();
-    return;
-  }
-  candidatePlaybackTimer = window.setTimeout(() => {
-    setActiveCandidate(activeCandidateIndex + 1);
-    scheduleCandidatePlayback();
-  }, 1650);
-};
-
 candidateSteps.forEach((step, index) => {
   step.addEventListener("click", () => {
-    stopCandidatePlayback();
     setActiveCandidate(index);
   });
   step.addEventListener("keydown", (event) => {
@@ -975,35 +1081,18 @@ candidateSteps.forEach((step, index) => {
     if (event.key === "ArrowRight") targetIndex = Math.min(candidateSteps.length - 1, index + 1);
     if (event.key === "Home") targetIndex = 0;
     if (event.key === "End") targetIndex = candidateSteps.length - 1;
-    stopCandidatePlayback();
     candidateSteps[targetIndex]?.focus();
     setActiveCandidate(targetIndex);
   });
 });
 
 candidate?.querySelector("[data-candidate-prev]")?.addEventListener("click", () => {
-  stopCandidatePlayback();
   setActiveCandidate((activeCandidateIndex - 1 + candidatePhases.length) % candidatePhases.length);
 });
 candidate?.querySelector("[data-candidate-next]")?.addEventListener("click", () => {
-  stopCandidatePlayback();
   setActiveCandidate((activeCandidateIndex + 1) % candidatePhases.length);
 });
-candidatePlay?.addEventListener("click", () => {
-  if (candidatePlaybackActive) {
-    stopCandidatePlayback();
-    return;
-  }
-  if (reducedMotion) {
-    setActiveCandidate(candidatePhases.length - 1);
-    return;
-  }
-  if (activeCandidateIndex >= candidatePhases.length - 1) setActiveCandidate(0);
-  setCandidatePlayback(true);
-  scheduleCandidatePlayback();
-});
 candidate?.querySelector("[data-candidate-molecule]")?.addEventListener("click", () => {
-  stopCandidatePlayback();
   const phase = candidatePhases[activeCandidateIndex];
   document.dispatchEvent(
     new CustomEvent("vita:molecule-view", {
@@ -1016,12 +1105,7 @@ candidate?.querySelector("[data-candidate-molecule]")?.addEventListener("click",
   });
 });
 
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) stopCandidatePlayback();
-});
-
 document.querySelector("[data-workflow-case]")?.addEventListener("click", () => {
-  stopCandidatePlayback();
   setActiveCandidate(activeWorkflowIndex);
   candidate?.scrollIntoView({
     behavior: reducedMotion ? "auto" : "smooth",
@@ -1062,7 +1146,6 @@ heroStages.forEach((stage) => {
 });
 
 heroVisual?.querySelector("[data-hero-case]")?.addEventListener("click", () => {
-  stopCandidatePlayback();
   setActiveCandidate(0);
   candidate?.scrollIntoView({
     behavior: reducedMotion ? "auto" : "smooth",

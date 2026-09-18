@@ -45,7 +45,7 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20260918-20" />
+    <link rel="stylesheet" href="./styles.css?v=20260918-21" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
       {
@@ -283,7 +283,7 @@
           <button type="button" class="stage-node node-evaluate" data-hero-stage="4" aria-label="查看评价与决策阶段">
             <i></i><span>05</span><strong>评价</strong><small>Evaluate</small>
           </button>
-          <button type="button" class="stage-node node-automate" data-hero-capability="automation" aria-label="运行自动化闭环演示">
+          <button type="button" class="stage-node node-automate" data-hero-capability="automation" aria-label="查看自动化执行门禁">
             <i></i><span>06</span><strong>自动化</strong><small>Automate</small>
           </button>
 
@@ -491,7 +491,7 @@
               <h3>围绕实验路径组织工作，<br />让数据沿发现主线持续流动。</h3>
               <p>从项目入口到候选评价，数据随研发对象向前流动，保留每个决策节点的完整上下文。</p>
               <button type="button" class="card-explore active" data-capability-trigger="mainline" aria-pressed="true">
-                播放主线流转 <span aria-hidden="true">→</span>
+                查看主线数据 <span aria-hidden="true">→</span>
               </button>
             </div>
             <div class="flow-mini" data-capability-preview="mainline" aria-hidden="true">
@@ -512,7 +512,7 @@
             </div>
             <p>统一项目、实验、样本、序列与结果之间的关联，支撑审计和科学复盘。</p>
             <button type="button" class="card-explore" data-capability-trigger="traceability" aria-pressed="false">
-              追溯一个结果 <span aria-hidden="true">→</span>
+              打开追溯路径 <span aria-hidden="true">→</span>
             </button>
           </article>
 
@@ -521,7 +521,7 @@
             <h3>让不同团队共享同一进度。</h3>
             <p>清晰的工单、状态和权限边界，减少跨实验环节的重复沟通。</p>
             <button type="button" class="card-explore" data-capability-trigger="collaboration" aria-pressed="false">
-              模拟团队交接 <span aria-hidden="true">→</span>
+              查看交接规则 <span aria-hidden="true">→</span>
             </button>
             <div class="team-row" data-capability-preview="collaboration" aria-hidden="true">
               <span>IM</span><span>SB</span><span>NG</span><span>EX</span><span>QA</span>
@@ -533,7 +533,7 @@
             <h3>把设备接入工作流，<br />把结果带回数据链。</h3>
             <p>通过工单校验、任务下发和结果回写连接实验室自动化模组。</p>
             <button type="button" class="card-explore" data-capability-trigger="automation" aria-pressed="false">
-              运行自动化闭环 <span aria-hidden="true">→</span>
+              查看执行门禁 <span aria-hidden="true">→</span>
             </button>
             <div class="automation-status" data-capability-preview="automation" aria-hidden="true">
               <span><i></i> ORDER VALIDATED</span>
@@ -542,40 +542,58 @@
             </div>
           </article>
 
-          <section class="capability-console" data-capability-console aria-live="polite">
-            <div class="capability-console-copy">
-              <span data-capability-tag>DISCOVERY MAINLINE · CONNECTED OBJECTS</span>
-              <h3 data-capability-title>研发对象沿主线持续携带上下文</h3>
-              <p data-capability-description>
-                项目、样本、序列、表达批次与评价结果通过同一对象关系向前传递，阶段切换不会丢失来源与决策依据。
-              </p>
-            </div>
-            <div class="capability-console-data">
-              <div>
-                <span>OBJECTS</span>
-                <strong data-capability-objects>PROJECT · SAMPLE · SEQUENCE · ASSAY</strong>
-              </div>
-              <div>
-                <span>CONTROL</span>
-                <strong data-capability-control>阶段状态 · 依赖校验 · 版本记录</strong>
-              </div>
-              <div>
-                <span>OUTCOME</span>
-                <strong data-capability-outcome>连续、可查询的候选证据链</strong>
-              </div>
-            </div>
-            <div class="capability-simulation">
-              <div class="capability-simulation-head">
-                <span><i></i> FLOW SIMULATION</span>
-                <strong data-capability-status>项目已建立，正在关联样本</strong>
-                <button type="button" data-capability-replay>重播</button>
-              </div>
-              <div class="capability-path" data-capability-path aria-label="当前能力数据路径">
-                <span class="active">PROJECT</span><i></i><span>SAMPLE</span><i></i><span>SEQUENCE</span><i></i><span>ASSAY</span>
-              </div>
-            </div>
-          </section>
         </div>
+
+        <dialog class="capability-explorer" data-capability-dialog aria-labelledby="capability-explorer-title">
+          <div class="capability-explorer-shell">
+            <header class="capability-explorer-head">
+              <div>
+                <span data-capability-tag>DISCOVERY MAINLINE · CONNECTED OBJECTS</span>
+                <h3 id="capability-explorer-title" data-capability-title>研发对象沿主线持续携带上下文</h3>
+                <p data-capability-description>
+                  项目、样本、序列、表达批次与评价结果通过同一对象关系向前传递，阶段切换不会丢失来源与决策依据。
+                </p>
+              </div>
+              <button type="button" class="capability-explorer-close" data-capability-close aria-label="关闭能力详情">
+                <span aria-hidden="true">×</span>
+              </button>
+            </header>
+
+            <div class="capability-explorer-meta">
+              <div><span>OBJECTS</span><strong data-capability-objects>PROJECT · SAMPLE · SEQUENCE · ASSAY</strong></div>
+              <div><span>CONTROL</span><strong data-capability-control>阶段状态 · 依赖校验 · 版本记录</strong></div>
+              <div><span>OUTCOME</span><strong data-capability-outcome>连续、可查询的候选证据链</strong></div>
+            </div>
+
+            <div class="capability-explorer-body">
+              <div class="capability-explorer-path" data-capability-path role="tablist" aria-label="能力路径阶段"></div>
+              <section class="capability-step-detail" id="capability-step-detail" role="tabpanel" aria-live="polite">
+                <div class="capability-step-head">
+                  <span data-capability-step-index>STEP 01</span>
+                  <strong data-capability-step-state>项目上下文已建立</strong>
+                </div>
+                <h4 data-capability-step-title>建立项目边界与版本基线</h4>
+                <p data-capability-step-description>
+                  在实验开始前固定靶点、抗原版本、项目目标和责任团队，让后续对象从同一上下文出发。
+                </p>
+                <div class="capability-step-grid">
+                  <article>
+                    <span>INPUT</span>
+                    <strong data-capability-step-input>Target profile · Antigen version · Program owner</strong>
+                  </article>
+                  <article>
+                    <span>PLATFORM ACTION</span>
+                    <strong data-capability-step-action>创建项目对象、版本基线与阶段门禁</strong>
+                  </article>
+                  <article>
+                    <span>VISIBLE EVIDENCE</span>
+                    <strong data-capability-step-evidence>Program VITA-024 · Scope v1.3</strong>
+                  </article>
+                </div>
+              </section>
+            </div>
+          </div>
+        </dialog>
 
         <section class="role-explorer reveal" data-role-explorer>
           <div class="role-explorer-head">
@@ -696,15 +714,11 @@
                 <button type="button" data-candidate-next aria-label="下一个候选阶段">→</button>
               </div>
               <div class="candidate-action-group">
-                <button type="button" class="candidate-play-action" data-candidate-play aria-pressed="false">
-                  播放证据链 <span aria-hidden="true">▶</span>
-                </button>
                 <button type="button" class="candidate-molecule-action" data-candidate-molecule>
                   在三维结构中查看 <span aria-hidden="true">↘</span>
                 </button>
               </div>
             </div>
-            <div class="candidate-auto-progress" aria-hidden="true"><span data-candidate-auto-progress></span></div>
           </div>
         </div>
       </section>
@@ -1132,7 +1146,7 @@
       </div>
     </footer>
 
-    <script src="./script.js?v=20260918-20" defer></script>
-    <script src="./molecular-visual.js?v=20260918-20" defer></script>
+    <script src="./script.js?v=20260918-21" defer></script>
+    <script src="./molecular-visual.js?v=20260918-21" defer></script>
   </body>
 </html>

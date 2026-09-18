@@ -1,6 +1,6 @@
 <!-- Showcase only. Implementation status & ops → docs/README.md -->
 
-# Antibody Vita — 百奥赛图抗体发现全流程协作平台
+# Antibody Vita — 百奥赛图 AI 抗体发现全流程协作平台
 
 <p align="center">
   <img src="./docs/assets/biocytogen-logo.png" alt="百奥赛图 Biocytogen" height="52" />
@@ -8,7 +8,7 @@
 
 <p align="center">
   <strong>Antibody Vita</strong><br/>
-  <sub>抗体发现全流程实验协作平台</sub>
+  <sub>AI 驱动的抗体发现全流程实验协作平台</sub>
 </p>
 
 <p align="center">
@@ -31,9 +31,9 @@
   <a href="./docs/deploy.md">部署</a>
 </p>
 
-> **百奥赛图（Biocytogen）Antibody Vita** 是面向“千鼠万抗”（Project Integrum）与 RenMice® 全人抗体发现研发场景的全流程实验协作平台，贯通免疫、效价、筛选、测序、表达、评价及实验室自动化。
+> **百奥赛图（Biocytogen）Antibody Vita** 是支撑 **RenSuper™ Workstation** 与高通量自动化体系的实验流程、数据和协作基础平台，连接 RenMice® /“千鼠万抗”（Project Integrum）相关研发，从免疫、筛选和测序延伸至表达、评价与自动化验证。
 >
-> **Antibody Vita** is an end-to-end antibody discovery workflow and laboratory collaboration platform built for Biocytogen's Project Integrum and RenMice®-based R&D, connecting immunization, titer assessment, screening, sequencing, expression, characterization, and laboratory automation.
+> **Antibody Vita** provides the workflow, data, and collaboration foundation supporting Biocytogen's **AI-powered RenSuper™ antibody discovery** and high-throughput automation infrastructure across RenMice® and Project Integrum R&D.
 
 ---
 
@@ -41,11 +41,11 @@
 
 治疗性抗体发现通常并非线性流程，而是由免疫应答、候选筛选、序列获取、重组表达与多维表征等环节相互衔接构成的实验体系：以动物免疫激发应答为起点，经血清效价及 ELISA、流式细胞术等检测评估是否进入下游；继而通过 **单 B 细胞筛选**、**噬菌体展示** 等路径推进，结合文库构建与 Sanger / NGS 测序获得候选序列；再完成质粒与细胞制备、转染、表达与纯化（含 LNP 等递送相关准备），并开展结合、亲和力 / 分子互作、功能及理化 / 成药性评价。行业高通量单细胞与展示类流程，普遍围绕「应答 → 筛选 → 序列 → 表达 → 表征」这一主链组织。
 
-**Antibody Vita**（仓库名 Antibody Forge）是面向百奥赛图免疫研发场景的抗体发现全流程协作平台。系统将上述主链及并行支撑环节统一纳入 Web 平台：按实际实验路径串联数据与工单，遵循单一数据源原则；对需设备执行的步骤，以「工单创建 → 任务下发 → 结果回传」对接自动化模组，贯通发现全链路协同，而非将既有分散流程简单迁移至线上。
+**Antibody Vita**（仓库名 Antibody Forge）是百奥赛图 AI 驱动抗体发现体系中的实验协作与数据基础平台。系统将上述主链及并行支撑环节统一纳入 Web 平台：按实际实验路径串联数据与工单，遵循单一数据源原则；对需设备执行的步骤，以「工单创建 → 任务下发 → 结果回传」对接自动化模组，贯通发现全链路协同，而非将既有分散流程简单迁移至线上。
 
 ## 平台能力范围
 
-面向自免疫至候选抗体评价的完整研发工作：
+覆盖从免疫至候选抗体评价的完整研发工作：
 
 - **小鼠免疫与效价** — 免疫项目管理、笼位与进度跟踪；效价相关检测与附件管理（含 FACS、ELISA 等），作为进入发现下游的入口  
 - **筛选与发现** — 千鼠万抗总览与路线分流；**单 B 细胞筛选**、**噬菌体展示筛选** 等并行路径  

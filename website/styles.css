@@ -51,6 +51,64 @@ body.motion-paused *::after {
   animation-play-state: paused !important;
 }
 
+.scroll-progress-rail {
+  position: fixed;
+  z-index: 220;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 3px;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.scroll-progress-rail span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(var(--mint), var(--blue), var(--violet));
+  box-shadow: 0 0 12px rgba(99, 243, 217, 0.65);
+  transform: scaleY(0);
+  transform-origin: top;
+}
+
+.cursor-aura {
+  position: fixed;
+  z-index: 90;
+  top: 0;
+  left: 0;
+  width: 360px;
+  height: 360px;
+  pointer-events: none;
+  visibility: hidden;
+  background: radial-gradient(circle, rgba(58, 211, 194, 0.1), rgba(52, 120, 246, 0.045) 34%, transparent 68%);
+  border-radius: 50%;
+  opacity: 0;
+  transform: translate3d(-50%, -50%, 0);
+  transition: opacity 0.4s ease;
+}
+
+.cursor-aura.visible {
+  visibility: visible;
+  opacity: 1;
+}
+
+.pointer-tilt {
+  --spot-x: 50%;
+  --spot-y: 50%;
+  --tilt-x: 0deg;
+  --tilt-y: 0deg;
+  transform: perspective(1100px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+  transform-style: preserve-3d;
+  transition:
+    box-shadow 0.35s ease,
+    transform 0.28s var(--ease);
+}
+
+.js-ready .reveal.visible.pointer-tilt {
+  transform: perspective(1100px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -427,6 +485,7 @@ p {
   aspect-ratio: 1;
   margin-right: 0;
   pointer-events: none;
+  transition: translate 0.55s var(--ease);
 }
 
 .orbit {
@@ -980,6 +1039,10 @@ p {
 }
 
 .capability-card {
+  --spot-x: 82%;
+  --spot-y: 12%;
+  --tilt-x: 0deg;
+  --tilt-y: 0deg;
   position: relative;
   grid-column: span 5;
   min-height: 340px;
@@ -988,6 +1051,12 @@ p {
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(7, 19, 22, 0.1);
   border-radius: 16px;
+  transform: perspective(1100px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+  transform-style: preserve-3d;
+  transition:
+    border-color 0.35s ease,
+    box-shadow 0.35s ease,
+    transform 0.28s var(--ease);
 }
 
 .capability-card::after {
@@ -996,16 +1065,31 @@ p {
   content: "";
   pointer-events: none;
   opacity: 0;
-  background: radial-gradient(circle at 82% 12%, rgba(99, 243, 217, 0.1), transparent 30%);
+  background: radial-gradient(
+    circle at var(--spot-x) var(--spot-y),
+    rgba(99, 243, 217, 0.16),
+    transparent 34%
+  );
   transition: opacity 0.35s ease;
 }
 
-.capability-card:hover::after {
+.capability-card:hover::after,
+.capability-card.pointer-active::after {
   opacity: 1;
+}
+
+.capability-card.pointer-active {
+  box-shadow: 0 30px 60px rgba(7, 19, 22, 0.14);
+}
+
+.capability-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .capability-grid > :nth-child(3) {
   grid-column: span 7;
+  padding-bottom: 116px;
 }
 
 .capability-card h3 {
@@ -1037,6 +1121,7 @@ p {
 }
 
 .card-gradient {
+  padding-bottom: 130px;
   color: var(--white);
   background:
     radial-gradient(circle at 95% 5%, rgba(199, 68, 255, 0.42), transparent 37%),
@@ -1164,29 +1249,51 @@ p {
 
 .card-dark {
   grid-column: 1 / -1;
+  min-height: auto;
   color: var(--white);
   background: var(--ink);
 }
 
 .automation-status {
-  position: absolute;
-  right: 34px;
-  bottom: 34px;
-  left: 34px;
+  position: relative;
   display: grid;
   gap: 10px;
+  margin-top: 38px;
 }
 
 .automation-status span {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 11px 14px;
+  overflow: hidden;
   color: rgba(255, 255, 255, 0.42);
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 10px;
   letter-spacing: 0.11em;
+}
+
+.automation-status span::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  content: "";
+  background: linear-gradient(90deg, transparent, var(--mint), transparent);
+  opacity: 0.6;
+  transform: translateX(-110%);
+  animation: automation-scan 5.4s var(--ease) infinite;
+}
+
+.automation-status span:nth-child(2)::after {
+  animation-delay: 0.6s;
+}
+
+.automation-status span:nth-child(3)::after {
+  animation-delay: 1.2s;
 }
 
 .automation-status i {
@@ -1196,6 +1303,14 @@ p {
   border-radius: 50%;
   box-shadow: 0 0 8px var(--mint);
   animation: status-pulse 3s ease-in-out infinite;
+}
+
+.automation-status span:nth-child(2) i {
+  animation-delay: 0.6s;
+}
+
+.automation-status span:nth-child(3) i {
+  animation-delay: 1.2s;
 }
 
 .experience {
@@ -2489,6 +2604,17 @@ p {
   }
 }
 
+@keyframes automation-scan {
+  0%,
+  22% {
+    transform: translateX(-110%);
+  }
+  58%,
+  100% {
+    transform: translateX(110%);
+  }
+}
+
 @keyframes grid-breathe {
   0%,
   100% {
@@ -3153,7 +3279,6 @@ p {
   }
 
   .flow-mini,
-  .automation-status,
   .team-row {
     right: 28px;
     bottom: 28px;
@@ -3188,6 +3313,7 @@ p {
 
   .automation-status {
     gap: 8px;
+    margin-top: 30px;
   }
 
   .automation-status span {

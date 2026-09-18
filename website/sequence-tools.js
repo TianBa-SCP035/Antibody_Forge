@@ -156,7 +156,7 @@
       .split(/\r?\n/)
       .filter((line) => !line.trim().startsWith(">"))
       .join("")
-      .replace(/\s/g, "")
+      .replace(/[\s\d.-]/g, "")
       .toUpperCase();
 
   const ensureSingleFastaRecord = (rawSequence) => {
@@ -368,6 +368,7 @@
   const resultKind = lab.querySelector("[data-result-kind]");
   const outputTitle = lab.querySelector("[data-output-title]");
   const output = lab.querySelector("[data-sequence-output]");
+  const resultSurface = lab.querySelector(".lab-results-panel");
   const metricLabels = [...lab.querySelectorAll("[data-metric-label]")];
   const metricValues = [...lab.querySelectorAll("[data-metric-value]")];
   const metricUnits = [...lab.querySelectorAll("[data-metric-unit]")];
@@ -376,16 +377,16 @@
 
   const examples = {
     protein:
-      ">illustrative_VH_sequence\nEVQLVESGGGLVQPGGSLRLSCAASGFTFSSYAMSWVRQAPGKGLEWVSAISGSGGSTYYADSVKGRFTISRDNSKNTLYLQMNSLRAEDTAVYYCARGRGYFDYWGQGTLVTVSS",
-    dna: ">illustrative_coding_sequence\nATGGCCTACGTTAACTGA",
+      "EVQLVESGGGLVQPGGSLRLSCAASGFTFSSYAMSWVRQAPGKGLEWVSAISGSGGSTYYADSVKGRFTISRDNSKNTLYLQMNSLRAEDTAVYYCARGRGYFDYWGQGTLVTVSS",
+    dna: "ATGGCCTACGTTAACTGA",
   };
 
   const modeConfig = {
     protein: {
       kind: "PROTEIN",
       unit: "aa",
-      placeholder: "粘贴单字母氨基酸序列或 FASTA 内容…",
-      hint: "支持标准 20 种氨基酸单字母代码。",
+      placeholder: "直接粘贴氨基酸序列即可，无需添加 > 标题…",
+      hint: "直接粘贴序列即可；空格、换行、行号与 FASTA 标题会自动清理。",
       outputTitle: "组成概览",
       labels: [
         "序列长度",
@@ -399,8 +400,8 @@
     dna: {
       kind: "DNA",
       unit: "nt",
-      placeholder: "粘贴 DNA 序列或 FASTA 内容；U 将按 T 处理…",
-      hint: "支持完整 IUPAC DNA 代码；U 将按界面约定转换为 T。",
+      placeholder: "直接粘贴 DNA 序列即可；U 将按 T 处理…",
+      hint: "无需 FASTA 标题；支持 IUPAC DNA 代码，U 将按界面约定转换为 T。",
       outputTitle: "反向互补与阅读框 1",
       labels: ["序列长度", "GC 含量", "粗略 Tm", "阅读框 1", "模糊位点"],
       units: ["nt", "%", "°C", "aa", "nt"],
@@ -485,15 +486,46 @@
     }
   };
 
+  const runAnalysis = async () => {
+    if (runButton.dataset.running === "true") return;
+    const originalContent = runButton.innerHTML;
+    runButton.dataset.running = "true";
+    runButton.disabled = true;
+    runButton.setAttribute("aria-busy", "true");
+    runButton.classList.add("is-running");
+    runButton.replaceChildren();
+    const spinner = document.createElement("span");
+    spinner.className = "button-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    runButton.append(spinner, document.createTextNode("计算中…"));
+    resultSurface?.classList.add("is-calculating");
+
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 420));
+      showResults();
+      resultSurface?.classList.remove("results-ready");
+      if (resultSurface) void resultSurface.offsetWidth;
+      resultSurface?.classList.add("results-ready");
+      window.setTimeout(() => resultSurface?.classList.remove("results-ready"), 720);
+    } finally {
+      resultSurface?.classList.remove("is-calculating");
+      runButton.innerHTML = originalContent;
+      runButton.disabled = false;
+      runButton.removeAttribute("aria-busy");
+      runButton.classList.remove("is-running");
+      delete runButton.dataset.running;
+    }
+  };
+
   modeButtons.forEach((button) => {
     button.addEventListener("click", () => setMode(button.dataset.sequenceMode));
   });
 
   input.addEventListener("input", updateCounter);
   input.addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") showResults();
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") runButton.click();
   });
-  runButton.addEventListener("click", showResults);
+  runButton.addEventListener("click", runAnalysis);
   clearButton.addEventListener("click", () => {
     input.value = "";
     input.focus();
@@ -504,7 +536,8 @@
   exampleButton.addEventListener("click", () => {
     input.value = examples[mode];
     updateCounter();
-    showResults();
+    resetResults();
+    setFeedback("已载入示例序列；点击“开始计算”后显示结果。");
   });
   copyButton.addEventListener("click", async () => {
     if (!latestSummary) {

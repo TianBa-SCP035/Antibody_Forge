@@ -1,14 +1,19 @@
 (() => {
-  const DNA_ALPHABET = "ACGTRYSWKMBDHVN";
-  const PROTEIN_ALPHABET = "ACDEFGHIKLMNPQRSTVWY";
+  const DNA_ALPHABET = "ACGUTRYSWKMBDHVN";
+  const PROTEIN_ALPHABET = "ACDEFGHIKLMNPQRSTVWYBXZJUO";
+
+  const normalizeSequenceText = (value) =>
+    String(value ?? "")
+      .replace(/[\s\d.-]/g, "")
+      .toUpperCase();
 
   const cleanRawSequence = (raw) =>
-    String(raw ?? "")
-      .split(/\r?\n/)
-      .filter((line) => !line.trim().startsWith(">"))
-      .join("")
-      .replace(/\s/g, "")
-      .toUpperCase();
+    normalizeSequenceText(
+      String(raw ?? "")
+        .split(/\r?\n/)
+        .filter((line) => !line.trim().startsWith(">"))
+        .join(""),
+    );
 
   const inferSequenceType = (sequence) => {
     if (!sequence) return "empty";
@@ -19,6 +24,23 @@
 
   const parseFasta = (raw) => {
     const lines = String(raw ?? "").replace(/\r\n?/g, "\n").split("\n");
+    const populatedLines = lines.map((line) => line.trim()).filter(Boolean);
+    const hasFastaHeaders = populatedLines.some((line) => line.startsWith(">"));
+
+    if (!hasFastaHeaders) {
+      if (!populatedLines.length) throw new Error("请输入至少一条序列。");
+      return populatedLines.map((line, index) => {
+        const sequence = normalizeSequenceText(line);
+        if (!sequence) throw new Error(`第 ${index + 1} 行没有可识别的序列字符。`);
+        return {
+          id: `sequence_${index + 1}`,
+          sequence,
+          length: sequence.length,
+          type: inferSequenceType(sequence),
+        };
+      });
+    }
+
     const records = [];
     let current;
 
@@ -46,7 +68,7 @@
     if (!records.length) throw new Error("未检测到 FASTA 记录；每条记录需要以 > 标题开始。");
 
     return records.map((record) => {
-      const sequence = record.sequenceParts.join("").replace(/\s/g, "").toUpperCase();
+      const sequence = normalizeSequenceText(record.sequenceParts.join(""));
       if (!sequence) throw new Error(`记录 ${record.id} 没有序列内容。`);
       return {
         id: record.id,
@@ -348,6 +370,45 @@
   const wrapSequence = (sequence, width = 80) =>
     sequence.match(new RegExp(`.{1,${width}}`, "g"))?.join("\n") ?? "";
 
+  const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+
+  const revealResults = (...surfaces) => {
+    surfaces.filter(Boolean).forEach((surface) => {
+      surface.classList.remove("results-ready");
+      void surface.offsetWidth;
+      surface.classList.add("results-ready");
+      window.setTimeout(() => surface.classList.remove("results-ready"), 720);
+    });
+  };
+
+  const runToolAction = async (button, surfaces, pendingLabel, action) => {
+    if (!button || button.dataset.running === "true") return;
+    const originalContent = button.innerHTML;
+    button.dataset.running = "true";
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    button.classList.add("is-running");
+    button.replaceChildren();
+    const spinner = document.createElement("span");
+    spinner.className = "button-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    button.append(spinner, document.createTextNode(pendingLabel));
+    surfaces.filter(Boolean).forEach((surface) => surface.classList.add("is-calculating"));
+
+    try {
+      await wait(420);
+      action();
+      revealResults(...surfaces);
+    } finally {
+      surfaces.filter(Boolean).forEach((surface) => surface.classList.remove("is-calculating"));
+      button.innerHTML = originalContent;
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      button.classList.remove("is-running");
+      delete button.dataset.running;
+    }
+  };
+
   const fastaTool = document.querySelector("[data-fasta-tool]");
   if (fastaTool) {
     const fileInput = fastaTool.querySelector("[data-fasta-files]");
@@ -355,6 +416,8 @@
     const counter = fastaTool.querySelector("[data-fasta-counter]");
     const feedback = fastaTool.querySelector("[data-fasta-feedback]");
     const table = fastaTool.querySelector("[data-fasta-table]");
+    const resultSurface = fastaTool.querySelector(".utility-results");
+    const runButton = fastaTool.querySelector("[data-fasta-run]");
     const downloadButtons = [...fastaTool.querySelectorAll("[data-fasta-download]")];
     let latestUnique = [];
 
@@ -364,8 +427,10 @@
     };
 
     const updateFastaCounter = () => {
-      const records = (input.value.match(/^>/gm) ?? []).length;
-      setText(counter, `${records.toLocaleString()} records`);
+      const lines = input.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      const headers = lines.filter((line) => line.startsWith(">")).length;
+      const records = headers || lines.length;
+      setText(counter, `${records.toLocaleString()} sequences`);
     };
 
     const resetFastaResults = () => {
@@ -425,25 +490,29 @@
     });
 
     input.addEventListener("input", updateFastaCounter);
-    fastaTool.querySelector("[data-fasta-run]").addEventListener("click", showFastaResults);
+    runButton.addEventListener("click", () =>
+      runToolAction(runButton, [resultSurface], "整理中…", showFastaResults),
+    );
     fastaTool.querySelector("[data-fasta-example]").addEventListener("click", () => {
       input.value = [
-        ">VH_candidate_01",
         "EVQLVESGGGLVQPGGSLRLSCAASGFTFSSYAMSWVRQAPGKGLEWVSAISGSGGSTYYADSVKGRFTISRDNSKNTLYLQMNSLRAEDTAVYYCARGRGYFDYWGQGTLVTVSS",
-        ">VH_candidate_01_duplicate",
         "EVQLVESGGGLVQPGGSLRLSCAASGFTFSSYAMSWVRQAPGKGLEWVSAISGSGGSTYYADSVKGRFTISRDNSKNTLYLQMNSLRAEDTAVYYCARGRGYFDYWGQGTLVTVSS",
-        ">DNA_candidate_02",
         "ATGGCCTACGTTAACTGA",
       ].join("\n");
       updateFastaCounter();
-      showFastaResults();
+      resetFastaResults();
+      setFastaFeedback("已载入 3 条无标题示例序列；点击“整理记录”开始分析。");
     });
     fastaTool.querySelector("[data-fasta-clear]").addEventListener("click", () => {
       input.value = "";
       fileInput.value = "";
       updateFastaCounter();
       resetFastaResults();
-      setFastaFeedback("接受标准 FASTA；重复序列保留首次出现的记录名。");
+      setFastaFeedback("直接输入时每行一条序列；也兼容带标题的 FASTA。");
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") runButton.click();
     });
 
     downloadButtons.forEach((button) => {
@@ -477,6 +546,11 @@
     const secondInput = compareTool.querySelector("[data-compare-b]");
     const feedback = compareTool.querySelector("[data-compare-feedback]");
     const output = compareTool.querySelector("[data-compare-output]");
+    const runButton = compareTool.querySelector("[data-compare-run]");
+    const resultSurfaces = [
+      compareTool.querySelector(".compare-metrics"),
+      compareTool.querySelector(".alignment-output"),
+    ];
     let latestAlignment = "";
 
     const setCompareFeedback = (message, error = false) => {
@@ -494,6 +568,14 @@
         );
       }
       return `score ${result.score} · identity ${result.identity.toFixed(2)}%\n\n${blocks.join("\n\n")}`;
+    };
+
+    const resetComparisonResults = () => {
+      latestAlignment = "";
+      ["identity", "matches", "length", "gaps"].forEach((name) =>
+        setText(compareTool.querySelector(`[data-compare-metric="${name}"]`), "—"),
+      );
+      setText(output, "运行后将在这里显示对齐结果。");
     };
 
     const runComparison = () => {
@@ -518,22 +600,26 @@
           `全局比对已在本地完成；一致性按包含缺口的比对长度计算。${alphabetWarning}`,
         );
       } catch (error) {
-        latestAlignment = "";
-        ["identity", "matches", "length", "gaps"].forEach((name) =>
-          setText(compareTool.querySelector(`[data-compare-metric="${name}"]`), "—"),
-        );
-        setText(output, "运行后将在这里显示对齐结果。");
+        resetComparisonResults();
         setCompareFeedback(error.message, true);
       }
     };
 
-    compareTool.querySelector("[data-compare-run]").addEventListener("click", runComparison);
+    runButton.addEventListener("click", () =>
+      runToolAction(runButton, resultSurfaces, "比对中…", runComparison),
+    );
     compareTool.querySelector("[data-compare-example]").addEventListener("click", () => {
       firstInput.value =
         "EVQLVESGGGLVQPGGSLRLSCAASGFTFSSYAMSWVRQAPGKGLEWVSAISGSGGSTYYADSVKGRFTISRDNSKNTLYLQMNSLRAEDTAVYYCARGRGYFDYWGQGTLVTVSS";
       secondInput.value =
         "EVQLVESGGGLVQPGGSLRLSCAASGFTFSSYAMSWVRQAPGKGLEWVSAISGSGGATYYADSVKGRFTISRDNSKNTLYLQMNSLRAEDTAVYYCARGRGYYDYWGQGTLVTVSS";
-      runComparison();
+      resetComparisonResults();
+      setCompareFeedback("已载入两条示例序列；点击“开始比对”运行全局比对。");
+    });
+    [firstInput, secondInput].forEach((input) => {
+      input.addEventListener("keydown", (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") runButton.click();
+      });
     });
     compareTool.querySelector("[data-compare-copy]").addEventListener("click", async () => {
       if (!latestAlignment) {
@@ -555,10 +641,21 @@
     const feedback = liabilityTool.querySelector("[data-liability-feedback]");
     const count = liabilityTool.querySelector("[data-liability-count]");
     const table = liabilityTool.querySelector("[data-liability-table]");
+    const resultSurface = liabilityTool.querySelector(".liability-summary");
+    const runButton = liabilityTool.querySelector("[data-liability-run]");
 
     const setLiabilityFeedback = (message, error = false) => {
       setText(feedback, message);
       feedback?.classList.toggle("error", error);
+    };
+
+    const resetLiabilityResults = () => {
+      setText(count, "—");
+      table.replaceChildren();
+      const row = table.insertRow();
+      const cell = row.insertCell();
+      cell.colSpan = 4;
+      cell.textContent = "扫描后将在这里显示结果。";
     };
 
     const runLiabilityScan = () => {
@@ -583,21 +680,22 @@
           `已扫描 ${result.sequence.length.toLocaleString()} aa；标记结果用于确定复核优先级，不是修饰预测。`,
         );
       } catch (error) {
-        setText(count, "—");
-        table.replaceChildren();
-        const row = table.insertRow();
-        const cell = row.insertCell();
-        cell.colSpan = 4;
-        cell.textContent = "扫描后将在这里显示结果。";
+        resetLiabilityResults();
         setLiabilityFeedback(error.message, true);
       }
     };
 
-    liabilityTool.querySelector("[data-liability-run]").addEventListener("click", runLiabilityScan);
+    runButton.addEventListener("click", () =>
+      runToolAction(runButton, [resultSurface], "扫描中…", runLiabilityScan),
+    );
     liabilityTool.querySelector("[data-liability-example]").addEventListener("click", () => {
       input.value =
         "EVQLVESGGGLVQPGGSLRLSCAASGFTFSSYAMSWVRQAPGKGLEWVANVTNGDGSTYYADSVKGRFTISRDNSKNTLYLQMNSLRAEDTAVYYCARGRGYFDYWGQGTLVTVSSK";
-      runLiabilityScan();
+      resetLiabilityResults();
+      setLiabilityFeedback("已载入抗体示例序列；点击“扫描位点”开始规则扫描。");
+    });
+    input.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") runButton.click();
     });
   }
 

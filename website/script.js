@@ -8,11 +8,18 @@ const workflow = document.querySelector("[data-workflow]");
 const workflowSteps = document.querySelectorAll("[data-step]");
 const trackProgress = document.querySelector("[data-track-progress]");
 const sectionNavLinks = document.querySelectorAll("[data-section-nav]");
+const pageProgress = document.querySelector("[data-scroll-progress-rail]");
+const cursorAura = document.querySelector("[data-cursor-aura]");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const precisePointer = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 let activeWorkflowIndex = 0;
 
 const updateHeader = () => {
   header?.classList.toggle("scrolled", window.scrollY > 24);
+  if (!pageProgress) return;
+  const available = document.documentElement.scrollHeight - window.innerHeight;
+  const progress = available > 0 ? Math.min(1, Math.max(0, window.scrollY / available)) : 0;
+  pageProgress.style.transform = `scaleY(${progress})`;
 };
 
 const closeMenu = () => {
@@ -51,6 +58,92 @@ document.addEventListener("visibilitychange", () => {
   document.body.classList.toggle("motion-paused", document.hidden);
 });
 updateHeader();
+
+if (!reducedMotion && precisePointer) {
+  if (cursorAura) {
+    let auraFrame;
+    let pointerX = -400;
+    let pointerY = -400;
+
+    window.addEventListener(
+      "pointermove",
+      (event) => {
+        pointerX = event.clientX;
+        pointerY = event.clientY;
+        cursorAura.classList.add("visible");
+        if (auraFrame) return;
+        auraFrame = window.requestAnimationFrame(() => {
+          cursorAura.style.transform = `translate3d(${pointerX - 180}px, ${pointerY - 180}px, 0)`;
+          auraFrame = undefined;
+        });
+      },
+      { passive: true },
+    );
+
+    document.documentElement.addEventListener("mouseleave", () => {
+      cursorAura.classList.remove("visible");
+    });
+  }
+
+  const tiltTargets = document.querySelectorAll(
+    ".capability-card, .tool-gateway-shell, .service-card",
+  );
+
+  tiltTargets.forEach((target) => {
+    target.classList.add("pointer-tilt");
+    let tiltFrame;
+    let nextX = 0;
+    let nextY = 0;
+
+    target.addEventListener("pointermove", (event) => {
+      const bounds = target.getBoundingClientRect();
+      const relativeX = (event.clientX - bounds.left) / bounds.width;
+      const relativeY = (event.clientY - bounds.top) / bounds.height;
+      nextX = relativeX;
+      nextY = relativeY;
+      target.classList.add("pointer-active");
+      if (tiltFrame) return;
+      tiltFrame = window.requestAnimationFrame(() => {
+        target.style.setProperty("--spot-x", `${(nextX * 100).toFixed(1)}%`);
+        target.style.setProperty("--spot-y", `${(nextY * 100).toFixed(1)}%`);
+        target.style.setProperty("--tilt-x", `${((0.5 - nextY) * 3.2).toFixed(2)}deg`);
+        target.style.setProperty("--tilt-y", `${((nextX - 0.5) * 3.2).toFixed(2)}deg`);
+        tiltFrame = undefined;
+      });
+    });
+
+    target.addEventListener("pointerleave", () => {
+      target.classList.remove("pointer-active");
+      target.style.setProperty("--tilt-x", "0deg");
+      target.style.setProperty("--tilt-y", "0deg");
+      target.style.setProperty("--spot-x", "50%");
+      target.style.setProperty("--spot-y", "50%");
+    });
+  });
+
+  const parallaxStage = document.querySelector(".hero, .tools-hero");
+  const parallaxVisual = parallaxStage?.querySelector(".hero-visual, .tools-hero-visual");
+  if (parallaxStage && parallaxVisual) {
+    let parallaxFrame;
+    let moveX = 0;
+    let moveY = 0;
+
+    parallaxStage.addEventListener("pointermove", (event) => {
+      const bounds = parallaxStage.getBoundingClientRect();
+      moveX = ((event.clientX - bounds.left) / bounds.width - 0.5) * 18;
+      moveY = ((event.clientY - bounds.top) / bounds.height - 0.5) * 18;
+      if (parallaxFrame) return;
+      parallaxFrame = window.requestAnimationFrame(() => {
+        parallaxVisual.style.translate = `${moveX.toFixed(1)}px ${moveY.toFixed(1)}px`;
+        parallaxFrame = undefined;
+      });
+    });
+
+    parallaxStage.addEventListener("pointerleave", () => {
+      parallaxVisual.style.translate = "0 0";
+    });
+  }
+}
 
 if (reducedMotion || !("IntersectionObserver" in window)) {
   revealItems.forEach((item) => item.classList.add("visible"));

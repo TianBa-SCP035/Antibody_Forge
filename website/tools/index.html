@@ -38,8 +38,8 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/tools/"
     />
     <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="../styles.css?v=20260918-5" />
-    <link rel="stylesheet" href="./tools.css?v=20260918-5" />
+    <link rel="stylesheet" href="../styles.css?v=20260918-6" />
+    <link rel="stylesheet" href="./tools.css?v=20260918-6" />
     <title>Vita Bioinformatics｜浏览器端抗体与序列工具</title>
     <script type="application/ld+json">
       {
@@ -56,6 +56,10 @@
   </head>
   <body class="tools-page">
     <a class="skip-link" href="#workspace">跳转到工具工作区</a>
+    <div class="scroll-progress-rail" aria-hidden="true">
+      <span data-scroll-progress-rail></span>
+    </div>
+    <div class="cursor-aura" data-cursor-aura aria-hidden="true"></div>
 
     <header class="site-header tools-header" data-header>
       <a class="brand" href="../" aria-label="返回 Antibody Vita 首页">
@@ -230,7 +234,7 @@
                   <span>01 · SEQUENCE PROPERTIES</span>
                   <h3>序列理化性质</h3>
                 </div>
-                <p>计算常用一级序列指标；蛋白和 DNA 使用不同的明确方法与适用边界。</p>
+                <p>直接粘贴序列并点击计算；FASTA 标题可有可无，蛋白和 DNA 使用不同方法。</p>
               </div>
 
               <div class="lab-shell embedded-lab" data-sequence-lab>
@@ -259,7 +263,7 @@
                       rows="12"
                       spellcheck="false"
                       autocomplete="off"
-                      placeholder="粘贴单字母氨基酸序列或 FASTA 内容…"
+                      placeholder="直接粘贴氨基酸序列即可，无需添加 > 标题…"
                     ></textarea>
                     <div class="lab-input-actions">
                       <button type="button" class="lab-text-button" data-sequence-example>载入示例</button>
@@ -269,7 +273,7 @@
                       </button>
                     </div>
                     <p class="lab-feedback" data-sequence-feedback aria-live="polite">
-                      支持标准 20 种氨基酸单字母代码。
+                      直接粘贴序列即可，空格、换行、行号与 FASTA 标题会自动清理。
                     </p>
                   </div>
 
@@ -336,14 +340,14 @@
                   <span>02 · FASTA WORKSPACE</span>
                   <h3>FASTA 整理与去重</h3>
                 </div>
-                <p>从原 Gradio 批量处理思路重构：解析多记录、检查字符、按序列去重并导出。</p>
+                <p>每行粘贴一条序列即可批量去重；也兼容标准 FASTA 文件与文本。</p>
               </div>
 
               <div class="utility-workbench" data-fasta-tool>
                 <div class="utility-input">
                   <div class="utility-heading">
-                    <label for="fasta-input">FASTA 记录</label>
-                    <span data-fasta-counter>0 records</span>
+                    <label for="fasta-input">批量序列</label>
+                    <span data-fasta-counter>0 sequences</span>
                   </div>
                   <label class="file-drop" for="fasta-files">
                     <input
@@ -353,15 +357,15 @@
                       accept=".fa,.fasta,.faa,.fna,.txt,text/plain"
                       multiple
                     />
-                    <strong>拖入或选择 FASTA 文件</strong>
-                    <span>文件只在当前浏览器读取</span>
+                    <strong>拖入序列文本或 FASTA 文件</strong>
+                    <span>标题可选，文件只在当前浏览器读取</span>
                   </label>
                   <textarea
                     id="fasta-input"
                     data-fasta-input
                     rows="15"
                     spellcheck="false"
-                    placeholder=">sequence_1&#10;EVQLVESGGGLVQPGGSLRLSC…"
+                    placeholder="每行一条序列，无需添加名称或 > 标题&#10;EVQLVESGGGLVQPGGSLRLSC…&#10;QVQLVQSGAEVKKPGASVKVSC…"
                   ></textarea>
                   <div class="utility-actions">
                     <button type="button" class="ghost-action" data-fasta-example>载入示例</button>
@@ -371,7 +375,7 @@
                     </button>
                   </div>
                   <p class="utility-feedback" data-fasta-feedback aria-live="polite">
-                    接受标准 FASTA；重复序列保留首次出现的记录名。
+                    直接输入时每行一条序列；也兼容带标题的 FASTA。
                   </p>
                 </div>
 
@@ -404,7 +408,7 @@
                 </div>
               </div>
               <p class="tool-method-note">
-                去重键为移除空白并转为大写后的完整序列；不做近似聚类，也不根据记录名判断重复。
+                无标题输入会自动生成 sequence_1、sequence_2…；去重前会移除空白、行号与缺口符号。
               </p>
             </section>
 
@@ -421,11 +425,11 @@
                 <div class="compare-inputs">
                   <label>
                     <span>序列 A</span>
-                    <textarea data-compare-a rows="10" spellcheck="false" placeholder="输入蛋白或 DNA 序列…"></textarea>
+                    <textarea data-compare-a rows="10" spellcheck="false" placeholder="直接粘贴第一条序列…"></textarea>
                   </label>
                   <label>
                     <span>序列 B</span>
-                    <textarea data-compare-b rows="10" spellcheck="false" placeholder="输入用于比较的序列…"></textarea>
+                    <textarea data-compare-b rows="10" spellcheck="false" placeholder="直接粘贴第二条序列…"></textarea>
                   </label>
                 </div>
                 <div class="compare-controls">
@@ -660,8 +664,8 @@
       </div>
     </footer>
 
-    <script src="../script.js?v=20260918-5" defer></script>
-    <script src="../sequence-tools.js?v=20260918-5" defer></script>
-    <script src="./tools.js?v=20260918-5" defer></script>
+    <script src="../script.js?v=20260918-6" defer></script>
+    <script src="../sequence-tools.js?v=20260918-6" defer></script>
+    <script src="./tools.js?v=20260918-6" defer></script>
   </body>
 </html>

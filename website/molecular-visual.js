@@ -2,6 +2,8 @@
   const stage = document.querySelector("[data-molecule-stage]");
   const canvas = document.querySelector("[data-molecule-canvas]");
   const toggle = document.querySelector("[data-molecule-toggle]");
+  const resetControl = document.querySelector("[data-molecule-reset]");
+  const replayControl = document.querySelector("[data-molecule-replay]");
   const viewButtons = [...document.querySelectorAll("[data-molecule-view]")];
   const regionButtons = [...document.querySelectorAll("[data-molecule-region]")];
   const modeCopy = document.querySelector(".molecule-mode-copy");
@@ -776,6 +778,15 @@
       modes[activeMode].rotation[1] + userRotationY + pointerOffsetY;
   };
 
+  const resetView = () => {
+    userRotationX = 0;
+    userRotationY = 0;
+    pointerOffsetX = 0;
+    pointerOffsetY = 0;
+    updateRotationTarget();
+    startAnimation();
+  };
+
   stage.addEventListener("pointerenter", () => {
     stageBounds = stage.getBoundingClientRect();
   });
@@ -870,14 +881,10 @@
   stage.addEventListener("pointerup", stopDragging);
   stage.addEventListener("pointercancel", stopDragging);
   stage.addEventListener("lostpointercapture", stopDragging);
-  stage.addEventListener("dblclick", () => {
-    userRotationX = 0;
-    userRotationY = 0;
-    pointerOffsetX = 0;
-    pointerOffsetY = 0;
-    updateRotationTarget();
-    startAnimation();
-  });
+  stage.addEventListener("dblclick", resetView);
+
+  resetControl?.addEventListener("click", resetView);
+  replayControl?.addEventListener("click", () => setMode("binding"));
 
   toggle?.addEventListener("click", () => {
     if (reducedMotion) return;

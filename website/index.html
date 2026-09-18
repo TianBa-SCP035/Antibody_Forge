@@ -45,7 +45,7 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20260918-18" />
+    <link rel="stylesheet" href="./styles.css?v=20260918-19" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
       {
@@ -238,12 +238,12 @@
           </div>
         </div>
 
-        <div class="hero-visual reveal" aria-label="Antibody Vita 连接式发现工作流示意">
+        <div class="hero-visual reveal" aria-label="Antibody Vita 连接式发现工作流导航">
           <div class="orbit orbit-one"></div>
           <div class="orbit orbit-two"></div>
           <div class="orbit orbit-three"></div>
 
-          <div class="core">
+          <button type="button" class="core" data-hero-case aria-label="跟随 VITA-024 候选分子案例">
             <div class="core-mark" aria-hidden="true">
               <svg viewBox="0 0 64 64">
                 <defs>
@@ -266,26 +266,26 @@
             <span>ANTIBODY</span>
             <strong>VITA</strong>
             <small>one source of truth</small>
-          </div>
+          </button>
 
-          <div class="stage-node node-immune">
+          <button type="button" class="stage-node node-immune" data-hero-stage="0" aria-label="查看免疫与效价阶段">
             <i></i><span>01</span><strong>免疫</strong><small>Immunize</small>
-          </div>
-          <div class="stage-node node-screen">
+          </button>
+          <button type="button" class="stage-node node-screen" data-hero-stage="1" aria-label="查看筛选与发现阶段">
             <i></i><span>02</span><strong>筛选</strong><small>Screen</small>
-          </div>
-          <div class="stage-node node-sequence">
+          </button>
+          <button type="button" class="stage-node node-sequence" data-hero-stage="2" aria-label="查看文库与测序阶段">
             <i></i><span>03</span><strong>测序</strong><small>Sequence</small>
-          </div>
-          <div class="stage-node node-express">
+          </button>
+          <button type="button" class="stage-node node-express" data-hero-stage="3" aria-label="查看表达与纯化阶段">
             <i></i><span>04</span><strong>表达</strong><small>Express</small>
-          </div>
-          <div class="stage-node node-evaluate">
+          </button>
+          <button type="button" class="stage-node node-evaluate" data-hero-stage="4" aria-label="查看评价与决策阶段">
             <i></i><span>05</span><strong>评价</strong><small>Evaluate</small>
-          </div>
-          <div class="stage-node node-automate">
+          </button>
+          <button type="button" class="stage-node node-automate" data-hero-capability="automation" aria-label="运行自动化闭环演示">
             <i></i><span>06</span><strong>自动化</strong><small>Automate</small>
-          </div>
+          </button>
 
           <svg class="signal-lines" viewBox="0 0 720 720" aria-hidden="true">
             <defs>
@@ -295,12 +295,12 @@
                 <stop offset="1" stop-color="#d657ff" stop-opacity=".1" />
               </linearGradient>
             </defs>
-            <path d="M360 360 C250 220 200 200 110 174" />
-            <path d="M360 360 C470 218 540 208 620 180" />
-            <path d="M360 360 C190 350 132 370 70 420" />
-            <path d="M360 360 C530 350 590 365 656 416" />
-            <path d="M360 360 C260 490 210 520 150 575" />
-            <path d="M360 360 C460 490 505 530 570 585" />
+            <path data-hero-line="0" d="M360 360 C250 220 200 200 110 174" />
+            <path data-hero-line="1" d="M360 360 C470 218 540 208 620 180" />
+            <path data-hero-line="2" d="M360 360 C190 350 132 370 70 420" />
+            <path data-hero-line="3" d="M360 360 C530 350 590 365 656 416" />
+            <path data-hero-line="4" d="M360 360 C260 490 210 520 150 575" />
+            <path data-hero-line="automation" d="M360 360 C460 490 505 530 570 585" />
           </svg>
         </div>
 
@@ -444,6 +444,9 @@
               <p data-workflow-summary>建立抗原、动物、免疫计划与效价结果之间的第一段证据链。</p>
             </div>
             <div class="workflow-inspector-nav">
+              <button type="button" class="workflow-case-link" data-workflow-case aria-label="在 VITA-024 案例中查看当前阶段">
+                案例
+              </button>
               <button type="button" data-workflow-prev aria-label="查看上一个研发阶段">←</button>
               <span><b data-workflow-current>01</b> / 05</span>
               <button type="button" data-workflow-next aria-label="查看下一个研发阶段">→</button>
@@ -692,10 +695,16 @@
                 <span><b data-candidate-current>01</b> / 05</span>
                 <button type="button" data-candidate-next aria-label="下一个候选阶段">→</button>
               </div>
-              <button type="button" class="candidate-molecule-action" data-candidate-molecule>
-                在三维结构中查看 <span aria-hidden="true">↘</span>
-              </button>
+              <div class="candidate-action-group">
+                <button type="button" class="candidate-play-action" data-candidate-play aria-pressed="false">
+                  播放证据链 <span aria-hidden="true">▶</span>
+                </button>
+                <button type="button" class="candidate-molecule-action" data-candidate-molecule>
+                  在三维结构中查看 <span aria-hidden="true">↘</span>
+                </button>
+              </div>
             </div>
+            <div class="candidate-auto-progress" aria-hidden="true"><span data-candidate-auto-progress></span></div>
           </div>
         </div>
       </section>
@@ -772,9 +781,17 @@
           </div>
           <div class="molecule-stage-footer">
             <p><span></span><b data-molecule-status>INTERACTIVE CANVAS · POINTER READY</b></p>
-            <button type="button" class="motion-toggle" data-molecule-toggle aria-pressed="false">
-              暂停动态
-            </button>
+            <div class="molecule-footer-actions">
+              <button type="button" class="motion-toggle molecule-replay" data-molecule-replay>
+                重播结合
+              </button>
+              <button type="button" class="motion-toggle" data-molecule-reset>
+                重置视角
+              </button>
+              <button type="button" class="motion-toggle" data-molecule-toggle aria-pressed="false">
+                暂停动态
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -857,18 +874,18 @@
         </div>
 
         <div class="tool-gateway-shell reveal">
-          <div class="tool-gateway-visual" aria-hidden="true">
-            <div class="gateway-grid"></div>
-            <div class="gateway-core">
+          <div class="tool-gateway-visual" aria-label="生信工具快捷导航">
+            <div class="gateway-grid" aria-hidden="true"></div>
+            <a class="gateway-core" href="./tools/" aria-label="进入 Vita Bioinformatics 全部工具">
               <small>VITA</small>
               <strong>BIO</strong>
               <span>WORKSPACE</span>
-            </div>
-            <div class="gateway-node gateway-node-a"><i></i><span>ANALYZE</span><strong>Sequence</strong></div>
-            <div class="gateway-node gateway-node-b"><i></i><span>ORGANIZE</span><strong>FASTA</strong></div>
-            <div class="gateway-node gateway-node-c"><i></i><span>COMPARE</span><strong>Alignment</strong></div>
-            <div class="gateway-node gateway-node-d"><i></i><span>SEARCH</span><strong>UniProt</strong></div>
-            <svg class="gateway-path" viewBox="0 0 600 500" preserveAspectRatio="none">
+            </a>
+            <a class="gateway-node gateway-node-a" href="./tools/#sequence"><i></i><span>ANALYZE</span><strong>Sequence</strong></a>
+            <a class="gateway-node gateway-node-b" href="./tools/#fasta"><i></i><span>ORGANIZE</span><strong>FASTA</strong></a>
+            <a class="gateway-node gateway-node-c" href="./tools/#compare"><i></i><span>COMPARE</span><strong>Alignment</strong></a>
+            <a class="gateway-node gateway-node-d" href="./tools/#uniprot"><i></i><span>SEARCH</span><strong>UniProt</strong></a>
+            <svg class="gateway-path" viewBox="0 0 600 500" preserveAspectRatio="none" aria-hidden="true">
               <path d="M300 250 C220 180 160 125 85 95" />
               <path d="M300 250 C390 180 450 120 525 95" />
               <path d="M300 250 C215 325 155 380 85 415" />
@@ -1115,7 +1132,7 @@
       </div>
     </footer>
 
-    <script src="./script.js?v=20260918-18" defer></script>
-    <script src="./molecular-visual.js?v=20260918-18" defer></script>
+    <script src="./script.js?v=20260918-19" defer></script>
+    <script src="./molecular-visual.js?v=20260918-19" defer></script>
   </body>
 </html>

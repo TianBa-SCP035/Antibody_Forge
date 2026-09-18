@@ -793,6 +793,8 @@ const candidateStory = candidate?.querySelector("[data-candidate-story]");
 const candidateSteps = [...(candidate?.querySelectorAll("[data-candidate-step]") ?? [])];
 const candidateLineageNodes = [...(candidate?.querySelectorAll(".candidate-lineage span") ?? [])];
 const candidateLineageLinks = [...(candidate?.querySelectorAll(".candidate-lineage i") ?? [])];
+const candidatePlay = candidate?.querySelector("[data-candidate-play]");
+const candidateAutoProgress = candidate?.querySelector("[data-candidate-auto-progress]");
 const candidatePhases = [
   {
     phase: "PHASE 01 · IMMUNITY",
@@ -862,6 +864,8 @@ const candidatePhases = [
 ];
 let activeCandidateIndex = 0;
 let candidateTimer;
+let candidatePlaybackTimer;
+let candidatePlaybackActive = false;
 
 const setActiveCandidate = (requestedIndex) => {
   if (!candidateStory || !candidateSteps.length) return;
@@ -875,6 +879,9 @@ const setActiveCandidate = (requestedIndex) => {
   });
   candidateLineageNodes.forEach((node, nodeIndex) => node.classList.toggle("active", nodeIndex <= index));
   candidateLineageLinks.forEach((link, linkIndex) => link.classList.toggle("active", linkIndex < index));
+  if (candidateAutoProgress) {
+    candidateAutoProgress.style.transform = `scaleX(${(index + 1) / candidateSteps.length})`;
+  }
   window.clearTimeout(candidateTimer);
   candidateStory.classList.add("is-updating");
   candidateTimer = window.setTimeout(() => {
@@ -900,8 +907,39 @@ const setActiveCandidate = (requestedIndex) => {
   }, reducedMotion ? 0 : 110);
 };
 
+const setCandidatePlayback = (active) => {
+  candidatePlaybackActive = active;
+  candidateStory?.classList.toggle("is-playing", active);
+  if (candidatePlay) {
+    candidatePlay.setAttribute("aria-pressed", String(active));
+    candidatePlay.textContent = active ? "暂停播放" : "播放证据链";
+  }
+};
+
+const stopCandidatePlayback = () => {
+  window.clearTimeout(candidatePlaybackTimer);
+  candidatePlaybackTimer = undefined;
+  setCandidatePlayback(false);
+};
+
+const scheduleCandidatePlayback = () => {
+  window.clearTimeout(candidatePlaybackTimer);
+  if (!candidatePlaybackActive) return;
+  if (activeCandidateIndex >= candidatePhases.length - 1) {
+    stopCandidatePlayback();
+    return;
+  }
+  candidatePlaybackTimer = window.setTimeout(() => {
+    setActiveCandidate(activeCandidateIndex + 1);
+    scheduleCandidatePlayback();
+  }, 1650);
+};
+
 candidateSteps.forEach((step, index) => {
-  step.addEventListener("click", () => setActiveCandidate(index));
+  step.addEventListener("click", () => {
+    stopCandidatePlayback();
+    setActiveCandidate(index);
+  });
   step.addEventListener("keydown", (event) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
@@ -910,18 +948,35 @@ candidateSteps.forEach((step, index) => {
     if (event.key === "ArrowRight") targetIndex = Math.min(candidateSteps.length - 1, index + 1);
     if (event.key === "Home") targetIndex = 0;
     if (event.key === "End") targetIndex = candidateSteps.length - 1;
+    stopCandidatePlayback();
     candidateSteps[targetIndex]?.focus();
     setActiveCandidate(targetIndex);
   });
 });
 
 candidate?.querySelector("[data-candidate-prev]")?.addEventListener("click", () => {
+  stopCandidatePlayback();
   setActiveCandidate((activeCandidateIndex - 1 + candidatePhases.length) % candidatePhases.length);
 });
 candidate?.querySelector("[data-candidate-next]")?.addEventListener("click", () => {
+  stopCandidatePlayback();
   setActiveCandidate((activeCandidateIndex + 1) % candidatePhases.length);
 });
+candidatePlay?.addEventListener("click", () => {
+  if (candidatePlaybackActive) {
+    stopCandidatePlayback();
+    return;
+  }
+  if (reducedMotion) {
+    setActiveCandidate(candidatePhases.length - 1);
+    return;
+  }
+  if (activeCandidateIndex >= candidatePhases.length - 1) setActiveCandidate(0);
+  setCandidatePlayback(true);
+  scheduleCandidatePlayback();
+});
 candidate?.querySelector("[data-candidate-molecule]")?.addEventListener("click", () => {
+  stopCandidatePlayback();
   const phase = candidatePhases[activeCandidateIndex];
   document.dispatchEvent(
     new CustomEvent("vita:molecule-view", {
@@ -929,6 +984,60 @@ candidate?.querySelector("[data-candidate-molecule]")?.addEventListener("click",
     }),
   );
   document.querySelector("#experience")?.scrollIntoView({
+    behavior: reducedMotion ? "auto" : "smooth",
+    block: "start",
+  });
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopCandidatePlayback();
+});
+
+document.querySelector("[data-workflow-case]")?.addEventListener("click", () => {
+  stopCandidatePlayback();
+  setActiveCandidate(activeWorkflowIndex);
+  candidate?.scrollIntoView({
+    behavior: reducedMotion ? "auto" : "smooth",
+    block: "start",
+  });
+});
+
+const heroVisual = document.querySelector(".hero-visual");
+const heroStages = [...(heroVisual?.querySelectorAll("[data-hero-stage], [data-hero-capability]") ?? [])];
+const heroLines = [...(heroVisual?.querySelectorAll("[data-hero-line]") ?? [])];
+
+const setHeroStageFocus = (key) => {
+  heroStages.forEach((stage) => {
+    const stageKey = stage.dataset.heroStage ?? stage.dataset.heroCapability;
+    stage.classList.toggle("is-active", stageKey === key);
+  });
+  heroLines.forEach((line) => line.classList.toggle("is-active", line.dataset.heroLine === key));
+};
+
+heroStages.forEach((stage) => {
+  const key = stage.dataset.heroStage ?? stage.dataset.heroCapability;
+  stage.addEventListener("pointerenter", () => setHeroStageFocus(key));
+  stage.addEventListener("pointerleave", () => setHeroStageFocus());
+  stage.addEventListener("focus", () => setHeroStageFocus(key));
+  stage.addEventListener("blur", () => setHeroStageFocus());
+  stage.addEventListener("click", () => {
+    if (stage.dataset.heroStage !== undefined) {
+      workflowInteractionMode = "manual";
+      setActiveWorkflowStep(Number(stage.dataset.heroStage));
+      document.querySelector("#workflow")?.scrollIntoView({
+        behavior: reducedMotion ? "auto" : "smooth",
+        block: "start",
+      });
+      return;
+    }
+    setActiveCapability(stage.dataset.heroCapability, true);
+  });
+});
+
+heroVisual?.querySelector("[data-hero-case]")?.addEventListener("click", () => {
+  stopCandidatePlayback();
+  setActiveCandidate(0);
+  candidate?.scrollIntoView({
     behavior: reducedMotion ? "auto" : "smooth",
     block: "start",
   });

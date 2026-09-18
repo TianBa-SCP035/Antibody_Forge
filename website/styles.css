@@ -760,7 +760,7 @@ p {
   width: min(43vw, 640px);
   aspect-ratio: 1;
   margin-right: 0;
-  pointer-events: none;
+  pointer-events: auto;
   transition: translate 0.55s var(--ease);
 }
 
@@ -770,6 +770,7 @@ p {
   left: 50%;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 50%;
+  pointer-events: none;
   transform: translate(-50%, -50%);
 }
 
@@ -827,6 +828,7 @@ p {
   justify-content: center;
   width: 31%;
   aspect-ratio: 1;
+  padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
   background:
@@ -835,7 +837,25 @@ p {
   box-shadow:
     0 30px 90px rgba(0, 0, 0, 0.45),
     inset 0 0 60px rgba(52, 120, 246, 0.08);
+  color: var(--white);
+  cursor: pointer;
+  font: inherit;
+  appearance: none;
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-base) ease,
+    transform var(--motion-base) var(--motion-ease);
   transform: translate(-50%, -50%);
+}
+
+.core:hover,
+.core:focus-visible {
+  border-color: rgba(99, 243, 217, 0.62);
+  box-shadow:
+    0 34px 100px rgba(0, 0, 0, 0.5),
+    0 0 36px rgba(99, 243, 217, 0.16),
+    inset 0 0 60px rgba(52, 120, 246, 0.12);
+  transform: translate(-50%, -50%) scale(1.035);
 }
 
 .core-mark {
@@ -875,10 +895,31 @@ p {
   align-items: center;
   min-width: 138px;
   padding: 12px 16px 12px 12px;
+  color: var(--white);
+  text-align: left;
+  cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: 12px;
   background: rgba(10, 28, 33, 0.94);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  font: inherit;
+  transition:
+    color var(--motion-fast) ease,
+    background var(--motion-base) var(--motion-ease),
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-base) ease,
+    transform var(--motion-base) var(--motion-ease);
+}
+
+.stage-node:hover,
+.stage-node:focus-visible,
+.stage-node.is-active {
+  background: rgba(14, 39, 44, 0.98);
+  border-color: rgba(99, 243, 217, 0.56);
+  box-shadow:
+    0 16px 46px rgba(0, 0, 0, 0.32),
+    0 0 22px rgba(99, 243, 217, 0.12);
+  transform: translateY(-3px);
 }
 
 .stage-node i {
@@ -962,6 +1003,7 @@ p {
   inset: 0;
   width: 100%;
   height: 100%;
+  pointer-events: none;
 }
 
 .signal-lines path {
@@ -970,6 +1012,14 @@ p {
   stroke-dasharray: 4 8;
   stroke-width: 1;
   animation: signal-flow var(--motion-loop) linear infinite;
+  transition:
+    opacity var(--motion-fast) ease,
+    stroke-width var(--motion-fast) ease;
+}
+
+.signal-lines path.is-active {
+  opacity: 1;
+  stroke-width: 2.2;
 }
 
 .hero-foot {
@@ -1370,6 +1420,16 @@ p {
     color var(--motion-fast) ease,
     background var(--motion-fast) ease,
     border-color var(--motion-fast) ease;
+}
+
+.workflow-inspector-nav .workflow-case-link {
+  width: auto;
+  min-width: 50px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
 }
 
 .workflow-inspector-nav button:hover,
@@ -2481,6 +2541,13 @@ p {
   font: inherit;
 }
 
+.candidate-action-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.candidate-play-action,
 .candidate-molecule-action {
   display: inline-flex;
   align-items: center;
@@ -2496,13 +2563,51 @@ p {
   font-weight: 650;
   transition:
     background var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
     transform var(--motion-fast) var(--motion-ease);
+}
+
+.candidate-play-action {
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.72);
+  border-color: rgba(255, 255, 255, 0.13);
+}
+
+.candidate-play-action:hover,
+.candidate-play-action:focus-visible,
+.candidate-play-action[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--white);
+  border-color: var(--white);
 }
 
 .candidate-molecule-action:hover,
 .candidate-molecule-action:focus-visible {
   background: var(--white);
   transform: translateY(-1px);
+}
+
+.candidate-auto-progress {
+  height: 2px;
+  margin-top: 20px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+}
+
+.candidate-auto-progress span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--mint), #75b7ff);
+  transform: scaleX(0.2);
+  transform-origin: left;
+  transition: transform var(--motion-slow) var(--motion-ease);
+}
+
+.candidate-story.is-playing .candidate-auto-progress span {
+  box-shadow: 0 0 12px rgba(99, 243, 217, 0.38);
 }
 
 .candidate-story.is-updating .candidate-story-head,
@@ -2916,6 +3021,23 @@ p {
   font-weight: 500;
 }
 
+.molecule-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 72px;
+  pointer-events: auto;
+}
+
+.molecule-replay {
+  display: none;
+}
+
+.molecule-stage[data-molecule-mode="binding"] .molecule-replay {
+  display: inline-flex;
+  align-items: center;
+}
+
 .motion-toggle {
   min-height: 34px;
   padding: 0 15px;
@@ -3289,7 +3411,23 @@ p {
   box-shadow:
     0 0 80px rgba(52, 120, 246, 0.2),
     inset 0 0 36px rgba(99, 243, 217, 0.08);
+  color: var(--white);
+  cursor: pointer;
   translate: -50% -50%;
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-base) ease,
+    scale var(--motion-base) var(--motion-ease);
+}
+
+.gateway-core:hover,
+.gateway-core:focus-visible {
+  border-color: rgba(99, 243, 217, 0.58);
+  box-shadow:
+    0 0 94px rgba(52, 120, 246, 0.26),
+    0 0 30px rgba(99, 243, 217, 0.12),
+    inset 0 0 36px rgba(99, 243, 217, 0.1);
+  scale: 1.035;
 }
 
 .gateway-core small,
@@ -3335,9 +3473,26 @@ p {
   column-gap: 9px;
   min-width: 130px;
   padding: 12px 14px;
+  color: var(--white);
+  cursor: pointer;
   background: rgba(8, 27, 31, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
+  transition:
+    background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-base) ease,
+    transform var(--motion-base) var(--motion-ease);
+}
+
+.gateway-node:hover,
+.gateway-node:focus-visible {
+  background: rgba(13, 40, 45, 0.98);
+  border-color: rgba(99, 243, 217, 0.5);
+  box-shadow:
+    0 14px 38px rgba(0, 0, 0, 0.28),
+    0 0 18px rgba(99, 243, 217, 0.1);
+  transform: translateY(-3px);
 }
 
 .gateway-node i {
@@ -5157,11 +5312,17 @@ p {
     flex-direction: column;
   }
 
+  .candidate-action-group {
+    width: 100%;
+  }
+
   .candidate-nav {
     justify-content: space-between;
   }
 
+  .candidate-play-action,
   .candidate-molecule-action {
+    flex: 1;
     justify-content: center;
   }
 
@@ -5262,18 +5423,28 @@ p {
     right: 20px;
     bottom: 18px;
     left: 20px;
+    align-items: flex-end;
     gap: 12px;
   }
 
   .molecule-stage-footer p {
+    max-width: 94px;
     font-size: 10px;
+    line-height: 1.45;
+  }
+
+  .molecule-footer-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 5px;
+    margin-right: 80px;
   }
 
   .motion-toggle {
     flex: 0 0 auto;
     min-height: 32px;
-    padding: 0 12px;
-    font-size: 10px;
+    padding: 0 9px;
+    font-size: 9px;
   }
 
   .lab-shell {

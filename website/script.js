@@ -82,10 +82,6 @@ document.addEventListener("pointerdown", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
-  if (capabilityDialog?.open) {
-    capabilityDialog.close();
-    return;
-  }
   if (menuToggle?.getAttribute("aria-expanded") === "true") {
     closeMenu();
     menuToggle.focus();
@@ -519,7 +515,8 @@ if (workflow && "IntersectionObserver" in window) {
   workflowObserver.observe(workflow);
 }
 
-const capabilityDialog = document.querySelector("[data-capability-dialog]");
+const capabilityWorkspace = document.querySelector("[data-capability-workspace]");
+const capabilityContent = capabilityWorkspace?.querySelector("[data-capability-content]");
 const capabilityTriggers = document.querySelectorAll("[data-capability-trigger]");
 const capabilityDetails = {
   mainline: {
@@ -707,42 +704,18 @@ const capabilityDetails = {
     ],
   },
 };
+const capabilityKeys = Object.keys(capabilityDetails);
 let activeCapabilityKey = "mainline";
-const capabilityPreviews = [...document.querySelectorAll("[data-capability-preview]")];
 const capabilityStepByKey = new Map(Object.keys(capabilityDetails).map((key) => [key, 0]));
-
-const updateCapabilityPreview = (key, stepIndex, stepCount) => {
-  capabilityPreviews.forEach((preview) => {
-    const isActive = preview.dataset.capabilityPreview === key;
-    preview.classList.toggle("is-active-preview", isActive);
-    const items = [...preview.children].filter((element) => element.tagName !== "I");
-    const connectors = [...preview.children].filter((element) => element.tagName === "I");
-    const lastItemIndex = Math.max(0, items.length - 1);
-    const lastStepIndex = Math.max(1, stepCount - 1);
-    const previewIndex = isActive
-      ? Math.round((stepIndex / lastStepIndex) * lastItemIndex)
-      : -1;
-
-    items.forEach((item, itemIndex) => {
-      item.classList.toggle("is-complete", isActive && itemIndex <= previewIndex);
-      item.classList.toggle("is-current", isActive && itemIndex === previewIndex);
-    });
-    connectors.forEach((connector, connectorIndex) => {
-      connector.classList.toggle("is-complete", isActive && connectorIndex < previewIndex);
-    });
-    if (isActive) preview.dataset.previewStep = String(previewIndex + 1);
-    else delete preview.dataset.previewStep;
-  });
-};
 
 const setCapabilityStep = (requestedIndex, focusTab = false) => {
   const detail = capabilityDetails[activeCapabilityKey];
-  if (!capabilityDialog || !detail) return;
+  if (!capabilityWorkspace || !detail) return;
   const stepIndex = Math.max(0, Math.min(requestedIndex, detail.steps.length - 1));
   const step = detail.steps[stepIndex];
   capabilityStepByKey.set(activeCapabilityKey, stepIndex);
 
-  const tabs = [...capabilityDialog.querySelectorAll("[data-capability-step]")];
+  const tabs = [...capabilityWorkspace.querySelectorAll("[data-capability-step]")];
   tabs.forEach((tab, index) => {
     const active = index === stepIndex;
     tab.classList.toggle("active", active);
@@ -761,12 +734,11 @@ const setCapabilityStep = (requestedIndex, focusTab = false) => {
     "[data-capability-step-evidence]": step.evidence,
   };
   Object.entries(values).forEach(([selector, value]) => {
-    const target = capabilityDialog.querySelector(selector);
+    const target = capabilityWorkspace.querySelector(selector);
     if (target) target.textContent = value;
   });
 
-  updateCapabilityPreview(activeCapabilityKey, stepIndex, detail.steps.length);
-  const panel = capabilityDialog.querySelector("[data-capability-step-title]")?.closest("section");
+  const panel = capabilityWorkspace.querySelector("[data-capability-step-title]")?.closest("section");
   if (panel && !reducedMotion) {
     panel.animate(
       [
@@ -779,7 +751,7 @@ const setCapabilityStep = (requestedIndex, focusTab = false) => {
 };
 
 const buildCapabilityPath = (detail) => {
-  const path = capabilityDialog?.querySelector("[data-capability-path]");
+  const path = capabilityWorkspace?.querySelector("[data-capability-path]");
   if (!path) return;
   path.replaceChildren();
 
@@ -816,16 +788,22 @@ const buildCapabilityPath = (detail) => {
   });
 };
 
-const setActiveCapability = (key, openExplorer = false) => {
+const setActiveCapability = (key, focusTab = false) => {
   const detail = capabilityDetails[key];
-  if (!capabilityDialog || !detail) return;
+  if (!capabilityWorkspace || !detail) return;
+  const previousIndex = capabilityKeys.indexOf(activeCapabilityKey);
+  const nextIndex = capabilityKeys.indexOf(key);
+  const changed = key !== activeCapabilityKey;
   activeCapabilityKey = key;
 
   capabilityTriggers.forEach((trigger) => {
     const active = trigger.dataset.capabilityTrigger === key;
     trigger.classList.toggle("active", active);
-    trigger.setAttribute("aria-pressed", String(active));
+    trigger.setAttribute("aria-selected", String(active));
+    trigger.tabIndex = active ? 0 : -1;
   });
+  if (focusTab) capabilityWorkspace.querySelector(`[data-capability-trigger="${key}"]`)?.focus();
+  capabilityContent?.setAttribute("aria-labelledby", `capability-tab-${key}`);
 
   const values = {
     "[data-capability-tag]": detail.tag,
@@ -834,36 +812,48 @@ const setActiveCapability = (key, openExplorer = false) => {
     "[data-capability-objects]": detail.objects,
     "[data-capability-control]": detail.control,
     "[data-capability-outcome]": detail.outcome,
+    "[data-capability-panel-index]": `${String(nextIndex + 1).padStart(2, "0")} / ${String(
+      capabilityKeys.length,
+    ).padStart(2, "0")}`,
   };
   Object.entries(values).forEach(([selector, value]) => {
-    const target = capabilityDialog.querySelector(selector);
+    const target = capabilityWorkspace.querySelector(selector);
     if (target) target.textContent = value;
   });
 
   buildCapabilityPath(detail);
   setCapabilityStep(capabilityStepByKey.get(key) ?? 0);
-  if (openExplorer && !capabilityDialog.open) {
-    capabilityDialog.showModal();
-    document.documentElement.classList.add("dialog-open");
+  if (changed && capabilityContent && !reducedMotion) {
+    const direction = nextIndex >= previousIndex ? 1 : -1;
+    capabilityContent.animate(
+      [
+        { opacity: 0.35, transform: `translateX(${direction * 26}px)` },
+        { opacity: 1, transform: "translateX(0)" },
+      ],
+      { duration: 260, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    );
   }
 };
 
-capabilityTriggers.forEach((trigger) => {
+capabilityTriggers.forEach((trigger, index) => {
   trigger.addEventListener("click", () => {
-    setActiveCapability(trigger.dataset.capabilityTrigger, true);
+    setActiveCapability(trigger.dataset.capabilityTrigger);
   });
-});
-
-capabilityDialog?.querySelector("[data-capability-close]")?.addEventListener("click", () => {
-  capabilityDialog.close();
-});
-
-capabilityDialog?.addEventListener("click", (event) => {
-  if (event.target === capabilityDialog) capabilityDialog.close();
-});
-
-capabilityDialog?.addEventListener("close", () => {
-  document.documentElement.classList.remove("dialog-open");
+  trigger.addEventListener("keydown", (event) => {
+    let nextIndex;
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+      nextIndex = (index + 1) % capabilityKeys.length;
+    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + capabilityKeys.length) % capabilityKeys.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = capabilityKeys.length - 1;
+    }
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    setActiveCapability(capabilityKeys[nextIndex], true);
+  });
 });
 
 setActiveCapability(activeCapabilityKey);
@@ -1141,7 +1131,11 @@ heroStages.forEach((stage) => {
       });
       return;
     }
-    setActiveCapability(stage.dataset.heroCapability, true);
+    setActiveCapability(stage.dataset.heroCapability);
+    capabilityWorkspace?.scrollIntoView({
+      behavior: reducedMotion ? "auto" : "smooth",
+      block: "center",
+    });
   });
 });
 

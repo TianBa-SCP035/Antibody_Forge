@@ -45,7 +45,7 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20260918-21" />
+    <link rel="stylesheet" href="./styles.css?v=20260918-22" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
       {
@@ -484,68 +484,70 @@
           </p>
         </div>
 
-        <div class="capability-grid">
-          <article class="capability-card card-wide card-gradient reveal">
-            <div class="card-copy">
-              <span class="card-tag">DISCOVERY MAINLINE</span>
-              <h3>围绕实验路径组织工作，<br />让数据沿发现主线持续流动。</h3>
-              <p>从项目入口到候选评价，数据随研发对象向前流动，保留每个决策节点的完整上下文。</p>
-              <button type="button" class="card-explore active" data-capability-trigger="mainline" aria-pressed="true">
-                查看主线数据 <span aria-hidden="true">→</span>
-              </button>
+        <section class="capability-workspace reveal" data-capability-workspace aria-label="平台能力浏览器">
+          <div class="capability-switcher" role="tablist" aria-label="选择平台能力">
+            <div class="capability-switcher-head">
+              <span>CAPABILITY INDEX</span>
+              <p>选择一个能力，在右侧查看对象、控制规则与阶段证据。</p>
             </div>
-            <div class="flow-mini" data-capability-preview="mainline" aria-hidden="true">
-              <span>免疫</span><i></i><span>筛选</span><i></i><span>序列</span><i></i
-              ><span>表达</span><i></i><span>评价</span>
-            </div>
-          </article>
-
-          <article class="capability-card card-tall reveal">
-            <span class="card-tag">TRACEABILITY</span>
-            <h3>每个结果，<br />都能回到源头。</h3>
-            <div class="trace-visual" data-capability-preview="traceability" aria-hidden="true">
-              <div><span>PROJECT</span><strong>项目上下文</strong></div>
-              <i></i>
-              <div><span>SAMPLE</span><strong>样本与来源</strong></div>
-              <i></i>
-              <div><span>RESULT</span><strong>实验结论</strong></div>
-            </div>
-            <p>统一项目、实验、样本、序列与结果之间的关联，支撑审计和科学复盘。</p>
-            <button type="button" class="card-explore" data-capability-trigger="traceability" aria-pressed="false">
-              打开追溯路径 <span aria-hidden="true">→</span>
+            <button
+              type="button"
+              class="active"
+              id="capability-tab-mainline"
+              data-capability-trigger="mainline"
+              role="tab"
+              aria-selected="true"
+              aria-controls="capability-panel"
+            >
+              <span><i>01</i> DISCOVERY MAINLINE</span>
+              <strong>数据沿发现主线持续流动</strong>
+              <small>PROJECT → SAMPLE → SEQUENCE → ASSAY</small>
             </button>
-          </article>
-
-          <article class="capability-card reveal">
-            <span class="card-tag">COLLABORATION</span>
-            <h3>让不同团队共享同一进度。</h3>
-            <p>清晰的工单、状态和权限边界，减少跨实验环节的重复沟通。</p>
-            <button type="button" class="card-explore" data-capability-trigger="collaboration" aria-pressed="false">
-              查看交接规则 <span aria-hidden="true">→</span>
+            <button
+              type="button"
+              id="capability-tab-traceability"
+              data-capability-trigger="traceability"
+              role="tab"
+              aria-selected="false"
+              aria-controls="capability-panel"
+            >
+              <span><i>02</i> TRACEABILITY</span>
+              <strong>从结果反向定位完整来源</strong>
+              <small>RESULT → RUN → SAMPLE → PROJECT</small>
             </button>
-            <div class="team-row" data-capability-preview="collaboration" aria-hidden="true">
-              <span>IM</span><span>SB</span><span>NG</span><span>EX</span><span>QA</span>
-            </div>
-          </article>
-
-          <article class="capability-card card-dark reveal">
-            <span class="card-tag">AUTOMATION</span>
-            <h3>把设备接入工作流，<br />把结果带回数据链。</h3>
-            <p>通过工单校验、任务下发和结果回写连接实验室自动化模组。</p>
-            <button type="button" class="card-explore" data-capability-trigger="automation" aria-pressed="false">
-              查看执行门禁 <span aria-hidden="true">→</span>
+            <button
+              type="button"
+              id="capability-tab-collaboration"
+              data-capability-trigger="collaboration"
+              role="tab"
+              aria-selected="false"
+              aria-controls="capability-panel"
+            >
+              <span><i>03</i> COLLABORATION</span>
+              <strong>跨团队交接成为执行链</strong>
+              <small>REQUEST → OWNER → STATUS → HANDOFF</small>
             </button>
-            <div class="automation-status" data-capability-preview="automation" aria-hidden="true">
-              <span><i></i> ORDER VALIDATED</span>
-              <span><i></i> DEVICE RUNNING</span>
-              <span><i></i> DATA RETURNED</span>
-            </div>
-          </article>
+            <button
+              type="button"
+              id="capability-tab-automation"
+              data-capability-trigger="automation"
+              role="tab"
+              aria-selected="false"
+              aria-controls="capability-panel"
+            >
+              <span><i>04</i> AUTOMATION</span>
+              <strong>设备任务与结果形成闭环</strong>
+              <small>ORDER → DEVICE → RUN → RESULT</small>
+            </button>
+          </div>
 
-        </div>
-
-        <dialog class="capability-explorer" data-capability-dialog aria-labelledby="capability-explorer-title">
-          <div class="capability-explorer-shell">
+          <div
+            class="capability-explorer-panel"
+            id="capability-panel"
+            data-capability-content
+            role="tabpanel"
+            aria-labelledby="capability-tab-mainline"
+          >
             <header class="capability-explorer-head">
               <div>
                 <span data-capability-tag>DISCOVERY MAINLINE · CONNECTED OBJECTS</span>
@@ -554,9 +556,7 @@
                   项目、样本、序列、表达批次与评价结果通过同一对象关系向前传递，阶段切换不会丢失来源与决策依据。
                 </p>
               </div>
-              <button type="button" class="capability-explorer-close" data-capability-close aria-label="关闭能力详情">
-                <span aria-hidden="true">×</span>
-              </button>
+              <span class="capability-panel-index" data-capability-panel-index aria-hidden="true">01 / 04</span>
             </header>
 
             <div class="capability-explorer-meta">
@@ -593,7 +593,7 @@
               </section>
             </div>
           </div>
-        </dialog>
+        </section>
 
         <section class="role-explorer reveal" data-role-explorer>
           <div class="role-explorer-head">
@@ -1146,7 +1146,7 @@
       </div>
     </footer>
 
-    <script src="./script.js?v=20260918-21" defer></script>
-    <script src="./molecular-visual.js?v=20260918-21" defer></script>
+    <script src="./script.js?v=20260918-22" defer></script>
+    <script src="./molecular-visual.js?v=20260918-22" defer></script>
   </body>
 </html>

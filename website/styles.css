@@ -51,11 +51,6 @@ body {
   -webkit-user-select: none;
 }
 
-html.dialog-open,
-html.dialog-open body {
-  overflow: hidden;
-}
-
 body.menu-open {
   overflow: hidden;
 }
@@ -1938,31 +1933,123 @@ p {
   animation-delay: 0s;
 }
 
-.capability-explorer {
-  width: min(1120px, calc(100vw - 40px));
-  max-width: none;
-  max-height: calc(100dvh - 40px);
-  padding: 0;
+.capability-workspace {
+  display: grid;
+  grid-template-columns: minmax(270px, 0.34fr) minmax(0, 1fr);
+  min-height: 720px;
   overflow: hidden;
   color: var(--white);
-  background: transparent;
-  border: 1px solid rgba(99, 243, 217, 0.24);
+  background: #08181c;
+  border: 1px solid rgba(7, 19, 22, 0.1);
   border-radius: 20px;
-  box-shadow: 0 34px 100px rgba(0, 0, 0, 0.52);
+  box-shadow: 0 26px 70px rgba(7, 31, 34, 0.14);
 }
 
-.capability-explorer::backdrop {
-  background: rgba(3, 11, 13, 0.76);
-  backdrop-filter: blur(14px);
+.capability-switcher {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto repeat(4, 1fr);
+  padding: 18px 0;
+  background: #061317;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.capability-explorer[open] {
-  animation: capability-explorer-in 0.34s var(--motion-ease) both;
+.capability-switcher-head {
+  padding: 16px 26px 24px;
 }
 
-.capability-explorer-shell {
-  max-height: calc(100dvh - 40px);
-  overflow: auto;
+.capability-switcher-head span {
+  color: var(--mint);
+  font-size: 9px;
+  font-weight: 780;
+  letter-spacing: 0.15em;
+}
+
+.capability-switcher-head p {
+  margin: 12px 0 0;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.capability-switcher > button {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 9px;
+  min-height: 120px;
+  padding: 22px 26px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.48);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-left: 2px solid transparent;
+  transition:
+    color var(--motion-fast) ease,
+    background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
+}
+
+.capability-switcher > button::after {
+  position: absolute;
+  right: 22px;
+  bottom: 0;
+  left: 26px;
+  height: 1px;
+  content: "";
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.capability-switcher > button span {
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+}
+
+.capability-switcher > button span i {
+  margin-right: 10px;
+  color: rgba(99, 243, 217, 0.46);
+  font-style: normal;
+}
+
+.capability-switcher > button strong {
+  color: inherit;
+  font-size: 15px;
+  font-weight: 590;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+}
+
+.capability-switcher > button small {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.capability-switcher > button:hover,
+.capability-switcher > button:focus-visible {
+  color: rgba(255, 255, 255, 0.84);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.capability-switcher > button.active {
+  color: var(--white);
+  background: linear-gradient(90deg, rgba(99, 243, 217, 0.11), rgba(99, 243, 217, 0.015));
+  border-left-color: var(--mint);
+}
+
+.capability-switcher > button.active span i {
+  color: var(--mint);
+}
+
+.capability-explorer-panel {
+  min-width: 0;
   background:
     radial-gradient(circle at 82% 2%, rgba(99, 243, 217, 0.13), transparent 28%),
     linear-gradient(rgba(99, 243, 217, 0.045) 1px, transparent 1px),
@@ -2008,31 +2095,12 @@ p {
   line-height: 1.8;
 }
 
-.capability-explorer-close {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  padding: 0;
-  color: rgba(255, 255, 255, 0.72);
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 50%;
-  font-size: 24px;
-  transition:
-    color var(--motion-fast) ease,
-    background var(--motion-fast) ease,
-    border-color var(--motion-fast) ease,
-    transform var(--motion-fast) ease;
-}
-
-.capability-explorer-close:hover,
-.capability-explorer-close:focus-visible {
-  color: var(--ink);
-  background: var(--mint);
-  border-color: var(--mint);
-  transform: rotate(8deg);
+.capability-panel-index {
+  align-self: start;
+  color: rgba(99, 243, 217, 0.52);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.13em;
 }
 
 .capability-explorer-meta {
@@ -2212,17 +2280,6 @@ p {
   font-size: 11px;
   font-weight: 540;
   line-height: 1.65;
-}
-
-@keyframes capability-explorer-in {
-  from {
-    opacity: 0;
-    transform: translateY(18px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
 }
 
 .role-explorer {
@@ -4858,6 +4915,40 @@ p {
     padding: 24px 22px;
   }
 
+  .capability-workspace {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .capability-switcher {
+    display: flex;
+    grid-template-rows: none;
+    padding: 0;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .capability-switcher-head {
+    display: none;
+  }
+
+  .capability-switcher > button {
+    flex: 0 0 235px;
+    min-height: 112px;
+    padding: 20px 22px;
+    scroll-snap-align: start;
+    border-bottom: 2px solid transparent;
+    border-left: 0;
+  }
+
+  .capability-switcher > button.active {
+    background: linear-gradient(0deg, rgba(99, 243, 217, 0.1), transparent);
+    border-bottom-color: var(--mint);
+    border-left-color: transparent;
+  }
+
   .capability-explorer-body {
     grid-template-columns: 1fr;
   }
@@ -5343,14 +5434,14 @@ p {
     padding: 9px 11px;
   }
 
-  .capability-explorer {
-    width: calc(100vw - 12px);
-    max-height: calc(100dvh - 12px);
+  .capability-workspace {
     border-radius: 14px;
   }
 
-  .capability-explorer-shell {
-    max-height: calc(100dvh - 12px);
+  .capability-switcher > button {
+    flex-basis: 210px;
+    min-height: 104px;
+    padding: 18px 20px;
   }
 
   .capability-explorer-head {
@@ -5363,9 +5454,9 @@ p {
     font-size: clamp(25px, 8vw, 34px);
   }
 
-  .capability-explorer-close {
-    width: 38px;
-    height: 38px;
+  .capability-panel-index {
+    padding-top: 2px;
+    font-size: 9px;
   }
 
   .capability-explorer-meta {

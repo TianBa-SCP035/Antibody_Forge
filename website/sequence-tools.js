@@ -461,7 +461,7 @@
           value.textContent = values[index];
         });
         latestSummary = result.summary;
-        setFeedback(`已完成 ${result.length.toLocaleString()} aa 的本地计算。`);
+        setFeedback(`已完成 ${result.length.toLocaleString()} aa 的序列分析。`);
       } else {
         const result = analyzeDna(input.value);
         const values = [
@@ -476,7 +476,7 @@
         });
         latestSummary = result.summary;
         const warning = result.warnings[0] ? ` ${result.warnings[0]}` : "";
-        setFeedback(`已完成 ${result.length.toLocaleString()} nt 的本地计算。${warning}`);
+        setFeedback(`已完成 ${result.length.toLocaleString()} nt 的序列分析。${warning}`);
       }
 
       output.textContent = latestSummary;
@@ -549,7 +549,7 @@
       await navigator.clipboard.writeText(latestSummary);
       setFeedback("结果已复制到剪贴板。");
     } catch {
-      setFeedback("浏览器未允许复制，请手动选择结果文本。", true);
+      setFeedback("复制未完成，请手动选择结果文本。", true);
     }
   });
 

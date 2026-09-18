@@ -10,19 +10,19 @@
     <meta name="theme-color" content="#071316" />
     <meta
       name="description"
-      content="Antibody Vita Bioinformatics：在浏览器完成蛋白与 DNA 理化统计、FASTA 整理去重、序列比对和抗体开发性位点扫描，并连接权威公共生信服务。"
+      content="Antibody Vita Bioinformatics：面向蛋白、DNA、FASTA 与抗体序列的分析工作台，提供理化统计、序列整理、全局比对、开发性位点扫描与蛋白条目查询。"
     />
     <meta
       name="keywords"
-      content="生物信息学工具, 抗体序列分析, FASTA 去重, 序列比对, 抗体 PTM, UniProt, 本地生信工具"
+      content="生物信息学工具, 抗体序列分析, FASTA 去重, 序列比对, 抗体 PTM, UniProt, 蛋白序列工具"
     />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:site_name" content="Antibody Vita Bioinformatics" />
-    <meta property="og:title" content="Vita Bioinformatics｜浏览器端抗体与序列工具" />
+    <meta property="og:title" content="Vita Bioinformatics｜抗体与序列分析工作台" />
     <meta
       property="og:description"
-      content="本地优先的蛋白、DNA、FASTA 与抗体序列工作台，并连接 UniProt、EMBL-EBI、IMGT 等可信资源。"
+      content="覆盖蛋白、DNA、FASTA 与抗体序列理化统计、整理、比对、位点扫描和条目查询的专业分析工作台。"
     />
     <meta
       property="og:url"
@@ -38,9 +38,9 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/tools/"
     />
     <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="../styles.css?v=20260918-8" />
-    <link rel="stylesheet" href="./tools.css?v=20260918-8" />
-    <title>Vita Bioinformatics｜浏览器端抗体与序列工具</title>
+    <link rel="stylesheet" href="../styles.css?v=20260918-10" />
+    <link rel="stylesheet" href="./tools.css?v=20260918-10" />
+    <title>Vita Bioinformatics｜抗体与序列分析工作台</title>
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -48,7 +48,7 @@
         "name": "Vita Bioinformatics",
         "applicationCategory": "ScienceApplication",
         "operatingSystem": "Web",
-        "description": "A local-first browser workspace for antibody, protein, DNA and FASTA sequence analysis.",
+        "description": "An integrated workspace for antibody, protein, DNA and FASTA sequence analysis.",
         "url": "https://tianba-scp035.github.io/Antibody_Forge/tools/",
         "codeRepository": "https://github.com/TianBa-SCP035/Antibody_Forge"
       }
@@ -60,6 +60,8 @@
       <span data-scroll-progress-rail></span>
     </div>
     <div class="cursor-aura" data-cursor-aura aria-hidden="true"></div>
+    <div class="cursor-ring" data-cursor-ring aria-hidden="true"></div>
+    <div class="cursor-dot" data-cursor-dot aria-hidden="true"></div>
 
     <header class="site-header tools-header" data-header>
       <a class="brand" href="../" aria-label="返回 Antibody Vita 首页">
@@ -82,13 +84,13 @@
         </svg>
         <span>
           <strong>Vita Bioinformatics</strong>
-          <small>Local-first tools</small>
+          <small>Sequence analysis</small>
         </span>
       </a>
 
       <nav class="desktop-nav" aria-label="工具平台导航">
-        <a href="#workspace">本地工具</a>
-        <a href="#services">公共服务</a>
+        <a href="#workspace">分析工具</a>
+        <a href="#services">专业资源</a>
         <a href="../#platform">Vita 平台</a>
         <a href="../#company">公司</a>
       </nav>
@@ -110,8 +112,8 @@
       </button>
 
       <div class="mobile-nav" id="mobile-navigation" data-mobile-nav>
-        <a href="#workspace">本地工具</a>
-        <a href="#services">公共服务</a>
+        <a href="#workspace">分析工具</a>
+        <a href="#services">专业资源</a>
         <a href="../#platform">Vita 平台</a>
         <a href="../#company">公司</a>
         <a href="../">返回项目首页 ↗</a>
@@ -123,9 +125,9 @@
         <div class="tools-hero-grid" aria-hidden="true"></div>
         <div class="tools-hero-copy">
           <p class="eyebrow reveal"><span></span> VITA · BIOINFORMATICS WORKSPACE</p>
-          <h1 class="reveal">把常用序列操作，<br />带到一个可信的浏览器工作台。</h1>
+          <h1 class="reveal">把常用序列操作，<br />带到一个高效的分析工作台。</h1>
           <p class="reveal">
-            汇集 Antibody Vita 高频序列任务，融合浏览器本地计算与权威公共数据库连接能力，
+            汇集 Antibody Vita 高频序列任务，覆盖输入整理、指标计算、序列比对、位点扫描与条目检索，
             提供顺畅、清晰、即开即用的分析体验。
           </p>
           <div class="tools-hero-actions reveal">
@@ -133,13 +135,13 @@
               打开工作台 <span aria-hidden="true">↓</span>
             </a>
             <a class="text-link" href="#services">
-              浏览公共服务 <span aria-hidden="true">→</span>
+              浏览专业资源 <span aria-hidden="true">→</span>
             </a>
           </div>
           <ul class="tools-trust-row reveal" aria-label="工具平台特性">
-            <li><i></i> LOCAL FIRST</li>
-            <li><i></i> NO ACCOUNT</li>
-            <li><i></i> OPEN METHODS</li>
+            <li><i></i> SEQUENCE ANALYSIS</li>
+            <li><i></i> FAST WORKFLOW</li>
+            <li><i></i> CLEAR RESULTS</li>
           </ul>
         </div>
 
@@ -168,7 +170,7 @@
             <h2 class="reveal">五个专业工作区，<br />覆盖常用序列任务。</h2>
           </div>
           <p class="reveal">
-            清晰的任务目录连接独立工作区，输入、计算与结果保持在当前标签页，
+            清晰的任务目录连接独立工作区，让输入、计算与结果有序衔接，
             让每一次分析都专注而连贯。
           </p>
         </div>
@@ -186,7 +188,7 @@
                   <strong>序列理化性质</strong>
                   <small>Protein · DNA</small>
                 </div>
-                <i>LOCAL</i>
+                <i>ANALYZE</i>
               </a>
               <a href="#fasta" data-tool-link="fasta">
                 <span>02</span>
@@ -194,7 +196,7 @@
                   <strong>FASTA 整理与去重</strong>
                   <small>Parse · Dedupe · Export</small>
                 </div>
-                <i>LOCAL</i>
+                <i>ORGANIZE</i>
               </a>
               <a href="#compare" data-tool-link="compare">
                 <span>03</span>
@@ -202,7 +204,7 @@
                   <strong>双序列全局比对</strong>
                   <small>Identity · Alignment</small>
                 </div>
-                <i>LOCAL</i>
+                <i>COMPARE</i>
               </a>
               <a href="#liability" data-tool-link="liability">
                 <span>04</span>
@@ -210,20 +212,20 @@
                   <strong>抗体开发性位点扫描</strong>
                   <small>Motif · Position · Context</small>
                 </div>
-                <i>LOCAL</i>
+                <i>SCAN</i>
               </a>
               <a href="#uniprot" data-tool-link="uniprot">
                 <span>05</span>
                 <div>
                   <strong>UniProt 条目查询</strong>
-                  <small>Public knowledge lookup</small>
+                  <small>Protein knowledge lookup</small>
                 </div>
-                <i class="remote">LIVE</i>
+                <i class="remote">SEARCH</i>
               </a>
             </nav>
             <p>
               <span></span>
-              LOCAL 在浏览器完成计算；LIVE 连接标注的权威公共数据库。
+              从序列输入到指标分析、比对、扫描和条目检索，任务在同一工作区连续完成。
             </p>
           </aside>
 
@@ -239,7 +241,7 @@
 
               <div class="lab-shell embedded-lab" data-sequence-lab>
                 <noscript>
-                  <p class="lab-noscript">本地序列计算需要启用 JavaScript。</p>
+                  <p class="lab-noscript">序列分析需要启用 JavaScript。</p>
                 </noscript>
                 <div class="lab-toolbar">
                   <div class="lab-mode-switch" aria-label="选择序列类型">
@@ -248,7 +250,7 @@
                     </button>
                     <button type="button" data-sequence-mode="dna" aria-pressed="false">DNA</button>
                   </div>
-                  <p><span></span>浏览器内存计算 · 全程本地</p>
+                  <p><span></span>输入准备 · 指标分析</p>
                 </div>
 
                 <div class="lab-workspace">
@@ -358,7 +360,7 @@
                       multiple
                     />
                     <strong>拖入序列文本或 FASTA 文件</strong>
-                    <span>标题可选 · 浏览器本地读取</span>
+                    <span>标题可选 · 支持拖拽导入</span>
                   </label>
                   <textarea
                     id="fasta-input"
@@ -442,7 +444,7 @@
                   </div>
                 </div>
                 <p class="utility-feedback" data-compare-feedback aria-live="polite">
-                  每条序列最长 2,000 个字符；计算完全在本地完成。
+                  每条序列最长 2,000 个字符；支持蛋白质与 DNA 序列。
                 </p>
                 <div class="utility-metrics compare-metrics">
                   <article><small>一致性</small><strong data-compare-metric="identity">—</strong></article>
@@ -520,10 +522,10 @@
             <section class="tool-panel" id="uniprot" data-tool-panel="uniprot" hidden>
               <div class="tool-panel-intro">
                 <div>
-                  <span>05 · UNIPROT LIVE</span>
-                  <h3>UniProt 公共条目查询</h3>
+                  <span>05 · UNIPROT SEARCH</span>
+                  <h3>UniProt 条目查询</h3>
                 </div>
-                <p>通过 UniProt REST API 连接公开蛋白知识，以 accession 精准获取权威条目。</p>
+                <p>输入 UniProt accession，获取蛋白名称、基因、物种、长度与序列信息。</p>
               </div>
 
               <div class="uniprot-workbench" data-uniprot-tool>
@@ -540,26 +542,26 @@
                       spellcheck="false"
                     />
                     <button type="submit" class="primary-action">
-                      查询公开条目 <span aria-hidden="true">→</span>
+                      查询蛋白条目 <span aria-hidden="true">→</span>
                     </button>
                   </div>
                   <p data-uniprot-feedback aria-live="polite">
-                    数据来源：UniProt REST API · 实时访问公开条目。
+                    支持使用标准 UniProt accession 精准查询蛋白条目。
                   </p>
                 </form>
 
                 <article class="uniprot-result" data-uniprot-result aria-live="polite">
                   <div class="uniprot-placeholder">
-                    <span>LIVE KNOWLEDGE</span>
+                    <span>PROTEIN KNOWLEDGE</span>
                     <strong>输入 accession 后查询</strong>
                     <p>例如 P04637（人 TP53）或 P21802（人 FGFR2）。</p>
                   </div>
                 </article>
               </div>
               <p class="tool-method-note">
-                结果同步 UniProt 当前 release；
+                支持通过
                 <a href="https://www.uniprot.org/" target="_blank" rel="noreferrer">UniProt 完整条目 ↗</a>
-                提供扩展注释与标准引用信息。
+                查看扩展注释与标准引用信息。
               </p>
             </section>
           </div>
@@ -569,29 +571,29 @@
       <section class="service-directory section" id="services">
         <div class="section-label reveal">
           <span>06</span>
-          <p>Trusted public services</p>
+          <p>Extended analysis resources</p>
         </div>
         <div class="service-intro">
           <div>
-            <p class="kicker reveal">连接全球公共生信基础设施</p>
-            <h2 class="reveal">权威数据库与专业分析服务，<br />一站直达。</h2>
+            <p class="kicker reveal">扩展专业分析能力</p>
+            <h2 class="reveal">从序列搜索到结构预测，<br />一站直达。</h2>
           </div>
           <p class="reveal">
-            Vita Bioinformatics 连接 EMBL-EBI、InterPro、IMGT、ANARCI 与 AlphaFold DB，
-            覆盖序列搜索、多序列比对、结构域注释、抗体编号与结构预测查询。
+            序列搜索、多序列比对、结构域注释、抗体编号与结构预测查询，
+            共同构成面向抗体研发的扩展分析路径。
           </p>
         </div>
 
         <div class="service-grid">
           <a class="service-card reveal" href="https://www.ebi.ac.uk/jdispatcher/sequenceanalysis" target="_blank" rel="noreferrer">
             <span>EMBL-EBI</span><strong>BLAST+ 与序列搜索</strong>
-            <p>在官方 Job Dispatcher 选择 NCBI BLAST+、FASTA、HMMER 等任务。</p>
-            <i>提交序列到 EMBL-EBI ↗</i>
+            <p>使用 NCBI BLAST+、FASTA、HMMER 等方法完成序列检索。</p>
+            <i>开始序列检索 ↗</i>
           </a>
           <a class="service-card reveal" href="https://www.ebi.ac.uk/jdispatcher/msa/clustalo" target="_blank" rel="noreferrer">
             <span>EMBL-EBI</span><strong>Clustal Omega 多序列比对</strong>
-            <p>适合多条蛋白或核酸序列的服务端多序列比对。</p>
-            <i>打开官方工具 ↗</i>
+            <p>面向多条蛋白或核酸序列完成多序列比对。</p>
+            <i>开始多序列比对 ↗</i>
           </a>
           <a class="service-card reveal" href="https://www.ebi.ac.uk/interpro/search/sequence/" target="_blank" rel="noreferrer">
             <span>INTERPRO</span><strong>结构域与家族注释</strong>
@@ -601,7 +603,7 @@
           <a class="service-card reveal" href="https://www.imgt.org/3Dstructure-DB/cgi/DomainGapAlign.cgi" target="_blank" rel="noreferrer">
             <span>IMGT®</span><strong>抗体结构域编号</strong>
             <p>通过 IMGT/DomainGapAlign 获取 IMGT 编号、FR/CDR 边界与近似胚系。</p>
-            <i>打开官方表单 ↗</i>
+            <i>开始抗体编号 ↗</i>
           </a>
           <a class="service-card reveal" href="https://opig.stats.ox.ac.uk/webapps/sabdab-sabpred/sabpred/anarci/" target="_blank" rel="noreferrer">
             <span>OXFORD · OPIG</span><strong>ANARCI 抗体编号</strong>
@@ -609,13 +611,13 @@
             <i>打开 SAbPred ↗</i>
           </a>
           <a class="service-card reveal" href="https://alphafold.ebi.ac.uk/" target="_blank" rel="noreferrer">
-            <span>ALPHAFOLD DB</span><strong>公开结构预测查询</strong>
-            <p>按 UniProt accession 或基因名称检索公开预测结构与置信度。</p>
-            <i>查询公开结构 ↗</i>
+            <span>ALPHAFOLD DB</span><strong>结构预测查询</strong>
+            <p>按 UniProt accession 或基因名称检索预测结构与置信度。</p>
+            <i>查询结构 ↗</i>
           </a>
         </div>
         <p class="service-privacy-note reveal">
-          公共服务由各权威机构提供并遵循其数据政策、配额与引用规范；企业级数据可按组织治理策略接入。
+          覆盖序列、结构域、抗体编号与三维结构等分析层级，支持从候选检查到深入研究的连续探索。
         </p>
       </section>
     </main>
@@ -634,12 +636,12 @@
                 stroke-width="5"
               />
             </svg>
-            <span><strong>Vita Bioinformatics</strong><small>Local-first tools</small></span>
+            <span><strong>Vita Bioinformatics</strong><small>Sequence analysis</small></span>
           </a>
           <p>从 Antibody Vita 工作流与高频研发任务中构建的专业生信工作台。</p>
         </div>
         <nav class="footer-column" aria-label="工具链接">
-          <strong>本地工具</strong>
+          <strong>分析工具</strong>
           <a href="#sequence" data-tool-link="sequence">序列理化性质</a>
           <a href="#fasta" data-tool-link="fasta">FASTA 整理与去重</a>
           <a href="#compare" data-tool-link="compare">双序列全局比对</a>
@@ -647,15 +649,15 @@
         </nav>
         <nav class="footer-column" aria-label="资源链接">
           <strong>资源</strong>
-          <a href="#services">公共生信服务</a>
+          <a href="#services">专业分析资源</a>
           <a href="../">Antibody Vita 首页</a>
           <a href="https://github.com/TianBa-SCP035/Antibody_Forge" target="_blank" rel="noreferrer">GitHub 仓库 ↗</a>
         </nav>
         <div class="footer-contact">
-          <strong>计算与连接</strong>
-          <span>本地序列计算在浏览器完成</span>
+          <strong>分析能力</strong>
+          <span>蛋白、DNA 与抗体序列分析</span>
           <span>UniProt accession 精准查询</span>
-          <span>权威生信服务官方入口直达</span>
+          <span>序列搜索、编号与结构预测</span>
         </div>
       </div>
       <div class="footer-legal">
@@ -664,8 +666,8 @@
       </div>
     </footer>
 
-    <script src="../script.js?v=20260918-8" defer></script>
-    <script src="../sequence-tools.js?v=20260918-8" defer></script>
-    <script src="./tools.js?v=20260918-8" defer></script>
+    <script src="../script.js?v=20260918-10" defer></script>
+    <script src="../sequence-tools.js?v=20260918-10" defer></script>
+    <script src="./tools.js?v=20260918-10" defer></script>
   </body>
 </html>

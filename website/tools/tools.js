@@ -98,7 +98,7 @@
     const sequenceB = cleanRawSequence(second);
     if (!sequenceA || !sequenceB) throw new Error("请输入两条需要比较的序列。");
     if (sequenceA.length > 2000 || sequenceB.length > 2000) {
-      throw new Error("浏览器全局比对请将每条序列控制在 2,000 个字符以内。");
+      throw new Error("双序列全局比对请将每条序列控制在 2,000 个字符以内。");
     }
 
     const typeA = inferSequenceType(sequenceA);
@@ -486,7 +486,7 @@
       if (!files.length) return;
       input.value = (await Promise.all(files.map((file) => file.text()))).join("\n");
       updateFastaCounter();
-      setFastaFeedback(`已在本地读取 ${files.length} 个文件；点击“整理记录”开始分析。`);
+      setFastaFeedback(`已读取 ${files.length} 个文件；点击“整理记录”开始分析。`);
     });
 
     input.addEventListener("input", updateFastaCounter);
@@ -597,7 +597,7 @@
             ? ""
             : ` 字母表推断为 ${result.typeA} / ${result.typeB}，请确认两条输入属于同一分子类型。`;
         setCompareFeedback(
-          `全局比对已在本地完成；一致性按包含缺口的比对长度计算。${alphabetWarning}`,
+          `全局比对完成；一致性按包含缺口的比对长度计算。${alphabetWarning}`,
         );
       } catch (error) {
         resetComparisonResults();
@@ -630,7 +630,7 @@
         await navigator.clipboard.writeText(latestAlignment);
         setCompareFeedback("对齐结果已复制。");
       } catch {
-        setCompareFeedback("浏览器未允许复制，请手动选择结果文本。", true);
+        setCompareFeedback("复制未完成，请手动选择结果文本。", true);
       }
     });
   }
@@ -742,7 +742,7 @@
       [
         ["Entry name", entry.uniProtkbId],
         ["Sequence length", entry.sequence?.length ? `${entry.sequence.length} aa` : null],
-        ["API release", release],
+        ["UniProt release", release],
       ].forEach(([label, value]) => {
         const fact = document.createElement("div");
         const factLabel = document.createElement("small");
@@ -783,7 +783,7 @@
       controller?.abort();
       controller = new AbortController();
       resultElement.classList.add("loading");
-      setUniprotFeedback(`正在通过 UniProt REST API 查询 ${accession}…`);
+      setUniprotFeedback(`正在查询 ${accession}…`);
 
       try {
         const fields = [
@@ -812,7 +812,7 @@
         const entry = payload.results?.[0];
         if (!entry) throw new Error(`没有找到 accession ${accession}。`);
         renderUniprotEntry(entry, response.headers.get("x-uniprot-release"));
-        setUniprotFeedback(`已读取 ${accession} 的公开条目；accession 查询完成，输入序列保留在本地。`);
+        setUniprotFeedback(`已读取 ${accession} 的蛋白条目，序列与注释信息已更新。`);
       } catch (error) {
         if (error.name === "AbortError") return;
         resultElement.replaceChildren();
@@ -821,7 +821,7 @@
         const label = document.createElement("span");
         label.textContent = "QUERY FAILED";
         const title = document.createElement("strong");
-        title.textContent = "暂时无法读取公开条目";
+        title.textContent = "暂时无法读取蛋白条目";
         const detail = document.createElement("p");
         detail.textContent = error.message;
         placeholder.append(label, title, detail);

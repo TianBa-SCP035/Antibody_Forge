@@ -123,7 +123,7 @@
   height: 68%;
   border-style: dashed;
   border-top-color: rgba(99, 243, 217, 0.56);
-  animation: tool-ring-spin 22s linear infinite;
+  animation: tool-ring-spin var(--motion-loop-slow) linear infinite;
 }
 
 .tools-hero-visual::after {
@@ -132,7 +132,7 @@
   border-color: rgba(99, 243, 217, 0.3);
   border-right-color: rgba(166, 66, 255, 0.72);
   box-shadow: 0 0 70px rgba(99, 243, 217, 0.12);
-  animation: tool-ring-spin 14s linear infinite reverse;
+  animation: tool-ring-spin 16s linear infinite reverse;
 }
 
 .tools-core {
@@ -192,7 +192,7 @@
   background: var(--mint);
   border-radius: 50%;
   box-shadow: 0 0 14px var(--mint);
-  animation: data-pulse 3.2s var(--ease) infinite;
+  animation: data-pulse 4s var(--motion-smooth) infinite;
   translate: 0 -50%;
 }
 
@@ -233,7 +233,7 @@
   background: #75b7ff;
   border-radius: 50%;
   box-shadow: 0 0 13px #75b7ff;
-  animation: status-breathe 2.8s ease-in-out infinite;
+  animation: status-breathe 4s var(--motion-smooth) infinite;
 }
 
 .signal-one {
@@ -530,7 +530,7 @@
   pointer-events: none;
   background: linear-gradient(90deg, transparent, var(--mint), #8ebdff, transparent);
   box-shadow: 0 0 12px rgba(99, 243, 217, 0.65);
-  animation: workspace-scan 7s var(--ease) infinite;
+  animation: workspace-scan var(--motion-loop) var(--motion-ease) infinite;
 }
 
 .utility-workbench {

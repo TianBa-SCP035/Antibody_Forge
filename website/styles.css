@@ -15,6 +15,13 @@
     "SF Pro Text", sans-serif;
   --page: min(100% - 64px, 1280px);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-fast: 180ms;
+  --motion-base: 420ms;
+  --motion-slow: 760ms;
+  --motion-loop: 8s;
+  --motion-loop-slow: 24s;
 }
 
 * {
@@ -91,6 +98,93 @@ body.motion-paused *::after {
 .cursor-aura.visible {
   visibility: visible;
   opacity: 1;
+}
+
+.cursor-ring,
+.cursor-dot {
+  position: fixed;
+  z-index: 300;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  will-change: transform;
+}
+
+.cursor-ring {
+  width: 34px;
+  height: 34px;
+  background: rgba(99, 243, 217, 0.04);
+  border: 1px solid rgba(99, 243, 217, 0.72);
+  border-radius: 50%;
+  box-shadow:
+    0 0 24px rgba(99, 243, 217, 0.14),
+    inset 0 0 18px rgba(99, 243, 217, 0.04);
+  transition:
+    width var(--motion-fast) var(--motion-ease),
+    height var(--motion-fast) var(--motion-ease),
+    margin var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    opacity var(--motion-fast) ease;
+}
+
+.cursor-dot {
+  width: 6px;
+  height: 6px;
+  background: #dffff9;
+  border-radius: 50%;
+  box-shadow: 0 0 12px rgba(99, 243, 217, 0.9);
+  transition:
+    width var(--motion-fast) var(--motion-ease),
+    height var(--motion-fast) var(--motion-ease),
+    margin var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) ease;
+}
+
+.cursor-ring.visible,
+.cursor-dot.visible {
+  visibility: visible;
+  opacity: 1;
+}
+
+.cursor-ring.interactive {
+  width: 54px;
+  height: 54px;
+  margin: -10px;
+  background: rgba(99, 243, 217, 0.1);
+  border-color: rgba(255, 255, 255, 0.85);
+}
+
+.cursor-dot.interactive {
+  width: 4px;
+  height: 4px;
+  margin: 1px;
+}
+
+.cursor-ring.pressed {
+  width: 26px;
+  height: 26px;
+  margin: 4px;
+  background: rgba(99, 243, 217, 0.24);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html.cursor-enabled,
+  html.cursor-enabled body,
+  html.cursor-enabled a,
+  html.cursor-enabled button,
+  html.cursor-enabled [role="button"],
+  html.cursor-enabled .molecule-stage {
+    cursor: none;
+  }
+
+  html.cursor-enabled input,
+  html.cursor-enabled textarea,
+  html.cursor-enabled select {
+    cursor: text;
+  }
 }
 
 .pointer-tilt {
@@ -512,14 +606,14 @@ p {
   width: 70%;
   height: 70%;
   border-style: dashed;
-  animation: orbit-drift 28s linear infinite;
+  animation: orbit-drift var(--motion-loop-slow) linear infinite;
 }
 
 .orbit-three {
   width: 94%;
   height: 94%;
   border-color: rgba(255, 255, 255, 0.05);
-  animation: orbit-drift 42s linear infinite reverse;
+  animation: orbit-drift 36s linear infinite reverse;
 }
 
 .orbit-two::before,
@@ -614,7 +708,7 @@ p {
   background: var(--mint);
   border-radius: 50%;
   box-shadow: 0 0 10px var(--mint);
-  animation: status-pulse 3.2s ease-in-out infinite;
+  animation: status-pulse 4s var(--motion-smooth) infinite;
 }
 
 .stage-node > span {
@@ -695,7 +789,7 @@ p {
   stroke: url("#signal-gradient");
   stroke-dasharray: 4 8;
   stroke-width: 1;
-  animation: signal-flow 12s linear infinite;
+  animation: signal-flow var(--motion-loop) linear infinite;
 }
 
 .hero-foot {
@@ -1287,7 +1381,7 @@ p {
   background: linear-gradient(90deg, transparent, var(--mint), transparent);
   opacity: 0.6;
   transform: translateX(-110%);
-  animation: automation-scan 5.4s var(--ease) infinite;
+  animation: automation-scan var(--motion-loop) var(--motion-ease) infinite;
 }
 
 .automation-status span:nth-child(2)::after {
@@ -1304,7 +1398,7 @@ p {
   background: var(--mint);
   border-radius: 50%;
   box-shadow: 0 0 8px var(--mint);
-  animation: status-pulse 3s ease-in-out infinite;
+  animation: status-pulse 4s var(--motion-smooth) infinite;
 }
 
 .automation-status span:nth-child(2) i {
@@ -1327,7 +1421,7 @@ p {
 .molecule-stage {
   position: relative;
   width: min(100% - 64px, 1440px);
-  min-height: clamp(620px, 52vw, 750px);
+  min-height: clamp(720px, 56vw, 820px);
   margin: 0 auto;
   overflow: hidden;
   color: var(--white);
@@ -1339,6 +1433,17 @@ p {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 22px;
   box-shadow: 0 28px 80px rgba(7, 19, 22, 0.18);
+  isolation: isolate;
+  transition:
+    border-color var(--motion-base) ease,
+    box-shadow var(--motion-slow) var(--motion-ease);
+}
+
+.molecule-stage:focus-within {
+  border-color: rgba(99, 243, 217, 0.24);
+  box-shadow:
+    0 32px 90px rgba(7, 19, 22, 0.22),
+    0 0 0 1px rgba(99, 243, 217, 0.08);
 }
 
 .molecule-stage::before,
@@ -1385,7 +1490,7 @@ p {
     linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
   background-size: 76px 76px;
   mask-image: radial-gradient(circle at 50% 52%, black, transparent 72%);
-  animation: grid-breathe 7s ease-in-out infinite;
+  animation: grid-breathe 8s var(--motion-smooth) infinite;
 }
 
 .molecule-identity,
@@ -1449,6 +1554,182 @@ p {
   letter-spacing: 0.12em;
 }
 
+.molecule-console {
+  position: absolute;
+  z-index: 4;
+  bottom: 86px;
+  left: 42px;
+  width: min(680px, calc(100% - 310px));
+  pointer-events: auto;
+}
+
+.molecule-mode-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  max-width: 100%;
+  padding: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: rgba(8, 27, 31, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 999px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(18px);
+}
+
+.molecule-mode-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.molecule-mode-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 14px;
+  color: rgba(255, 255, 255, 0.68);
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  transition:
+    color var(--motion-fast) ease,
+    background var(--motion-base) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+.molecule-mode-tabs button span {
+  color: rgba(99, 243, 217, 0.56);
+  font-family: var(--display);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.molecule-mode-tabs button:hover,
+.molecule-mode-tabs button:focus-visible {
+  color: var(--white);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.molecule-mode-tabs button:active {
+  transform: scale(0.97);
+}
+
+.molecule-mode-tabs button.active {
+  color: #061719;
+  background: var(--mint);
+  box-shadow: 0 8px 24px rgba(99, 243, 217, 0.2);
+}
+
+.molecule-mode-tabs button.active span {
+  color: rgba(6, 23, 25, 0.54);
+}
+
+.molecule-mode-copy {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(240px, 1.3fr);
+  gap: 12px 26px;
+  width: min(100%, 620px);
+  margin-top: 14px;
+  padding: 16px 18px;
+  background: rgba(5, 19, 22, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  backdrop-filter: blur(16px);
+  transition:
+    background var(--motion-base) ease,
+    border-color var(--motion-base) ease,
+    transform var(--motion-base) var(--motion-ease);
+}
+
+.molecule-mode-copy.is-changing {
+  transform: translateY(4px);
+  border-color: rgba(99, 243, 217, 0.28);
+}
+
+.molecule-mode-copy span {
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+}
+
+.molecule-mode-copy strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.molecule-mode-copy > p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.molecule-sequence-map {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(5px);
+  transition:
+    max-height var(--motion-slow) var(--motion-ease),
+    opacity var(--motion-base) ease,
+    transform var(--motion-base) var(--motion-ease);
+}
+
+.molecule-stage[data-molecule-mode="sequence"] .molecule-sequence-map {
+  max-height: 52px;
+  opacity: 1;
+  transform: none;
+}
+
+.molecule-sequence-map span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  color: rgba(255, 255, 255, 0.68);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  letter-spacing: 0.08em;
+}
+
+.molecule-sequence-map i {
+  width: 5px;
+  height: 5px;
+  background: var(--mint);
+  border-radius: 50%;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.molecule-sequence-map span:nth-child(2) i {
+  background: #c276ff;
+}
+
+.molecule-sequence-map span:nth-child(3) i {
+  background: #75b7ff;
+}
+
+.molecule-sequence-map b {
+  color: rgba(255, 255, 255, 0.9);
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  font-size: 9px;
+  font-weight: 500;
+}
+
 .molecule-stage-footer {
   right: 34px;
   bottom: 28px;
@@ -1475,6 +1756,11 @@ p {
   background: var(--mint);
   border-radius: 50%;
   box-shadow: 0 0 12px var(--mint);
+}
+
+.molecule-stage-footer p b {
+  font: inherit;
+  font-weight: 500;
 }
 
 .motion-toggle {
@@ -1766,7 +2052,7 @@ p {
   stroke: rgba(99, 243, 217, 0.28);
   stroke-width: 1.2;
   stroke-dasharray: 5 8;
-  animation: gateway-flow 8s linear infinite;
+  animation: gateway-flow var(--motion-loop) linear infinite;
 }
 
 .gateway-node {
@@ -1790,7 +2076,7 @@ p {
   background: var(--mint);
   border-radius: 50%;
   box-shadow: 0 0 10px rgba(99, 243, 217, 0.85);
-  animation: gateway-node-pulse 2.8s ease-in-out infinite;
+  animation: gateway-node-pulse 4s var(--motion-smooth) infinite;
 }
 
 .gateway-node span {
@@ -2980,7 +3266,11 @@ p {
 
   .molecule-stage {
     width: min(100% - 40px, 720px);
-    min-height: 620px;
+    min-height: 740px;
+  }
+
+  .molecule-console {
+    width: calc(100% - 84px);
   }
 
   .lab-workspace {
@@ -3332,23 +3622,24 @@ p {
 
   .molecule-stage {
     width: calc(100% - 16px);
-    min-height: 590px;
+    min-height: 900px;
     border-radius: 18px;
+    scroll-margin-top: 74px;
   }
 
   .molecule-identity {
-    top: 26px;
+    top: 96px;
     left: 22px;
   }
 
   .molecule-identity strong {
-    font-size: 20px;
+    font-size: 18px;
   }
 
   .molecule-readouts {
-    top: auto;
+    top: 162px;
     right: 20px;
-    bottom: 74px;
+    bottom: auto;
     left: 20px;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 5px;
@@ -3368,6 +3659,36 @@ p {
     overflow: hidden;
     font-size: 10px;
     text-overflow: ellipsis;
+  }
+
+  .molecule-console {
+    right: 16px;
+    bottom: 76px;
+    left: 16px;
+    width: auto;
+  }
+
+  .molecule-mode-tabs {
+    width: 100%;
+  }
+
+  .molecule-mode-tabs button {
+    min-height: 40px;
+    padding: 0 12px;
+  }
+
+  .molecule-mode-copy {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 14px;
+  }
+
+  .molecule-sequence-map {
+    grid-column: 1;
+  }
+
+  .molecule-stage[data-molecule-mode="sequence"] .molecule-sequence-map {
+    max-height: 90px;
   }
 
   .molecule-stage-footer {

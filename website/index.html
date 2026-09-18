@@ -23,7 +23,7 @@
     <meta property="og:title" content="Antibody Vita｜AI 抗体发现协作基础平台" />
     <meta
       property="og:description"
-      content="连接免疫、筛选、测序、表达、评价与实验室自动化，让抗体发现沿同一条可信数据链路向前。"
+      content="连接免疫、筛选、测序、表达、评价与实验室自动化，让抗体发现沿同一条连续数据链路向前。"
     />
     <meta
       property="og:url"
@@ -45,7 +45,7 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20260918-8" />
+    <link rel="stylesheet" href="./styles.css?v=20260918-10" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
       {
@@ -88,6 +88,8 @@
       <span data-scroll-progress-rail></span>
     </div>
     <div class="cursor-aura" data-cursor-aura aria-hidden="true"></div>
+    <div class="cursor-ring" data-cursor-ring aria-hidden="true"></div>
+    <div class="cursor-dot" data-cursor-dot aria-hidden="true"></div>
 
     <header class="site-header" data-header>
       <a class="brand" href="#top" aria-label="Antibody Vita 首页">
@@ -288,7 +290,7 @@
           <p class="body-large reveal">
             Antibody Vita
             以真实实验路径组织数据和工单，让每一个样本、序列、候选分子和评价结果保持上下文连续，为规模化、AI
-            驱动的抗体发现提供可信的数据与协作基础。
+            驱动的抗体发现提供数据与协作基础。
           </p>
         </div>
 
@@ -472,12 +474,12 @@
               <h2 class="reveal">把复杂的发现关系，<br />转化为可探索的数据空间。</h2>
             </div>
             <p class="body-large reveal">
-              原创交互式三维视觉将抗体结构、序列与实验阶段抽象为同一数据场，直观呈现科学对象与发现证据的连接关系。
+              原创交互式三维视觉将抗体结构与序列信息组织为同一数据场，可在全分子、结合位点、序列映射与抗原结合视图之间平滑切换。
             </p>
           </div>
         </div>
 
-        <div class="molecule-stage reveal" data-molecule-stage>
+        <div class="molecule-stage reveal" data-molecule-stage data-molecule-mode="overview">
           <canvas
             class="molecule-canvas"
             data-molecule-canvas
@@ -489,16 +491,46 @@
           <div class="molecule-grid" aria-hidden="true"></div>
           <div class="molecule-identity">
             <span>DISCOVERY OBJECT / 01</span>
-            <strong>HUMAN ANTIBODY</strong>
-            <p>Sequence · structure · evidence</p>
+            <strong data-molecule-identity>ANTIBODY STRUCTURE EXPLORER</strong>
+            <p data-molecule-subtitle>Interactive molecular data model</p>
           </div>
-          <div class="molecule-readouts" aria-hidden="true">
-            <div><span>SEQUENCE</span><strong>CONNECTED</strong></div>
-            <div><span>STRUCTURE</span><strong>PROJECTED</strong></div>
-            <div><span>EVIDENCE</span><strong>TRACEABLE</strong></div>
+          <div class="molecule-readouts" aria-live="polite">
+            <div><span>VIEW</span><strong data-molecule-readout="view">OVERVIEW</strong></div>
+            <div><span>FOCUS</span><strong data-molecule-readout="focus">FULL MOLECULE</strong></div>
+            <div><span>STATE</span><strong data-molecule-readout="state">EXPLORING</strong></div>
+          </div>
+          <div class="molecule-console">
+            <div class="molecule-mode-tabs" role="group" aria-label="切换抗体三维演示视图">
+              <button type="button" class="active" data-molecule-view="overview" aria-pressed="true">
+                <span>01</span>整体结构
+              </button>
+              <button type="button" data-molecule-view="paratope" aria-pressed="false">
+                <span>02</span>结合位点
+              </button>
+              <button type="button" data-molecule-view="sequence" aria-pressed="false">
+                <span>03</span>序列映射
+              </button>
+              <button type="button" data-molecule-view="binding" aria-pressed="false">
+                <span>04</span>抗原结合
+              </button>
+            </div>
+            <div class="molecule-mode-copy" aria-live="polite">
+              <div>
+                <span data-molecule-mode-index>VIEW 01 · STRUCTURE</span>
+                <strong data-molecule-mode-title>全分子结构视图</strong>
+              </div>
+              <p data-molecule-mode-description>
+                拖动指针探索重链、轻链与铰链区域；选择视图，镜头将平滑聚焦到对应结构状态。
+              </p>
+              <div class="molecule-sequence-map" data-molecule-sequence-map aria-label="抗体链序列片段映射">
+                <span><i></i>VH <b>QVQLVESGGG...</b></span>
+                <span><i></i>VL <b>DIQMTQSPSS...</b></span>
+                <span><i></i>CDR-H3 <b>ARGLYFDYW</b></span>
+              </div>
+            </div>
           </div>
           <div class="molecule-stage-footer">
-            <p><span></span>LOCAL CANVAS RENDER · MOVE POINTER TO EXPLORE</p>
+            <p><span></span><b data-molecule-status>INTERACTIVE CANVAS · POINTER READY</b></p>
             <button type="button" class="motion-toggle" data-molecule-toggle aria-pressed="false">
               暂停动态
             </button>
@@ -557,13 +589,13 @@
         </div>
         <div class="tool-gateway-intro">
           <div>
-            <p class="kicker reveal">浏览器端生信工作台</p>
+            <p class="kicker reveal">序列与抗体分析工作台</p>
             <h2 class="reveal">常用序列分析，<br />打开即可完成。</h2>
           </div>
           <div class="tool-gateway-copy reveal">
             <p>
-              Vita Bioinformatics 集成序列理化性质、FASTA 整理去重、全局比对与抗体开发性位点扫描，
-              并连接 UniProt、EMBL-EBI、IMGT 等权威公共生信服务。
+              Vita Bioinformatics 集成序列理化性质、FASTA 整理去重、全局比对、抗体开发性位点扫描与蛋白条目查询，
+              覆盖从输入整理到结果复核的常用分析任务。
             </p>
             <a class="text-link text-link-dark" href="./tools/">
               进入 Vita Bioinformatics <span aria-hidden="true">→</span>
@@ -579,10 +611,10 @@
               <strong>BIO</strong>
               <span>WORKSPACE</span>
             </div>
-            <div class="gateway-node gateway-node-a"><i></i><span>LOCAL</span><strong>Sequence</strong></div>
-            <div class="gateway-node gateway-node-b"><i></i><span>LOCAL</span><strong>FASTA</strong></div>
-            <div class="gateway-node gateway-node-c"><i></i><span>LOCAL</span><strong>Alignment</strong></div>
-            <div class="gateway-node gateway-node-d"><i></i><span>LIVE</span><strong>UniProt</strong></div>
+            <div class="gateway-node gateway-node-a"><i></i><span>ANALYZE</span><strong>Sequence</strong></div>
+            <div class="gateway-node gateway-node-b"><i></i><span>ORGANIZE</span><strong>FASTA</strong></div>
+            <div class="gateway-node gateway-node-c"><i></i><span>COMPARE</span><strong>Alignment</strong></div>
+            <div class="gateway-node gateway-node-d"><i></i><span>SEARCH</span><strong>UniProt</strong></div>
             <svg class="gateway-path" viewBox="0 0 600 500" preserveAspectRatio="none">
               <path d="M300 250 C220 180 160 125 85 95" />
               <path d="M300 250 C390 180 450 120 525 95" />
@@ -598,7 +630,7 @@
                 <strong>序列理化性质</strong>
                 <small>蛋白 · 抗体 · DNA</small>
               </div>
-              <i>LOCAL</i>
+              <i>ANALYZE</i>
             </a>
             <a href="./tools/#fasta">
               <span>02</span>
@@ -606,7 +638,7 @@
                 <strong>FASTA 整理与去重</strong>
                 <small>批量解析 · 检查 · 导出</small>
               </div>
-              <i>LOCAL</i>
+              <i>ORGANIZE</i>
             </a>
             <a href="./tools/#compare">
               <span>03</span>
@@ -614,7 +646,7 @@
                 <strong>双序列全局比对</strong>
                 <small>一致性 · 缺口 · 对齐</small>
               </div>
-              <i>LOCAL</i>
+              <i>COMPARE</i>
             </a>
             <a href="./tools/#liability">
               <span>04</span>
@@ -622,18 +654,18 @@
                 <strong>抗体开发性位点扫描</strong>
                 <small>基序 · 位点 · 复核提示</small>
               </div>
-              <i>LOCAL</i>
+              <i>SCAN</i>
             </a>
             <a href="./tools/#uniprot">
               <span>05</span>
               <div>
-                <strong>UniProt 公共条目查询</strong>
-                <small>官方 REST API · 实时数据</small>
+                <strong>UniProt 条目查询</strong>
+                <small>蛋白名称 · 物种 · 序列信息</small>
               </div>
-              <i class="live">LIVE</i>
+              <i class="live">SEARCH</i>
             </a>
             <div class="tool-gateway-footer">
-              <p><i></i> 本地计算 · 序列留在浏览器</p>
+              <p><i></i> 五类任务 · 一站完成</p>
               <a href="./tools/">查看全部工具与方法说明 <span aria-hidden="true">↗</span></a>
             </div>
           </div>
@@ -806,7 +838,7 @@
       </div>
     </footer>
 
-    <script src="./script.js?v=20260918-8" defer></script>
-    <script src="./molecular-visual.js?v=20260918-8" defer></script>
+    <script src="./script.js?v=20260918-10" defer></script>
+    <script src="./molecular-visual.js?v=20260918-10" defer></script>
   </body>
 </html>

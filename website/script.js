@@ -10,6 +10,8 @@ const trackProgress = document.querySelector("[data-track-progress]");
 const sectionNavLinks = document.querySelectorAll("[data-section-nav]");
 const pageProgress = document.querySelector("[data-scroll-progress-rail]");
 const cursorAura = document.querySelector("[data-cursor-aura]");
+const cursorRing = document.querySelector("[data-cursor-ring]");
+const cursorDot = document.querySelector("[data-cursor-dot]");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const precisePointer = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 let activeWorkflowIndex = 0;
@@ -60,28 +62,60 @@ document.addEventListener("visibilitychange", () => {
 updateHeader();
 
 if (!reducedMotion && precisePointer) {
-  if (cursorAura) {
-    let auraFrame;
+  if (cursorAura && cursorRing && cursorDot) {
+    document.documentElement.classList.add("cursor-enabled");
+    let cursorFrame;
     let pointerX = -400;
     let pointerY = -400;
+    let ringX = -400;
+    let ringY = -400;
+
+    const renderCursor = () => {
+      ringX += (pointerX - ringX) * 0.22;
+      ringY += (pointerY - ringY) * 0.22;
+      cursorRing.style.transform = `translate3d(${ringX - 17}px, ${ringY - 17}px, 0)`;
+      cursorDot.style.transform = `translate3d(${pointerX - 3}px, ${pointerY - 3}px, 0)`;
+      cursorAura.style.transform = `translate3d(${pointerX - 180}px, ${pointerY - 180}px, 0)`;
+
+      if (Math.abs(pointerX - ringX) > 0.1 || Math.abs(pointerY - ringY) > 0.1) {
+        cursorFrame = window.requestAnimationFrame(renderCursor);
+      } else {
+        cursorFrame = undefined;
+      }
+    };
 
     window.addEventListener(
       "pointermove",
       (event) => {
         pointerX = event.clientX;
         pointerY = event.clientY;
-        cursorAura.classList.add("visible");
-        if (auraFrame) return;
-        auraFrame = window.requestAnimationFrame(() => {
-          cursorAura.style.transform = `translate3d(${pointerX - 180}px, ${pointerY - 180}px, 0)`;
-          auraFrame = undefined;
-        });
+        const overTextField = Boolean(event.target.closest?.("input, textarea, select"));
+        const overInteractive = Boolean(
+          event.target.closest?.(
+            "a, button, [role='button'], .pointer-tilt, [data-molecule-stage]",
+          ),
+        );
+        cursorAura.classList.toggle("visible", !overTextField);
+        cursorRing.classList.toggle("visible", !overTextField);
+        cursorDot.classList.toggle("visible", !overTextField);
+        cursorRing.classList.toggle("interactive", overInteractive && !overTextField);
+        cursorDot.classList.toggle("interactive", overInteractive && !overTextField);
+        if (!cursorFrame) cursorFrame = window.requestAnimationFrame(renderCursor);
       },
       { passive: true },
     );
 
+    window.addEventListener("pointerdown", () => cursorRing.classList.add("pressed"), {
+      passive: true,
+    });
+    window.addEventListener("pointerup", () => cursorRing.classList.remove("pressed"), {
+      passive: true,
+    });
+
     document.documentElement.addEventListener("mouseleave", () => {
       cursorAura.classList.remove("visible");
+      cursorRing.classList.remove("visible", "pressed");
+      cursorDot.classList.remove("visible");
     });
   }
 
@@ -106,8 +140,8 @@ if (!reducedMotion && precisePointer) {
       tiltFrame = window.requestAnimationFrame(() => {
         target.style.setProperty("--spot-x", `${(nextX * 100).toFixed(1)}%`);
         target.style.setProperty("--spot-y", `${(nextY * 100).toFixed(1)}%`);
-        target.style.setProperty("--tilt-x", `${((0.5 - nextY) * 3.2).toFixed(2)}deg`);
-        target.style.setProperty("--tilt-y", `${((nextX - 0.5) * 3.2).toFixed(2)}deg`);
+        target.style.setProperty("--tilt-x", `${((0.5 - nextY) * 2.4).toFixed(2)}deg`);
+        target.style.setProperty("--tilt-y", `${((nextX - 0.5) * 2.4).toFixed(2)}deg`);
         tiltFrame = undefined;
       });
     });
@@ -130,8 +164,8 @@ if (!reducedMotion && precisePointer) {
 
     parallaxStage.addEventListener("pointermove", (event) => {
       const bounds = parallaxStage.getBoundingClientRect();
-      moveX = ((event.clientX - bounds.left) / bounds.width - 0.5) * 18;
-      moveY = ((event.clientY - bounds.top) / bounds.height - 0.5) * 18;
+      moveX = ((event.clientX - bounds.left) / bounds.width - 0.5) * 12;
+      moveY = ((event.clientY - bounds.top) / bounds.height - 0.5) * 12;
       if (parallaxFrame) return;
       parallaxFrame = window.requestAnimationFrame(() => {
         parallaxVisual.style.translate = `${moveX.toFixed(1)}px ${moveY.toFixed(1)}px`;

@@ -45,7 +45,7 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/"
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20260918-34" />
+    <link rel="stylesheet" href="./styles.css?v=20260920-2" />
     <title>Antibody Vita｜百奥赛图 AI 抗体发现协作基础平台</title>
     <script type="application/ld+json">
       {
@@ -469,24 +469,25 @@
         </div>
       </section>
 
-      <section class="capabilities section" id="capabilities">
-        <div class="section-label reveal">
-          <span>03</span>
-          <p>Platform capabilities</p>
-        </div>
-        <div class="capabilities-intro">
-          <div>
-            <p class="kicker reveal">实验、数据、协作，统一发生</p>
-            <h2 class="reveal">为科学工作而设计，<br />为规模化发现而连接。</h2>
+      <section class="capabilities section-dark" id="capabilities">
+        <div class="capability-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="capabilities-head section">
+          <div class="section-label section-label-light reveal">
+            <span>03</span>
+            <p>Platform capabilities</p>
           </div>
-          <p class="body-large reveal">
-            平台汇聚科学判断所需的完整信息，让跨团队协作、实验执行与候选决策在同一数据链路上高效发生。
-          </p>
+          <div class="capabilities-intro">
+            <div>
+              <p class="kicker kicker-light reveal">实验、数据、协作，统一发生</p>
+              <h2 class="reveal">为科学工作而设计，<br />为规模化发现而连接。</h2>
+            </div>
+            <p class="body-large reveal">
+              平台汇聚科学判断所需的完整信息，让跨团队协作、实验执行与候选决策在同一数据链路上高效发生。
+            </p>
+          </div>
         </div>
 
         <section class="capability-theatre reveal" data-capability-workspace aria-label="平台能力体验">
-          <div class="capability-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
-
           <div class="capability-theatre-tabs" role="tablist" aria-label="选择平台能力">
             <button
               type="button"
@@ -633,62 +634,64 @@
             </section>
           </div>
         </section>
-
-        <section class="role-explorer reveal" data-role-explorer>
-          <div class="role-explorer-head">
-            <div>
-              <span>CONNECTED TEAMS</span>
-              <h3>同一条数据链，为每个研发角色提供下一步。</h3>
-            </div>
-            <p>选择团队，查看它接收的上下文、推进的工作与交付给下游的研发对象。</p>
-          </div>
-          <div class="role-explorer-body">
-            <div class="role-tabs" role="tablist" aria-label="切换研发角色">
-              <button type="button" class="active" data-role-trigger="im" role="tab" aria-selected="true">
-                <span>IM</span><strong>免疫团队</strong><small>Immunization</small>
-              </button>
-              <button type="button" data-role-trigger="sb" role="tab" aria-selected="false">
-                <span>SB</span><strong>筛选团队</strong><small>Screening</small>
-              </button>
-              <button type="button" data-role-trigger="ng" role="tab" aria-selected="false">
-                <span>NG</span><strong>序列团队</strong><small>Sequencing</small>
-              </button>
-              <button type="button" data-role-trigger="ex" role="tab" aria-selected="false">
-                <span>EX</span><strong>表达团队</strong><small>Expression</small>
-              </button>
-              <button type="button" data-role-trigger="qa" role="tab" aria-selected="false">
-                <span>QA</span><strong>评价团队</strong><small>Characterization</small>
-              </button>
-            </div>
-            <div class="role-detail" data-role-detail role="tabpanel" aria-label="当前研发角色说明" aria-live="polite">
-              <div class="role-detail-title">
-                <span data-role-phase>01 · IMMUNIZATION</span>
-                <h3 data-role-title>从抗原与动物队列建立发现入口</h3>
-                <p data-role-summary>统一查看免疫方案、给药计划、笼位、采样和效价曲线，及时确定进入筛选的动物与样本。</p>
-              </div>
-              <div class="role-detail-grid">
-                <article><span>RECEIVES</span><strong data-role-receives>抗原信息 · 项目目标 · 动物队列</strong></article>
-                <article><span>ACTS</span><strong data-role-acts>免疫计划 · 采样 · 效价判断</strong></article>
-                <article><span>DELIVERS</span><strong data-role-delivers>入选动物 · 样本批次 · 效价证据</strong></article>
-              </div>
-            </div>
-          </div>
-        </section>
       </section>
 
-      <section class="candidate-journey section" id="candidate" data-candidate>
-        <div class="section-label reveal">
-          <span>CASE</span>
-          <p>Follow one candidate</p>
-        </div>
-        <div class="candidate-intro">
+      <section class="role-explorer section" data-role-explorer>
+        <div class="role-explorer-head">
           <div>
-            <p class="kicker reveal">让抽象流程落到一个候选分子</p>
-            <h2 class="reveal">跟随 VITA-024，<br />看证据如何逐步汇聚。</h2>
+            <span>CONNECTED TEAMS</span>
+            <h3>同一条数据链，为每个研发角色提供下一步。</h3>
           </div>
-          <p class="body-large reveal">
-            从免疫应答到候选决策，每一步都继承上游上下文并生成新的研发证据。以下编号与结果均为交互演示数据。
-          </p>
+          <p>选择团队，查看它接收的上下文、推进的工作与交付给下游的研发对象。</p>
+        </div>
+        <div class="role-explorer-body">
+          <div class="role-tabs" role="tablist" aria-label="切换研发角色">
+            <button type="button" class="active" data-role-trigger="im" role="tab" aria-selected="true">
+              <span>IM</span><strong>免疫团队</strong><small>Immunization</small>
+            </button>
+            <button type="button" data-role-trigger="sb" role="tab" aria-selected="false">
+              <span>SB</span><strong>筛选团队</strong><small>Screening</small>
+            </button>
+            <button type="button" data-role-trigger="ng" role="tab" aria-selected="false">
+              <span>NG</span><strong>序列团队</strong><small>Sequencing</small>
+            </button>
+            <button type="button" data-role-trigger="ex" role="tab" aria-selected="false">
+              <span>EX</span><strong>表达团队</strong><small>Expression</small>
+            </button>
+            <button type="button" data-role-trigger="qa" role="tab" aria-selected="false">
+              <span>QA</span><strong>评价团队</strong><small>Characterization</small>
+            </button>
+          </div>
+          <div class="role-detail" data-role-detail role="tabpanel" aria-label="当前研发角色说明" aria-live="polite">
+            <div class="role-detail-title">
+              <span data-role-phase>01 · IMMUNIZATION</span>
+              <h3 data-role-title>从抗原与动物队列建立发现入口</h3>
+              <p data-role-summary>统一查看免疫方案、给药计划、笼位、采样和效价曲线，及时确定进入筛选的动物与样本。</p>
+            </div>
+            <div class="role-detail-grid">
+              <article><span>RECEIVES</span><strong data-role-receives>抗原信息 · 项目目标 · 动物队列</strong></article>
+              <article><span>ACTS</span><strong data-role-acts>免疫计划 · 采样 · 效价判断</strong></article>
+              <article><span>DELIVERS</span><strong data-role-delivers>入选动物 · 样本批次 · 效价证据</strong></article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="candidate-journey section-dark" id="candidate" data-candidate>
+        <div class="candidate-head section">
+          <div class="section-label section-label-light reveal">
+            <span>CASE</span>
+            <p>Follow one candidate</p>
+          </div>
+          <div class="candidate-intro">
+            <div>
+              <p class="kicker kicker-light reveal">让抽象流程落到一个候选分子</p>
+              <h2 class="reveal">跟随 VITA-024，<br />看证据如何逐步汇聚。</h2>
+            </div>
+            <p class="body-large reveal">
+              从免疫应答到候选决策，每一步都继承上游上下文并生成新的研发证据。以下编号与结果均为交互演示数据。
+            </p>
+          </div>
         </div>
         <div class="candidate-shell reveal">
           <aside class="candidate-rail">
@@ -762,15 +765,15 @@
         </div>
       </section>
 
-      <section class="experience" id="experience">
+      <section class="experience section-dark" id="experience">
         <div class="experience-copy section">
-          <div class="section-label reveal">
+          <div class="section-label section-label-light reveal">
             <span>04</span>
             <p>Molecular data space</p>
           </div>
           <div class="experience-title">
             <div>
-              <p class="kicker reveal">让关系可见，让证据可探索</p>
+              <p class="kicker kicker-light reveal">让关系可见，让证据可探索</p>
               <h2 class="reveal">把复杂的发现关系，<br />转化为可探索的数据空间。</h2>
             </div>
             <p class="body-large reveal">
@@ -849,13 +852,15 @@
         </div>
       </section>
 
-      <section class="ecosystem section" id="ecosystem" data-ecosystem-active="renmice">
-        <div class="section-label reveal">
-          <span>05</span>
-          <p>Connected discovery ecosystem</p>
+      <section class="ecosystem section-dark" id="ecosystem" data-ecosystem-active="renmice">
+        <div class="ecosystem-grid" aria-hidden="true"></div>
+        <div class="ecosystem-head section">
+          <div class="section-label section-label-light reveal">
+            <span>05</span>
+            <p>Connected discovery ecosystem</p>
+          </div>
         </div>
         <div class="ecosystem-panel reveal">
-          <div class="ecosystem-grid" aria-hidden="true"></div>
           <div class="ecosystem-copy">
             <p class="eyebrow">
               <span></span>
@@ -905,24 +910,26 @@
         </div>
       </section>
 
-      <section class="tool-gateway section" id="tools" data-nav-break>
-        <div class="section-label reveal">
-          <span>06</span>
-          <p>Vita bioinformatics</p>
-        </div>
-        <div class="tool-gateway-intro">
-          <div>
-            <p class="kicker reveal">序列与抗体分析工作台</p>
-            <h2 class="reveal">常用序列分析，<br />打开即可完成。</h2>
+      <section class="tool-gateway section-dark" id="tools" data-nav-break>
+        <div class="tool-gateway-head section">
+          <div class="section-label section-label-light reveal">
+            <span>06</span>
+            <p>Vita bioinformatics</p>
           </div>
-          <div class="tool-gateway-copy reveal">
-            <p>
-              Vita Bioinformatics 集成序列理化性质、FASTA 整理、全局比对、ORF、酶切位点、
-              抗体开发性扫描与结构检索，覆盖从输入整理到序列和结构分析的常用任务。
-            </p>
-            <a class="text-link text-link-dark" href="./tools/">
-              进入 Vita Bioinformatics <span aria-hidden="true">→</span>
-            </a>
+          <div class="tool-gateway-intro">
+            <div>
+              <p class="kicker kicker-light reveal">序列与抗体分析工作台</p>
+              <h2 class="reveal">常用序列分析，<br />打开即可完成。</h2>
+            </div>
+            <div class="tool-gateway-copy reveal">
+              <p>
+                Vita Bioinformatics 集成序列理化性质、FASTA 整理、全局比对、ORF、酶切位点、
+                抗体开发性扫描与结构检索，覆盖从输入整理到序列和结构分析的常用任务。
+              </p>
+              <a class="text-link" href="./tools/">
+                进入 Vita Bioinformatics <span aria-hidden="true">→</span>
+              </a>
+            </div>
           </div>
         </div>
 
@@ -1185,7 +1192,7 @@
       </div>
     </footer>
 
-    <script src="./script.js?v=20260918-34" defer></script>
-    <script src="./molecular-visual.js?v=20260918-34" defer></script>
+    <script src="./script.js?v=20260920-2" defer></script>
+    <script src="./molecular-visual.js?v=20260920-2" defer></script>
   </body>
 </html>

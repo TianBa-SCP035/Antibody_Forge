@@ -50,8 +50,6 @@ body {
   font-feature-settings: "kern" 1, "liga" 1;
   -webkit-font-smoothing: auto;
   text-rendering: optimizeLegibility;
-  user-select: none;
-  -webkit-user-select: none;
 }
 
 body.menu-open {
@@ -453,7 +451,9 @@ p {
   height: 76px;
   padding: 0 4vw;
   color: var(--white);
-  border-bottom: 1px solid transparent;
+  background: rgba(7, 19, 22, 0.72);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
   transition:
     height 0.35s var(--ease),
     background 0.35s ease,
@@ -1210,8 +1210,17 @@ p {
 }
 
 .section-dark {
+  position: relative;
   color: var(--white);
   background: var(--ink);
+}
+
+.section-dark + .section-dark {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.section-dark .body-large {
+  color: rgba(255, 255, 255, 0.62);
 }
 
 .workflow-head {
@@ -1504,10 +1513,17 @@ p {
 }
 
 .capabilities {
-  padding-top: clamp(56px, 5.2vw, 72px);
+  overflow: hidden;
+  isolation: isolate;
 }
 
-.capabilities > .section-label {
+.capabilities-head {
+  position: relative;
+  z-index: 1;
+  padding-bottom: var(--feature-gap);
+}
+
+.capabilities-head > .section-label {
   margin-bottom: clamp(18px, 1.8vw, 24px);
 }
 
@@ -2314,21 +2330,23 @@ p {
 
 .capability-theatre {
   position: relative;
-  padding: 10px;
-  margin-top: clamp(28px, 2.8vw, 38px);
-  overflow: hidden;
+  z-index: 1;
+  width: var(--page);
+  margin: 0 auto;
+  padding: 0 0 var(--section-space);
+  overflow: visible;
   color: var(--white);
-  background: #061519;
-  border: 1px solid rgba(7, 19, 22, 0.12);
-  border-radius: 26px;
-  box-shadow: 0 34px 90px rgba(5, 32, 35, 0.16);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   isolation: isolate;
 }
 
 .capability-aurora {
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   overflow: hidden;
   pointer-events: none;
 }
@@ -2368,41 +2386,35 @@ p {
   z-index: 3;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .capability-theatre-tabs > button {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 14px;
-  min-height: 64px;
-  padding: 11px 15px;
+  min-height: 76px;
+  padding: 16px 18px 16px 0;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.48);
   text-align: left;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 16px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  margin-bottom: -1px;
   transition:
     color var(--motion-fast) ease,
     background var(--motion-base) ease,
-    border-color var(--motion-base) ease,
-    box-shadow var(--motion-base) ease,
-    transform var(--motion-base) var(--motion-ease);
+    border-color var(--motion-base) ease;
 }
 
 .capability-theatre-tabs > button::before {
-  position: absolute;
-  inset: auto 14px 0;
-  height: 2px;
-  content: "";
-  background: linear-gradient(90deg, var(--mint), #76a7ff, #c28aff);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform var(--motion-base) var(--motion-ease);
+  display: none;
 }
 
 .capability-theatre-tabs > button > span {
@@ -2439,20 +2451,13 @@ p {
 }
 
 .capability-theatre-tabs > button > i {
-  font-size: 12px;
-  font-style: normal;
-  opacity: 0.28;
-  transition:
-    opacity var(--motion-fast) ease,
-    transform var(--motion-fast) ease;
+  display: none;
 }
 
 .capability-theatre-tabs > button:hover,
 .capability-theatre-tabs > button:focus-visible {
   color: rgba(255, 255, 255, 0.86);
-  background: rgba(255, 255, 255, 0.065);
-  border-color: rgba(99, 243, 217, 0.2);
-  transform: translateY(-2px);
+  background: transparent;
 }
 
 .capability-theatre-tabs > button:hover > i,
@@ -2463,13 +2468,13 @@ p {
 
 .capability-theatre-tabs > button.active {
   color: var(--white);
-  background: linear-gradient(135deg, rgba(99, 243, 217, 0.14), rgba(105, 142, 255, 0.08));
-  border-color: rgba(99, 243, 217, 0.3);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+  background: transparent;
+  border-bottom-color: var(--mint);
+  box-shadow: none;
 }
 
 .capability-theatre-tabs > button.active::before {
-  transform: scaleX(1);
+  transform: none;
 }
 
 .capability-theatre-tabs > button.active > span {
@@ -2490,7 +2495,7 @@ p {
   gap: clamp(28px, 3.6vw, 52px);
   align-items: center;
   min-height: 390px;
-  padding: clamp(28px, 2.6vw, 36px) clamp(24px, 4vw, 52px);
+  padding: clamp(36px, 3.4vw, 52px) 0;
 }
 
 .capability-theatre-copy {
@@ -2536,34 +2541,35 @@ p {
 }
 
 .capability-signal-cloud {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 22px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 28px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .capability-signal-cloud > div {
-  flex: 1 1 132px;
   min-width: 0;
-  padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 14px;
-  backdrop-filter: blur(10px);
-  transition:
-    background var(--motion-fast) ease,
-    border-color var(--motion-fast) ease,
-    transform var(--motion-base) var(--motion-ease);
+  padding: 18px 20px 4px 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  backdrop-filter: none;
+}
+
+.capability-signal-cloud > div + div {
+  padding-left: 20px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .capability-signal-cloud > div:nth-child(2) {
-  transform: translateY(9px);
+  transform: none;
 }
 
 .capability-signal-cloud > div:hover {
-  background: rgba(99, 243, 217, 0.075);
-  border-color: rgba(99, 243, 217, 0.2);
-  transform: translateY(-3px);
+  background: transparent;
+  border-color: transparent;
+  transform: none;
 }
 
 .capability-signal-cloud span {
@@ -2593,11 +2599,9 @@ p {
   background:
     radial-gradient(circle at 50% 42%, rgba(92, 207, 205, 0.11), transparent 42%),
     linear-gradient(145deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012));
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 26px;
-  box-shadow:
-    inset 0 1px rgba(255, 255, 255, 0.04),
-    0 28px 60px rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: none;
 }
 
 .capability-route-visual[data-capability-mode="traceability"] {
@@ -2920,18 +2924,17 @@ p {
   display: grid;
   grid-template-columns: minmax(240px, 0.62fr) minmax(0, 1.38fr);
   gap: clamp(26px, 3.4vw, 46px);
-  align-items: center;
-  min-height: 220px;
-  padding: clamp(24px, 2.8vw, 34px);
-  color: var(--ink);
-  background:
-    radial-gradient(circle at 90% 20%, rgba(117, 170, 255, 0.16), transparent 32%),
-    linear-gradient(135deg, #eef4f0, #e8efed);
-  border-radius: 22px;
+  align-items: start;
+  min-height: 0;
+  padding: clamp(28px, 3vw, 40px) 0 0;
+  color: var(--white);
+  background: transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
 }
 
 .capability-story-copy > span {
-  color: rgba(0, 143, 131, 0.72);
+  color: rgba(99, 243, 217, 0.72);
   font-size: 10px;
   font-weight: 780;
   letter-spacing: 0.12em;
@@ -2949,7 +2952,7 @@ p {
 
 .capability-story-copy p {
   margin: 0;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.58);
   font-size: 14px;
   line-height: 1.75;
 }
@@ -2957,9 +2960,9 @@ p {
 .capability-story-deck {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  align-items: center;
-  perspective: 900px;
+  gap: 0;
+  align-items: stretch;
+  perspective: none;
 }
 
 .story-card {
@@ -2967,54 +2970,42 @@ p {
   display: grid;
   align-content: space-between;
   min-height: 150px;
-  padding: 16px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(7, 19, 22, 0.08);
-  border-radius: 20px;
-  box-shadow: 0 18px 38px rgba(21, 52, 54, 0.1);
-  transition:
-    box-shadow var(--motion-base) ease,
-    transform var(--motion-base) var(--motion-ease);
+  padding: 8px 22px 8px 0;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
 }
 
 .story-card::after {
-  position: absolute;
-  right: -32px;
-  bottom: -44px;
-  width: 110px;
-  height: 110px;
-  content: "";
-  background: rgba(99, 243, 217, 0.16);
-  filter: blur(4px);
-  border-radius: 50%;
+  display: none;
 }
 
-.story-card-input {
-  transform: rotate(-1.8deg) translateY(10px);
+.story-card + .story-card {
+  padding-left: 22px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.story-card-action {
-  color: var(--white);
-  background: #092126;
-  border-color: rgba(99, 243, 217, 0.18);
-  box-shadow: 0 24px 48px rgba(6, 34, 38, 0.2);
-  transform: translateY(-8px);
-}
-
+.story-card-input,
+.story-card-action,
 .story-card-evidence {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(225, 220, 255, 0.72));
-  transform: rotate(1.8deg) translateY(10px);
+  color: inherit;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
 }
 
 .story-card:hover {
   z-index: 2;
-  box-shadow: 0 26px 52px rgba(21, 52, 54, 0.17);
-  transform: translateY(-8px) rotate(0);
+  box-shadow: none;
+  transform: none;
 }
 
 .story-card span {
-  color: rgba(0, 143, 131, 0.72);
+  color: rgba(99, 243, 217, 0.72);
   font-size: 10px;
   font-weight: 780;
   letter-spacing: 0.1em;
@@ -3037,7 +3028,7 @@ p {
 .story-card small {
   position: relative;
   z-index: 1;
-  color: rgba(7, 19, 22, 0.46);
+  color: rgba(255, 255, 255, 0.44);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -3071,11 +3062,10 @@ p {
 }
 
 .role-explorer {
-  margin-top: var(--component-gap);
-  overflow: hidden;
-  background: #e9eeeb;
-  border: 1px solid rgba(7, 19, 22, 0.1);
-  border-radius: 18px;
+  overflow: visible;
+  background: var(--paper);
+  border: 0;
+  border-radius: 0;
 }
 
 .role-explorer-head {
@@ -3083,8 +3073,8 @@ p {
   grid-template-columns: 1.1fr 0.9fr;
   align-items: end;
   gap: 7vw;
-  padding: 36px 40px;
-  border-bottom: 1px solid rgba(7, 19, 22, 0.1);
+  padding: 0 0 36px;
+  border-bottom: 1px solid var(--line);
 }
 
 .role-explorer-head span,
@@ -3123,8 +3113,8 @@ p {
 .role-tabs {
   display: grid;
   align-content: stretch;
-  background: rgba(255, 255, 255, 0.52);
-  border-right: 1px solid rgba(7, 19, 22, 0.09);
+  background: transparent;
+  border-right: 1px solid var(--line);
 }
 
 .role-tabs button {
@@ -3179,12 +3169,13 @@ p {
 .role-tabs button:hover,
 .role-tabs button:focus-visible {
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(7, 19, 22, 0.03);
 }
 
 .role-tabs button.active {
   color: var(--ink);
-  background: var(--white);
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--mint);
 }
 
 .role-tabs button.active > span {
@@ -3197,7 +3188,7 @@ p {
   display: grid;
   align-content: center;
   gap: 38px;
-  padding: clamp(34px, 5vw, 64px);
+  padding: clamp(34px, 5vw, 64px) 0 clamp(34px, 5vw, 64px) clamp(28px, 4vw, 56px);
 }
 
 .role-detail-title {
@@ -3260,8 +3251,12 @@ p {
 
 .candidate-journey {
   background:
-    radial-gradient(circle at 92% 5%, rgba(166, 66, 255, 0.075), transparent 30%),
-    var(--paper);
+    radial-gradient(circle at 92% 5%, rgba(166, 66, 255, 0.12), transparent 30%),
+    var(--ink);
+}
+
+.candidate-head {
+  padding-bottom: var(--feature-gap);
 }
 
 .candidate-intro {
@@ -3278,24 +3273,22 @@ p {
 .candidate-shell {
   display: grid;
   grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.28fr);
+  width: var(--page);
   min-height: 610px;
-  margin-top: var(--feature-gap);
-  overflow: hidden;
+  margin: 0 auto;
+  padding-bottom: var(--section-space);
+  overflow: visible;
   color: var(--white);
-  background:
-    linear-gradient(rgba(99, 243, 217, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(99, 243, 217, 0.045) 1px, transparent 1px),
-    #071619;
-  background-size: 64px 64px;
-  border: 1px solid rgba(7, 19, 22, 0.08);
-  border-radius: 22px;
-  box-shadow: 0 28px 80px rgba(7, 19, 22, 0.16);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .candidate-rail {
   display: grid;
   grid-template-rows: auto 1fr;
-  background: rgba(2, 14, 17, 0.58);
+  background: transparent;
   border-right: 1px solid rgba(255, 255, 255, 0.09);
 }
 
@@ -3399,7 +3392,7 @@ p {
 .candidate-story {
   display: grid;
   align-content: center;
-  padding: clamp(34px, 5vw, 68px);
+  padding: 8px 0 8px clamp(28px, 4vw, 56px);
 }
 
 .candidate-story-head,
@@ -3508,7 +3501,7 @@ p {
   flex: 0 0 auto;
   padding: 6px 8px;
   color: rgba(255, 255, 255, 0.38);
-  background: #071619;
+  background: transparent;
   border: 1px solid rgba(99, 243, 217, 0.16);
   border-radius: 999px;
   font-size: 7px;
@@ -3617,19 +3610,19 @@ p {
 }
 
 .experience {
-  padding-bottom: clamp(80px, 7vw, 112px);
-  background: #e9eeeb;
+  padding-bottom: 0;
+  background: var(--ink);
 }
 
 .experience-copy {
-  padding-bottom: 64px;
+  padding-bottom: 48px;
 }
 
 .molecule-stage {
   position: relative;
-  width: min(100% - 64px, 1440px);
-  min-height: clamp(720px, 56vw, 820px);
-  margin: 0 auto;
+  width: 100%;
+  min-height: clamp(720px, 72vh, 900px);
+  margin: 0;
   overflow: hidden;
   color: var(--white);
   background:
@@ -3637,9 +3630,10 @@ p {
     radial-gradient(circle at 78% 10%, rgba(176, 72, 255, 0.2), transparent 32%),
     radial-gradient(circle at 8% 88%, rgba(86, 230, 208, 0.1), transparent 28%),
     #071316;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 22px;
-  box-shadow: 0 28px 80px rgba(7, 19, 22, 0.18);
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0;
+  box-shadow: none;
   isolation: isolate;
   transition:
     border-color var(--motion-base) ease,
@@ -4058,7 +4052,19 @@ p {
 }
 
 .ecosystem {
-  width: min(100% - 64px, 1440px);
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  background:
+    radial-gradient(circle at 87% 12%, rgba(0, 208, 187, 0.12), transparent 30%),
+    radial-gradient(circle at 50% 100%, rgba(76, 97, 255, 0.18), transparent 44%),
+    var(--ink);
+}
+
+.ecosystem-head {
+  position: relative;
+  z-index: 1;
+  padding-bottom: 0;
 }
 
 .ecosystem-panel {
@@ -4066,15 +4072,14 @@ p {
   display: grid;
   grid-template-columns: 1.05fr 0.95fr;
   align-items: center;
+  width: var(--page);
   min-height: 640px;
-  padding: 72px clamp(36px, 6vw, 88px);
+  margin: 0 auto;
+  padding: 24px 0 var(--section-space);
   overflow: hidden;
   color: var(--white);
-  background:
-    radial-gradient(circle at 87% 12%, rgba(0, 208, 187, 0.12), transparent 30%),
-    radial-gradient(circle at 50% 100%, rgba(76, 97, 255, 0.18), transparent 44%),
-    var(--ink);
-  border-radius: 18px;
+  background: transparent;
+  border-radius: 0;
 }
 
 .ecosystem-grid {
@@ -4131,10 +4136,11 @@ p {
   max-width: 660px;
   min-height: 132px;
   margin-top: 12px;
-  padding: 18px 20px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  padding: 18px 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
 }
 
 .ecosystem-layer-detail > span {
@@ -4329,8 +4335,12 @@ p {
 
 .tool-gateway {
   background:
-    radial-gradient(circle at 92% 6%, rgba(75, 115, 255, 0.09), transparent 28%),
-    var(--paper);
+    radial-gradient(circle at 92% 6%, rgba(75, 115, 255, 0.16), transparent 28%),
+    var(--ink);
+}
+
+.tool-gateway-head {
+  padding-bottom: var(--feature-gap);
 }
 
 .tool-gateway-intro {
@@ -4347,7 +4357,7 @@ p {
 .tool-gateway-copy > p {
   max-width: 620px;
   margin: 0 0 26px;
-  color: rgba(7, 19, 22, 0.68);
+  color: rgba(255, 255, 255, 0.62);
   font-size: clamp(15px, 1.1vw, 17px);
   line-height: 1.82;
 }
@@ -4355,14 +4365,16 @@ p {
 .tool-gateway-shell {
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(410px, 0.92fr);
+  width: var(--page);
   min-height: 620px;
-  margin-top: 68px;
-  overflow: hidden;
+  margin: 0 auto;
+  padding-bottom: var(--section-space);
+  overflow: visible;
   color: var(--white);
-  background: var(--ink);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 22px;
-  box-shadow: 0 28px 80px rgba(7, 19, 22, 0.16);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .tool-gateway-visual {
@@ -4541,7 +4553,7 @@ p {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 34px;
+  padding: 0 0 0 34px;
 }
 
 .tool-gateway-list > a {
@@ -5619,7 +5631,9 @@ p {
   .manifesto-copy,
   .workflow-head,
   .capabilities-intro,
+  .candidate-intro,
   .experience-title,
+  .tool-gateway-intro,
   .lab-intro,
   .company-intro {
     grid-template-columns: 1fr;
@@ -5721,6 +5735,7 @@ p {
   .capability-theatre-tabs > button {
     flex: 0 0 220px;
     scroll-snap-align: start;
+    padding-right: 16px;
   }
 
   .capability-theatre-scene {
@@ -5844,6 +5859,18 @@ p {
     border-bottom: 0;
   }
 
+  .role-tabs button.active {
+    box-shadow: inset 0 -2px 0 var(--mint);
+  }
+
+  .role-detail {
+    padding: 28px 0;
+  }
+
+  .candidate-story {
+    padding: 28px 0 0;
+  }
+
   .role-tabs button > span,
   .candidate-steps button > span {
     grid-row: auto;
@@ -5866,7 +5893,7 @@ p {
   }
 
   .molecule-stage {
-    width: min(100% - 40px, 720px);
+    width: 100%;
     min-height: 740px;
   }
 
@@ -5890,6 +5917,7 @@ p {
   .ecosystem-panel {
     grid-template-columns: 1fr;
     min-height: auto;
+    padding: 24px 0 var(--section-space);
   }
 
   .ecosystem-orbit {
@@ -5988,7 +6016,7 @@ p {
   .ecosystem-panel {
     grid-template-columns: 1.05fr 0.95fr;
     min-height: 640px;
-    padding: 60px 36px;
+    padding: 24px 0 var(--section-space);
   }
 
   .ecosystem-orbit {
@@ -5997,7 +6025,7 @@ p {
   }
 
   .molecule-stage {
-    width: min(100% - 40px, 720px);
+    width: 100%;
   }
 }
 
@@ -6033,7 +6061,7 @@ p {
   }
 
   .experience {
-    padding-bottom: 64px;
+    padding-bottom: 0;
   }
 
   .hero h1 {
@@ -6263,15 +6291,15 @@ p {
   }
 
   .capability-theatre {
-    padding: 8px;
-    border-radius: 18px;
+    padding: 0 0 var(--section-space);
+    border-radius: 0;
   }
 
   .capability-theatre-tabs > button {
     flex-basis: 176px;
     min-height: 72px;
-    padding: 12px;
-    border-radius: 12px;
+    padding: 12px 12px 12px 0;
+    border-radius: 0;
   }
 
   .capability-theatre-tabs > button > span {
@@ -6286,7 +6314,7 @@ p {
   .capability-theatre-scene {
     gap: 34px;
     min-height: 0;
-    padding: 38px 16px 28px;
+    padding: 32px 0 28px;
   }
 
   .capability-theatre-copy h3 {
@@ -6295,11 +6323,18 @@ p {
 
   .capability-signal-cloud {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
-  .capability-signal-cloud > div {
-    min-width: 0;
+  .capability-signal-cloud > div,
+  .capability-signal-cloud > div + div {
+    padding: 16px 0;
+    border-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .capability-signal-cloud > div:first-child {
+    border-top: 0;
   }
 
   .capability-signal-cloud > div:nth-child(2) {
@@ -6307,12 +6342,12 @@ p {
   }
 
   .capability-signal-cloud > div:last-child {
-    grid-column: 1 / -1;
+    grid-column: auto;
   }
 
   .capability-route-visual {
     min-height: 360px;
-    border-radius: 18px;
+    border-radius: 12px;
   }
 
   .capability-route-topline {
@@ -6385,22 +6420,28 @@ p {
 
   .capability-story {
     gap: 26px;
-    padding: 30px 18px 36px;
-    border-radius: 16px;
+    padding: 28px 0 0;
+    border-radius: 0;
   }
 
   .capability-story-deck {
-    display: flex;
-    gap: 10px;
-    padding: 12px 4px 22px;
-    overflow-x: auto;
-    scroll-snap-type: x proximity;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 0;
+    overflow: visible;
   }
 
-  .story-card {
-    flex: 0 0 248px;
-    min-height: 174px;
-    scroll-snap-align: center;
+  .story-card,
+  .story-card + .story-card {
+    min-height: 0;
+    padding: 16px 0;
+    border-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .story-card:first-child {
+    border-top: 0;
   }
 
   .story-card-input,
@@ -6486,11 +6527,11 @@ p {
   }
 
   .role-explorer {
-    margin-top: 12px;
+    margin-top: 0;
   }
 
   .role-explorer-head {
-    padding: 28px 22px;
+    padding: 0 0 24px;
   }
 
   .role-tabs,
@@ -6514,7 +6555,7 @@ p {
 
   .role-detail {
     gap: 26px;
-    padding: 30px 22px;
+    padding: 30px 0;
   }
 
   .role-detail-grid,
@@ -6532,12 +6573,12 @@ p {
 
   .candidate-shell {
     min-height: 0;
-    margin-top: 46px;
-    border-radius: 17px;
+    margin-top: 0;
+    border-radius: 0;
   }
 
   .candidate-story {
-    padding: 30px 20px;
+    padding: 28px 0 0;
   }
 
   .candidate-story-head {
@@ -6585,9 +6626,9 @@ p {
   }
 
   .molecule-stage {
-    width: calc(100% - 16px);
+    width: 100%;
     min-height: 900px;
-    border-radius: 18px;
+    border-radius: 0;
     scroll-margin-top: 74px;
   }
 
@@ -6772,11 +6813,11 @@ p {
   }
 
   .ecosystem {
-    width: calc(100% - 16px);
+    width: 100%;
   }
 
   .ecosystem-panel {
-    padding: 56px 22px;
+    padding: 16px 0 var(--section-space);
   }
 
   .ecosystem-orbit {
@@ -6886,14 +6927,15 @@ p {
 
   .tool-gateway-list {
     min-height: 560px;
+    padding: 8px 0 0;
   }
 }
 
 @media (max-width: 600px) {
   .tool-gateway-shell {
     min-height: 0;
-    margin-top: 48px;
-    border-radius: 16px;
+    margin-top: 0;
+    border-radius: 0;
   }
 
   .tool-gateway-visual {

@@ -1,9 +1,5 @@
 .tools-page {
-  background: #edf2ef;
-}
-
-.tools-header {
-  background: rgba(7, 19, 22, 0.18);
+  background: var(--paper);
 }
 
 .tools-hero {
@@ -169,52 +165,6 @@
   line-height: 1;
 }
 
-.sequence-stream {
-  position: absolute;
-  z-index: 2;
-  display: flex;
-  gap: 15px;
-  padding: 10px 14px;
-  color: rgba(255, 255, 255, 0.72);
-  background: rgba(7, 19, 22, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-}
-
-.sequence-stream::after {
-  position: absolute;
-  top: 50%;
-  width: 6px;
-  height: 6px;
-  content: "";
-  background: var(--mint);
-  border-radius: 50%;
-  box-shadow: 0 0 14px var(--mint);
-  animation: data-pulse 4s var(--motion-smooth) infinite;
-  translate: 0 -50%;
-}
-
-.stream-a {
-  top: 21%;
-  left: 8%;
-}
-
-.stream-a::after {
-  right: -26px;
-}
-
-.stream-b {
-  right: 5%;
-  bottom: 19%;
-}
-
-.stream-b::after {
-  left: -26px;
-  animation-delay: -1.6s;
-}
-
 .tools-signal {
   position: absolute;
   z-index: 2;
@@ -264,9 +214,8 @@
 }
 
 .tool-platform {
-  width: min(100% - 64px, 1440px);
-  margin: 0 auto;
-  padding: clamp(96px, 9vw, 148px) 0;
+  width: 100%;
+  padding: clamp(96px, 9vw, 148px) 0 0;
 }
 
 .tool-platform-head,
@@ -302,13 +251,15 @@
 .tool-platform-shell {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
+  width: min(100% - 64px, 1440px);
   min-height: 840px;
-  margin-top: 72px;
-  overflow: clip;
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(7, 19, 22, 0.12);
-  border-radius: 22px;
-  box-shadow: 0 28px 90px rgba(7, 19, 22, 0.09);
+  margin: 72px auto 0;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid rgba(7, 19, 22, 0.12);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .tool-directory {
@@ -445,7 +396,7 @@
 
 .tool-panels {
   min-width: 0;
-  background: #f8faf8;
+  background: var(--paper);
 }
 
 .tool-panel {
@@ -1482,18 +1433,6 @@
   border-top-color: rgba(255, 255, 255, 0.13);
 }
 
-@keyframes data-pulse {
-  0%,
-  100% {
-    opacity: 0.25;
-    scale: 0.7;
-  }
-  50% {
-    opacity: 1;
-    scale: 1;
-  }
-}
-
 @keyframes tool-ring-spin {
   to {
     rotate: 360deg;
@@ -1641,7 +1580,7 @@
   }
 
   .tool-platform {
-    width: min(100% - 40px, 720px);
+    width: 100%;
   }
 
   .tool-platform-head,
@@ -1657,6 +1596,7 @@
 
   .tool-platform-shell {
     grid-template-columns: minmax(0, 1fr);
+    width: var(--page);
   }
 
   .tool-directory {
@@ -1746,18 +1686,13 @@
     margin-top: 46px;
   }
 
-  .sequence-stream {
-    gap: 10px;
-    font-size: 10px;
-  }
-
   .tools-signal {
     font-size: 10px;
   }
 
   .tool-platform {
-    width: min(100% - 24px, 560px);
-    padding: 78px 0;
+    width: 100%;
+    padding: 78px 0 0;
   }
 
   .tool-platform-head,
@@ -1776,8 +1711,9 @@
   }
 
   .tool-platform-shell {
+    width: var(--page);
     margin-top: 48px;
-    border-radius: 16px;
+    border-radius: 0;
   }
 
   .tool-directory {
@@ -1903,7 +1839,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sequence-stream::after,
   .tools-signal b,
   .uniprot-result.loading::after,
   .tool-panel.active {

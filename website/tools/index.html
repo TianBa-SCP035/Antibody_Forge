@@ -38,8 +38,8 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/tools/"
     />
     <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="../styles.css?v=20260920-3" />
-    <link rel="stylesheet" href="./tools.css?v=20260920-3" />
+    <link rel="stylesheet" href="../styles.css?v=20260920-8" />
+    <link rel="stylesheet" href="./tools.css?v=20260920-8" />
     <title>Vita Bioinformatics｜抗体与序列分析工作台</title>
     <script type="application/ld+json">
       {
@@ -153,36 +153,13 @@
             <circle class="tools-sweep-track" cx="50" cy="50" r="34" />
             <circle class="tools-sweep-arc" cx="50" cy="50" r="34" />
           </svg>
-          <div class="tools-specks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="tools-specks" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="tools-sats" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           <div class="tools-core">
             <small>WORKSPACE</small>
             <strong>08</strong>
             <span>TOOLS READY</span>
           </div>
-          <a class="tools-orbit-node node-seq" href="#sequence">
-            <i></i><span>01</span><strong>序列</strong><small>Stats</small>
-          </a>
-          <a class="tools-orbit-node node-fasta" href="#fasta">
-            <i></i><span>02</span><strong>FASTA</strong><small>Dedupe</small>
-          </a>
-          <a class="tools-orbit-node node-align" href="#compare">
-            <i></i><span>03</span><strong>比对</strong><small>Align</small>
-          </a>
-          <a class="tools-orbit-node node-scan" href="#liability">
-            <i></i><span>04</span><strong>扫描</strong><small>Scan</small>
-          </a>
-          <a class="tools-orbit-node node-lookup" href="#uniprot">
-            <i></i><span>05</span><strong>检索</strong><small>UniProt</small>
-          </a>
-          <a class="tools-orbit-node node-orf" href="#orf">
-            <i></i><span>06</span><strong>ORF</strong><small>Frames</small>
-          </a>
-          <a class="tools-orbit-node node-cut" href="#restriction">
-            <i></i><span>07</span><strong>酶切</strong><small>Sites</small>
-          </a>
-          <a class="tools-orbit-node node-struct" href="#structure">
-            <i></i><span>08</span><strong>结构</strong><small>PDB</small>
-          </a>
         </div>
       </section>
 
@@ -200,80 +177,32 @@
 
         <div class="tool-platform-shell reveal">
           <aside class="tool-directory">
-            <div class="tool-directory-head">
-              <span>TOOL DIRECTORY</span>
-              <strong>8 个工作区</strong>
-            </div>
-            <nav aria-label="生信工具目录">
-              <a href="#sequence" data-tool-link="sequence" aria-current="page">
-                <span>01</span>
-                <div>
-                  <strong>序列理化性质</strong>
-                  <small>Protein · DNA</small>
-                </div>
-                <i>ANALYZE</i>
+            <nav aria-label="选择分析工具">
+              <a href="#sequence" data-tool-link="sequence" aria-current="page" aria-label="序列理化性质">
+                <span>01</span>序列
               </a>
-              <a href="#fasta" data-tool-link="fasta">
-                <span>02</span>
-                <div>
-                  <strong>FASTA 整理与去重</strong>
-                  <small>Parse · Dedupe · Export</small>
-                </div>
-                <i>ORGANIZE</i>
+              <a href="#fasta" data-tool-link="fasta" aria-label="FASTA 整理与去重">
+                <span>02</span>FASTA
               </a>
-              <a href="#compare" data-tool-link="compare">
-                <span>03</span>
-                <div>
-                  <strong>双序列全局比对</strong>
-                  <small>Identity · Alignment</small>
-                </div>
-                <i>COMPARE</i>
+              <a href="#compare" data-tool-link="compare" aria-label="双序列全局比对">
+                <span>03</span>比对
               </a>
-              <a href="#liability" data-tool-link="liability">
-                <span>04</span>
-                <div>
-                  <strong>抗体开发性位点扫描</strong>
-                  <small>Motif · Position · Context</small>
-                </div>
-                <i>SCAN</i>
+              <a href="#liability" data-tool-link="liability" aria-label="抗体开发性位点扫描">
+                <span>04</span>扫描
               </a>
-              <a href="#uniprot" data-tool-link="uniprot">
-                <span>05</span>
-                <div>
-                  <strong>UniProt 条目查询</strong>
-                  <small>Protein knowledge lookup</small>
-                </div>
-                <i class="remote">SEARCH</i>
+              <a href="#uniprot" data-tool-link="uniprot" aria-label="UniProt 条目查询">
+                <span>05</span>UniProt
               </a>
-              <a href="#orf" data-tool-link="orf">
-                <span>06</span>
-                <div>
-                  <strong>开放阅读框分析</strong>
-                  <small>Six-frame · Translation</small>
-                </div>
-                <i>ORF</i>
+              <a href="#orf" data-tool-link="orf" aria-label="开放阅读框分析">
+                <span>06</span>ORF
               </a>
-              <a href="#restriction" data-tool-link="restriction">
-                <span>07</span>
-                <div>
-                  <strong>限制性酶切位点</strong>
-                  <small>Sites · Fragment map</small>
-                </div>
-                <i>MAP</i>
+              <a href="#restriction" data-tool-link="restriction" aria-label="限制性酶切位点">
+                <span>07</span>酶切
               </a>
-              <a href="#structure" data-tool-link="structure">
-                <span>08</span>
-                <div>
-                  <strong>蛋白结构检索</strong>
-                  <small>PDB · AlphaFold</small>
-                </div>
-                <i class="remote">SEARCH</i>
+              <a href="#structure" data-tool-link="structure" aria-label="蛋白结构检索">
+                <span>08</span>结构
               </a>
             </nav>
-            <p>
-              <span></span>
-              从序列输入到理化分析、比对、ORF、酶切图谱与结构检索，任务在同一工作区连续完成。
-            </p>
           </aside>
 
           <div class="tool-panels">
@@ -906,8 +835,8 @@
       </div>
     </footer>
 
-    <script src="../script.js?v=20260920-3" defer></script>
-    <script src="../sequence-tools.js?v=20260920-3" defer></script>
-    <script src="./tools.js?v=20260920-3" defer></script>
+    <script src="../script.js?v=20260920-8" defer></script>
+    <script src="../sequence-tools.js?v=20260920-8" defer></script>
+    <script src="./tools.js?v=20260920-8" defer></script>
   </body>
 </html>

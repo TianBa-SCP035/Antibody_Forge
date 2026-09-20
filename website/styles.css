@@ -2454,10 +2454,10 @@ p {
 .capability-theatre-scene {
   display: grid;
   grid-template-columns: minmax(300px, 0.86fr) minmax(480px, 1.14fr);
-  gap: clamp(36px, 4.2vw, 64px);
+  gap: clamp(32px, 3.6vw, 52px);
   align-items: start;
   min-height: 0;
-  padding: clamp(40px, 4vw, 64px) 0 clamp(8px, 1vw, 16px);
+  padding: clamp(32px, 3.2vw, 48px) 0 0;
 }
 
 .capability-theatre-copy {
@@ -2555,8 +2555,8 @@ p {
   position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 480px;
-  padding: 16px 16px 14px;
+  min-height: 392px;
+  padding: 14px 14px 12px;
   overflow: hidden;
   background:
     radial-gradient(circle at 50% 42%, rgba(92, 207, 205, 0.1), transparent 46%),
@@ -2687,7 +2687,7 @@ p {
   position: relative;
   z-index: 2;
   flex: 1 1 auto;
-  min-height: 292px;
+  min-height: 228px;
 }
 
 .capability-route-map {
@@ -2734,9 +2734,9 @@ p {
   grid-template-columns: 28px minmax(0, 1fr);
   align-items: center;
   gap: 3px 9px;
-  width: 136px;
-  min-height: 58px;
-  padding: 10px 12px 10px 10px;
+  width: 128px;
+  min-height: 54px;
+  padding: 9px 11px 9px 9px;
   color: rgba(255, 255, 255, 0.58);
   text-align: left;
   cursor: pointer;
@@ -2755,23 +2755,23 @@ p {
 }
 
 .capability-route-nodes button:nth-child(1) {
-  top: 58%;
-  left: 1%;
+  top: 36%;
+  left: 0;
 }
 
 .capability-route-nodes button:nth-child(2) {
-  top: 18%;
+  top: 10%;
   left: 24%;
 }
 
 .capability-route-nodes button:nth-child(3) {
-  top: 14%;
+  top: 8%;
   left: 54%;
 }
 
 .capability-route-nodes button:nth-child(4) {
-  top: 52%;
-  right: 1%;
+  top: 34%;
+  right: 0;
 }
 
 .capability-route-nodes button > span {
@@ -2814,19 +2814,20 @@ p {
 }
 
 .capability-route-nodes button.active {
-  color: var(--ink);
-  background: var(--white);
-  border-color: var(--white);
+  color: var(--white);
+  background: rgba(6, 24, 28, 0.96);
+  border-color: rgba(99, 243, 217, 0.48);
   box-shadow:
-    0 16px 38px rgba(0, 0, 0, 0.26),
-    0 0 28px rgba(99, 243, 217, 0.16);
-  transform: translateY(-5px) scale(1.03);
+    0 16px 34px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(99, 243, 217, 0.12),
+    0 0 24px rgba(99, 243, 217, 0.16);
+  transform: translateY(-3px);
 }
 
 .capability-route-nodes button.active > span {
   color: var(--ink);
   background: var(--mint);
-  box-shadow: 0 0 18px rgba(99, 243, 217, 0.42);
+  box-shadow: 0 0 16px rgba(99, 243, 217, 0.42);
 }
 
 .capability-route-status {
@@ -2836,8 +2837,8 @@ p {
   flex: 0 0 auto;
   align-items: center;
   gap: 14px;
-  min-height: 52px;
-  margin-top: 10px;
+  min-height: 48px;
+  margin-top: 2px;
   padding: 0 16px;
   background: rgba(4, 16, 20, 0.68);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -2897,7 +2898,7 @@ p {
   gap: clamp(26px, 3.4vw, 46px);
   align-items: start;
   min-height: 0;
-  padding: clamp(40px, 4.2vw, 64px) 0 0;
+  padding: clamp(22px, 2.4vw, 32px) 0 0;
   color: var(--white);
   background: transparent;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -3587,7 +3588,7 @@ p {
   margin: 0;
   overflow: hidden;
   color: var(--white);
-  --hud-inset: max(32px, calc((100vw - 1280px) / 2));
+  --hud-inset: clamp(28px, 4.2vw, 72px);
   background:
     radial-gradient(circle at 50% 45%, rgba(50, 130, 255, 0.2), transparent 28%),
     radial-gradient(circle at 78% 10%, rgba(176, 72, 255, 0.2), transparent 32%),
@@ -3673,6 +3674,7 @@ p {
 .molecule-identity {
   top: 48px;
   left: var(--hud-inset);
+  max-width: 340px;
 }
 
 .molecule-identity span,
@@ -3728,7 +3730,7 @@ p {
   z-index: 4;
   bottom: 96px;
   left: var(--hud-inset);
-  width: min(680px, calc(100% - var(--hud-inset) * 2 - 24px));
+  width: min(520px, calc(100% - var(--hud-inset) * 2 - 40px));
   pointer-events: auto;
 }
 
@@ -4298,7 +4300,9 @@ p {
 
 .tool-gateway {
   background:
-    radial-gradient(circle at 92% 6%, rgba(75, 115, 255, 0.16), transparent 28%),
+    radial-gradient(circle at 22% 68%, rgba(52, 120, 246, 0.2), transparent 34%),
+    radial-gradient(circle at 8% 42%, rgba(99, 243, 217, 0.08), transparent 26%),
+    radial-gradient(circle at 92% 6%, rgba(75, 115, 255, 0.12), transparent 28%),
     var(--ink);
 }
 
@@ -4343,11 +4347,9 @@ p {
 .tool-gateway-visual {
   position: relative;
   min-height: 620px;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 52% 48%, rgba(52, 120, 246, 0.22), transparent 25%),
-    radial-gradient(circle at 9% 92%, rgba(99, 243, 217, 0.09), transparent 30%);
-  border-right: 1px solid rgba(255, 255, 255, 0.09);
+  overflow: visible;
+  background: transparent;
+  border: 0;
 }
 
 .gateway-grid {
@@ -4371,7 +4373,7 @@ p {
   height: 172px;
   place-content: center;
   text-align: center;
-  background: #0a1b1f;
+  background: rgba(7, 19, 22, 0.42);
   border: 1px solid rgba(99, 243, 217, 0.34);
   border-radius: 50%;
   box-shadow:
@@ -4380,6 +4382,7 @@ p {
   color: var(--white);
   cursor: pointer;
   translate: -50% -50%;
+  backdrop-filter: blur(10px);
   transition:
     border-color var(--motion-fast) ease,
     box-shadow var(--motion-base) ease,
@@ -4441,9 +4444,10 @@ p {
   padding: 12px 14px;
   color: var(--white);
   cursor: pointer;
-  background: rgba(8, 27, 31, 0.9);
+  background: rgba(8, 27, 31, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
+  backdrop-filter: blur(12px);
   transition:
     background var(--motion-fast) ease,
     border-color var(--motion-fast) ease,
@@ -5710,7 +5714,7 @@ p {
   }
 
   .capability-route-visual {
-    min-height: 440px;
+    min-height: 360px;
   }
 
   .capability-story {
@@ -5858,7 +5862,7 @@ p {
   .molecule-stage {
     width: 100%;
     min-height: 740px;
-    --hud-inset: max(24px, calc((100vw - 720px) / 2));
+    --hud-inset: 40px;
   }
 
   .molecule-console {
@@ -6311,7 +6315,7 @@ p {
   }
 
   .capability-route-visual {
-    min-height: 420px;
+    min-height: 360px;
     padding: 12px 12px 12px;
     border-radius: 14px;
   }
@@ -6332,7 +6336,7 @@ p {
   }
 
   .capability-route-canvas {
-    min-height: 248px;
+    min-height: 200px;
   }
 
   .capability-route-map {
@@ -6351,22 +6355,22 @@ p {
   }
 
   .capability-route-nodes button:nth-child(1) {
-    top: 56%;
+    top: 38%;
     left: 0;
   }
 
   .capability-route-nodes button:nth-child(2) {
-    top: 16%;
-    left: 22%;
+    top: 8%;
+    left: 18%;
   }
 
   .capability-route-nodes button:nth-child(3) {
-    top: 14%;
-    left: 50%;
+    top: 6%;
+    left: 52%;
   }
 
   .capability-route-nodes button:nth-child(4) {
-    top: 52%;
+    top: 36%;
     right: 0;
   }
 
@@ -6380,14 +6384,14 @@ p {
   }
 
   .capability-route-status {
-    min-height: 46px;
-    margin-top: 8px;
+    min-height: 44px;
+    margin-top: 2px;
     padding: 0 12px;
   }
 
   .capability-story {
     gap: 26px;
-    padding: 36px 0 0;
+    padding: 22px 0 0;
     border-radius: 0;
   }
 
@@ -6890,8 +6894,8 @@ p {
 
   .tool-gateway-visual {
     min-height: 520px;
-    border-right: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+    border: 0;
+  }
   }
 
   .tool-gateway-list {

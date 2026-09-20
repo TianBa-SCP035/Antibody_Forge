@@ -38,8 +38,8 @@
       href="https://tianba-scp035.github.io/Antibody_Forge/tools/"
     />
     <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="../styles.css?v=20260920-2" />
-    <link rel="stylesheet" href="./tools.css?v=20260920-2" />
+    <link rel="stylesheet" href="../styles.css?v=20260920-3" />
+    <link rel="stylesheet" href="./tools.css?v=20260920-3" />
     <title>Vita Bioinformatics｜抗体与序列分析工作台</title>
     <script type="application/ld+json">
       {
@@ -146,14 +146,43 @@
         </div>
 
         <div class="tools-hero-visual reveal" aria-label="分析工作台示意">
+          <div class="tools-orbit tools-orbit-a" aria-hidden="true"></div>
+          <div class="tools-orbit tools-orbit-b" aria-hidden="true"></div>
+          <div class="tools-orbit tools-orbit-c" aria-hidden="true"></div>
+          <svg class="tools-sweep" viewBox="0 0 100 100" aria-hidden="true">
+            <circle class="tools-sweep-track" cx="50" cy="50" r="34" />
+            <circle class="tools-sweep-arc" cx="50" cy="50" r="34" />
+          </svg>
+          <div class="tools-specks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
           <div class="tools-core">
             <small>WORKSPACE</small>
             <strong>08</strong>
             <span>TOOLS READY</span>
           </div>
-          <div class="tools-signal signal-one"><b></b><span>PARSE</span></div>
-          <div class="tools-signal signal-two"><b></b><span>ALIGN</span></div>
-          <div class="tools-signal signal-three"><b></b><span>LOOKUP</span></div>
+          <a class="tools-orbit-node node-seq" href="#sequence">
+            <i></i><span>01</span><strong>序列</strong><small>Stats</small>
+          </a>
+          <a class="tools-orbit-node node-fasta" href="#fasta">
+            <i></i><span>02</span><strong>FASTA</strong><small>Dedupe</small>
+          </a>
+          <a class="tools-orbit-node node-align" href="#compare">
+            <i></i><span>03</span><strong>比对</strong><small>Align</small>
+          </a>
+          <a class="tools-orbit-node node-scan" href="#liability">
+            <i></i><span>04</span><strong>扫描</strong><small>Scan</small>
+          </a>
+          <a class="tools-orbit-node node-lookup" href="#uniprot">
+            <i></i><span>05</span><strong>检索</strong><small>UniProt</small>
+          </a>
+          <a class="tools-orbit-node node-orf" href="#orf">
+            <i></i><span>06</span><strong>ORF</strong><small>Frames</small>
+          </a>
+          <a class="tools-orbit-node node-cut" href="#restriction">
+            <i></i><span>07</span><strong>酶切</strong><small>Sites</small>
+          </a>
+          <a class="tools-orbit-node node-struct" href="#structure">
+            <i></i><span>08</span><strong>结构</strong><small>PDB</small>
+          </a>
         </div>
       </section>
 
@@ -877,8 +906,8 @@
       </div>
     </footer>
 
-    <script src="../script.js?v=20260920-2" defer></script>
-    <script src="../sequence-tools.js?v=20260920-2" defer></script>
-    <script src="./tools.js?v=20260920-2" defer></script>
+    <script src="../script.js?v=20260920-3" defer></script>
+    <script src="../sequence-tools.js?v=20260920-3" defer></script>
+    <script src="./tools.js?v=20260920-3" defer></script>
   </body>
 </html>

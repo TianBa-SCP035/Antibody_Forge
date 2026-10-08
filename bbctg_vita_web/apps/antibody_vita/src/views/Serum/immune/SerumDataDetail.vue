@@ -676,6 +676,7 @@ export default {
     }
   },
   created() {
+    this.applyRouteTab()
     const id = this.resolveRouteProjectId()
     if (id) this.fetchData(id)
   },
@@ -688,7 +689,11 @@ export default {
   watch: {
     '$route.query.id'(val) {
       if (this.$route.name !== 'SerumDataDetail') return
+      this.applyRouteTab()
       if (val) this.fetchData(val)
+    },
+    '$route.query.tab'() {
+      this.applyRouteTab()
     },
     activeTab(newVal) {
       if (newVal === 'plan-details' && this.postForm.mouse_groups && this.postForm.mouse_groups.length > 0) {
@@ -702,6 +707,10 @@ export default {
       if (this.$route.name !== 'SerumDataDetail') return null
       const id = this.$route.query.id
       return id ? String(id) : null
+    },
+    applyRouteTab() {
+      if (this.$route.name !== 'SerumDataDetail') return
+      if (this.$route.query.tab === 'titer') this.activeTab = 'titer'
     },
     safeGroupName(group, idx) {
       const safe = encodeURIComponent(group.group_id || idx)

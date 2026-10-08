@@ -855,6 +855,11 @@ import TiterOrderCreateDialog from './TiterOrderCreateDialog.vue';
 import SerumProjectStatusEditor from '../shared/SerumProjectStatusEditor.vue';
 
 const TITER_ORDER_LIST_FILTER_KEY = 'titerOrderListFilters';
+let pendingTiterOrderId = '';
+
+export function rememberTiterOrderFocus(titerOrderId) {
+  pendingTiterOrderId = String(titerOrderId || '').trim();
+}
 
 const DEFAULT_STATS = {
   pending: 0,
@@ -1169,16 +1174,27 @@ export default {
       },
     };
   },
+  created() {
+    this.skipActivatedLoad = true;
+  },
   mounted() {
     this.restoreListFilters();
     this.loadPageMeta();
-    this.getList();
+    this.loadForRoute();
     this.onPlateDragMouseUp = () => this.finishPlateDrag();
     this.onPlateTableScroll = () => this.updatePlateSelectionUi();
     document.addEventListener('mouseup', this.onPlateDragMouseUp);
     this.$nextTick(() => this.bindPlateTableScroll());
   },
   activated() {
+    if (this.skipActivatedLoad) {
+      this.skipActivatedLoad = false;
+      return;
+    }
+    if (pendingTiterOrderId) {
+      this.loadForRoute();
+      return;
+    }
     if (shouldRefreshTabData(this.tabDataFetchedAt)) {
       this.refreshTabData();
     }
@@ -1761,9 +1777,29 @@ export default {
       this.getList();
       this.refreshStats();
     },
+    loadForRoute() {
+      if (pendingTiterOrderId) this.resetFilter({ reload: false });
+      this.getList();
+    },
+    revealFocusedRow(titerOrderId) {
+      const row = this.list.find((item) => item.titer_order_id === titerOrderId);
+      if (!row) {
+        ElMessage.warning('未找到对应的效价实验');
+        return;
+      }
+      this.$nextTick(() => {
+        const table = this.$refs.orderTable;
+        table?.setCurrentRow?.(row);
+        table?.$el?.querySelector('.current-row')?.scrollIntoView({ block: 'nearest' });
+      });
+    },
     getList() {
       this.listLoading = true;
-      fetchTiterOrderList(this.buildQuery(), skipGlobalErrorHandler)
+      const focusId = pendingTiterOrderId;
+      pendingTiterOrderId = '';
+      const payload = this.buildQuery();
+      if (focusId) payload.titer_order_id = focusId;
+      fetchTiterOrderList(payload, skipGlobalErrorHandler)
         .then((response) => {
           this.list = Array.isArray(response.items)
             ? response.items.map((item) => ({
@@ -1775,6 +1811,7 @@ export default {
               }))
             : [];
           this.total = Number(response.total) || 0;
+          if (focusId) this.revealFocusedRow(focusId);
         })
         .catch((error) => {
           this.list = [];
@@ -2155,7 +2192,7 @@ export default {
       this.listQuery.page = 1;
       this.getList();
     },
-    resetFilter() {
+    resetFilter(options = {}) {
       this.clearPlateSelection();
       this.listQuery = {
         limit: this.listQuery.limit,
@@ -2198,7 +2235,7 @@ export default {
       this.applyingStatDateRange = false;
       this.colFilterOpen = { mouse_count: false, facs_plate: false, elisa_plate: false };
       this.persistListFilters();
-      this.getList();
+      if (options.reload !== false) this.getList();
     },
     openCreateDialog() {
       if (!this.canEditTiterOrder()) {

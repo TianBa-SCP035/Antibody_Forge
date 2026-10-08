@@ -2771,14 +2771,14 @@ export default {
   min-width: 0;
 }
 .filter-keyword {
-  flex: 2 1 260px;
+  flex: 2 1 250px;
   width: auto;
-  min-width: 220px;
+  min-width: 200px;
 }
 .filter-select {
-  flex: 1 1 112px;
+  flex: 1 1 100px;
   width: auto;
-  min-width: 104px;
+  min-width: 100px;
 }
 .data-view-controls {
   flex-shrink: 0;

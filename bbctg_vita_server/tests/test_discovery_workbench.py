@@ -74,6 +74,12 @@ class DiscoveryWorkbenchIdTests(unittest.TestCase):
         self.assertEqual(first["discovery_id"], "DSC-260917-AAAAAA")
         self.assertEqual(second["discovery_id"], "DSC-260917-BBBBBB")
 
+    def test_keyword_can_find_system_discovery_id(self):
+        saved = service.save(self.db, {"project_code": "P1"})
+        result = service.get_list(self.db, {"keyword": saved["discovery_id"]})
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["items"][0]["id"], saved["id"])
+
 
 if __name__ == "__main__":
     unittest.main()

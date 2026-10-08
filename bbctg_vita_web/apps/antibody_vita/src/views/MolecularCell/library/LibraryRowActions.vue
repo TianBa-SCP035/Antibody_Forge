@@ -6,9 +6,11 @@
         type="primary"
         plain
         :icon="Document"
-        @click="$emit('detail', row)"
+        :class="{ 'no-permission-btn': !canView }"
+        :title="!canView ? '您没有权限查看文库质检' : ''"
+        @click="$emit('qc', row)"
       >
-        详情
+        质检
       </el-button>
       <el-button
         class="list-table-action-btn"
@@ -16,7 +18,7 @@
         plain
         :icon="CopyDocument"
         :class="{ 'no-permission-btn': !canHandoff }"
-        :title="!canHandoff ? '您没有权限交接安排' : '交接至文库构建'"
+        :title="!canHandoff ? '您没有权限交接工单' : '交接至下游模块'"
         @click="$emit('handoff', row)"
       >
         交接
@@ -27,7 +29,7 @@
         plain
         :icon="Delete"
         :class="{ 'no-permission-btn': !canEdit }"
-        :title="!canEdit ? '您没有权限删除安排' : ''"
+        :title="!canEdit ? '您没有权限删除工单' : ''"
         @click="$emit('delete', row)"
       >
         删除
@@ -41,14 +43,15 @@ import { CopyDocument, Delete, Document } from '@element-plus/icons-vue'
 import { ElButton, ElButtonGroup } from 'element-plus'
 
 export default {
-  name: 'DiscoveryRowActions',
+  name: 'LibraryRowActions',
   components: { ElButton, ElButtonGroup },
   props: {
     row: { type: Object, required: true },
     canEdit: { type: Boolean, default: false },
     canHandoff: { type: Boolean, default: false },
+    canView: { type: Boolean, default: false },
   },
-  emits: ['detail', 'handoff', 'delete'],
+  emits: ['delete', 'handoff', 'qc'],
   setup() {
     return { CopyDocument, Delete, Document }
   },

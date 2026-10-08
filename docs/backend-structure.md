@@ -19,6 +19,7 @@ bbctg_vita_server/
     immunology/        # serum / workbench / titer / cell
     atlas/             # 千鼠万抗
     discovery/         # 抗体发现（工作台）
+    molecular_cell/    # 分子与细胞（文库构建）
     mega_automation/   # 镁伽流式工单（含 callback、labillion_sync）
     order_sync/        # 工单数据回传
     system/            # 用户角色权限、审计、功能开关
@@ -43,6 +44,7 @@ DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Offi
 | `/api/user/info` | `api.py`（Vben 用户信息） |
 | `/api/atlas` | `modules/atlas` |
 | `/api/discovery/workbench` | `modules/discovery/workbench` |
+| `/api/molecular-cell/library-orders` | `modules/molecular_cell/library_orders` |
 | `/api/serum` | `modules/immunology/serum` |
 | `/api/serum/workbench` | `modules/immunology/workbench` |
 | `/api/serum/titer` | `modules/immunology/titer` |

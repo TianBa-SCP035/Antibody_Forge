@@ -883,6 +883,9 @@ def _serum_status_pre_tested_condition():
 
 
 def _apply_titer_order_list_filters(stmt, data: dict[str, Any]):
+    titer_order_id = str(data.get("titer_order_id") or "").strip()
+    if titer_order_id:
+        stmt = stmt.where(SerumTiterOrder.titer_order_id == titer_order_id)
     project_code = str(data.get("project_code") or "").strip()
     project_codes = data.get("project_codes")
     target_name = str(data.get("target_name") or "").strip()

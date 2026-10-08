@@ -90,11 +90,13 @@
 | 效价 → 镁伽流式工单 | 已上线 | 「工单」入口：选鼠向导、样本板预填、`source_id` 关联 |
 | 抗体发现 · 项目工作台 | 已上线 | 剖鼠取细胞与筛选安排；独立表；工作台 / Excel |
 | 效价 → 发现工作台（「测序」按钮） | 已上线 | 选鼠向导 → 效价简要说明快照 → 新建一条发现安排 |
+| 发现 → 文库构建（「交接」） | 已上线 | 核对取样日与阳性细胞数 → 按类型新建建库工单 |
+| 分子与细胞 · 文库构建 | 已上线 | 统一建库工单；胶图与质检文件；无项目工作台 |
 | 镁伽流式工单 | 已上线 | 编辑、校验、铺板、Payload 下发；Labillion 推送/回调/状态查询 |
 | 工单数据回传 | 接收已上线 | `POST /api/order-experiment/sync`；业务解析入库待做 |
 | 单细胞筛选 / 噬菌体展示 | 规划中 | 筛选与发现子路线 |
-| 文库构建 / 测序分析 | 规划中 | NGS、Sanger、序列分析 |
-| 分子与细胞 / 抗体评价 | 规划中 | 质粒、表达、纯化、评价 |
+| 测序分析 | 规划中 | 正式 NGS、Sanger、序列分析 |
+| 分子与细胞其余子模块 / 抗体评价 | 规划中 | 质粒、表达、纯化、评价 |
 | 系统管理 / 认证 | 已上线 | RBAC、审计、云之家登录 |
 
 ### 流程与数据关联（简）
@@ -106,9 +108,10 @@ serum_imm_workbench（草稿 experiment_id=SCP-YYYYMMDD-HHMMSS-XXXX）
   → 流式工单 source_id + orderType=TITER
   → dispatchId（镁伽下发，设备回传匹配）
   → 效价「测序」下发拷贝 → discovery_workbench（discovery_id）
+  → 发现「交接」快照 → molecular_library_order（source_discovery_id）
 ```
 
-字段与交互细节见 [modules/workbench.md](./modules/workbench.md)、[modules/immunology/workbench.md](./modules/immunology/workbench.md)、[modules/discovery/workbench.md](./modules/discovery/workbench.md)、[modules/mega-automation/titer-upstream-flow.md](./modules/mega-automation/titer-upstream-flow.md)、[modules/mega-automation/flow-work-order.md](./modules/mega-automation/flow-work-order.md)。
+字段与交互细节见 [modules/workbench.md](./modules/workbench.md)、[modules/immunology/workbench.md](./modules/immunology/workbench.md)、[modules/discovery/workbench.md](./modules/discovery/workbench.md)、[modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)、[modules/mega-automation/titer-upstream-flow.md](./modules/mega-automation/titer-upstream-flow.md)、[modules/mega-automation/flow-work-order.md](./modules/mega-automation/flow-work-order.md)。
 
 ---
 
@@ -120,10 +123,11 @@ serum_imm_workbench（草稿 experiment_id=SCP-YYYYMMDD-HHMMSS-XXXX）
 
 1. **千鼠万抗** — 靶点库已落地；下一步建设免疫与小鼠计划、发现订单和路线编排
 2. **抗体发现工作台** — 工作台 / Excel 与效价「测序」下发已落地
-3. **筛选路线执行** — 在发现工作台上择一条主路线（单细胞或噬菌体）做透
-4. **文库构建 + 测序分析** — 与所选路线配套
-5. **回传业务入库** — `order_sync` 核对快照后写入效价等业务表
-6. **分子与细胞 → 抗体评价** — 随上游产出逐步展开
+3. **文库构建** — 发现交接与建库工单已落地
+4. **筛选路线执行** — 在发现工作台上择一条主路线（单细胞或噬菌体）做透
+5. **测序分析** — 与所选路线配套的正式 NGS / Sanger
+6. **回传业务入库** — `order_sync` 核对快照后写入效价等业务表
+7. **分子与细胞其余子模块 → 抗体评价** — 随上游产出逐步展开
 
 ### 目标菜单结构（规划）
 
@@ -143,27 +147,23 @@ serum_imm_workbench（草稿 experiment_id=SCP-YYYYMMDD-HHMMSS-XXXX）
 抗体发现
 └─ 项目工作台（已上线）
 
-筛选与发现
-├─ 单B细胞筛选
-└─ 噬菌体展示筛选
-
-文库构建
-├─ NGS文库构建
-├─ 噬菌体展示文库构建
-└─ 文库质检列表
-
-测序分析
-├─ Sanger测序列表
-├─ NGS测序列表
-└─ 序列分析
-
 分子与细胞
+├─ 文库构建（已上线）
 ├─ 质粒构建
 ├─ 质粒制备
 ├─ 细胞制备
 ├─ 细胞转染
 ├─ 抗体表达
 └─ 抗体纯化
+
+筛选与发现
+├─ 单B细胞筛选
+└─ 噬菌体展示筛选
+
+测序分析
+├─ Sanger测序列表
+├─ NGS测序列表
+└─ 序列分析
 
 抗体评价
 ├─ 结合检测

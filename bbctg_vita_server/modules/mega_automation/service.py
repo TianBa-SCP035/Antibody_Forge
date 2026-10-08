@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, defer
 
+from models.immunology import SerumImmProject, SerumTiterOrder
 from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
 
 from modules.mega_automation.content import (
@@ -407,11 +408,35 @@ def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
             pause_state=current.pause_state if current else None,
         )
         items.append(item)
+    _attach_serum_project_ids(db, items)
     return {
         "items": items,
         "total": total,
         "stats": get_work_order_stats(db),
     }
+
+
+def _attach_serum_project_ids(db: Session, items: list[dict[str, Any]]) -> None:
+    source_ids = [
+        item.get("source_id")
+        for item in items
+        if item.get("orderType") == "TITER" and item.get("source_id")
+    ]
+    if not source_ids:
+        return
+    rows = db.execute(
+        select(SerumTiterOrder.titer_order_id, SerumImmProject.id)
+        .join(SerumImmProject, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
+        .where(
+            SerumTiterOrder.titer_order_id.in_(source_ids),
+            or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"),
+        )
+    ).all()
+    project_ids = {titer_order_id: int(project_id) for titer_order_id, project_id in rows}
+    for item in items:
+        project_id = project_ids.get(item.get("source_id") or "")
+        if project_id:
+            item["serum_project_id"] = project_id
 
 
 def export_work_order_list_workbook(db: Session, data: dict[str, Any]):

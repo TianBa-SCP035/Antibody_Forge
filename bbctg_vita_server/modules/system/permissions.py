@@ -62,6 +62,14 @@ DISCOVERY_PERMISSION_CODES = {
     "discovery.workbench.edit",
 }
 
+MOLECULAR_PERMISSION_CODES = {
+    "molecular.page.library",
+    "molecular.library.edit",
+    "molecular.page.library_detail",
+    "molecular.library.detail.edit",
+    "molecular.library.file.manage",
+}
+
 DEFAULT_PERMISSION_MESSAGE = "没有权限执行此操作"
 
 PERMISSION_MESSAGES: dict[str, str] = {
@@ -99,6 +107,11 @@ PERMISSION_MESSAGES: dict[str, str] = {
     "atlas.page.target_library": "没有权限查看靶点情报",
     "discovery.page.workbench": "没有权限访问抗体发现工作台",
     "discovery.workbench.edit": "没有权限编辑抗体发现工作台",
+    "molecular.page.library": "没有权限访问文库构建",
+    "molecular.library.edit": "没有权限编辑文库构建工单",
+    "molecular.page.library_detail": "没有权限查看文库构建详情",
+    "molecular.library.detail.edit": "没有权限编辑文库构建详情",
+    "molecular.library.file.manage": "没有权限管理文库构建结果文件",
     "system.page.user": "没有权限访问用户管理",
     "system.page.role": "没有权限访问角色管理",
     "system.page.permission": "没有权限访问权限管理",
@@ -116,6 +129,7 @@ ALL_FALLBACK_CODES = sorted(
     | MEGA_PERMISSION_CODES
     | ATLAS_PERMISSION_CODES
     | DISCOVERY_PERMISSION_CODES
+    | MOLECULAR_PERMISSION_CODES
     | {
         "system.page.user",
         "system.page.role",
@@ -152,6 +166,13 @@ def get_permission_codes(db: Session, user: SysUser) -> list[str]:
 def has_permission(db: Session, user: SysUser, code: str) -> bool:
     context = build_user_context(db, user)
     return context.is_superuser or "*" in context.permissions or code in context.permissions
+
+
+def has_any_permission(db: Session, user: SysUser, codes: set[str] | tuple[str, ...]) -> bool:
+    context = build_user_context(db, user)
+    if context.is_superuser or "*" in context.permissions:
+        return True
+    return bool(set(codes) & set(context.permissions))
 
 
 def require_permission(db: Session, user: SysUser, code: str) -> None:

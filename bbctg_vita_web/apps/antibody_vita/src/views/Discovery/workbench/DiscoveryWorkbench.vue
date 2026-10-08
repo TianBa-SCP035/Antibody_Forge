@@ -212,7 +212,7 @@
           </el-select>
           <el-date-picker
             v-model="harvestRange"
-            class="filter-select harvest-range"
+            class="harvest-range"
             type="daterange"
             range-separator="至"
             start-placeholder="剖鼠起始"
@@ -373,6 +373,7 @@
           <DiscoveryRowActions
             :row="row"
             :can-edit="canEdit"
+            :can-handoff="canHandoff"
             @detail="openSerumProject"
             @handoff="handleHandoff"
             @delete="handleDelete"
@@ -510,6 +511,7 @@
                 <DiscoveryRowActions
                   :row="row"
                   :can-edit="canEdit"
+                  :can-handoff="canHandoff"
                   @detail="openSerumProject"
                   @handoff="handleHandoff"
                   @delete="handleDelete"
@@ -561,6 +563,7 @@
           <DiscoveryRowActions
             :row="editingRow"
             :can-edit="canEdit"
+            :can-handoff="canHandoff"
             @detail="openSerumProject"
             @handoff="handleHandoff"
             @delete="handleDelete"
@@ -679,6 +682,11 @@
         </el-form>
       </fieldset>
     </el-drawer>
+    <LibraryHandoffDialog
+      v-model="handoffVisible"
+      :discovery-row="handoffRow"
+      @created="onLibraryHandoffCreated"
+    />
   </div>
 </template>
 
@@ -713,6 +721,7 @@ import 'vxe-pc-ui/styles/cssvar.scss'
 import 'vxe-table/styles/cssvar.scss'
 
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
+import LibraryHandoffDialog from '#/views/MolecularCell/library/LibraryHandoffDialog.vue'
 import {
   coerceOptionalNonnegInt,
   coerceRequiredPositiveInt,
@@ -747,6 +756,7 @@ import {
 import { fetchSerumDetailByExperimentId } from '#/api/serum'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 import { canEditDiscoveryWorkbench } from '#/utils/discoveryPermission'
+import { canHandoffLibrary } from '#/utils/molecularPermission'
 import { canAccessSerumDetail } from '#/utils/serumPermission'
 import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS } from '#/utils/serumMouseOptions'
 import {
@@ -1006,6 +1016,7 @@ export default {
   components: {
     AdvancedOpsBar,
     DiscoveryRowActions,
+    LibraryHandoffDialog,
     ElButton,
     ElCard,
     ElDatePicker,
@@ -1075,15 +1086,21 @@ export default {
       listRequestToken: 0,
       listLoaded: false,
       consumingCreated: false,
+      consumingFocus: false,
       tabDataFetchedAt: 0,
       allUserOptions: [],
       targetOptions: [],
       targetRequestToken: 0,
+      handoffVisible: false,
+      handoffRow: null,
     }
   },
   computed: {
     canEdit() {
       return canEditDiscoveryWorkbench(this.userStore.userInfo || {})
+    },
+    canHandoff() {
+      return canHandoffLibrary(this.userStore.userInfo || {})
     },
     canViewSerumProject() {
       return canAccessSerumDetail(this.userStore.userInfo || {})
@@ -1166,7 +1183,8 @@ export default {
     this.loadOptions()
     this.getList().finally(() => {
       this.listLoaded = true
-      this.consumeCreatedQuery()
+      if (this.$route.query.focus) this.consumeFocusQuery()
+      else this.consumeCreatedQuery()
     })
     if (this.isExcelMode) this.loadAllUserOptions()
   },
@@ -1180,6 +1198,10 @@ export default {
   },
   activated() {
     document.addEventListener('mousedown', this.onDocumentPointerDown, true)
+    if (this.$route.query.focus) {
+      this.consumeFocusQuery()
+      return
+    }
     if (this.listLoaded && shouldRefreshTabData(this.tabDataFetchedAt)) {
       this.getList()
     } else {
@@ -1210,6 +1232,9 @@ export default {
     },
     '$route.query.created'() {
       if (this.listLoaded) this.consumeCreatedQuery()
+    },
+    '$route.query.focus'() {
+      if (this.listLoaded) this.consumeFocusQuery()
     },
   },
   methods: {
@@ -1793,7 +1818,7 @@ export default {
       }
     },
     async consumeCreatedQuery() {
-      if (this.consumingCreated) return
+      if (this.$route.name !== 'DiscoveryWorkbench' || this.consumingCreated) return
       const raw = this.$route.query.created
       const id = Number(Array.isArray(raw) ? raw[0] : raw)
       if (!Number.isSafeInteger(id) || id <= 0) return
@@ -1818,6 +1843,32 @@ export default {
         this.consumingCreated = false
       }
     },
+    async consumeFocusQuery() {
+      if (this.$route.name !== 'DiscoveryWorkbench' || this.consumingFocus) return
+      const raw = this.$route.query.focus
+      const discoveryId = String(Array.isArray(raw) ? raw[0] : raw || '').trim()
+      if (!discoveryId) return
+      this.consumingFocus = true
+      try {
+        this.closeEditor()
+        this.listQuery = { ...emptyQuery(), keyword: discoveryId }
+        this.harvestRange = []
+        this.boostRange = []
+        const nextQuery = { ...this.$route.query }
+        delete nextQuery.focus
+        await this.$router.replace({ path: this.$route.path, query: nextQuery })
+        await this.getList()
+        const row = this.list.find((item) => item.discovery_id === discoveryId)
+        if (!row) {
+          ElMessage.warning('未找到对应的发现工单')
+          return
+        }
+        this.viewMode = WORKBENCH_VIEW
+        this.openEditor(row)
+      } finally {
+        this.consumingFocus = false
+      }
+    },
     async handleCreate() {
       if (!this.canEdit) {
         ElMessage.warning('您没有权限编辑抗体发现工作台')
@@ -1835,19 +1886,15 @@ export default {
       }
     },
     handleHandoff(row) {
-      if (!this.canEdit) {
-        ElMessage.warning('您没有权限交接抗体发现安排')
+      if (!this.canHandoff) {
+        ElMessage.warning('您没有权限交接至文库构建')
         return
       }
-      const rowName = row.target_name || row.project_code || `#${row.id}`
-      ElMessageBox.alert(
-        `「${rowName}」后续可从这里交接至文库构建或 NGS 测序模块。当前下游模块尚未接入，本操作不会创建或修改数据。`,
-        '交接安排（待接入）',
-        {
-          type: 'info',
-          confirmButtonText: '知道了',
-        },
-      ).catch(() => {})
+      this.handoffRow = row
+      this.handoffVisible = true
+    },
+    onLibraryHandoffCreated() {
+      this.getList({ flushEditor: false })
     },
     async handleDelete(row) {
       if (!this.canEdit) {
@@ -2441,18 +2488,20 @@ export default {
   min-width: 0;
 }
 .filter-keyword {
-  flex: 2 1 260px;
-  min-width: 220px;
+  flex: 2 1 250px;
+  min-width: 200px;
 }
 .ops-user-select {
   min-width: 0;
 }
 .filter-select {
-  flex: 1 1 160px;
-  min-width: 140px;
+  flex: 1 1 100px;
+  min-width: 100px;
 }
-.harvest-range {
+.filter-strip :deep(.harvest-range) {
   flex: 1.4 1 240px;
+  width: auto;
+  min-width: 100px;
 }
 .data-view-controls {
   flex-shrink: 0;

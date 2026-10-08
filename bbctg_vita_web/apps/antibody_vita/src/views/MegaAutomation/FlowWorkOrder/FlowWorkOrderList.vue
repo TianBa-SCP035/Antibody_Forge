@@ -143,7 +143,11 @@
         <!-- 列宽：全部用 min-width，表格会按这些最小值动态分配剩余空间；总宽不够则横向滚动 -->
         <el-table-column label="订单编号" prop="orderNum" fixed min-width="120" show-overflow-tooltip>
           <template #default="{ row }">
-            <span class="list-code-text is-clickable" @click="goView(row)">{{ row.orderNum || '—' }}</span>
+            <span
+              class="list-code-text is-clickable"
+              @click="goTiterDetail(row)"
+              @contextmenu.prevent="goTiterOrder(row)"
+            >{{ row.orderNum || '—' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="订单名称" prop="orderName" min-width="120" show-overflow-tooltip>
@@ -270,6 +274,7 @@ import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
 import {
   canEditMegaFlowWorkOrder,
 } from '#/utils/megaPermission';
+import { rememberTiterOrderFocus } from '#/views/Serum/titer/SerumTiterOrderList.vue';
 import {
   orderStatusTagType,
   resolveOrderDisplayLabel,
@@ -454,6 +459,25 @@ export default {
         name: 'MegaFlowWorkOrderDetail',
         query: { mode: 'edit' },
       });
+    },
+    goTiterDetail(row) {
+      if (!row?.serum_project_id) {
+        ElMessage.warning('这张流式工单没有对应的效价实验');
+        return;
+      }
+      this.$router.push({
+        name: 'SerumDataDetail',
+        query: { id: row.serum_project_id, tab: 'titer' },
+      });
+    },
+    goTiterOrder(row) {
+      const titerOrderId = String(row?.source_id || '').trim();
+      if (!row?.serum_project_id || !titerOrderId) {
+        ElMessage.warning('这张流式工单没有对应的效价实验');
+        return;
+      }
+      rememberTiterOrderFocus(titerOrderId);
+      this.$router.push({ name: 'SerumTiterOrderList' });
     },
     goView(row) {
       this.$router.push({

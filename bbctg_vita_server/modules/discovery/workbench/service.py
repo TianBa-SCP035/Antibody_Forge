@@ -396,6 +396,7 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, apply_view: bool = True, 
         like = f"%{keyword}%"
         filters.append(
             or_(
+                DiscoveryWorkbench.discovery_id.like(like),
                 DiscoveryWorkbench.project_code.like(like),
                 DiscoveryWorkbench.experiment_id.like(like),
                 DiscoveryWorkbench.target_name.like(like),
@@ -705,6 +706,10 @@ def delete(db: Session, row_id: int) -> None:
     row = db.get(DiscoveryWorkbench, int(row_id))
     if not row:
         raise ValueError(MISSING_ROW)
+    from modules.molecular_cell.library_orders.service import has_orders_for_discovery
+
+    if has_orders_for_discovery(db, row.discovery_id):
+        raise ValueError("该安排已有建库工单，不能删除")
     db.delete(row)
     db.flush()
     renumber_queue(_queue_rows(db))

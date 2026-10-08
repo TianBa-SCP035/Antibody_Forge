@@ -15,11 +15,22 @@ from modules.immunology.serum import scheme_export, service
 from modules.system.permissions import (
     DEFAULT_PERMISSION_MESSAGE,
     PERMISSION_MESSAGES,
+    has_any_permission,
     has_permission,
     require_permission,
 )
 
 router = APIRouter()
+OPTION_ACCESS_PERMISSIONS = {
+    "serum.page.edit",
+    "serum.page.workbench",
+    "discovery.page.workbench",
+    "discovery.workbench.edit",
+    "molecular.page.library",
+    "molecular.library.edit",
+    "molecular.page.library_detail",
+    "molecular.library.detail.edit",
+}
 
 
 def _parse_export_ids(data: dict) -> list:
@@ -34,6 +45,15 @@ def _attachment_response(content: bytes, filename: str, media_type: str) -> Resp
         content=content,
         media_type=media_type,
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+def _require_option_access(db: Session, user: SysUser) -> None:
+    if has_any_permission(db, user, OPTION_ACCESS_PERMISSIONS):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=PERMISSION_MESSAGES.get("serum.page.edit", DEFAULT_PERMISSION_MESSAGE),
     )
 
 
@@ -80,16 +100,7 @@ def target_options(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    if not (
-        has_permission(db, current_user, "serum.page.edit")
-        or has_permission(db, current_user, "serum.page.workbench")
-        or has_permission(db, current_user, "discovery.page.workbench")
-        or has_permission(db, current_user, "discovery.workbench.edit")
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail=PERMISSION_MESSAGES.get("serum.page.edit", DEFAULT_PERMISSION_MESSAGE),
-        )
+    _require_option_access(db, current_user)
     return success(service.get_target_options(db, keyword, limit, codes.split(",")))
 
 
@@ -98,16 +109,7 @@ def user_options(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    if not (
-        has_permission(db, current_user, "serum.page.edit")
-        or has_permission(db, current_user, "serum.page.workbench")
-        or has_permission(db, current_user, "discovery.page.workbench")
-        or has_permission(db, current_user, "discovery.workbench.edit")
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail=PERMISSION_MESSAGES.get("serum.page.edit", DEFAULT_PERMISSION_MESSAGE),
-        )
+    _require_option_access(db, current_user)
     return success({"items": service.get_user_options(db)})
 
 

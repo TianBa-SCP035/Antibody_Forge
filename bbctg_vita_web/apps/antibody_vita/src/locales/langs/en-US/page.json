@@ -37,6 +37,8 @@
     "presetTiterOrderSubtitle": "Orders and test scheduling",
     "presetDiscoveryWorkbenchTitle": "Discovery workbench",
     "presetDiscoveryWorkbenchSubtitle": "Harvest and screening schedule",
+    "presetLibraryConstructionTitle": "Library construction",
+    "presetLibraryConstructionSubtitle": "Orders, gels and QC files",
     "presetFlowWorkOrderTitle": "Flow work orders",
     "presetFlowWorkOrderSubtitle": "Mega automation flow orders",
     "presetTargetLibraryTitle": "Target intelligence",

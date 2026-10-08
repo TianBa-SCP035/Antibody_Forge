@@ -128,7 +128,19 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
 写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/delete`、`/reorder` 登记 `sys_permission_api`。字段与筛选方式见 [modules/discovery/workbench.md](./modules/discovery/workbench.md)。权限码在 `sys_permission`（`discovery.page.workbench` / `discovery.workbench.edit`），菜单开关在 `sys_feature_flag`（`menu.discovery` / `menu.discovery.workbench`）。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。发现工作台选靶点 / 人名时复用 `GET /api/serum/target_options` 与 `/user_options`，这两条目录接口同时接受发现工作台权限。
 
-### 2.5 系统模块（`system.*`）
+### 2.5 分子与细胞（`molecular.*`）
+
+| 权限码 | 类型 | 说明 |
+|--------|------|------|
+| `molecular.page.library` | page | 文库构建列表与字典查询 |
+| `molecular.library.edit` | action | 保存、取消、Excel、手工新增 |
+| `molecular.page.library_detail` | page | 质控详情、文件列表与下载 |
+| `molecular.library.detail.edit` | action | 编辑质控详情中的工单字段 |
+| `molecular.library.file.manage` | action | 上传、标记、框选、解绑或删除结果文件 |
+
+写接口 `POST /api/molecular-cell/library-orders/save`、`/delete`、`/handoff`、`/files/upload`、`/files/update`、`/files/delete` 登记 `sys_permission_api`。取消统一通过 `/save` 更新状态。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。权限码在 `sys_permission`，菜单开关 `menu.molecular_cell` / `menu.molecular_cell.library`。不写入示例角色/权限包。靶点 / 人名复用血清目录接口，这两条同时接受文库页权限。
+
+### 2.6 系统模块（`system.*`）
 
 | 权限码 | 类型 | 说明 |
 |--------|------|------|
@@ -142,7 +154,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 
 **page 与 action**：`page.*` 管进路由；Tab 与写接口靠对应的 `manage` / `view` action。
 
-### 2.6 权限包与角色（示例种子）
+### 2.7 权限包与角色（示例种子）
 
 `docs/vita-database.sql` 文末的权限包 / 角色仅为空库示例；新增页面只加权限点，不要改现网角色/权限包。
 
@@ -334,6 +346,7 @@ flowchart LR
 | `menu` | `menu.atlas`、`menu.atlas.target_library` | 千鼠万抗侧栏 |
 | `menu` | `menu.serum`、`menu.serum.workbench`、`menu.serum.list`、`menu.serum.titer_order` | 免疫实验侧栏 |
 | `menu` | `menu.discovery`、`menu.discovery.workbench` | 抗体发现侧栏 |
+| `menu` | `menu.molecular_cell`、`menu.molecular_cell.library` | 分子与细胞侧栏 |
 | `menu` | `menu.mega_automation`、`menu.mega_automation.flow_work_orders` | 镁伽自动化侧栏 |
 | `menu` | `menu.system`、`menu.system.user_permission`、`menu.system.features` | 系统管理侧栏 |
 | `feature` | `feature.drm_file_security` | DRM 上传解密 / 下载加密（请求时读库，立即生效；另需 env 与 SDK） |
@@ -390,6 +403,7 @@ sequenceDiagram
 | 效价 API | `bbctg_vita_server/modules/immunology/titer/routes.py` |
 | 细胞库存 API | `bbctg_vita_server/modules/immunology/cell/routes.py` |
 | 抗体发现 API | `bbctg_vita_server/modules/discovery/workbench/routes.py` |
+| 文库构建 API | `bbctg_vita_server/modules/molecular_cell/library_orders/routes.py` |
 | 镁伽 API | `bbctg_vita_server/modules/mega_automation/routes.py` |
 | 认证 | `bbctg_vita_server/modules/auth/` |
 | 路由守卫 | `bbctg_vita_web/apps/antibody_vita/src/router/guard.ts` |
@@ -397,4 +411,5 @@ sequenceDiagram
 | 血清前端权限 | `bbctg_vita_web/apps/antibody_vita/src/utils/serumPermission.ts` |
 | 镁伽前端权限 | `bbctg_vita_web/apps/antibody_vita/src/utils/megaPermission.ts` |
 | 抗体发现前端权限 | `bbctg_vita_web/apps/antibody_vita/src/utils/discoveryPermission.ts` |
+| 文库构建前端权限 | `bbctg_vita_web/apps/antibody_vita/src/utils/molecularPermission.ts` |
 | ORM 模型 | `bbctg_vita_server/models/system.py` |

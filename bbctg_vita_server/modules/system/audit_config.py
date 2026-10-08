@@ -38,6 +38,11 @@ INTENTIONALLY_IGNORED_ROUTES = frozenset(
         ("POST", "/api/mega-automation/flow-work-orders/by-source"),
         ("POST", "/api/mega-automation/flow-work-orders/export"),
         ("POST", "/api/mega-automation/flow-work-orders/list"),
+        ("GET", "/api/molecular-cell/library-orders/by-discovery"),
+        ("GET", "/api/molecular-cell/library-orders/files/download"),
+        ("POST", "/api/molecular-cell/library-orders/export_list"),
+        ("POST", "/api/molecular-cell/library-orders/files/list"),
+        ("POST", "/api/molecular-cell/library-orders/list"),
         ("POST", "/api/serum/export_list"),
         ("POST", "/api/serum/export_mouse"),
         ("POST", "/api/serum/export_scheme"),
@@ -86,6 +91,7 @@ SYSTEM_OR_MANUAL_AUDIT_ROUTES: dict[
 
 
 AUDIT_SET_LIKE_FIELDS: dict[str, frozenset[str]] = {
+    "MolecularLibraryOrder": frozenset({"plate_nos", "target_codes", "target_forms"}),
     "DiscoveryWorkbench": frozenset({"target_codes"}),
     "SerumImmProject": frozenset({"target_codes"}),
     "SerumImmWorkbench": frozenset({"target_codes"}),

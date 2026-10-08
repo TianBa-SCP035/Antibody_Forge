@@ -29,7 +29,7 @@ OPTION_ACCESS_PERMISSIONS = {
     "molecular.page.library",
     "molecular.library.edit",
     "molecular.page.library_detail",
-    "molecular.library.detail.edit",
+    "molecular.library.file.manage",
 }
 
 

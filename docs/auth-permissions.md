@@ -133,12 +133,11 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | 权限码 | 类型 | 说明 |
 |--------|------|------|
 | `molecular.page.library` | page | 文库构建列表与字典查询 |
-| `molecular.library.edit` | action | 保存、取消、Excel、手工新增 |
+| `molecular.library.edit` | action | 两页的工单编辑：保存、取消、Excel、手工新增、删除 |
 | `molecular.page.library_detail` | page | 质控详情、文件列表与下载 |
-| `molecular.library.detail.edit` | action | 编辑质控详情中的工单字段 |
-| `molecular.library.file.manage` | action | 上传、标记、框选、解绑或删除结果文件 |
+| `molecular.library.file.manage` | action | 质检文件，以及质检结论、质检人、质检日期、质检说明 |
 
-写接口 `POST /api/molecular-cell/library-orders/save`、`/delete`、`/handoff`、`/files/upload`、`/files/update`、`/files/delete` 登记 `sys_permission_api`。取消统一通过 `/save` 更新状态。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。权限码在 `sys_permission`，菜单开关 `menu.molecular_cell` / `menu.molecular_cell.library`。不写入示例角色/权限包。靶点 / 人名复用血清目录接口，这两条同时接受文库页权限。
+写接口 `POST /api/molecular-cell/library-orders/save`、`/delete`、`/handoff`、`/files/upload`、`/files/update`、`/files/delete` 登记 `sys_permission_api`。取消统一通过 `/save` 更新状态。只改质检结论、质检人、质检日期、质检说明时，`/save` 也接受 `molecular.library.file.manage`。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。权限码在 `sys_permission`，菜单开关 `menu.molecular_cell` / `menu.molecular_cell.library`。不写入示例角色/权限包。靶点 / 人名复用血清目录接口，这两条同时接受文库页权限。
 
 ### 2.6 系统模块（`system.*`）
 

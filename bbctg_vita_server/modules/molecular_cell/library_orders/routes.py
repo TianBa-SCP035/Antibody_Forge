@@ -21,8 +21,8 @@ router = APIRouter()
 PAGE_PERMISSION = "molecular.page.library"
 EDIT_PERMISSION = "molecular.library.edit"
 DETAIL_PERMISSION = "molecular.page.library_detail"
-DETAIL_EDIT_PERMISSION = "molecular.library.detail.edit"
 FILE_PERMISSION = "molecular.library.file.manage"
+QC_CONCLUSION_FIELDS = {"qc_result", "qc_owner", "qc_on", "qc_note"}
 HANDOFF_PERMISSIONS = ("discovery.workbench.edit", EDIT_PERMISSION)
 
 
@@ -164,11 +164,12 @@ def save_order(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    if data.id is None:
-        require_permission(db, current_user, EDIT_PERMISSION)
-    else:
-        _require_any(db, current_user, (EDIT_PERMISSION, DETAIL_EDIT_PERMISSION))
     payload = data.model_dump(exclude_unset=True)
+    changed = set(payload) - {"id"}
+    if data.id is not None and changed and changed <= QC_CONCLUSION_FIELDS:
+        _require_any(db, current_user, (EDIT_PERMISSION, FILE_PERMISSION))
+    else:
+        require_permission(db, current_user, EDIT_PERMISSION)
     return _run_write(db, lambda: service.save(db, payload, created_by=_actor_name(current_user)))
 
 

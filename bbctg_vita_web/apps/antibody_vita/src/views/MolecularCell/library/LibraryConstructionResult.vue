@@ -32,9 +32,9 @@
             <dd :title="item.value">{{ item.value }}</dd>
           </div>
         </dl>
-        <span class="save-hint" :class="{ 'is-readonly': !canEdit }">
+        <span class="save-hint" :class="{ 'is-readonly': !canEditQc }">
           <i />
-          {{ canEdit ? '自动保存' : '只读' }}
+          {{ canEditQc ? '自动保存' : '只读' }}
         </span>
       </header>
 
@@ -415,7 +415,7 @@
                   <el-select
                     v-model="order.qc_result"
                     clearable
-                    :disabled="!canEdit"
+                    :disabled="!canEditQc"
                     @change="persist('qc_result')"
                   >
                     <el-option v-for="item in qcResultOptions" :key="item" :label="item" :value="item" />
@@ -426,7 +426,7 @@
                     v-model="order.qc_owner"
                     :options="selectedUserOptions(order.qc_owner)"
                     placeholder="选择质检人"
-                    :disabled="!canEdit"
+                    :disabled="!canEditQc"
                     clearable
                     @change="persist('qc_owner')"
                   />
@@ -438,7 +438,7 @@
                     value-format="YYYY-MM-DD"
                     format="YYYY-MM-DD"
                     placeholder="选择日期"
-                    :disabled="!canEdit"
+                    :disabled="!canEditQc"
                     @change="persist('qc_on')"
                   />
                 </el-form-item>
@@ -447,7 +447,7 @@
                     v-model="order.qc_note"
                     type="textarea"
                     :autosize="{ minRows: 4, maxRows: 8 }"
-                    :disabled="!canEdit"
+                    :disabled="!canEditQc"
                     placeholder="记录条带判读、引物核对或重做建议"
                     @blur="persist('qc_note')"
                   />
@@ -680,7 +680,7 @@ import {
 import { ApiFetchError, fetchApiResource, notifyApiError } from '#/api/errors'
 import { WorkbenchStatusEditor, WorkbenchTargetSelect } from '#/components/workbench'
 import { handleUnauthorizedError } from '#/utils/auth-session'
-import { canEditLibraryDetail, canManageLibraryFiles } from '#/utils/molecularPermission'
+import { canEditLibrary, canManageLibraryFiles } from '#/utils/molecularPermission'
 import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/DiscoveryWorkbench.vue'
 import { getSerumUserName } from '#/utils/serumPermission'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
@@ -783,10 +783,13 @@ export default {
       return Number(this.$route.query.id)
     },
     canEdit() {
-      return canEditLibraryDetail(useUserStore().userInfo)
+      return canEditLibrary(useUserStore().userInfo)
     },
     canManageFiles() {
       return canManageLibraryFiles(useUserStore().userInfo)
+    },
+    canEditQc() {
+      return this.canEdit || this.canManageFiles
     },
     pageTitle() {
       return this.order.library_order_id || this.order.library_code || '文库质控'
@@ -1734,7 +1737,8 @@ export default {
       }
     },
     async persist(field) {
-      if (!this.canEdit || !this.order?.id) return
+      const qcConclusion = ['qc_result', 'qc_owner', 'qc_on', 'qc_note'].includes(field)
+      if (!(qcConclusion ? this.canEditQc : this.canEdit) || !this.order?.id) return
       this.order[field] = persistValue(this.order[field])
       const qcFields = field === 'qc_result'
         ? stampQcFields(this.order, getSerumUserName(useUserStore().userInfo))

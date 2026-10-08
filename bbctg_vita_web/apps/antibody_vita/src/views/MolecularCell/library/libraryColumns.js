@@ -1,3 +1,6 @@
+import { WORKBENCH_STUDY_TYPE_OPTIONS } from '#/utils/workbenchStudyTypes'
+
+export const STUDY_TYPE_OPTIONS = [...WORKBENCH_STUDY_TYPE_OPTIONS]
 export const BUILD_PLATE = 'plate_single_cell'
 export const BUILD_POOLED_BCR = 'pooled_bcr'
 export const BUILD_PHAGE_DISPLAY = 'phage_display'
@@ -50,7 +53,31 @@ export const TARGET_FORM_OPTIONS = ['多穿', '分泌', 'I型', 'II型']
 export const STATUS_OPTIONS = ['待处理', '建库中', '待质检', '已完成', '质检不通过', '已取消']
 export const PRIORITY_OPTIONS = ['吉吉国王', '非常紧急', '加急', '正常']
 export const QC_RESULT_OPTIONS = ['待判定', '通过', '不通过']
+export const REQUIRED_CHOICE_KEYS = ['build_type', 'status', 'priority']
 export const CELL_TYPE_OPTIONS = ['全细胞', '浆细胞', '流穿液']
+
+export function persistValue(value) {
+  if (Array.isArray(value)) return value
+  if (value == null || (typeof value === 'string' && !value.trim())) return null
+  return value
+}
+
+export function stampQcFields(row, ownerName) {
+  if (!row?.qc_result) return []
+  const fields = []
+  if (!row.qc_owner && ownerName) {
+    row.qc_owner = ownerName
+    fields.push('qc_owner')
+  }
+  if (!row.qc_on) {
+    const now = new Date()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    row.qc_on = `${now.getFullYear()}-${month}-${day}`
+    fields.push('qc_on')
+  }
+  return fields
+}
 
 export function statusTone(status) {
   if (status === '已完成') return 'success'
@@ -115,7 +142,7 @@ const COMMON_IDENTITY = [
   { key: 'library_code', label: '建库编号' },
   { key: 'build_type', label: '建库类型', type: 'select', options: BUILD_TYPE_OPTIONS },
   { key: 'source_project_code', label: '项目编号' },
-  { key: 'study_type', label: '课题类型' },
+  { key: 'study_type', label: '课题类型', type: 'select', options: STUDY_TYPE_OPTIONS },
   { key: 'pm', label: 'PM', type: 'user' },
   { key: 'notebook_no', label: '实验记录本号' },
   { key: 'target_name', label: '靶点', type: 'target', wide: true },
@@ -130,8 +157,8 @@ const COMMON_SCHEDULE = [
   { key: 'status', label: '状态', type: 'select', options: STATUS_OPTIONS },
   { key: 'priority', label: '优先级', type: 'select', options: PRIORITY_OPTIONS },
   { key: 'owner', label: '负责人', type: 'user' },
-  { key: 'started_at', label: '开始时间', type: 'datetime' },
-  { key: 'finished_at', label: '完成时间', type: 'datetime' },
+  { key: 'started_at', label: '开始时间', type: 'date' },
+  { key: 'finished_at', label: '完成时间', type: 'date' },
   { key: 'source_discovery_id', label: '来源发现 ID', type: 'source-link' },
   { key: 'remark', label: '备注', type: 'textarea', wide: true },
 ]
@@ -161,6 +188,16 @@ export const PRIMER_ROWS = [
   },
 ]
 const PRIMER_MATRIX = [{ key: 'primer_matrix', label: '', type: 'primer-matrix', rows: PRIMER_ROWS, wide: true }]
+export const CATALOG_NAME_FIELDS = {
+  h_forward_primer_name: { idKey: 'h_forward_primer_id' },
+  h_reverse_primer_name: { idKey: 'h_reverse_primer_id' },
+  k_forward_primer_name: { idKey: 'k_forward_primer_id' },
+  k_reverse_primer_name: { idKey: 'k_reverse_primer_id' },
+  l_forward_primer_name: { idKey: 'l_forward_primer_id' },
+  l_reverse_primer_name: { idKey: 'l_reverse_primer_id' },
+  i7_name: { idKey: 'i7_catalog_id', sequenceKey: 'i7_sequence' },
+  i5_name: { idKey: 'i5_catalog_id', sequenceKey: 'i5_sequence' },
+}
 const INDEX_FIELDS = [
   { key: 'index_mode', label: 'Barcode 方式', type: 'select', options: INDEX_MODE_OPTIONS },
   { key: 'i7_name', label: 'i7 名称', type: 'catalog-select', catalogIdKey: 'i7_catalog_id', sequenceKey: 'i7_sequence' },
@@ -194,11 +231,11 @@ const PROFILE_SECTIONS = {
     {
       title: 'PCR 与转染',
       fields: [
-        { key: 'pcr_started_at', label: 'PCR 开始', type: 'datetime' },
-        { key: 'pcr_finished_at', label: 'PCR 结束', type: 'datetime' },
+        { key: 'pcr_started_at', label: 'PCR 开始', type: 'date' },
+        { key: 'pcr_finished_at', label: 'PCR 结束', type: 'date' },
         { key: 'pcr_owner', label: 'PCR 操作人', type: 'user' },
         { key: 'pcr_qc_owner', label: 'PCR 检测人', type: 'user' },
-        { key: 'transfected_at', label: '转染时间', type: 'datetime' },
+        { key: 'transfected_at', label: '转染时间', type: 'date' },
         { key: 'transfection_owner', label: '转染人', type: 'user' },
       ],
     },
@@ -283,7 +320,7 @@ export const FIELD_DEFS = {
   build_type: def('build_type', '建库类型', 'select', 150),
   sample_source: def('sample_source', '样品来源', 'select', 140),
   source_project_code: def('source_project_code', '项目编号', 'text', 120),
-  study_type: def('study_type', '课题类型'),
+  study_type: def('study_type', '课题类型', 'select'),
   source_experiment_type: def('source_experiment_type', '实验类型', 'select'),
   project_goal: def('project_goal', '实验目标', 'text', 180),
   target_name: def('target_name', '靶点', 'target'),
@@ -296,17 +333,17 @@ export const FIELD_DEFS = {
   blood_collected_on: def('blood_collected_on', '采血日期', 'date', 130),
   positive_cell_count: def('positive_cell_count', '阳性细胞数'),
   plate_nos: def('plate_nos', '板号', 'text', 150),
-  target_forms: def('target_forms', '靶点形式', 'text', 150),
+  target_forms: def('target_forms', '靶点形式', 'multi', 150),
   status: def('status', '状态', 'select', 110),
   priority: def('priority', '优先级', 'select', 110),
   owner: def('owner', '负责人', 'select', 110),
-  started_at: def('started_at', '开始时间', 'datetime', 160),
-  finished_at: def('finished_at', '完成时间', 'datetime', 160),
-  pcr_started_at: def('pcr_started_at', 'PCR 开始', 'datetime', 160),
-  pcr_finished_at: def('pcr_finished_at', 'PCR 结束', 'datetime', 160),
+  started_at: def('started_at', '开始时间', 'date', 130),
+  finished_at: def('finished_at', '完成时间', 'date', 130),
+  pcr_started_at: def('pcr_started_at', 'PCR 开始', 'date', 130),
+  pcr_finished_at: def('pcr_finished_at', 'PCR 结束', 'date', 130),
   pcr_owner: def('pcr_owner', 'PCR 操作人', 'select', 120),
   pcr_qc_owner: def('pcr_qc_owner', 'PCR 检测人', 'select', 120),
-  transfected_at: def('transfected_at', '转染时间', 'datetime', 160),
+  transfected_at: def('transfected_at', '转染时间', 'date', 130),
   transfection_owner: def('transfection_owner', '转染人', 'select', 110),
   cell_type: def('cell_type', '细胞类型', 'select'),
   notebook_no: def('notebook_no', '实验记录本号'),
@@ -319,19 +356,19 @@ export const FIELD_DEFS = {
   initial_library_size: def('initial_library_size', '初始库容'),
   effective_library_size: def('effective_library_size', '有效库容'),
   fragment_size_bp: def('fragment_size_bp', '片段大小'),
-  h_forward_primer_name: def('h_forward_primer_name', 'H 正向引物', 'text', 150),
-  h_reverse_primer_name: def('h_reverse_primer_name', 'H 反向引物', 'text', 150),
+  h_forward_primer_name: def('h_forward_primer_name', 'H 正向引物', 'catalog', 150),
+  h_reverse_primer_name: def('h_reverse_primer_name', 'H 反向引物', 'catalog', 150),
   h_primer_concentration: def('h_primer_concentration', 'H 浓度'),
-  k_forward_primer_name: def('k_forward_primer_name', 'K 正向引物', 'text', 150),
-  k_reverse_primer_name: def('k_reverse_primer_name', 'K 反向引物', 'text', 150),
+  k_forward_primer_name: def('k_forward_primer_name', 'K 正向引物', 'catalog', 150),
+  k_reverse_primer_name: def('k_reverse_primer_name', 'K 反向引物', 'catalog', 150),
   k_primer_concentration: def('k_primer_concentration', 'K 浓度'),
-  l_forward_primer_name: def('l_forward_primer_name', 'L 正向引物', 'text', 150),
-  l_reverse_primer_name: def('l_reverse_primer_name', 'L 反向引物', 'text', 150),
+  l_forward_primer_name: def('l_forward_primer_name', 'L 正向引物', 'catalog', 150),
+  l_reverse_primer_name: def('l_reverse_primer_name', 'L 反向引物', 'catalog', 150),
   l_primer_concentration: def('l_primer_concentration', 'L 浓度'),
   index_mode: def('index_mode', 'Barcode 方式', 'select'),
-  i7_name: def('i7_name', 'i7 名称', 'text', 150),
+  i7_name: def('i7_name', 'i7 名称', 'catalog', 150),
   i7_sequence: def('i7_sequence', 'i7 序列', 'text', 150),
-  i5_name: def('i5_name', 'i5 名称', 'text', 150),
+  i5_name: def('i5_name', 'i5 名称', 'catalog', 150),
   i5_sequence: def('i5_sequence', 'i5 序列', 'text', 150),
   qc_result: def('qc_result', '质检结论', 'select'),
   qc_owner: def('qc_owner', '质检人', 'select'),
@@ -530,8 +567,8 @@ export const WORKBENCH_COLUMNS = [
   { key: 'notebook_no', label: '实验记录本号', minWidth: 140, defaultVisible: false, showOverflowTooltip: true },
   { key: 'received_on', label: '交接日期', minWidth: 130, defaultVisible: false, className: 'date-column-cell' },
   { key: 'instrument_on', label: '上机日期', minWidth: 130, defaultVisible: false },
-  { key: 'started_at', label: '开始时间', minWidth: 160, defaultVisible: false, showOverflowTooltip: true },
-  { key: 'finished_at', label: '完成时间', minWidth: 160, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'started_at', label: '开始时间', minWidth: 130, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'finished_at', label: '完成时间', minWidth: 130, defaultVisible: false, showOverflowTooltip: true },
   { key: 'qc_result', label: '质检结论', minWidth: 110, defaultVisible: false },
   { key: 'qc_on', label: '质检日期', minWidth: 130, defaultVisible: false },
   { key: 'actions', label: '操作', defaultVisible: true, width: 240, align: 'center', className: 'action-column-cell', fixed: 'right' },

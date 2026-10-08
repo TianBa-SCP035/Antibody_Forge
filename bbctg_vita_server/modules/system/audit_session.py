@@ -813,9 +813,11 @@ def _entity_label(obj: Any) -> str | None:
         "experiment_id",
         "project_code",
         "project_name",
+        "library_order_id",
         "orderNum",
         "code",
         "username",
+        "original_name",
         "file_name",
         "job_name",
     )

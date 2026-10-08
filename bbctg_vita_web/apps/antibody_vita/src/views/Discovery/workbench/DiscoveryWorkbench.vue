@@ -1010,6 +1010,12 @@ function emptyQuery() {
   }
 }
 
+let pendingDiscoveryId = ''
+
+export function rememberDiscoveryFocus(discoveryId) {
+  pendingDiscoveryId = String(discoveryId || '').trim()
+}
+
 export default {
   name: 'DiscoveryWorkbench',
   mixins: [workbenchExcelMixin],
@@ -1086,7 +1092,6 @@ export default {
       listRequestToken: 0,
       listLoaded: false,
       consumingCreated: false,
-      consumingFocus: false,
       tabDataFetchedAt: 0,
       allUserOptions: [],
       targetOptions: [],
@@ -1181,10 +1186,11 @@ export default {
   created() {
     this.loading = true
     this.loadOptions()
-    this.getList().finally(() => {
+    const remembered = Boolean(pendingDiscoveryId)
+    const listing = remembered ? this.openRememberedDiscovery() : this.getList()
+    listing.finally(() => {
       this.listLoaded = true
-      if (this.$route.query.focus) this.consumeFocusQuery()
-      else this.consumeCreatedQuery()
+      if (!remembered) this.consumeCreatedQuery()
     })
     if (this.isExcelMode) this.loadAllUserOptions()
   },
@@ -1198,8 +1204,8 @@ export default {
   },
   activated() {
     document.addEventListener('mousedown', this.onDocumentPointerDown, true)
-    if (this.$route.query.focus) {
-      this.consumeFocusQuery()
+    if (pendingDiscoveryId) {
+      this.openRememberedDiscovery()
       return
     }
     if (this.listLoaded && shouldRefreshTabData(this.tabDataFetchedAt)) {
@@ -1232,9 +1238,6 @@ export default {
     },
     '$route.query.created'() {
       if (this.listLoaded) this.consumeCreatedQuery()
-    },
-    '$route.query.focus'() {
-      if (this.listLoaded) this.consumeFocusQuery()
     },
   },
   methods: {
@@ -1843,31 +1846,22 @@ export default {
         this.consumingCreated = false
       }
     },
-    async consumeFocusQuery() {
-      if (this.$route.name !== 'DiscoveryWorkbench' || this.consumingFocus) return
-      const raw = this.$route.query.focus
-      const discoveryId = String(Array.isArray(raw) ? raw[0] : raw || '').trim()
-      if (!discoveryId) return
-      this.consumingFocus = true
-      try {
-        this.closeEditor()
-        this.listQuery = { ...emptyQuery(), keyword: discoveryId }
-        this.harvestRange = []
-        this.boostRange = []
-        const nextQuery = { ...this.$route.query }
-        delete nextQuery.focus
-        await this.$router.replace({ path: this.$route.path, query: nextQuery })
-        await this.getList()
-        const row = this.list.find((item) => item.discovery_id === discoveryId)
-        if (!row) {
-          ElMessage.warning('未找到对应的发现工单')
-          return
-        }
-        this.viewMode = WORKBENCH_VIEW
-        this.openEditor(row)
-      } finally {
-        this.consumingFocus = false
+    async openRememberedDiscovery() {
+      const discoveryId = pendingDiscoveryId
+      pendingDiscoveryId = ''
+      if (!discoveryId || this.$route.name !== 'DiscoveryWorkbench') return
+      this.closeEditor()
+      this.listQuery = { ...emptyQuery(), keyword: discoveryId }
+      this.harvestRange = []
+      this.boostRange = []
+      await this.getList()
+      const row = this.list.find((item) => item.discovery_id === discoveryId)
+      if (!row) {
+        ElMessage.warning('未找到对应的发现工单')
+        return
       }
+      this.viewMode = WORKBENCH_VIEW
+      this.openEditor(row)
     },
     async handleCreate() {
       if (!this.canEdit) {

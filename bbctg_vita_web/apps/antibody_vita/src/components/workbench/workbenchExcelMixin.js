@@ -537,7 +537,12 @@ export default {
       if (event.target?.closest?.('input, textarea, .vxe-input, .vxe-select')) return
       const hit = this.hitSheetCell(event.target)
       const row = hit ? this.list[hit.rowIndex] : null
-      this.sheetEditSource = row && !this.isSheetCellLocked(row, hit.field) ? 'dblclick' : ''
+      if (!row || this.isSheetCellLocked(row, hit.field)) {
+        this.sheetEditSource = ''
+        if (row) this.onLockedSheetDblClick?.(row, hit.field)
+        return
+      }
+      this.sheetEditSource = 'dblclick'
     },
     focusSheetCellInput(row, key) {
       const input = this.$refs.sheetTable
@@ -807,6 +812,20 @@ export default {
         return
       }
       this.sheetEditOriginal = this.createSheetEditOriginal(row, key)
+      if (this.sheetEditSource === 'dblclick') this.openSheetEditorPanel(row, key)
+    },
+    openSheetEditorPanel(row, key) {
+      const open = () => {
+        const cell = this.$refs.sheetTable?.getCellElement?.(row, key)
+        const node = cell?.querySelector?.('.vxe-select, .vxe-input')
+        const panel = node?.__vueParentComponent?.proxy
+        if (typeof panel?.showPanel !== 'function') return false
+        panel.showPanel()
+        return true
+      }
+      this.$nextTick(() => {
+        if (!open()) this.$nextTick(open)
+      })
     },
     takeSheetEditOriginal(row, key) {
       const original = this.sheetEditOriginal

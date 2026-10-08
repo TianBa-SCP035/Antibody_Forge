@@ -398,6 +398,7 @@ function getPermissionModuleName(value: string) {
   const map: Record<string, string> = {
     atlas: '千鼠万抗',
     discovery: '抗体发现',
+    molecular: '分子与细胞',
     serum: '小鼠免疫',
     mega: '镁伽自动化',
     system: '系统管理',
@@ -552,8 +553,20 @@ function formatLogTargetType(log: SystemOperationLog) {
     user: '用户',
     serum_workbench: '免疫工作台',
     discovery_workbench: '发现工作台',
+    library: '文库构建工单',
+    library_detail: '文库构建工单',
+    library_file: '文库质检文件',
   };
   return log.target_type ? map[log.target_type] || log.target_type : '-';
+}
+
+function formatLogTableName(name?: string) {
+  const map: Record<string, string> = {
+    molecular_library_order: '文库构建工单',
+    molecular_library_result_file: '文库结果文件',
+    molecular_library_result_link: '文库质检文件',
+  };
+  return name ? map[name] || name : '-';
 }
 
 function formatLogResult(result?: string) {
@@ -1541,7 +1554,7 @@ onMounted(loadData);
             <header class="audit-entity__header">
               <strong>{{ item.entity_label || item.entity_id || item.entity_type }}</strong>
               <el-tag size="small">{{ formatLogChangeType(item.change_type) }}</el-tag>
-              <span>{{ item.table_name }} · {{ item.change_count }} 处变化</span>
+              <span>{{ formatLogTableName(item.table_name) }} · {{ item.change_count }} 处变化</span>
             </header>
             <el-table
               v-if="item.changes?.length"
@@ -1944,6 +1957,7 @@ onMounted(loadData);
                 <el-select v-model="bundleForm.module" style="width: 100%">
                   <el-option label="千鼠万抗" value="atlas" />
                   <el-option label="抗体发现" value="discovery" />
+                  <el-option label="分子与细胞" value="molecular" />
                   <el-option label="小鼠免疫" value="serum" />
                   <el-option label="镁伽自动化" value="mega" />
                   <el-option label="系统管理" value="system" />

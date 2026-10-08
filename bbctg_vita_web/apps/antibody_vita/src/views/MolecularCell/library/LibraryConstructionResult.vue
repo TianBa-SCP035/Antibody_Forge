@@ -488,16 +488,6 @@
                     :disabled="!canEdit"
                     @change="persist(field.key)"
                   />
-                  <el-date-picker
-                    v-else-if="field.type === 'datetime'"
-                    v-model="order[field.key]"
-                    type="datetime"
-                    value-format="YYYY-MM-DD HH:mm:ss"
-                    format="YYYY-MM-DD HH:mm"
-                    placeholder="选择时间"
-                    :disabled="!canEdit"
-                    @change="persist(field.key)"
-                  />
                   <WorkbenchTargetSelect
                     v-else-if="field.type === 'target'"
                     v-model="order.target_codes"
@@ -515,17 +505,18 @@
                     clearable
                     @change="persist(field.key)"
                   />
-                  <el-input
+                  <div
                     v-else-if="field.type === 'source-link'"
-                    :model-value="order[field.key] || '手工创建'"
-                    readonly
-                    :class="{ 'source-link-input': Boolean(order[field.key]) }"
+                    class="source-link"
+                    :class="{ 'is-link': Boolean(order[field.key]) }"
                     @click="openSourceDiscovery(order[field.key])"
                   >
-                    <template v-if="order[field.key]" #suffix>
-                      <span class="source-link-action">查看</span>
-                    </template>
-                  </el-input>
+                    <el-input :model-value="order[field.key] || '手工创建'" readonly>
+                      <template v-if="order[field.key]" #suffix>
+                        <span class="source-link-action">查看</span>
+                      </template>
+                    </el-input>
+                  </div>
                   <div v-else-if="field.type === 'primer-matrix'" class="primer-matrix">
                     <span />
                     <span class="primer-matrix-heading">正向引物</span>
@@ -598,7 +589,7 @@
                     v-else-if="['select', 'source-select', 'multi-select'].includes(field.type)"
                     v-model="order[field.key]"
                     :multiple="field.type === 'multi-select'"
-                    clearable
+                    :clearable="!isRequiredChoice(field.key)"
                     :disabled="!canEditField(field.key)"
                     @change="persist(field.key)"
                   >
@@ -690,6 +681,8 @@ import { ApiFetchError, fetchApiResource, notifyApiError } from '#/api/errors'
 import { WorkbenchStatusEditor, WorkbenchTargetSelect } from '#/components/workbench'
 import { handleUnauthorizedError } from '#/utils/auth-session'
 import { canEditLibraryDetail, canManageLibraryFiles } from '#/utils/molecularPermission'
+import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/DiscoveryWorkbench.vue'
+import { getSerumUserName } from '#/utils/serumPermission'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
 import {
@@ -703,12 +696,15 @@ import {
   optionsForBuild,
   orderEditorSections,
   plateNumbersFromText,
+  persistValue,
   plateNumbersText,
   PRIORITY_OPTIONS,
   QC_RESULT_OPTIONS,
+  REQUIRED_CHOICE_KEYS,
   SAMPLE_SOURCE_OPTIONS,
   sampleSourceLabel,
   sampleTypeLabel,
+  stampQcFields,
   STATUS_OPTIONS,
   statusTone,
   typeGroup,
@@ -1010,6 +1006,9 @@ export default {
       if (!this.canEdit) return false
       if (key === 'build_type') return this.currentStatus === '待处理'
       return true
+    },
+    isRequiredChoice(key) {
+      return REQUIRED_CHOICE_KEYS.includes(key)
     },
     sameValue(left, right) {
       return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
@@ -1736,8 +1735,15 @@ export default {
     },
     async persist(field) {
       if (!this.canEdit || !this.order?.id) return
-      if (this.sameValue(this.baseline[field], this.order[field])) return
+      this.order[field] = persistValue(this.order[field])
+      const qcFields = field === 'qc_result'
+        ? stampQcFields(this.order, getSerumUserName(useUserStore().userInfo))
+        : []
+      if (this.sameValue(this.baseline[field], this.order[field]) && !qcFields.length) return
       const payload = { id: this.order.id, [field]: this.order[field] }
+      qcFields.forEach((key) => {
+        payload[key] = this.order[key]
+      })
       if (field === 'target_codes') payload.target_name = this.order.target_name
       try {
         const saved = await saveLibraryOrder(payload)
@@ -1749,6 +1755,9 @@ export default {
         this.baseline = JSON.parse(JSON.stringify(this.order))
       } catch (error) {
         this.order[field] = this.baseline[field]
+        qcFields.forEach((key) => {
+          this.order[key] = this.baseline[key]
+        })
         if (field === 'target_codes') this.order.target_name = this.baseline.target_name
         if (field === 'plate_nos') this.plateDraft = plateNumbersText(this.order.plate_nos)
         notifyApiError(error, { messages: { default: '保存失败' } })
@@ -1770,7 +1779,8 @@ export default {
     openSourceDiscovery(discoveryId) {
       const id = String(discoveryId || '').trim()
       if (!id) return
-      this.$router.push({ name: 'DiscoveryWorkbench', query: { focus: id } })
+      rememberDiscoveryFocus(id)
+      this.$router.push({ name: 'DiscoveryWorkbench' })
     },
     onPlateDraftInput(value) {
       if (!this.canEdit) return
@@ -2895,12 +2905,10 @@ export default {
   }
 }
 
-.source-link-input {
-  cursor: pointer;
-}
-
-.source-link-input :deep(.el-input__wrapper),
-.source-link-input :deep(.el-input__inner) {
+.source-link.is-link,
+.source-link.is-link :deep(.el-input__wrapper),
+.source-link.is-link :deep(.el-input__inner),
+.source-link.is-link :deep(.el-input__suffix) {
   cursor: pointer;
 }
 

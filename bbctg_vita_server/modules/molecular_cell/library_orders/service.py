@@ -23,7 +23,7 @@ from models.molecular_cell import (
     MolecularLibraryResultLink,
     MolecularPrimerIndexCatalog,
 )
-from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_ORDER, canonicalize_priority
+from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_ORDER
 
 DISCOVERY_PLANNING = "规划中"
 DISCOVERY_WAIT_BOOST = "待冲击"
@@ -131,7 +131,25 @@ SAMPLE_TYPE_LABELS = {
     SAMPLE_RNVM_BLOOD: "RNVM眼眶血",
     SAMPLE_PHAGE: "噬菌体",
 }
-AUTO_SAMPLE_TYPES = {"RN": SAMPLE_NANO, "RL": SAMPLE_LITE}
+AUTO_SAMPLE_TYPES = {
+    "RN": SAMPLE_NANO,
+    "RN-KO": SAMPLE_NANO,
+    "RL": SAMPLE_LITE,
+    "RL-KO": SAMPLE_LITE,
+}
+
+
+def _auto_sample_type(mouse_model: Any) -> str | None:
+    tokens = [
+        item.strip().upper()
+        for item in re.split(r"[,，、]", str(mouse_model or ""))
+        if item.strip()
+    ]
+    if not tokens:
+        return None
+    return AUTO_SAMPLE_TYPES.get(tokens[0])
+
+
 PHAGE_EXPERIMENT_TYPES = ("抗体发现", "亲和力改造")
 
 INDEX_NONE = "none"
@@ -280,8 +298,6 @@ DATE_FIELDS = (
     "instrument_on",
     "blood_collected_on",
     "qc_on",
-)
-DATETIME_FIELDS = (
     "started_at",
     "finished_at",
     "pcr_started_at",
@@ -386,27 +402,14 @@ def _normalize_date(value: Any) -> date | None:
         return value.date()
     if isinstance(value, date):
         return value
-    text = str(value).strip()
+    text = str(value).strip().replace("T", " ")
+    matched = re.fullmatch(r"(\d{4}-\d{2}-\d{2})(?: \d{2}:\d{2}(?::\d{2})?)?", text)
+    if not matched:
+        raise ValueError("日期必须是 YYYY-MM-DD")
     try:
-        return datetime.strptime(text, "%Y-%m-%d").date()
+        return datetime.strptime(matched.group(1), "%Y-%m-%d").date()
     except ValueError as exc:
         raise ValueError("日期必须是 YYYY-MM-DD") from exc
-
-
-def _normalize_datetime(value: Any) -> datetime | None:
-    if value in (None, ""):
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, date):
-        return datetime.combine(value, time.min)
-    text = str(value).strip().replace("T", " ")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(text, fmt)
-        except ValueError:
-            continue
-    raise ValueError("时间必须是 YYYY-MM-DD HH:MM")
 
 
 def _normalize_nonnegative_int(value: Any, label: str) -> int | None:
@@ -475,12 +478,12 @@ def _normalize_build_type(value: Any) -> str:
 
 
 def _normalize_status(value: Any) -> str:
-    result = _normalize_choice(value or STATUS_PENDING, STATUS_OPTIONS, "状态")
+    result = _normalize_choice(value, STATUS_OPTIONS, "状态")
     return str(result)
 
 
 def _normalize_priority(value: Any) -> str:
-    text = canonicalize_priority(value)
+    text = str(value or "").strip()
     if text not in PRIORITY_ORDER:
         raise ValueError("优先级不在允许的选项中")
     return text
@@ -596,17 +599,12 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
             nullable=True,
         )
     elif "mouse_model" in data:
-        auto_type = AUTO_SAMPLE_TYPES.get(str(row.mouse_model or "").strip().upper())
+        auto_type = _auto_sample_type(row.mouse_model)
         if auto_type:
             row.sample_type = auto_type
-        elif row.sample_type in {SAMPLE_NANO, SAMPLE_LITE}:
-            row.sample_type = None
     for field in DATE_FIELDS:
         if field in data:
             setattr(row, field, _normalize_date(data.get(field)))
-    for field in DATETIME_FIELDS:
-        if field in data:
-            setattr(row, field, _normalize_datetime(data.get(field)))
     for field in INTEGER_FIELDS:
         if field in data:
             setattr(
@@ -965,9 +963,7 @@ def _handoff_preview(row: DiscoveryWorkbench) -> dict[str, Any]:
         "pm": row.pm,
         "study_type": row.study_type,
         "mouse_model": row.mouse_strain_category,
-        "sample_type": AUTO_SAMPLE_TYPES.get(
-            str(row.mouse_strain_category or "").strip().upper()
-        ),
+        "sample_type": _auto_sample_type(row.mouse_strain_category),
         "instrument_on": row.harvest_date,
         "positive_cell_count": row.positive_cell_count,
         "screening_methods": row.screening_methods,
@@ -1092,7 +1088,7 @@ def handoff(
             target_codes=list(codes),
             pm=row.pm,
             mouse_model=mouse_model,
-            sample_type=AUTO_SAMPLE_TYPES.get(str(mouse_model or "").upper()),
+            sample_type=_auto_sample_type(mouse_model),
             instrument_on=(
                 _normalize_date(row.harvest_date)
                 if build_type in INSTRUMENT_DATE_BUILDS

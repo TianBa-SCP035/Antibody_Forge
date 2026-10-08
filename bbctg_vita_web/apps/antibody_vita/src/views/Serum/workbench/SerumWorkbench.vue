@@ -2367,7 +2367,8 @@ export default {
       if (!this.canCreate) return
       this.loading = true
       try {
-        const saved = await saveWorkbench({})
+        const pm = String(getSerumUserName(this.userStore.userInfo || {}) || '').trim()
+        const saved = await saveWorkbench(pm ? { pm } : {})
         await this.revealCreatedRow(saved)
       } catch (err) {
         notifyApiError(err, { messages: SERUM_ERRORS.workbench.save })

@@ -238,6 +238,7 @@
         :class="{ 'is-column-moving': sheetDragMode === 'move-column' }"
         tabindex="0"
         @copy="onSheetCopy"
+        @paste="onSheetPaste"
         @dblclick.capture="onSheetDblClickCapture"
         @keydown.capture="onSheetKeydownCapture"
         @compositionend.capture="onSheetCompositionEnd"
@@ -278,7 +279,24 @@
                 :formatter="sheetFormatter(column)"
               >
                 <template #edit="{ row }">
+                  <div v-if="sheetEditSource === 'dblclick'" class="sheet-picker-editor">
+                    <span class="sheet-picker-editor__value">{{ sheetPickerDisplayValue(row, column) }}</span>
+                    <VxeSelect
+                      v-model="row.target_codes"
+                      class-name="sheet-grid-editor sheet-picker-control"
+                      filterable
+                      multiple
+                      remote
+                      :options="sheetTargetSelectOptions"
+                      :popup-config="{ className: 'sheet-picker-popup', placement: 'bottom', width: 300 }"
+                      :remote-config="{ autoLoad: true, queryMethod: querySheetTargetOptions }"
+                      empty-text="未找到匹配靶点"
+                      @change="onSheetTargetPickerChange(row)"
+                      @visible-change="onSheetPickerVisibleChange"
+                    />
+                  </div>
                   <VxeInput
+                    v-else
                     :model-value="sheetTargetDirectValue(row, column.key)"
                     class-name="sheet-grid-editor"
                     @update:model-value="setSheetTargetDirectValue(row, column.key, $event)"
@@ -294,14 +312,51 @@
                 :formatter="sheetFormatter(column)"
               >
                 <template #edit="{ row }">
-                  <VxeSelect
-                    v-if="sheetEditSource === 'dblclick' && isSheetChoiceForRow(column, row)"
-                    v-model="row[column.key]"
-                    class-name="sheet-grid-editor sheet-picker-control"
-                    :filterable="isUserColumn(column)"
-                    :options="sheetChoiceSelectOptions(column, row)"
-                    :popup-config="{ className: 'sheet-picker-popup', placement: 'bottom', width: 220 }"
+                  <div v-if="sheetEditSource === 'dblclick' && isSheetChoiceForRow(column, row)" class="sheet-picker-editor">
+                    <span class="sheet-picker-editor__value">{{ sheetPickerDisplayValue(row, column) }}</span>
+                    <VxeSelect
+                      v-model="row[column.key]"
+                      class-name="sheet-grid-editor sheet-picker-control"
+                      :filterable="isUserColumn(column)"
+                      :multiple="column.edit === 'multi'"
+                      :clearable="!isRequiredChoice(column.key)"
+                      :options="sheetChoiceSelectOptions(column, row)"
+                      :popup-config="{ className: 'sheet-picker-popup', placement: 'bottom', width: 220 }"
+                      @visible-change="onSheetPickerVisibleChange"
+                    />
+                  </div>
+                  <VxeInput
+                    v-else
+                    :model-value="sheetDirectTextValue(row, column.key)"
+                    class-name="sheet-grid-editor"
+                    @update:model-value="setSheetDirectValue(row, column.key, $event)"
                   />
+                </template>
+              </vxe-column>
+              <vxe-column
+                v-else-if="column.edit === 'catalog'"
+                :field="column.key"
+                :title="sheetColumnTitle(column)"
+                :min-width="column.minWidth || 150"
+                :edit-render="{ name: 'VxeInput' }"
+              >
+                <template #edit="{ row }">
+                  <div v-if="sheetEditSource === 'dblclick'" class="sheet-picker-editor">
+                    <span class="sheet-picker-editor__value">{{ sheetPickerDisplayValue(row, column) }}</span>
+                    <VxeSelect
+                      v-model="row[column.key]"
+                      class-name="sheet-grid-editor sheet-picker-control"
+                      filterable
+                      remote
+                      clearable
+                      :options="sheetCatalogSelectOptions"
+                      :popup-config="{ className: 'sheet-picker-popup', placement: 'bottom', width: 280 }"
+                      :remote-config="{ autoLoad: true, queryMethod: querySheetCatalogOptions }"
+                      empty-text="未找到匹配名称"
+                      @change="onSheetCatalogChange(row, column)"
+                      @visible-change="onSheetPickerVisibleChange"
+                    />
+                  </div>
                   <VxeInput
                     v-else
                     :model-value="sheetDirectTextValue(row, column.key)"
@@ -427,17 +482,6 @@
                   :disabled="!canEdit"
                   @change="persistRow(editingRow, field.key)"
                 />
-                <el-date-picker
-                  v-else-if="field.type === 'datetime'"
-                  v-model="editingRow[field.key]"
-                  type="datetime"
-                  value-format="YYYY-MM-DD HH:mm:ss"
-                  format="YYYY-MM-DD HH:mm"
-                  placeholder="选择时间"
-                  style="width: 100%"
-                  :disabled="!canEdit"
-                  @change="persistRow(editingRow, field.key)"
-                />
                 <div v-else-if="field.type === 'primer-matrix'" class="primer-matrix">
                   <span />
                   <span class="primer-matrix-heading">正向引物</span>
@@ -499,17 +543,18 @@
                   clearable
                   @change="persistRow(editingRow, field.key)"
                 />
-                <el-input
+                <div
                   v-else-if="field.type === 'source-link'"
-                  :model-value="editingRow[field.key] || '手工创建'"
-                  readonly
-                  :class="{ 'source-link-input': Boolean(editingRow[field.key]) }"
+                  class="source-link"
+                  :class="{ 'is-link': Boolean(editingRow[field.key]) }"
                   @click="openSourceDiscovery(editingRow[field.key])"
                 >
-                  <template v-if="editingRow[field.key]" #suffix>
-                    <span class="source-link-action">查看</span>
-                  </template>
-                </el-input>
+                  <el-input :model-value="editingRow[field.key] || '手工创建'" readonly>
+                    <template v-if="editingRow[field.key]" #suffix>
+                      <span class="source-link-action">查看</span>
+                    </template>
+                  </el-input>
+                </div>
                 <el-select
                   v-else-if="field.type === 'catalog-select'"
                   v-model="editingRow[field.key]"
@@ -571,6 +616,7 @@
                   v-else-if="field.type === 'select'"
                   v-model="editingRow[field.key]"
                   style="width: 100%"
+                  :clearable="!isRequiredChoice(field.key)"
                   :disabled="!canEditField(editingRow, field.key)"
                   @change="persistRow(editingRow, field.key)"
                 >
@@ -649,6 +695,8 @@ import {
   createColumnOrder,
   EXCEL_VIEW,
   searchWorkbenchTargets,
+  splitTargetNames,
+  targetNameFromCodes,
   uniqueTargetCodes,
   WORKBENCH_VIEW,
   WorkbenchDataTable,
@@ -656,11 +704,14 @@ import {
   WorkbenchStatusEditor,
   WorkbenchTargetSelect,
   WorkbenchViewToggle,
+  coerceOptionalNonnegInt,
 } from '#/components/workbench'
 import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
 import LibraryRowActions from './LibraryRowActions.vue'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 import { canEditLibrary, canViewLibraryDetail } from '#/utils/molecularPermission'
+import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/DiscoveryWorkbench.vue'
+import { getSerumUserName } from '#/utils/serumPermission'
 import { loadSerumUserOptions } from '#/utils/serumUserOptions'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import {
@@ -668,6 +719,7 @@ import {
   BUILD_POOLED_BCR,
   BUILD_TYPE_OPTIONS,
   buildTypeLabel,
+  CATALOG_NAME_FIELDS,
   CELL_TYPE_OPTIONS,
   INDEX_MODE_OPTIONS,
   MOUSE_CATEGORY_LABELS,
@@ -677,18 +729,23 @@ import {
   optionsForBuild,
   orderEditorSections,
   plateNumbersFromText,
+  persistValue,
   plateNumbersText,
   PHAGE_EXPERIMENT_TYPE_OPTIONS,
   PRIORITY_OPTIONS,
   QC_RESULT_OPTIONS,
+  REQUIRED_CHOICE_KEYS,
   SAMPLE_SOURCE_OPTIONS,
   SAMPLE_TYPE_OPTIONS,
   sampleSourceLabel,
   sampleTypeLabel,
+  stampQcFields,
   isSheetFieldApplicable,
   sheetColumnsForBuild,
   STATUS_OPTIONS,
+  STUDY_TYPE_OPTIONS,
   statusTone,
+  TARGET_FORM_OPTIONS,
   TYPE_VALUES,
   typeGroup,
   WORKBENCH_COLUMNS,
@@ -728,6 +785,55 @@ const SHEET_COLUMN_ORDER = createColumnOrder(
   allSheetColumns(),
   { pinFirstKey: 'library_order_id' },
 )
+const INDEX_LINKED_KEYS = ['i7_catalog_id', 'i7_name', 'i7_sequence', 'i5_catalog_id', 'i5_name', 'i5_sequence']
+const SHEET_DATE_KEYS = [
+  'received_on',
+  'instrument_on',
+  'blood_collected_on',
+  'qc_on',
+  'started_at',
+  'finished_at',
+  'pcr_started_at',
+  'pcr_finished_at',
+  'transfected_at',
+]
+const SHEET_DECIMAL_KEYS = ['cdna_concentration', 'h_primer_concentration', 'k_primer_concentration', 'l_primer_concentration']
+const SHEET_STRING_MAX = {
+  library_code: 64,
+  source_project_code: 64,
+  study_type: 64,
+  project_goal: 1000,
+  target_name: 128,
+  pm: 64,
+  mouse_model: 128,
+  positive_cell_count: 64,
+  cell_type: 64,
+  notebook_no: 64,
+  immunization_stage: 64,
+  library_batch_no: 64,
+  owner: 64,
+  pcr_owner: 64,
+  pcr_qc_owner: 64,
+  transfection_owner: 64,
+  rna_location: 255,
+  cdna_location: 255,
+  library_location: 255,
+  initial_library_size: 64,
+  effective_library_size: 64,
+  h_forward_primer_name: 128,
+  h_reverse_primer_name: 128,
+  k_forward_primer_name: 128,
+  k_reverse_primer_name: 128,
+  l_forward_primer_name: 128,
+  l_reverse_primer_name: 128,
+  i7_name: 128,
+  i7_sequence: 64,
+  i5_name: 128,
+  i5_sequence: 64,
+  qc_owner: 64,
+  qc_note: 1000,
+  remark: 1000,
+}
 
 export default {
   name: 'LibraryConstructionList',
@@ -782,8 +888,11 @@ export default {
       plateDraft: '',
       rowBaselines: new Map(),
       allUserOptions: [],
+      targetOptions: [],
+      targetRequestToken: 0,
       catalogOptions: [],
       catalogLoading: false,
+      sheetCatalogLinked: false,
       targetFilterOptions: [],
       targetFilterLoading: false,
       consumingCreated: false,
@@ -833,6 +942,19 @@ export default {
     },
     priorityOptions() {
       return this.meta?.priorities || PRIORITY_OPTIONS
+    },
+    sheetTargetSelectOptions() {
+      return this.targetOptions.map((item) => ({
+        label: `${item.name}（${item.snum}）`,
+        value: item.snum,
+      }))
+    },
+    sheetCatalogSelectOptions() {
+      const options = this.catalogOptions.map((item) => ({
+        label: item.short_sequence ? `${item.name} ${item.short_sequence}` : item.name,
+        value: item.name,
+      }))
+      return options
     },
     sampleSourceOptions() {
       return (this.meta?.sample_sources || SAMPLE_SOURCE_OPTIONS).map((item) => ({
@@ -931,6 +1053,9 @@ export default {
     sampleTypeLabel,
     statusTone,
     typeGroup,
+    isRequiredChoice(key) {
+      return REQUIRED_CHOICE_KEYS.includes(key)
+    },
     bindDrawerPointer() {
       if (this.drawerPointerBound) return
       document.addEventListener('mousedown', this.onDocumentPointerDown, true)
@@ -989,6 +1114,11 @@ export default {
       if (!isSheetFieldApplicable(row?.build_type, key)) return true
       const column = this.sheetColumns.find((item) => item.key === key)
       return column?.edit === 'readonly'
+    },
+    onLockedSheetDblClick(row, key) {
+      if (isSheetFieldApplicable(row?.build_type, key)) return
+      const label = this.sheetColumns.find((item) => item.key === key)?.label || '该字段'
+      ElMessage.info(`${buildTypeLabel(row.build_type) || '当前建库类型'}没有「${label}」`)
     },
     selectType(value) {
       this.listQuery.build_type = this.activeType === value ? '' : value
@@ -1152,26 +1282,60 @@ export default {
     async persistRow(row, field) {
       if (!this.canEdit || !row?.id) return
       const baseline = this.rowBaselines.get(row.id)
-      if (baseline && this.sameFieldValue(baseline[field], row[field])) {
-        if (field !== 'target_codes' || this.sameFieldValue(baseline.target_name, row.target_name)) return
+      const catalogMeta = this.sheetCatalogLinked ? CATALOG_NAME_FIELDS[field] : null
+      this.sheetCatalogLinked = false
+      row[field] = persistValue(row[field])
+      const targetField = field === 'target_codes' || field === 'target_name'
+      const catalogDirty = Boolean(catalogMeta) && (
+        !this.sameFieldValue(baseline?.[catalogMeta.idKey], row[catalogMeta.idKey])
+        || (catalogMeta.sequenceKey && !this.sameFieldValue(baseline?.[catalogMeta.sequenceKey], row[catalogMeta.sequenceKey]))
+      )
+      if (baseline && this.sameFieldValue(baseline[field], row[field]) && !catalogDirty) {
+        const pairedTargetUnchanged = this.sameFieldValue(baseline.target_name, row.target_name)
+          && this.sameFieldValue(baseline.target_codes, row.target_codes)
+        if (!targetField || pairedTargetUnchanged) return
       }
+      const qcFields = field === 'qc_result'
+        ? stampQcFields(row, getSerumUserName(useUserStore().userInfo))
+        : []
       try {
         const payload = { id: row.id, [field]: row[field] }
-        if (field === 'target_codes') payload.target_name = row.target_name
+        if (targetField) {
+          payload.target_codes = row.target_codes
+          payload.target_name = row.target_name
+        }
+        if (catalogMeta) {
+          payload[catalogMeta.idKey] = row[catalogMeta.idKey] || null
+          if (catalogMeta.sequenceKey) payload[catalogMeta.sequenceKey] = row[catalogMeta.sequenceKey] || null
+        }
+        qcFields.forEach((key) => {
+          payload[key] = row[key]
+        })
         const saved = await saveLibraryOrder(payload)
-        const savedFields = field === 'target_codes'
-          ? [field, 'target_name']
-          : field === 'mouse_model'
-            ? [field, 'sample_type']
-            : [field]
+        const savedFields = targetField
+          ? ['target_codes', 'target_name']
+          : catalogMeta
+            ? [field, catalogMeta.idKey, ...(catalogMeta.sequenceKey ? [catalogMeta.sequenceKey] : [])]
+            : field === 'mouse_model'
+              ? [field, 'sample_type']
+              : field === 'index_mode'
+                ? [field, ...INDEX_LINKED_KEYS]
+                : [field]
         this.applySavedFields(
           this.normalizeRow(saved),
-          field === 'build_type' ? undefined : savedFields,
+          field === 'build_type' ? undefined : [...savedFields, ...qcFields],
         )
       } catch (error) {
         if (baseline) {
           row[field] = baseline[field]
           if (field === 'target_codes') row.target_name = baseline.target_name
+          if (catalogMeta) {
+            row[catalogMeta.idKey] = baseline[catalogMeta.idKey]
+            if (catalogMeta.sequenceKey) row[catalogMeta.sequenceKey] = baseline[catalogMeta.sequenceKey]
+          }
+          qcFields.forEach((key) => {
+            row[key] = baseline[key]
+          })
           if (field === 'plate_nos') this.plateDraft = plateNumbersText(row.plate_nos)
         }
         notifyApiError(error, { messages: { default: '保存失败' } })
@@ -1194,7 +1358,8 @@ export default {
     openSourceDiscovery(discoveryId) {
       const id = String(discoveryId || '').trim()
       if (!id) return
-      this.$router.push({ name: 'DiscoveryWorkbench', query: { focus: id } })
+      rememberDiscoveryFocus(id)
+      this.$router.push({ name: 'DiscoveryWorkbench' })
     },
     onWorkbenchRowClick(row, _column, event) {
       if (event?.target?.closest?.('.el-button, .el-input, .el-select, .el-date-editor, .action-cell, .workbench-status-tag')) {
@@ -1348,12 +1513,14 @@ export default {
       return ['pm', 'owner', 'qc_owner', 'pcr_owner', 'pcr_qc_owner', 'transfection_owner'].includes(column?.key)
     },
     isSheetChoiceColumn(column) {
-      return column?.edit === 'select'
+      return column?.edit === 'select' || column?.edit === 'multi'
     },
     isSheetChoiceForRow(column, row) {
       return column.key !== 'cell_type' || row?.build_type === BUILD_POOLED_BCR
     },
     sheetChoiceSelectOptions(column, row) {
+      if (column.key === 'study_type') return STUDY_TYPE_OPTIONS.map((item) => ({ label: item, value: item }))
+      if (column.key === 'target_forms') return TARGET_FORM_OPTIONS.map((item) => ({ label: item, value: item }))
       if (column.key === 'priority') return this.priorityOptions.map((item) => ({ label: item, value: item }))
       if (column.key === 'status') return this.statusOptions.map((item) => ({ label: item, value: item }))
       if (column.key === 'build_type') return this.typeOptions
@@ -1407,6 +1574,40 @@ export default {
       }
       row.target_name = value
     },
+    sheetPickerDisplayValue(row, column) {
+      return column.edit === 'target'
+        ? this.sheetTargetDirectValue(row, column.key)
+        : this.sheetDirectTextValue(row, column.key)
+    },
+    async searchTargetOptions(keyword, selectedCodes) {
+      const requestToken = ++this.targetRequestToken
+      try {
+        const items = await searchWorkbenchTargets(keyword, selectedCodes)
+        if (requestToken === this.targetRequestToken) this.targetOptions = items
+      } catch {
+        if (requestToken === this.targetRequestToken) this.targetOptions = this.targetOptions || []
+      }
+    },
+    querySheetTargetOptions({ searchValue }) {
+      const row = this.list[this.pasteAnchor?.rowIndex]
+      return this.searchTargetOptions(searchValue, row?.target_codes)
+    },
+    onSheetTargetPickerChange(row) {
+      const codes = uniqueTargetCodes(row.target_codes)
+      row.target_codes = codes
+      row.target_name = targetNameFromCodes(codes, this.targetOptions)
+    },
+    querySheetCatalogOptions({ searchValue }) {
+      return this.searchCatalog(searchValue)
+    },
+    onSheetCatalogChange(row, column) {
+      const meta = CATALOG_NAME_FIELDS[column.key]
+      if (!meta) return
+      const selected = this.catalogOptions.find((item) => item.name === row[column.key])
+      row[meta.idKey] = selected?.id || null
+      if (meta.sequenceKey) row[meta.sequenceKey] = selected?.short_sequence || ''
+      this.sheetCatalogLinked = true
+    },
     sheetOptionValue(options, raw) {
       const text = String(raw || '').trim().toLowerCase()
       const matched = options.find((item) => (
@@ -1415,24 +1616,59 @@ export default {
       ))
       return matched ? (matched.value ?? matched) : undefined
     },
-    coerceSheetValue(row, key, text) {
+    normalizeSheetDate(text) {
       const raw = String(text ?? '').trim()
-      if (['plate_nos', 'target_forms'].includes(key)) {
+      if (!raw) return { ok: true, value: null }
+      const match = /^(\d{4})-(\d{2})-(\d{2})(?:\s+\d{2}:\d{2}(?::\d{2})?)?$/.exec(raw)
+      if (!match) return { ok: false, reason: 'date' }
+      const year = Number(match[1])
+      const month = Number(match[2])
+      const day = Number(match[3])
+      const date = new Date(Date.UTC(year, month - 1, day))
+      const valid = date.getUTCFullYear() === year
+        && date.getUTCMonth() === month - 1
+        && date.getUTCDate() === day
+      return valid ? { ok: true, value: `${match[1]}-${match[2]}-${match[3]}` } : { ok: false, reason: 'date' }
+    },
+    normalizeSheetDecimal(text) {
+      const raw = String(text ?? '').trim()
+      if (!raw) return { ok: true, value: null }
+      return /^\d+(\.\d+)?$/.test(raw) ? { ok: true, value: raw } : { ok: false, reason: 'number' }
+    },
+    normalizeSheetSequence(text) {
+      const raw = String(text ?? '').replace(/\s+/g, '').toUpperCase()
+      if (!raw) return { ok: true, value: null }
+      if (raw.length > SHEET_STRING_MAX.i7_sequence) return { ok: false, reason: 'length' }
+      return /^[ACGTRYSWKMBDHVN]+$/.test(raw)
+        ? { ok: true, value: raw }
+        : { ok: false, reason: 'sequence' }
+    },
+    sheetTextLimit(key, raw) {
+      const maxLen = SHEET_STRING_MAX[key]
+      if (maxLen && String(raw || '').length > maxLen) return { ok: false, reason: 'length' }
+      return { ok: true, value: raw || null }
+    },
+    coerceSheetValue(row, key, text) {
+      const raw = Array.isArray(text) ? text.join(',') : String(text ?? '').trim()
+      if (key === 'plate_nos') {
         return {
           ok: true,
           value: raw ? raw.split(/[,，、\t\r\n]+/).map((item) => item.trim()).filter(Boolean) : [],
         }
       }
-      if (['received_on', 'instrument_on', 'blood_collected_on', 'qc_on'].includes(key)) {
-        if (!raw) return { ok: true, value: null }
-        return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? { ok: true, value: raw } : { ok: false, reason: 'date' }
+      if (key === 'target_forms') {
+        const tokens = raw ? raw.split(/[,，、\t\r\n]+/).map((item) => item.trim()).filter(Boolean) : []
+        const options = TARGET_FORM_OPTIONS.map((item) => ({ label: item, value: item }))
+        const values = tokens.map((token) => this.sheetOptionValue(options, token))
+        if (values.some((item) => !item)) return { ok: false, reason: 'option' }
+        return { ok: true, value: TARGET_FORM_OPTIONS.filter((item) => values.includes(item)) }
       }
-      if (['started_at', 'finished_at', 'pcr_started_at', 'pcr_finished_at', 'transfected_at'].includes(key)) {
+      if (key === 'study_type') {
         if (!raw) return { ok: true, value: null }
-        return /^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?$/.test(raw)
-          ? { ok: true, value: raw }
-          : { ok: false, reason: 'datetime' }
+        const value = this.sheetOptionValue(STUDY_TYPE_OPTIONS.map((item) => ({ label: item, value: item })), raw)
+        return value ? { ok: true, value } : { ok: false, reason: 'option' }
       }
+      if (SHEET_DATE_KEYS.includes(key)) return this.normalizeSheetDate(raw)
       if (key === 'build_type') {
         const value = this.sheetOptionValue(this.typeOptions, raw)
         return value ? { ok: true, value } : { ok: false, reason: 'option' }
@@ -1446,22 +1682,15 @@ export default {
       if (key === 'sample_source') {
         if (!raw) return { ok: true, value: null }
         const value = this.sheetOptionValue(optionsForBuild(SAMPLE_SOURCE_OPTIONS, row?.build_type), raw)
-        return value
-          ? { ok: true, value }
-          : { ok: false, reason: 'option' }
+        return value ? { ok: true, value } : { ok: false, reason: 'option' }
       }
       if (key === 'sample_type') {
         if (!raw) return { ok: true, value: null }
         const value = this.sheetOptionValue(SAMPLE_TYPE_OPTIONS, raw)
-        return value
-          ? { ok: true, value }
-          : { ok: false, reason: 'option' }
+        return value ? { ok: true, value } : { ok: false, reason: 'option' }
       }
-      if (key === 'cell_type') {
-        if (row?.build_type !== BUILD_POOLED_BCR) return { ok: true, value: raw || null }
-        return !raw || CELL_TYPE_OPTIONS.includes(raw)
-          ? { ok: true, value: raw || null }
-          : { ok: false, reason: 'option' }
+      if (key === 'cell_type' && row?.build_type === BUILD_POOLED_BCR && raw && !CELL_TYPE_OPTIONS.includes(raw)) {
+        return { ok: false, reason: 'option' }
       }
       if (key === 'source_experiment_type') {
         return !raw || PHAGE_EXPERIMENT_TYPE_OPTIONS.includes(raw)
@@ -1471,9 +1700,7 @@ export default {
       if (key === 'index_mode') {
         if (!raw) return { ok: true, value: null }
         const value = this.sheetOptionValue(INDEX_MODE_OPTIONS, raw)
-        return value
-          ? { ok: true, value }
-          : { ok: false, reason: 'option' }
+        return value ? { ok: true, value } : { ok: false, reason: 'option' }
       }
       if (key === 'qc_result') {
         return !raw || QC_RESULT_OPTIONS.includes(raw)
@@ -1482,14 +1709,44 @@ export default {
       }
       if (key === 'status') return STATUS_OPTIONS.includes(raw) ? { ok: true, value: raw } : { ok: false, reason: 'option' }
       if (key === 'priority') return PRIORITY_OPTIONS.includes(raw) ? { ok: true, value: raw } : { ok: false, reason: 'option' }
+      if (this.isUserColumn({ key })) {
+        if (!raw) return { ok: true, value: null }
+        const hit = this.allUserOptions.find((item) => item === raw || item.toLowerCase() === raw.toLowerCase())
+        return hit ? { ok: true, value: hit } : { ok: false, reason: 'option' }
+      }
+      if (key === 'fragment_size_bp') return coerceOptionalNonnegInt(raw)
+      if (SHEET_DECIMAL_KEYS.includes(key)) return this.normalizeSheetDecimal(raw)
+      if (key === 'i7_sequence' || key === 'i5_sequence') return this.normalizeSheetSequence(raw)
+      if (key === 'library_code') return this.sheetTextLimit(key, raw.toUpperCase())
       if (key === 'target_codes') return { ok: true, value: uniqueTargetCodes(raw) }
-      return { ok: true, value: raw || null }
+      if (key === 'target_name') return this.sheetTextLimit(key, raw)
+      return this.sheetTextLimit(key, raw)
     },
-    sheetValidationMessage(_key, reason) {
-      if (reason === 'date') return '日期必须是 YYYY-MM-DD'
-      if (reason === 'datetime') return '时间必须是 YYYY-MM-DD HH:MM'
-      if (reason === 'option') return '不在允许的选项中'
-      return '输入不合法'
+    assignSheetValue(row, key, text) {
+      const column = allSheetColumns().find((item) => item.key === key)
+      if (!column) return { ok: false, reason: 'unknown' }
+      if (column.edit === 'readonly') return { ok: true, skipped: true }
+      if (this.isSheetCellLocked(row, key)) return { ok: false, reason: 'locked' }
+      const result = this.coerceSheetValue(row, key, text)
+      if (!result.ok) return result
+      this.restoreSheetEditValue(row, key, result.value)
+      return { ok: true }
+    },
+    sheetValidationMessage(key, reason) {
+      const label = this.sheetColumns.find((item) => item.key === key)?.label
+        || allSheetColumns().find((item) => item.key === key)?.label
+        || '当前字段'
+      if (reason === 'date') return `${label}必须是 YYYY-MM-DD 格式的有效日期`
+      if (reason === 'integer') return `${label}必须是非负整数`
+      if (reason === 'number') return `${label}必须是非负数`
+      if (reason === 'sequence') return 'Barcode序列只能包含IUPAC碱基字符'
+      if (reason === 'length') {
+        const maxLen = SHEET_STRING_MAX[key]
+        return maxLen ? `${label}不能超过 ${maxLen} 个字` : `${label}超出长度限制`
+      }
+      if (reason === 'locked') return `${label}当前不可编辑`
+      if (reason === 'unknown') return '粘贴内容包含无法识别的列'
+      return `${label}必须与可选项完全匹配`
     },
     restoreSheetEditValue(row, key, value) {
       if (key === 'target_codes') {
@@ -1501,25 +1758,317 @@ export default {
     async finishSheetEdit(context) {
       const row = context?.row
       const key = context?.column?.field
+      const pickingTarget = this.sheetEditSource === 'dblclick' && (key === 'target_codes' || key === 'target_name')
+      this.sheetEditSource = ''
       if (!key || !row?.id) return
       const originalValue = this.takeSheetEditOriginal(row, key)
       if (this.isSheetCellLocked(row, key)) {
-        this.restoreSheetEditValue(row, key, originalValue)
+        if (pickingTarget) this.restoreSheetTarget(row, key, originalValue)
+        else this.restoreSheetEditValue(row, key, originalValue)
         return
       }
       const source = key === 'target_codes' ? row.target_codes : row[key]
       const result = this.coerceSheetValue(row, key, source)
       if (!result.ok) {
-        this.restoreSheetEditValue(row, key, originalValue)
+        if (pickingTarget) this.restoreSheetTarget(row, key, originalValue)
+        else this.restoreSheetEditValue(row, key, originalValue)
         ElMessage.warning(this.sheetValidationMessage(key, result.reason))
         return
       }
-      if (this.sameSheetValue(key, result.value, originalValue)) {
+      if (!pickingTarget && this.sameSheetValue(key, result.value, originalValue)) {
         this.restoreSheetEditValue(row, key, originalValue)
         return
       }
       this.restoreSheetEditValue(row, key, result.value)
+      if (pickingTarget) {
+        const baseline = this.rowBaselines.get(row.id)
+        if (
+          this.sameSheetValue('target_codes', row.target_codes, baseline?.target_codes)
+          && this.sameSheetValue('target_name', row.target_name, baseline?.target_name)
+        ) {
+          return
+        }
+      }
+      if (key === 'target_codes' || key === 'target_name') {
+        if (!await this.applySheetTarget(row, pickingTarget ? 'target_codes' : key, originalValue)) return
+      }
+      const baseline = this.rowBaselines.get(row.id)
+      const unchanged = key === 'target_codes' || key === 'target_name'
+        ? this.sameSheetValue('target_codes', row.target_codes, baseline?.target_codes)
+          && this.sameSheetValue('target_name', row.target_name, baseline?.target_name)
+        : this.sameSheetValue(key, row[key], originalValue)
+      if (unchanged) {
+        this.restoreSheetEditValue(row, key, originalValue)
+        if ((key === 'target_codes' || key === 'target_name') && baseline) {
+          row.target_codes = this.cloneSheetValue(baseline.target_codes)
+          row.target_name = baseline.target_name
+        }
+        return
+      }
       await this.persistRow(row, key)
+    },
+    async resolveTargetCodes(codes) {
+      const normalized = uniqueTargetCodes(codes)
+      if (!normalized.length) return { missing: [], nameByCode: new Map(), names: [] }
+      const items = await searchWorkbenchTargets('', normalized)
+      const nameByCode = new Map(items.map((item) => [item.snum, item.name]))
+      return {
+        missing: normalized.filter((code) => !nameByCode.has(code)),
+        nameByCode,
+        names: normalized.map((code) => nameByCode.get(code)),
+      }
+    },
+    async resolveTargetNames(value) {
+      const names = splitTargetNames(value)
+      if (!names.length) return { ambiguous: [], items: [], missing: [] }
+      const results = await Promise.all(names.map(async (name) => {
+        const items = await searchWorkbenchTargets(name)
+        const exact = items.filter((item) => String(item.name || '').trim().toLowerCase() === name.toLowerCase())
+        return { exact, name }
+      }))
+      const missing = results.filter((item) => item.exact.length === 0).map((item) => item.name)
+      const ambiguous = results.filter((item) => item.exact.length > 1).map((item) => item.name)
+      const matched = results.filter((item) => item.exact.length === 1)
+      return {
+        ambiguous,
+        items: matched.map((item) => item.exact[0]),
+        missing,
+      }
+    },
+    async applySheetTarget(row, key, originalValue) {
+      const submittedCodes = uniqueTargetCodes(row.target_codes)
+      const submittedName = String(row.target_name || '')
+      try {
+        if (key === 'target_codes') {
+          const resolved = await this.resolveTargetCodes(submittedCodes)
+          if (!this.sameSheetValue('target_codes', row.target_codes, submittedCodes)) return false
+          if (resolved.missing.length) {
+            this.restoreSheetTarget(row, key, originalValue)
+            ElMessage.warning(`未找到靶点编号：${resolved.missing.join('、')}`)
+            return false
+          }
+          row.target_codes = submittedCodes
+          row.target_name = resolved.names.join('&')
+          return true
+        }
+        const resolved = await this.resolveTargetNames(submittedName)
+        if (!this.sameSheetValue('target_name', row.target_name, submittedName)) return false
+        if (resolved.missing.length) {
+          this.restoreSheetTarget(row, key, originalValue)
+          ElMessage.warning(`未找到靶点名称：${resolved.missing.join('、')}`)
+          return false
+        }
+        if (resolved.ambiguous.length) {
+          this.restoreSheetTarget(row, key, originalValue)
+          ElMessage.warning(`靶点名称不唯一，请改用靶点编号：${resolved.ambiguous.join('、')}`)
+          return false
+        }
+        row.target_codes = resolved.items.map((item) => item.snum)
+        row.target_name = resolved.items.map((item) => item.name).join('&')
+        return true
+      } catch {
+        this.restoreSheetTarget(row, key, originalValue)
+        ElMessage.warning('靶点校验失败，本次修改未保存')
+        return false
+      }
+    },
+    restoreSheetTarget(row, key, originalValue) {
+      const baseline = this.rowBaselines.get(row.id)
+      if (!baseline) {
+        this.restoreSheetEditValue(row, key, originalValue)
+        return
+      }
+      row.target_codes = this.cloneSheetValue(baseline.target_codes)
+      row.target_name = baseline.target_name
+    },
+    async onSheetPaste(event) {
+      if (!this.canEdit) return
+      if (event.target?.closest?.('input, textarea')) return
+      const text = event.clipboardData?.getData('text/plain') || ''
+      if (!text) return
+      if (!text.includes('\t') && !text.includes('\n') && !this.sheetRange) return
+      event.preventDefault()
+      if (!await this.flushPendingSheetEdits()) return
+      const lines = text.replace(/\r/g, '').split('\n')
+      if (lines.at(-1) === '') lines.pop()
+      const grid = lines.map((line) => line.split('\t'))
+      if (!grid.length) return
+      const columns = allSheetColumns()
+      const labelToKey = new Map(columns.map((column) => [column.label, column.key]))
+      const headerKeys = grid[0].map((cell) => labelToKey.get(String(cell || '').trim()) || null)
+      const nonEmptyHeaderCount = grid[0].filter((cell) => String(cell || '').trim()).length
+      const matchedHeaderCount = headerKeys.filter(Boolean).length
+      const hasHeader = matchedHeaderCount >= 2 && matchedHeaderCount === nonEmptyHeaderCount
+      let dataRows = hasHeader ? grid.slice(1) : grid
+      let startIndex = this.pasteAnchor?.rowIndex ?? 0
+      const startColKey = this.pasteAnchor?.colKey || this.sheetColumns[0]?.key
+      let startColIndex = this.sheetColumns.findIndex((column) => column.key === startColKey)
+      if (startColIndex < 0) return
+      const selectedRange = this.normalizedSheetRange()
+      const fillSelectedRange = !hasHeader
+        && dataRows.length === 1
+        && dataRows[0]?.length === 1
+        && selectedRange
+        && (selectedRange.r1 !== selectedRange.r2 || selectedRange.c1 !== selectedRange.c2)
+      if (fillSelectedRange) {
+        const value = dataRows[0][0]
+        const rowCount = selectedRange.r2 - selectedRange.r1 + 1
+        const columnCount = selectedRange.c2 - selectedRange.c1 + 1
+        dataRows = Array.from({ length: rowCount }, () => Array(columnCount).fill(value))
+        startIndex = selectedRange.r1
+        startColIndex = selectedRange.c1
+      }
+      const availableRowCount = Math.max(this.list.length - startIndex, 0)
+      const skippedRowCount = Math.max(dataRows.length - availableRowCount, 0)
+      dataRows.splice(availableRowCount)
+      if (!dataRows.length) {
+        ElMessage.warning('粘贴区域超出当前列表，本次未保存')
+        return
+      }
+      const workingRows = this.list.map((row) => this.normalizeRow(JSON.parse(JSON.stringify(row))))
+      const dirtyByIndex = new Map()
+      const targetFieldsByIndex = new Map()
+      const invalidCells = []
+      const touchedCells = []
+      dataRows.forEach((cells, offset) => {
+        if (cells.every((cell) => String(cell ?? '') === '')) return
+        const rowIndex = startIndex + offset
+        const row = workingRows[rowIndex]
+        if (!row) return
+        cells.forEach((cell, cellIndex) => {
+          const key = hasHeader ? headerKeys[cellIndex] : this.sheetColumns[startColIndex + cellIndex]?.key
+          if (!key) {
+            if (String(cell ?? '').trim()) invalidCells.push({ reason: 'unknown' })
+            return
+          }
+          const result = this.assignSheetValue(row, key, cell)
+          if (result.skipped) return
+          if (!result.ok) {
+            invalidCells.push({ ...result, key })
+            return
+          }
+          if (this.sameSheetValue(key, row[key], this.list[rowIndex]?.[key])) return
+          touchedCells.push({ rowId: row.id, key })
+          const fields = dirtyByIndex.get(rowIndex) || new Set()
+          fields.add(key)
+          dirtyByIndex.set(rowIndex, fields)
+          if (key === 'target_codes' || key === 'target_name') {
+            const targetFields = targetFieldsByIndex.get(rowIndex) || new Set()
+            targetFields.add(key)
+            targetFieldsByIndex.set(rowIndex, targetFields)
+          }
+        })
+      })
+      if (invalidCells.length) {
+        const firstInvalid = invalidCells[0]
+        const message = firstInvalid.reason === 'unknown'
+          ? '粘贴内容包含无法识别的列，本次粘贴未保存'
+          : firstInvalid.key
+            ? `${this.sheetValidationMessage(firstInvalid.key, firstInvalid.reason)}，本次粘贴未保存`
+            : `有 ${invalidCells.length} 个单元格不可编辑，本次粘贴未保存`
+        ElMessage.warning(message)
+        return
+      }
+      if (!dirtyByIndex.size) return
+      const targetEntries = [...targetFieldsByIndex.entries()]
+        .map(([rowIndex, fields]) => ({ fields, row: workingRows[rowIndex] }))
+      if (targetEntries.length) {
+        try {
+          const codeEntries = targetEntries.filter(({ fields }) => fields.has('target_codes'))
+          const resolvedCodes = await this.resolveTargetCodes(codeEntries.flatMap(({ row }) => row.target_codes || []))
+          if (resolvedCodes.missing.length) {
+            ElMessage.warning(`未找到靶点编号：${resolvedCodes.missing.join('、')}，本次粘贴未保存`)
+            return
+          }
+          codeEntries.forEach(({ fields, row }) => {
+            const canonicalNames = (row.target_codes || []).map((code) => resolvedCodes.nameByCode.get(code))
+            if (fields.has('target_name')) {
+              const submittedNames = splitTargetNames(row.target_name)
+              const matches = submittedNames.length === canonicalNames.length
+                && submittedNames.every((name, index) => name.toLowerCase() === String(canonicalNames[index] || '').toLowerCase())
+              if (!matches) throw new Error('target-mismatch')
+            }
+            row.target_name = canonicalNames.join('&')
+            fields.add('target_name')
+          })
+          const nameOnlyEntries = targetEntries.filter(({ fields }) => fields.has('target_name') && !fields.has('target_codes'))
+          const resolvedNames = await this.resolveTargetNames(nameOnlyEntries.flatMap(({ row }) => splitTargetNames(row.target_name)).join('&'))
+          if (resolvedNames.missing.length) {
+            ElMessage.warning(`未找到靶点名称：${resolvedNames.missing.join('、')}，本次粘贴未保存`)
+            return
+          }
+          if (resolvedNames.ambiguous.length) {
+            ElMessage.warning(`靶点名称不唯一：${resolvedNames.ambiguous.join('、')}，本次粘贴未保存`)
+            return
+          }
+          nameOnlyEntries.forEach(({ fields, row }) => {
+            const targetItems = splitTargetNames(row.target_name).map((name) => (
+              resolvedNames.items.find((item) => String(item.name || '').toLowerCase() === name.toLowerCase())
+            ))
+            row.target_codes = targetItems.map((item) => item.snum)
+            row.target_name = targetItems.map((item) => item.name).join('&')
+            fields.add('target_codes')
+          })
+        } catch {
+          ElMessage.warning('靶点名称与编号不匹配或校验失败，本次粘贴未保存')
+          return
+        }
+      }
+      try {
+        let savedCount = 0
+        for (const [rowIndex, fields] of dirtyByIndex.entries()) {
+          const row = workingRows[rowIndex]
+          if (fields.has('qc_result')) {
+            stampQcFields(row, getSerumUserName(useUserStore().userInfo)).forEach((key) => fields.add(key))
+          }
+          const payload = { id: row.id }
+          fields.forEach((field) => {
+            payload[field] = row[field]
+          })
+          if (fields.has('target_codes') || fields.has('target_name')) {
+            payload.target_codes = row.target_codes
+            payload.target_name = row.target_name
+          }
+          const saved = await saveLibraryOrder(payload)
+          const savedFields = [...fields]
+          if (payload.target_codes !== undefined) savedFields.push('target_codes', 'target_name')
+          if (fields.has('mouse_model')) savedFields.push('sample_type')
+          if (fields.has('index_mode')) savedFields.push(...INDEX_LINKED_KEYS)
+          this.applySavedFields(
+            this.normalizeRow(saved),
+            fields.has('build_type') ? undefined : [...new Set(savedFields)],
+          )
+          savedCount += 1
+        }
+        const selectedCells = touchedCells
+          .map(({ rowId, key }) => ({
+            rowIndex: this.list.findIndex((row) => row.id === rowId),
+            colIndex: this.sheetColumns.findIndex((column) => column.key === key),
+          }))
+          .filter(({ rowIndex, colIndex }) => rowIndex >= 0 && colIndex >= 0)
+        if (selectedCells.length) {
+          const rowIndexes = selectedCells.map((cell) => cell.rowIndex)
+          const colIndexes = selectedCells.map((cell) => cell.colIndex)
+          const range = {
+            r1: Math.min(...rowIndexes),
+            c1: Math.min(...colIndexes),
+            r2: Math.max(...rowIndexes),
+            c2: Math.max(...colIndexes),
+          }
+          await this.$nextTick()
+          const activeRow = this.list[range.r1]
+          const activeColumn = this.sheetColumns[range.c1]
+          if (activeRow && activeColumn) {
+            await this.$refs.sheetTable?.setSelectCell?.(activeRow, activeColumn.key)
+          }
+          this.setSheetRange(range)
+        }
+        const skippedHint = skippedRowCount ? `，已忽略超出的 ${skippedRowCount} 行` : ''
+        ElMessage.success(`已粘贴并保存 ${savedCount} 行${skippedHint}`)
+      } catch (error) {
+        await this.getList({ flushEditor: false })
+        notifyApiError(error, { messages: { default: '粘贴保存失败' } })
+      }
     },
   },
 }
@@ -1847,12 +2396,10 @@ export default {
   border-radius: 5px;
 }
 
-.source-link-input {
-  cursor: pointer;
-}
-
-.source-link-input :deep(.el-input__wrapper),
-.source-link-input :deep(.el-input__inner) {
+.source-link.is-link,
+.source-link.is-link :deep(.el-input__wrapper),
+.source-link.is-link :deep(.el-input__inner),
+.source-link.is-link :deep(.el-input__suffix) {
   cursor: pointer;
 }
 

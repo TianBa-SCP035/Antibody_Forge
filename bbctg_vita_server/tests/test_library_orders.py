@@ -120,6 +120,22 @@ class LibraryOrderTests(unittest.TestCase):
             },
         )
         self.assertEqual(manual["sample_type"], service.SAMPLE_RNVM_BLOOD)
+        first_of_many = service.save(
+            self.db,
+            {"id": saved["id"], "mouse_model": "RL-KO，RN-KO"},
+        )
+        self.assertEqual(first_of_many["sample_type"], service.SAMPLE_LITE)
+        unmapped_first = service.save(
+            self.db,
+            {"id": saved["id"], "mouse_model": "RM、RN"},
+        )
+        self.assertEqual(unmapped_first["sample_type"], service.SAMPLE_LITE)
+        typed = service.save(
+            self.db,
+            {"id": saved["id"], "sample_type": service.SAMPLE_PHAGE},
+        )
+        self.assertEqual(typed["sample_type"], service.SAMPLE_PHAGE)
+        self.assertEqual(typed["mouse_model"], "RM、RN")
 
     def test_experiment_type_is_phage_only(self):
         pooled = service.save(

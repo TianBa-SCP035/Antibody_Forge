@@ -45,6 +45,7 @@ DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Offi
 | `/api/atlas` | `modules/atlas` |
 | `/api/discovery/workbench` | `modules/discovery/workbench` |
 | `/api/molecular-cell/library-orders` | `modules/molecular_cell/library_orders` |
+| `/api/molecular-cell/library-orders/catalog` | `modules/molecular_cell/primer_catalog`（引物库） |
 | `/api/serum` | `modules/immunology/serum` |
 | `/api/serum/workbench` | `modules/immunology/workbench` |
 | `/api/serum/titer` | `modules/immunology/titer` |

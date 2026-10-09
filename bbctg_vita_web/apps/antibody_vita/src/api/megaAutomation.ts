@@ -200,6 +200,42 @@ export function fetchFlowWorkOrdersBySource(
   );
 }
 
+export interface CellPlateUsageColumn {
+  batch: string;
+  catalog_no: string;
+  cell_count: string;
+  cell_name: string;
+  cell_type: string;
+  column_no: number;
+  conflict: boolean;
+  generation: string;
+  locked: boolean;
+  source: string;
+  source_order_id?: null | number;
+  source_order_num: string;
+  species: string;
+  used_by: Array<{ id?: null | number; orderNum: string; status?: string }>;
+}
+
+export interface CellPlateUsage {
+  barcode: string;
+  columns: CellPlateUsageColumn[];
+}
+
+export function fetchCellPlateUsage(
+  params: { barcode: string; exclude_order_id?: null | number },
+  config?: RequestConfig,
+) {
+  return requestClient.get<CellPlateUsage>('/mega-automation/flow-work-orders/cell-plate-usage', {
+    params: {
+      barcode: params.barcode,
+      exclude_order_id: params.exclude_order_id || undefined,
+    },
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
 export function fetchFlowWorkOrderDetail(id: number | string, config?: RequestConfig) {
   return requestClient.get<FlowWorkOrder>(`/mega-automation/flow-work-orders/${id}`, {
     ...skipGlobalErrorHandler,

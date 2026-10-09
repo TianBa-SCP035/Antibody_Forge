@@ -13,6 +13,7 @@
     "build": "pnpm vite build --mode production",
     "dev": "pnpm vite --mode development",
     "dev:test": "pnpm vite --mode test",
+    "lint:components": "eslint \"src/**/*.vue\"",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit --skipLibCheck"
   },
@@ -47,6 +48,10 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "unplugin-element-plus": "catalog:"
+    "@typescript-eslint/parser": "catalog:",
+    "eslint": "catalog:",
+    "eslint-plugin-vue": "catalog:",
+    "unplugin-element-plus": "catalog:",
+    "vue-eslint-parser": "catalog:"
   }
 }

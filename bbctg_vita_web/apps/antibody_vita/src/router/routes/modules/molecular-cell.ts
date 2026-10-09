@@ -5,7 +5,7 @@ const LIBRARY_TAB_GROUP = '/molecular-cell/library-construction';
 const routes: RouteRecordRaw[] = [
   {
     meta: {
-      authority: ['molecular.page.library'],
+      authority: ['molecular.page.library', 'molecular.page.primer'],
       featureCode: 'menu.molecular_cell',
       icon: 'lucide:dna',
       order: 30,
@@ -13,8 +13,20 @@ const routes: RouteRecordRaw[] = [
     },
     name: 'MolecularCell',
     path: '/molecular-cell',
-    redirect: '/molecular-cell/library-construction',
+    redirect: '/molecular-cell/primer-library',
     children: [
+      {
+        name: 'PrimerLibrary',
+        path: '/molecular-cell/primer-library',
+        component: () => import('#/views/MolecularCell/primer/PrimerLibrary.vue'),
+        meta: {
+          authority: ['molecular.page.primer'],
+          featureCode: 'menu.molecular_cell.primer',
+          icon: 'lucide:flask-conical',
+          order: 5,
+          title: '引物库',
+        },
+      },
       {
         name: 'LibraryConstructionList',
         path: '/molecular-cell/library-construction',
@@ -24,7 +36,7 @@ const routes: RouteRecordRaw[] = [
           featureCode: 'menu.molecular_cell.library',
           icon: 'lucide:library',
           keepAlive: true,
-          order: 5,
+          order: 10,
           tabGroup: LIBRARY_TAB_GROUP,
           title: '文库构建',
         },

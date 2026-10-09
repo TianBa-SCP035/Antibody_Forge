@@ -10,7 +10,6 @@
           <small>最近同步 {{ stats.synced_at || '等待首次同步' }}</small>
         </div>
         <form class="search-control" @submit.prevent="search">
-          <el-icon><Search /></el-icon>
           <input v-model="query.keyword" placeholder="搜索靶点、基因、别名或 NCBI Gene ID" />
           <button
             v-if="query.keyword"
@@ -19,7 +18,7 @@
             aria-label="清除搜索"
             @click="clearSearch"
           >
-            <el-icon><Close /></el-icon>
+            ×
           </button>
           <button class="search-submit" type="submit">搜索</button>
         </form>
@@ -89,13 +88,13 @@
               <span>Mouse {{ target.mouse_gene_official_name || '—' }}</span>
             </span>
             <span class="target-status">
-              <el-tag :type="statusMeta(target.status).type" effect="plain" size="small">
-                {{ statusMeta(target.status).label }}
-              </el-tag>
+              <span>{{ statusMeta(target.status).label }}</span>
               <small v-if="selectedTarget?.id === target.id">正在查看</small>
             </span>
           </button>
-          <el-empty v-if="!loading && targets.length === 0" description="没有符合条件的靶点" />
+          <div v-if="!loading && targets.length === 0" class="empty-state">
+            没有符合条件的靶点
+          </div>
         </div>
 
         <div class="pagination-bar">
@@ -133,9 +132,7 @@
                 <h2>靶点摘要</h2>
                 <span>Target spotlight</span>
               </div>
-              <el-tag :type="statusMeta(selectedTarget.status).type" effect="plain">
-                {{ statusMeta(selectedTarget.status).label }}
-              </el-tag>
+              <span>{{ statusMeta(selectedTarget.status).label }}</span>
             </div>
 
             <div class="spotlight-identity">
@@ -202,7 +199,7 @@
               <span>人鼠同源性 · {{ selectedTarget.human_mouse_homology || '未标注' }}</span>
             </div>
           </template>
-          <el-empty v-else description="请从左侧选择靶点" />
+          <div v-else class="empty-state">请从左侧选择靶点</div>
         </article>
 
         <button
@@ -245,7 +242,6 @@
             rel="noopener noreferrer"
           >
             <span>项目管理详情</span>
-            <el-icon><TopRight /></el-icon>
           </a>
         </div>
 
@@ -306,8 +302,6 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
-
-import { Close, Search, TopRight } from '@element-plus/icons-vue';
 
 import {
   fetchTargetList,
@@ -511,9 +505,9 @@ async function toggleArchive() {
 }
 
 function statusMeta(status?: null | number) {
-  if (status === 1) return { label: '已开发', type: 'success' as const };
-  if (status === 2) return { label: '未开发', type: 'warning' as const };
-  return { label: '未标注', type: 'info' as const };
+  if (status === 1) return { label: '已开发' };
+  if (status === 2) return { label: '未开发' };
+  return { label: '未标注' };
 }
 
 function targetTypeLabel(value?: null | number) {
@@ -696,7 +690,7 @@ onMounted(loadTargets);
 
 .search-control {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   height: 36px;
   align-items: center;
   overflow: hidden;
@@ -712,15 +706,10 @@ onMounted(loadTargets);
   box-shadow: 0 0 0 2px var(--el-color-primary-light-9);
 }
 
-.search-control > .el-icon {
-  margin-left: 11px;
-  color: var(--target-muted);
-}
-
 .search-control input {
   width: 100%;
   height: 100%;
-  padding: 0 9px;
+  padding: 0 11px;
   color: var(--target-text);
   font: inherit;
   font-size: 13px;
@@ -745,6 +734,8 @@ onMounted(loadTargets);
   display: grid;
   padding: 8px;
   color: var(--target-muted);
+  font-size: 17px;
+  line-height: 1;
   background: transparent;
   place-items: center;
 }
@@ -926,6 +917,14 @@ onMounted(loadTargets);
 .target-status small {
   color: var(--el-color-primary);
   font-size: 11px;
+}
+
+.empty-state {
+  display: grid;
+  min-height: 120px;
+  color: var(--target-muted);
+  font-size: 13px;
+  place-items: center;
 }
 
 .pagination-bar {

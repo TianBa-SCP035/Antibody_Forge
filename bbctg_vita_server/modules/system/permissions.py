@@ -67,6 +67,8 @@ MOLECULAR_PERMISSION_CODES = {
     "molecular.library.edit",
     "molecular.page.library_detail",
     "molecular.library.file.manage",
+    "molecular.page.primer",
+    "molecular.primer.edit",
 }
 
 DEFAULT_PERMISSION_MESSAGE = "没有权限执行此操作"
@@ -110,6 +112,8 @@ PERMISSION_MESSAGES: dict[str, str] = {
     "molecular.library.edit": "没有权限编辑文库构建工单",
     "molecular.page.library_detail": "没有权限查看文库构建详情",
     "molecular.library.file.manage": "没有权限管理文库质检",
+    "molecular.page.primer": "没有权限访问引物库",
+    "molecular.primer.edit": "没有权限编辑引物库",
     "system.page.user": "没有权限访问用户管理",
     "system.page.role": "没有权限访问角色管理",
     "system.page.permission": "没有权限访问权限管理",

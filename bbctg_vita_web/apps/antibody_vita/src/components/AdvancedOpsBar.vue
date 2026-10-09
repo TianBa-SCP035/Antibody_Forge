@@ -1,6 +1,12 @@
 <template>
   <transition name="ops-slide">
-    <div v-show="modelValue" class="advanced-ops-bar">
+    <div
+      v-show="modelValue"
+      ref="barRef"
+      class="advanced-ops-bar"
+      :class="{ 'is-pinned': pinned }"
+      :style="pinStyle"
+    >
       <div class="ops-bar-header">
         <div class="ops-title">
           <el-icon style="margin-right: 6px;"><Tools /></el-icon>
@@ -17,6 +23,8 @@
 </template>
 
 <script>
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+
 import { Close, Tools } from '@element-plus/icons-vue';
 import { ElButton, ElIcon } from 'element-plus';
 
@@ -32,10 +40,52 @@ export default {
       type: Boolean,
       default: false,
     },
+    pinned: {
+      type: Boolean,
+      default: false,
+    },
   },
   emits: ['update:modelValue'],
-  setup() {
-    return { Close };
+  setup(props) {
+    const barRef = ref(null);
+    const pinStyle = ref({});
+    let observer = null;
+
+    function place() {
+      if (!props.pinned) {
+        pinStyle.value = {};
+        return;
+      }
+      const parent = barRef.value?.parentElement;
+      if (!parent) return;
+      const rect = parent.getBoundingClientRect();
+      pinStyle.value = {
+        left: `${rect.left}px`,
+        width: `${rect.width}px`,
+      };
+    }
+
+    onMounted(() => {
+      if (!props.pinned) return;
+      const parent = barRef.value?.parentElement;
+      if (parent) {
+        observer = new ResizeObserver(place);
+        observer.observe(parent);
+      }
+      window.addEventListener('resize', place);
+      place();
+    });
+
+    onBeforeUnmount(() => {
+      observer?.disconnect();
+      window.removeEventListener('resize', place);
+    });
+
+    watch(() => props.modelValue, (open) => {
+      if (open) place();
+    });
+
+    return { Close, barRef, pinStyle };
   },
 };
 </script>
@@ -100,6 +150,13 @@ export default {
 .ops-actions > .el-button {
   flex: 0 0 auto;
   width: auto;
+}
+
+.advanced-ops-bar.is-pinned {
+  position: fixed;
+  top: var(--vben-header-height, 90px);
+  right: auto;
+  z-index: 80;
 }
 
 .ops-slide-enter-active,

@@ -3,8 +3,8 @@
     <div class="panel-head">
       <div class="panel-head-left">
         <el-icon class="head-icon"><Menu /></el-icon>
-        <span class="panel-title">细胞板信息</span>
-        <span class="panel-hint">每块细胞板按 12 列维护，一列一份细胞</span>
+              <span class="panel-title">细胞板信息</span>
+              <span class="panel-hint">{{ plateHint }}</span>
       </div>
       <div class="panel-head-right">
         <el-checkbox v-model="showExtraFields" size="small">更多字段</el-checkbox>
@@ -61,8 +61,8 @@
             <template #default="{ row }">
               <div
                 class="row-drag-handle"
-                :class="{ 'is-disabled': disabled }"
-                title="拖动调整位置"
+                :class="{ 'is-disabled': disabled || plateHasLockedColumn }"
+                :title="plateHasLockedColumn ? '含已占用列，不能调整列顺序' : '拖动调整位置'"
                 @click.stop
               >
                 {{ row.column_no }}
@@ -75,7 +75,7 @@
                 v-model="row.cell_type"
                 size="small"
                 placeholder="空列"
-                :disabled="disabled || !String(row.cell_name || '').trim()"
+                :disabled="disabled || row._locked || !String(row.cell_name || '').trim()"
                 :class="{
                   'is-invalid-control': hasFieldError(
                     `cell_plates.${index}.columns.${$index}.cell_type`,
@@ -91,7 +91,7 @@
               <el-input
                 v-model="row.cell_name"
                 size="small"
-                :disabled="disabled"
+                :disabled="disabled || row._locked"
                 :class="{
                   'is-invalid-control': hasFieldError(
                     `cell_plates.${index}.columns.${$index}.cell_name`,
@@ -100,39 +100,48 @@
                 placeholder="细胞名称"
                 @input="onCellNameInput(row)"
               />
+              <div v-if="row._locked" class="column-usage-hint is-locked">
+                已被 {{ row._usedByLabel || '其他订单' }} 使用<span v-if="row._conflict">，其他订单填写不一致</span>
+              </div>
+              <div v-else-if="row._conflict" class="column-usage-hint is-conflict">
+                其他订单填写不一致
+              </div>
+              <div v-else-if="row._sourceOrderNum" class="column-usage-hint">
+                来自 {{ row._sourceOrderNum }}
+              </div>
             </template>
           </el-table-column>
           <el-table-column label="种属" min-width="70">
             <template #default="{ row }">
-              <el-select v-model="row.species" size="small" clearable placeholder="选择" :disabled="disabled">
+              <el-select v-model="row.species" size="small" clearable placeholder="选择" :disabled="disabled || row._locked">
                 <el-option v-for="species in speciesOptions" :key="species" :label="species" :value="species" />
               </el-select>
             </template>
           </el-table-column>
           <el-table-column label="批次" min-width="80">
             <template #default="{ row }">
-              <el-input v-model="row.batch" size="small" :disabled="disabled" />
+              <el-input v-model="row.batch" size="small" :disabled="disabled || row._locked" />
             </template>
           </el-table-column>
           <el-table-column label="代次" min-width="80">
             <template #default="{ row }">
-              <el-input v-model="row.generation" size="small" :disabled="disabled" />
+              <el-input v-model="row.generation" size="small" :disabled="disabled || row._locked" />
             </template>
           </el-table-column>
           <el-table-column label="细胞量" min-width="80">
             <template #default="{ row }">
-              <el-input v-model="row.cell_count" size="small" :disabled="disabled" />
+              <el-input v-model="row.cell_count" size="small" :disabled="disabled || row._locked" />
             </template>
           </el-table-column>
           <template v-if="showExtraFields">
             <el-table-column label="货号" min-width="80">
               <template #default="{ row }">
-                <el-input v-model="row.catalog_no" size="small" :disabled="disabled" />
+                <el-input v-model="row.catalog_no" size="small" :disabled="disabled || row._locked" />
               </template>
             </el-table-column>
             <el-table-column label="来源" min-width="80">
               <template #default="{ row }">
-                <el-input v-model="row.source" size="small" :disabled="disabled" />
+                <el-input v-model="row.source" size="small" :disabled="disabled || row._locked" />
               </template>
             </el-table-column>
           </template>
@@ -213,10 +222,23 @@ export default {
       const index = Math.max(0, Number(this.modelValue) || 0);
       return this.plates[index] || this.plates[0] || { columns: [] };
     },
+    plateHasLockedColumn() {
+      return (this.activePlate.columns || []).some((column) => column._locked);
+    },
+    plateHint() {
+      if (this.plateHasLockedColumn) return '含已被其他订单使用的列，这些列不可改，也不能调整列顺序';
+      return '每块细胞板按 12 列维护，一列一份细胞';
+    },
+    dragDisabled() {
+      return this.disabled || this.plateHasLockedColumn;
+    },
   },
   watch: {
-    disabled(value) {
-      this.sortable?.option('disabled', value);
+    disabled() {
+      this.sortable?.option('disabled', this.dragDisabled);
+    },
+    plateHasLockedColumn() {
+      this.sortable?.option('disabled', this.dragDisabled);
     },
     modelValue() {
       this.scheduleSortableInit();
@@ -263,14 +285,14 @@ export default {
       if (initToken !== this.sortableInitToken || !tbody.isConnected) return;
       this.sortable = Sortable.create(tbody, {
         animation: 200,
-        disabled: this.disabled,
+        disabled: this.dragDisabled,
         ghostClass: 'sortable-ghost',
         handle: '.row-drag-handle',
         onEnd: (event) => this.handleDragEnd(event),
       });
     },
     handleDragEnd({ oldIndex, newIndex, item }) {
-      if (oldIndex == null || newIndex == null || oldIndex === newIndex) return;
+      if (this.dragDisabled || oldIndex == null || newIndex == null || oldIndex === newIndex) return;
       const parent = item?.parentNode;
       if (parent) {
         const anchor =
@@ -341,6 +363,21 @@ $border-color: #e4e7ed;
   :deep(.el-select__wrapper) {
     background: transparent;
     box-shadow: none;
+  }
+}
+
+.column-usage-hint {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: #909399;
+
+  &.is-locked {
+    color: #b88230;
+  }
+
+  &.is-conflict {
+    color: #c45656;
   }
 }
 

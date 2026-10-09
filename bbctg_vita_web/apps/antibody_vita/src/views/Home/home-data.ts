@@ -136,6 +136,14 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
     url: '/discovery/workbench',
   },
   {
+    id: 'primer-library',
+    titleKey: 'page.home.presetPrimerLibraryTitle',
+    subtitleKey: 'page.home.presetPrimerLibrarySubtitle',
+    icon: 'lucide:flask-conical',
+    iconClass: 'bg-emerald-500/15 text-emerald-600',
+    url: '/molecular-cell/primer-library',
+  },
+  {
     id: 'library-construction',
     titleKey: 'page.home.presetLibraryConstructionTitle',
     subtitleKey: 'page.home.presetLibraryConstructionSubtitle',
@@ -350,6 +358,9 @@ export function canAccessStartPath(
   }
   if (path === '/molecular-cell/library-construction') {
     return hasAccessByCodes(['molecular.page.library']);
+  }
+  if (path === '/molecular-cell/primer-library') {
+    return hasAccessByCodes(['molecular.page.primer']);
   }
   if (path === '/mega-automation/flow-work-orders') {
     return hasAccessByCodes(['mega.page.flow_work_order']);

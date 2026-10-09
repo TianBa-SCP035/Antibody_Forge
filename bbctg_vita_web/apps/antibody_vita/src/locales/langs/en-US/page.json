@@ -39,6 +39,8 @@
     "presetDiscoveryWorkbenchSubtitle": "Harvest and screening schedule",
     "presetLibraryConstructionTitle": "Library construction",
     "presetLibraryConstructionSubtitle": "Orders, gels and QC files",
+    "presetPrimerLibraryTitle": "Primer library",
+    "presetPrimerLibrarySubtitle": "View, edit and import primers",
     "presetFlowWorkOrderTitle": "Flow work orders",
     "presetFlowWorkOrderSubtitle": "Mega automation flow orders",
     "presetTargetLibraryTitle": "Target intelligence",

@@ -32,6 +32,16 @@ class OrderSaveRequest(BaseModel):
     id: int | None = Field(default=None, gt=0)
 
 
+class OrderUpdateItem(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int = Field(gt=0)
+
+
+class OrderBatchSaveRequest(BaseModel):
+    items: list[OrderUpdateItem] = Field(min_length=1, max_length=service.MAX_BATCH_SAVE_ITEMS)
+
+
 class OrderListRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -65,6 +75,11 @@ class FileUpdateRequest(BaseModel):
 
 def _actor_name(user: SysUser) -> str:
     return (user.display_name or user.username or "").strip()
+
+
+def _is_qc_conclusion_only(payload: dict) -> bool:
+    changed = set(payload) - {"id"}
+    return bool(changed) and changed <= QC_CONCLUSION_FIELDS
 
 
 def _require_any(db: Session, user: SysUser, codes: tuple[str, ...]) -> None:
@@ -110,18 +125,6 @@ def meta(
     return success(service.get_meta())
 
 
-@router.get("/catalog/options")
-def catalog_options(
-    query: str | None = Query(default=None),
-    family: str | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
-    db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
-) -> dict:
-    _require_any(db, current_user, (PAGE_PERMISSION, DETAIL_PERMISSION))
-    return success(service.list_catalog(db, query=query, family=family, limit=limit))
-
-
 @router.post("/list")
 def list_orders(
     data: OrderListRequest | None = None,
@@ -165,12 +168,25 @@ def save_order(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     payload = data.model_dump(exclude_unset=True)
-    changed = set(payload) - {"id"}
-    if data.id is not None and changed and changed <= QC_CONCLUSION_FIELDS:
+    if data.id is not None and _is_qc_conclusion_only(payload):
         _require_any(db, current_user, (EDIT_PERMISSION, FILE_PERMISSION))
     else:
         require_permission(db, current_user, EDIT_PERMISSION)
     return _run_write(db, lambda: service.save(db, payload, created_by=_actor_name(current_user)))
+
+
+@router.post("/batch_save")
+def batch_save_orders(
+    data: OrderBatchSaveRequest,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    payloads = [item.model_dump(exclude_unset=True) for item in data.items]
+    if all(_is_qc_conclusion_only(payload) for payload in payloads):
+        _require_any(db, current_user, (EDIT_PERMISSION, FILE_PERMISSION))
+    else:
+        require_permission(db, current_user, EDIT_PERMISSION)
+    return _run_write(db, lambda: service.batch_save(db, payloads))
 
 
 @router.post("/export_list")

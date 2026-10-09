@@ -592,9 +592,21 @@ importers:
         specifier: ^0.18.5
         version: 0.18.5
     devDependencies:
+      '@typescript-eslint/parser':
+        specifier: 'catalog:'
+        version: 8.58.1(eslint@10.2.0(jiti@2.6.1))(typescript@6.0.2)
+      eslint:
+        specifier: 'catalog:'
+        version: 10.2.0(jiti@2.6.1)
+      eslint-plugin-vue:
+        specifier: 'catalog:'
+        version: 10.8.0(@typescript-eslint/parser@8.58.1(eslint@10.2.0(jiti@2.6.1))(typescript@6.0.2))(eslint@10.2.0(jiti@2.6.1))(vue-eslint-parser@10.4.0(eslint@10.2.0(jiti@2.6.1)))
       unplugin-element-plus:
         specifier: 'catalog:'
         version: 0.11.2(magicast@0.5.2)
+      vue-eslint-parser:
+        specifier: 'catalog:'
+        version: 10.4.0(eslint@10.2.0(jiti@2.6.1))
 
   internal/lint-configs/commitlint-config:
     dependencies:

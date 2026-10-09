@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import UploadFile
-from openpyxl import Workbook
 from sqlalchemy import BigInteger, create_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
@@ -23,7 +22,6 @@ from models.molecular_cell import (
 )
 from modules.discovery.workbench import service as discovery_service
 from modules.molecular_cell.library_orders import service
-from modules.molecular_cell.library_orders.catalog_import import parse_catalog_workbook
 
 
 @compiles(BigInteger, "sqlite")
@@ -208,6 +206,55 @@ class LibraryOrderTests(unittest.TestCase):
                 {"id": saved["id"], "build_type": service.BUILD_PHAGE_DISPLAY},
             )
 
+    def test_batch_save_updates_all_rows(self):
+        first = service.save(self.db, {"build_type": service.BUILD_POOLED_BCR})
+        second = service.save(self.db, {"build_type": service.BUILD_PHAGE_DISPLAY})
+        result = service.batch_save(
+            self.db,
+            [
+                {"id": first["id"], "remark": "甲", "library_order_id": "LIB-HACK"},
+                {"id": second["id"], "remark": "乙"},
+            ],
+        )
+        self.assertEqual([item["remark"] for item in result["items"]], ["甲", "乙"])
+        self.assertEqual(result["items"][0]["library_order_id"], first["library_order_id"])
+
+    def test_batch_save_rejects_whole_batch_when_one_row_fails(self):
+        first = service.save(self.db, {"build_type": service.BUILD_POOLED_BCR})
+        started = service.save(self.db, {"build_type": service.BUILD_POOLED_BCR})
+        service.save(self.db, {"id": started["id"], "status": service.STATUS_IN_PROGRESS})
+        with self.assertRaisesRegex(ValueError, f"{started['library_order_id']}：仅待处理"):
+            service.batch_save(
+                self.db,
+                [
+                    {"id": first["id"], "remark": "不应写入"},
+                    {"id": started["id"], "build_type": service.BUILD_PHAGE_DISPLAY},
+                ],
+            )
+        self.db.rollback()
+        self.assertIsNone(self.db.get(MolecularLibraryOrder, first["id"]).remark)
+
+    def test_batch_save_requires_unique_existing_ids(self):
+        saved = service.save(self.db, {"build_type": service.BUILD_POOLED_BCR})
+        with self.assertRaisesRegex(ValueError, "重复"):
+            service.batch_save(self.db, [{"id": saved["id"]}, {"id": saved["id"]}])
+        with self.assertRaisesRegex(ValueError, service.MISSING_ROW):
+            service.batch_save(self.db, [{"id": saved["id"] + 100, "remark": "x"}])
+        with self.assertRaisesRegex(ValueError, "ID"):
+            service.batch_save(self.db, [{"remark": "x"}])
+
+    def test_export_headers_match_excel_view_labels(self):
+        columns_js = (
+            Path(__file__).resolve().parents[2]
+            / "bbctg_vita_web/apps/antibody_vita/src/views/MolecularCell/library/libraryColumns.js"
+        )
+        sheet_labels = dict(
+            re.findall(r"def\('(\w+)',\s*'([^']+)'", columns_js.read_text(encoding="utf-8"))
+        )
+        self.assertEqual(set(sheet_labels), {key for _, key in service.EXPORT_COLUMNS})
+        for label, key in service.EXPORT_COLUMNS:
+            self.assertEqual(sheet_labels.get(key), label, key)
+
     def test_plate_numbers_are_unique(self):
         saved = service.save(
             self.db,
@@ -263,7 +310,7 @@ class LibraryOrderTests(unittest.TestCase):
     def test_catalog_reference_copies_snapshot(self):
         catalog = MolecularPrimerIndexCatalog(
             name="UDP0205-R",
-            family="UDP_10nt",
+            family="UDP",
             direction="R",
             version="V1",
             short_sequence="AGTCCGAGGA",
@@ -285,7 +332,7 @@ class LibraryOrderTests(unittest.TestCase):
     def test_manual_catalog_name_clears_stale_reference_and_sequence(self):
         catalog = MolecularPrimerIndexCatalog(
             name="UDP0205-R",
-            family="UDP_10nt",
+            family="UDP",
             direction="R",
             short_sequence="AGTCCGAGGA",
             active=True,
@@ -311,7 +358,7 @@ class LibraryOrderTests(unittest.TestCase):
     def test_clearing_catalog_id_clears_stale_snapshot(self):
         catalog = MolecularPrimerIndexCatalog(
             name="UDP0205-R",
-            family="UDP_10nt",
+            family="UDP",
             direction="R",
             short_sequence="AGTCCGAGGA",
             active=True,
@@ -379,14 +426,14 @@ class LibraryOrderTests(unittest.TestCase):
     def test_pooled_bcr_uses_forward_and_reverse_primer_pairs(self):
         forward = MolecularPrimerIndexCatalog(
             name="UDP0055V3-F",
-            family="UDP_10nt",
+            family="UDP",
             direction="F",
             short_sequence="TGCGCATAGC",
             active=True,
         )
         reverse = MolecularPrimerIndexCatalog(
             name="UDP0205-R",
-            family="UDP_10nt",
+            family="UDP",
             direction="R",
             short_sequence="AGTCCGAGGA",
             active=True,
@@ -573,32 +620,6 @@ class LibraryOrderTests(unittest.TestCase):
         service.delete_order(self.db, created["items"][0]["id"])
         discovery_service.delete(self.db, row["id"])
         self.assertIsNone(self.db.get(DiscoveryWorkbench, row["id"]))
-
-
-class PrimerCatalogImportTests(unittest.TestCase):
-    def test_parse_catalog_keeps_source_parts_without_derived_columns(self):
-        workbook = Workbook()
-        sheet = workbook.active
-        sheet.cell(1, 11, "正向同源臂1")
-        sheet.cell(2, 11, "AAAA")
-        sheet.cell(2, 13, "CCCC")
-        sheet.cell(6, 6, "UDP0055V3-F")
-        sheet.cell(6, 7, "TGCGCATAGC")
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as handle:
-            path = Path(handle.name)
-        try:
-            workbook.save(path)
-            items = parse_catalog_workbook(path)
-        finally:
-            workbook.close()
-            path.unlink(missing_ok=True)
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]["direction"], "F")
-        self.assertEqual(items[0]["version"], "V3")
-        self.assertEqual(items[0]["homology_arm_1"], "AAAA")
-        self.assertEqual(items[0]["homology_arm_2"], "CCCC")
-        self.assertNotIn("role", items[0])
-        self.assertNotIn("full_sequence", items[0])
 
 
 class LibraryFileTests(unittest.TestCase):

@@ -2,6 +2,24 @@ import type { RouteRecordRaw } from 'vue-router';
 
 import { filterTree, mapTree } from '@vben-core/shared/utils';
 
+function alignRedirectsWithAvailableChildren(
+  routes: RouteRecordRaw[],
+): RouteRecordRaw[] {
+  return routes.map((route) => {
+    if (!route.children?.length) {
+      return route;
+    }
+    const children = alignRedirectsWithAvailableChildren(route.children);
+    if (
+      typeof route.redirect !== 'string' ||
+      children.some((child) => child.path === route.redirect)
+    ) {
+      return { ...route, children };
+    }
+    return { ...route, children, redirect: children[0]!.path };
+  });
+}
+
 /**
  * 动态生成路由 - 前端方式
  */
@@ -11,9 +29,11 @@ async function generateRoutesByFrontend(
   forbiddenComponent?: RouteRecordRaw['component'],
 ): Promise<RouteRecordRaw[]> {
   // 根据角色标识过滤路由表,判断当前用户是否拥有指定权限
-  const finalRoutes = filterTree(routes, (route) => {
-    return hasAuthority(route, roles);
-  });
+  const finalRoutes = alignRedirectsWithAvailableChildren(
+    filterTree(routes, (route) => {
+      return hasAuthority(route, roles);
+    }),
+  );
 
   if (!forbiddenComponent) {
     return finalRoutes;

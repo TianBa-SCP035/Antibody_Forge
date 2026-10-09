@@ -97,6 +97,17 @@ def flow_work_order_meta(
     return _run(db, service.get_meta)
 
 
+@router.get("/flow-work-orders/cell-plate-usage")
+def flow_work_order_cell_plate_usage(
+    barcode: str = "",
+    exclude_order_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "mega.page.flow_work_order")
+    return _run(db, lambda: service.get_cell_plate_usage(db, barcode, exclude_order_id))
+
+
 @router.post("/flow-work-orders/by-source")
 def flow_work_orders_by_source(
     data: dict,

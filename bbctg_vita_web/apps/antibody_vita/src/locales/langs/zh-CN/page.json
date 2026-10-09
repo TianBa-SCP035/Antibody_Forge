@@ -39,6 +39,8 @@
     "presetDiscoveryWorkbenchSubtitle": "剖鼠与筛选安排",
     "presetLibraryConstructionTitle": "文库构建",
     "presetLibraryConstructionSubtitle": "建库工单与质检文件",
+    "presetPrimerLibraryTitle": "引物库",
+    "presetPrimerLibrarySubtitle": "查看、编辑和导入引物",
     "presetFlowWorkOrderTitle": "流式工单总览",
     "presetFlowWorkOrderSubtitle": "镁伽自动化流式工单",
     "presetTargetLibraryTitle": "靶点情报",

@@ -42,6 +42,8 @@ INTENTIONALLY_IGNORED_ROUTES = frozenset(
         ("GET", "/api/molecular-cell/library-orders/files/download"),
         ("POST", "/api/molecular-cell/library-orders/export_list"),
         ("POST", "/api/molecular-cell/library-orders/files/list"),
+        ("POST", "/api/molecular-cell/library-orders/catalog/ids"),
+        ("POST", "/api/molecular-cell/library-orders/catalog/list"),
         ("POST", "/api/molecular-cell/library-orders/list"),
         ("POST", "/api/serum/export_list"),
         ("POST", "/api/serum/export_mouse"),

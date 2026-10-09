@@ -136,7 +136,7 @@ class MolecularPrimerIndexCatalog(Base):
     family: Mapped[str] = mapped_column(String(32), nullable=False, index=True, comment="系列")
     direction: Mapped[str | None] = mapped_column(String(8), comment="原始方向")
     version: Mapped[str | None] = mapped_column(String(16), comment="版本")
-    short_sequence: Mapped[str] = mapped_column(String(64), nullable=False, comment="短序列")
+    short_sequence: Mapped[str] = mapped_column(String(64), nullable=False, comment="显示序列")
     homology_arm_1: Mapped[str | None] = mapped_column(String(128), comment="同源臂1")
     homology_arm_2: Mapped[str | None] = mapped_column(String(128), comment="同源臂2")
     source_file: Mapped[str | None] = mapped_column(String(255), comment="来源文件")

@@ -30,6 +30,7 @@ Antibody_Forge/
 | 千鼠万抗 · 靶点库 | `/atlas/targets` | `/api/atlas/targets/list` | 本地靶点主数据分页搜索与详情浏览 |
 | 小鼠免疫 | `/serum/workbench`、`/serum/list`、`/serum/detail`、`/serum/edit` 等 | `/api/serum`、`/api/serum/workbench` | 项目工作台（开做前准备）、实验列表、笼位、方案导出 |
 | 抗体发现 · 项目工作台 | `/discovery/workbench` | `/api/discovery/workbench` | 剖鼠取细胞与筛选安排；工作台 / Excel |
+| 分子与细胞 · 引物库 | `/molecular-cell/primer-library` | `/api/molecular-cell/library-orders/catalog` | 引物的查看、编辑、导入导出 |
 | 分子与细胞 · 文库构建 | `/molecular-cell/library-construction`、`/molecular-cell/library-construction/result` | `/api/molecular-cell/library-orders` | 建库工单、胶图与质检文件；发现交接 |
 | 效价数据 | `/serum/titer` | `/api/serum/titer` | 靶点、FACS、ELISA、附件（可选 DRM） |
 | 效价实验列表 | `/serum/titer-orders` | `/api/serum/titer/order/*` | 效价工单；「工单」→ 镁伽流式；「测序」→ 发现工作台 |

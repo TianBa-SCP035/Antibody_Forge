@@ -57,20 +57,12 @@ Barcode（i7 / i5 Index）在单细胞孔板、噬菌体展示、噬菌体 NGS �
 
 ### `molecular_primer_index_catalog`
 
-承接 `八口命名.xlsx`：
+- 一条记录是一条引物。预置系列是达普Barcode（达普仪器用，引物带 barcode）和 UDP（其他仪器或步骤用）。用户也可以自建系列，名称最长 32 个字符。方向是系列里面的正向或反向。
+- 保存名称、方向和显示序列。核对序列是显示序列的反向互补，质检对测序时现算，不另存。
+- 同源臂是 barcode 两侧的固定接头。UDP 正反向各一对，只作参照，不按引物选择或填写。达普Barcode 这一系列没有单独的接头。编辑、导入和启停都不改库里已有的版本和同源臂。
+- 名称唯一；显示序列允许重复。不自动把正向/反向映射为 i7/i5。
 
-- 旧 8 nt 名称/序列和 UDP 10 nt F/R 名称/序列分别记录 `family`。
-- 保存名称、原始方向、版本、短序列和同源臂；完整序列需要时由“同源臂1 + 短序列 + 同源臂2”计算，不重复落库。
-- 名称唯一；短序列允许重复。
-- 在实验规则确认前，不自动把 F/R 映射为 i7/i5，也不自动反向互补。
-
-建表后可从服务端目录导入实验员工作簿：
-
-```powershell
-python -m modules.molecular_cell.library_orders.catalog_import "C:\path\八口命名.xlsx"
-```
-
-导入按名称更新，可重复执行；保留工作簿中的 F/R、版本、短序列和同源臂原值，不生成 i7/i5 映射。
+日常新增、修改和批量导入均在引物库页面完成。
 
 ### `molecular_library_result_file`
 
@@ -99,11 +91,22 @@ python -m modules.molecular_cell.library_orders.catalog_import "C:\path\八口�
 ## API
 
 - `GET /meta`：建库类型、样品来源、样品类型、Barcode、混管细胞类型、状态和质控元数据。
-- `GET /catalog/options`：搜索启用的引物/Index 字典。
 - `POST /list`、`POST /export_list`：分页、统计和导出。
 - `GET /by-discovery`、`POST /handoff`：交接预览与创建。
 - `POST /save`、`POST /delete`：工单写入与删除；取消统一通过 `/save` 更新状态，删除工单时只清理已无其他工单引用的质检文件。
+- `POST /batch_save`：Excel 视图粘贴使用，在一个事务内更新多条已有工单，任一条校验失败则整批不写入。
 - `POST /files/list`、`POST /files/upload`、`POST /files/update`、`POST /files/delete`、`GET /files/download`：质控文件及工单级最终标记/胶图区域。
+
+引物库接口由 `modules/molecular_cell/primer_catalog` 提供，路径沿用 `/catalog` 前缀（与 `sys_permission_api` 登记一致）：
+
+- `GET /catalog/options`：搜索启用的引物/Index 字典，工单页选引物时使用；文库页、详情页和引物库页权限均可读。
+- `POST /catalog/list`：引物库分页查询；支持名称、显示序列、核对序列、备注、系列、方向和启停状态筛选。`stats.families` 按系列返回数量，预置系列始终占位，自建系列有数据才出现。
+- `POST /catalog/save`：单条新增或修改；名称唯一，序列只接受 A/C/G/T/N，系列必填且不超过 32 个字符，方向只接受正向或反向。
+- `POST /catalog/delete`：删除未被文库工单引用的引物。已被工单使用的引物只能停用，工单上的名称和序列快照保留。
+- `POST /catalog/ids`：按当前筛选返回全部引物 ID，供全部全选。
+- `POST /catalog/batch_update`、`POST /catalog/batch_delete`：对勾选的引物批量停用、启用、改系列或删除。删除时跳过已被工单使用的引物。
+- `POST /catalog/batch_save`：按导出表头批量导入（名称、系列、方向、显示序列、核对序列、备注、状态）；按名称新增或更新，最多 1000 条，任一条失败则整批不写入。
+- `POST /catalog/export`：按页面当前筛选条件导出 Excel；导出的表头可直接用于再次导入。
 
 ## 页面
 
@@ -112,6 +115,8 @@ python -m modules.molecular_cell.library_orders.catalog_import "C:\path\八口�
 常用筛选依次为关键词、状态、优先级、负责人、样品来源、靶点和上机日期。高级筛选保留样品类型、归类鼠型、课题类型、PM、细胞类型、来源发现 ID、实验记录本号、备注及工单起止日期。右键“查询”清空全部筛选；发现工作台和免疫工作台本身没有独立重置按钮，其他列表页的重置按钮保持原样。
 
 Excel 视图包含系统工单号、来源发现 ID 和全部面向用户的业务字段，不包含数据库主键、目录外键、文件哈希及审计时间等技术字段。未选择建库类型时显示完整字段集，但每行不适用于自身建库类型的实验字段只读；明确选择某一统计块或建库类型后，仅保留公共字段及该类型适用的实验字段。切换类型不会覆盖用户保存的全局列顺序。
+
+列表导出的表头与 Excel 视图列名一致。带“系统工单号”的表头粘贴会按工单号匹配当前页，不依赖行顺序；包含当前页不存在或重复的工单号时整次拒绝。未带系统工单号的普通区域粘贴仍从当前选中位置开始。只读或不适用的单元格若粘贴值与现值相同则忽略，不同则整次拒绝。
 
 质控详情页保留三栏审阅台：
 

@@ -136,8 +136,10 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `molecular.library.edit` | action | 两页的工单编辑：保存、取消、Excel、手工新增、删除 |
 | `molecular.page.library_detail` | page | 质控详情、文件列表与下载 |
 | `molecular.library.file.manage` | action | 质检文件，以及质检结论、质检人、质检日期、质检说明 |
+| `molecular.page.primer` | page | 引物库 |
+| `molecular.primer.edit` | action | 新增、修改、停用、删除、改系列和批量导入引物 |
 
-写接口 `POST /api/molecular-cell/library-orders/save`、`/delete`、`/handoff`、`/files/upload`、`/files/update`、`/files/delete` 登记 `sys_permission_api`。取消统一通过 `/save` 更新状态。只改质检结论、质检人、质检日期、质检说明时，`/save` 也接受 `molecular.library.file.manage`。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。权限码在 `sys_permission`，菜单开关 `menu.molecular_cell` / `menu.molecular_cell.library`。不写入示例角色/权限包。靶点 / 人名复用血清目录接口，这两条同时接受文库页权限。
+写接口 `POST /api/molecular-cell/library-orders/save`、`/batch_save`、`/delete`、`/handoff`、`/files/upload`、`/files/update`、`/files/delete`、`/catalog/save`、`/catalog/delete`、`/catalog/batch_update`、`/catalog/batch_delete`、`/catalog/batch_save` 登记 `sys_permission_api`；使用 POST 返回文件的 `/catalog/export` 也按页面权限登记。查询 `/catalog/list` 和全选 `/catalog/ids` 不记操作日志。取消统一通过 `/save` 更新状态。只改质检结论、质检人、质检日期、质检说明时，`/save` 也接受 `molecular.library.file.manage`；`/batch_save` 在每一条都只改这些字段时同样接受。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。权限码在 `sys_permission`，菜单开关 `menu.molecular_cell` / `menu.molecular_cell.library` / `menu.molecular_cell.primer`。不写入示例角色/权限包。靶点 / 人名复用血清目录接口，这两条同时接受文库页权限。
 
 ### 2.6 系统模块（`system.*`）
 
@@ -403,6 +405,7 @@ sequenceDiagram
 | 细胞库存 API | `bbctg_vita_server/modules/immunology/cell/routes.py` |
 | 抗体发现 API | `bbctg_vita_server/modules/discovery/workbench/routes.py` |
 | 文库构建 API | `bbctg_vita_server/modules/molecular_cell/library_orders/routes.py` |
+| 引物库 API | `bbctg_vita_server/modules/molecular_cell/primer_catalog/routes.py` |
 | 镁伽 API | `bbctg_vita_server/modules/mega_automation/routes.py` |
 | 认证 | `bbctg_vita_server/modules/auth/` |
 | 路由守卫 | `bbctg_vita_web/apps/antibody_vita/src/router/guard.ts` |

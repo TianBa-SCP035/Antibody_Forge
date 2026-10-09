@@ -700,32 +700,6 @@ def get_meta() -> dict[str, Any]:
     }
 
 
-def list_catalog(
-    db: Session,
-    query: str | None = None,
-    family: str | None = None,
-    limit: int = 100,
-) -> dict[str, Any]:
-    stmt = select(MolecularPrimerIndexCatalog).where(MolecularPrimerIndexCatalog.active.is_(True))
-    text = str(query or "").strip()
-    if text:
-        like = f"%{text}%"
-        stmt = stmt.where(
-            or_(
-                MolecularPrimerIndexCatalog.name.like(like),
-                MolecularPrimerIndexCatalog.short_sequence.like(f"%{text.upper()}%"),
-            )
-        )
-    family_text = str(family or "").strip()
-    if family_text:
-        stmt = stmt.where(MolecularPrimerIndexCatalog.family == family_text)
-    rows = db.scalars(
-        stmt.order_by(MolecularPrimerIndexCatalog.family, MolecularPrimerIndexCatalog.name)
-        .limit(min(max(int(limit or 100), 1), 500))
-    ).all()
-    return {"items": [row.to_dict() for row in rows]}
-
-
 def _contains(column, value: Any, *, upper: bool = False):
     text = str(value or "").strip()
     if not text:
@@ -862,18 +836,23 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+PROTECTED_SAVE_FIELDS = ("library_order_id", "source_discovery_id", "created_by")
+MAX_BATCH_SAVE_ITEMS = 500
+
+
+def _writable_payload(data: dict[str, Any] | None) -> dict[str, Any]:
+    payload = dict(data or {})
+    for protected in PROTECTED_SAVE_FIELDS:
+        payload.pop(protected, None)
+    return payload
+
+
 def save(
     db: Session,
     data: dict[str, Any],
     created_by: str | None = None,
 ) -> dict[str, Any]:
-    payload = dict(data or {})
-    for protected in (
-        "library_order_id",
-        "source_discovery_id",
-        "created_by",
-    ):
-        payload.pop(protected, None)
+    payload = _writable_payload(data)
     row_id = _parse_row_id(payload.get("id"))
     if payload.get("id") not in (None, "") and row_id is None:
         raise ValueError("工单 ID 不正确")
@@ -891,13 +870,56 @@ def save(
         )
         db.add(row)
     else:
-        row = db.get(MolecularLibraryOrder, row_id)
+        row = db.scalar(
+            select(MolecularLibraryOrder)
+            .where(MolecularLibraryOrder.id == row_id)
+            .with_for_update()
+        )
         if not row:
             raise ValueError(MISSING_ROW)
     _apply_fields(db, row, payload)
     db.commit()
     db.refresh(row)
     return row.to_dict()
+
+
+def batch_save(db: Session, items: list[dict[str, Any]]) -> dict[str, Any]:
+    if not items:
+        raise ValueError("没有需要保存的工单")
+    if len(items) > MAX_BATCH_SAVE_ITEMS:
+        raise ValueError(f"单次最多保存 {MAX_BATCH_SAVE_ITEMS} 条工单")
+    payloads = []
+    seen_ids: set[int] = set()
+    for item in items:
+        payload = _writable_payload(item)
+        row_id = _parse_row_id(payload.get("id"))
+        if row_id is None:
+            raise ValueError("工单 ID 不正确")
+        if row_id in seen_ids:
+            raise ValueError("同一工单不能重复提交")
+        seen_ids.add(row_id)
+        payloads.append((row_id, payload))
+    locked_rows = db.scalars(
+        select(MolecularLibraryOrder)
+        .where(MolecularLibraryOrder.id.in_(sorted(seen_ids)))
+        .order_by(MolecularLibraryOrder.id)
+        .with_for_update()
+    ).all()
+    rows_by_id = {int(row.id): row for row in locked_rows}
+    if len(rows_by_id) != len(seen_ids):
+        raise ValueError(MISSING_ROW)
+    rows = []
+    for row_id, payload in payloads:
+        row = rows_by_id[row_id]
+        try:
+            _apply_fields(db, row, payload)
+        except ValueError as exc:
+            raise ValueError(f"{row.library_order_id}：{exc}") from exc
+        rows.append(row)
+    db.commit()
+    for row in rows:
+        db.refresh(row)
+    return {"items": [row.to_dict() for row in rows]}
 
 
 def delete_order(db: Session, row_id: int) -> dict[str, int]:
@@ -1128,6 +1150,8 @@ def has_orders_for_discovery(db: Session, discovery_id: str) -> bool:
 
 
 EXPORT_COLUMNS = (
+    ("系统工单号", "library_order_id"),
+    ("来源发现 ID", "source_discovery_id"),
     ("建库编号", "library_code"),
     ("建库批号", "library_batch_no"),
     ("建库类型", "build_type"),
@@ -1141,7 +1165,7 @@ EXPORT_COLUMNS = (
     ("PM", "pm"),
     ("归类鼠型", "mouse_model"),
     ("样品类型", "sample_type"),
-    ("样品交接日期", "received_on"),
+    ("交接日期", "received_on"),
     ("上机日期", "instrument_on"),
     ("采血日期", "blood_collected_on"),
     ("免疫阶段", "immunization_stage"),
@@ -1155,33 +1179,33 @@ EXPORT_COLUMNS = (
     ("负责人", "owner"),
     ("开始时间", "started_at"),
     ("完成时间", "finished_at"),
-    ("PCR开始时间", "pcr_started_at"),
-    ("PCR结束时间", "pcr_finished_at"),
-    ("PCR操作人", "pcr_owner"),
-    ("PCR检测人", "pcr_qc_owner"),
+    ("PCR 开始", "pcr_started_at"),
+    ("PCR 结束", "pcr_finished_at"),
+    ("PCR 操作人", "pcr_owner"),
+    ("PCR 检测人", "pcr_qc_owner"),
     ("转染时间", "transfected_at"),
     ("转染人", "transfection_owner"),
-    ("RNA位置", "rna_location"),
-    ("cDNA位置", "cdna_location"),
+    ("RNA 位置", "rna_location"),
+    ("cDNA 位置", "cdna_location"),
     ("文库位置", "library_location"),
-    ("cDNA浓度", "cdna_concentration"),
+    ("cDNA 浓度", "cdna_concentration"),
     ("初始库容", "initial_library_size"),
     ("有效库容", "effective_library_size"),
     ("片段大小", "fragment_size_bp"),
-    ("H正向引物", "h_forward_primer_name"),
-    ("H反向引物", "h_reverse_primer_name"),
-    ("H浓度", "h_primer_concentration"),
-    ("K正向引物", "k_forward_primer_name"),
-    ("K反向引物", "k_reverse_primer_name"),
-    ("K浓度", "k_primer_concentration"),
-    ("L正向引物", "l_forward_primer_name"),
-    ("L反向引物", "l_reverse_primer_name"),
-    ("L浓度", "l_primer_concentration"),
-    ("Barcode方式", "index_mode"),
-    ("i7名称", "i7_name"),
-    ("i7序列", "i7_sequence"),
-    ("i5名称", "i5_name"),
-    ("i5序列", "i5_sequence"),
+    ("H 正向引物", "h_forward_primer_name"),
+    ("H 反向引物", "h_reverse_primer_name"),
+    ("H 浓度", "h_primer_concentration"),
+    ("K 正向引物", "k_forward_primer_name"),
+    ("K 反向引物", "k_reverse_primer_name"),
+    ("K 浓度", "k_primer_concentration"),
+    ("L 正向引物", "l_forward_primer_name"),
+    ("L 反向引物", "l_reverse_primer_name"),
+    ("L 浓度", "l_primer_concentration"),
+    ("Barcode 方式", "index_mode"),
+    ("i7 名称", "i7_name"),
+    ("i7 序列", "i7_sequence"),
+    ("i5 名称", "i5_name"),
+    ("i5 序列", "i5_sequence"),
     ("质检结论", "qc_result"),
     ("质检人", "qc_owner"),
     ("质检日期", "qc_on"),

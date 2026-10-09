@@ -178,7 +178,7 @@
         <el-table-column label="备注" prop="remark" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">{{ row.remark || '—' }}</template>
         </el-table-column>
-        <el-table-column label="状态" prop="status" align="center" min-width="90">
+        <el-table-column label="状态" prop="status" align="center" min-width="98">
           <template #default="{ row }">
             <el-tag class="list-status-tag" :type="statusTagType(row)" effect="plain">
               {{ statusLabel(row) }}

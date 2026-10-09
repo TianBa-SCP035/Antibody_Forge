@@ -21,7 +21,10 @@ from modules.mega_automation.content import (
     extract_search_arrays,
     get_order_content,
     hash_dict,
+    resolve_cell_plate_usage,
     safe_dict,
+    safe_list,
+    validate_cell_column_occupancy,
 )
 from integrations.labillion import (
     LabillionError,
@@ -217,6 +220,83 @@ def _check_expected_content_hash(order: MegaFlowWorkOrder, data: dict[str, Any])
         raise ValueError("工单内容已被其他用户修改，请刷新后重试")
 
 
+def list_cell_plate_peers(
+    db: Session,
+    barcode: str,
+    exclude_order_id: int | None = None,
+) -> list[dict[str, Any]]:
+    barcode_text = clean_text(barcode)
+    if not barcode_text:
+        return []
+    stmt = select(MegaFlowWorkOrder).where(
+        MegaFlowWorkOrder.status != "cancelled",
+        _json_overlaps(MegaFlowWorkOrder.cell_plate_barcodes, barcode_text),
+    )
+    if exclude_order_id:
+        stmt = stmt.where(MegaFlowWorkOrder.id != int(exclude_order_id))
+    rows = db.scalars(stmt.order_by(MegaFlowWorkOrder.id.asc())).all()
+    peers: list[dict[str, Any]] = []
+    for row in rows:
+        peers.append(
+            {
+                "id": row.id,
+                "orderNum": row.orderNum or "",
+                "status": row.status or "",
+                "updated_at": row.updated_at.strftime("%Y-%m-%d %H:%M:%S") if row.updated_at else "",
+                "content": get_order_content(row),
+            }
+        )
+    return peers
+
+
+def cell_plate_usage_map(
+    db: Session,
+    content: dict[str, Any],
+    exclude_order_id: int | None = None,
+) -> dict[str, dict[str, Any]]:
+    barcodes: list[str] = []
+    for plate in safe_list(content.get("cell_plates")):
+        if not isinstance(plate, dict):
+            continue
+        barcode = clean_text(plate.get("barcode"))
+        if barcode and barcode not in barcodes:
+            barcodes.append(barcode)
+    usage: dict[str, dict[str, Any]] = {}
+    for barcode in barcodes:
+        resolved = resolve_cell_plate_usage(barcode, list_cell_plate_peers(db, barcode, exclude_order_id))
+        if resolved.get("columns"):
+            usage[barcode] = resolved
+    return usage
+
+
+def get_cell_plate_usage(
+    db: Session,
+    barcode: str,
+    exclude_order_id: int | None = None,
+) -> dict[str, Any]:
+    barcode_text = clean_text(barcode)
+    if not barcode_text:
+        raise ValueError("细胞板条码不能为空")
+    return resolve_cell_plate_usage(
+        barcode_text,
+        list_cell_plate_peers(db, barcode_text, exclude_order_id),
+    )
+
+
+def _ensure_cell_columns_free(
+    db: Session,
+    content: dict[str, Any],
+    exclude_order_id: int | None,
+) -> None:
+    issues = validate_cell_column_occupancy(
+        safe_list(content.get("sample_plates")),
+        safe_list(content.get("cell_plates")),
+        cell_plate_usage_map(db, content, exclude_order_id),
+    )
+    if issues:
+        raise ValueError("；".join(item["message"] for item in issues))
+
+
 def _apply_content(order: MegaFlowWorkOrder, data: dict[str, Any]) -> str:
     content = build_content_body(data)
     order.content = content
@@ -302,6 +382,7 @@ def save_work_order(db: Session, data: dict[str, Any], user: Any) -> dict[str, A
             return detail
 
         previous_hash = order.content_hash
+        _ensure_cell_columns_free(db, build_content_body(data), order.id)
         _apply_order_data(order, data)
 
         if order.status in {"validated", "execution_failed"} and previous_hash != order.content_hash:
@@ -312,6 +393,7 @@ def save_work_order(db: Session, data: dict[str, Any], user: Any) -> dict[str, A
         return get_work_order_detail(db, order.id)
 
     order = MegaFlowWorkOrder(status="draft", created_by=_operator_name(user))
+    _ensure_cell_columns_free(db, build_content_body(data), None)
     _apply_order_data(order, data)
     db.add(order)
     order.error_message = None
@@ -546,9 +628,13 @@ def get_work_order_stats(db: Session) -> dict[str, int]:
     return stats
 
 
-def _validate_from_db(order: MegaFlowWorkOrder) -> dict[str, Any]:
+def _validate_from_db(db: Session, order: MegaFlowWorkOrder) -> dict[str, Any]:
     content = get_order_content(order)
-    issues = collect_validation_issues(order=order, content=content)
+    issues = collect_validation_issues(
+        order=order,
+        content=content,
+        column_usage=cell_plate_usage_map(db, content, order.id),
+    )
     errors = [item["message"] for item in issues]
 
     if errors:
@@ -604,7 +690,13 @@ def _validate_paused(
 
     confirm_revoke = bool(data.get("confirm_revoke"))
     _check_expected_content_hash(order, data)
-    issues = collect_validation_issues(payload, order)
+    preview = build_content_body(payload)
+    issues = collect_validation_issues(
+        payload,
+        order,
+        content=preview,
+        column_usage=cell_plate_usage_map(db, preview, order.id),
+    )
     errors = [item["message"] for item in issues]
     if errors:
         return _paused_validation_result(valid=False, errors=errors, issues=issues)
@@ -654,7 +746,7 @@ def validate_work_order(db: Session, order_id: int, data: dict[str, Any] | None 
     if order.status not in EDITABLE_STATUSES:
         raise ValueError(f"当前状态（{order.status}）不可校验")
 
-    result = _validate_from_db(order)
+    result = _validate_from_db(db, order)
     db.commit()
     result["needs_confirm"] = False
     result["content_changed"] = False
@@ -671,6 +763,7 @@ def dispatch_work_order(db: Session, order_id: int, user: Any) -> dict[str, Any]
     if order.status != "validated":
         raise ValueError("请先校验通过后再发送")
 
+    _ensure_cell_columns_free(db, get_order_content(order), order.id)
     dispatch = create_dispatch_record(db, order, operator_name=_operator_name(user))
     try:
         push_flow_work_order(dispatch.payload if isinstance(dispatch.payload, dict) else {})

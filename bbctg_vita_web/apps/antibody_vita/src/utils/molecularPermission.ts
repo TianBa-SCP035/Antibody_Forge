@@ -34,6 +34,10 @@ export function canEditLibrary(userInfo: any): boolean {
   return hasAccessCode(userInfo, 'molecular.library.edit');
 }
 
+export function canEditPrimerLibrary(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'molecular.primer.edit');
+}
+
 export function canManageLibraryFiles(userInfo: any): boolean {
   return hasAccessCode(userInfo, 'molecular.library.file.manage');
 }

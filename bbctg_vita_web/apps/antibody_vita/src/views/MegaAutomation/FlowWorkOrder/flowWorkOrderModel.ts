@@ -38,7 +38,23 @@ const EMPTY_COLUMN = {
 
 export interface FlowWorkOrderDefaults {
   cellColumns?: FlowWorkOrderCellColumn[];
+  orderType?: string;
   sampleWells?: FlowWorkOrderWell[];
+}
+
+const CELL_CONTENT_FIELDS = [
+  'batch',
+  'catalog_no',
+  'cell_count',
+  'cell_name',
+  'cell_type',
+  'generation',
+  'source',
+  'species',
+] as const;
+
+export function defaultSecondaryAntibody(orderType: unknown) {
+  return String(orderType || 'TITER').toUpperCase() === 'TITER' ? '鼠' : '人';
 }
 
 type LooseRecord = Record<string, any>;
@@ -267,7 +283,7 @@ export function createDefaultSamplePlate(
     barcode: '',
     cell_keys: [],
     project_no: '',
-    secondary_antibody: '人',
+    secondary_antibody: defaultSecondaryAntibody(defaults.orderType),
     target: '',
     wells: createDefaultWells(defaults),
   };
@@ -289,7 +305,7 @@ function normalizeSamplePlate(
       }))
       .filter((item) => item.barcode && Number.isInteger(item.column_no) && item.column_no > 0),
     project_no: plate.project_no || '',
-    secondary_antibody: plate.secondary_antibody || '人',
+    secondary_antibody: plate.secondary_antibody || defaultSecondaryAntibody(defaults.orderType),
     target: plate.target || '',
     wells: plate.wells?.length ? buildFullWells(plate.wells) : createDefaultWells(defaults),
   };
@@ -301,8 +317,9 @@ export function normalizeFlowWorkOrder(
 ): FlowWorkOrder {
   const source = record(value);
   const baseInfo = record(source.base_info);
+  const plateDefaults = { ...defaults, orderType: source.orderType || defaults.orderType || 'TITER' };
   const samplePlates = records(source.sample_plates).map((plate) =>
-    normalizeSamplePlate(plate, defaults),
+    normalizeSamplePlate(plate, plateDefaults),
   );
   const cellPlates = records(source.cell_plates).map((plate) => ({
     ...plate,
@@ -323,8 +340,109 @@ export function normalizeFlowWorkOrder(
     dispatches: Array.isArray(source.dispatches) ? source.dispatches : [],
     orderName: source.orderName || baseInfo.orderName || '',
     priority: source.priority || 'normal',
-    sample_plates: samplePlates.length ? samplePlates : [createDefaultSamplePlate(defaults)],
+    sample_plates: samplePlates.length ? samplePlates : [createDefaultSamplePlate(plateDefaults)],
   };
+}
+
+/** 换了细胞板条码后，清掉从上一块板带入或锁定的列，手填内容保留。 */
+export function resetBorrowedCellColumns(plate: { columns?: LooseRecord[] } | null | undefined) {
+  records(plate?.columns).forEach((column) => {
+    if (column._locked || column._sourceOrderNum) {
+      CELL_CONTENT_FIELDS.forEach((field) => {
+        column[field] = '';
+      });
+    }
+    clearCellColumnUsage(column);
+  });
+}
+
+export function clearCellColumnUsage(column: LooseRecord) {
+  delete column._locked;
+  delete column._conflict;
+  delete column._sourceOrderNum;
+  delete column._usedByLabel;
+}
+
+function usedByLabel(remote: LooseRecord) {
+  const numbers = records(remote.used_by)
+    .map((item) => String(item.orderNum || '').trim())
+    .filter(Boolean);
+  return numbers.join('、') || String(remote.source_order_num || '').trim() || '其他订单';
+}
+
+function copyCellContent(target: LooseRecord, source: LooseRecord) {
+  CELL_CONTENT_FIELDS.forEach((field) => {
+    target[field] = source[field] || '';
+  });
+}
+
+/** 把其他订单的细胞列套到当前板。已占用列覆盖为只读；未占用列只填当前还空着的格子。 */
+export function applyCellPlateUsage(
+  plate: { columns?: LooseRecord[] },
+  usage: { columns?: LooseRecord[] } | null | undefined,
+  options: { fillEmpty?: boolean } = {},
+) {
+  const fillEmpty = options.fillEmpty !== false;
+  const byNo = new Map(
+    records(usage?.columns).map((column) => [Number(column.column_no), column]),
+  );
+  const summary = {
+    conflicts: [] as number[],
+    filled: [] as number[],
+    locked: [] as number[],
+    replaced: [] as number[],
+  };
+  records(plate?.columns).forEach((column) => {
+    clearCellColumnUsage(column);
+    const remote = byNo.get(Number(column.column_no));
+    if (!remote) return;
+    if (remote.locked) {
+      const changed = CELL_CONTENT_FIELDS.some(
+        (field) => String(column[field] || '').trim() !== String(remote[field] || '').trim(),
+      );
+      copyCellContent(column, remote);
+      column._locked = true;
+      column._usedByLabel = usedByLabel(remote);
+      column._sourceOrderNum = String(remote.source_order_num || '').trim();
+      if (remote.conflict) {
+        column._conflict = true;
+        summary.conflicts.push(Number(column.column_no));
+      }
+      summary.locked.push(Number(column.column_no));
+      if (changed) summary.replaced.push(Number(column.column_no));
+      return;
+    }
+    if (remote.conflict) {
+      column._conflict = true;
+      summary.conflicts.push(Number(column.column_no));
+    }
+    const currentName = String(column.cell_name || '').trim();
+    const remoteName = String(remote.cell_name || '').trim();
+    if (fillEmpty && !currentName && remoteName) {
+      copyCellContent(column, remote);
+      column._sourceOrderNum = String(remote.source_order_num || '').trim();
+      summary.filled.push(Number(column.column_no));
+    }
+  });
+  return summary;
+}
+
+export function removeLockedCellKeys(
+  samplePlates: Array<{ cell_keys?: Array<{ barcode?: string; column_no?: number }> }>,
+  barcode: string,
+  lockedColumnNos: number[],
+) {
+  const locked = new Set(lockedColumnNos.map((columnNo) => Number(columnNo)));
+  let removed = 0;
+  samplePlates.forEach((plate) => {
+    const keys = Array.isArray(plate.cell_keys) ? plate.cell_keys : [];
+    plate.cell_keys = keys.filter((key) => {
+      const drop = key.barcode === barcode && locked.has(Number(key.column_no));
+      if (drop) removed += 1;
+      return !drop;
+    });
+  });
+  return removed;
 }
 
 export function buildFlowWorkOrderSavePayload(

@@ -299,6 +299,7 @@ import {
   deleteFlowWorkOrder,
   dispatchFlowWorkOrder,
   fetchActiveFlowWorkOrderPayload,
+  fetchCellPlateUsage,
   fetchFlowWorkOrderDetail,
   fetchFlowWorkOrderMeta,
   syncFlowWorkOrderLabillionStatus,
@@ -322,12 +323,16 @@ import {
 import EditorTab from './components/EditorTab.vue';
 import PlatingTab from './components/PlatingTab.vue';
 import {
+  applyCellPlateUsage,
   buildFlowWorkOrderSavePayload,
   cellKey,
   cellPlateBarcode,
+  clearCellColumnUsage,
   createDefaultFlowWorkOrder,
   EDITABLE_STATUSES,
   normalizeFlowWorkOrder,
+  removeLockedCellKeys,
+  resetBorrowedCellColumns,
 } from './flowWorkOrderModel';
 import {
   buildFlowWorkOrderFromTiterWizardDraft,
@@ -388,6 +393,7 @@ export default {
       ],
       validationIssues: [],
       cellBarcodeFocusCache: {},
+      cellUsageTokens: {},
       pausedLocalDirty: false,
       pausedDirtyInit: false,
       pausedDirtyUnwatch: null,
@@ -838,10 +844,58 @@ export default {
       }
     },
     normalizeOrder(data) {
-      return normalizeFlowWorkOrder(data, {
+      const order = normalizeFlowWorkOrder(data, {
         cellColumns: this.defaultCellColumns,
         sampleWells: this.defaultSampleWells,
       });
+      this.$nextTick(() => this.refreshAllCellPlateUsage(false));
+      return order;
+    },
+    refreshAllCellPlateUsage(fillEmpty) {
+      (this.order.cell_plates || []).forEach((plate, index) => {
+        if (String(plate?.barcode || '').trim()) {
+          this.refreshCellPlateUsage(index, { fillEmpty });
+        }
+      });
+    },
+    async refreshCellPlateUsage(index, { fillEmpty }) {
+      const plate = this.order.cell_plates?.[index];
+      if (!plate) return;
+      const barcode = String(plate.barcode || '').trim();
+      const token = (this.cellUsageTokens[index] || 0) + 1;
+      this.cellUsageTokens = { ...this.cellUsageTokens, [index]: token };
+      if (!barcode) {
+        (plate.columns || []).forEach((column) => clearCellColumnUsage(column));
+        return;
+      }
+      try {
+        const usage = await fetchCellPlateUsage({
+          barcode,
+          exclude_order_id: this.order.id || undefined,
+        });
+        if (this.cellUsageTokens[index] !== token) return;
+        const current = this.order.cell_plates?.[index];
+        if (!current || String(current.barcode || '').trim() !== barcode) return;
+        const summary = applyCellPlateUsage(current, usage, { fillEmpty });
+        const removed = removeLockedCellKeys(this.order.sample_plates, barcode, summary.locked);
+        if (!fillEmpty) return;
+        const notes = [];
+        if (summary.locked.length) {
+          notes.push(`第 ${summary.locked.join('、')} 列已被其他订单使用，已锁定`);
+        }
+        if (summary.filled.length) {
+          notes.push(`第 ${summary.filled.join('、')} 列已带入其他订单的细胞信息，未占用的可以修改`);
+        }
+        if (summary.conflicts.length) {
+          notes.push(`第 ${summary.conflicts.join('、')} 列在其他订单中的名称或类型不一致，请核对`);
+        }
+        if (removed) notes.push('已取消选中被占用的列');
+        if (notes.length) ElMessage.info(notes.join('；'));
+      } catch (error) {
+        if (fillEmpty && this.cellUsageTokens[index] === token) {
+          ElMessage.warning(error?.message || '查询细胞板占用失败');
+        }
+      }
     },
     triggerLabillionSync() {
       if (!this.order.id || !['sent', 'running', 'paused'].includes(this.order.status)) {
@@ -866,14 +920,18 @@ export default {
     remapCellBarcode(index, value) {
       const from = this.cellBarcodeFocusCache?.[index];
       const to = String(value || '').trim() || `细胞板${index + 1}`;
-      if (!from || from === to) return;
-      this.order.sample_plates.forEach((plate) => {
-        const keys = Array.isArray(plate.cell_keys) ? plate.cell_keys : [];
-        plate.cell_keys = keys.map((key) =>
-          key.barcode === from ? { barcode: to, column_no: key.column_no } : key,
-        );
-      });
-      this.pruneEmptyCellRefs();
+      if (from && from !== to) {
+        resetBorrowedCellColumns(this.order.cell_plates?.[index]);
+        this.order.sample_plates.forEach((plate) => {
+          const keys = Array.isArray(plate.cell_keys) ? plate.cell_keys : [];
+          plate.cell_keys = keys.map((key) =>
+            key.barcode === from ? { barcode: to, column_no: key.column_no } : key,
+          );
+        });
+        this.pruneEmptyCellRefs();
+      }
+      if (this.cellBarcodeFocusCache) this.cellBarcodeFocusCache[index] = to;
+      this.refreshCellPlateUsage(index, { fillEmpty: true });
     },
     handleCellColumnsReordered({ plateIndex, oldIndex, newIndex }) {
       const plate = this.order.cell_plates[plateIndex];

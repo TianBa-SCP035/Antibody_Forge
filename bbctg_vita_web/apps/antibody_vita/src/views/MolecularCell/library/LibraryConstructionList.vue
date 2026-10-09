@@ -353,7 +353,6 @@
                       :popup-config="{ className: 'sheet-picker-popup', placement: 'bottom', width: 280 }"
                       :remote-config="{ autoLoad: true, queryMethod: querySheetCatalogOptions }"
                       empty-text="未找到匹配名称"
-                      @change="onSheetCatalogChange(row, column)"
                       @visible-change="onSheetPickerVisibleChange"
                     />
                   </div>
@@ -679,6 +678,7 @@ import 'vxe-pc-ui/styles/cssvar.scss'
 import 'vxe-table/styles/cssvar.scss'
 
 import {
+  batchSaveLibraryOrders,
   deleteLibraryOrder,
   exportLibraryOrderList,
   fetchLibraryMeta,
@@ -892,7 +892,6 @@ export default {
       targetRequestToken: 0,
       catalogOptions: [],
       catalogLoading: false,
-      sheetCatalogLinked: false,
       targetFilterOptions: [],
       targetFilterLoading: false,
       consumingCreated: false,
@@ -1043,6 +1042,7 @@ export default {
       this.consumeCreatedQuery()
     },
     'listQuery.build_type'() {
+      this.clearSheetRange()
       this.rebuildSheetColumns()
     },
   },
@@ -1106,7 +1106,7 @@ export default {
     },
     canEditField(row, key) {
       if (!this.canEdit) return false
-      if (key === 'build_type') return (row?.status || '待处理') === '待处理'
+      if (key === 'build_type') return !this.activeType && (row?.status || '待处理') === '待处理'
       return true
     },
     isSheetCellLocked(row, key) {
@@ -1120,7 +1120,8 @@ export default {
       const label = this.sheetColumns.find((item) => item.key === key)?.label || '该字段'
       ElMessage.info(`${buildTypeLabel(row.build_type) || '当前建库类型'}没有「${label}」`)
     },
-    selectType(value) {
+    async selectType(value) {
+      if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
       this.listQuery.build_type = this.activeType === value ? '' : value
       this.handleFilter()
     },
@@ -1279,12 +1280,16 @@ export default {
       }
       return String(left ?? '') === String(right ?? '')
     },
-    async persistRow(row, field) {
+    async persistRow(row, field, { linkCatalog = false } = {}) {
       if (!this.canEdit || !row?.id) return
       const baseline = this.rowBaselines.get(row.id)
-      const catalogMeta = this.sheetCatalogLinked ? CATALOG_NAME_FIELDS[field] : null
-      this.sheetCatalogLinked = false
+      const catalogMeta = linkCatalog ? CATALOG_NAME_FIELDS[field] : null
       row[field] = persistValue(row[field])
+      if (catalogMeta) {
+        const selected = row[field] ? this.catalogOptions.find((item) => item.name === row[field]) : null
+        row[catalogMeta.idKey] = selected?.id || null
+        if (catalogMeta.sequenceKey) row[catalogMeta.sequenceKey] = selected?.short_sequence || null
+      }
       const targetField = field === 'target_codes' || field === 'target_name'
       const catalogDirty = Boolean(catalogMeta) && (
         !this.sameFieldValue(baseline?.[catalogMeta.idKey], row[catalogMeta.idKey])
@@ -1600,14 +1605,6 @@ export default {
     querySheetCatalogOptions({ searchValue }) {
       return this.searchCatalog(searchValue)
     },
-    onSheetCatalogChange(row, column) {
-      const meta = CATALOG_NAME_FIELDS[column.key]
-      if (!meta) return
-      const selected = this.catalogOptions.find((item) => item.name === row[column.key])
-      row[meta.idKey] = selected?.id || null
-      if (meta.sequenceKey) row[meta.sequenceKey] = selected?.short_sequence || ''
-      this.sheetCatalogLinked = true
-    },
     sheetOptionValue(options, raw) {
       const text = String(raw || '').trim().toLowerCase()
       const matched = options.find((item) => (
@@ -1718,16 +1715,19 @@ export default {
       if (SHEET_DECIMAL_KEYS.includes(key)) return this.normalizeSheetDecimal(raw)
       if (key === 'i7_sequence' || key === 'i5_sequence') return this.normalizeSheetSequence(raw)
       if (key === 'library_code') return this.sheetTextLimit(key, raw.toUpperCase())
-      if (key === 'target_codes') return { ok: true, value: uniqueTargetCodes(raw) }
+      if (key === 'target_codes') return { ok: true, value: uniqueTargetCodes(raw.split(/[,，、]/)) }
       if (key === 'target_name') return this.sheetTextLimit(key, raw)
       return this.sheetTextLimit(key, raw)
     },
     assignSheetValue(row, key, text) {
       const column = allSheetColumns().find((item) => item.key === key)
       if (!column) return { ok: false, reason: 'unknown' }
-      if (column.edit === 'readonly') return { ok: true, skipped: true }
-      if (this.isSheetCellLocked(row, key)) return { ok: false, reason: 'locked' }
       const result = this.coerceSheetValue(row, key, text)
+      if (this.isSheetCellLocked(row, key)) {
+        return result.ok && this.sameSheetValue(key, result.value, row[key])
+          ? { ok: true, skipped: true }
+          : { ok: false, reason: column.edit === 'readonly' ? 'readonly' : 'locked' }
+      }
       if (!result.ok) return result
       this.restoreSheetEditValue(row, key, result.value)
       return { ok: true }
@@ -1744,6 +1744,7 @@ export default {
         const maxLen = SHEET_STRING_MAX[key]
         return maxLen ? `${label}不能超过 ${maxLen} 个字` : `${label}超出长度限制`
       }
+      if (reason === 'readonly') return `${label}与当前行不一致`
       if (reason === 'locked') return `${label}当前不可编辑`
       if (reason === 'unknown') return '粘贴内容包含无法识别的列'
       return `${label}必须与可选项完全匹配`
@@ -1759,6 +1760,7 @@ export default {
       const row = context?.row
       const key = context?.column?.field
       const pickingTarget = this.sheetEditSource === 'dblclick' && (key === 'target_codes' || key === 'target_name')
+      const pickingCatalog = this.sheetEditSource === 'dblclick' && Boolean(CATALOG_NAME_FIELDS[key])
       this.sheetEditSource = ''
       if (!key || !row?.id) return
       const originalValue = this.takeSheetEditOriginal(row, key)
@@ -1775,7 +1777,7 @@ export default {
         ElMessage.warning(this.sheetValidationMessage(key, result.reason))
         return
       }
-      if (!pickingTarget && this.sameSheetValue(key, result.value, originalValue)) {
+      if (!pickingTarget && !pickingCatalog && this.sameSheetValue(key, result.value, originalValue)) {
         this.restoreSheetEditValue(row, key, originalValue)
         return
       }
@@ -1805,7 +1807,7 @@ export default {
         }
         return
       }
-      await this.persistRow(row, key)
+      await this.persistRow(row, key, { linkCatalog: pickingCatalog })
     },
     async resolveTargetCodes(codes) {
       const normalized = uniqueTargetCodes(codes)
@@ -1899,6 +1901,8 @@ export default {
       const nonEmptyHeaderCount = grid[0].filter((cell) => String(cell || '').trim()).length
       const matchedHeaderCount = headerKeys.filter(Boolean).length
       const hasHeader = matchedHeaderCount >= 2 && matchedHeaderCount === nonEmptyHeaderCount
+      const orderIdHeaderIndex = hasHeader ? headerKeys.indexOf('library_order_id') : -1
+      const matchRowsByOrderId = orderIdHeaderIndex >= 0
       let dataRows = hasHeader ? grid.slice(1) : grid
       let startIndex = this.pasteAnchor?.rowIndex ?? 0
       const startColKey = this.pasteAnchor?.colKey || this.sheetColumns[0]?.key
@@ -1918,21 +1922,38 @@ export default {
         startIndex = selectedRange.r1
         startColIndex = selectedRange.c1
       }
-      const availableRowCount = Math.max(this.list.length - startIndex, 0)
-      const skippedRowCount = Math.max(dataRows.length - availableRowCount, 0)
-      dataRows.splice(availableRowCount)
+      let skippedRowCount = 0
+      if (!matchRowsByOrderId) {
+        const availableRowCount = Math.max(this.list.length - startIndex, 0)
+        skippedRowCount = Math.max(dataRows.length - availableRowCount, 0)
+        dataRows.splice(availableRowCount)
+      }
       if (!dataRows.length) {
         ElMessage.warning('粘贴区域超出当前列表，本次未保存')
         return
       }
       const workingRows = this.list.map((row) => this.normalizeRow(JSON.parse(JSON.stringify(row))))
+      const rowIndexByOrderId = new Map(
+        workingRows.map((row, index) => [String(row.library_order_id || '').trim(), index]),
+      )
+      const matchedOrderIds = new Set()
       const dirtyByIndex = new Map()
       const targetFieldsByIndex = new Map()
       const invalidCells = []
       const touchedCells = []
       dataRows.forEach((cells, offset) => {
         if (cells.every((cell) => String(cell ?? '') === '')) return
-        const rowIndex = startIndex + offset
+        let rowIndex = startIndex + offset
+        if (matchRowsByOrderId) {
+          const orderId = String(cells[orderIdHeaderIndex] || '').trim()
+          const matchedIndex = rowIndexByOrderId.get(orderId)
+          if (!orderId || matchedIndex === undefined || matchedOrderIds.has(orderId)) {
+            invalidCells.push({ reason: 'identity' })
+            return
+          }
+          matchedOrderIds.add(orderId)
+          rowIndex = matchedIndex
+        }
         const row = workingRows[rowIndex]
         if (!row) return
         cells.forEach((cell, cellIndex) => {
@@ -1961,11 +1982,13 @@ export default {
       })
       if (invalidCells.length) {
         const firstInvalid = invalidCells[0]
-        const message = firstInvalid.reason === 'unknown'
-          ? '粘贴内容包含无法识别的列，本次粘贴未保存'
-          : firstInvalid.key
-            ? `${this.sheetValidationMessage(firstInvalid.key, firstInvalid.reason)}，本次粘贴未保存`
-            : `有 ${invalidCells.length} 个单元格不可编辑，本次粘贴未保存`
+        const message = firstInvalid.reason === 'identity'
+          ? '粘贴内容包含当前页不存在或重复的系统工单号，本次粘贴未保存'
+          : firstInvalid.reason === 'unknown'
+            ? '粘贴内容包含无法识别的列，本次粘贴未保存'
+            : firstInvalid.key
+              ? `${this.sheetValidationMessage(firstInvalid.key, firstInvalid.reason)}，本次粘贴未保存`
+              : `有 ${invalidCells.length} 个单元格不可编辑，本次粘贴未保存`
         ElMessage.warning(message)
         return
       }
@@ -2014,32 +2037,43 @@ export default {
           return
         }
       }
+      const qcActor = getSerumUserName(useUserStore().userInfo)
+      const entries = [...dirtyByIndex.entries()].map(([rowIndex, fields]) => {
+        const row = workingRows[rowIndex]
+        if (fields.has('qc_result')) {
+          stampQcFields(row, qcActor).forEach((key) => fields.add(key))
+        }
+        if (fields.has('target_codes') || fields.has('target_name')) {
+          fields.add('target_codes')
+          fields.add('target_name')
+        }
+        const payload = { id: row.id }
+        fields.forEach((field) => {
+          payload[field] = row[field]
+        })
+        return { fields, payload }
+      })
       try {
-        let savedCount = 0
-        for (const [rowIndex, fields] of dirtyByIndex.entries()) {
-          const row = workingRows[rowIndex]
-          if (fields.has('qc_result')) {
-            stampQcFields(row, getSerumUserName(useUserStore().userInfo)).forEach((key) => fields.add(key))
-          }
-          const payload = { id: row.id }
-          fields.forEach((field) => {
-            payload[field] = row[field]
-          })
-          if (fields.has('target_codes') || fields.has('target_name')) {
-            payload.target_codes = row.target_codes
-            payload.target_name = row.target_name
-          }
-          const saved = await saveLibraryOrder(payload)
+        const result = await batchSaveLibraryOrders(entries.map(({ payload }) => payload))
+        const savedById = new Map((result?.items || []).map((item) => [item.id, item]))
+        entries.forEach(({ fields, payload }) => {
+          const saved = savedById.get(payload.id)
+          if (!saved) return
           const savedFields = [...fields]
-          if (payload.target_codes !== undefined) savedFields.push('target_codes', 'target_name')
           if (fields.has('mouse_model')) savedFields.push('sample_type')
           if (fields.has('index_mode')) savedFields.push(...INDEX_LINKED_KEYS)
+          fields.forEach((field) => {
+            const catalogMeta = CATALOG_NAME_FIELDS[field]
+            if (!catalogMeta) return
+            savedFields.push(catalogMeta.idKey)
+            if (catalogMeta.sequenceKey) savedFields.push(catalogMeta.sequenceKey)
+          })
           this.applySavedFields(
             this.normalizeRow(saved),
             fields.has('build_type') ? undefined : [...new Set(savedFields)],
           )
-          savedCount += 1
-        }
+        })
+        const savedCount = entries.length
         const selectedCells = touchedCells
           .map(({ rowId, key }) => ({
             rowIndex: this.list.findIndex((row) => row.id === rowId),

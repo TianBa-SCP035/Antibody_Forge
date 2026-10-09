@@ -38,5 +38,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: bbctg_vita_web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @bbctg/antibody-vita lint:components
       - run: pnpm --filter @bbctg/antibody-vita typecheck
       - run: pnpm --filter @bbctg/antibody-vita build

@@ -27,6 +27,7 @@
         <span class="legend-item"><i class="legend-mark is-normal"></i>正常</span>
         <span class="legend-item"><i class="legend-mark is-tumor"></i>肿瘤</span>
         <span class="legend-item"><i class="legend-mark"></i>空列</span>
+        <span class="legend-item"><i class="legend-mark is-locked"></i>已占用</span>
       </div>
     </div>
 
@@ -103,6 +104,7 @@ export default {
       return {
         'is-filled': filled,
         'is-empty': !filled,
+        'is-locked': !!column?._locked,
         'is-tumor': filled && this.isTumorType(column),
         'is-normal': filled && !this.isTumorType(column),
       };
@@ -122,6 +124,9 @@ export default {
       return text || undefined;
     },
     columnTooltip(column) {
+      if (column?._locked) {
+        return `第 ${column.column_no} 列 · 已被 ${column._usedByLabel || '其他订单'} 使用`;
+      }
       if (!this.isColumnFilled(column)) return `第 ${column.column_no} 列 · 空`;
       const parts = [`第 ${column.column_no} 列`, column.cell_name];
       if (column.cell_type) parts.push(column.cell_type);
@@ -245,6 +250,11 @@ $tumor-bar-fill: linear-gradient(
     background: $tube-radial-sm, $tumor-bar-fill;
     border-color: rgb(254 215 170 / 85%);
   }
+
+  &.is-locked {
+    background: #e5e7eb;
+    border-color: #d1d5db;
+  }
 }
 
 .cell-board {
@@ -290,6 +300,11 @@ $tumor-bar-fill: linear-gradient(
 
   &.is-tumor {
     background: linear-gradient(180deg, #fff 0%, #fffcf7 100%);
+  }
+
+  &.is-locked {
+    background: #f8fafc;
+    box-shadow: inset 0 0 0 1px #e5e7eb;
   }
 }
 

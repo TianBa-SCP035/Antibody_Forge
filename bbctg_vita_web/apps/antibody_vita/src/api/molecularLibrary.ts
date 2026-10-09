@@ -53,6 +53,13 @@ export function saveLibraryOrder(data: any) {
   });
 }
 
+export function batchSaveLibraryOrders(items: any[]) {
+  return requestClient.post('/molecular-cell/library-orders/batch_save', { items }, {
+    timeout: LONG_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
+}
+
 export function handoffLibraryOrders(data: any) {
   return requestClient.post('/molecular-cell/library-orders/handoff', data, {
     timeout: SAVE_TIMEOUT,

@@ -80,7 +80,7 @@ function buildTiterUpstreamSamplePlates(
   for (let plateIndex = 0; plateIndex < plateCount; plateIndex += 1) {
     const start = plateIndex * slots;
     plates.push({
-      ...createDefaultSamplePlate(),
+      ...createDefaultSamplePlate({ orderType: 'TITER' }),
       project_no: experimentId,
       target: targetName,
       wells: buildTiterUpstreamPlateWells(mouseNos.slice(start, start + slots)),

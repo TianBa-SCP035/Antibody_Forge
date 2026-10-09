@@ -13,10 +13,29 @@ WELL_RE = re.compile(r"^[A-H](0[1-9]|1[0-2])$")
 WELL_TYPES = frozenset({"SAMPLE", "PC", "NC", "ISO", "TAG", "BLANK"})
 PC_INFO_TYPE_OPTIONS = {"SERUM", "ISO", "TAG"}
 WELL_PC_REF_TYPES = {"PC", "ISO", "TAG"}
+SAMPLE_BARCODE_RE = re.compile(r"^[A-Za-z0-9()\-]+$")
+IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9()_\-]+$")
+SAMPLE_CODE_RE = IDENTIFIER_RE
+_HIDDEN_RE = re.compile(r"[\x00-\x1f\x7f\u200b\u200c\u200d\ufeff\u2060]")
+CELL_CONTENT_FIELDS = (
+    "cell_name",
+    "cell_type",
+    "species",
+    "batch",
+    "generation",
+    "cell_count",
+    "catalog_no",
+    "source",
+)
 
 
 def clean_text(value: Any) -> str:
-    return str(value or "").strip()
+    """去掉首尾空白，以及回车、制表符、零宽字符这类粘贴进来的隐藏字符。"""
+    return _HIDDEN_RE.sub("", str(value or "")).strip()
+
+
+def default_secondary_antibody(order_type: Any) -> str:
+    return "鼠" if clean_text(order_type).upper() == "TITER" else "人"
 
 
 def build_cell_key(barcode: Any, column_no: Any) -> dict[str, Any] | None:
@@ -164,7 +183,12 @@ def remap_sample_plate_pc_ids(sample_plates: list[Any], id_remap: dict[str, str]
     return plates
 
 
-def normalize_sample_plates(sample_plates: list[Any]) -> list[dict[str, Any]]:
+def normalize_sample_plates(
+    sample_plates: list[Any],
+    *,
+    order_type: str = "",
+) -> list[dict[str, Any]]:
+    antibody_default = default_secondary_antibody(order_type)
     result: list[dict[str, Any]] = []
     for plate in safe_list(sample_plates):
         if not isinstance(plate, dict):
@@ -193,7 +217,7 @@ def normalize_sample_plates(sample_plates: list[Any]) -> list[dict[str, Any]]:
                 "barcode": clean_text(plate_data.get("barcode")),
                 "project_no": clean_text(plate_data.get("project_no")),
                 "target": clean_text(plate_data.get("target")),
-                "secondary_antibody": clean_text(plate_data.get("secondary_antibody")) or "人",
+                "secondary_antibody": clean_text(plate_data.get("secondary_antibody")) or antibody_default,
                 "cell_keys": cell_keys,
                 "wells": wells,
             }
@@ -318,9 +342,10 @@ def selected_cell_keys(sample_plate: dict[str, Any]) -> list[dict[str, Any]]:
 
 def build_content_body(data: dict[str, Any]) -> dict[str, Any]:
     base_info = safe_dict(data.get("base_info"))
+    order_type = clean_text(data.get("orderType")) or "TITER"
     pc_infos, id_remap = normalize_pc_infos(safe_list(base_info.get("pc_infos")))
     sample_plates = remap_sample_plate_pc_ids(safe_list(data.get("sample_plates")), id_remap)
-    sample_plates = normalize_sample_plates(sample_plates)
+    sample_plates = normalize_sample_plates(sample_plates, order_type=order_type)
     cell_plates = normalize_cell_plates(safe_list(data.get("cell_plates")))
     canonicalize_sample_cell_keys(sample_plates, cell_plates)
     return {
@@ -414,10 +439,25 @@ def validate_sample_plates(sample_plates: list[Any]) -> list[dict[str, str]]:
         if not isinstance(plate, dict):
             issues.append(_issue(prefix, f"样本板[{plate_index}]格式不正确"))
             continue
-        if not clean_text(plate.get("barcode")):
+        barcode = clean_text(plate.get("barcode"))
+        if not barcode:
             issues.append(_issue(f"{prefix}.barcode", f"样本板[{plate_index}]缺少条码"))
-        if not clean_text(plate.get("project_no")):
+        elif not SAMPLE_BARCODE_RE.match(barcode):
+            if "_" in barcode:
+                message = f"样本板[{plate_index}]条码不能包含下划线"
+            else:
+                message = f"样本板[{plate_index}]条码只能包含字母、数字、英文括号和中划线"
+            issues.append(_issue(f"{prefix}.barcode", message))
+        project_no = clean_text(plate.get("project_no"))
+        if not project_no:
             issues.append(_issue(f"{prefix}.project_no", f"样本板[{plate_index}]缺少项目号"))
+        elif not IDENTIFIER_RE.match(project_no):
+            issues.append(
+                _issue(
+                    f"{prefix}.project_no",
+                    f"样本板[{plate_index}]项目号只能包含字母、数字、英文括号、下划线和中划线",
+                )
+            )
         if not clean_text(plate.get("target")):
             issues.append(_issue(f"{prefix}.target", f"样本板[{plate_index}]缺少靶点"))
 
@@ -452,6 +492,15 @@ def validate_sample_plates(sample_plates: list[Any]) -> list[dict[str, str]]:
                         f"样本板[{plate_index}]孔位类型不合法：{well_type or '空'}",
                     )
                 )
+            sample_code = clean_text(well.get("sample_code"))
+            if sample_code and not SAMPLE_CODE_RE.match(sample_code):
+                well_no = clean_text(well.get("well_no")) or str(well_index + 1)
+                issues.append(
+                    _issue(
+                        f"{prefix}.wells.{well_index}.sample_code",
+                        f"样本板[{plate_index}]孔位 {well_no} 的样本编码只能包含字母、数字、英文括号、下划线和中划线",
+                    )
+                )
     return issues
 
 
@@ -470,8 +519,16 @@ def validate_cell_plates(cell_plates: list[Any]) -> list[dict[str, str]]:
         if not isinstance(plate, dict):
             issues.append(_issue(prefix, f"细胞板[{plate_index}]格式不正确"))
             continue
-        if not clean_text(plate.get("barcode")):
+        cell_barcode = clean_text(plate.get("barcode"))
+        if not cell_barcode:
             issues.append(_issue(f"{prefix}.barcode", f"细胞板[{plate_index}]缺少二维码/条码"))
+        elif not IDENTIFIER_RE.match(cell_barcode):
+            issues.append(
+                _issue(
+                    f"{prefix}.barcode",
+                    f"细胞板[{plate_index}]条码只能包含字母、数字、英文括号、下划线和中划线",
+                )
+            )
         columns = safe_list(plate.get("columns"))
         if len(columns) != 12:
             issues.append(_issue(f"{prefix}.columns", f"细胞板[{plate_index}]必须恰好包含 12 列"))
@@ -554,11 +611,12 @@ def validate_pc_refs(content: dict[str, Any]) -> list[dict[str, str]]:
 
 def validate_sample_cell_refs(sample_plates: list[Any], cell_plates: list[Any]) -> list[dict[str, str]]:
     """样本板必须选择至少一个有效细胞列。"""
-    named_cells = {
-        (key["barcode"], key["column_no"])
+    named_by_key = {
+        (key["barcode"], key["column_no"]): cell
         for cell in iter_cell_columns(cell_plates)
         if (key := build_cell_key(cell.get("cell_plate_barcode"), cell.get("column_no")))
     }
+    named_cells = set(named_by_key)
     issues: list[dict[str, str]] = []
     for plate_index, plate in enumerate(sample_plates, start=1):
         if not isinstance(plate, dict):
@@ -568,6 +626,14 @@ def validate_sample_cell_refs(sample_plates: list[Any], cell_plates: list[Any]) 
         if not keys:
             issues.append(_issue(f"sample_plates.{idx}.cell_keys", f"样本板[{plate_index}]未选择检测细胞"))
             continue
+        barcodes = {key["barcode"] for key in keys}
+        if len(barcodes) > 1:
+            issues.append(
+                _issue(
+                    f"sample_plates.{idx}.cell_keys",
+                    f"样本板[{plate_index}]只能选择同一块细胞板上的列",
+                )
+            )
         invalid_keys = [key for key in keys if (key["barcode"], key["column_no"]) not in named_cells]
         if len(invalid_keys) == len(keys):
             issues.append(_issue(f"sample_plates.{idx}.cell_keys", f"样本板[{plate_index}]没有有效的检测细胞"))
@@ -580,6 +646,238 @@ def validate_sample_cell_refs(sample_plates: list[Any], cell_plates: list[Any]) 
                     f"{cell_key['barcode']} 列{cell_key['column_no']}",
                 )
             )
+        names = [
+            clean_text(named_by_key[(cell_key["barcode"], cell_key["column_no"])].get("cell_name"))
+            for cell_key in keys
+            if (cell_key["barcode"], cell_key["column_no"]) in named_by_key
+        ]
+        names = [name for name in names if name]
+        duplicates = [value for value in unique_strings(names) if names.count(value) > 1]
+        if duplicates:
+            issues.append(
+                _issue(
+                    f"sample_plates.{idx}.cell_keys",
+                    f"样本板[{plate_index}]的细胞名称重复：{', '.join(duplicates)}",
+                )
+            )
+    return issues
+
+
+def validate_pcr_control_plates(sample_plates: list[Any], order_type: Any) -> list[dict[str, str]]:
+    """每个靶点至少有一块条码以 -PC 结尾的对照样本板。仅 PCR。"""
+    if clean_text(order_type).upper() != "PCR":
+        return []
+    covered: dict[str, bool] = {}
+    for plate in sample_plates:
+        if not isinstance(plate, dict):
+            continue
+        target = clean_text(plate.get("target"))
+        if not target:
+            continue
+        covered.setdefault(target, False)
+        if clean_text(plate.get("barcode")).endswith("-PC"):
+            covered[target] = True
+    missing = [target for target, ok in covered.items() if not ok]
+    if not missing:
+        return []
+    return [_issue("sample_plates", f"PCR 靶点缺少以 -PC 结尾的对照板：{', '.join(missing)}")]
+
+
+def _column_snapshot(column: dict[str, Any]) -> dict[str, str]:
+    return {field: clean_text(column.get(field)) for field in CELL_CONTENT_FIELDS}
+
+
+def _column_completeness(snapshot: dict[str, str]) -> int:
+    return sum(1 for value in snapshot.values() if value)
+
+
+def _pick_column_record(records: list[dict[str, Any]]) -> dict[str, Any]:
+    return max(
+        records,
+        key=lambda item: (
+            int(item.get("completeness") or 0),
+            str(item.get("updated_at") or ""),
+            int(item.get("id") or 0),
+        ),
+    )
+
+
+def _usage_column(
+    column_no: int,
+    winner: dict[str, Any],
+    used_records: list[dict[str, Any]],
+    *,
+    locked: bool,
+    conflict: bool,
+) -> dict[str, Any]:
+    used_by: list[dict[str, Any]] = []
+    seen_ids: set[Any] = set()
+    for item in used_records:
+        identity = item.get("id")
+        if identity in seen_ids:
+            continue
+        seen_ids.add(identity)
+        used_by.append(
+            {
+                "id": identity,
+                "orderNum": item.get("orderNum") or "",
+                "status": item.get("status") or "",
+            }
+        )
+    return {
+        "column_no": column_no,
+        "locked": locked,
+        "conflict": conflict,
+        "source_order_id": winner.get("id"),
+        "source_order_num": winner.get("orderNum") or "",
+        "used_by": used_by,
+        **winner["column"],
+    }
+
+
+def resolve_cell_plate_usage(barcode: str, peers: list[dict[str, Any]]) -> dict[str, Any]:
+    """汇总其他订单里同一细胞板的列：被选中的列锁定，只填写过的列供带入。"""
+    barcode_text = clean_text(barcode)
+    used_by_column: dict[int, list[dict[str, Any]]] = {}
+    filled_by_column: dict[int, list[dict[str, Any]]] = {}
+
+    for peer in peers:
+        content = safe_dict(peer.get("content"))
+        selected: set[int] = set()
+        for plate in safe_list(content.get("sample_plates")):
+            if not isinstance(plate, dict):
+                continue
+            for key in selected_cell_keys(plate):
+                if key["barcode"] == barcode_text:
+                    selected.add(int(key["column_no"]))
+        order_meta = {
+            "id": peer.get("id"),
+            "orderNum": clean_text(peer.get("orderNum")),
+            "status": clean_text(peer.get("status")),
+            "updated_at": peer.get("updated_at") or "",
+        }
+        for plate in safe_list(content.get("cell_plates")):
+            if not isinstance(plate, dict) or clean_text(plate.get("barcode")) != barcode_text:
+                continue
+            for column in safe_list(plate.get("columns")):
+                if not isinstance(column, dict):
+                    continue
+                try:
+                    column_no = int(column.get("column_no") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if column_no < 1 or column_no > 12:
+                    continue
+                snapshot = _column_snapshot(column)
+                if _column_completeness(snapshot) == 0:
+                    continue
+                record = {
+                    **order_meta,
+                    "column": snapshot,
+                    "completeness": _column_completeness(snapshot),
+                }
+                target = used_by_column if column_no in selected else filled_by_column
+                target.setdefault(column_no, []).append(record)
+
+    columns: list[dict[str, Any]] = []
+    for column_no in range(1, 13):
+        used = used_by_column.get(column_no) or []
+        filled = filled_by_column.get(column_no) or []
+        pool = used or filled
+        if not pool:
+            continue
+        winner = _pick_column_record(pool)
+        names = {item["column"]["cell_name"] for item in pool if item["column"]["cell_name"]}
+        types = {item["column"]["cell_type"] for item in pool if item["column"]["cell_type"]}
+        columns.append(
+            _usage_column(
+                column_no,
+                winner,
+                used,
+                locked=bool(used),
+                conflict=len(names) > 1 or len(types) > 1,
+            )
+        )
+    return {"barcode": barcode_text, "columns": columns}
+
+
+def _locked_columns(usage: dict[str, Any] | None) -> dict[int, dict[str, Any]]:
+    if not usage:
+        return {}
+    locked: dict[int, dict[str, Any]] = {}
+    for column in safe_list(usage.get("columns")):
+        if isinstance(column, dict) and column.get("locked"):
+            try:
+                locked[int(column.get("column_no") or 0)] = column
+            except (TypeError, ValueError):
+                continue
+    return locked
+
+
+def _used_by_label(column: dict[str, Any]) -> str:
+    numbers = [
+        clean_text(item.get("orderNum"))
+        for item in safe_list(column.get("used_by"))
+        if isinstance(item, dict)
+    ]
+    numbers = [item for item in numbers if item]
+    if numbers:
+        return "、".join(numbers)
+    return clean_text(column.get("source_order_num")) or "其他订单"
+
+
+def validate_cell_column_occupancy(
+    sample_plates: list[Any],
+    cell_plates: list[Any],
+    usage_by_barcode: dict[str, dict[str, Any]] | None,
+) -> list[dict[str, str]]:
+    """已被其他订单选中的细胞列不能再选，也不能改成另一套细胞信息。"""
+    if not usage_by_barcode:
+        return []
+    issues: list[dict[str, str]] = []
+    locked_by_barcode = {
+        barcode: _locked_columns(usage) for barcode, usage in usage_by_barcode.items()
+    }
+    for plate_index, plate in enumerate(cell_plates):
+        if not isinstance(plate, dict):
+            continue
+        barcode = clean_text(plate.get("barcode"))
+        locked = locked_by_barcode.get(barcode) or {}
+        for column_index, column in enumerate(safe_list(plate.get("columns"))):
+            if not isinstance(column, dict):
+                continue
+            try:
+                column_no = int(column.get("column_no") or 0)
+            except (TypeError, ValueError):
+                continue
+            remote = locked.get(column_no)
+            if not remote:
+                continue
+            local = _column_snapshot(column)
+            if _column_completeness(local) == 0:
+                continue
+            if any(local[field] != clean_text(remote.get(field)) for field in CELL_CONTENT_FIELDS):
+                issues.append(
+                    _issue(
+                        f"cell_plates.{plate_index}.columns.{column_index}.cell_name",
+                        f"细胞板 {barcode} 第 {column_no} 列已被订单 {_used_by_label(remote)} 使用，不能修改该列信息",
+                    )
+                )
+    for plate_index, plate in enumerate(sample_plates, start=1):
+        if not isinstance(plate, dict):
+            continue
+        idx = plate_index - 1
+        for cell_key in selected_cell_keys(plate):
+            remote = (locked_by_barcode.get(cell_key["barcode"]) or {}).get(cell_key["column_no"])
+            if not remote:
+                continue
+            issues.append(
+                _issue(
+                    f"sample_plates.{idx}.cell_keys",
+                    f"样本板[{plate_index}]不能使用细胞板 {cell_key['barcode']} 第 {cell_key['column_no']} 列，"
+                    f"该列已被订单 {_used_by_label(remote)} 使用",
+                )
+            )
     return issues
 
 
@@ -588,6 +886,7 @@ def collect_validation_issues(
     order: MegaFlowWorkOrder | None = None,
     *,
     content: dict[str, Any] | None = None,
+    column_usage: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
     """统一校验入口：返回带 field 的结构化问题列表。"""
     payload = safe_dict(data)
@@ -599,6 +898,7 @@ def collect_validation_issues(
             content = existing_content or {}
 
     orderNum = clean_text(payload.get("orderNum") or (order.orderNum if order else ""))
+    order_type = clean_text(payload.get("orderType") or (order.orderType if order else "") or "TITER") or "TITER"
     sample_plates = safe_list(content.get("sample_plates"))
     cell_plates = safe_list(content.get("cell_plates"))
 
@@ -610,4 +910,6 @@ def collect_validation_issues(
     issues.extend(validate_plate_barcodes(sample_plates, cell_plates))
     issues.extend(validate_pc_refs(content))
     issues.extend(validate_sample_cell_refs(sample_plates, cell_plates))
+    issues.extend(validate_pcr_control_plates(sample_plates, order_type))
+    issues.extend(validate_cell_column_occupancy(sample_plates, cell_plates, column_usage))
     return issues

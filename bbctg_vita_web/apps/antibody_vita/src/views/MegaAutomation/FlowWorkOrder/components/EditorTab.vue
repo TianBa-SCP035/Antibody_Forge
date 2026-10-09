@@ -120,13 +120,17 @@
                             v-for="cell in group.children"
                             :key="cellKey(cell.barcode, cell.columnNo)"
                             class="cell-picker-option"
-                            :class="{ 'is-selected': isCellSelected(row, cell.barcode, cell.columnNo) }"
+                            :class="{
+                              'is-selected': isCellSelected(row, cell.barcode, cell.columnNo),
+                              'is-locked': cell.locked,
+                            }"
+                            :title="cell.lockLabel || ''"
                             @click="toggleCell(row, cell.barcode, cell.columnNo)"
                           >
                             <span class="cell-picker-option-name">
                               {{ cell.cellName || '未命名细胞' }}
                             </span>
-                            <span class="cell-picker-option-col">列{{ cell.columnNo }}</span>
+                            <span class="cell-picker-option-col">{{ cell.locked ? '已占用' : `列${cell.columnNo}` }}</span>
                             <el-icon
                               v-if="isCellSelected(row, cell.barcode, cell.columnNo)"
                               class="cell-picker-option-check"
@@ -293,6 +297,7 @@ import {
   ElButton,
   ElIcon,
   ElInput,
+  ElMessage,
   ElOption,
   ElPopover,
   ElSelect,
@@ -411,6 +416,10 @@ export default {
               barcode,
               cellName: column.cell_name || '',
               columnNo: column.column_no,
+              locked: !!column._locked,
+              lockLabel: column._locked
+                ? `已被 ${column._usedByLabel || '其他订单'} 使用`
+                : '',
             })),
         };
       });
@@ -455,6 +464,7 @@ export default {
     defaultSamplePlate() {
       return createDefaultSamplePlate({
         cellColumns: this.defaultCellColumns,
+        orderType: this.order.orderType,
         sampleWells: this.defaultSampleWells,
       });
     },
@@ -479,10 +489,19 @@ export default {
       return tokens.join('、');
     },
     toggleCell(plate, barcode, columnNo) {
+      const column = this.cellByKey[this.cellKey(barcode, columnNo)];
       const keys = Array.isArray(plate.cell_keys) ? [...plate.cell_keys] : [];
       const idx = keys.findIndex(
         (item) => item.barcode === barcode && item.column_no === columnNo,
       );
+      if (idx < 0 && column?._locked) {
+        ElMessage.warning(`第 ${columnNo} 列已被 ${column._usedByLabel || '其他订单'} 使用`);
+        return;
+      }
+      if (idx < 0 && keys.some((item) => item.barcode !== barcode)) {
+        ElMessage.warning('同一块样本板只能选择同一块细胞板上的列');
+        return;
+      }
       if (idx >= 0) {
         keys.splice(idx, 1);
       } else {
@@ -1012,6 +1031,15 @@ $muted-color: #909399;
   &.is-selected {
     color: #409eff;
     background: #ecf5ff;
+  }
+
+  &.is-locked {
+    color: #a8abb2;
+    cursor: not-allowed;
+
+    &:hover {
+      background: transparent;
+    }
   }
 }
 

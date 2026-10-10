@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     labillion_base_url: str = ""
     labillion_username: str = ""
     labillion_password: str = ""
-    labillion_platform_id: str = "3a22c00f-2b27-aa7b-63f0-76d3a1f77814"
+    labillion_platform_id: str = ""
     public_api_base_url: str = ""
 
     model_config = SettingsConfigDict(

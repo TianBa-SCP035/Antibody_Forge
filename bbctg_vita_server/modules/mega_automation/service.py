@@ -40,7 +40,6 @@ from modules.mega_automation.dispatch import (
     complete_current_dispatch,
     confirm_current_dispatch,
     create_dispatch_record,
-    fail_current_dispatch,
     get_current_dispatch,
     has_dispatches,
     is_pause_ready_for_edit,
@@ -64,6 +63,10 @@ WORK_ORDER_STATUSES = [
     {"value": "cancelled", "label": "已作废"},
 ]
 ORDER_STATUS_LABELS = {item["value"]: item["label"] for item in WORK_ORDER_STATUSES}
+ORDER_STATUS_LABELS["execution_failed"] = "执行中止"
+ORDER_STATUS_LABELS["execution_error"] = "执行错误"
+ORDER_STATUS_LABELS["manual_failed"] = "手动失败"
+EXECUTION_ISSUE_STATUSES = frozenset({"execution_failed", "execution_error", "manual_failed"})
 ORDER_TYPES = [
     {"value": "TITER", "label": "效价"},
     {"value": "PLAS", "label": "质粒"},
@@ -79,7 +82,7 @@ ORDER_TYPE_LABELS = {item["value"]: item["label"] for item in ORDER_TYPES}
 PRIORITY_LABELS = {item["value"]: item["label"] for item in PRIORITIES}
 PRIORITY_VALUES = {item["value"] for item in PRIORITIES}
 
-EDITABLE_STATUSES = frozenset({"draft", "validated", "failed", "execution_failed"})
+EDITABLE_STATUSES = frozenset({"draft", "validated", "failed"})
 ACTIVE_EXECUTION_STATUSES = frozenset({"sent", "running"})
 PAUSED_CHANGE_CONFIRM_MESSAGE = (
     "工单内容已变更。确认后将使此前有效的下发记录失效，且无法再通过「继续」恢复为原发送状态。"
@@ -111,21 +114,6 @@ def _ensure_not_cancelled(order: MegaFlowWorkOrder) -> None:
         raise ValueError("工单已完成，不可再操作")
 
 
-def _get_confirmed_paused_dispatch(
-    db: Session,
-    order: MegaFlowWorkOrder,
-    *,
-    error_message: str,
-    missing_message: str | None = None,
-) -> MegaFlowWorkOrderDispatch:
-    current = get_current_dispatch(db, order.id)
-    if not current:
-        raise ValueError(missing_message or error_message)
-    if normalize_pause_state(current.pause_state) != "paused":
-        raise ValueError(error_message)
-    return current
-
-
 def _get_pause_ready_dispatch(
     db: Session,
     order: MegaFlowWorkOrder,
@@ -141,7 +129,12 @@ def _get_pause_ready_dispatch(
     return current
 
 
-def _labillion_withdraw_pause(db: Session, order: MegaFlowWorkOrder) -> None:
+def _labillion_withdraw_pause(
+    db: Session,
+    order: MegaFlowWorkOrder,
+    *,
+    simulate: bool = False,
+) -> None:
     current = get_current_dispatch(db, order.id)
     if not current:
         raise ValueError("没有可撤回的下发记录")
@@ -149,10 +142,11 @@ def _labillion_withdraw_pause(db: Session, order: MegaFlowWorkOrder) -> None:
         raise ValueError("设备已开始执行，无法撤回")
     if normalize_pause_state(current.pause_state) == PAUSE_STATE_WITHDRAWN:
         return
-    try:
-        delete_orders([current.dispatchId])
-    except LabillionError as exc:
-        raise ValueError(f"Labillion 订单删除失败：{exc}") from exc
+    if not simulate:
+        try:
+            delete_orders([current.dispatchId])
+        except LabillionError as exc:
+            raise ValueError(f"Labillion 订单删除失败：{exc}") from exc
     current.pause_state = PAUSE_STATE_WITHDRAWN
     order.status = "paused"
     order.error_message = None
@@ -385,7 +379,7 @@ def save_work_order(db: Session, data: dict[str, Any], user: Any) -> dict[str, A
         _ensure_cell_columns_free(db, build_content_body(data), order.id)
         _apply_order_data(order, data)
 
-        if order.status in {"validated", "execution_failed"} and previous_hash != order.content_hash:
+        if order.status == "validated" and previous_hash != order.content_hash:
             order.status = "draft"
 
         order.error_message = None
@@ -445,7 +439,9 @@ def _work_order_list_stmt(data: dict[str, Any]):
             )
         )
     status = clean_text(data.get("status"))
-    if status:
+    if status == "execution_failed":
+        stmt = stmt.where(MegaFlowWorkOrder.status.in_(tuple(EXECUTION_ISSUE_STATUSES)))
+    elif status:
         stmt = stmt.where(MegaFlowWorkOrder.status == status)
     orderType = clean_text(data.get("orderType"))
     if orderType:
@@ -623,7 +619,10 @@ def get_work_order_stats(db: Session) -> dict[str, int]:
     ).all()
     stats = {status["value"]: 0 for status in WORK_ORDER_STATUSES}
     for status, count in rows:
-        stats[str(status or "draft")] = int(count or 0)
+        key = str(status or "draft")
+        if key in {"execution_error", "manual_failed"}:
+            key = "execution_failed"
+        stats[key] = stats.get(key, 0) + int(count or 0)
     stats["total"] = sum(value for key, value in stats.items() if key != "total")
     return stats
 
@@ -682,7 +681,7 @@ def _validate_paused(
     current = _get_pause_ready_dispatch(
         db,
         order,
-        error_message="设备尚未完成暂停或撤回，暂不可编辑或校验",
+        error_message="仅已撤回的工单可以编辑或校验",
     )
     payload = safe_dict(data.get("payload"))
     if not payload:
@@ -757,7 +756,13 @@ def validate_work_order(db: Session, order_id: int, data: dict[str, Any] | None 
     return result
 
 
-def dispatch_work_order(db: Session, order_id: int, user: Any) -> dict[str, Any]:
+def dispatch_work_order(
+    db: Session,
+    order_id: int,
+    user: Any,
+    *,
+    simulate: bool = False,
+) -> dict[str, Any]:
     order = _get_order_or_raise(db, int(order_id), for_update=True)
     _ensure_not_cancelled(order)
     if order.status != "validated":
@@ -765,11 +770,12 @@ def dispatch_work_order(db: Session, order_id: int, user: Any) -> dict[str, Any]
 
     _ensure_cell_columns_free(db, get_order_content(order), order.id)
     dispatch = create_dispatch_record(db, order, operator_name=_operator_name(user))
-    try:
-        push_flow_work_order(dispatch.payload if isinstance(dispatch.payload, dict) else {})
-    except LabillionError as exc:
-        db.rollback()
-        raise ValueError(f"Labillion 订单导入失败：{exc}") from exc
+    if not simulate:
+        try:
+            push_flow_work_order(dispatch.payload if isinstance(dispatch.payload, dict) else {})
+        except LabillionError as exc:
+            db.rollback()
+            raise ValueError(f"Labillion 订单导入失败：{exc}") from exc
 
     order.status = "sent"
     order.sent_at = datetime.now()
@@ -778,7 +784,7 @@ def dispatch_work_order(db: Session, order_id: int, user: Any) -> dict[str, Any]
     return get_work_order_detail(db, order.id)
 
 
-def pause_work_order(db: Session, order_id: int) -> dict[str, Any]:
+def pause_work_order(db: Session, order_id: int, *, simulate: bool = False) -> dict[str, Any]:
     order = _get_order_or_raise(db, int(order_id), for_update=True)
     _ensure_not_cancelled(order)
     if order.status not in ACTIVE_EXECUTION_STATUSES:
@@ -786,9 +792,11 @@ def pause_work_order(db: Session, order_id: int) -> dict[str, Any]:
 
     current = get_current_dispatch(db, order.id)
     if order.status == "sent" and current and current.status == "pending":
-        _labillion_withdraw_pause(db, order)
+        _labillion_withdraw_pause(db, order, simulate=simulate)
         db.commit()
         return get_work_order_detail(db, order.id)
+    if simulate:
+        raise ValueError("仅待确认的已发送工单可以模拟撤回")
 
     request_pause_current_dispatch(db, order.id)
     order.status = "paused"
@@ -811,27 +819,20 @@ def resume_work_order(db: Session, order_id: int) -> dict[str, Any]:
     order = _get_order_or_raise(db, int(order_id), for_update=True)
     _ensure_not_cancelled(order)
     if order.status != "paused":
-        raise ValueError("仅已暂停工单可以继续")
-
+        raise ValueError("仅已撤回或已暂停的工单可以继续")
     current = get_current_dispatch(db, order.id, include_payload=True)
-    if current and normalize_pause_state(current.pause_state) == PAUSE_STATE_WITHDRAWN:
+    if not current:
+        raise ValueError("没有可继续的下发记录")
+    pause = normalize_pause_state(current.pause_state)
+    if pause == PAUSE_STATE_WITHDRAWN:
         _labillion_withdraw_resume(db, order)
         db.commit()
         return get_work_order_detail(db, order.id)
-
-    current = _get_confirmed_paused_dispatch(
-        db,
-        order,
-        error_message="设备尚未完成暂停，暂不可继续",
-        missing_message="没有可继续的下发记录",
-    )
-
-    if (order.content_hash or "") != current.content_hash_at_send:
-        raise ValueError("工单内容已变更，无法继续，请使用校验确认修改")
-
-    request_resume_current_dispatch(db, order.id)
-    db.commit()
-    return get_work_order_detail(db, order.id)
+    if pause == "paused":
+        request_resume_current_dispatch(db, order.id)
+        db.commit()
+        return get_work_order_detail(db, order.id)
+    raise ValueError("当前暂停状态不能继续")
 
 
 def acknowledge_resume_work_order(db: Session, order_id: int) -> dict[str, Any]:
@@ -878,11 +879,37 @@ def fail_work_order(
     order = _get_order_or_raise(db, int(order_id), for_update=True)
     _ensure_not_cancelled(order)
     if order.status not in {"sent", "running", "paused"}:
-        raise ValueError("仅已发送、执行中或已暂停的工单可以标记执行失败")
+        raise ValueError("仅已发送、执行中或已暂停的工单可以标记手动失败")
+    current = get_current_dispatch(db, order.id)
+    if not current:
+        raise ValueError("没有可标记的下发记录")
+    if current.status not in {"pending", "running"}:
+        raise ValueError("当前下发记录不可标记手动失败")
+    if normalize_pause_state(current.pause_state) == PAUSE_STATE_WITHDRAWN:
+        raise ValueError("已撤回的工单请继续发送或作废")
     error = clean_text(error_message)
-    fail_current_dispatch(db, order.id)
-    order.status = "execution_failed"
-    order.error_message = error or "设备执行失败"
+    if current.status == "pending":
+        current.status = "running"
+    current.pause_state = None
+    order.status = "manual_failed"
+    order.error_message = error or "手动标记失败"
+    db.commit()
+    return get_work_order_detail(db, order.id)
+
+
+def continue_execution_work_order(db: Session, order_id: int) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    _ensure_not_cancelled(order)
+    if order.status not in EXECUTION_ISSUE_STATUSES:
+        raise ValueError("仅执行中止、执行错误或手动失败的工单可以继续执行")
+    current = get_current_dispatch(db, order.id)
+    if not current or current.status not in {"pending", "running"}:
+        raise ValueError("没有可继续的下发记录")
+    if current.status == "pending":
+        current.status = "running"
+    current.pause_state = None
+    order.status = "running"
+    order.error_message = None
     db.commit()
     return get_work_order_detail(db, order.id)
 
@@ -906,16 +933,8 @@ def cancel_work_order(db: Session, order_id: int) -> dict[str, Any]:
         raise ValueError("工单已作废")
     if order.status == "completed":
         raise ValueError("已完成工单不可作废")
-    if order.status in ACTIVE_EXECUTION_STATUSES:
-        raise ValueError("已发送或执行中的工单请先停止后再作废")
     if not has_dispatches(db, order.id):
         raise ValueError("未发送的工单请使用删除")
-    if order.status == "paused":
-        _get_pause_ready_dispatch(
-            db,
-            order,
-            error_message="设备尚未完成暂停或撤回，暂不可作废",
-        )
 
     void_open_dispatches(db, order.id)
     order.status = "cancelled"

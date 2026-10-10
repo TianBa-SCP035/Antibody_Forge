@@ -46,6 +46,7 @@
             placeholder="扫描/输入细胞板条码"
             @focus="$emit('barcode-focus', index, plate.barcode)"
             @change="$emit('barcode-change', index, plate.barcode)"
+            @keyup.enter="blurBarcodeInput"
           />
         </div>
 
@@ -88,26 +89,26 @@
           </el-table-column>
           <el-table-column label="细胞名称" min-width="150">
             <template #default="{ row, $index }">
-              <el-input
-                v-model="row.cell_name"
-                size="small"
-                :disabled="disabled || row._locked"
-                :class="{
-                  'is-invalid-control': hasFieldError(
-                    `cell_plates.${index}.columns.${$index}.cell_name`,
-                  ),
-                }"
-                placeholder="细胞名称"
-                @input="onCellNameInput(row)"
-              />
-              <div v-if="row._locked" class="column-usage-hint is-locked">
-                已被 {{ row._usedByLabel || '其他订单' }} 使用<span v-if="row._conflict">，其他订单填写不一致</span>
-              </div>
-              <div v-else-if="row._conflict" class="column-usage-hint is-conflict">
-                其他订单填写不一致
-              </div>
-              <div v-else-if="row._sourceOrderNum" class="column-usage-hint">
-                来自 {{ row._sourceOrderNum }}
+              <div class="cell-name-line">
+                <el-input
+                  v-model="row.cell_name"
+                  size="small"
+                  :disabled="disabled || row._locked"
+                  :class="{
+                    'is-invalid-control': hasFieldError(
+                      `cell_plates.${index}.columns.${$index}.cell_name`,
+                    ),
+                  }"
+                  placeholder="细胞名称"
+                  @input="onCellNameInput(row)"
+                />
+                <span
+                  v-if="row._locked"
+                  class="usage-mark is-locked"
+                  :title="`已被 ${row._usedByLabel || '其他订单'} 使用${row._conflict ? '，其他订单填写不完全一致' : ''}`"
+                >已用</span>
+                <span v-else-if="row._conflict" class="usage-mark is-diff" title="其他订单填写不完全一致">差异</span>
+                <span v-else-if="row._sourceOrderNum" class="usage-mark" :title="`来自 ${row._sourceOrderNum}`">引用</span>
               </div>
             </template>
           </el-table-column>
@@ -255,6 +256,9 @@ export default {
     this.destroySortable();
   },
   methods: {
+    blurBarcodeInput(event) {
+      event.target?.blur?.();
+    },
     onCellNameInput(row) {
       const named = String(row.cell_name || '').trim();
       row.cell_type = named ? (row.cell_type || '正常') : '';
@@ -366,18 +370,35 @@ $border-color: #e4e7ed;
   }
 }
 
-.column-usage-hint {
-  margin-top: 2px;
-  font-size: 11px;
-  line-height: 1.3;
+.cell-name-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+
+  :deep(.el-input) {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.usage-mark {
+  flex: none;
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 18px;
   color: #909399;
+  background: #f4f4f5;
+  border-radius: 2px;
 
   &.is-locked {
-    color: #b88230;
+    color: #e6a23c;
+    background: #fdf6ec;
   }
 
-  &.is-conflict {
-    color: #c45656;
+  &.is-diff {
+    color: #f56c6c;
+    background: #fef0f0;
   }
 }
 

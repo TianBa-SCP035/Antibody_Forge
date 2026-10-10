@@ -287,18 +287,18 @@ export function validateFlowWorkOrder(id: number | string, data: Record<string, 
   );
 }
 
-export function dispatchFlowWorkOrder(id: number | string) {
+export function dispatchFlowWorkOrder(id: number | string, simulate = false) {
   return requestClient.post<FlowWorkOrder>(
     `/mega-automation/flow-work-orders/${id}/dispatch`,
-    {},
+    simulate ? { simulate: true } : {},
     skipGlobalErrorHandler,
   );
 }
 
-export function pauseFlowWorkOrder(id: number | string) {
+export function pauseFlowWorkOrder(id: number | string, simulate = false) {
   return requestClient.post<FlowWorkOrder>(
     `/mega-automation/flow-work-orders/${id}/pause`,
-    {},
+    simulate ? { simulate: true } : {},
     skipGlobalErrorHandler,
   );
 }
@@ -322,6 +322,14 @@ export function confirmFlowWorkOrderExecution(id: number | string) {
 export function completeFlowWorkOrder(id: number | string) {
   return requestClient.post<FlowWorkOrder>(
     `/mega-automation/flow-work-orders/${id}/complete`,
+    {},
+    skipGlobalErrorHandler,
+  );
+}
+
+export function continueFlowWorkOrderExecution(id: number | string) {
+  return requestClient.post<FlowWorkOrder>(
+    `/mega-automation/flow-work-orders/${id}/continue-execution`,
     {},
     skipGlobalErrorHandler,
   );

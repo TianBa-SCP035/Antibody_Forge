@@ -21,7 +21,14 @@ from modules.mega_automation.dispatch import TERMINAL_DISPATCH_STATUSES
 
 logger = logging.getLogger(__name__)
 
-SYNCABLE_ORDER_STATUSES = frozenset({"sent", "running", "paused"})
+SYNCABLE_ORDER_STATUSES = frozenset({
+    "sent",
+    "running",
+    "paused",
+    "execution_failed",
+    "execution_error",
+    "manual_failed",
+})
 SYNC_THROTTLE_SECONDS = 600
 _QUERY_BATCH_SIZE = 50
 

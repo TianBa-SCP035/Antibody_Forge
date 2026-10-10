@@ -22,6 +22,7 @@
         placeholder="请输入细胞板条码"
         @focus="$emit('barcode-focus', plateIndex, plate.barcode)"
         @change="$emit('barcode-change', plateIndex, plate.barcode)"
+        @keyup.enter="blurBarcodeInput"
       />
       <div class="legend">
         <span class="legend-item"><i class="legend-mark is-normal"></i>正常</span>
@@ -93,6 +94,9 @@ export default {
     },
   },
   methods: {
+    blurBarcodeInput(event) {
+      event.target?.blur?.();
+    },
     isColumnFilled(column) {
       return !!String(column?.cell_name || '').trim();
     },

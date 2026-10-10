@@ -1,3 +1,6 @@
+export const EXECUTION_ISSUE_STATUSES = ['execution_failed', 'execution_error', 'manual_failed'];
+export const LABILLION_SYNC_STATUSES = ['sent', 'running', 'paused', ...EXECUTION_ISSUE_STATUSES];
+
 const ORDER_STATUS_LABELS: Record<string, string> = {
   draft: '草稿',
   validated: '已校验',
@@ -6,7 +9,9 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   paused: '已暂停',
   pausing: '暂停中',
   resuming: '恢复中',
-  execution_failed: '执行失败',
+  execution_failed: '执行中止',
+  execution_error: '执行错误',
+  manual_failed: '手动失败',
   completed: '已完成',
   failed: '校验失败',
   cancelled: '已作废',
@@ -44,14 +49,13 @@ export function resolveOrderDisplayLabel(order: {
   display_status_label?: string;
   pause_state?: string;
 }) {
+  const pause = String(order.pause_state || '').trim();
+  if (pause === 'pausing') return '暂停中';
+  if (pause === 'resuming') return '恢复中';
+  if (pause === 'withdrawn') return '已撤回';
+  if (pause === 'paused') return '已暂停';
   if (order.display_status_label) return order.display_status_label;
-  if (order.status === 'paused') {
-    const pause = String(order.pause_state || '').trim();
-    if (pause === 'pausing') return '暂停中';
-    if (pause === 'resuming') return '恢复中';
-    if (pause === 'withdrawn') return '已撤回';
-    return '已暂停';
-  }
+  if (order.status === 'paused') return '已暂停';
   return ORDER_STATUS_LABELS[order.status || ''] || order.status || '-';
 }
 
@@ -60,19 +64,19 @@ export function resolveOrderDisplayStatus(order: {
   display_status?: string;
   pause_state?: string;
 }) {
-  if (order.display_status) return order.display_status;
-  if (order.status === 'paused') {
-    const pause = String(order.pause_state || '').trim();
-    if (pause === 'pausing') return 'pausing';
-    if (pause === 'resuming') return 'resuming';
-    if (pause === 'withdrawn') return 'withdrawn';
-    return 'paused';
+  const pause = String(order.pause_state || '').trim();
+  if (pause === 'pausing' || pause === 'resuming' || pause === 'withdrawn' || pause === 'paused') {
+    return pause;
   }
+  if (order.display_status) return order.display_status;
+  if (order.status === 'paused') return 'paused';
   return order.status || '';
 }
 
 export function orderStatusTagType(displayStatus: string) {
-  if (displayStatus === 'failed' || displayStatus === 'execution_failed') return 'danger';
+  if (displayStatus === 'failed' || EXECUTION_ISSUE_STATUSES.includes(displayStatus)) {
+    return 'danger';
+  }
   if (displayStatus === 'sent' || displayStatus === 'running' || displayStatus === 'completed') {
     return 'success';
   }

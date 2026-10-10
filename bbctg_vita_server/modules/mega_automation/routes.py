@@ -203,21 +203,28 @@ def flow_work_order_validate(
 @router.post("/flow-work-orders/{order_id}/dispatch")
 def flow_work_order_dispatch(
     order_id: int,
+    data: dict | None = Body(default=None),
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, "mega.flow_work_order.dispatch")
-    return _run(db, lambda: service.dispatch_work_order(db, order_id, current_user))
+    simulate = bool((data or {}).get("simulate"))
+    return _run(
+        db,
+        lambda: service.dispatch_work_order(db, order_id, current_user, simulate=simulate),
+    )
 
 
 @router.post("/flow-work-orders/{order_id}/pause")
 def flow_work_order_pause(
     order_id: int,
+    data: dict | None = Body(default=None),
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, "mega.flow_work_order.dispatch")
-    return _run(db, lambda: service.pause_work_order(db, order_id))
+    simulate = bool((data or {}).get("simulate"))
+    return _run(db, lambda: service.pause_work_order(db, order_id, simulate=simulate))
 
 
 @router.post("/flow-work-orders/{order_id}/resume")
@@ -268,6 +275,16 @@ def flow_work_order_complete(
 ) -> dict:
     require_permission(db, current_user, "mega.flow_work_order.dispatch")
     return _run(db, lambda: service.complete_work_order(db, order_id))
+
+
+@router.post("/flow-work-orders/{order_id}/continue-execution")
+def flow_work_order_continue_execution(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "mega.flow_work_order.dispatch")
+    return _run(db, lambda: service.continue_execution_work_order(db, order_id))
 
 
 @router.post("/flow-work-orders/{order_id}/fail")

@@ -19,9 +19,11 @@ LABILLION_STATUS_ALIASES: dict[str, str] = {
     "paused": "paused",
     "finished": "finished",
     "aborted": "aborted",
+    "error": "error",
+    "deleted": "deleted",
 }
 
-ORDER_TERMINAL_STATUSES = frozenset({"completed", "execution_failed", "cancelled"})
+ORDER_TERMINAL_STATUSES = frozenset({"completed", "cancelled"})
 PRE_DISPATCH_ORDER_STATUSES = frozenset({"draft", "validated", "failed"})
 
 
@@ -34,6 +36,9 @@ def apply_labillion_status(
     dispatch: MegaFlowWorkOrderDispatch,
     labillion_status: str,
 ) -> bool:
+    # 撤回成功后设备侧已没有这张单。后续回调保持已撤回，直到用户点继续。
+    if str(dispatch.pause_state or "").strip() == "withdrawn":
+        return False
     if labillion_status == "pending":
         return _apply_pending(order, dispatch)
     if labillion_status == "running":
@@ -43,7 +48,11 @@ def apply_labillion_status(
     if labillion_status == "finished":
         return _apply_finished(order, dispatch)
     if labillion_status == "aborted":
-        return _apply_aborted(order, dispatch)
+        return _apply_execution_issue(order, dispatch, "execution_failed", "设备执行中止")
+    if labillion_status == "error":
+        return _apply_execution_issue(order, dispatch, "execution_error", "设备执行错误")
+    if labillion_status == "deleted":
+        return _apply_deleted(order, dispatch)
     return False
 
 
@@ -224,16 +233,40 @@ def _apply_finished(
     return True
 
 
-def _apply_aborted(
+def _dispatch_still_running(dispatch: MegaFlowWorkOrderDispatch) -> bool:
+    return dispatch.status == "running" and not dispatch.pause_state
+
+
+def _keep_dispatch_running(dispatch: MegaFlowWorkOrderDispatch) -> None:
+    if dispatch.status == "pending":
+        dispatch.status = "running"
+    dispatch.pause_state = None
+
+
+def _apply_execution_issue(
+    order: MegaFlowWorkOrder,
+    dispatch: MegaFlowWorkOrderDispatch,
+    status: str,
+    message: str,
+) -> bool:
+    if order.status == status and _dispatch_still_running(dispatch):
+        return False
+
+    order.status = status
+    order.error_message = message
+    _keep_dispatch_running(dispatch)
+    return True
+
+
+def _apply_deleted(
     order: MegaFlowWorkOrder,
     dispatch: MegaFlowWorkOrderDispatch,
 ) -> bool:
-    if order.status == "execution_failed" and dispatch.status == "failed":
+    if order.status == "cancelled" and dispatch.status == "voided":
         return False
 
-    order.status = "execution_failed"
-    if not order.error_message:
-        order.error_message = "设备执行中止"
-    dispatch.status = "failed"
+    order.status = "cancelled"
+    order.error_message = "操作台已删除工单"
+    dispatch.status = "voided"
     dispatch.pause_state = None
     return True

@@ -10,7 +10,8 @@
 - 生成并保存设备下发 Payload，向 Labillion（镁伽）推送订单；
 - 接收 Labillion 状态回调、主动查询状态；详情页展示 Running 进度（不入库）；
 - 撤回（`sent` + 待确认）与继续（已撤回后重推）；
-- 保留手动「确认执行 / 设备已暂停 / 设备已恢复 / 完成 / 执行失败」作 fallback；
+- 详情用「手动控制」菜单确认执行、模拟撤回、停止、设备已暂停、完成、请求恢复、设备已恢复、手动失败、继续执行；这些不请求镁伽。已暂停不提供继续，已撤回不提供手动控制。执行中止、执行错误、手动失败可继续执行，回到执行中。
+- 已发送过且未完成的工单都可以作废。作废不通知设备，之后忽略回调。未发送的用工单删除。已完成不能作废。
 - 详情提供「工单编辑 / 铺板 / Payload」三个页签。
 
 尚未接入：检测结果业务解析入库、跨模块自动同步。
@@ -63,11 +64,11 @@
 - 样本板条码只能包含字母、数字、英文括号和中划线，不能包含下划线；非空样本编码还可包含下划线；
 - 项目号和细胞板条码同样只允许字母、数字、英文括号、下划线和中划线；
 - 保存时会去掉回车、制表符和零宽字符，不单独报错；
-- 二抗留空时，效价补「鼠」，质粒和 PCR 补「人」。可选值仍为人、猴、鼠、狗；
+- 二抗留空时，效价补「鼠」，质粒和 PCR 补「人」。可选值仍为人、猴、鼠、狗；不是人/鼠时只在页面警告，不拦截校验和发送；
 - PCR 的每个靶点至少要有一块条码以 `-PC` 结尾、且靶点相同的样本板；
 - 同一细胞板条码可以出现在多张未作废工单中。某一列一旦被其中一张工单的样本板选中，其他工单不能再选中该列，也不能把该列细胞信息改成另一套。只填写、未被选中的列不占用。
 
-保存、校验和发送都会按库里的其他工单复查列占用。填写已存在的细胞板条码时，前端会带入其他订单的列信息：已占用列只读，未占用列仅在当前列为空时填入。
+保存、校验和发送都会按库里的其他工单复查列占用。把细胞板条码改成另一块已有板时，当前列内容会按那块板替换：已占用列只读，未占用但其他订单填过的列带入并可改。打开已保存工单时，不会用其他订单的内容覆盖本单已有列。
 
 校验问题包含字段路径，前端可定位到对应板、孔位或基础字段。
 
@@ -76,32 +77,44 @@
 ### 4.1 本地操作（手动 fallback）
 
 ```text
-draft / failed / execution_failed
+draft / failed
   └─ 校验通过 → validated
 
 validated
   └─ 发送 → sent（下发记录 pending；若已配 Labillion 则同步推送）
+     右键发送可「模拟发送」：同样变成 sent，但不请求镁伽
 
 sent
   ├─ 确认执行 → running（下发记录 running）
   ├─ 撤回（仅 pending）→ paused + withdrawn（调 Labillion 删除）
+     手动控制「模拟撤回」：同样变成已撤回，但不请求镁伽
   ├─ 停止（running）→ paused + pausing
-  ├─ 执行失败 → execution_failed
+  ├─ 手动失败 → manual_failed（下发仍为 running，不通知设备）
+  ├─ 作废 → cancelled（不通知设备，之后忽略回调）
   └─ Labillion 回调/查询 → 见 §4.2
 
 running
   ├─ 完成 → completed
   ├─ 停止 → paused + pausing
-  ├─ 执行失败 → execution_failed
+  ├─ 手动失败 → manual_failed（下发仍为 running，不通知设备）
+  ├─ 作废 → cancelled（不通知设备，之后忽略回调）
   └─ Labillion 回调/查询 → 见 §4.2
 
 paused
-  ├─ 设备确认暂停 → paused + paused
-  ├─ 已撤回后继续 → sent（重建 payload 并重推 Labillion）
-  ├─ 内容未变化时请求恢复 → paused + resuming
-  ├─ 设备确认恢复 → sent 或 running
-  └─ 确认保存修改 → validated，原下发记录 voided
+  ├─ 设备确认暂停 → paused + paused（不可编辑）
+  ├─ 手动控制「请求恢复」→ paused + resuming
+  ├─ 手动控制「设备已恢复」→ running
+  ├─ 已撤回、内容未改 → 继续 → sent（同一下发重推 Labillion）
+  ├─ 已撤回、内容已改并确认 → validated，原下发 voided，再发送
+  ├─ 暂停中、已暂停、恢复中可手动失败 → manual_failed（下发仍为 running；已撤回不可以）
+  └─ 作废 → cancelled，当前下发 voided（暂停中、恢复中也可以）
+
+execution_failed / execution_error / manual_failed
+  ├─ 手动控制「继续执行」→ running（清空错误说明，下发仍为 running，不通知设备）
+  └─ 作废 → cancelled
 ```
+
+「手动控制」里的确认执行、模拟撤回、完成、停止、设备已暂停、请求恢复、设备已恢复、手动失败、继续执行只改本系统状态，不请求镁伽。撤回和已撤回后的继续才会调用镁伽。已撤回不再提供手动失败。执行中止、执行错误、手动失败可以继续执行，回到执行中。作废可以发生在已发送之后的各个未完成状态，不通知设备。
 
 ### 4.2 Labillion 驱动（回调与主动查询共用 `apply_labillion_status`）
 
@@ -111,14 +124,19 @@ paused
 | Running | running | running | （清空） |
 | Paused | paused | running | paused |
 | Finished | completed | completed | （清空） |
-| Aborted | execution_failed | failed | （清空） |
+| Aborted | execution_failed（执行中止） | running | （清空） |
+| Error | execution_error（执行错误） | running | （清空） |
+| Deleted | cancelled（已作废） | voided | （清空） |
 
-- 以镁伽状态为准；本地 `withdrawn` 等不拦截回调。
+- 以镁伽状态为准。已经是已撤回时，后续回调和查询都不再改这张单，直到用户点继续。
+- `aborted`、`error` 不是终态，之后的 `running` / `finished` / `deleted` 仍会改写工单。下发记录保持 `running`，不标成 `failed`。`manual_failed` 同样会被后续真实进度盖掉。
+- `deleted` 作废工单并作废下发，备注「操作台已删除工单」。`finished` 与 `deleted` 之后不再接受回调。作废、已完成之后也不再接受回调。
 - Running 时的执行进度仅由主动查询返回给前端展示，**不入库**。
+- 列表「已暂停」统计含暂停中、已暂停、已撤回、恢复中。「执行失败」统计含执行中止、执行错误、手动失败，行上仍分开显示。
 
-只有设备已确认暂停（`pause_state=paused`）后才允许编辑和暂停校验。`pausing`、`resuming` 期间禁止修改。
+只有已撤回可以编辑和校验。已暂停、暂停中、恢复中、执行中止、执行错误、手动失败都不能改内容。
 
-`completed` 和 `cancelled` 是终态。已发送过但未执行中的工单可以在停止后作废；未发送工单直接删除。
+`completed` 和 `cancelled` 是终态。`execution_failed`、`execution_error`、`manual_failed` 不是。作废结束整张工单；未发送工单直接删除。已撤回修改并确认后，只作废当次下发，工单回到已校验，可以再发送。
 
 ## 5. Payload
 
@@ -160,6 +178,7 @@ POST /api/mega-automation/flow-work-orders/{order_id}/pause-ack
 POST /api/mega-automation/flow-work-orders/{order_id}/resume
 POST /api/mega-automation/flow-work-orders/{order_id}/resume-ack
 POST /api/mega-automation/flow-work-orders/{order_id}/complete
+POST /api/mega-automation/flow-work-orders/{order_id}/continue-execution
 POST /api/mega-automation/flow-work-orders/{order_id}/fail
 POST /api/mega-automation/flow-work-orders/{order_id}/delete
 POST /api/mega-automation/flow-work-orders/{order_id}/cancel
@@ -167,7 +186,7 @@ POST /api/mega-automation/flow-work-orders/{order_id}/sync-labillion-status
 POST /api/mega-automation/labillion/callback          # 镁伽推送，无需登录，恒 200
 ```
 
-`sync-labillion-status`：详情页进入时对 `sent/running/paused` 工单异步调用；单工单 10 分钟节流；返回 `execution_progress`（仅 Running 且有值时，供页面展示）。审计操作名为「同步镁伽工单状态」。
+`sync-labillion-status`：详情页进入时对 `sent/running/paused/execution_failed/execution_error/manual_failed` 工单异步调用；单工单 10 分钟节流；返回 `execution_progress`（仅 Running 且有值时，供页面展示）。审计操作名为「同步镁伽工单状态」。
 
 ## 6.1 Labillion 集成（环境变量）
 
@@ -175,6 +194,7 @@ POST /api/mega-automation/labillion/callback          # 镁伽推送，无需登
 |------|------|
 | `LABILLION_BASE_URL` | 镁伽 API 根；留空则不发起任何 Labillion HTTP |
 | `LABILLION_USERNAME` / `LABILLION_PASSWORD` | 登录凭据 |
+| `LABILLION_PLATFORM_ID` | 登录后请求头 `Platform`；未单独配置时用代码里的默认值 |
 | `PUBLIC_API_BASE_URL` | 本系统对外 API 根，用于 `replyAddress` |
 
 实现：`integrations/labillion.py`（登录、导入、删除、查询）；HTTP 超时 5s。
@@ -193,7 +213,7 @@ POST /api/mega-automation/labillion/callback          # 镁伽推送，无需登
 |---|---|
 | `mega.page.flow_work_order` | 进菜单与页；meta / list / detail / active-payload / sync-labillion-status |
 | `mega.flow_work_order.edit` | 保存、校验、删除、作废；表单与铺板解锁编辑 |
-| `mega.flow_work_order.dispatch` | 发送及停止/继续/设备已暂停/设备已恢复/确认执行/完成/执行失败 |
+| `mega.flow_work_order.dispatch` | 发送及停止/继续/设备已暂停/确认执行/完成/继续执行/手动失败 |
 
 路由与功能开关：`menu.mega_automation`、`menu.mega_automation.flow_work_orders`。角色与权限包在系统管理中配置。
 
@@ -354,7 +374,7 @@ expected_content_hash
 - 不一致：拒绝保存，提示刷新；
 - 内容没有变化：返回当前详情，不重复更新数据库。
 
-已校验工单只要内容发生变化，就回到 `draft`。执行失败工单修改内容后也回到 `draft`，然后重新校验、重新发送。
+已校验工单只要内容发生变化，就回到 `draft`。执行中止、执行错误、手动失败和已暂停不能通过改内容回到草稿。
 
 ### 11.2 校验失败
 
@@ -365,7 +385,7 @@ expected_content_hash
 - 接口同时返回带字段路径的 `issues`；
 - 前端展示错误列表，并尽可能定位到相关样本板或字段。
 
-`failed` 表示工单内容校验失败，不是设备执行失败。设备执行失败使用 `execution_failed`。
+`failed` 表示工单内容校验失败。设备执行中止是 `execution_failed`，执行错误是 `execution_error`，手动失败是 `manual_failed`。三者都不是终态，也不能编辑。手动控制里可以继续执行，回到 `running`。
 
 ### 11.3 普通状态下校验
 
@@ -382,18 +402,14 @@ expected_content_hash
 
 ### 11.4 暂停状态下校验
 
-暂停后的编辑流程与普通保存不同（**已撤回** `withdrawn` 工单可直接编辑，走 §4.1 继续发送，不适用下列 pausing 流程）：
+暂停后的编辑只开放给已撤回。已暂停表示设备上工单还在，不能改、不能继续。
 
-1. 请求停止（running）后，工单进入 `paused`，下发记录进入 `pausing`；
-2. 设备确认暂停后，下发记录变为 `paused`；
-3. 只有此时页面才可编辑；
-4. 用户点击校验时，后端先比较本地内容与发送时的 `content_hash_at_send`；
-5. 内容未变时，不保存，可直接继续原下发；
-6. 内容变化时，先要求用户确认；
-7. 确认后保存修改，将原下发记录置为 `voided`，工单回到 `validated`；
-8. 修改后的工单需要重新发送。
+1. 已发送且下发仍为 `pending` 时点撤回，工单进入 `paused`，下发 `pause_state=withdrawn`，并调用 Labillion 删除；
+2. 内容未改时点继续，按同一下发重新导入，工单回到 `sent`；
+3. 内容变化时点校验，先要求确认；
+4. 确认后保存修改，将原下发记录置为 `voided`，工单回到 `validated`，再重新发送。
 
-这个流程避免把修改后的内容错误地附着到原来的下发记录上。
+执行中的工单在「手动控制」里点停止后进入 `pausing`，再点设备已暂停后变为已暂停。这一段不能编辑。已暂停可在手动控制里点请求恢复进入 `resuming`，再点设备已恢复回到执行中。执行中止、执行错误、手动失败可在手动控制里点继续执行，回到执行中。这些步骤都不通知设备。已撤回没有手动控制。已发送过且未完成的工单都可以直接作废。
 
 ## 12. 下发记录与状态说明
 
@@ -431,18 +447,22 @@ DSP260710482913
 ```text
 工单 sent              ↔ 下发 pending
 工单 running           ↔ 下发 running
-工单 paused + withdrawn   ↔ 下发 pending + pause_state=withdrawn（已撤回，可继续重推）
-工单 paused            ↔ 下发 pending/running + pause_state（pausing/paused/resuming）
+工单 paused + withdrawn   ↔ 下发 pending + pause_state=withdrawn（已撤回，可编辑、可重推）
+工单 paused + paused     ↔ 下发 running + pause_state=paused（已暂停，不可编辑）
+工单 paused            ↔ 下发 pending/running + pause_state（pausing/resuming，不可编辑）
 工单 completed         ↔ 下发 completed
-工单 execution_failed  ↔ 下发 failed
-修改暂停工单后 validated ↔ 原下发 voided
+工单 execution_failed  ↔ 下发 running（执行中止，不可编辑，可继续执行或被回调改写）
+工单 execution_error   ↔ 下发 running（执行错误，不可编辑，可继续执行或被回调改写）
+工单 manual_failed     ↔ 下发 running（手动失败，不可编辑，可继续执行或被回调改写）
+工单 cancelled         ↔ 下发 voided
+已撤回修改确认后 validated ↔ 原下发 voided
 ```
 
 ## 13. 前端页面
 
 ### 13.1 列表
 
-关键字、检测类型、状态、项目号、靶点、样本板条码、细胞板条码；状态统计；详情 / 操作 / 复制。显示态合并 `pause_state`（暂停中 / 已暂停 / 已撤回 / 恢复中）。
+关键字、检测类型、状态、项目号、靶点、样本板条码、细胞板条码；状态统计；详情 / 操作 / 复制。显示态合并 `pause_state`（暂停中 / 已暂停 / 已撤回 / 恢复中）。执行失败统计块含执行中止、执行错误、手动失败。
 
 ### 13.2 详情 · 工单编辑
 

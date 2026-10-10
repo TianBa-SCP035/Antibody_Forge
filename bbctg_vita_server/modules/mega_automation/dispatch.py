@@ -15,7 +15,7 @@ from modules.mega_automation.payload import build_dispatch_payload
 PAUSABLE_STATUSES = frozenset({"pending", "running"})
 TERMINAL_DISPATCH_STATUSES = frozenset({"voided", "completed", "failed"})
 PAUSE_STATE_WITHDRAWN = "withdrawn"
-PAUSE_STATE_READY_FOR_EDIT = frozenset({"paused", PAUSE_STATE_WITHDRAWN})
+PAUSE_STATE_READY_FOR_EDIT = frozenset({PAUSE_STATE_WITHDRAWN})
 DISPATCH_ID_PREFIX = "DSP"
 DISPATCH_ID_RANDOM_DIGITS = 6
 DISPATCH_ID_RETRY_LIMIT = 30
@@ -138,8 +138,7 @@ def request_resume_current_dispatch(db: Session, work_order_id: int) -> MegaFlow
     if not current:
         raise ValueError("没有可继续的下发记录")
     if normalize_pause_state(current.pause_state) != "paused":
-        raise ValueError("仅设备已暂停的下发记录可以继续")
-
+        raise ValueError("仅已暂停的下发记录可以请求恢复")
     current.pause_state = "resuming"
     return current
 
@@ -210,15 +209,3 @@ def complete_current_dispatch(db: Session, work_order_id: int) -> MegaFlowWorkOr
     return current
 
 
-def fail_current_dispatch(
-    db: Session,
-    work_order_id: int,
-) -> MegaFlowWorkOrderDispatch:
-    current = get_current_dispatch(db, work_order_id)
-    if not current:
-        raise ValueError("没有可标记失败的下发记录")
-    if current.status not in PAUSABLE_STATUSES:
-        raise ValueError("当前下发记录不可标记失败")
-    current.status = "failed"
-    current.pause_state = None
-    return current

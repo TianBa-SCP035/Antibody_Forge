@@ -79,12 +79,13 @@
                   :show-arrow="false"
                   transition="el-zoom-in-top"
                   popper-class="cell-picker-popper"
-                  @show="onCellPickerShow(row)"
+                  @before-enter="onCellPickerShow(row)"
                   @hide="onCellPickerHide"
                 >
                   <template #reference>
                     <div
                       class="cell-select-trigger"
+                      @pointerdown="onCellPickerShow(row)"
                       :class="{
                         'is-disabled': fieldDisabled,
                         'is-open': activeCellPickerRowKey === row._rowKey,
@@ -148,7 +149,12 @@
             </el-table-column>
             <el-table-column label="二抗" width="76">
               <template #default="{ row }">
-                <el-select v-model="row.secondary_antibody" size="small" :disabled="fieldDisabled">
+                <el-select
+                  v-model="row.secondary_antibody"
+                  size="small"
+                  :disabled="fieldDisabled"
+                  :class="{ 'is-soft-warning': isOtherSecondaryAntibody(row.secondary_antibody) }"
+                >
                   <el-option v-for="item in secondaryAntibodyOptions" :key="item" :label="item" :value="item" />
                 </el-select>
               </template>
@@ -460,6 +466,10 @@ export default {
       return this.validationIssues.some(
         (item) => item.field === field || String(item.field || '').startsWith(`${field}.`),
       );
+    },
+    isOtherSecondaryAntibody(value) {
+      const text = String(value || '').trim();
+      return !!text && text !== '人' && text !== '鼠';
     },
     defaultSamplePlate() {
       return createDefaultSamplePlate({
@@ -775,6 +785,12 @@ $muted-color: #909399;
     line-height: 1.3;
   }
 
+  :deep(.el-select.is-soft-warning .el-select__wrapper),
+  :deep(.el-select.is-soft-warning .el-select__wrapper:hover),
+  :deep(.el-select.is-soft-warning .el-select__wrapper.is-focused) {
+    box-shadow: 0 0 0 1px #e6a23c inset !important;
+  }
+
   :deep(th.el-table__cell) {
     font-size: 12px;
     font-weight: 600;
@@ -976,7 +992,6 @@ $muted-color: #909399;
   flex-shrink: 0;
   font-size: 12px;
   color: #909399;
-  transition: transform 0.2s;
 }
 
 .cell-picker-group.is-open .cell-picker-group-arrow {

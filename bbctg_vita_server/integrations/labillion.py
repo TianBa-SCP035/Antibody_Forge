@@ -14,7 +14,6 @@ LABILLION_ORDERS_PATH = "/api/automation/v1/orders"
 LABILLION_ORDERS_DELETE_PATH = "/api/automation/v1/orders/delete"
 LABILLION_ORDER_STATUSES_PATH = "/api/automation/v1/orderstatuses"
 LABILLION_CALLBACK_PATH = "/mega-automation/labillion/callback"
-LABILLION_PLATFORM_ID = "00000000-0000-0000-0000-000000000002"
 LABILLION_REQUEST_TIMEOUT = 5
 
 PRIORITY_TO_LABILLION = {
@@ -32,6 +31,10 @@ class LabillionError(Exception):
 
 def _labillion_base_url() -> str:
     return str(get_settings().labillion_base_url or "").strip().rstrip("/")
+
+
+def _labillion_platform_id() -> str:
+    return str(get_settings().labillion_platform_id or "").strip()
 
 
 def is_labillion_enabled() -> bool:
@@ -205,7 +208,7 @@ class LabillionClient:
             json=body,
             headers={
                 "Authorization": f"Bearer {token}",
-                "Platform": LABILLION_PLATFORM_ID,
+                "Platform": _labillion_platform_id(),
                 "Accept-Language": "zh-CN",
             },
         )
@@ -241,12 +244,26 @@ def _parse_labillion_response(response: requests.Response) -> Any:
     if not isinstance(payload, dict):
         raise LabillionError("Labillion 响应格式异常")
 
-    code = payload.get("code")
-    if code != 200:
-        message = str(payload.get("message") or "Labillion 业务处理失败").strip()
-        raise LabillionError(message)
+    if not _is_labillion_success(payload):
+        raise LabillionError(_labillion_failure_message(payload))
 
     return payload.get("data")
+
+
+def _is_labillion_success(payload: dict[str, Any]) -> bool:
+    if payload.get("code") != 200:
+        return False
+    data = payload.get("data")
+    return not (isinstance(data, dict) and data.get("isSuccess") is False)
+
+
+def _labillion_failure_message(payload: dict[str, Any]) -> str:
+    data = payload.get("data")
+    detail = str(data.get("detail") or "").strip() if isinstance(data, dict) else ""
+    if detail:
+        return detail
+    message = str(payload.get("message") or payload.get("detail") or "").strip()
+    return message or "Labillion 业务处理失败"
 
 
 def _read_error_message(response: requests.Response) -> str:
@@ -255,5 +272,5 @@ def _read_error_message(response: requests.Response) -> str:
     except ValueError:
         return response.text.strip()
     if isinstance(payload, dict):
-        return str(payload.get("message") or payload.get("detail") or "").strip()
+        return _labillion_failure_message(payload)
     return ""

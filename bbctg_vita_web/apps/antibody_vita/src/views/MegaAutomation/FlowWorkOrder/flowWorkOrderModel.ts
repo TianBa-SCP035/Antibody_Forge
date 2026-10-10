@@ -14,7 +14,7 @@ export const SPECIES_OPTIONS = ['人', '猴', '鼠', '狗', '猫', '空白'];
 export const CELL_TYPE_OPTIONS = ['正常', '肿瘤'];
 export const WELL_TYPE_CYCLE = ['SAMPLE', 'PC', 'NC', 'ISO', 'TAG', 'BLANK'];
 export const PC_INFO_TYPE_OPTIONS = ['SERUM', 'ISO', 'TAG'];
-export const EDITABLE_STATUSES = ['draft', 'validated', 'failed', 'execution_failed'];
+export const EDITABLE_STATUSES = ['draft', 'validated', 'failed'];
 
 const WELL_PC_REF_TYPES = ['PC', 'ISO', 'TAG'];
 const WELL_TYPE_LABELS: Record<string, string> = {
@@ -344,14 +344,12 @@ export function normalizeFlowWorkOrder(
   };
 }
 
-/** 换了细胞板条码后，清掉从上一块板带入或锁定的列，手填内容保留。 */
-export function resetBorrowedCellColumns(plate: { columns?: LooseRecord[] } | null | undefined) {
+/** 换了细胞板条码后，这块板的列内容全部清掉，避免保存过的旧细胞盖住新条码的引用。 */
+export function clearCellPlateColumns(plate: { columns?: LooseRecord[] } | null | undefined) {
   records(plate?.columns).forEach((column) => {
-    if (column._locked || column._sourceOrderNum) {
-      CELL_CONTENT_FIELDS.forEach((field) => {
-        column[field] = '';
-      });
-    }
+    CELL_CONTENT_FIELDS.forEach((field) => {
+      column[field] = '';
+    });
     clearCellColumnUsage(column);
   });
 }
@@ -376,13 +374,14 @@ function copyCellContent(target: LooseRecord, source: LooseRecord) {
   });
 }
 
-/** 把其他订单的细胞列套到当前板。已占用列覆盖为只读；未占用列只填当前还空着的格子。 */
+/** 把其他订单的细胞列套到当前板。已占用列覆盖为只读；未占用列只填空格子。replace 时按新条码整列替换。 */
 export function applyCellPlateUsage(
   plate: { columns?: LooseRecord[] },
   usage: { columns?: LooseRecord[] } | null | undefined,
-  options: { fillEmpty?: boolean } = {},
+  options: { fillEmpty?: boolean; replace?: boolean } = {},
 ) {
   const fillEmpty = options.fillEmpty !== false;
+  const replace = options.replace === true;
   const byNo = new Map(
     records(usage?.columns).map((column) => [Number(column.column_no), column]),
   );
@@ -395,7 +394,14 @@ export function applyCellPlateUsage(
   records(plate?.columns).forEach((column) => {
     clearCellColumnUsage(column);
     const remote = byNo.get(Number(column.column_no));
-    if (!remote) return;
+    if (!remote) {
+      if (replace) {
+        CELL_CONTENT_FIELDS.forEach((field) => {
+          column[field] = '';
+        });
+      }
+      return;
+    }
     if (remote.locked) {
       const changed = CELL_CONTENT_FIELDS.some(
         (field) => String(column[field] || '').trim() !== String(remote[field] || '').trim(),
@@ -418,7 +424,13 @@ export function applyCellPlateUsage(
     }
     const currentName = String(column.cell_name || '').trim();
     const remoteName = String(remote.cell_name || '').trim();
-    if (fillEmpty && !currentName && remoteName) {
+    if (replace && !remoteName) {
+      CELL_CONTENT_FIELDS.forEach((field) => {
+        column[field] = '';
+      });
+      return;
+    }
+    if ((replace || (fillEmpty && !currentName)) && remoteName) {
       copyCellContent(column, remote);
       column._sourceOrderNum = String(remote.source_order_num || '').trim();
       summary.filled.push(Number(column.column_no));

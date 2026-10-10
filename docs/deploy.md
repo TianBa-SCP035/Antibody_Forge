@@ -33,7 +33,7 @@ Windows： 无需路径约定，固定环境为 local。
 | `ENABLE_SCHEDULER` | 是否强制开定时任务；prod 环境即使为 false 也会开 |
 | `YUNZHIJIA_*` | 云之家（可选） |
 | `CELL_DB_URL` / `EMPLOYEE_DB_URL` | 外部只读库（可选）；后者提供员工与靶点主数据 |
-| `LABILLION_BASE_URL` / `LABILLION_USERNAME` / `LABILLION_PASSWORD` | 镁伽 Labillion（可选；URL 留空则不推送） |
+| `LABILLION_BASE_URL` / `LABILLION_USERNAME` / `LABILLION_PASSWORD` / `LABILLION_PLATFORM_ID` | 镁伽 Labillion（可选；URL 留空则不推送。`PLATFORM_ID` 是登录后请求头 `Platform`） |
 | `PUBLIC_API_BASE_URL` | 本系统对外 API 根，用于生成下发 Payload 的 `replyAddress` |
 | `DRM_*` | DRM（可选；另需功能开关） |
 

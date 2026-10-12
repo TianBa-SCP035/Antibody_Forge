@@ -361,10 +361,11 @@ export default {
   color: var(--el-text-color-secondary);
 }
 
+.row-name.tone-success { color: var(--el-color-success); }
+
 .handoff-row.is-marked .row-name.tone-primary { color: var(--el-color-primary); }
-.handoff-row.is-marked .row-name.tone-success { color: var(--el-color-success); }
 .handoff-row.is-marked .row-name.tone-warning { color: var(--el-color-warning); }
-.handoff-row.is-marked .row-name.tone-info { color: var(--el-text-color-primary); }
+.handoff-row.is-marked .row-name.tone-info { color: var(--el-text-color-secondary); }
 
 .row-picks {
   display: flex;

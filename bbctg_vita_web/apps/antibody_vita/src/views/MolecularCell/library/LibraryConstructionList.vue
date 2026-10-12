@@ -635,17 +635,28 @@
         </el-form>
       </div>
     </el-drawer>
-    <el-dialog v-model="createVisible" title="新增文库工单" width="420px" append-to-body>
-      <el-form label-width="88px">
-        <el-form-item label="类型" required>
-          <el-select v-model="createType" style="width: 100%">
-            <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </el-form-item>
-      </el-form>
+    <el-dialog v-model="createVisible" title="新增文库工单" width="640px" append-to-body>
+      <div class="create-rows">
+        <section v-for="row in createRows" :key="row.method" class="create-row">
+          <div class="create-name" :class="`tone-${row.tone}`">{{ row.method }}</div>
+          <div class="create-picks">
+            <button
+              v-for="pick in row.picks"
+              :key="pick.id"
+              type="button"
+              class="create-chip"
+              :class="{ on: createPick === pick.id }"
+              :title="pick.hint || ''"
+              @click="createPick = pick.id"
+            >
+              {{ pick.label }}
+            </button>
+          </div>
+        </section>
+      </div>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmCreate">创建</el-button>
+        <el-button type="primary" :disabled="!createPick" @click="confirmCreate">创建</el-button>
       </template>
     </el-dialog>
   </div>
@@ -719,6 +730,7 @@ import {
   BUILD_POOLED_BCR,
   BUILD_TYPE_OPTIONS,
   buildTypeLabel,
+  HANDOFF_METHOD_ROWS,
   CATALOG_NAME_FIELDS,
   CELL_TYPE_OPTIONS,
   INDEX_MODE_OPTIONS,
@@ -746,7 +758,6 @@ import {
   STUDY_TYPE_OPTIONS,
   statusTone,
   TARGET_FORM_OPTIONS,
-  TYPE_VALUES,
   typeGroup,
   WORKBENCH_COLUMNS,
 } from './libraryColumns'
@@ -896,7 +907,7 @@ export default {
       targetFilterLoading: false,
       consumingCreated: false,
       createVisible: false,
-      createType: TYPE_VALUES[0],
+      createPick: '',
       drawerPointerBound: false,
       sheetColumns: allSheetColumns(),
       listLoaded: false,
@@ -973,11 +984,14 @@ export default {
     workbenchColumns() {
       return WORKBENCH_COLUMNS
     },
-    typeValues() {
-      return this.typeOptions.map((item) => item.value)
-    },
     typeOptions() {
       return BUILD_TYPE_OPTIONS
+    },
+    createRows() {
+      return HANDOFF_METHOD_ROWS
+    },
+    createPicks() {
+      return HANDOFF_METHOD_ROWS.flatMap((row) => row.picks)
     },
     drawerTitle() {
       const row = this.editingRow
@@ -1453,19 +1467,20 @@ export default {
         ElMessage.warning('您没有权限新建文库工单')
         return
       }
-      this.createType = this.typeOptions.some((item) => item.value === this.activeType)
-        ? this.activeType
-        : this.typeOptions[0]?.value
+      const matched = this.createPicks.filter((item) => item.buildType === this.activeType)
+      this.createPick = (matched[0] || this.createPicks[0])?.id || ''
       this.createVisible = true
     },
     async confirmCreate() {
-      if (!this.typeValues.includes(this.createType)) {
+      const pick = this.createPicks.find((item) => item.id === this.createPick)
+      if (!pick) {
         ElMessage.warning('请选择类型')
         return
       }
       try {
         const saved = await saveLibraryOrder({
-          build_type: this.createType,
+          build_type: pick.buildType,
+          sample_source: pick.source,
         })
         this.createVisible = false
         await this.getList({ flushEditor: false })
@@ -2539,6 +2554,53 @@ export default {
   color: #606266;
   font-size: 13px;
   text-align: center;
+}
+
+.create-rows {
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.create-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 52px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.create-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.create-name.tone-primary { color: var(--el-color-primary); }
+.create-name.tone-success { color: var(--el-color-success); }
+.create-name.tone-warning { color: var(--el-color-warning); }
+.create-name.tone-info { color: var(--el-text-color-secondary); }
+
+.create-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.create-chip {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  background: var(--el-fill-color-blank);
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.create-chip.on {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
 }
 
 </style>

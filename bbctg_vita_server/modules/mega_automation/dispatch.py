@@ -54,6 +54,25 @@ def get_current_dispatch(
     return db.scalars(stmt).first()
 
 
+def lock_current_dispatch(
+    db: Session,
+    work_order_id: int,
+) -> MegaFlowWorkOrderDispatch | None:
+    """锁住当前未结束的下发。调用方接着再锁工单，顺序与镁伽回调一致，避免互相死锁。"""
+    stmt = (
+        select(MegaFlowWorkOrderDispatch)
+        .options(*_DISPATCH_META_DEFER)
+        .where(
+            MegaFlowWorkOrderDispatch.work_order_id == work_order_id,
+            MegaFlowWorkOrderDispatch.status.notin_(TERMINAL_DISPATCH_STATUSES),
+        )
+        .order_by(MegaFlowWorkOrderDispatch.id.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    return db.scalars(stmt).first()
+
+
 def batch_current_dispatches(db: Session, work_order_ids: list[int]) -> dict[int, MegaFlowWorkOrderDispatch]:
     if not work_order_ids:
         return {}

@@ -42,6 +42,7 @@ from modules.mega_automation.dispatch import (
     create_dispatch_record,
     get_current_dispatch,
     has_dispatches,
+    lock_current_dispatch,
     is_pause_ready_for_edit,
     normalize_pause_state,
     request_pause_current_dispatch,
@@ -129,27 +130,56 @@ def _get_pause_ready_dispatch(
     return current
 
 
-def _labillion_withdraw_pause(
-    db: Session,
-    order: MegaFlowWorkOrder,
-    *,
-    simulate: bool = False,
-) -> None:
-    current = get_current_dispatch(db, order.id)
-    if not current:
-        raise ValueError("没有可撤回的下发记录")
-    if current.status != "pending":
-        raise ValueError("设备已开始执行，无法撤回")
-    if normalize_pause_state(current.pause_state) == PAUSE_STATE_WITHDRAWN:
-        return
-    if not simulate:
-        try:
-            delete_orders([current.dispatchId])
-        except LabillionError as exc:
-            raise ValueError(f"Labillion 订单删除失败：{exc}") from exc
+def _mark_withdrawn(order: MegaFlowWorkOrder, current: MegaFlowWorkOrderDispatch) -> None:
     current.pause_state = PAUSE_STATE_WITHDRAWN
     order.status = "paused"
     order.error_message = None
+
+
+def _restore_sent_after_failed_withdraw(db: Session, order_id: int, dispatch_id: str) -> None:
+    current = lock_current_dispatch(db, order_id)
+    order = _get_order_or_raise(db, order_id, for_update=True)
+    still_withdrawn = (
+        current is not None
+        and current.dispatchId == dispatch_id
+        and current.status == "pending"
+        and normalize_pause_state(current.pause_state) == PAUSE_STATE_WITHDRAWN
+        and order.status == "paused"
+    )
+    if not still_withdrawn:
+        db.rollback()
+        return
+    current.pause_state = None
+    order.status = "sent"
+    order.error_message = None
+    db.commit()
+
+
+def _labillion_withdraw_pause(
+    db: Session,
+    order: MegaFlowWorkOrder,
+    current: MegaFlowWorkOrderDispatch,
+    *,
+    simulate: bool = False,
+) -> None:
+    if current.status != "pending":
+        raise ValueError("设备已开始执行，无法撤回")
+    if normalize_pause_state(current.pause_state) == PAUSE_STATE_WITHDRAWN:
+        db.commit()
+        return
+
+    dispatch_id = current.dispatchId
+    order_id = int(order.id)
+    _mark_withdrawn(order, current)
+    # 删除接口会同步回调 deleted。先提交已撤回并放开行锁，回调才能立刻返回，对方才会结束这次 HTTP。
+    db.commit()
+    if simulate:
+        return
+    try:
+        delete_orders([dispatch_id])
+    except LabillionError as exc:
+        _restore_sent_after_failed_withdraw(db, order_id, dispatch_id)
+        raise ValueError(f"Labillion 订单删除失败：{exc}") from exc
 
 
 def _labillion_withdraw_resume(db: Session, order: MegaFlowWorkOrder) -> None:
@@ -785,16 +815,16 @@ def dispatch_work_order(
 
 
 def pause_work_order(db: Session, order_id: int, *, simulate: bool = False) -> dict[str, Any]:
+    # 先锁下发再锁工单，与回调的加锁顺序一致。
+    current = lock_current_dispatch(db, int(order_id))
     order = _get_order_or_raise(db, int(order_id), for_update=True)
     _ensure_not_cancelled(order)
     if order.status not in ACTIVE_EXECUTION_STATUSES:
         raise ValueError("仅已发送或执行中的工单可以停止")
 
-    current = get_current_dispatch(db, order.id)
     if order.status == "sent" and current and current.status == "pending":
-        _labillion_withdraw_pause(db, order, simulate=simulate)
-        db.commit()
-        return get_work_order_detail(db, order.id)
+        _labillion_withdraw_pause(db, order, current, simulate=simulate)
+        return get_work_order_detail(db, int(order_id))
     if simulate:
         raise ValueError("仅待确认的已发送工单可以模拟撤回")
 

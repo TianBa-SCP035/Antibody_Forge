@@ -128,6 +128,53 @@ export function sampleTypeLabel(value) {
 export function optionsForBuild(options, buildType) {
   return options.filter((item) => !item.builds || item.builds.includes(buildType))
 }
+
+export const HANDOFF_METHOD_ROWS = [
+  {
+    method: '达普',
+    tone: 'primary',
+    picks: [
+      { id: 'dapu-plate', buildType: BUILD_PLATE, source: 'dapu_plate', label: '单细胞孔板' },
+      { id: 'dapu-tube', buildType: BUILD_POOLED_BCR, source: 'dapu_tube', label: '混管 BCR' },
+    ],
+  },
+  {
+    method: 'Beacon',
+    tone: 'success',
+    picks: [
+      { id: 'beacon-plate', buildType: BUILD_PLATE, source: 'beacon', label: '单细胞孔板' },
+      {
+        id: 'both-plate',
+        buildType: BUILD_PLATE,
+        source: 'beacon_dapu',
+        label: 'Beacon+达普打板',
+        hint: 'Beacon 与达普打在同一块板上',
+      },
+    ],
+  },
+  {
+    method: '噬菌体',
+    tone: 'warning',
+    picks: [
+      { id: 'phage-display', buildType: BUILD_PHAGE_DISPLAY, source: 'direct', label: '噬菌体展示', hint: '从细胞或核酸构建展示文库' },
+      {
+        id: 'phage-ngs',
+        buildType: BUILD_PHAGE_NGS,
+        source: 'phage_panning',
+        label: '噬菌体测序',
+        hint: '展示筛选之后的结果，建成可上 NGS 的文库',
+      },
+    ],
+  },
+  {
+    method: 'NGS',
+    tone: 'info',
+    picks: [
+      { id: 'blood-retro', buildType: BUILD_PERIPHERAL_BLOOD, source: 'retro_orbital_blood', label: '眼眶血' },
+      { id: 'blood-other', buildType: BUILD_PERIPHERAL_BLOOD, source: 'other_blood', label: '其他外周血' },
+    ],
+  },
+]
 export function normalizePlateInputText(value) {
   return String(value || '').replace(/\r\n?/g, '\n').replace(/[，,\t]+/g, '\n')
 }

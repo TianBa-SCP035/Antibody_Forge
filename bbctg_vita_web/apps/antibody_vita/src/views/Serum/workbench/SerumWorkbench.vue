@@ -406,6 +406,8 @@
             :can-delete="canDeleteRow(row)"
             :can-unlist="canFullEdit"
             @scheme="openScheme"
+            @view="openStartedDetail"
+            @edit="openStartedEdit"
             @copy="handleCopy"
             @delete="handleDelete"
             @unlist="handleUnlist"
@@ -551,6 +553,8 @@
                   :can-delete="canDeleteRow(row)"
                   :can-unlist="canFullEdit"
                   @scheme="openScheme"
+                  @view="openStartedDetail"
+                  @edit="openStartedEdit"
                   @copy="handleCopy"
                   @delete="handleDelete"
                   @unlist="handleUnlist"
@@ -609,6 +613,8 @@
             :can-delete="canDeleteRow(editingRow)"
             :can-unlist="canFullEdit"
             @scheme="openScheme"
+            @view="openStartedDetail"
+            @edit="openStartedEdit"
             @copy="handleCopy"
             @delete="handleDelete"
             @unlist="handleUnlist"
@@ -2513,23 +2519,36 @@ export default {
     },
     async openScheme(row) {
       if (!await this.flushEditorForAction(row)) return
-      if (row.aligned_locked && row.serum_project_id) {
-        const userInfo = this.userStore.userInfo || {}
-        if (canOpenSerumEdit(userInfo, row)) {
-          this.$router.push({ path: '/serum/edit', query: { id: row.serum_project_id } })
-          return
-        }
-        if (canAccessSerumDetail(userInfo)) {
-          this.$router.push({ path: '/serum/detail', query: { id: row.serum_project_id } })
-          return
-        }
-      }
       const workbenchId = Number(row?.id)
       if (!Number.isSafeInteger(workbenchId) || workbenchId <= 0) {
         ElMessage.warning('工作台记录尚未保存，请刷新列表后重试')
         return
       }
       this.$router.push({ name: 'SerumWorkbenchScheme', query: { id: workbenchId } })
+    },
+    async openStartedDetail(row) {
+      if (!await this.flushEditorForAction(row)) return
+      if (!row?.serum_project_id) {
+        ElMessage.warning('开展后的实验记录不存在')
+        return
+      }
+      if (!canAccessSerumDetail(this.userStore.userInfo || {})) {
+        ElMessage.warning('没有查看详情的权限')
+        return
+      }
+      this.$router.push({ path: '/serum/detail', query: { id: row.serum_project_id } })
+    },
+    async openStartedEdit(row) {
+      if (!await this.flushEditorForAction(row)) return
+      if (!row?.serum_project_id) {
+        ElMessage.warning('开展后的实验记录不存在')
+        return
+      }
+      if (!canOpenSerumEdit(this.userStore.userInfo || {}, row)) {
+        ElMessage.warning('没有编辑该实验的权限')
+        return
+      }
+      this.$router.push({ path: '/serum/edit', query: { id: row.serum_project_id } })
     },
     async onSheetPaste(event) {
       if (!this.canEdit) return

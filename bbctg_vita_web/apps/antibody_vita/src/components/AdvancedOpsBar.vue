@@ -22,14 +22,18 @@
   </transition>
 </template>
 
-<script>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+<script lang="ts">
+import { onBeforeUnmount, onMounted, ref, watch, type SlotsType } from 'vue';
 
 import { Close, Tools } from '@element-plus/icons-vue';
 import { ElButton, ElIcon } from 'element-plus';
 
 export default {
   name: 'AdvancedOpsBar',
+  slots: Object as SlotsType<{
+    default?: Record<string, never>;
+    actions?: Record<string, never>;
+  }>,
   components: {
     ElButton,
     ElIcon,
@@ -46,10 +50,10 @@ export default {
     },
   },
   emits: ['update:modelValue'],
-  setup(props) {
-    const barRef = ref(null);
-    const pinStyle = ref({});
-    let observer = null;
+  setup(props: { modelValue: boolean; pinned: boolean }) {
+    const barRef = ref<HTMLElement | null>(null);
+    const pinStyle = ref<Record<string, string>>({});
+    let observer: ResizeObserver | null = null;
 
     function place() {
       if (!props.pinned) {

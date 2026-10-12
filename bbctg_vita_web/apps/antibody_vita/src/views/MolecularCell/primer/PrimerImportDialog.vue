@@ -71,6 +71,8 @@ import {
   type UploadFile,
 } from 'element-plus';
 
+import type { WorkSheet } from 'xlsx';
+
 import { notifyApiError } from '#/api/errors';
 import {
   batchSavePrimers,
@@ -190,20 +192,23 @@ function parseFlat(sheetName: string, source: unknown[][]) {
   return collected;
 }
 
-function parseWorkbook(book: { SheetNames: string[]; Sheets: Record<string, unknown> }, utils: {
-  sheet_to_json: <T>(sheet: unknown, options: { defval: string; header: 1 }) => T;
-}) {
+function asRows(value: unknown): unknown[][] {
+  if (!Array.isArray(value)) return [];
+  return value.map((row) => (Array.isArray(row) ? row : []));
+}
+
+function parseWorkbook(
+  book: { SheetNames: string[]; Sheets: Record<string, unknown> },
+  readSheet: (sheet: unknown) => unknown,
+) {
   let matched = false;
   const parsed: ImportRow[] = [];
-  book.SheetNames.forEach((name) => {
-    const result = parseFlat(
-      name,
-      utils.sheet_to_json<unknown[]>(book.Sheets[name], { defval: '', header: 1 }),
-    );
-    if (!result) return;
+  for (const name of book.SheetNames) {
+    const result = parseFlat(name, asRows(readSheet(book.Sheets[name])));
+    if (!result) continue;
     matched = true;
     parsed.push(...result);
-  });
+  }
   if (!matched) throw new Error('第一行表头需要包含名称、系列、方向、显示序列');
   if (!parsed.length) throw new Error('文件中没有可导入的引物');
   if (parsed.length > 1000) throw new Error('单次最多导入 1000 条引物');
@@ -215,7 +220,10 @@ async function readFile(file: UploadFile) {
   try {
     const XLSX = await import('xlsx');
     const workbook = XLSX.read(await file.raw.arrayBuffer(), { type: 'array' });
-    parseWorkbook(workbook, XLSX.utils);
+    parseWorkbook(workbook, (sheet) => {
+      if (!sheet || typeof sheet !== 'object') return [];
+      return XLSX.utils.sheet_to_json(sheet as WorkSheet, { defval: '', header: 1 });
+    });
   } catch (error) {
     rows.value = [];
     notifyApiError(error, { messages: { default: '文件解析失败' } });

@@ -6,7 +6,9 @@
         type="primary"
         plain
         :icon="row.aligned_locked ? ViewIcon : Document"
-        @click="$emit('scheme', row)"
+        :title="row.aligned_locked ? '右键进入编辑' : ''"
+        @click="$emit(row.aligned_locked ? 'view' : 'scheme', row)"
+        @contextmenu="onDetailContextMenu"
       >
         {{ row.aligned_locked ? '详情' : '方案' }}
       </el-button>
@@ -55,9 +57,16 @@ export default {
     canDelete: { type: Boolean, default: false },
     canUnlist: { type: Boolean, default: false },
   },
-  emits: ['scheme', 'copy', 'delete', 'unlist'],
+  emits: ['scheme', 'view', 'edit', 'copy', 'delete', 'unlist'],
   setup() {
     return { Bottom, CopyDocument, Delete, Document, ViewIcon }
+  },
+  methods: {
+    onDetailContextMenu(event) {
+      if (!this.row.aligned_locked) return
+      event.preventDefault()
+      this.$emit('edit', this.row)
+    },
   },
 }
 </script>

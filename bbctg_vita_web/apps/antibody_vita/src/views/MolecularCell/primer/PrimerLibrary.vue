@@ -454,6 +454,11 @@ const {
   columns,
   text: cellText,
 });
+// 模板 ref="wrapRef" 会写入这些引用，vue-tsc 不把它算作读取。
+void wrapRef;
+void stageRef;
+void overlayRef;
+void tableRef;
 
 function cellText(row: PrimerItem, key: string) {
   if (key === 'active') return row.active ? '启用' : '停用';

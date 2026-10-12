@@ -4,68 +4,67 @@
     title="交接至文库构建"
     width="720px"
     append-to-body
-    destroy-on-close
     @close="close"
   >
-    <div v-loading="loading">
-      <section class="handoff-section">
-        <h3>核对来源样品</h3>
-        <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="项目编号">{{ preview.project_code || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="课题类型">{{ preview.study_type || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="靶点">{{ preview.target_name || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="归类鼠型">{{ mouseCategoryLabel(preview.mouse_model) || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="上机日期">{{ preview.instrument_on || '未填' }}</el-descriptions-item>
-          <el-descriptions-item label="阳性细胞数">{{ preview.positive_cell_count ?? '—' }}</el-descriptions-item>
-          <el-descriptions-item label="筛选方式" :span="2">{{ preview.screening_methods || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="优先级">{{ preview.priority || '—' }}</el-descriptions-item>
-        </el-descriptions>
-      </section>
-
-      <section class="handoff-section">
-        <h3>已有建库工单</h3>
-        <p v-if="!existing.length" class="empty-hint">这条发现安排还没有建库工单。</p>
-        <el-table v-else :data="existing" size="small" border>
-          <el-table-column label="建库类型" min-width="190">
-            <template #default="{ row }">{{ buildTypeLabel(row.build_type) }}</template>
-          </el-table-column>
-          <el-table-column prop="library_code" label="建库编号" min-width="110" />
-          <el-table-column prop="status" label="状态" width="90" />
-          <el-table-column label="" width="80">
-            <template #default="{ row }">
-              <el-button v-if="canOpenLibrary" link type="primary" @click="openExisting(row)">打开</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </section>
-
-      <section class="handoff-section">
-        <h3>本次要建</h3>
-        <el-checkbox-group v-model="selectedTypes" class="build-picks">
-          <el-checkbox v-for="item in buildOptions" :key="item.value" :label="item.value">
-            {{ item.label }}
-            <span v-if="existingTypes.has(item.value)" class="exist-mark">已有</span>
-          </el-checkbox>
-        </el-checkbox-group>
-        <div
-          v-for="buildType in selectedTypes"
-          :key="buildType"
-          class="source-pick"
-        >
-          <span>{{ buildTypeLabel(buildType) }}来源</span>
-          <el-select v-model="sourceSelections[buildType]" placeholder="选择样品来源">
-            <el-option
-              v-for="item in sourcesFor(buildType)"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
+    <div v-loading="loading" class="handoff-body">
+      <div class="handoff-meta">
+        <div class="meta-title">
+          <strong>{{ preview.project_code || '未填项目编号' }}</strong>
+          <span>{{ preview.target_name || '未填靶点' }}</span>
         </div>
-        <p v-if="needsInstrumentDate && !preview.instrument_on" class="gate-hint">
-          请先在发现台填写剖鼠日期；交接后将作为文库工单的上机日期。
-        </p>
-      </section>
+        <div class="meta-line">
+          <span v-for="item in metaItems" :key="item.label">
+            {{ item.label }}
+            <b :class="{ empty: !item.value }">{{ item.value || '未填' }}</b>
+          </span>
+        </div>
+      </div>
+      <p v-if="!loading && !methodNames.length" class="muted method-hint">未标筛选方式，下面四行仍可直接选</p>
+
+      <div v-if="existing.length" class="handoff-existing">
+        <span class="existing-label">已有</span>
+        <button
+          v-for="item in existing"
+          :key="item.id"
+          type="button"
+          class="existing-link"
+          @click="openExisting(item)"
+        >
+          {{ item.library_code || item.library_order_id }}
+          {{ buildTypeLabel(item.build_type) }}
+          <em>{{ sourceLabel(item.sample_source) }}</em>
+          <span>{{ item.status }}</span>
+        </button>
+      </div>
+
+      <div class="handoff-rows">
+        <section
+          v-for="row in rows"
+          :key="row.method"
+          class="handoff-row"
+          :class="{ 'is-marked': methodNames.includes(row.method) }"
+        >
+          <div class="row-name" :class="`tone-${row.tone}`">{{ row.method }}</div>
+          <div class="row-picks">
+            <button
+              v-for="pick in row.picks"
+              :key="pick.id"
+              type="button"
+              class="handoff-chip"
+              :class="{ on: selectedIds.includes(pick.id) }"
+              :title="pick.hint || ''"
+              @click="toggle(pick)"
+            >
+              {{ pick.label }}
+              <em v-if="alreadyHas(pick)">已有</em>
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <p v-if="needsInstrumentDate && !preview.instrument_on" class="gate-hint">
+        孔板、混管和噬菌体展示需要先在发现台填写剖鼠日期，交接后写入上机日期。
+      </p>
     </div>
     <template #footer>
       <el-button @click="close">取消</el-button>
@@ -77,46 +76,26 @@
 </template>
 
 <script>
-import {
-  ElButton,
-  ElCheckbox,
-  ElCheckboxGroup,
-  ElDescriptions,
-  ElDescriptionsItem,
-  ElDialog,
-  ElMessage,
-  ElOption,
-  ElSelect,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus'
+import { ElButton, ElDialog, ElMessage } from 'element-plus'
 import { useUserStore } from '@vben/stores'
 
-import { fetchLibraryOrdersByDiscovery, handoffLibraryOrders, LIBRARY_CREATED_KEY } from '#/api/molecularLibrary'
 import { notifyApiError } from '#/api/errors'
+import { fetchLibraryOrdersByDiscovery, handoffLibraryOrders, LIBRARY_CREATED_KEY } from '#/api/molecularLibrary'
 import { canViewLibrary } from '#/utils/molecularPermission'
+
 import {
-  BUILD_TYPE_OPTIONS,
   buildTypeLabel,
+  HANDOFF_METHOD_ROWS,
   INSTRUMENT_DATE_BUILDS,
   mouseCategoryLabel,
-  optionsForBuild,
-  SAMPLE_SOURCE_OPTIONS,
+  sampleSourceLabel,
 } from './libraryColumns'
 
 export default {
   name: 'LibraryHandoffDialog',
   components: {
     ElButton,
-    ElCheckbox,
-    ElCheckboxGroup,
-    ElDescriptions,
-    ElDescriptionsItem,
     ElDialog,
-    ElOption,
-    ElSelect,
-    ElTable,
-    ElTableColumn,
   },
   props: {
     modelValue: { type: Boolean, default: false },
@@ -129,8 +108,7 @@ export default {
       saving: false,
       preview: {},
       existing: [],
-      selectedTypes: [],
-      sourceSelections: {},
+      selectedIds: [],
       loadRequestId: 0,
     }
   },
@@ -138,23 +116,35 @@ export default {
     canOpenLibrary() {
       return canViewLibrary(useUserStore().userInfo)
     },
-    buildOptions() {
-      return BUILD_TYPE_OPTIONS
+    methodNames() {
+      return String(this.preview.screening_methods || '')
+        .split(/[,，]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
     },
-    existingTypes() {
-      return new Set(
-        this.existing
-          .filter((item) => item.status !== '已取消')
-          .map((item) => item.build_type),
-      )
+    metaItems() {
+      return [
+        { label: '课题类型', value: this.preview.study_type },
+        { label: '归类鼠型', value: this.preview.mouse_model ? mouseCategoryLabel(this.preview.mouse_model) : '' },
+        { label: '优先级', value: this.preview.priority },
+        { label: '上机日期', value: this.preview.instrument_on },
+        { label: '阳性细胞', value: this.preview.positive_cell_count },
+      ]
+    },
+    rows() {
+      return HANDOFF_METHOD_ROWS
+    },
+    picks() {
+      return this.rows.flatMap((row) => row.picks)
+    },
+    selectedPicks() {
+      return this.picks.filter((item) => this.selectedIds.includes(item.id))
     },
     needsInstrumentDate() {
-      return this.selectedTypes.some((item) => INSTRUMENT_DATE_BUILDS.includes(item))
+      return this.selectedPicks.some((item) => INSTRUMENT_DATE_BUILDS.includes(item.buildType))
     },
     canSubmit() {
-      if (this.saving || !this.selectedTypes.length) return false
-      if (this.needsInstrumentDate && !this.preview.instrument_on) return false
-      return this.selectedTypes.every((item) => Boolean(this.sourceSelections[item]))
+      return !this.saving && this.selectedPicks.length > 0 && !(this.needsInstrumentDate && !this.preview.instrument_on)
     },
   },
   watch: {
@@ -164,9 +154,27 @@ export default {
   },
   methods: {
     buildTypeLabel,
-    mouseCategoryLabel,
-    sourcesFor(buildType) {
-      return optionsForBuild(SAMPLE_SOURCE_OPTIONS, buildType)
+    sourceLabel: sampleSourceLabel,
+    alreadyHas(pick) {
+      return this.existing.some((item) => {
+        if (item.status === '已取消' || item.build_type !== pick.buildType) return false
+        if (pick.id === 'phage-ngs') return true
+        return item.sample_source === pick.source
+      })
+    },
+    toggle(pick) {
+      if (this.selectedIds.includes(pick.id)) {
+        this.selectedIds = this.selectedIds.filter((item) => item !== pick.id)
+        return
+      }
+      let next = [...this.selectedIds]
+      if (pick.id === 'both-plate') {
+        next = next.filter((item) => item !== 'dapu-plate' && item !== 'beacon-plate')
+      } else if (pick.id === 'dapu-plate' || pick.id === 'beacon-plate') {
+        next = next.filter((item) => item !== 'both-plate')
+      }
+      next.push(pick.id)
+      this.selectedIds = next
     },
     close() {
       this.$emit('update:modelValue', false)
@@ -182,10 +190,12 @@ export default {
         this.preview = data?.discovery || {}
         this.existing = data?.items || []
         const suggestions = data?.suggested_items || []
-        this.sourceSelections = Object.fromEntries(
-          suggestions.map((item) => [item.build_type, item.sample_source]),
-        )
-        this.selectedTypes = [...new Set(suggestions.map((item) => item.build_type).filter(Boolean))]
+        const ids = []
+        suggestions.forEach((item) => {
+          const pick = this.pickFor(item.build_type, item.sample_source)
+          if (pick && !ids.includes(pick.id)) ids.push(pick.id)
+        })
+        this.selectedIds = ids
       } catch (error) {
         if (requestId !== this.loadRequestId || !this.modelValue) return
         notifyApiError(error, { messages: { default: '加载交接信息失败' } })
@@ -193,6 +203,9 @@ export default {
       } finally {
         if (requestId === this.loadRequestId) this.loading = false
       }
+    },
+    pickFor(buildType, source) {
+      return this.picks.find((item) => item.buildType === buildType && item.source === source)
     },
     openExisting(row) {
       this.close()
@@ -207,9 +220,9 @@ export default {
       try {
         const result = await handoffLibraryOrders({
           discovery_workbench_id: this.discoveryRow.id,
-          items: this.selectedTypes.map((buildType) => ({
-            build_type: buildType,
-            sample_source: this.sourceSelections[buildType],
+          items: this.selectedPicks.map((pick) => ({
+            build_type: pick.buildType,
+            sample_source: pick.source,
           })),
         })
         const created = result?.items || []
@@ -234,42 +247,158 @@ export default {
 </script>
 
 <style scoped>
-.handoff-section {
-  margin-bottom: 18px;
+.handoff-body {
+  min-height: 280px;
 }
 
-.handoff-section h3 {
-  margin: 0 0 8px;
+.handoff-meta {
+  padding: 12px 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  background: var(--el-fill-color-light);
+}
+
+.meta-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+}
+
+.meta-title strong {
+  color: var(--el-text-color-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.meta-title span {
+  color: var(--el-text-color-regular);
   font-size: 14px;
 }
 
-.gate-hint,
-.empty-hint,
-.exist-mark {
+.meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 8px;
   color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.meta-line b {
+  margin-left: 4px;
+  color: var(--el-text-color-primary);
+  font-weight: 500;
+}
+
+.meta-line b.empty {
+  color: var(--el-text-color-placeholder);
+  font-weight: 400;
+}
+
+.method-hint {
+  margin: 8px 0 0;
+}
+
+.muted {
+  color: var(--el-text-color-placeholder);
+  font-size: 12px;
+}
+
+.handoff-existing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.existing-label {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+
+.existing-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  background: var(--el-fill-color-blank);
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.existing-link em,
+.handoff-chip em {
+  color: var(--el-text-color-secondary);
+  font-style: normal;
+}
+
+.handoff-rows {
+  margin-top: 16px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.handoff-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-height: 52px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.row-name {
+  padding-top: 5px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+}
+
+.handoff-row.is-marked .row-name.tone-primary { color: var(--el-color-primary); }
+.handoff-row.is-marked .row-name.tone-success { color: var(--el-color-success); }
+.handoff-row.is-marked .row-name.tone-warning { color: var(--el-color-warning); }
+.handoff-row.is-marked .row-name.tone-info { color: var(--el-text-color-primary); }
+
+.row-picks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 1px;
+}
+
+.handoff-chip {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  background: var(--el-fill-color-blank);
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.handoff-chip.on {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+.handoff-chip em {
+  margin-left: 6px;
   font-size: 12px;
 }
 
 .gate-hint {
+  margin: 12px 0 0;
   color: var(--el-color-warning);
-  margin: 10px 0 0;
-}
-
-.exist-mark {
-  margin-left: 6px;
-}
-
-.build-picks {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 16px;
-}
-
-.source-pick {
-  display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
+  font-size: 12px;
 }
 </style>

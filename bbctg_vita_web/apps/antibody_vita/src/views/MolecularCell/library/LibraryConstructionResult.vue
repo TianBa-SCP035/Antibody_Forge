@@ -471,9 +471,8 @@
                 <strong>{{ section.title }}</strong>
               </div>
               <div class="field-grid">
+                <template v-for="field in section.fields" :key="field.key">
                 <el-form-item
-                  v-for="field in section.fields"
-                  :key="field.key"
                   :label="field.label"
                   :label-width="field.type === 'primer-matrix' ? '0' : undefined"
                   :class="{ 'is-wide': field.wide }"
@@ -586,9 +585,8 @@
                     </el-option>
                   </el-select>
                   <el-select
-                    v-else-if="['select', 'source-select', 'multi-select'].includes(field.type)"
+                    v-else-if="['select', 'source-select'].includes(field.type)"
                     v-model="order[field.key]"
-                    :multiple="field.type === 'multi-select'"
                     :clearable="!isRequiredChoice(field.key)"
                     :disabled="!canEditField(field.key)"
                     @change="persist(field.key)"
@@ -621,6 +619,8 @@
                     @blur="persist(field.key)"
                   />
                 </el-form-item>
+                <div v-if="field.rowBreak" class="field-row-break" aria-hidden="true" />
+                </template>
               </div>
             </section>
 
@@ -878,6 +878,7 @@ export default {
       if (this.group === BUILD_POOLED_BCR) {
         metrics.push({ label: '阳性细胞数', value: this.order.positive_cell_count ?? '—' })
         metrics.push({ label: 'cDNA 浓度', value: this.order.cdna_concentration || '—' })
+        metrics.push({ label: '文库浓度', value: this.order.library_concentration || '—' })
       }
       if (this.group === BUILD_PHAGE_DISPLAY) {
         metrics.push({ label: '样品来源', value: sampleSourceLabel(this.order.sample_source) || '—' })
@@ -1029,7 +1030,6 @@ export default {
         this.revokeObjectUrls()
         this.order = data?.order || {}
         if (!Array.isArray(this.order.target_codes)) this.order.target_codes = []
-        if (!Array.isArray(this.order.target_forms)) this.order.target_forms = []
         if (!Array.isArray(this.order.plate_nos)) this.order.plate_nos = []
         this.plateDraft = plateNumbersText(this.order.plate_nos)
         this.baseline = JSON.parse(JSON.stringify(this.order))
@@ -1753,7 +1753,6 @@ export default {
         const saved = await saveLibraryOrder(payload)
         this.order = { ...this.order, ...saved }
         if (!Array.isArray(this.order.target_codes)) this.order.target_codes = []
-        if (!Array.isArray(this.order.target_forms)) this.order.target_forms = []
         if (!Array.isArray(this.order.plate_nos)) this.order.plate_nos = []
         this.plateDraft = plateNumbersText(this.order.plate_nos)
         this.baseline = JSON.parse(JSON.stringify(this.order))
@@ -2814,6 +2813,10 @@ export default {
   grid-column: 1 / -1;
 }
 
+.record-inspector .field-row-break {
+  grid-column: 2;
+}
+
 .record-inspector .inspector-form :deep(.el-form-item__label) {
   display: block;
   height: auto;
@@ -2990,6 +2993,10 @@ export default {
 
   .record-inspector .field-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .record-inspector .field-row-break {
+    display: none;
   }
 
   .record-inspector .inspector-form :deep(.el-form-item.is-wide) {

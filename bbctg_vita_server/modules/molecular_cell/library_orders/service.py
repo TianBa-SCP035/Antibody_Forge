@@ -75,29 +75,37 @@ STATUS_TRANSITIONS = {
 
 BUILD_PLATE = "plate_single_cell"
 BUILD_POOLED_BCR = "pooled_bcr"
+BUILD_POOLED_BARCODE = "pooled_barcode"
+BUILD_PLASMA_NGS = "plasma_ngs"
 BUILD_PHAGE_DISPLAY = "phage_display"
 BUILD_PHAGE_NGS = "phage_ngs"
 BUILD_PERIPHERAL_BLOOD = "peripheral_blood_bcr"
 BUILD_TYPE_ORDER = (
     BUILD_PLATE,
     BUILD_POOLED_BCR,
+    BUILD_POOLED_BARCODE,
+    BUILD_PERIPHERAL_BLOOD,
+    BUILD_PLASMA_NGS,
     BUILD_PHAGE_DISPLAY,
     BUILD_PHAGE_NGS,
-    BUILD_PERIPHERAL_BLOOD,
 )
 BUILD_TYPE_LABELS = {
     BUILD_PLATE: "单细胞孔板",
-    BUILD_POOLED_BCR: "混管 BCR",
+    BUILD_POOLED_BCR: "混管 H/K/L",
+    BUILD_POOLED_BARCODE: "混管 Barcode",
+    BUILD_PLASMA_NGS: "浆细胞 NGS",
     BUILD_PHAGE_DISPLAY: "噬菌体展示",
     BUILD_PHAGE_NGS: "噬菌体 NGS",
     BUILD_PERIPHERAL_BLOOD: "外周血 BCR",
 }
 BUILD_TYPE_HINTS = {
-    BUILD_PLATE: "Beacon、达普打板的单细胞恢复",
-    BUILD_POOLED_BCR: "达普打管样品的 BCR 扩增",
+    BUILD_PLATE: "Beacon、达普打板的细胞恢复",
+    BUILD_POOLED_BCR: "达普打管，文库补 H/K/L 引物",
+    BUILD_POOLED_BARCODE: "达普打管，文库补测序 Barcode",
+    BUILD_PLASMA_NGS: "Nano、Lite 样品 NGS 建库",
     BUILD_PHAGE_DISPLAY: "用于展示筛选的噬菌体建库",
     BUILD_PHAGE_NGS: "展示筛选产物的 NGS 建库",
-    BUILD_PERIPHERAL_BLOOD: "外周血样品的 BCR 扩增",
+    BUILD_PERIPHERAL_BLOOD: "外周血样品 BCR 扩增",
 }
 
 SOURCE_BEACON = "beacon"
@@ -109,6 +117,7 @@ SOURCE_PHAGE_DISPLAY = "phage_display"
 SOURCE_PHAGE_PANNING = "phage_panning"
 SOURCE_RETRO_BLOOD = "retro_orbital_blood"
 SOURCE_OTHER_BLOOD = "other_blood"
+SOURCE_SPLEEN = "spleen_grind"
 SAMPLE_SOURCE_LABELS = {
     SOURCE_BEACON: "Beacon",
     SOURCE_DAPU_PLATE: "达普打板",
@@ -119,6 +128,7 @@ SAMPLE_SOURCE_LABELS = {
     SOURCE_PHAGE_PANNING: "噬菌体筛选产物",
     SOURCE_RETRO_BLOOD: "眼眶血",
     SOURCE_OTHER_BLOOD: "其他外周血",
+    SOURCE_SPLEEN: "脾脏研磨",
 }
 
 SAMPLE_NANO = "nano"
@@ -164,14 +174,20 @@ INDEX_MODE_LABELS = {
 }
 QC_RESULT_OPTIONS = ("待判定", "通过", "不通过")
 CELL_TYPE_OPTIONS = ("全细胞", "浆细胞", "流穿液")
+DEFAULT_PLASMA_CELL_TYPE = "浆细胞"
+TARGET_FORM_OPTIONS = ("多穿", "分泌", "I型", "II型")
+_INT32_MAX = 2_147_483_647
 
 PROFILE_SOURCES = {
     BUILD_PLATE: (SOURCE_BEACON, SOURCE_DAPU_PLATE, SOURCE_BEACON_DAPU),
     BUILD_POOLED_BCR: (SOURCE_DAPU_TUBE,),
+    BUILD_POOLED_BARCODE: (SOURCE_DAPU_TUBE,),
+    BUILD_PLASMA_NGS: (SOURCE_SPLEEN,),
     BUILD_PHAGE_DISPLAY: (SOURCE_DIRECT,),
     BUILD_PHAGE_NGS: (SOURCE_PHAGE_DISPLAY, SOURCE_PHAGE_PANNING),
     BUILD_PERIPHERAL_BLOOD: (SOURCE_RETRO_BLOOD, SOURCE_OTHER_BLOOD),
 }
+PLASMA_SAMPLE_TYPES = (SAMPLE_NANO, SAMPLE_LITE)
 
 INDEX_FIELDS = {
     "index_mode",
@@ -186,21 +202,17 @@ PLATE_FIELDS = {
     "instrument_on",
     "positive_cell_count",
     "plate_nos",
-    "pcr_started_at",
-    "pcr_finished_at",
-    "pcr_owner",
-    "pcr_qc_owner",
-    "transfected_at",
-    "transfection_owner",
-} | INDEX_FIELDS
+    "cdna_location",
+}
 POOLED_FIELDS = {
     "instrument_on",
     "positive_cell_count",
-    "cell_type",
     "rna_location",
     "cdna_location",
     "library_location",
     "cdna_concentration",
+    "library_concentration",
+    "fragment_size_bp",
     "h_forward_primer_id",
     "h_forward_primer_name",
     "h_reverse_primer_id",
@@ -217,25 +229,45 @@ POOLED_FIELDS = {
     "l_reverse_primer_name",
     "l_primer_concentration",
 }
+POOLED_BARCODE_FIELDS = {
+    "instrument_on",
+    "positive_cell_count",
+    "rna_location",
+    "cdna_location",
+    "library_location",
+    "cdna_concentration",
+    "library_concentration",
+    "fragment_size_bp",
+} | INDEX_FIELDS
+PLASMA_FIELDS = {
+    "instrument_on",
+    "positive_cell_count",
+    "cell_type",
+    "rna_location",
+    "cdna_location",
+    "library_location",
+    "library_concentration",
+    "fragment_size_bp",
+}
 PHAGE_DISPLAY_FIELDS = {
     "source_experiment_type",
     "project_goal",
     "instrument_on",
     "cell_type",
+    "library_batch_no",
     "target_forms",
     "rna_location",
     "cdna_location",
     "library_location",
     "initial_library_size",
     "effective_library_size",
-} | INDEX_FIELDS
+}
 PHAGE_NGS_FIELDS = {
     "source_experiment_type",
     "project_goal",
     "library_batch_no",
-    "rna_location",
-    "cdna_location",
     "library_location",
+    "library_concentration",
     "fragment_size_bp",
 } | INDEX_FIELDS
 PERIPHERAL_FIELDS = {
@@ -246,11 +278,14 @@ PERIPHERAL_FIELDS = {
     "cdna_location",
     "library_location",
     "cdna_concentration",
+    "library_concentration",
     "fragment_size_bp",
 } | INDEX_FIELDS
 PROFILE_FIELDS = {
     BUILD_PLATE: PLATE_FIELDS,
     BUILD_POOLED_BCR: POOLED_FIELDS,
+    BUILD_POOLED_BARCODE: POOLED_BARCODE_FIELDS,
+    BUILD_PLASMA_NGS: PLASMA_FIELDS,
     BUILD_PHAGE_DISPLAY: PHAGE_DISPLAY_FIELDS,
     BUILD_PHAGE_NGS: PHAGE_NGS_FIELDS,
     BUILD_PERIPHERAL_BLOOD: PERIPHERAL_FIELDS,
@@ -271,14 +306,16 @@ STRING_FIELDS = {
     "immunization_stage": 64,
     "library_batch_no": 64,
     "owner": 64,
-    "pcr_owner": 64,
-    "pcr_qc_owner": 64,
-    "transfection_owner": 64,
     "rna_location": 255,
     "cdna_location": 255,
     "library_location": 255,
     "initial_library_size": 64,
     "effective_library_size": 64,
+    "cdna_concentration": 64,
+    "library_concentration": 64,
+    "h_primer_concentration": 64,
+    "k_primer_concentration": 64,
+    "l_primer_concentration": 64,
     "h_forward_primer_name": 128,
     "h_reverse_primer_name": 128,
     "k_forward_primer_name": 128,
@@ -300,18 +337,9 @@ DATE_FIELDS = (
     "qc_on",
     "started_at",
     "finished_at",
-    "pcr_started_at",
-    "pcr_finished_at",
-    "transfected_at",
 )
 INTEGER_FIELDS = (
     "fragment_size_bp",
-)
-DECIMAL_FIELDS = (
-    "cdna_concentration",
-    "h_primer_concentration",
-    "k_primer_concentration",
-    "l_primer_concentration",
 )
 CATALOG_REFERENCE_FIELDS = (
     ("h_forward_primer_id", "h_forward_primer_name", None),
@@ -323,8 +351,21 @@ CATALOG_REFERENCE_FIELDS = (
     ("i7_catalog_id", "i7_name", "i7_sequence"),
     ("i5_catalog_id", "i5_name", "i5_sequence"),
 )
-INSTRUMENT_DATE_BUILDS = frozenset({BUILD_PLATE, BUILD_POOLED_BCR, BUILD_PHAGE_DISPLAY})
-POSITIVE_CELL_COUNT_BUILDS = frozenset({BUILD_PLATE, BUILD_POOLED_BCR, BUILD_PERIPHERAL_BLOOD})
+INSTRUMENT_DATE_BUILDS = frozenset({
+    BUILD_PLATE,
+    BUILD_POOLED_BCR,
+    BUILD_POOLED_BARCODE,
+    BUILD_PHAGE_DISPLAY,
+})
+POSITIVE_CELL_COUNT_BUILDS = frozenset({
+    BUILD_PLATE,
+    BUILD_POOLED_BCR,
+    BUILD_POOLED_BARCODE,
+    BUILD_PLASMA_NGS,
+    BUILD_PERIPHERAL_BLOOD,
+})
+FILLS_INSTRUMENT_ON = INSTRUMENT_DATE_BUILDS | {BUILD_PLASMA_NGS}
+CELL_TYPE_CHOICE_BUILDS = frozenset({BUILD_PLASMA_NGS, BUILD_PHAGE_DISPLAY})
 
 FIELD_LABELS = {
     "source_project_code": "项目编号",
@@ -421,19 +462,9 @@ def _normalize_nonnegative_int(value: Any, label: str) -> int | None:
         raise ValueError(f"{label}必须是非负整数") from exc
     if not number.is_finite() or number < 0 or number != number.to_integral_value():
         raise ValueError(f"{label}必须是非负整数")
+    if number > _INT32_MAX:
+        raise ValueError(f"{label}必须是不超过 {_INT32_MAX} 的非负整数")
     return int(number)
-
-
-def _normalize_nonnegative_decimal(value: Any, label: str) -> Decimal | None:
-    if value in (None, ""):
-        return None
-    try:
-        number = Decimal(str(value).strip())
-    except (InvalidOperation, ValueError) as exc:
-        raise ValueError(f"{label}必须是非负数") from exc
-    if not number.is_finite() or number < 0:
-        raise ValueError(f"{label}必须是非负数")
-    return number
 
 
 def _normalize_string_list(value: Any, label: str) -> list[str]:
@@ -461,6 +492,15 @@ def _normalize_sequence(value: Any, max_len: int = 64) -> str | None:
     if not SEQUENCE_PATTERN.fullmatch(text):
         raise ValueError("Barcode序列只能包含IUPAC碱基字符")
     return text
+
+
+def _normalize_target_form(value: Any) -> str | None:
+    if isinstance(value, list):
+        items = [str(item or "").strip() for item in value if str(item or "").strip()]
+        if len(items) > 1:
+            raise ValueError("靶点形式只能选一个")
+        value = items[0] if items else None
+    return _normalize_choice(value, TARGET_FORM_OPTIONS, "靶点形式", nullable=True)
 
 
 def _normalize_choice(value: Any, options, label: str, *, nullable: bool = False) -> str | None:
@@ -515,7 +555,7 @@ def _current_status(row: MolecularLibraryOrder) -> str:
 def _clear_inapplicable_fields(row: MolecularLibraryOrder, build_type: str) -> None:
     allowed = PROFILE_FIELDS[build_type]
     for field in PROFILE_SCOPED_FIELDS - allowed:
-        if field in {"target_forms", "plate_nos"}:
+        if field == "plate_nos":
             setattr(row, field, [])
         else:
             setattr(row, field, None)
@@ -580,7 +620,7 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
     if "target_codes" in data:
         row.target_codes = _normalize_string_list(data.get("target_codes"), "靶点编号")
     if "target_forms" in data:
-        row.target_forms = _normalize_string_list(data.get("target_forms"), "靶点形式")
+        row.target_forms = _normalize_target_form(data.get("target_forms"))
     if "plate_nos" in data:
         row.plate_nos = _normalize_string_list(data.get("plate_nos"), "板号")
 
@@ -612,14 +652,6 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
                 field,
                 _normalize_nonnegative_int(data.get(field), FIELD_LABELS.get(field, field)),
             )
-    for field in DECIMAL_FIELDS:
-        if field in data:
-            setattr(
-                row,
-                field,
-                _normalize_nonnegative_decimal(data.get(field), FIELD_LABELS.get(field, field)),
-            )
-
     if "sample_source" in data:
         row.sample_source = _normalize_choice(
             data.get("sample_source"),
@@ -655,8 +687,12 @@ def _validate_profile(row: MolecularLibraryOrder) -> None:
     _clear_inapplicable_fields(row, build_type)
     if row.sample_source and row.sample_source not in PROFILE_SOURCES[build_type]:
         raise ValueError("样品来源与建库类型不匹配")
-    if build_type == BUILD_POOLED_BCR and row.cell_type:
+    if build_type == BUILD_PLASMA_NGS and not str(row.cell_type or "").strip():
+        row.cell_type = DEFAULT_PLASMA_CELL_TYPE
+    if build_type in CELL_TYPE_CHOICE_BUILDS and row.cell_type:
         _normalize_choice(row.cell_type, CELL_TYPE_OPTIONS, "细胞类型")
+    if build_type == BUILD_PLASMA_NGS and row.sample_type not in (None, *PLASMA_SAMPLE_TYPES):
+        raise ValueError("浆细胞 NGS 的样品类型只能是 Nano 或 Lite")
     mode = row.index_mode
     if mode in (None, INDEX_NONE):
         row.i7_catalog_id = row.i7_name = row.i7_sequence = None
@@ -797,8 +833,11 @@ def _apply_list_filters(stmt, data: dict[str, Any]):
 
 def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
     stats = {code: 0 for code in BUILD_TYPE_ORDER}
+    for sample_type in PLASMA_SAMPLE_TYPES:
+        stats[f"{BUILD_PLASMA_NGS}:{sample_type}"] = 0
     filtered = dict(payload or {})
     filtered.pop("build_type", None)
+    filtered.pop("sample_type", None)
     stmt = _apply_list_filters(
         select(
             MolecularLibraryOrder.build_type,
@@ -812,6 +851,20 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
         number = int(count or 0)
         if build_type in stats:
             stats[build_type] += number
+    plasma_stmt = _apply_list_filters(
+        select(
+            MolecularLibraryOrder.sample_type,
+            func.count(),
+        )
+        .select_from(MolecularLibraryOrder)
+        .where(MolecularLibraryOrder.build_type == BUILD_PLASMA_NGS)
+        .group_by(MolecularLibraryOrder.sample_type),
+        filtered,
+    )
+    for sample_type, count in db.execute(plasma_stmt).all():
+        key = f"{BUILD_PLASMA_NGS}:{sample_type}"
+        if key in stats:
+            stats[key] += int(count or 0)
     return stats
 
 
@@ -864,7 +917,7 @@ def save(
             status=STATUS_PENDING,
             priority=DEFAULT_PRIORITY,
             target_codes=[],
-            target_forms=[],
+            target_forms=None,
             plate_nos=[],
             created_by=(created_by or "").strip() or None,
         )
@@ -1045,7 +1098,7 @@ def list_by_discovery(
     }
 
 
-def _validate_handoff_item(row: DiscoveryWorkbench, item: dict[str, Any]) -> tuple[str, str]:
+def _validate_handoff_item(row: DiscoveryWorkbench, item: dict[str, Any]) -> tuple[str, str, str | None]:
     build_type = _normalize_build_type(item.get("build_type"))
     sample_source = str(
         _normalize_choice(
@@ -1055,10 +1108,18 @@ def _validate_handoff_item(row: DiscoveryWorkbench, item: dict[str, Any]) -> tup
             nullable=False,
         )
     )
+    raw_sample_type = item.get("sample_type")
+    sample_type = (
+        _normalize_choice(raw_sample_type, SAMPLE_TYPE_LABELS, "样品类型", nullable=True)
+        if raw_sample_type not in (None, "")
+        else None
+    )
+    if build_type == BUILD_PLASMA_NGS and sample_type not in (None, *PLASMA_SAMPLE_TYPES):
+        raise ValueError("浆细胞 NGS 的样品类型只能是 Nano 或 Lite")
     if build_type in INSTRUMENT_DATE_BUILDS:
         if not str(row.harvest_date or "").strip():
             raise ValueError("请先在发现台填写剖鼠日期（将作为上机日期）")
-    return build_type, sample_source
+    return build_type, sample_source, sample_type
 
 
 def _apply_discovery_status(row: DiscoveryWorkbench, created_types: list[str]) -> None:
@@ -1097,8 +1158,11 @@ def handoff(
     normalized = [_validate_handoff_item(row, item) for item in raw_items]
     codes = row.target_codes if isinstance(row.target_codes, list) else []
     created: list[MolecularLibraryOrder] = []
-    for build_type, sample_source in normalized:
+    for build_type, sample_source, sample_type in normalized:
         mouse_model = str(row.mouse_strain_category or "").strip() or None
+        resolved_sample_type = sample_type or _auto_sample_type(mouse_model)
+        if build_type == BUILD_PLASMA_NGS and resolved_sample_type not in (None, *PLASMA_SAMPLE_TYPES):
+            resolved_sample_type = None
         order = MolecularLibraryOrder(
             library_order_id=_next_library_order_id(db),
             build_type=build_type,
@@ -1110,12 +1174,13 @@ def handoff(
             target_codes=list(codes),
             pm=row.pm,
             mouse_model=mouse_model,
-            sample_type=_auto_sample_type(mouse_model),
+            sample_type=resolved_sample_type,
             instrument_on=(
                 _normalize_date(row.harvest_date)
-                if build_type in INSTRUMENT_DATE_BUILDS
+                if build_type in FILLS_INSTRUMENT_ON and str(row.harvest_date or "").strip()
                 else None
             ),
+            cell_type=DEFAULT_PLASMA_CELL_TYPE if build_type == BUILD_PLASMA_NGS else None,
             positive_cell_count=(
                 _normalize_text(row.positive_cell_count, STRING_FIELDS["positive_cell_count"])
                 if build_type in POSITIVE_CELL_COUNT_BUILDS
@@ -1123,7 +1188,7 @@ def handoff(
             ),
             status=STATUS_PENDING,
             priority=row.priority or DEFAULT_PRIORITY,
-            target_forms=[],
+            target_forms=None,
             plate_nos=[],
             created_by=(created_by or "").strip() or None,
         )
@@ -1179,16 +1244,11 @@ EXPORT_COLUMNS = (
     ("负责人", "owner"),
     ("开始时间", "started_at"),
     ("完成时间", "finished_at"),
-    ("PCR 开始", "pcr_started_at"),
-    ("PCR 结束", "pcr_finished_at"),
-    ("PCR 操作人", "pcr_owner"),
-    ("PCR 检测人", "pcr_qc_owner"),
-    ("转染时间", "transfected_at"),
-    ("转染人", "transfection_owner"),
     ("RNA 位置", "rna_location"),
     ("cDNA 位置", "cdna_location"),
     ("文库位置", "library_location"),
     ("cDNA 浓度", "cdna_concentration"),
+    ("文库浓度", "library_concentration"),
     ("初始库容", "initial_library_size"),
     ("有效库容", "effective_library_size"),
     ("片段大小", "fragment_size_bp"),
@@ -1233,7 +1293,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]):
             item["sample_type"], item["sample_type"]
         )
         item["index_mode"] = INDEX_MODE_LABELS.get(item["index_mode"], item["index_mode"])
-        for list_key in ("target_codes", "target_forms", "plate_nos"):
+        for list_key in ("target_codes", "plate_nos"):
             if isinstance(item.get(list_key), list):
                 item[list_key] = "、".join(item[list_key])
         table_rows.append(

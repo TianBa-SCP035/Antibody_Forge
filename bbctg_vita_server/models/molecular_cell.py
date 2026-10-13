@@ -1,7 +1,6 @@
 from datetime import date, datetime
-from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, CHAR, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, CHAR, Date, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
@@ -12,9 +11,6 @@ def _format_value(value):
         return value.strftime("%Y-%m-%d %H:%M:%S")
     if isinstance(value, date):
         return value.isoformat()
-    if isinstance(value, Decimal):
-        text = format(value, "f").rstrip("0").rstrip(".")
-        return text or "0"
     return value
 
 
@@ -47,7 +43,7 @@ class MolecularLibraryOrder(Base):
     positive_cell_count: Mapped[str | None] = mapped_column(String(64), comment="阳性细胞数")
     plate_nos: Mapped[list[str] | None] = mapped_column(JSON, comment="孔板编号列表")
     cell_type: Mapped[str | None] = mapped_column(String(64), comment="细胞类型")
-    target_forms: Mapped[list[str] | None] = mapped_column(JSON, comment="靶点形式列表")
+    target_forms: Mapped[str | None] = mapped_column(String(16), comment="靶点形式")
     notebook_no: Mapped[str | None] = mapped_column(String(64), comment="实验记录本号")
     immunization_stage: Mapped[str | None] = mapped_column(String(64), comment="免疫阶段")
     library_batch_no: Mapped[str | None] = mapped_column(String(64), index=True, comment="建库批号")
@@ -58,17 +54,11 @@ class MolecularLibraryOrder(Base):
     started_at: Mapped[date | None] = mapped_column(Date, comment="工单开始日期")
     finished_at: Mapped[date | None] = mapped_column(Date, comment="工单完成日期")
 
-    pcr_started_at: Mapped[date | None] = mapped_column(Date, comment="PCR开始日期")
-    pcr_finished_at: Mapped[date | None] = mapped_column(Date, comment="PCR结束日期")
-    pcr_owner: Mapped[str | None] = mapped_column(String(64), comment="PCR操作人")
-    pcr_qc_owner: Mapped[str | None] = mapped_column(String(64), comment="PCR检测人")
-    transfected_at: Mapped[date | None] = mapped_column(Date, comment="转染日期")
-    transfection_owner: Mapped[str | None] = mapped_column(String(64), comment="转染人")
-
     rna_location: Mapped[str | None] = mapped_column(String(255), comment="RNA存放位置")
     cdna_location: Mapped[str | None] = mapped_column(String(255), comment="cDNA存放位置")
     library_location: Mapped[str | None] = mapped_column(String(255), comment="文库产物位置")
-    cdna_concentration: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), comment="cDNA浓度")
+    cdna_concentration: Mapped[str | None] = mapped_column(String(64), comment="cDNA浓度")
+    library_concentration: Mapped[str | None] = mapped_column(String(64), comment="文库浓度")
     initial_library_size: Mapped[str | None] = mapped_column(String(64), comment="初始库容")
     effective_library_size: Mapped[str | None] = mapped_column(String(64), comment="有效库容")
     fragment_size_bp: Mapped[int | None] = mapped_column(Integer, comment="片段大小bp")
@@ -77,17 +67,17 @@ class MolecularLibraryOrder(Base):
     h_forward_primer_name: Mapped[str | None] = mapped_column(String(128), comment="H正向引物名称快照")
     h_reverse_primer_id: Mapped[int | None] = mapped_column(BigInteger, comment="H反向引物字典ID")
     h_reverse_primer_name: Mapped[str | None] = mapped_column(String(128), comment="H反向引物名称快照")
-    h_primer_concentration: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), comment="H引物浓度")
+    h_primer_concentration: Mapped[str | None] = mapped_column(String(64), comment="H引物浓度")
     k_forward_primer_id: Mapped[int | None] = mapped_column(BigInteger, comment="K正向引物字典ID")
     k_forward_primer_name: Mapped[str | None] = mapped_column(String(128), comment="K正向引物名称快照")
     k_reverse_primer_id: Mapped[int | None] = mapped_column(BigInteger, comment="K反向引物字典ID")
     k_reverse_primer_name: Mapped[str | None] = mapped_column(String(128), comment="K反向引物名称快照")
-    k_primer_concentration: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), comment="K引物浓度")
+    k_primer_concentration: Mapped[str | None] = mapped_column(String(64), comment="K引物浓度")
     l_forward_primer_id: Mapped[int | None] = mapped_column(BigInteger, comment="L正向引物字典ID")
     l_forward_primer_name: Mapped[str | None] = mapped_column(String(128), comment="L正向引物名称快照")
     l_reverse_primer_id: Mapped[int | None] = mapped_column(BigInteger, comment="L反向引物字典ID")
     l_reverse_primer_name: Mapped[str | None] = mapped_column(String(128), comment="L反向引物名称快照")
-    l_primer_concentration: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), comment="L引物浓度")
+    l_primer_concentration: Mapped[str | None] = mapped_column(String(64), comment="L引物浓度")
     index_mode: Mapped[str | None] = mapped_column(String(16), comment="Barcode方式")
     i7_catalog_id: Mapped[int | None] = mapped_column(BigInteger, comment="i7字典ID")
     i7_name: Mapped[str | None] = mapped_column(String(128), comment="i7名称快照")
@@ -119,7 +109,6 @@ class MolecularLibraryOrder(Base):
             for column in self.__table__.columns
         }
         data["target_codes"] = self.target_codes if isinstance(self.target_codes, list) else []
-        data["target_forms"] = self.target_forms if isinstance(self.target_forms, list) else []
         data["plate_nos"] = self.plate_nos if isinstance(self.plate_nos, list) else []
         return {key: _format_value(value) for key, value in data.items()}
 

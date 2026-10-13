@@ -93,7 +93,7 @@ SYSTEM_OR_MANUAL_AUDIT_ROUTES: dict[
 
 
 AUDIT_SET_LIKE_FIELDS: dict[str, frozenset[str]] = {
-    "MolecularLibraryOrder": frozenset({"plate_nos", "target_codes", "target_forms"}),
+    "MolecularLibraryOrder": frozenset({"plate_nos", "target_codes"}),
     "DiscoveryWorkbench": frozenset({"target_codes"}),
     "SerumImmProject": frozenset({"target_codes"}),
     "SerumImmWorkbench": frozenset({"target_codes"}),

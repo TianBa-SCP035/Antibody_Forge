@@ -3,18 +3,31 @@ import { WORKBENCH_STUDY_TYPE_OPTIONS } from '#/utils/workbenchStudyTypes'
 export const STUDY_TYPE_OPTIONS = [...WORKBENCH_STUDY_TYPE_OPTIONS]
 export const BUILD_PLATE = 'plate_single_cell'
 export const BUILD_POOLED_BCR = 'pooled_bcr'
+export const BUILD_POOLED_BARCODE = 'pooled_barcode'
+export const BUILD_PLASMA_NGS = 'plasma_ngs'
 export const BUILD_PHAGE_DISPLAY = 'phage_display'
 export const BUILD_PHAGE_NGS = 'phage_ngs'
 export const BUILD_PERIPHERAL_BLOOD = 'peripheral_blood_bcr'
-export const INSTRUMENT_DATE_BUILDS = [BUILD_PLATE, BUILD_POOLED_BCR, BUILD_PHAGE_DISPLAY]
+export const INSTRUMENT_DATE_BUILDS = [BUILD_PLATE, BUILD_POOLED_BCR, BUILD_POOLED_BARCODE, BUILD_PHAGE_DISPLAY]
+export const CELL_TYPE_CHOICE_BUILDS = [BUILD_PLASMA_NGS, BUILD_PHAGE_DISPLAY]
+const BARCODE_BUILD_TYPES = new Set([BUILD_POOLED_BARCODE, BUILD_PHAGE_NGS, BUILD_PERIPHERAL_BLOOD])
 
 export const BUILD_TYPE_OPTIONS = [
-  { value: BUILD_PLATE, label: '单细胞孔板', hint: 'Beacon、达普打板的单细胞恢复' },
-  { value: BUILD_POOLED_BCR, label: '混管 BCR', hint: '达普打管样品的 BCR 扩增' },
+  { value: BUILD_PLATE, label: '单细胞孔板', hint: 'Beacon、达普打板的细胞恢复' },
+  { value: BUILD_POOLED_BCR, label: '混管 H/K/L', hint: '达普打管，文库补 H/K/L 引物' },
+  { value: BUILD_POOLED_BARCODE, label: '混管 Barcode', hint: '达普打管，文库补测序 Barcode' },
+  { value: BUILD_PERIPHERAL_BLOOD, label: '外周血 BCR', hint: '外周血样品 BCR 扩增' },
+  { value: BUILD_PLASMA_NGS, label: '浆细胞 NGS', hint: 'Nano、Lite 样品 NGS 建库' },
   { value: BUILD_PHAGE_DISPLAY, label: '噬菌体展示', hint: '用于展示筛选的噬菌体建库' },
   { value: BUILD_PHAGE_NGS, label: '噬菌体 NGS', hint: '展示筛选产物的 NGS 建库' },
-  { value: BUILD_PERIPHERAL_BLOOD, label: '外周血 BCR', hint: '外周血样品的 BCR 扩增' },
 ]
+export const STAT_TILES = BUILD_TYPE_OPTIONS.flatMap((item) => {
+  if (item.value !== BUILD_PLASMA_NGS) return [{ ...item, statKey: item.value, sampleType: '' }]
+  return [
+    { ...item, statKey: 'plasma_ngs:nano', label: '浆细胞 Nano', hint: 'Nano 样品 NGS 建库', sampleType: 'nano' },
+    { ...item, statKey: 'plasma_ngs:lite', label: '浆细胞 Lite', hint: 'Lite 样品 NGS 建库', sampleType: 'lite' },
+  ]
+})
 export const TYPE_VALUES = BUILD_TYPE_OPTIONS.map((item) => item.value)
 
 const BUILD_LABELS = Object.fromEntries(BUILD_TYPE_OPTIONS.map((item) => [item.value, item.label]))
@@ -29,12 +42,13 @@ export const SAMPLE_SOURCE_OPTIONS = [
   { value: 'beacon', label: 'Beacon', builds: [BUILD_PLATE] },
   { value: 'dapu_plate', label: '达普打板', builds: [BUILD_PLATE] },
   { value: 'beacon_dapu', label: 'Beacon+达普打板', builds: [BUILD_PLATE] },
-  { value: 'dapu_tube', label: '达普打管', builds: [BUILD_POOLED_BCR] },
+  { value: 'dapu_tube', label: '达普打管', builds: [BUILD_POOLED_BCR, BUILD_POOLED_BARCODE] },
   { value: 'direct', label: '细胞/核酸', builds: [BUILD_PHAGE_DISPLAY] },
   { value: 'phage_display', label: '噬菌体展示产物', builds: [BUILD_PHAGE_NGS] },
   { value: 'phage_panning', label: '噬菌体筛选产物', builds: [BUILD_PHAGE_NGS] },
   { value: 'retro_orbital_blood', label: '眼眶血', builds: [BUILD_PERIPHERAL_BLOOD] },
   { value: 'other_blood', label: '其他外周血', builds: [BUILD_PERIPHERAL_BLOOD] },
+  { value: 'spleen_grind', label: '脾脏研磨', builds: [BUILD_PLASMA_NGS] },
 ]
 export const SAMPLE_TYPE_OPTIONS = [
   { value: 'nano', label: 'Nano' },
@@ -42,6 +56,7 @@ export const SAMPLE_TYPE_OPTIONS = [
   { value: 'rnvm_blood', label: 'RNVM眼眶血' },
   { value: 'phage', label: '噬菌体' },
 ]
+export const PLASMA_SAMPLE_TYPE_OPTIONS = SAMPLE_TYPE_OPTIONS.filter((item) => item.value === 'nano' || item.value === 'lite')
 export const PHAGE_EXPERIMENT_TYPE_OPTIONS = ['抗体发现', '亲和力改造']
 export const INDEX_MODE_OPTIONS = [
   { value: 'none', label: '不加 Barcode' },
@@ -125,6 +140,9 @@ export function sampleSourceLabel(value) {
 export function sampleTypeLabel(value) {
   return SAMPLE_TYPE_OPTIONS.find((item) => item.value === value)?.label || value || ''
 }
+export function indexModeLabel(value) {
+  return INDEX_MODE_OPTIONS.find((item) => item.value === value)?.label || value || ''
+}
 export function optionsForBuild(options, buildType) {
   return options.filter((item) => !item.builds || item.builds.includes(buildType))
 }
@@ -135,7 +153,8 @@ export const HANDOFF_METHOD_ROWS = [
     tone: 'primary',
     picks: [
       { id: 'dapu-plate', buildType: BUILD_PLATE, source: 'dapu_plate', label: '单细胞孔板' },
-      { id: 'dapu-tube', buildType: BUILD_POOLED_BCR, source: 'dapu_tube', label: '混管 BCR' },
+      { id: 'dapu-tube', buildType: BUILD_POOLED_BCR, source: 'dapu_tube', label: '混管 H/K/L' },
+      { id: 'dapu-tube-barcode', buildType: BUILD_POOLED_BARCODE, source: 'dapu_tube', label: '混管 Barcode' },
     ],
   },
   {
@@ -172,6 +191,8 @@ export const HANDOFF_METHOD_ROWS = [
     picks: [
       { id: 'blood-retro', buildType: BUILD_PERIPHERAL_BLOOD, source: 'retro_orbital_blood', label: '眼眶血' },
       { id: 'blood-other', buildType: BUILD_PERIPHERAL_BLOOD, source: 'other_blood', label: '其他外周血' },
+      { id: 'plasma-nano', buildType: BUILD_PLASMA_NGS, source: 'spleen_grind', sampleType: 'nano', label: '浆细胞 Nano' },
+      { id: 'plasma-lite', buildType: BUILD_PLASMA_NGS, source: 'spleen_grind', sampleType: 'lite', label: '浆细胞 Lite' },
     ],
   },
 ]
@@ -209,11 +230,6 @@ const COMMON_SCHEDULE = [
   { key: 'source_discovery_id', label: '来源发现 ID', type: 'source-link' },
   { key: 'remark', label: '备注', type: 'textarea', wide: true },
 ]
-const LOCATIONS = [
-  { key: 'rna_location', label: 'RNA 位置' },
-  { key: 'cdna_location', label: 'cDNA 位置' },
-  { key: 'library_location', label: '文库位置' },
-]
 export const PRIMER_ROWS = [
   {
     chain: 'H',
@@ -246,7 +262,7 @@ export const CATALOG_NAME_FIELDS = {
   i5_name: { idKey: 'i5_catalog_id', sequenceKey: 'i5_sequence' },
 }
 const INDEX_FIELDS = [
-  { key: 'index_mode', label: 'Barcode 方式', type: 'select', options: INDEX_MODE_OPTIONS },
+  { key: 'index_mode', label: 'Barcode 方式', type: 'select', options: INDEX_MODE_OPTIONS, rowBreak: true },
   { key: 'i7_name', label: 'i7 名称', type: 'catalog-select', catalogIdKey: 'i7_catalog_id', sequenceKey: 'i7_sequence' },
   { key: 'i7_sequence', label: 'i7 序列' },
   { key: 'i5_name', label: 'i5 名称', type: 'catalog-select', catalogIdKey: 'i5_catalog_id', sequenceKey: 'i5_sequence' },
@@ -258,6 +274,17 @@ function visibleIndexFields(order = {}) {
   if (['single_i5', 'dual'].includes(order.index_mode)) fields.push(...INDEX_FIELDS.slice(3, 5))
   return fields
 }
+const INDEX_KEY_MODES = {
+  i7_name: ['single_i7', 'dual'],
+  i7_sequence: ['single_i7', 'dual'],
+  i5_name: ['single_i5', 'dual'],
+  i5_sequence: ['single_i5', 'dual'],
+}
+export function isIndexFieldRecorded(buildType, indexMode, key) {
+  const modes = INDEX_KEY_MODES[key]
+  if (!modes) return true
+  return BARCODE_BUILD_TYPES.has(buildType) && modes.includes(indexMode)
+}
 const QC_FIELDS = [
   { key: 'qc_result', label: '质检结论', type: 'select', options: QC_RESULT_OPTIONS },
   { key: 'qc_owner', label: '质检人', type: 'user' },
@@ -265,40 +292,49 @@ const QC_FIELDS = [
   { key: 'qc_note', label: '质检说明', type: 'textarea', wide: true },
 ]
 
+const TUBE_MATERIAL_FIELDS = [
+  { key: 'instrument_on', label: '上机日期', type: 'date', rowBreak: true },
+  { key: 'positive_cell_count', label: '阳性细胞数' },
+  { key: 'fragment_size_bp', label: '片段大小' },
+  { key: 'rna_location', label: 'RNA 位置', rowBreak: true },
+  { key: 'cdna_location', label: 'cDNA 位置' },
+  { key: 'cdna_concentration', label: 'cDNA 浓度' },
+  { key: 'library_location', label: '文库位置' },
+  { key: 'library_concentration', label: '文库浓度' },
+]
 const PROFILE_SECTIONS = {
   [BUILD_PLATE]: [
     {
       title: '孔板样品',
       fields: [
-        { key: 'instrument_on', label: '上机日期', type: 'date' },
+        { key: 'instrument_on', label: '上机日期', type: 'date', rowBreak: true },
         { key: 'positive_cell_count', label: '阳性细胞数' },
+        { key: 'cdna_location', label: 'cDNA 位置' },
         { key: 'plate_nos', label: '板号', type: 'plate-list', wide: true },
-      ],
-    },
-    {
-      title: 'PCR 与转染',
-      fields: [
-        { key: 'pcr_started_at', label: 'PCR 开始', type: 'date' },
-        { key: 'pcr_finished_at', label: 'PCR 结束', type: 'date' },
-        { key: 'pcr_owner', label: 'PCR 操作人', type: 'user' },
-        { key: 'pcr_qc_owner', label: 'PCR 检测人', type: 'user' },
-        { key: 'transfected_at', label: '转染时间', type: 'date' },
-        { key: 'transfection_owner', label: '转染人', type: 'user' },
       ],
     },
   ],
   [BUILD_POOLED_BCR]: [
+    { title: '混管与材料', fields: TUBE_MATERIAL_FIELDS },
+    { title: 'H / K / L 引物', fields: PRIMER_MATRIX },
+  ],
+  [BUILD_POOLED_BARCODE]: [
+    { title: '混管与材料', fields: TUBE_MATERIAL_FIELDS },
+  ],
+  [BUILD_PLASMA_NGS]: [
     {
-      title: '混管与材料',
+      title: '浆细胞材料',
       fields: [
-        { key: 'instrument_on', label: '上机日期', type: 'date' },
+        { key: 'instrument_on', label: '上机日期', type: 'date', rowBreak: true },
         { key: 'positive_cell_count', label: '阳性细胞数' },
-        { key: 'cell_type', label: '细胞类型', type: 'select', options: CELL_TYPE_OPTIONS },
-        { key: 'cdna_concentration', label: 'cDNA 浓度' },
-        ...LOCATIONS,
+        { key: 'fragment_size_bp', label: '片段大小' },
+        { key: 'cell_type', label: '细胞类型', type: 'select', options: CELL_TYPE_OPTIONS, rowBreak: true },
+        { key: 'rna_location', label: 'RNA 位置' },
+        { key: 'cdna_location', label: 'cDNA 位置' },
+        { key: 'library_location', label: '文库位置' },
+        { key: 'library_concentration', label: '文库浓度' },
       ],
     },
-    { title: 'H / K / L 引物', fields: PRIMER_MATRIX },
   ],
   [BUILD_PHAGE_DISPLAY]: [
     {
@@ -306,12 +342,15 @@ const PROFILE_SECTIONS = {
       fields: [
         { key: 'source_experiment_type', label: '实验类型', type: 'select', options: PHAGE_EXPERIMENT_TYPE_OPTIONS },
         { key: 'project_goal', label: '实验目标', type: 'textarea', wide: true },
-        { key: 'instrument_on', label: '上机日期', type: 'date' },
-        { key: 'cell_type', label: '细胞类型' },
-        { key: 'target_forms', label: '靶点形式', type: 'multi-select', options: TARGET_FORM_OPTIONS },
+        { key: 'instrument_on', label: '上机日期', type: 'date', rowBreak: true },
+        { key: 'library_batch_no', label: '建库批号' },
+        { key: 'target_forms', label: '靶点形式', type: 'select', options: TARGET_FORM_OPTIONS },
         { key: 'initial_library_size', label: '初始库容' },
         { key: 'effective_library_size', label: '有效库容' },
-        ...LOCATIONS,
+        { key: 'cell_type', label: '细胞类型', type: 'select', options: CELL_TYPE_OPTIONS },
+        { key: 'rna_location', label: 'RNA 位置' },
+        { key: 'cdna_location', label: 'cDNA 位置' },
+        { key: 'library_location', label: '文库位置' },
       ],
     },
   ],
@@ -323,7 +362,8 @@ const PROFILE_SECTIONS = {
         { key: 'project_goal', label: '实验目标', type: 'textarea', wide: true },
         { key: 'library_batch_no', label: '建库批号' },
         { key: 'fragment_size_bp', label: '片段大小' },
-        ...LOCATIONS,
+        { key: 'library_location', label: '文库位置' },
+        { key: 'library_concentration', label: '文库浓度' },
       ],
     },
   ],
@@ -334,21 +374,30 @@ const PROFILE_SECTIONS = {
         { key: 'blood_collected_on', label: '采血日期', type: 'date' },
         { key: 'immunization_stage', label: '免疫阶段' },
         { key: 'positive_cell_count', label: '阳性细胞数' },
-        { key: 'cdna_concentration', label: 'cDNA 浓度' },
         { key: 'fragment_size_bp', label: '片段大小' },
-        ...LOCATIONS,
+        { key: 'rna_location', label: 'RNA 位置', rowBreak: true },
+        { key: 'cdna_location', label: 'cDNA 位置' },
+        { key: 'cdna_concentration', label: 'cDNA 浓度' },
+        { key: 'library_location', label: '文库位置' },
+        { key: 'library_concentration', label: '文库浓度' },
       ],
     },
   ],
 }
 
+function identityFields(buildType) {
+  if (buildType !== BUILD_PLASMA_NGS) return COMMON_IDENTITY
+  return COMMON_IDENTITY.map((field) => (
+    field.key === 'sample_type' ? { ...field, options: PLASMA_SAMPLE_TYPE_OPTIONS } : field
+  ))
+}
 export function orderEditorSections(buildType, order = {}) {
-  const barcodeSections = buildType && buildType !== BUILD_POOLED_BCR
+  const barcodeSections = BARCODE_BUILD_TYPES.has(buildType)
     ? [{ title: 'Barcode', fields: visibleIndexFields(order) }]
     : []
   return [
     { title: '工单安排', queue: true, fields: COMMON_SCHEDULE },
-    { title: '基本信息', fields: COMMON_IDENTITY },
+    { title: '基本信息', fields: identityFields(buildType) },
     { title: '样品交接', fields: COMMON_SOURCE },
     ...(PROFILE_SECTIONS[buildType] || []),
     ...barcodeSections,
@@ -380,18 +429,12 @@ export const FIELD_DEFS = {
   blood_collected_on: def('blood_collected_on', '采血日期', 'date', 130),
   positive_cell_count: def('positive_cell_count', '阳性细胞数'),
   plate_nos: def('plate_nos', '板号', 'text', 150),
-  target_forms: def('target_forms', '靶点形式', 'multi', 150),
+  target_forms: def('target_forms', '靶点形式', 'select', 150),
   status: def('status', '状态', 'select', 110),
   priority: def('priority', '优先级', 'select', 110),
   owner: def('owner', '负责人', 'select', 110),
   started_at: def('started_at', '开始时间', 'date', 130),
   finished_at: def('finished_at', '完成时间', 'date', 130),
-  pcr_started_at: def('pcr_started_at', 'PCR 开始', 'date', 130),
-  pcr_finished_at: def('pcr_finished_at', 'PCR 结束', 'date', 130),
-  pcr_owner: def('pcr_owner', 'PCR 操作人', 'select', 120),
-  pcr_qc_owner: def('pcr_qc_owner', 'PCR 检测人', 'select', 120),
-  transfected_at: def('transfected_at', '转染时间', 'date', 130),
-  transfection_owner: def('transfection_owner', '转染人', 'select', 110),
   cell_type: def('cell_type', '细胞类型', 'select'),
   notebook_no: def('notebook_no', '实验记录本号'),
   immunization_stage: def('immunization_stage', '免疫阶段'),
@@ -400,6 +443,7 @@ export const FIELD_DEFS = {
   cdna_location: def('cdna_location', 'cDNA 位置', 'text', 140),
   library_location: def('library_location', '文库位置', 'text', 140),
   cdna_concentration: def('cdna_concentration', 'cDNA 浓度'),
+  library_concentration: def('library_concentration', '文库浓度'),
   initial_library_size: def('initial_library_size', '初始库容'),
   effective_library_size: def('effective_library_size', '有效库容'),
   fragment_size_bp: def('fragment_size_bp', '片段大小'),
@@ -459,28 +503,20 @@ const COMMON_SHEET_KEYS = [
   ...SHEET_SCHEDULE_KEYS,
   ...SHEET_QC_KEYS,
 ]
+const INDEX_SHEET_KEYS = ['index_mode', 'i7_name', 'i7_sequence', 'i5_name', 'i5_sequence']
 const PROFILE_SHEET_KEYS = {
   [BUILD_PLATE]: [
     'instrument_on',
     'positive_cell_count',
+    'cdna_location',
     'plate_nos',
-    'pcr_started_at',
-    'pcr_finished_at',
-    'pcr_owner',
-    'pcr_qc_owner',
-    'transfected_at',
-    'transfection_owner',
-    'index_mode',
-    'i7_name',
-    'i7_sequence',
-    'i5_name',
-    'i5_sequence',
   ],
   [BUILD_POOLED_BCR]: [
     'instrument_on',
     'positive_cell_count',
-    'cell_type',
     'cdna_concentration',
+    'library_concentration',
+    'fragment_size_bp',
     'rna_location',
     'cdna_location',
     'library_location',
@@ -494,10 +530,32 @@ const PROFILE_SHEET_KEYS = {
     'l_reverse_primer_name',
     'l_primer_concentration',
   ],
+  [BUILD_POOLED_BARCODE]: [
+    'instrument_on',
+    'positive_cell_count',
+    'cdna_concentration',
+    'library_concentration',
+    'fragment_size_bp',
+    'rna_location',
+    'cdna_location',
+    'library_location',
+    ...INDEX_SHEET_KEYS,
+  ],
+  [BUILD_PLASMA_NGS]: [
+    'instrument_on',
+    'positive_cell_count',
+    'cell_type',
+    'rna_location',
+    'cdna_location',
+    'library_location',
+    'library_concentration',
+    'fragment_size_bp',
+  ],
   [BUILD_PHAGE_DISPLAY]: [
     'source_experiment_type',
     'project_goal',
     'instrument_on',
+    'library_batch_no',
     'cell_type',
     'target_forms',
     'initial_library_size',
@@ -505,40 +563,27 @@ const PROFILE_SHEET_KEYS = {
     'rna_location',
     'cdna_location',
     'library_location',
-    'index_mode',
-    'i7_name',
-    'i7_sequence',
-    'i5_name',
-    'i5_sequence',
   ],
   [BUILD_PHAGE_NGS]: [
     'source_experiment_type',
     'project_goal',
     'library_batch_no',
     'fragment_size_bp',
-    'rna_location',
-    'cdna_location',
+    'library_concentration',
     'library_location',
-    'index_mode',
-    'i7_name',
-    'i7_sequence',
-    'i5_name',
-    'i5_sequence',
+    ...INDEX_SHEET_KEYS,
   ],
   [BUILD_PERIPHERAL_BLOOD]: [
     'blood_collected_on',
     'immunization_stage',
     'positive_cell_count',
     'cdna_concentration',
+    'library_concentration',
     'fragment_size_bp',
     'rna_location',
     'cdna_location',
     'library_location',
-    'index_mode',
-    'i7_name',
-    'i7_sequence',
-    'i5_name',
-    'i5_sequence',
+    ...INDEX_SHEET_KEYS,
   ],
 }
 const SHEET_KEYS = [
@@ -554,16 +599,11 @@ const SHEET_KEYS = [
   'source_experiment_type',
   'project_goal',
   'library_batch_no',
-  'pcr_started_at',
-  'pcr_finished_at',
-  'pcr_owner',
-  'pcr_qc_owner',
-  'transfected_at',
-  'transfection_owner',
   'rna_location',
   'cdna_location',
   'library_location',
   'cdna_concentration',
+  'library_concentration',
   'initial_library_size',
   'effective_library_size',
   'fragment_size_bp',
@@ -618,5 +658,41 @@ export const WORKBENCH_COLUMNS = [
   { key: 'finished_at', label: '完成时间', minWidth: 130, defaultVisible: false, showOverflowTooltip: true },
   { key: 'qc_result', label: '质检结论', minWidth: 110, defaultVisible: false },
   { key: 'qc_on', label: '质检日期', minWidth: 130, defaultVisible: false },
+  { key: 'library_order_id', label: '系统工单号', minWidth: 170, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'target_codes', label: '靶点编号', minWidth: 140, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'blood_collected_on', label: '采血日期', minWidth: 130, defaultVisible: false, className: 'date-column-cell' },
+  { key: 'positive_cell_count', label: '阳性细胞数', minWidth: 120, defaultVisible: false },
+  { key: 'plate_nos', label: '板号', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'cell_type', label: '细胞类型', minWidth: 120, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'immunization_stage', label: '免疫阶段', minWidth: 120, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'target_forms', label: '靶点形式', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'source_experiment_type', label: '实验类型', minWidth: 120, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'project_goal', label: '实验目标', minWidth: 180, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'library_batch_no', label: '建库批号', minWidth: 130, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'rna_location', label: 'RNA 位置', minWidth: 140, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'cdna_location', label: 'cDNA 位置', minWidth: 140, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'library_location', label: '文库位置', minWidth: 140, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'cdna_concentration', label: 'cDNA 浓度', minWidth: 120, defaultVisible: false },
+  { key: 'library_concentration', label: '文库浓度', minWidth: 120, defaultVisible: false },
+  { key: 'initial_library_size', label: '初始库容', minWidth: 120, defaultVisible: false },
+  { key: 'effective_library_size', label: '有效库容', minWidth: 120, defaultVisible: false },
+  { key: 'fragment_size_bp', label: '片段大小', minWidth: 120, defaultVisible: false },
+  { key: 'h_forward_primer_name', label: 'H 正向引物', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'h_reverse_primer_name', label: 'H 反向引物', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'h_primer_concentration', label: 'H 浓度', minWidth: 120, defaultVisible: false },
+  { key: 'k_forward_primer_name', label: 'K 正向引物', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'k_reverse_primer_name', label: 'K 反向引物', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'k_primer_concentration', label: 'K 浓度', minWidth: 120, defaultVisible: false },
+  { key: 'l_forward_primer_name', label: 'L 正向引物', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'l_reverse_primer_name', label: 'L 反向引物', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'l_primer_concentration', label: 'L 浓度', minWidth: 120, defaultVisible: false },
+  { key: 'index_mode', label: 'Barcode 方式', minWidth: 130, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'i7_name', label: 'i7 名称', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'i7_sequence', label: 'i7 序列', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'i5_name', label: 'i5 名称', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'i5_sequence', label: 'i5 序列', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'qc_owner', label: '质检人', minWidth: 110, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'qc_note', label: '质检说明', minWidth: 180, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'remark', label: '备注', minWidth: 180, defaultVisible: false, showOverflowTooltip: true },
   { key: 'actions', label: '操作', defaultVisible: true, width: 240, align: 'center', className: 'action-column-cell', fixed: 'right' },
 ]

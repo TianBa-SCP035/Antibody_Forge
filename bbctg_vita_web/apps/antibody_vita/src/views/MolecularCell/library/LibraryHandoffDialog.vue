@@ -159,7 +159,8 @@ export default {
       return this.existing.some((item) => {
         if (item.status === '已取消' || item.build_type !== pick.buildType) return false
         if (pick.id === 'phage-ngs') return true
-        return item.sample_source === pick.source
+        if (item.sample_source !== pick.source) return false
+        return !pick.sampleType || item.sample_type === pick.sampleType
       })
     },
     toggle(pick) {
@@ -223,6 +224,7 @@ export default {
           items: this.selectedPicks.map((pick) => ({
             build_type: pick.buildType,
             sample_source: pick.source,
+            ...(pick.sampleType ? { sample_type: pick.sampleType } : {}),
           })),
         })
         const created = result?.items || []

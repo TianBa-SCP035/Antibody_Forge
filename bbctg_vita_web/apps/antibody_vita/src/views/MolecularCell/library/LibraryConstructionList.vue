@@ -2,15 +2,35 @@
   <div class="library-order-page">
     <AdvancedOpsBar v-model="showAdvancedOps">
       <template v-if="showAdvancedOps">
+        <el-select
+          :model-value="listQuery.build_type"
+          clearable
+          placeholder="建库类型"
+          @change="onBuildTypeFilter"
+        >
+          <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
+        </el-select>
         <SerumUserSelect v-model="listQuery.pm" :options="selectedUserOptions(listQuery.pm)" placeholder="PM" clearable @change="handleFilter" />
-        <el-input v-model="listQuery.study_type" clearable placeholder="课题类型" @keyup.enter="handleFilter" @clear="handleFilter" />
+        <el-select v-model="listQuery.study_type" clearable filterable placeholder="课题类型" @change="handleFilter">
+          <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
+        </el-select>
         <el-select v-model="listQuery.sample_type" clearable placeholder="样品类型" @change="handleFilter">
           <el-option v-for="item in sampleTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
         <el-select v-model="listQuery.mouse_model" clearable placeholder="归类鼠型" @change="handleFilter">
           <el-option v-for="item in mouseCategoryOptions" :key="item" :label="mouseCategoryLabel(item)" :value="item" />
         </el-select>
-        <el-input v-model="listQuery.cell_type" clearable placeholder="细胞类型" @keyup.enter="handleFilter" @clear="handleFilter" />
+        <el-select
+          v-model="listQuery.cell_type"
+          clearable
+          filterable
+          allow-create
+          default-first-option
+          placeholder="细胞类型"
+          @change="handleFilter"
+        >
+          <el-option v-for="item in cellTypeOptions" :key="item" :label="item" :value="item" />
+        </el-select>
         <el-input v-model="listQuery.source_discovery_id" clearable placeholder="来源发现 ID" @keyup.enter="handleFilter" @clear="handleFilter" />
         <el-input v-model="listQuery.notebook_no" clearable placeholder="实验记录本号" @keyup.enter="handleFilter" @clear="handleFilter" />
         <el-input v-model="listQuery.remark" clearable placeholder="备注" @keyup.enter="handleFilter" @clear="handleFilter" />
@@ -60,16 +80,16 @@
       <div class="stats-strip">
         <div
           v-for="item in typeSheets"
-          :key="item.value"
+          :key="item.statKey"
           class="stat-tile stat-tile-interactive"
-          :class="[item.tone, { 'stat-tile-active': activeType === item.value }]"
-          @click="selectType(item.value)"
+          :class="[item.tone, { 'stat-tile-active': activeStatKey === item.statKey }]"
+          @click="selectType(item)"
         >
           <span class="stat-copy">
             <span class="stat-label">{{ item.label }}</span>
             <small class="text-hint">{{ item.hint }}</small>
           </span>
-          <strong class="stat-value">{{ stats[item.value] || 0 }}</strong>
+          <strong class="stat-value">{{ stats[item.statKey] || 0 }}</strong>
         </div>
       </div>
 
@@ -184,6 +204,7 @@
         <template #mouse_model="{ row }">{{ mouseCategoryLabel(row.mouse_model) || '—' }}</template>
         <template #sample_source="{ row }">{{ sampleSourceLabel(row.sample_source) || '—' }}</template>
         <template #sample_type="{ row }">{{ sampleTypeLabel(row.sample_type) || '—' }}</template>
+        <template #index_mode="{ row }">{{ indexModeLabel(row.index_mode) || '—' }}</template>
         <template #priority="{ row }">
           <el-select
             v-if="canEdit"
@@ -318,7 +339,6 @@
                       v-model="row[column.key]"
                       class-name="sheet-grid-editor sheet-picker-control"
                       :filterable="isUserColumn(column)"
-                      :multiple="column.edit === 'multi'"
                       :clearable="!isRequiredChoice(column.key)"
                       :options="sheetChoiceSelectOptions(column, row)"
                       :popup-config="{ className: 'sheet-picker-popup', placement: 'bottom', width: 220 }"
@@ -463,9 +483,8 @@
           >
             <h3 class="drawer-card-title">{{ section.title }}</h3>
             <div class="drawer-card-grid">
+              <template v-for="field in section.fields" :key="field.key">
               <el-form-item
-                v-for="field in section.fields"
-                :key="field.key"
                 :label="field.label"
                 :label-width="field.type === 'primer-matrix' ? '0' : undefined"
                 :class="['drawer-field', field.wide ? 'is-wide' : '']"
@@ -589,17 +608,6 @@
                 >
                   <el-option v-for="item in sourceOptionsForType" :key="item.value" :label="item.label" :value="item.value" />
                 </el-select>
-                <el-select
-                  v-else-if="field.type === 'multi-select'"
-                  v-model="editingRow[field.key]"
-                  multiple
-                  clearable
-                  style="width: 100%"
-                  :disabled="!canEdit"
-                  @change="persistRow(editingRow, field.key)"
-                >
-                  <el-option v-for="item in field.options" :key="item.value || item" :label="item.label || item" :value="item.value || item" />
-                </el-select>
                 <el-input
                   v-else-if="field.type === 'plate-list'"
                   :model-value="plateDraft"
@@ -630,6 +638,8 @@
                   @blur="persistRow(editingRow, field.key)"
                 />
               </el-form-item>
+              <div v-if="field.rowBreak" class="drawer-field-break" aria-hidden="true" />
+              </template>
             </div>
           </article>
         </el-form>
@@ -727,7 +737,7 @@ import { loadSerumUserOptions } from '#/utils/serumUserOptions'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import {
   allSheetColumns,
-  BUILD_POOLED_BCR,
+  BUILD_PLASMA_NGS,
   BUILD_TYPE_OPTIONS,
   buildTypeLabel,
   HANDOFF_METHOD_ROWS,
@@ -744,16 +754,21 @@ import {
   persistValue,
   plateNumbersText,
   PHAGE_EXPERIMENT_TYPE_OPTIONS,
+  PLASMA_SAMPLE_TYPE_OPTIONS,
+  CELL_TYPE_CHOICE_BUILDS,
   PRIORITY_OPTIONS,
   QC_RESULT_OPTIONS,
   REQUIRED_CHOICE_KEYS,
   SAMPLE_SOURCE_OPTIONS,
   SAMPLE_TYPE_OPTIONS,
+  indexModeLabel,
   sampleSourceLabel,
   sampleTypeLabel,
   stampQcFields,
+  isIndexFieldRecorded,
   isSheetFieldApplicable,
   sheetColumnsForBuild,
+  STAT_TILES,
   STATUS_OPTIONS,
   STUDY_TYPE_OPTIONS,
   statusTone,
@@ -792,7 +807,7 @@ function emptyQuery() {
 }
 
 const SHEET_COLUMN_ORDER = createColumnOrder(
-  'libraryConstructionSheetColumnOrder.v4',
+  'libraryConstructionSheetColumnOrder.v5',
   allSheetColumns(),
   { pinFirstKey: 'library_order_id' },
 )
@@ -804,11 +819,7 @@ const SHEET_DATE_KEYS = [
   'qc_on',
   'started_at',
   'finished_at',
-  'pcr_started_at',
-  'pcr_finished_at',
-  'transfected_at',
 ]
-const SHEET_DECIMAL_KEYS = ['cdna_concentration', 'h_primer_concentration', 'k_primer_concentration', 'l_primer_concentration']
 const SHEET_STRING_MAX = {
   library_code: 64,
   source_project_code: 64,
@@ -823,14 +834,16 @@ const SHEET_STRING_MAX = {
   immunization_stage: 64,
   library_batch_no: 64,
   owner: 64,
-  pcr_owner: 64,
-  pcr_qc_owner: 64,
-  transfection_owner: 64,
   rna_location: 255,
   cdna_location: 255,
   library_location: 255,
   initial_library_size: 64,
   effective_library_size: 64,
+  cdna_concentration: 64,
+  library_concentration: 64,
+  h_primer_concentration: 64,
+  k_primer_concentration: 64,
+  l_primer_concentration: 64,
   h_forward_primer_name: 128,
   h_reverse_primer_name: 128,
   k_forward_primer_name: 128,
@@ -924,6 +937,13 @@ export default {
     activeType() {
       return this.listQuery.build_type || ''
     },
+    activeStatKey() {
+      const type = this.activeType
+      if (type === BUILD_PLASMA_NGS && ['nano', 'lite'].includes(this.listQuery.sample_type)) {
+        return `${BUILD_PLASMA_NGS}:${this.listQuery.sample_type}`
+      }
+      return type
+    },
     hasAdvancedFilters() {
       const keys = [
         'pm',
@@ -941,10 +961,9 @@ export default {
     },
     typeSheets() {
       const tones = ['stat-blue', 'stat-purple', 'stat-orange', 'stat-red', 'stat-slate']
-      return this.typeOptions.map((item, index) => ({
+      return STAT_TILES.map((item, index) => ({
         ...item,
         tone: tones[index % tones.length],
-        hint: item.hint,
       }))
     },
     statusOptions() {
@@ -986,6 +1005,12 @@ export default {
     },
     typeOptions() {
       return BUILD_TYPE_OPTIONS
+    },
+    studyTypeOptions() {
+      return STUDY_TYPE_OPTIONS
+    },
+    cellTypeOptions() {
+      return CELL_TYPE_OPTIONS
     },
     createRows() {
       return HANDOFF_METHOD_ROWS
@@ -1062,6 +1087,7 @@ export default {
   },
   methods: {
     buildTypeLabel,
+    indexModeLabel,
     mouseCategoryLabel,
     sampleSourceLabel,
     sampleTypeLabel,
@@ -1126,17 +1152,47 @@ export default {
     isSheetCellLocked(row, key) {
       if (!this.canEditField(row, key)) return true
       if (!isSheetFieldApplicable(row?.build_type, key)) return true
+      if (!isIndexFieldRecorded(row?.build_type, row?.index_mode, key)) return true
       const column = this.sheetColumns.find((item) => item.key === key)
       return column?.edit === 'readonly'
     },
     onLockedSheetDblClick(row, key) {
-      if (isSheetFieldApplicable(row?.build_type, key)) return
       const label = this.sheetColumns.find((item) => item.key === key)?.label || '该字段'
-      ElMessage.info(`${buildTypeLabel(row.build_type) || '当前建库类型'}没有「${label}」`)
+      if (!isSheetFieldApplicable(row?.build_type, key)) {
+        ElMessage.info(`${buildTypeLabel(row.build_type) || '当前建库类型'}没有「${label}」`)
+        return
+      }
+      if (!isIndexFieldRecorded(row?.build_type, row?.index_mode, key)) {
+        ElMessage.info(`当前 Barcode 方式不填写「${label}」`)
+      }
     },
-    async selectType(value) {
+    async onBuildTypeFilter(value) {
       if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
-      this.listQuery.build_type = this.activeType === value ? '' : value
+      const next = value || ''
+      const leavingPlasma = this.listQuery.build_type === BUILD_PLASMA_NGS
+        && next !== BUILD_PLASMA_NGS
+        && ['nano', 'lite'].includes(this.listQuery.sample_type)
+      this.listQuery.build_type = next
+      if (leavingPlasma) this.listQuery.sample_type = ''
+      if (next && this.listQuery.sample_source) {
+        const allowed = optionsForBuild(SAMPLE_SOURCE_OPTIONS, next)
+          .some((item) => item.value === this.listQuery.sample_source)
+        if (!allowed) this.listQuery.sample_source = ''
+      }
+      this.handleFilter()
+    },
+    async selectType(tile) {
+      if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
+      const active = this.activeStatKey === tile.statKey
+      const leavingPlasma = this.listQuery.build_type === BUILD_PLASMA_NGS && Boolean(this.listQuery.sample_type)
+      if (active) {
+        this.listQuery.build_type = ''
+        if (tile.sampleType) this.listQuery.sample_type = ''
+      } else {
+        this.listQuery.build_type = tile.value
+        if (tile.sampleType) this.listQuery.sample_type = tile.sampleType
+        else if (leavingPlasma) this.listQuery.sample_type = ''
+      }
       this.handleFilter()
     },
     handleFilter() {
@@ -1189,7 +1245,6 @@ export default {
       return {
         ...row,
         target_codes: uniqueTargetCodes(row?.target_codes),
-        target_forms: Array.isArray(row?.target_forms) ? row.target_forms : [],
         plate_nos: Array.isArray(row?.plate_nos) ? row.plate_nos : [],
       }
     },
@@ -1218,7 +1273,7 @@ export default {
         this.list = (data?.items || []).map((row) => this.normalizeRow(row))
         this.list.forEach((row) => this.updateRowBaseline(row))
         this.total = data?.total || 0
-        this.stats = { ...Object.fromEntries(this.typeOptions.map((item) => [item.value, 0])), ...(data?.stats || {}) }
+        this.stats = { ...Object.fromEntries(this.typeSheets.map((item) => [item.statKey, 0])), ...(data?.stats || {}) }
         if (this.editingId) {
           const selected = this.list.find((row) => row.id === this.editingId)
           if (selected) {
@@ -1467,7 +1522,10 @@ export default {
         ElMessage.warning('您没有权限新建文库工单')
         return
       }
-      const matched = this.createPicks.filter((item) => item.buildType === this.activeType)
+      const matched = this.createPicks.filter((item) => {
+        if (item.buildType !== this.activeType) return false
+        return !item.sampleType || item.sampleType === this.listQuery.sample_type
+      })
       this.createPick = (matched[0] || this.createPicks[0])?.id || ''
       this.createVisible = true
     },
@@ -1481,6 +1539,7 @@ export default {
         const saved = await saveLibraryOrder({
           build_type: pick.buildType,
           sample_source: pick.source,
+          ...(pick.sampleType ? { sample_type: pick.sampleType } : {}),
         })
         this.createVisible = false
         await this.getList({ flushEditor: false })
@@ -1530,13 +1589,13 @@ export default {
       }
     },
     isUserColumn(column) {
-      return ['pm', 'owner', 'qc_owner', 'pcr_owner', 'pcr_qc_owner', 'transfection_owner'].includes(column?.key)
+      return ['pm', 'owner', 'qc_owner'].includes(column?.key)
     },
     isSheetChoiceColumn(column) {
-      return column?.edit === 'select' || column?.edit === 'multi'
+      return column?.edit === 'select'
     },
     isSheetChoiceForRow(column, row) {
-      return column.key !== 'cell_type' || row?.build_type === BUILD_POOLED_BCR
+      return column.key !== 'cell_type' || CELL_TYPE_CHOICE_BUILDS.includes(row?.build_type)
     },
     sheetChoiceSelectOptions(column, row) {
       if (column.key === 'study_type') return STUDY_TYPE_OPTIONS.map((item) => ({ label: item, value: item }))
@@ -1548,7 +1607,9 @@ export default {
         return this.mouseCategoryOptions.map((item) => ({ label: this.mouseCategoryLabel(item), value: item }))
       }
       if (column.key === 'sample_source') return optionsForBuild(SAMPLE_SOURCE_OPTIONS, row?.build_type)
-      if (column.key === 'sample_type') return SAMPLE_TYPE_OPTIONS
+      if (column.key === 'sample_type') {
+        return row?.build_type === BUILD_PLASMA_NGS ? PLASMA_SAMPLE_TYPE_OPTIONS : SAMPLE_TYPE_OPTIONS
+      }
       if (column.key === 'cell_type') return CELL_TYPE_OPTIONS.map((item) => ({ label: item, value: item }))
       if (column.key === 'source_experiment_type') {
         return PHAGE_EXPERIMENT_TYPE_OPTIONS.map((item) => ({ label: item, value: item }))
@@ -1568,7 +1629,7 @@ export default {
         return INDEX_MODE_OPTIONS.find((item) => item.value === row[key])?.label || row[key] || ''
       }
       if (key === 'target_codes') return uniqueTargetCodes(row[key]).join(',')
-      if (['plate_nos', 'target_forms'].includes(key)) {
+      if (key === 'plate_nos') {
         return Array.isArray(row[key]) ? row[key].join('、') : (row[key] || '')
       }
       return row[key] == null ? '' : String(row[key])
@@ -1579,7 +1640,7 @@ export default {
       if (column.key === 'sample_source') return ({ cellValue }) => sampleSourceLabel(cellValue) || ''
       if (column.key === 'sample_type') return ({ cellValue }) => sampleTypeLabel(cellValue) || ''
       if (column.key === 'target_codes') return ({ row }) => uniqueTargetCodes(row.target_codes).join(',')
-      if (['plate_nos', 'target_forms'].includes(column.key)) {
+      if (column.key === 'plate_nos') {
         return ({ cellValue }) => Array.isArray(cellValue) ? cellValue.join('、') : (cellValue || '')
       }
       return undefined
@@ -1642,11 +1703,6 @@ export default {
         && date.getUTCDate() === day
       return valid ? { ok: true, value: `${match[1]}-${match[2]}-${match[3]}` } : { ok: false, reason: 'date' }
     },
-    normalizeSheetDecimal(text) {
-      const raw = String(text ?? '').trim()
-      if (!raw) return { ok: true, value: null }
-      return /^\d+(\.\d+)?$/.test(raw) ? { ok: true, value: raw } : { ok: false, reason: 'number' }
-    },
     normalizeSheetSequence(text) {
       const raw = String(text ?? '').replace(/\s+/g, '').toUpperCase()
       if (!raw) return { ok: true, value: null }
@@ -1669,11 +1725,9 @@ export default {
         }
       }
       if (key === 'target_forms') {
-        const tokens = raw ? raw.split(/[,，、\t\r\n]+/).map((item) => item.trim()).filter(Boolean) : []
-        const options = TARGET_FORM_OPTIONS.map((item) => ({ label: item, value: item }))
-        const values = tokens.map((token) => this.sheetOptionValue(options, token))
-        if (values.some((item) => !item)) return { ok: false, reason: 'option' }
-        return { ok: true, value: TARGET_FORM_OPTIONS.filter((item) => values.includes(item)) }
+        if (!raw) return { ok: true, value: null }
+        const value = this.sheetOptionValue(TARGET_FORM_OPTIONS.map((item) => ({ label: item, value: item })), raw)
+        return value ? { ok: true, value } : { ok: false, reason: 'option' }
       }
       if (key === 'study_type') {
         if (!raw) return { ok: true, value: null }
@@ -1693,16 +1747,22 @@ export default {
       }
       if (key === 'sample_source') {
         if (!raw) return { ok: true, value: null }
-        const value = this.sheetOptionValue(optionsForBuild(SAMPLE_SOURCE_OPTIONS, row?.build_type), raw)
-        return value ? { ok: true, value } : { ok: false, reason: 'option' }
+        const allowed = optionsForBuild(SAMPLE_SOURCE_OPTIONS, row?.build_type)
+        const value = this.sheetOptionValue(allowed, raw)
+        if (value) return { ok: true, value }
+        return { ok: false, reason: this.sheetOptionValue(SAMPLE_SOURCE_OPTIONS, raw) ? 'source' : 'option' }
       }
       if (key === 'sample_type') {
         if (!raw) return { ok: true, value: null }
-        const value = this.sheetOptionValue(SAMPLE_TYPE_OPTIONS, raw)
-        return value ? { ok: true, value } : { ok: false, reason: 'option' }
+        const plasma = row?.build_type === BUILD_PLASMA_NGS
+        const options = plasma ? PLASMA_SAMPLE_TYPE_OPTIONS : SAMPLE_TYPE_OPTIONS
+        const value = this.sheetOptionValue(options, raw)
+        if (value) return { ok: true, value }
+        const known = this.sheetOptionValue(SAMPLE_TYPE_OPTIONS, raw)
+        return { ok: false, reason: plasma && known ? 'plasma' : 'option' }
       }
-      if (key === 'cell_type' && row?.build_type === BUILD_POOLED_BCR && raw && !CELL_TYPE_OPTIONS.includes(raw)) {
-        return { ok: false, reason: 'option' }
+      if (key === 'cell_type' && CELL_TYPE_CHOICE_BUILDS.includes(row?.build_type) && raw && !CELL_TYPE_OPTIONS.includes(raw)) {
+        return { ok: false, reason: 'cell' }
       }
       if (key === 'source_experiment_type') {
         return !raw || PHAGE_EXPERIMENT_TYPE_OPTIONS.includes(raw)
@@ -1726,8 +1786,14 @@ export default {
         const hit = this.allUserOptions.find((item) => item === raw || item.toLowerCase() === raw.toLowerCase())
         return hit ? { ok: true, value: hit } : { ok: false, reason: 'option' }
       }
-      if (key === 'fragment_size_bp') return coerceOptionalNonnegInt(raw)
-      if (SHEET_DECIMAL_KEYS.includes(key)) return this.normalizeSheetDecimal(raw)
+      if (key === 'fragment_size_bp') {
+        const result = coerceOptionalNonnegInt(raw)
+        if (!result.ok || result.value == null) return result
+        if (!Number.isSafeInteger(result.value) || result.value > 2147483647) {
+          return { ok: false, reason: 'integer' }
+        }
+        return result
+      }
       if (key === 'i7_sequence' || key === 'i5_sequence') return this.normalizeSheetSequence(raw)
       if (key === 'library_code') return this.sheetTextLimit(key, raw.toUpperCase())
       if (key === 'target_codes') return { ok: true, value: uniqueTargetCodes(raw.split(/[,，、]/)) }
@@ -1739,9 +1805,10 @@ export default {
       if (!column) return { ok: false, reason: 'unknown' }
       const result = this.coerceSheetValue(row, key, text)
       if (this.isSheetCellLocked(row, key)) {
-        return result.ok && this.sameSheetValue(key, result.value, row[key])
-          ? { ok: true, skipped: true }
-          : { ok: false, reason: column.edit === 'readonly' ? 'readonly' : 'locked' }
+        if (result.ok && this.sameSheetValue(key, result.value, row[key])) return { ok: true, skipped: true }
+        if (!isSheetFieldApplicable(row?.build_type, key)) return { ok: false, reason: 'inapplicable' }
+        if (!isIndexFieldRecorded(row?.build_type, row?.index_mode, key)) return { ok: false, reason: 'index' }
+        return { ok: false, reason: column.edit === 'readonly' ? 'readonly' : 'locked' }
       }
       if (!result.ok) return result
       this.restoreSheetEditValue(row, key, result.value)
@@ -1752,9 +1819,13 @@ export default {
         || allSheetColumns().find((item) => item.key === key)?.label
         || '当前字段'
       if (reason === 'date') return `${label}必须是 YYYY-MM-DD 格式的有效日期`
-      if (reason === 'integer') return `${label}必须是非负整数`
-      if (reason === 'number') return `${label}必须是非负数`
-      if (reason === 'sequence') return 'Barcode序列只能包含IUPAC碱基字符'
+      if (reason === 'integer') return `${label}必须是不超过 2147483647 的非负整数`
+      if (reason === 'sequence') return `${label}只能包含 IUPAC 碱基字符`
+      if (reason === 'index') return `当前 Barcode 方式不填写「${label}」`
+      if (reason === 'plasma') return '浆细胞 NGS 的样品类型只能是 Nano 或 Lite'
+      if (reason === 'source') return '样品来源与当前建库类型不匹配'
+      if (reason === 'cell') return '细胞类型只能是全细胞、浆细胞或流穿液'
+      if (reason === 'inapplicable') return `当前建库类型没有「${label}」`
       if (reason === 'length') {
         const maxLen = SHEET_STRING_MAX[key]
         return maxLen ? `${label}不能超过 ${maxLen} 个字` : `${label}超出长度限制`
@@ -2204,7 +2275,7 @@ export default {
 
 .stats-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -2368,7 +2439,7 @@ export default {
 }
 
 .filter-strip :deep(.filter-range) {
-  flex: 1.4 1 240px;
+  flex: 1 1 200px;
   width: auto;
   min-width: 100px;
 }
@@ -2518,6 +2589,10 @@ export default {
 
 .drawer-field.is-wide {
   grid-column: 1 / -1;
+}
+
+.drawer-field-break {
+  grid-column: 2;
 }
 
 .drawer-form :deep(.el-form-item) {

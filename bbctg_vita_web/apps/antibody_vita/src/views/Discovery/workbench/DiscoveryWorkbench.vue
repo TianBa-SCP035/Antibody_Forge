@@ -2493,7 +2493,7 @@ export default {
   min-width: 100px;
 }
 .filter-strip :deep(.harvest-range) {
-  flex: 1.4 1 240px;
+  flex: 1 1 200px;
   width: auto;
   min-width: 100px;
 }

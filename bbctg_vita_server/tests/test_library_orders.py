@@ -264,6 +264,8 @@ class LibraryOrderTests(unittest.TestCase):
             },
         )
         self.assertEqual(saved["plate_nos"], ["P01", "P02"])
+        located = service.save(self.db, {"id": saved["id"], "cdna_location": "C-01"})
+        self.assertEqual(located["cdna_location"], "C-01")
         updated = service.save(
             self.db,
             {"id": saved["id"], "plate_nos": ["P01", "P01", "P03"]},
@@ -280,11 +282,11 @@ class LibraryOrderTests(unittest.TestCase):
                 },
             )
 
-    def test_barcode_is_available_on_all_profiles_except_pooled_bcr(self):
+    def test_barcode_stays_only_on_profiles_that_record_it(self):
         saved = service.save(
             self.db,
             {
-                "build_type": service.BUILD_PLATE,
+                "build_type": service.BUILD_PERIPHERAL_BLOOD,
                 "index_mode": service.INDEX_DUAL,
                 "i7_name": "UDP0205-R",
                 "i7_sequence": "AGTCCGAGGA",
@@ -292,20 +294,143 @@ class LibraryOrderTests(unittest.TestCase):
                 "i5_sequence": "TGCGCATAGC",
             },
         )
-        changed = service.save(
+        pooled_barcode = service.save(
             self.db,
-            {"id": saved["id"], "build_type": service.BUILD_PHAGE_DISPLAY},
+            {"id": saved["id"], "build_type": service.BUILD_POOLED_BARCODE},
         )
-        self.assertEqual(changed["index_mode"], service.INDEX_DUAL)
-        self.assertEqual(changed["i7_sequence"], "AGTCCGAGGA")
-        self.assertEqual(changed["i5_sequence"], "TGCGCATAGC")
-        pooled = service.save(
+        self.assertEqual(pooled_barcode["index_mode"], service.INDEX_DUAL)
+        self.assertEqual(pooled_barcode["i7_sequence"], "AGTCCGAGGA")
+        self.assertEqual(pooled_barcode["i5_sequence"], "TGCGCATAGC")
+        for build_type in (
+            service.BUILD_PLATE,
+            service.BUILD_POOLED_BCR,
+            service.BUILD_PLASMA_NGS,
+            service.BUILD_PHAGE_DISPLAY,
+        ):
+            with self.subTest(build_type=build_type):
+                cleared = service.save(self.db, {"id": saved["id"], "build_type": build_type})
+                self.assertIsNone(cleared["index_mode"])
+                self.assertIsNone(cleared["i7_sequence"])
+                self.assertIsNone(cleared["i5_sequence"])
+                service.save(
+                    self.db,
+                    {
+                        "id": saved["id"],
+                        "build_type": service.BUILD_PERIPHERAL_BLOOD,
+                        "index_mode": service.INDEX_DUAL,
+                        "i7_name": "UDP0205-R",
+                        "i7_sequence": "AGTCCGAGGA",
+                        "i5_name": "UDP0055V3-F",
+                        "i5_sequence": "TGCGCATAGC",
+                    },
+                )
+
+    def test_phage_profiles_split_locations_and_barcode(self):
+        display = service.save(
             self.db,
-            {"id": saved["id"], "build_type": service.BUILD_POOLED_BCR},
+            {
+                "build_type": service.BUILD_PHAGE_DISPLAY,
+                "rna_location": "RNA-1",
+                "cdna_location": "CDNA-1",
+                "index_mode": service.INDEX_I7,
+                "i7_name": "I7",
+                "i7_sequence": "ACGT",
+            },
         )
-        self.assertIsNone(pooled["index_mode"])
-        self.assertIsNone(pooled["i7_sequence"])
-        self.assertIsNone(pooled["i5_sequence"])
+        self.assertEqual(display["rna_location"], "RNA-1")
+        self.assertEqual(display["cdna_location"], "CDNA-1")
+        self.assertIsNone(display["index_mode"])
+        batched = service.save(
+            self.db,
+            {"id": display["id"], "library_batch_no": "PH-D-01"},
+        )
+        self.assertEqual(batched["library_batch_no"], "PH-D-01")
+        ngs = service.save(
+            self.db,
+            {
+                "build_type": service.BUILD_PHAGE_NGS,
+                "rna_location": "RNA-2",
+                "cdna_location": "CDNA-2",
+                "library_location": "LIB-2",
+                "index_mode": service.INDEX_I7,
+                "i7_name": "I7",
+                "i7_sequence": "ACGT",
+            },
+        )
+        self.assertIsNone(ngs["rna_location"])
+        self.assertIsNone(ngs["cdna_location"])
+        self.assertEqual(ngs["library_location"], "LIB-2")
+        self.assertEqual(ngs["i7_sequence"], "ACGT")
+
+    def test_plasma_ngs_keeps_locations_and_only_nano_lite(self):
+        saved = service.save(
+            self.db,
+            {
+                "build_type": service.BUILD_PLASMA_NGS,
+                "sample_source": service.SOURCE_SPLEEN,
+                "sample_type": service.SAMPLE_NANO,
+                "rna_location": "RNA-P",
+                "cdna_location": "CDNA-P",
+                "library_location": "LIB-P",
+                "index_mode": service.INDEX_I7,
+                "i7_name": "I7",
+                "i7_sequence": "ACGT",
+            },
+        )
+        self.assertEqual(saved["sample_type"], service.SAMPLE_NANO)
+        self.assertEqual(saved["rna_location"], "RNA-P")
+        self.assertEqual(saved["cdna_location"], "CDNA-P")
+        self.assertEqual(saved["library_location"], "LIB-P")
+        self.assertEqual(saved["cell_type"], "浆细胞")
+        self.assertIsNone(saved["index_mode"])
+        with self.assertRaisesRegex(ValueError, "Nano 或 Lite"):
+            service.save(
+                self.db,
+                {
+                    "build_type": service.BUILD_PLASMA_NGS,
+                    "sample_type": service.SAMPLE_PHAGE,
+                },
+            )
+
+    def test_plasma_stats_split_by_sample_type(self):
+        service.save(
+            self.db,
+            {"build_type": service.BUILD_PLASMA_NGS, "sample_type": service.SAMPLE_NANO},
+        )
+        service.save(
+            self.db,
+            {"build_type": service.BUILD_PLASMA_NGS, "sample_type": service.SAMPLE_LITE},
+        )
+        service.save(
+            self.db,
+            {"build_type": service.BUILD_PLASMA_NGS, "sample_type": service.SAMPLE_LITE},
+        )
+        result = service.get_list(self.db, {"sample_type": service.SAMPLE_NANO})
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["stats"]["plasma_ngs:nano"], 1)
+        self.assertEqual(result["stats"]["plasma_ngs:lite"], 2)
+        self.assertEqual(result["stats"][service.BUILD_PLASMA_NGS], 3)
+
+    def test_plasma_handoff_uses_requested_sample_type(self):
+        row = self._discovery()
+        result = service.handoff(
+            self.db,
+            {
+                "discovery_workbench_id": row["id"],
+                "items": [
+                    {
+                        "build_type": service.BUILD_PLASMA_NGS,
+                        "sample_source": service.SOURCE_SPLEEN,
+                        "sample_type": service.SAMPLE_LITE,
+                    }
+                ],
+            },
+        )
+        item = result["items"][0]
+        self.assertEqual(item["sample_type"], service.SAMPLE_LITE)
+        self.assertEqual(item["instrument_on"], "2026-09-21")
+        self.assertEqual(item["positive_cell_count"], "120")
+        self.assertEqual(item["cell_type"], "浆细胞")
 
     def test_catalog_reference_copies_snapshot(self):
         catalog = MolecularPrimerIndexCatalog(
@@ -399,29 +524,44 @@ class LibraryOrderTests(unittest.TestCase):
         self.assertIsNone(updated["i5_name"])
         self.assertIsNone(updated["i5_sequence"])
 
-    def test_decimal_zero_is_serialized_as_zero(self):
+    def test_concentrations_keep_experimentalist_text(self):
         saved = service.save(
             self.db,
             {
                 "build_type": service.BUILD_POOLED_BCR,
-                "cdna_concentration": "0",
+                "cdna_concentration": "约12.5 ng/uL",
+                "library_concentration": "ND",
+                "h_primer_concentration": "10x",
             },
         )
-        self.assertEqual(saved["cdna_concentration"], "0")
+        self.assertEqual(saved["cdna_concentration"], "约12.5 ng/uL")
+        self.assertEqual(saved["library_concentration"], "ND")
+        self.assertEqual(saved["h_primer_concentration"], "10x")
 
     def test_numeric_fields_reject_non_finite_values(self):
-        for field in ("cdna_concentration", "fragment_size_bp"):
-            for value in ("NaN", "Infinity"):
-                with self.subTest(field=field, value=value):
-                    with self.assertRaisesRegex(ValueError, "必须是非负"):
-                        service.save(
-                            self.db,
-                            {
-                                "build_type": service.BUILD_PERIPHERAL_BLOOD,
-                                field: value,
-                            },
-                        )
-                    self.db.rollback()
+        for value in ("NaN", "Infinity"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "必须是非负"):
+                    service.save(
+                        self.db,
+                        {
+                            "build_type": service.BUILD_PERIPHERAL_BLOOD,
+                            "fragment_size_bp": value,
+                        },
+                    )
+                self.db.rollback()
+
+    def test_numeric_fields_reject_overflow_and_unknown_target_forms(self):
+        with self.assertRaisesRegex(ValueError, "不超过 2147483647"):
+            service.save(self.db, {"build_type": service.BUILD_PERIPHERAL_BLOOD, "fragment_size_bp": "2147483648"})
+        self.db.rollback()
+        saved = service.save(self.db, {"build_type": service.BUILD_PHAGE_DISPLAY, "target_forms": "分泌"})
+        self.assertEqual(saved["target_forms"], "分泌")
+        with self.assertRaisesRegex(ValueError, "只能选一个"):
+            service.save(self.db, {"id": saved["id"], "target_forms": ["分泌", "多穿"]})
+        self.db.rollback()
+        with self.assertRaisesRegex(ValueError, "靶点形式不在允许的选项中"):
+            service.save(self.db, {"build_type": service.BUILD_PHAGE_DISPLAY, "target_forms": ["膜蛋白"]})
 
     def test_pooled_bcr_uses_forward_and_reverse_primer_pairs(self):
         forward = MolecularPrimerIndexCatalog(
@@ -454,15 +594,47 @@ class LibraryOrderTests(unittest.TestCase):
         self.assertEqual(saved["h_reverse_primer_name"], "UDP0205-R")
         self.assertEqual(saved["h_primer_concentration"], "2.5")
 
-    def test_pooled_bcr_rejects_unknown_cell_type(self):
+    def test_pooled_bcr_drops_cell_type_and_keeps_fragment_size(self):
+        saved = service.save(
+            self.db,
+            {
+                "build_type": service.BUILD_POOLED_BCR,
+                "cell_type": "浆细胞",
+                "fragment_size_bp": 450,
+                "library_concentration": "12.5",
+            },
+        )
+        self.assertIsNone(saved["cell_type"])
+        self.assertEqual(saved["fragment_size_bp"], 450)
+        self.assertEqual(saved["library_concentration"], "12.5")
+        cleared = service.save(
+            self.db,
+            {"id": saved["id"], "build_type": service.BUILD_PLATE, "library_concentration": "1"},
+        )
+        self.assertIsNone(cleared["library_concentration"])
+
+    def test_plasma_defaults_cell_type_and_rejects_unknown(self):
+        saved = service.save(self.db, {"build_type": service.BUILD_PLASMA_NGS})
+        self.assertEqual(saved["cell_type"], "浆细胞")
         with self.assertRaisesRegex(ValueError, "细胞类型"):
             service.save(
                 self.db,
                 {
-                    "build_type": service.BUILD_POOLED_BCR,
+                    "id": saved["id"],
                     "cell_type": "未知类型",
                 },
             )
+
+    def test_phage_display_cell_type_uses_the_three_options(self):
+        saved = service.save(
+            self.db,
+            {"build_type": service.BUILD_PHAGE_DISPLAY, "cell_type": "全细胞"},
+        )
+        self.assertEqual(saved["cell_type"], "全细胞")
+        cleared = service.save(self.db, {"id": saved["id"], "cell_type": ""})
+        self.assertIsNone(cleared["cell_type"])
+        with self.assertRaisesRegex(ValueError, "细胞类型"):
+            service.save(self.db, {"id": saved["id"], "cell_type": "未知类型"})
 
     def test_handoff_requires_source_date_for_discovery_profiles(self):
         row = self._discovery(harvest_date="")

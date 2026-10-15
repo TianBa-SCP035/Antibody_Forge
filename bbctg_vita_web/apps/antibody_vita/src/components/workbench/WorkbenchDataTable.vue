@@ -23,6 +23,7 @@
             :class="{ 'is-movable': !isPinned(col.key) }"
             :data-col-key="col.key"
             @mousedown="onHeaderMouseDown($event, col)"
+            @contextmenu="onHeaderContextMenu($event, col)"
           >
             <slot :name="'header-' + col.key" :column="col">{{ col.label }}</slot>
           </div>
@@ -91,7 +92,7 @@ export default {
     pinFirst: { type: String, default: 'sort_order' },
     pinLast: { type: String, default: 'actions' },
   },
-  emits: ['reorder'],
+  emits: ['reorder', 'header-contextmenu'],
   data() {
     return {
       orderedColumns: [],
@@ -180,6 +181,9 @@ export default {
     },
     isPinned(key) {
       return key === this.pinFirst || key === this.pinLast
+    },
+    onHeaderContextMenu(event, column) {
+      this.$emit('header-contextmenu', column, event)
     },
     onHeaderMouseDown(event, column) {
       if (event.button !== 0 || !event.shiftKey || this.isPinned(column.key)) return

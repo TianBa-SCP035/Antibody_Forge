@@ -15,6 +15,7 @@
     "dev:test": "pnpm vite --mode test",
     "lint:components": "eslint \"src/**/*.vue\"",
     "preview": "vite preview",
+    "test": "node --test \"src/**/*.test.mjs\"",
     "typecheck": "vue-tsc --noEmit --skipLibCheck"
   },
   "imports": {
@@ -39,6 +40,8 @@
     "@vueuse/core": "catalog:",
     "dayjs": "catalog:",
     "element-plus": "catalog:",
+    "fflate": "^0.8.3",
+    "mammoth": "^1.13.0",
     "pinia": "catalog:",
     "sortablejs": "catalog:",
     "vue": "catalog:",

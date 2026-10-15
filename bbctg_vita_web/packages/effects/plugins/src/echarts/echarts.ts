@@ -1,5 +1,11 @@
-import { BarChart, LineChart, PieChart, RadarChart } from 'echarts/charts';
 import {
+  BarChart,
+  LineChart,
+  PieChart,
+  RadarChart,
+} from 'echarts/charts';
+import {
+  DataZoomComponent,
   DatasetComponent,
   GridComponent,
   LegendComponent,
@@ -26,6 +32,7 @@ echarts.use([
   TransformComponent,
   BarChart,
   LineChart,
+  DataZoomComponent,
   LabelLayout,
   LegacyGridContainLabel,
   UniversalTransition,

@@ -9,4 +9,5 @@ openpyxl
 apscheduler
 requests
 pillow
+biopython
 pytest

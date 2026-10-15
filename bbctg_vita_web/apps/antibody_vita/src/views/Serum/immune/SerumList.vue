@@ -500,6 +500,7 @@ import { SERUM_ERRORS } from '../shared/errors'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import SerumProjectStatusEditor from '../shared/SerumProjectStatusEditor.vue'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
+import { downloadBlob } from '#/utils/file-resource'
 import {
   canAutoUpdateSerumStatus,
   canCreateSerumProject,
@@ -512,9 +513,10 @@ import {
   getSerumUserName,
   getSerumUserRoles,
 } from '#/utils/serumPermission'
+import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
-const SERUM_LIST_FILTER_KEY = 'serumListFilters'
+const SERUM_LIST_FILTER_KEY = 'serumList'
 
 export default {
   name: 'SerumList',
@@ -669,37 +671,29 @@ export default {
   },
   methods: {
     persistListFilters() {
-      sessionStorage.setItem(
-        SERUM_LIST_FILTER_KEY,
-        JSON.stringify({
-          listQuery: { ...this.listQuery, sort_field: undefined, sort_order: undefined },
-          dateRange: this.dateRange,
-          showAdvancedFilters: this.showAdvancedFilters,
-          showExtraColumns: this.showExtraColumns,
-        }),
-      )
+      saveListFilters(SERUM_LIST_FILTER_KEY, {
+        listQuery: { ...this.listQuery, sort_field: undefined, sort_order: undefined },
+        dateRange: this.dateRange,
+        showAdvancedFilters: this.showAdvancedFilters,
+        showExtraColumns: this.showExtraColumns,
+      })
     },
     restoreListFilters() {
-      const raw = sessionStorage.getItem(SERUM_LIST_FILTER_KEY)
-      if (!raw) {
+      const state = loadListFilters(SERUM_LIST_FILTER_KEY)
+      if (!state) {
         return
       }
-      try {
-        const state = JSON.parse(raw)
-        if (state.listQuery) {
-          Object.assign(this.listQuery, state.listQuery)
-        }
-        if (state.dateRange) {
-          this.dateRange = state.dateRange
-        }
-        if (typeof state.showAdvancedFilters === 'boolean') {
-          this.showAdvancedFilters = state.showAdvancedFilters
-        }
-        if (typeof state.showExtraColumns === 'boolean') {
-          this.showExtraColumns = state.showExtraColumns
-        }
-      } catch {
-        /* ignore */
+      if (state.listQuery) {
+        Object.assign(this.listQuery, state.listQuery)
+      }
+      if (state.dateRange) {
+        this.dateRange = state.dateRange
+      }
+      if (typeof state.showAdvancedFilters === 'boolean') {
+        this.showAdvancedFilters = state.showAdvancedFilters
+      }
+      if (typeof state.showExtraColumns === 'boolean') {
+        this.showExtraColumns = state.showExtraColumns
       }
     },
     smoothScrollTableToRight() {
@@ -1191,19 +1185,12 @@ export default {
             const blob = response instanceof Blob ? response : new Blob([response], {
                 type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             })
-            const url = window.URL.createObjectURL(blob)
-            const link = document.createElement('a')
-            link.href = url
             const timestamp = new Date(Date.now() + 8 * 60 * 60 * 1000)
                 .toISOString()
                 .slice(0, 16)
                 .replace('T', '_')
                 .replace(':', '')
-            link.download = `小鼠免疫导出_${timestamp}.xlsx`
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
-            window.URL.revokeObjectURL(url)
+            downloadBlob(blob, `小鼠免疫导出_${timestamp}.xlsx`)
             ElMessage.success('导出成功')
         }).catch((error) => {
             notifyApiError(error, { messages: SERUM_ERRORS.list.exportMouse })

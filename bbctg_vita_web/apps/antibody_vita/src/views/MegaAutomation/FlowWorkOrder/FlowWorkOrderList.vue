@@ -270,6 +270,7 @@ import {
 } from '#/api/megaAutomation';
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
+import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage';
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
 import {
   canEditMegaFlowWorkOrder,
@@ -292,6 +293,8 @@ const DEFAULT_STATUS_OPTIONS = [
   { value: 'failed', label: '校验失败' },
   { value: 'cancelled', label: '已作废' },
 ];
+
+const FLOW_WORK_ORDER_LIST_FILTER_KEY = 'flowWorkOrderList';
 
 function emptyQuery() {
   return {
@@ -363,9 +366,17 @@ export default {
     },
   },
   created() {
+    this.restoreListFilters();
     this.listLoading = true;
     this.loadMeta();
     this.fetchList();
+  },
+  beforeRouteLeave(_to, _from, next) {
+    this.persistListFilters();
+    next();
+  },
+  beforeUnmount() {
+    this.persistListFilters();
   },
   activated() {
     if (this.listLoadError || shouldRefreshTabData(this.tabDataFetchedAt)) {
@@ -421,7 +432,17 @@ export default {
     },
     resetFilter() {
       this.listQuery = emptyQuery();
+      this.persistListFilters();
       this.fetchList();
+    },
+    persistListFilters() {
+      saveListFilters(FLOW_WORK_ORDER_LIST_FILTER_KEY, { listQuery: { ...this.listQuery } });
+    },
+    restoreListFilters() {
+      const state = loadListFilters(FLOW_WORK_ORDER_LIST_FILTER_KEY);
+      if (state?.listQuery && typeof state.listQuery === 'object') {
+        Object.assign(this.listQuery, state.listQuery);
+      }
     },
     toggleStatus(status) {
       this.listQuery.status = this.listQuery.status === status ? '' : status;

@@ -1,5 +1,7 @@
 import { ElLoading, ElMessage } from 'element-plus';
 
+import { downloadBlob } from '#/utils/file-resource';
+
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 export function excelTimestamp() {
@@ -24,14 +26,7 @@ export async function downloadListExcel(
     const blob = response instanceof Blob
       ? response
       : new Blob([response], { type: XLSX_TYPE });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fallbackName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+    downloadBlob(blob, fallbackName);
     ElMessage.success('导出成功');
   } finally {
     loading.close();

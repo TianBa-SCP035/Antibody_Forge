@@ -2,6 +2,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from models.system import SysUser
+from modules.auth.security import verify_password
 from modules.auth.service import (
     build_user_info,
     change_user_password,
@@ -80,16 +81,11 @@ class ProfileAuthTests(TestCase):
         self.assertEqual(user.profile_signature, "new sig")
         self.assertEqual(result["profileSignature"], "new sig")
 
-    def test_change_password_without_old_when_no_existing(self):
-        db = _FakeDb()
-        user = self._user(password_hash=None)
-        change_user_password(db, user, "secret12")
-        self.assertTrue(db.committed)
-        self.assertTrue(user.password_hash.startswith("pbkdf2_sha256$"))
-
-    def test_change_password_logged_in_without_old(self):
+    def test_change_password_needs_no_old_password_and_at_least_six_chars(self):
         db = _FakeDb()
         user = self._user(password_hash="pbkdf2_sha256$260000$salt$old")
-        change_user_password(db, user, "newpass9")
+        change_user_password(db, user, "  newpass9  ")
         self.assertTrue(db.committed)
-        self.assertTrue(user.password_hash.startswith("pbkdf2_sha256$"))
+        self.assertTrue(verify_password("newpass9", user.password_hash))
+        with self.assertRaisesRegex(ValueError, "至少需要 6 位"):
+            change_user_password(_FakeDb(), user, "12345")

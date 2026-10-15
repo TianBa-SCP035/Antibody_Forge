@@ -22,6 +22,7 @@
             :value="currentPriority"
             :options="priorityOptions"
             :type="priorityTagType"
+            :tag-class="priorityTone === 'king' ? 'status-tone-king' : ''"
             :editable="canEdit"
             @change="updatePriority"
           />
@@ -32,7 +33,10 @@
             <dd :title="item.value">{{ item.value }}</dd>
           </div>
         </dl>
-        <span class="save-hint" :class="{ 'is-readonly': !canEditQc }">
+        <div v-if="qcGaps.length" class="qc-gaps">
+          <span v-for="gap in qcGaps" :key="gap.text" :class="gap.tone" :title="gap.title"><i />{{ gap.text }}</span>
+        </div>
+        <span v-else class="save-hint" :class="{ 'is-readonly': !canEditQc }">
           <i />
           {{ canEditQc ? '自动保存' : '只读' }}
         </span>
@@ -55,23 +59,43 @@
       <aside class="file-rail">
         <header class="rail-heading">
           <strong>结果文件</strong>
-          <span class="rail-count">{{ files.length }} 个</span>
+          <span class="rail-count">{{ files.length + packages.length }} 个</span>
         </header>
         <div class="file-tile-grid">
-          <el-upload
+          <div
+            v-loading="resultUploading"
             class="file-upload-tile"
-            drag
-            action=""
-            multiple
-            :disabled="!canManageFiles"
-            :show-file-list="false"
-            :http-request="uploadFile"
-            :title="canManageFiles ? '拖入或点击选择结果文件' : '您没有权限上传结果文件'"
+            :class="{ 'is-disabled': !canManageFiles || resultUploading }"
+            role="button"
+            tabindex="0"
+            @click="pickQcFiles"
+            @contextmenu.prevent.stop="pickQcFolder"
+            @keydown.enter.prevent="pickQcFiles"
+            @keydown.space.prevent="pickQcFiles"
+            @dragover.prevent
+            @drop.stop.prevent="onDropResults"
           >
             <el-icon><UploadFilled /></el-icon>
             <strong>上传结果文件</strong>
-            <span>自动识别文件类型</span>
-          </el-upload>
+            <span>拖入文件夹或 zip</span>
+            <input
+              ref="qcFiles"
+              class="qc-folder-input"
+              type="file"
+              multiple
+              @click.stop
+              @change="onQcFiles"
+            />
+            <input
+              ref="qcFolder"
+              class="qc-folder-input"
+              type="file"
+              webkitdirectory
+              multiple
+              @click.stop
+              @change="onQcFolder"
+            />
+          </div>
           <button
             v-for="file in files"
             :key="file.id"
@@ -80,8 +104,9 @@
             :class="{
               'is-active': file.id === currentFileId,
               'is-final': file.is_final_qc,
+              'is-replaced': file.replaced,
             }"
-            :title="file.original_name"
+            :title="file.replaced ? `${file.original_name}（同名文件已有最终版本，不参与质检）` : file.original_name"
             @click="selectFile(file)"
           >
             <span class="tile-visual">
@@ -93,10 +118,43 @@
               <span v-else class="tile-file-icon" :class="fileIconClass(file.original_name)">
                 <el-icon><component :is="fileIcon(file.original_name)" /></el-icon>
               </span>
+              <span
+                v-if="showTileExt(file)"
+                class="tile-ext-badge"
+                :class="fileIconClass(file.original_name)"
+              >
+                {{ fileExt(file.original_name) }}
+              </span>
             </span>
             <span class="tile-name">{{ file.original_name }}</span>
-            <small>{{ file.result_kind || fileExt(file.original_name) }} · {{ fileSize(file.byte_size) }}</small>
+            <small>{{ fileSize(file.byte_size) }}</small>
+            <small
+              v-if="railSequenceLabel(file)"
+              class="tile-check"
+              :class="{
+                'is-matched': file.sequence_status === 'matched',
+                'is-unmatched': file.sequence_status === 'not_found',
+              }"
+            >
+              {{ railSequenceLabel(file) }}
+            </small>
             <span v-if="file.is_final_qc" class="tile-final">最终</span>
+          </button>
+          <button
+            v-for="folder in packages"
+            :key="folder.id"
+            type="button"
+            class="file-tile"
+            :class="{ 'is-active': selectedPackage && selectedPackage.id === folder.id && !currentFile }"
+            @click="selectPackage(folder)"
+          >
+            <span class="tile-visual">
+              <span class="tile-file-icon">
+                <el-icon><FolderOpened /></el-icon>
+              </span>
+            </span>
+            <span class="tile-name">{{ folder.name }}</span>
+            <small>测序包 · {{ folder.file_count }} 个文件</small>
           </button>
         </div>
       </aside>
@@ -105,10 +163,12 @@
         <header class="viewer-caption">
           <div class="caption-copy">
             <strong v-if="currentFile" :title="currentFile.original_name">{{ currentFile.original_name }}</strong>
+            <strong v-else-if="selectedPackage">{{ selectedPackage.name }}</strong>
             <strong v-else>结果预览</strong>
-            <span>{{ currentFile ? fileMeta(currentFile) : '选择文件后在此预览' }}</span>
+            <span>{{ currentFile ? fileMeta(currentFile) : selectedPackage ? '测序包里的文件' : '选择文件后在此预览' }}</span>
           </div>
-          <div v-if="currentFile" class="caption-actions">
+          <div v-if="currentFile || selectedPackage" class="caption-actions">
+            <template v-if="currentFile">
             <el-button
               size="small"
               :type="currentFile.is_final_qc ? 'success' : undefined"
@@ -152,6 +212,7 @@
               <span>下载</span>
             </el-button>
             <el-button
+              v-if="!currentFile.package_id"
               size="small"
               type="danger"
               plain
@@ -161,6 +222,17 @@
               @click="removeFile(currentFile)"
             >
               <el-icon><Delete /></el-icon>
+            </el-button>
+            </template>
+            <el-button
+              v-if="selectedPackage"
+              size="small"
+              type="danger"
+              plain
+              :disabled="!canManageFiles"
+              @click="removePackage(selectedPackage)"
+            >
+              删除测序包
             </el-button>
           </div>
         </header>
@@ -245,29 +317,139 @@
             alt="胶图"
             @load="onStageImageLoad"
           />
+          <div v-else-if="selectedPackage && !currentFile" class="stage-package" @mousedown.stop @wheel.stop>
+            <header class="package-browser-head">
+              <div>
+                <strong>{{ selectedPackage.name }}</strong>
+                <span>
+                  {{ selectedPackage.file_count }} 个文件{{ selectedPackage.qc_count ? ` · 核对 ${selectedPackage.qc_count} 个` : '' }}
+                </span>
+              </div>
+            </header>
+            <div class="package-explorer">
+              <section class="package-browser-pane">
+                <nav class="package-breadcrumb" aria-label="当前文件夹">
+                  <button type="button" @click="goPackagePath('')">{{ selectedPackage.name }}</button>
+                  <template v-for="crumb in packageBreadcrumbs" :key="crumb.path">
+                    <span>/</span>
+                    <button type="button" @click="goPackagePath(crumb.path)">{{ crumb.name }}</button>
+                  </template>
+                </nav>
+                <div class="package-list-head">
+                  <span>名称</span>
+                  <span>类型</span>
+                  <span>大小</span>
+                  <span>用途</span>
+                </div>
+                <div class="package-file-list">
+                  <button
+                    v-for="entry in packageBrowserEntries"
+                    :key="entry.key"
+                    type="button"
+                    class="package-file"
+                    :class="{ 'is-active': packageSelectedKey === entry.key }"
+                    @click="selectPackageEntry(entry)"
+                  >
+                    <span class="package-entry-name">
+                      <el-icon :class="packageEntryClass(entry)"><component :is="packageEntryIcon(entry)" /></el-icon>
+                      <strong>{{ entry.name }}</strong>
+                    </span>
+                    <span>{{ entry.type === 'folder' ? '文件夹' : fileExt(entry.name) }}</span>
+                    <span>{{ entry.type === 'folder' ? `${entry.count} 项` : fileSize(entry.file.byte_size) }}</span>
+                    <small>{{ entry.type === 'folder' ? '—' : entry.file.for_qc ? '已关联' : '仅保存' }}</small>
+                  </button>
+                  <div v-if="!packageBrowserEntries.length" class="package-folder-empty">这个文件夹是空的</div>
+                </div>
+              </section>
+
+              <aside class="package-preview-pane">
+                <div v-if="!packageFocus" class="package-preview-empty">
+                  <el-icon><Document /></el-icon>
+                  <strong>选择左侧文件预览</strong>
+                </div>
+                <template v-else>
+                  <header class="package-preview-head">
+                    <div>
+                      <strong>{{ packageFocus.original_name }}</strong>
+                      <small>{{ packageDirectory(packageFocus.relative_path) }} · {{ fileSize(packageFocus.byte_size) }}</small>
+                      <small v-if="packageFocus.sequence_check">{{ packageFocus.sequence_check }}</small>
+                    </div>
+                    <el-button size="small" plain @click="downloadStored(packageFocus)">下载</el-button>
+                  </header>
+                  <AbiTracePreview
+                    v-if="isTrace(packageFocus)"
+                    :key="`package-${packageFocus.file_id}`"
+                    class="package-preview-body"
+                    :source-url="storedFilePreviewUrl(packageFocus.file_id)"
+                    :direction="traceDirection(packageFocus)"
+                    :primer-label="primerLabel(packageFocus)"
+                    :target-sequence="traceTargetSequence(packageFocus)"
+                    height="100%"
+                  />
+                  <SeqReadPreview
+                    v-else-if="isSequence(packageFocus)"
+                    :key="`package-seq-${packageFocus.file_id}`"
+                    class="package-preview-body"
+                    :source-url="storedFilePreviewUrl(packageFocus.file_id)"
+                    :direction="traceDirection(packageFocus)"
+                    :primer-label="primerLabel(packageFocus)"
+                    :target-sequence="traceTargetSequence(packageFocus)"
+                    height="100%"
+                  />
+                  <FilePreviewer
+                    v-else
+                    :key="`package-${packageFocus.file_id}`"
+                    class="package-preview-body"
+                    :source-url="storedFilePreviewUrl(packageFocus.file_id)"
+                    :file-name="packageFocus.original_name"
+                    :mime-type="packageFocus.mime_type"
+                    height="100%"
+                  />
+                </template>
+              </aside>
+            </div>
+          </div>
           <div v-else-if="!currentFile" class="stage-empty">
             <el-icon><Picture /></el-icon>
             <strong>还没有结果文件</strong>
             <p>从左侧上传胶图或质检文件。</p>
           </div>
-          <div v-else-if="isExcel(currentFile.original_name)" v-loading="excelLoading" class="stage-sheet">
-            <table v-if="excelRows.length">
-              <tbody>
-                <tr v-for="(row, rowIndex) in excelRows" :key="rowIndex">
-                  <td v-for="(cell, colIndex) in row" :key="colIndex">{{ cell }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <p v-else-if="!excelLoading" class="stage-note">这个表格读不出内容。</p>
+          <div v-else-if="isImage(currentFile)" v-loading="imagePreviewLoading" class="stage-empty">
+            <el-icon><Picture /></el-icon>
+            <strong>{{ imagePreviewError || '正在读取图片' }}</strong>
+            <el-button v-if="imagePreviewError" plain size="small" @click="loadPreview(currentFile)">
+              重试
+            </el-button>
           </div>
-          <div v-else class="stage-doc">
-            <span class="doc-ext" :class="fileIconClass(currentFile.original_name)">
-              <el-icon><component :is="fileIcon(currentFile.original_name)" /></el-icon>
-            </span>
-            <strong>{{ currentFile.original_name }}</strong>
-            <p>{{ docHint(currentFile) }}</p>
-            <el-button type="primary" plain @click="download(currentFile)">下载查看</el-button>
-          </div>
+          <AbiTracePreview
+            v-else-if="isTrace(currentFile)"
+            :key="`link-${currentFile.id}`"
+            class="stage-document-preview"
+            :source-url="linkedFilePreviewUrl(currentFile.id)"
+            :direction="traceDirection(currentFile)"
+            :primer-label="primerLabel(currentFile)"
+            :target-sequence="traceTargetSequence(currentFile)"
+            height="100%"
+          />
+          <SeqReadPreview
+            v-else-if="isSequence(currentFile)"
+            :key="`link-seq-${currentFile.id}`"
+            class="stage-document-preview"
+            :source-url="linkedFilePreviewUrl(currentFile.id)"
+            :direction="traceDirection(currentFile)"
+            :primer-label="primerLabel(currentFile)"
+            :target-sequence="traceTargetSequence(currentFile)"
+            height="100%"
+          />
+          <FilePreviewer
+            v-else
+            :key="`link-${currentFile.id}`"
+            class="stage-document-preview"
+            :source-url="linkedFilePreviewUrl(currentFile.id)"
+            :file-name="currentFile.original_name"
+            :mime-type="currentFile.mime_type"
+            height="100%"
+          />
           <div
             v-for="(entry, index) in regionEntries"
             :key="entry.key"
@@ -632,6 +814,7 @@
 </template>
 
 <script>
+import { defineAsyncComponent } from 'vue'
 import {
   ArrowLeft,
   Collection,
@@ -643,6 +826,7 @@ import {
   FullScreen,
   Grid,
   Monitor,
+  VideoPlay,
   Picture,
   RefreshLeft,
   RefreshRight,
@@ -664,31 +848,37 @@ import {
   ElPopover,
   ElSelect,
   ElSlider,
-  ElUpload,
 } from 'element-plus'
-import { useAccessStore, useUserStore } from '@vben/stores'
+import { useUserStore } from '@vben/stores'
 
 import {
   deleteLibraryFile,
+  deleteLibraryPackage,
   fetchLibraryFiles,
+  libraryStoredFileDownloadUrl,
   fetchPrimerIndexOptions,
   libraryFileDownloadUrl,
   saveLibraryOrder,
   updateLibraryFile,
-  uploadLibraryFile,
+  uploadLibraryFileBatch,
 } from '#/api/molecularLibrary'
-import { ApiFetchError, fetchApiResource, notifyApiError } from '#/api/errors'
+import { expandResultArchives, readDroppedFiles, resultUploadLimitError } from './readDroppedFiles'
+import { extractApiError, notifyApiError } from '#/api/errors'
+import { FilePreviewer } from '#/components/file-preview'
 import { WorkbenchStatusEditor, WorkbenchTargetSelect } from '#/components/workbench'
-import { handleUnauthorizedError } from '#/utils/auth-session'
+import { downloadFile, fetchFileBlob } from '#/utils/file-resource'
 import { canEditLibrary, canManageLibraryFiles } from '#/utils/molecularPermission'
 import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/DiscoveryWorkbench.vue'
 import { getSerumUserName } from '#/utils/serumPermission'
+import { getTiterPriorityTone, WORKBENCH_PRIORITY_DEFAULT } from '#/utils/serumProjectStatus'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
 import {
+  BUILD_PERIPHERAL_BLOOD,
   BUILD_PHAGE_DISPLAY,
   BUILD_PHAGE_NGS,
   BUILD_PLATE,
+  BUILD_POOLED_BARCODE,
   BUILD_POOLED_BCR,
   buildTypeLabel,
   mouseCategoryLabel,
@@ -711,17 +901,76 @@ import {
 } from './libraryColumns'
 
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']
-const EXCEL_EXT = ['xls', 'xlsx', 'csv']
-const PRIMER_QC_KIND = '引物质检文件'
+const VIDEO_EXT = ['mp4', 'webm', 'ogg', 'ogv', 'mov']
+const BARCODE_BUILDS = new Set([BUILD_POOLED_BARCODE, BUILD_PHAGE_NGS, BUILD_PERIPHERAL_BLOOD])
+const FORWARD_ARM_1 = 'ACCGAGATCTACAC'
+const FORWARD_ARM_2 = 'ACACTCTTTCC'
+const REVERSE_ARM_1 = 'AACTCCAGTCAC'
+const REVERSE_ARM_2 = 'ATCTCGTATGCC'
+const PRIMER_TARGET_LABELS = {
+  i5: 'i5',
+  i7: 'i7',
+  hF: 'H正向',
+  hR: 'H反向',
+  kF: 'K正向',
+  kR: 'K反向',
+  lF: 'L正向',
+  lR: 'L反向',
+}
+const AbiTracePreview = defineAsyncComponent(() => import('./AbiTracePreview.vue'))
+const SeqReadPreview = defineAsyncComponent(() => import('./SeqReadPreview.vue'))
 const ZOOM_MIN = 0.2
 const ZOOM_MAX = 8
 const MAX_QC_REGIONS = 20
 
+function reverseComplement(value) {
+  const complement = { A: 'T', C: 'G', G: 'C', T: 'A', N: 'N' }
+  return String(value || '')
+    .toUpperCase()
+    .replace(/[^ACGTN]/g, '')
+    .split('')
+    .reverse()
+    .map((base) => complement[base] || base)
+    .join('')
+}
+
+function assembledCheck(primer, direction) {
+  const body = reverseComplement(primer)
+  if (!body) return ''
+  return direction === 'F'
+    ? `${FORWARD_ARM_1}${body}${FORWARD_ARM_2}`
+    : `${REVERSE_ARM_1}${body}${REVERSE_ARM_2}`
+}
+
+const PRIMER_RESULT_FIELDS = ['index_mode', 'i5_sequence', 'i7_sequence']
+
+function qcUploadNotice(summary) {
+  const outcomes = summary.map((item) => item.outcome)
+  const linked = summary.reduce((total, item) => total + Number(item.newly_linked || 0), 0)
+  const orders = summary.flatMap((item) => item.orders || [])
+  const details = [...new Set(orders.map((item) => String(item.detail || '').trim()).filter(Boolean))]
+  const detail = details.join('；')
+  const held = orders.some((item) => item.status === '质检待确认' || item.status === '质检不通过')
+  const passed = orders.length > 0 && orders.every((item) => item.status === '质检通过' || item.status === '已完成')
+  const saved = outcomes.some((outcome) => outcome && outcome !== 'skipped')
+  if (!saved) return { type: 'warning', text: '没有文件被保存，请查看未保存原因' }
+  if (!linked && outcomes.every((outcome) => outcome === 'already' || outcome === 'skipped')) {
+    return { type: 'info', text: detail ? `这些文件已经上传过，${detail}` : '这些文件已经上传过' }
+  }
+  const lead = '已上传并关联当前工单'
+  if (held) return { type: 'warning', text: detail ? `${lead}，${detail}` : `${lead}，引物未对上` }
+  if (passed) return { type: 'success', text: detail ? `${lead}，${detail}，质检通过` : `${lead}，质检通过` }
+  return { type: 'success', text: detail ? `${lead}，${detail}` : lead }
+}
+
 export default {
   name: 'LibraryConstructionResult',
   components: {
+    AbiTracePreview,
+    SeqReadPreview,
     ArrowLeft,
     Delete,
+    Document,
     Download,
     FullScreen,
     ElButton,
@@ -735,7 +984,8 @@ export default {
     ElPopover,
     ElSelect,
     ElSlider,
-    ElUpload,
+    FilePreviewer,
+    FolderOpened,
     Picture,
     RefreshLeft,
     RefreshRight,
@@ -749,16 +999,24 @@ export default {
   data() {
     return {
       loading: false,
+      loadRequest: 0,
       activeInspector: 'summary',
       order: {},
       plateDraft: '',
       files: [],
+      resultUploading: false,
+      packages: [],
+      selectedPackage: null,
+      packageFocus: null,
+      packagePath: '',
+      packageSelectedKey: '',
       currentFileId: null,
       catalogOptions: [],
       catalogLoading: false,
-      excelRows: [],
-      excelLoading: false,
       fileObjectUrls: {},
+      fileSaveVersions: {},
+      imagePreviewLoading: false,
+      imagePreviewError: '',
       fileRenameOpen: false,
       fileRenameDraft: '',
       baseline: {},
@@ -805,7 +1063,7 @@ export default {
       return this.order.status || '待处理'
     },
     currentPriority() {
-      return this.order.priority || '正常'
+      return this.order.priority || WORKBENCH_PRIORITY_DEFAULT
     },
     statusOptions() {
       return STATUS_OPTIONS
@@ -819,11 +1077,12 @@ export default {
     statusTagType() {
       return statusTone(this.currentStatus)
     },
+    priorityTone() {
+      return getTiterPriorityTone(this.currentPriority)
+    },
     priorityTagType() {
-      const priority = this.currentPriority
-      if (priority === '吉吉国王' || priority === '非常紧急') return 'danger'
-      if (priority === '加急') return 'warning'
-      return 'info'
+      const tone = this.priorityTone
+      return tone === 'king' ? 'info' : tone
     },
     group() {
       return typeGroup(this.order.build_type)
@@ -895,8 +1154,107 @@ export default {
     gelFiles() {
       return this.files.filter((file) => this.isImage(file))
     },
+    qcGaps() {
+      const status = this.currentStatus
+      if (!this.order?.id || ['已取消', '已完成', '质检不通过'].includes(status)) return []
+      const working = ['建库中', '待质检', '质检待确认', '质检通过'].includes(status) || this.files.length
+      if (!working) return []
+      const gaps = []
+      const reads = this.files.filter((file) => (
+        !file.replaced && ['SEQ', 'AB1', 'ABI'].includes(this.fileExt(file.original_name))
+      ))
+      const unmatched = reads.filter((file) => file.sequence_status === 'not_found')
+      const armOnly = reads.filter((file) => file.sequence_status === 'arm_only')
+      if (unmatched.length) {
+        gaps.push({ text: '引物未对上', title: `${unmatched.length} 个测序文件没对上引物`, tone: 'is-fail' })
+      }
+      if (armOnly.length) {
+        gaps.push({ text: '引物不对', title: '同源臂对上，中间的引物不对', tone: 'is-fail' })
+      }
+      const required = []
+      if (this.order.build_type === 'pooled_bcr') {
+        ;[
+          ['h_forward_primer_id', 'hF'],
+          ['h_reverse_primer_id', 'hR'],
+          ['k_forward_primer_id', 'kF'],
+          ['k_reverse_primer_id', 'kR'],
+          ['l_forward_primer_id', 'lF'],
+          ['l_reverse_primer_id', 'lR'],
+        ].forEach(([key, target]) => {
+          if (this.order[key]) required.push(target)
+        })
+      } else if (BARCODE_BUILDS.has(this.order.build_type)) {
+        const mode = this.order.index_mode
+        if (['single_i5', 'dual'].includes(mode) && String(this.order.i5_sequence || '').trim()) required.push('i5')
+        if (['single_i7', 'dual'].includes(mode) && String(this.order.i7_sequence || '').trim()) required.push('i7')
+      }
+      const matchedTargets = new Set(
+        reads.filter((file) => file.sequence_status === 'matched').map((file) => file.sequence_target),
+      )
+      const failedTargets = new Set([...unmatched, ...armOnly].map((file) => file.sequence_target))
+      if (reads.length && required.some((target) => !matchedTargets.has(target) && !failedTargets.has(target))) {
+        gaps.push({ text: '引物未齐', title: '需要的引物还没对全', tone: 'is-warn' })
+      }
+      if (!reads.length && (this.gelFiles.length || ['待质检', '质检待确认'].includes(status))) {
+        gaps.push({ text: '缺测序', title: '还没有测序结果', tone: 'is-warn' })
+      }
+      if (reads.length && !this.gelFiles.length) gaps.push({ text: '缺胶图', title: '还没有胶图', tone: 'is-warn' })
+      const fieldKeys = new Set(
+        orderEditorSections(this.order.build_type, this.order)
+          .flatMap((section) => section.fields || [])
+          .map((field) => field.key),
+      )
+      if (fieldKeys.has('rna_location') && !String(this.order.rna_location || '').trim()) {
+        gaps.push({ text: '缺 RNA', title: 'RNA 位置没填', tone: 'is-warn' })
+      }
+      if (fieldKeys.has('cdna_location') && !String(this.order.cdna_location || '').trim()) {
+        gaps.push({ text: '缺 cDNA', title: 'cDNA 位置没填', tone: 'is-warn' })
+      }
+      return gaps
+    },
     currentFile() {
       return this.files.find((file) => file.id === this.currentFileId) || null
+    },
+    packageBreadcrumbs() {
+      const parts = this.packagePath.split('/').filter(Boolean)
+      return parts.map((name, index) => ({
+        name,
+        path: parts.slice(0, index + 1).join('/'),
+      }))
+    },
+    packageBrowserEntries() {
+      const prefix = this.packagePath ? `${this.packagePath}/` : ''
+      const folders = new Map()
+      const files = []
+      const packageFiles = this.selectedPackage?.files || []
+      packageFiles.forEach((file) => {
+        const relative = String(file.relative_path || file.original_name || '').replaceAll('\\', '/')
+        if (!relative.startsWith(prefix)) return
+        const rest = relative.slice(prefix.length).split('/').filter(Boolean)
+        if (!rest.length) return
+        if (rest.length > 1) {
+          const name = rest[0]
+          const path = `${prefix}${name}`.replace(/\/$/, '')
+          const entry = folders.get(name) || {
+            key: `folder:${path}`,
+            type: 'folder',
+            name,
+            path,
+            count: 0,
+          }
+          entry.count += 1
+          folders.set(name, entry)
+          return
+        }
+        files.push({
+          key: `file:${file.file_id}`,
+          type: 'file',
+          name: file.original_name || rest[0],
+          file,
+        })
+      })
+      const byName = (left, right) => left.name.localeCompare(right.name, 'zh-CN', { numeric: true })
+      return [...folders.values()].sort(byName).concat(files.sort(byName))
     },
     fileRenameSuffix() {
       const currentName = this.currentFile?.original_name || ''
@@ -904,7 +1262,10 @@ export default {
       return suffixIndex > 0 ? currentName.slice(suffixIndex) : ''
     },
     showGelStage() {
-      return Boolean(this.currentFile && this.isImage(this.currentFile) && this.gelSource)
+      const file = this.currentFile
+      if (!file || !this.isImage(file) || this.imagePreviewError) return false
+      if (file.preview_object_url) return true
+      return Boolean(this.imagePreviewLoading && file.thumb_object_url)
     },
     gelSource() {
       return this.currentFile?.preview_object_url || this.currentFile?.thumb_object_url || ''
@@ -944,17 +1305,22 @@ export default {
     this.load()
   },
   mounted() {
-    window.addEventListener('keydown', this.onViewerKeydown)
-    window.addEventListener('resize', this.syncRegionOverlay)
+    this.bindViewerListeners()
   },
   activated() {
+    this.bindViewerListeners()
     if (shouldRefreshTabData(this.tabDataFetchedAt)) this.load()
   },
-  beforeUnmount() {
+  deactivated() {
+    this.unbindViewerListeners()
     this.endPan()
     this.endRegionDrawing()
-    window.removeEventListener('keydown', this.onViewerKeydown)
-    window.removeEventListener('resize', this.syncRegionOverlay)
+  },
+  beforeUnmount() {
+    this.loadRequest += 1
+    this.endPan()
+    this.endRegionDrawing()
+    this.unbindViewerListeners()
     this.revokeObjectUrls()
   },
   watch: {
@@ -965,6 +1331,18 @@ export default {
     },
   },
   methods: {
+    packageEntryIcon(entry) {
+      return entry?.type === 'folder' ? FolderOpened : this.fileIcon(entry?.name)
+    },
+    packageEntryClass(entry) {
+      return entry?.type === 'folder' ? 'is-folder' : this.fileIconClass(entry?.name)
+    },
+    storedFilePreviewUrl(fileId) {
+      return libraryStoredFileDownloadUrl(fileId, '&preview=true')
+    },
+    linkedFilePreviewUrl(linkId) {
+      return libraryFileDownloadUrl(linkId, '&preview=true')
+    },
     fieldOptions(field) {
       if (field.type === 'source-select') return this.sourceOptions
       return field.options || []
@@ -991,9 +1369,8 @@ export default {
       }
       if (field.sequenceKey) payload[field.sequenceKey] = this.order[field.sequenceKey] || null
       try {
-        const saved = await saveLibraryOrder(payload)
-        this.order = { ...this.order, ...saved }
-        this.baseline = JSON.parse(JSON.stringify(this.order))
+        await saveLibraryOrder(payload)
+        await this.load()
       } catch (error) {
         this.order = JSON.parse(JSON.stringify(this.baseline))
         notifyApiError(error, { messages: { default: '保存引物或Index失败' } })
@@ -1020,35 +1397,80 @@ export default {
     async load(preferId) {
       const orderId = this.orderId
       if (!orderId) return
+      const request = ++this.loadRequest
       this.endRegionDrawing()
       this.imageRect = null
       this.loading = true
-      const keepId = preferId || this.currentFileId
+      const startedFileId = this.currentFileId
+      const startedPackageId = this.selectedPackage?.id
+      const startedPackageFileId = this.packageFocus?.file_id
+      const startedPackagePath = this.packagePath
       try {
         const data = await fetchLibraryFiles(orderId)
-        if (orderId !== this.orderId) return
+        if (request !== this.loadRequest || orderId !== this.orderId) return
+        const userMoved = this.currentFileId !== startedFileId
+          || this.selectedPackage?.id !== startedPackageId
+          || this.packageFocus?.file_id !== startedPackageFileId
+          || this.packagePath !== startedPackagePath
+        const keepId = userMoved ? this.currentFileId : (preferId || startedFileId)
+        const keepPackageId = userMoved ? this.selectedPackage?.id : startedPackageId
+        const keepPackageFileId = userMoved ? this.packageFocus?.file_id : startedPackageFileId
+        const keepPackagePath = userMoved ? this.packagePath : startedPackagePath
         this.revokeObjectUrls()
         this.order = data?.order || {}
+        this.order.primer_sequences = data?.primer_sequences || {}
         if (!Array.isArray(this.order.target_codes)) this.order.target_codes = []
         if (!Array.isArray(this.order.plate_nos)) this.order.plate_nos = []
         this.plateDraft = plateNumbersText(this.order.plate_nos)
         this.baseline = JSON.parse(JSON.stringify(this.order))
         this.files = data?.items || []
+        this.sortFiles()
+        this.packages = data?.packages || []
         this.tabDataFetchedAt = Date.now()
-        const next = this.files.find((file) => file.id === keepId)
-          || this.gelFiles[0]
-          || this.files[0]
-          || null
+        this.selectedPackage = this.packages.find((item) => item.id === keepPackageId) || null
+        this.packageFocus = this.selectedPackage?.files?.find(
+          (item) => item.file_id === keepPackageFileId,
+        ) || null
+        this.packagePath = this.selectedPackage ? keepPackagePath : ''
+        this.packageSelectedKey = this.packageFocus
+          ? `file:${this.packageFocus.file_id}`
+          : ''
+        const next = this.selectedPackage
+          ? null
+          : this.files.find((file) => file.id === keepId)
+            || this.gelFiles[0]
+            || this.files[0]
+            || null
         this.currentFileId = next?.id || null
         this.resetView()
         this.loadImageThumbs()
         if (next) this.loadPreview(next)
       } catch (error) {
-        if (orderId !== this.orderId) return
-        notifyApiError(error, { messages: { default: '加载详情失败' } })
+        if (request !== this.loadRequest || orderId !== this.orderId) return
+        const failure = extractApiError(error)
+        const missing = failure.httpStatus === 404
+          || failure.backendMessage === '文库构建工单不存在'
+        notifyApiError(error, {
+          messages: {
+            notFound: '文库工单不存在或已删除',
+            default: '加载详情失败',
+          },
+        })
+        if (missing) {
+          this.loading = false
+          await this.$router.replace('/molecular-cell/library-construction')
+        }
       } finally {
-        if (orderId === this.orderId) this.loading = false
+        if (request === this.loadRequest && orderId === this.orderId) this.loading = false
       }
+    },
+    bindViewerListeners() {
+      window.addEventListener('keydown', this.onViewerKeydown)
+      window.addEventListener('resize', this.syncRegionOverlay)
+    },
+    unbindViewerListeners() {
+      window.removeEventListener('keydown', this.onViewerKeydown)
+      window.removeEventListener('resize', this.syncRegionOverlay)
     },
     fileExt(name) {
       const text = String(name || '')
@@ -1062,6 +1484,7 @@ export default {
       if (['ppt', 'pptx'].includes(ext)) return Monitor
       if (ext === 'pdf') return Collection
       if (['zip', 'rar', '7z'].includes(ext)) return FolderOpened
+      if (['mp4', 'webm', 'ogg', 'ogv', 'mov'].includes(ext)) return VideoPlay
       return Document
     },
     fileIconClass(name) {
@@ -1071,7 +1494,10 @@ export default {
       if (['ppt', 'pptx'].includes(ext)) return 'is-ppt'
       if (ext === 'pdf') return 'is-pdf'
       if (['zip', 'rar', '7z'].includes(ext)) return 'is-zip'
-      if (['ab1', 'abi', 'seq', 'clc', 'fasta', 'fa'].includes(ext)) return 'is-sequence'
+      if (['ab1', 'abi'].includes(ext)) return 'is-trace'
+      if (['seq', 'clc', 'fasta', 'fa'].includes(ext)) return 'is-sequence'
+      if (ext === 'txt') return 'is-text'
+      if (['mp4', 'webm', 'ogg', 'ogv', 'mov'].includes(ext)) return 'is-video'
       return ''
     },
     isImage(file) {
@@ -1081,10 +1507,40 @@ export default {
       if (String(file?.mime_type || '').startsWith('image/')) return true
       return file?.result_kind === '胶图'
     },
-    isExcel(name) {
-      const text = String(name || '').toLowerCase()
-      const ext = text.includes('.') ? text.split('.').pop() : ''
-      return EXCEL_EXT.includes(ext)
+    isVideo(file) {
+      const ext = this.fileExt(file?.original_name).toLowerCase()
+      if (VIDEO_EXT.includes(ext)) return true
+      return String(file?.mime_type || '').startsWith('video/')
+    },
+    showTileExt(file) {
+      if (this.isVideo(file)) return false
+      return !(this.isImage(file) && file.thumb_object_url)
+    },
+    isTrace(file) {
+      return ['ab1', 'abi'].includes(this.fileExt(file?.original_name).toLowerCase())
+    },
+    isSequence(file) {
+      return this.fileExt(file?.original_name).toLowerCase() === 'seq'
+    },
+    traceDirection(file) {
+      const target = String(file?.sequence_target || '')
+      if (target === 'i5' || /F$/.test(target)) return 'F'
+      if (target === 'i7' || /R$/.test(target)) return 'R'
+      const match = String(file?.original_name || '').match(/(?:^|[_-])M13([FR])(?=$|[_.-])/i)
+      if (match) return match[1].toUpperCase()
+      return ''
+    },
+    primerLabel(file) {
+      return PRIMER_TARGET_LABELS[file?.sequence_target] || ''
+    },
+    traceTargetSequence(file) {
+      const target = String(file?.sequence_target || '')
+      const source = this.order.primer_sequences?.[target] || ''
+      return assembledCheck(source, this.traceDirection(file))
+    },
+    packageDirectory(path) {
+      const parts = String(path || '').split('/').filter(Boolean)
+      return parts.length > 1 ? parts.slice(0, -1).join(' / ') : '包根目录'
     },
     fileDate(file) {
       return String(file?.created_at || '').slice(0, 10) || '—'
@@ -1096,37 +1552,26 @@ export default {
       if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
       return `${(size / (1024 * 1024)).toFixed(1)} MB`
     },
+    railSequenceLabel(file) {
+      const target = PRIMER_TARGET_LABELS[file?.sequence_target] || file?.sequence_target || '引物'
+      if (file?.sequence_status === 'matched') return `${target} 匹配`
+      if (file?.sequence_status === 'arm_only') return `${target} 不对`
+      if (file?.sequence_status === 'not_found') return `${target} 未匹配`
+      return ''
+    },
     fileMeta(file) {
       return [
         file.uploaded_by || '未知上传者',
         this.fileSize(file.byte_size),
         this.fileDate(file),
-      ].join(' · ')
-    },
-    docHint(file) {
-      if (file.result_kind === PRIMER_QC_KIND) {
-        return '用于核对引物与接头是否正确的质检文件，下载后用对应软件查看。'
-      }
-      return '这个格式没法在页面里打开，下载后用对应软件查看。'
-    },
-    authHeaders() {
-      const token = useAccessStore().accessToken
-      return token ? { Authorization: `Bearer ${token}` } : {}
-    },
-    async fetchFileBlob(url) {
-      try {
-        const response = await fetchApiResource(url, { headers: this.authHeaders() })
-        return await response.blob()
-      } catch (error) {
-        if (error instanceof ApiFetchError && error.status === 401) {
-          await handleUnauthorizedError({ response: { status: 401 } })
-        }
-        throw error
-      }
+        file.sequence_check,
+      ].filter(Boolean).join(' · ')
     },
     setObjectUrl(file, field, key, blob) {
       const previous = file[field]
       if (previous) URL.revokeObjectURL(previous)
+      const tracked = this.fileObjectUrls[key]
+      if (tracked && tracked !== previous) URL.revokeObjectURL(tracked)
       const url = URL.createObjectURL(blob)
       file[field] = url
       this.fileObjectUrls[key] = url
@@ -1137,9 +1582,12 @@ export default {
     },
     async loadImageThumb(file) {
       if (!this.isImage(file)) return
+      const request = this.loadRequest
       try {
-        const blob = await this.fetchFileBlob(libraryFileDownloadUrl(file.id, '&preview=true&thumb=1&w=240&h=160'))
-        this.setObjectUrl(file, 'thumb_object_url', `thumb_${file.id}`, blob)
+        const blob = await fetchFileBlob(libraryFileDownloadUrl(file.id, '&preview=true&thumb=1&w=240&h=160'))
+        if (request !== this.loadRequest) return
+        const current = this.files.find((item) => item.id === file.id)
+        if (current) this.setObjectUrl(current, 'thumb_object_url', `thumb_${file.id}`, blob)
       } catch {
         /* 缩略图失败时用扩展名占位 */
       }
@@ -1147,48 +1595,82 @@ export default {
     async loadImageThumbs() {
       await Promise.all(this.gelFiles.map((file) => this.loadImageThumb(file)))
     },
+    selectPackage(folder) {
+      this.endRegionDrawing()
+      this.closeFileRename()
+      this.closeRegionRename()
+      this.currentFileId = null
+      this.packageFocus = null
+      this.packagePath = ''
+      this.packageSelectedKey = ''
+      this.selectedPackage = folder
+    },
+    goPackagePath(path) {
+      this.packagePath = path
+      this.packageSelectedKey = ''
+      this.packageFocus = null
+    },
+    selectPackageEntry(entry) {
+      if (entry.type === 'folder') {
+        this.goPackagePath(entry.path)
+        return
+      }
+      this.packageSelectedKey = entry.key
+      this.openPackageFile(entry.file)
+    },
+    openPackageFile(file) {
+      this.packageFocus = file
+      this.packageSelectedKey = `file:${file.file_id}`
+      this.currentFileId = null
+    },
+    downloadStored(file) {
+      const url = file.link_id
+        ? libraryFileDownloadUrl(file.link_id)
+        : libraryStoredFileDownloadUrl(file.file_id)
+      this.download({ id: file.link_id, original_name: file.original_name }, url)
+    },
     selectFile(file) {
-      if (!file || file.id === this.currentFileId) return
+      this.selectedPackage = null
+      this.packageFocus = null
+      this.packagePath = ''
+      this.packageSelectedKey = ''
+      this.showFile(file)
+    },
+    showFile(file) {
+      if (!file) return
+      if (file.id === this.currentFileId) {
+        if (this.imagePreviewError) this.loadPreview(file)
+        return
+      }
       this.endRegionDrawing()
       this.closeFileRename()
       this.closeRegionRename()
       this.currentFileId = file.id
-      this.excelRows = []
+      this.imagePreviewError = ''
       this.imageRect = null
       this.prepareFileView()
       this.loadPreview(file)
     },
     async loadPreview(file) {
-      if (this.isImage(file)) {
-        if (file.preview_object_url) {
-          this.$nextTick(this.onStageImageLoad)
-          return
-        }
-        try {
-          const blob = await this.fetchFileBlob(libraryFileDownloadUrl(file.id, '&preview=true'))
-          if (this.currentFileId === file.id) this.setObjectUrl(file, 'preview_object_url', `preview_${file.id}`, blob)
-        } catch (error) {
-          notifyApiError(error, { messages: { default: '图片预览失败' } })
-        }
+      if (!this.isImage(file)) return
+      if (file.preview_object_url) {
+        this.$nextTick(this.onStageImageLoad)
         return
       }
-      if (this.isExcel(file.original_name)) this.loadExcel(file)
-    },
-    async loadExcel(file) {
-      this.excelLoading = true
+      const request = this.loadRequest
+      this.imagePreviewLoading = true
+      this.imagePreviewError = ''
       try {
-        const blob = await this.fetchFileBlob(libraryFileDownloadUrl(file.id, '&preview=true'))
-        if (this.currentFileId !== file.id) return
-        const XLSX = await import('xlsx')
-        const workbook = XLSX.read(await blob.arrayBuffer(), { type: 'array' })
-        const sheet = workbook.Sheets[workbook.SheetNames[0]]
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
-        this.excelRows = rows.slice(0, 200).map((row) => row.slice(0, 24))
+        const blob = await fetchFileBlob(libraryFileDownloadUrl(file.id, '&preview=true'))
+        if (request !== this.loadRequest || this.currentFileId !== file.id) return
+        const current = this.files.find((item) => item.id === file.id)
+        if (current) this.setObjectUrl(current, 'preview_object_url', `preview_${file.id}`, blob)
       } catch (error) {
-        this.excelRows = []
-        notifyApiError(error, { messages: { default: '表格预览失败' } })
+        if (request !== this.loadRequest) return
+        if (this.currentFileId === file.id) this.imagePreviewError = '图片预览失败'
+        notifyApiError(error, { messages: { default: '图片预览失败' } })
       } finally {
-        this.excelLoading = false
+        if (request === this.loadRequest && this.currentFileId === file.id) this.imagePreviewLoading = false
       }
     },
     clampZoom(value) {
@@ -1642,75 +2124,190 @@ export default {
       const next = !this.currentFile.is_final_qc
       await this.saveFileMetadata(
         { is_final_qc: next },
-        next ? '已标记为最终质检文件' : '已取消最终标记',
+        next ? '已设为最终，同名的其他文件不再参与质检' : '已取消最终标记',
       )
     },
     async saveFileMetadata(payload, successMessage) {
       if (!this.canManageFiles || !this.currentFile) return false
+      const linkId = this.currentFile.id
+      const version = (this.fileSaveVersions[linkId] || 0) + 1
+      this.fileSaveVersions[linkId] = version
       try {
         const saved = await updateLibraryFile({
-          link_id: this.currentFile.id,
+          link_id: linkId,
           order_id: this.orderId,
           ...payload,
         })
-        const current = this.files.find((item) => item.id === saved.id)
-        if (current) Object.assign(current, saved)
-        this.sortFiles()
-        this.currentFileId = saved.id
-        this.syncRegionOverlay()
+        if (this.fileSaveVersions[linkId] !== version) return true
+        if ('is_final_qc' in payload || 'original_name' in payload) {
+          await this.load(saved.id)
+        } else {
+          const current = this.files.find((item) => item.id === saved.id)
+          if (current) Object.assign(current, saved)
+          this.currentFileId = saved.id
+          this.syncRegionOverlay()
+        }
         if (successMessage) ElMessage.success(successMessage)
         return true
       } catch (error) {
+        if (this.fileSaveVersions[linkId] !== version) return false
         this.regionDraft = null
         notifyApiError(error, { messages: { default: '保存文件信息失败' } })
         return false
       }
     },
-    async download(file) {
+    async download(file, sourceUrl) {
       try {
-        const blob = await this.fetchFileBlob(libraryFileDownloadUrl(file.id))
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = file.original_name || 'download'
-        document.body.appendChild(link)
-        link.click()
-        link.remove()
-        URL.revokeObjectURL(url)
+        await downloadFile(
+          sourceUrl || libraryFileDownloadUrl(file.id),
+          file.original_name || 'download',
+        )
       } catch (error) {
         notifyApiError(error, { messages: { default: '下载失败' } })
       }
     },
-    async uploadFile({ file }) {
+    pickQcFiles() {
+      if (!this.canManageFiles || this.resultUploading) return
+      this.$refs.qcFiles.value = ''
+      this.$refs.qcFiles.click()
+    },
+    pickQcFolder() {
+      if (!this.canManageFiles || this.resultUploading) return
+      this.$refs.qcFolder.value = ''
+      this.$refs.qcFolder.click()
+    },
+    onQcFiles(event) {
+      const files = Array.from(event.target.files || []).map((file) => ({
+        file,
+        path: file.name,
+      }))
+      this.uploadDropped(files)
+    },
+    onQcFolder(event) {
+      const files = Array.from(event.target.files || []).map((file) => ({
+        file,
+        path: String(file.webkitRelativePath || file.name || '').replaceAll('\\', '/'),
+      }))
+      this.uploadDropped(files)
+    },
+    async onDropResults(event) {
+      try {
+        await this.uploadDropped(await readDroppedFiles(event.dataTransfer))
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '读取文件夹失败' } })
+      }
+    },
+    async uploadDropped(dropped) {
       if (!this.canManageFiles) {
         ElMessage.warning('您没有权限上传结果文件')
         return
       }
-      const form = new FormData()
-      form.append('file', file)
-      form.append('order_id', String(this.orderId))
+      if (!dropped.length) return
+      let rows = dropped
       try {
-        const saved = await uploadLibraryFile(form)
-        const current = this.files.find((item) => item.id === saved?.id)
-        if (current) Object.assign(current, saved)
-        else if (saved?.id) this.files.push(saved)
-        this.sortFiles()
-        const uploaded = this.files.find((item) => item.id === saved?.id)
-        if (uploaded) {
-          this.selectFile(uploaded)
-          this.loadImageThumb(uploaded)
-        }
-        this.tabDataFetchedAt = Date.now()
-        ElMessage.success('已上传')
+        rows = await expandResultArchives(dropped)
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '读取压缩包失败' } })
+        return
+      }
+      if (!rows.length) return
+      const limitError = resultUploadLimitError(rows)
+      if (limitError) {
+        ElMessage.warning(limitError)
+        return
+      }
+      if (this.resultUploading) {
+        ElMessage.info('上一批文件仍在上传，请稍候')
+        return
+      }
+      const form = new FormData()
+      form.append('order_id', String(this.orderId))
+      rows.forEach((item) => {
+        form.append('files', item.file)
+        form.append('paths', item.path)
+      })
+      this.resultUploading = true
+      try {
+        const saved = await uploadLibraryFileBatch(form)
+        await this.load(this.currentFileId)
+        const summary = saved?.summary || []
+        const notice = qcUploadNotice(summary)
+        ElMessage[notice.type](notice.text)
+        const issues = summary.flatMap((item) => (item.issues || []).map((issue) => (
+          `${item.name}：${issue.reason} ${issue.count} 个`
+        )))
+        if (issues.length) ElMessage.warning(issues.join('；'))
       } catch (error) {
         notifyApiError(error, { messages: { default: '上传失败' } })
+      } finally {
+        this.resultUploading = false
       }
     },
     sortFiles() {
-      this.files.sort((left, right) => {
-        const finalDelta = Number(Boolean(right.is_final_qc)) - Number(Boolean(left.is_final_qc))
-        return finalDelta || Number(right.id) - Number(left.id)
-      })
+      const finalThenNewest = (left, right) => (
+        Number(Boolean(right.is_final_qc)) - Number(Boolean(left.is_final_qc))
+        || Number(right.id) - Number(left.id)
+      )
+      const isRead = (file) => ['AB1', 'ABI', 'SEQ'].includes(this.fileExt(file.original_name))
+      const gels = this.files.filter((file) => this.isImage(file)).sort(finalThenNewest)
+      const others = this.files.filter((file) => !this.isImage(file) && !isRead(file)).sort(finalThenNewest)
+      const buckets = new Map()
+      this.files
+        .filter((file) => !this.isImage(file) && isRead(file))
+        .sort((left, right) => Number(left.id) - Number(right.id))
+        .forEach((file) => {
+          const name = String(file.original_name || '')
+          const stem = name.slice(0, name.lastIndexOf('.')).toLowerCase()
+          const key = `${stem}/${file.package_id || ''}`
+          if (!buckets.has(key)) buckets.set(key, { stem, traces: [], seqs: [] })
+          const bucket = buckets.get(key)
+          ;(this.fileExt(name) === 'SEQ' ? bucket.seqs : bucket.traces).push(file)
+        })
+      const pairs = [...buckets.values()].flatMap(({ stem, traces, seqs }) => (
+        Array.from({ length: Math.max(traces.length, seqs.length) }, (_, index) => {
+          const group = [traces[index], seqs[index]].filter(Boolean)
+          return {
+            stem,
+            group,
+            final: group.some((file) => file.is_final_qc),
+            newest: Math.max(...group.map((file) => Number(file.id))),
+          }
+        })
+      ))
+      pairs.sort((left, right) => (
+        left.stem.localeCompare(right.stem, 'zh-CN', { numeric: true })
+        || Number(right.final) - Number(left.final)
+        || right.newest - left.newest
+      ))
+      this.files = [...gels, ...pairs.flatMap((item) => item.group), ...others]
+    },
+    async removePackage(folder) {
+      if (!this.canManageFiles) {
+        ElMessage.warning('您没有权限删除结果文件')
+        return
+      }
+      const shared = folder.shared
+        ? '该包还关联其他工单，本次只从当前工单移除，原始包会保留。'
+        : '这是最后一个工单关联，原始包和包内文件也会删除。'
+      try {
+        await ElMessageBox.confirm(
+          `移除测序包 ${folder.name}？${shared}`,
+          '移除确认',
+          { type: 'warning', confirmButtonText: '移除' },
+        )
+      } catch {
+        return
+      }
+      try {
+        const result = await deleteLibraryPackage({
+          order_id: this.orderId,
+          package_id: folder.id,
+        })
+        ElMessage.success(result?.package_deleted ? '测序包已删除' : '已从当前工单移除')
+        await this.load()
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '删除失败' } })
+      }
     },
     async removeFile(file) {
       if (!this.canManageFiles) {
@@ -1764,7 +2361,9 @@ export default {
         if (field === 'target_codes') this.order.target_name = this.baseline.target_name
         if (field === 'plate_nos') this.plateDraft = plateNumbersText(this.order.plate_nos)
         notifyApiError(error, { messages: { default: '保存失败' } })
+        return
       }
+      if (PRIMER_RESULT_FIELDS.includes(field)) await this.load(this.currentFileId)
     },
     updateStatus(value) {
       this.order.status = value
@@ -1906,6 +2505,53 @@ export default {
   white-space: nowrap;
 }
 
+.qc-gaps {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  max-width: 280px;
+}
+
+.qc-gaps span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 10px;
+  font-size: 12px;
+  line-height: 18px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+}
+
+.qc-gaps i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.qc-gaps .is-warn {
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning-light-7);
+}
+
+.qc-gaps .is-warn i {
+  background: var(--el-color-warning);
+}
+
+.qc-gaps .is-fail {
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
+  border-color: var(--el-color-danger-light-7);
+}
+
+.qc-gaps .is-fail i {
+  background: var(--el-color-danger);
+}
+
 .save-hint {
   display: inline-flex;
   flex: none;
@@ -1995,6 +2641,7 @@ export default {
 .viewer-panel {
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
   min-width: 0;
   overflow: hidden;
   background: var(--list-surface-bg);
@@ -2266,8 +2913,225 @@ export default {
   top: calc(100% + 5px);
 }
 
-.stage-empty,
-.stage-doc {
+.stage-package {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 16px 18px 18px;
+  overflow: hidden;
+  text-align: left;
+  background: var(--el-fill-color-lighter);
+}
+
+.package-browser-head {
+  display: flex;
+  flex: none;
+  align-items: end;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.package-browser-head strong,
+.package-file strong,
+.package-preview-head strong {
+  display: block;
+}
+
+.package-browser-head span,
+.package-file span,
+.package-file small,
+.package-preview-head small {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.package-explorer {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.95fr) minmax(380px, 1.05fr);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+}
+
+.package-browser-pane,
+.package-preview-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.package-browser-pane {
+  border-right: 1px solid var(--el-border-color-lighter);
+}
+
+.package-breadcrumb {
+  display: flex;
+  flex: none;
+  gap: 5px;
+  align-items: center;
+  min-height: 42px;
+  padding: 7px 10px;
+  overflow-x: auto;
+  white-space: nowrap;
+  background: var(--el-fill-color-extra-light);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.package-breadcrumb button {
+  padding: 3px 5px;
+  color: var(--el-color-primary);
+  font-size: 12px;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+}
+
+.package-breadcrumb button:hover {
+  background: var(--el-color-primary-light-9);
+}
+
+.package-list-head,
+.package-file {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 64px 72px 76px;
+  gap: 8px;
+  align-items: center;
+}
+
+.package-list-head {
+  flex: none;
+  padding: 7px 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  background: var(--el-fill-color-light);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.package-file-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.package-file {
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  cursor: pointer;
+  background: #fff;
+  border: 0;
+  border-bottom: 1px solid var(--el-border-color-extra-light);
+}
+
+.package-entry-name {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+}
+
+.package-entry-name .el-icon {
+  flex: none;
+  color: #8b97a8;
+  font-size: 17px;
+}
+
+.package-entry-name .el-icon.is-excel { color: #217346; }
+.package-entry-name .el-icon.is-word { color: #2b579a; }
+.package-entry-name .el-icon.is-ppt { color: #d24726; }
+.package-entry-name .el-icon.is-pdf { color: #b30b00; }
+.package-entry-name .el-icon.is-zip { color: #7d6b58; }
+.package-entry-name .el-icon.is-trace { color: #6f42c1; }
+.package-entry-name .el-icon.is-sequence { color: #52627f; }
+.package-entry-name .el-icon.is-text { color: #637083; }
+.package-entry-name .el-icon.is-video { color: #3d6f8f; }
+
+.package-file strong,
+.package-file span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.package-file:hover {
+  background: var(--el-fill-color-extra-light);
+}
+
+.package-file.is-active {
+  position: relative;
+  z-index: 1;
+  background: var(--el-color-primary-light-9);
+  box-shadow: inset 3px 0 var(--el-color-primary);
+}
+
+.package-folder-empty {
+  padding: 36px 16px;
+  color: var(--el-text-color-placeholder);
+  font-size: 12px;
+  text-align: center;
+}
+
+.package-preview-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  color: var(--el-text-color-placeholder);
+}
+
+.package-preview-empty .el-icon {
+  font-size: 38px;
+}
+
+.package-preview-head {
+  display: flex;
+  flex: none;
+  gap: 12px;
+  align-items: start;
+  justify-content: space-between;
+  min-height: 64px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.package-preview-head > div {
+  min-width: 0;
+}
+
+.package-preview-head strong,
+.package-preview-head small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.package-preview-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--el-fill-color-extra-light);
+}
+
+.stage-document-preview {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+}
+
+.stage-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2282,73 +3146,16 @@ export default {
   font-size: 40px;
 }
 
-.stage-empty strong,
-.stage-doc strong {
+.stage-empty strong {
   color: var(--el-text-color-primary);
   font-size: 14px;
 }
 
-.stage-empty p,
-.stage-doc p {
+.stage-empty p {
   margin: 8px 0 0;
   color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.7;
-}
-
-.stage-doc .doc-ext {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 64px;
-  height: 70px;
-  margin-bottom: 14px;
-  color: #909399;
-  font-size: 32px;
-  background: #e8f0f8;
-  border: 1px solid #d3e1ef;
-  border-radius: 10px;
-}
-
-.stage-doc .el-button {
-  margin-top: 14px;
-}
-
-.stage-sheet {
-  width: 100%;
-  height: 100%;
-  overflow: auto;
-  background: #fff;
-}
-
-.stage-sheet table {
-  min-width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.stage-sheet tr:first-child td {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  color: var(--el-text-color-regular);
-  font-weight: 650;
-  background: var(--list-table-header-bg);
-}
-
-.stage-sheet td {
-  max-width: 200px;
-  padding: 6px 9px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  border: 1px solid #e7eaee;
-}
-
-.stage-note {
-  margin: 24px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
 }
 
 .viewer-footer {
@@ -2401,7 +3208,7 @@ export default {
 .viewer-panel.is-fullscreen {
   position: fixed;
   inset: 0;
-  z-index: 3000;
+  z-index: 1990;
   width: 100vw;
   height: 100vh;
   background: #fff;
@@ -2542,41 +3349,33 @@ export default {
   align-items: start;
 }
 
+.qc-folder-input {
+  display: none;
+}
+
 .file-upload-tile {
-  display: block;
-  width: 100%;
-  height: 92px;
-}
-
-.file-upload-tile :deep(.el-upload) {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.file-upload-tile :deep(.el-upload-dragger) {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 100%;
+  min-height: 122px;
   padding: 10px;
+  cursor: pointer;
   background: var(--el-color-primary-light-9);
   border: 1px dashed var(--el-color-primary-light-5);
   border-radius: var(--list-chip-radius);
   transition: background-color 0.16s ease, border-color 0.16s ease;
 }
 
-.file-upload-tile :deep(.el-upload-dragger:hover) {
+.file-upload-tile:hover {
   background: var(--el-color-primary-light-8);
   border-color: var(--el-color-primary);
 }
 
-.file-upload-tile :deep(.el-upload.is-disabled .el-upload-dragger) {
+.file-upload-tile.is-disabled {
   cursor: not-allowed;
-  background: #f5f7fa;
-  border-color: #dfe3e8;
+  opacity: 0.62;
 }
 
 .file-upload-tile .el-icon {
@@ -2600,7 +3399,7 @@ export default {
 .file-tile {
   position: relative;
   display: grid;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto auto auto;
   grid-template-columns: 54px minmax(0, 1fr);
   gap: 2px 9px;
   align-items: center;
@@ -2631,6 +3430,10 @@ export default {
   padding-right: 42px;
 }
 
+.file-tile.is-replaced {
+  opacity: 0.5;
+}
+
 .tile-final {
   position: absolute;
   top: 7px;
@@ -2654,8 +3457,9 @@ export default {
 }
 
 .tile-visual {
+  position: relative;
   display: flex;
-  grid-row: 1 / 3;
+  grid-row: 1 / -1;
   grid-column: 1;
   align-items: center;
   justify-content: center;
@@ -2682,18 +3486,40 @@ export default {
   font-size: 22px;
 }
 
-.tile-file-icon.is-excel,
-.stage-doc .doc-ext.is-excel { color: #217346; }
-.tile-file-icon.is-word,
-.stage-doc .doc-ext.is-word { color: #2b579a; }
-.tile-file-icon.is-ppt,
-.stage-doc .doc-ext.is-ppt { color: #d24726; }
-.tile-file-icon.is-pdf,
-.stage-doc .doc-ext.is-pdf { color: #b30b00; }
-.tile-file-icon.is-zip,
-.stage-doc .doc-ext.is-zip { color: #e6a23c; }
-.tile-file-icon.is-sequence,
-.stage-doc .doc-ext.is-sequence { color: #5b6b8c; }
+.tile-file-icon.is-excel { color: #217346; }
+.tile-file-icon.is-word { color: #2b579a; }
+.tile-file-icon.is-ppt { color: #d24726; }
+.tile-file-icon.is-pdf { color: #b30b00; }
+.tile-file-icon.is-zip { color: #7d6b58; }
+.tile-file-icon.is-trace { color: #6f42c1; }
+.tile-file-icon.is-sequence { color: #5b6b8c; }
+.tile-file-icon.is-text { color: #637083; }
+.tile-file-icon.is-video { color: #3d6f8f; }
+
+.tile-ext-badge {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  max-width: calc(100% - 4px);
+  padding: 0 3px;
+  overflow: hidden;
+  color: #fff;
+  font: 600 8px/13px Arial, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: #7f8a99;
+  border-radius: 3px;
+}
+
+.tile-ext-badge.is-excel { background: #217346; }
+.tile-ext-badge.is-word { background: #2b579a; }
+.tile-ext-badge.is-ppt { background: #d24726; }
+.tile-ext-badge.is-pdf { background: #b30b00; }
+.tile-ext-badge.is-zip { background: #c8841c; }
+.tile-ext-badge.is-trace { background: #6f42c1; }
+.tile-ext-badge.is-sequence { background: #52627f; }
+.tile-ext-badge.is-text { background: #637083; }
+.tile-ext-badge.is-video { background: #3d6f8f; }
 
 .tile-name {
   align-self: end;
@@ -2716,6 +3542,18 @@ export default {
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.file-tile small.tile-check {
+  color: var(--el-color-primary);
+}
+
+.file-tile small.tile-check.is-matched {
+  color: var(--el-color-success);
+}
+
+.file-tile small.tile-check.is-unmatched {
+  color: var(--el-color-danger);
 }
 
 .record-inspector {
@@ -2939,10 +3777,32 @@ export default {
   }
 }
 
+@container (max-width: 760px) {
+  .package-explorer {
+    grid-template-rows: minmax(220px, 0.9fr) minmax(240px, 1.1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .package-browser-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--el-border-color-lighter);
+  }
+}
+
 @media (max-width: 1180px) {
   .review-workspace {
     min-height: 620px;
     grid-template-columns: 184px minmax(0, 1fr) 320px;
+  }
+
+  .package-explorer {
+    grid-template-rows: minmax(220px, 0.9fr) minmax(240px, 1.1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .package-browser-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--el-border-color-lighter);
   }
 }
 
@@ -3006,7 +3866,7 @@ export default {
 
 @media (prefers-reduced-motion: reduce) {
   .file-tile,
-  .file-upload-tile :deep(.el-upload-dragger),
+  .file-upload-tile,
   .inspector-tabs button,
   .inspector-section {
     animation: none;

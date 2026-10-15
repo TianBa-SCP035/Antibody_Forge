@@ -7,19 +7,13 @@ import { startProgress, stopProgress } from '@vben/utils';
 
 import { accessRoutes, coreRouteNames } from '#/router/routes';
 import { useAuthStore } from '#/store';
+import { clearAllListFilters } from '#/utils/listFilterStorage';
 import {
   createAccessChecker,
   resolveUserStartPath,
 } from '#/views/Home/home-data';
 
 import { generateAccess } from './access';
-
-/** 仅浏览器 F5 冷启动时清空列表筛选暂存（站内 Tab 刷新不走此逻辑） */
-function clearListFilterStorageOnColdStart() {
-  ['serumListFilters', 'titerOrderListFilters'].forEach((key) =>
-    sessionStorage.removeItem(key),
-  );
-}
 
 /** 弹窗重登仅适用于已进入业务布局的页面；冷启动/404 应跳转登录页 */
 function shouldPreservePageForReLogin(
@@ -159,7 +153,8 @@ function setupAccessGuard(router: Router) {
     accessStore.setAccessMenus(accessibleMenus);
     accessStore.setAccessRoutes(accessibleRoutes);
     accessStore.setIsAccessChecked(true);
-    clearListFilterStorageOnColdStart();
+    // 只有 F5 冷启动会走到这里，站内 Tab 刷新不清筛选
+    clearAllListFilters();
 
     const hasAccessByCodes = createAccessChecker(accessStore.accessCodes);
     const startPath = resolveUserStartPath(userInfo.homePath, hasAccessByCodes);

@@ -7,21 +7,15 @@ from typing import Any
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from models.molecular_cell import MolecularLibraryOrder, MolecularPrimerIndexCatalog as Primer
+from models.molecular_cell import (
+    LIBRARY_PRIMER_ID_FIELDS,
+    MolecularLibraryOrder,
+    MolecularPrimerIndexCatalog as Primer,
+)
 
 MISSING_PRIMER = "引物不存在"
 NAME_TAKEN = "引物名称已存在"
 PRIMER_IN_USE = "这条引物已被文库工单使用，可以停用，不能删除"
-ORDER_PRIMER_FIELDS = (
-    "h_forward_primer_id",
-    "h_reverse_primer_id",
-    "k_forward_primer_id",
-    "k_reverse_primer_id",
-    "l_forward_primer_id",
-    "l_reverse_primer_id",
-    "i7_catalog_id",
-    "i5_catalog_id",
-)
 DEFAULT_PAGE_LIMIT = 20
 MAX_PAGE_LIMIT = 200
 MAX_OPTIONS = 500
@@ -87,7 +81,7 @@ def _sequence(value: Any, field: str, required: bool = False) -> str | None:
 
 
 def check_sequence(value: str) -> str:
-    """质检测序读到的是另一条链，核对序列就是显示序列的反向互补。"""
+    """核对序列。显示序列按测序读数转过一次，得到的就是测序文件里那一串。"""
     return value.translate(COMPLEMENT)[::-1]
 
 
@@ -314,7 +308,7 @@ def batch_delete(db: Session, ids: list[int]) -> dict[str, Any]:
     if len(rows) != len(id_list):
         raise ValueError("有引物已不存在，请刷新后再试")
     used_ids: set[int] = set()
-    for field in ORDER_PRIMER_FIELDS:
+    for field in LIBRARY_PRIMER_ID_FIELDS:
         column = getattr(MolecularLibraryOrder, field)
         found = db.scalars(select(column).where(column.in_(id_list))).all()
         used_ids.update(int(value) for value in found if value)
@@ -336,7 +330,7 @@ def delete_primer(db: Session, row_id: int) -> dict[str, int]:
         raise ValueError(MISSING_PRIMER)
     used = db.scalar(
         select(MolecularLibraryOrder.id).where(
-            or_(*(getattr(MolecularLibraryOrder, field) == row.id for field in ORDER_PRIMER_FIELDS))
+            or_(*(getattr(MolecularLibraryOrder, field) == row.id for field in LIBRARY_PRIMER_ID_FIELDS))
         )
     )
     if used:

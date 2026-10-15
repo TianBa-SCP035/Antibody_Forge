@@ -514,6 +514,7 @@ import {
 
 import { notifyApiError } from '#/api/errors'
 import { exportScheme, exportSchemePdf, fetchDetail } from '#/api/serum'
+import { downloadBlob } from '#/utils/file-resource'
 import { SERUM_ERRORS } from '../shared/errors'
 import {
   canEditSerumProject,
@@ -775,16 +776,9 @@ export default {
             response,
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           )
-          const url = window.URL.createObjectURL(blob)
-          const link = document.createElement('a')
-          link.href = url
           const code = this.postForm.project_code || this.postForm.id
           const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
-          link.download = `免疫方案_${code}_${timestamp}.xlsx`
-          document.body.appendChild(link)
-          link.click()
-          document.body.removeChild(link)
-          window.URL.revokeObjectURL(url)
+          downloadBlob(blob, `免疫方案_${code}_${timestamp}.xlsx`)
           ElMessage.success('免疫方案已导出')
         })
         .catch((err) => {

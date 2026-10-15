@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path
@@ -6,33 +6,64 @@ import hashlib
 import math
 import re
 import secrets
+import shutil
 import string
-from typing import Any
+from typing import Any, NamedTuple
 
 from fastapi import UploadFile
 from PIL import Image
 from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
 from integrations import drm_service
 from models.discovery import DiscoveryWorkbench
 from models.molecular_cell import (
+    LIBRARY_PRIMER_REFERENCE_FIELDS,
     MolecularLibraryOrder,
     MolecularLibraryResultFile,
     MolecularLibraryResultLink,
+    MolecularLibraryResultPackage,
     MolecularPrimerIndexCatalog,
 )
+from modules.discovery.workbench.constants import (
+    PLAN_STATUS_PLANNING as DISCOVERY_PLANNING,
+    PLAN_STATUS_WAIT_BOOST as DISCOVERY_WAIT_BOOST,
+    PLAN_STATUS_WAIT_HARVEST as DISCOVERY_WAIT_HARVEST,
+    PLAN_STATUS_WAIT_LIBRARY as DISCOVERY_WAIT_LIBRARY,
+    PLAN_STATUS_WAIT_PHAGE as DISCOVERY_WAIT_PHAGE,
+    PLAN_STATUS_WAIT_SEQ as DISCOVERY_WAIT_SEQ,
+    SCREENING_METHOD_BEACON,
+    SCREENING_METHOD_DAPU,
+    SCREENING_METHOD_PHAGE,
+    TERMINAL_STATUSES as DISCOVERY_TERMINAL_STATUSES,
+)
+from modules.molecular_cell.library_orders.result_upload import (
+    ROLE_GEL,
+    ROLE_READ,
+    ROLE_SKIP,
+    SEQUENCE_ARM_ONLY,
+    SEQUENCE_MATCHED,
+    SEQUENCE_NOT_FOUND,
+    extension_of,
+    IMAGE_EXTENSIONS,
+    library_codes_in_name,
+    month_directory,
+    normalize_relative_path,
+    other_directory,
+    package_file_role,
+    package_name,
+    package_signature,
+    parse_library_filename,
+    plan_upload_paths,
+    READ_EXTENSIONS,
+    safe_path_part,
+    sequence_check,
+    sequence_check_text,
+    loose_file_role,
+)
 from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_ORDER
-
-DISCOVERY_PLANNING = "规划中"
-DISCOVERY_WAIT_BOOST = "待冲击"
-DISCOVERY_WAIT_HARVEST = "待剖鼠"
-DISCOVERY_WAIT_LIBRARY = "待建库"
-DISCOVERY_WAIT_PHAGE = "待噬菌体"
-DISCOVERY_WAIT_SEQ = "待测序"
-DISCOVERY_DONE = "已完成"
-DISCOVERY_CANCELLED = "已取消"
 
 MISSING_ROW = "文库构建工单不存在"
 MISSING_FILE = "结果文件不存在"
@@ -47,6 +78,8 @@ LIBRARY_ID_ALPHABET = string.ascii_uppercase + string.digits
 STATUS_PENDING = "待处理"
 STATUS_IN_PROGRESS = "建库中"
 STATUS_WAIT_QC = "待质检"
+STATUS_QC_HOLD = "质检待确认"
+STATUS_QC_PASS = "质检通过"
 STATUS_DONE = "已完成"
 STATUS_QC_FAIL = "质检不通过"
 STATUS_CANCELLED = "已取消"
@@ -54,24 +87,14 @@ STATUS_OPTIONS = (
     STATUS_PENDING,
     STATUS_IN_PROGRESS,
     STATUS_WAIT_QC,
+    STATUS_QC_HOLD,
+    STATUS_QC_PASS,
     STATUS_DONE,
     STATUS_QC_FAIL,
     STATUS_CANCELLED,
 )
-STATUS_TRANSITIONS = {
-    STATUS_PENDING: {STATUS_PENDING, STATUS_IN_PROGRESS, STATUS_CANCELLED},
-    STATUS_IN_PROGRESS: {STATUS_PENDING, STATUS_IN_PROGRESS, STATUS_WAIT_QC, STATUS_CANCELLED},
-    STATUS_WAIT_QC: {
-        STATUS_IN_PROGRESS,
-        STATUS_WAIT_QC,
-        STATUS_DONE,
-        STATUS_QC_FAIL,
-        STATUS_CANCELLED,
-    },
-    STATUS_QC_FAIL: {STATUS_IN_PROGRESS, STATUS_WAIT_QC, STATUS_QC_FAIL, STATUS_CANCELLED},
-    STATUS_DONE: {STATUS_DONE},
-    STATUS_CANCELLED: {STATUS_CANCELLED, STATUS_PENDING},
-}
+QC_PASS = "通过"
+QC_FAIL = "不通过"
 
 BUILD_PLATE = "plate_single_cell"
 BUILD_POOLED_BCR = "pooled_bcr"
@@ -97,15 +120,6 @@ BUILD_TYPE_LABELS = {
     BUILD_PHAGE_DISPLAY: "噬菌体展示",
     BUILD_PHAGE_NGS: "噬菌体 NGS",
     BUILD_PERIPHERAL_BLOOD: "外周血 BCR",
-}
-BUILD_TYPE_HINTS = {
-    BUILD_PLATE: "Beacon、达普打板的细胞恢复",
-    BUILD_POOLED_BCR: "达普打管，文库补 H/K/L 引物",
-    BUILD_POOLED_BARCODE: "达普打管，文库补测序 Barcode",
-    BUILD_PLASMA_NGS: "Nano、Lite 样品 NGS 建库",
-    BUILD_PHAGE_DISPLAY: "用于展示筛选的噬菌体建库",
-    BUILD_PHAGE_NGS: "展示筛选产物的 NGS 建库",
-    BUILD_PERIPHERAL_BLOOD: "外周血样品 BCR 扩增",
 }
 
 SOURCE_BEACON = "beacon"
@@ -341,16 +355,6 @@ DATE_FIELDS = (
 INTEGER_FIELDS = (
     "fragment_size_bp",
 )
-CATALOG_REFERENCE_FIELDS = (
-    ("h_forward_primer_id", "h_forward_primer_name", None),
-    ("h_reverse_primer_id", "h_reverse_primer_name", None),
-    ("k_forward_primer_id", "k_forward_primer_name", None),
-    ("k_reverse_primer_id", "k_reverse_primer_name", None),
-    ("l_forward_primer_id", "l_forward_primer_name", None),
-    ("l_reverse_primer_id", "l_reverse_primer_name", None),
-    ("i7_catalog_id", "i7_name", "i7_sequence"),
-    ("i5_catalog_id", "i5_name", "i5_sequence"),
-)
 INSTRUMENT_DATE_BUILDS = frozenset({
     BUILD_PLATE,
     BUILD_POOLED_BCR,
@@ -393,8 +397,28 @@ FILE_KIND_GEL = "胶图"
 FILE_KIND_PRIMER_QC = "引物质检文件"
 FILE_KIND_OTHER = "其他"
 MAX_FILE_BYTES = 50 * 1024 * 1024
-GEL_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".gif"}
-PRIMER_QC_EXTENSIONS = {".ab1", ".abi", ".seq", ".clc", ".fasta", ".fa"}
+MAX_BATCH_BYTES = 500 * 1024 * 1024
+MAX_UPLOAD_FILES = 400
+GEL_EXTENSIONS = IMAGE_EXTENSIONS
+PRIMER_QC_EXTENSIONS = READ_EXTENSIONS | {".clc", ".fasta", ".fa"}
+INLINE_PREVIEW_EXTENSIONS = GEL_EXTENSIONS | {
+    ".seq",
+    ".txt",
+    ".fa",
+    ".fasta",
+    ".md",
+    ".log",
+    ".xls",
+    ".xlsx",
+    ".csv",
+    ".pdf",
+    ".docx",
+    ".mp4",
+    ".webm",
+    ".ogg",
+    ".ogv",
+    ".mov",
+}
 SEQUENCE_PATTERN = re.compile(r"^[ACGTRYSWKMBDHVN]+$", re.IGNORECASE)
 
 
@@ -608,10 +632,7 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
                 row.sample_source = None
 
     if "status" in data:
-        next_status = _normalize_status(data.get("status"))
-        if next_status not in STATUS_TRANSITIONS[previous_status]:
-            raise ValueError(f"状态不能从“{previous_status}”改为“{next_status}”")
-        row.status = next_status
+        row.status = _normalize_status(data.get("status"))
 
     if "priority" in data:
         row.priority = _normalize_priority(data.get("priority"))
@@ -677,9 +698,17 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
         row.qc_result = _normalize_choice(
             data.get("qc_result"), QC_RESULT_OPTIONS, "质检结论", nullable=True
         )
-    for id_field, name_field, sequence_field in CATALOG_REFERENCE_FIELDS:
+    for id_field, name_field, sequence_field in LIBRARY_PRIMER_REFERENCE_FIELDS:
         _apply_catalog_reference(db, row, data, id_field, name_field, sequence_field)
     _validate_profile(row)
+    if row.id and any(field in data for field in _SEQUENCE_RECHECK_FIELDS):
+        _recheck_order_sequences(db, row)
+    _advance_order_status(
+        db,
+        row,
+        status_chosen="status" in data,
+    )
+    _stamp_work_dates(row)
 
 
 def _validate_profile(row: MolecularLibraryOrder) -> None:
@@ -703,37 +732,230 @@ def _validate_profile(row: MolecularLibraryOrder) -> None:
         row.i7_catalog_id = row.i7_name = row.i7_sequence = None
 
 
-def get_meta() -> dict[str, Any]:
-    return {
-        "build_types": [
-            {
-                "code": code,
-                "label": BUILD_TYPE_LABELS[code],
-                "hint": BUILD_TYPE_HINTS[code],
-                "fields": sorted(PROFILE_FIELDS[code]),
-                "sample_sources": list(PROFILE_SOURCES[code]),
-            }
-            for code in BUILD_TYPE_ORDER
-        ],
-        "sample_sources": [
-            {"code": code, "label": label}
-            for code, label in SAMPLE_SOURCE_LABELS.items()
-        ],
-        "sample_types": [
-            {"code": code, "label": label}
-            for code, label in SAMPLE_TYPE_LABELS.items()
-        ],
-        "phage_experiment_types": list(PHAGE_EXPERIMENT_TYPES),
-        "index_modes": [
-            {"code": code, "label": label}
-            for code, label in INDEX_MODE_LABELS.items()
-        ],
-        "statuses": list(STATUS_OPTIONS),
-        "priorities": list(PRIORITY_ORDER),
-        "qc_results": list(QC_RESULT_OPTIONS),
-        "cell_types": list(CELL_TYPE_OPTIONS),
-        "field_labels": FIELD_LABELS,
-    }
+def _text_filled(value: Any) -> bool:
+    return bool(str(value or "").strip())
+
+
+_SEQUENCE_RECHECK_FIELDS = frozenset({
+    "build_type",
+    "index_mode",
+    *(
+        field
+        for id_field, name_field, sequence_field in LIBRARY_PRIMER_REFERENCE_FIELDS
+        for field in (id_field, name_field, sequence_field)
+        if field
+    ),
+})
+_HKL_PRIMER_SLOTS = (
+    ("hF", "h_forward_primer_id"),
+    ("hR", "h_reverse_primer_id"),
+    ("kF", "k_forward_primer_id"),
+    ("kR", "k_reverse_primer_id"),
+    ("lF", "l_forward_primer_id"),
+    ("lR", "l_reverse_primer_id"),
+)
+_BARCODE_BUILDS = frozenset({
+    BUILD_POOLED_BARCODE,
+    BUILD_PHAGE_NGS,
+    BUILD_PERIPHERAL_BLOOD,
+})
+
+
+def _configured_primers(db: Session, order: MolecularLibraryOrder) -> dict[str, str]:
+    """只收录这份工单真正要核对的引物。不加、或这个方向没填，就不出现。"""
+    primers: dict[str, str] = {}
+    if order.build_type == BUILD_POOLED_BCR:
+        for key, id_field in _HKL_PRIMER_SLOTS:
+            catalog_id = getattr(order, id_field, None)
+            if not catalog_id:
+                continue
+            catalog = db.get(MolecularPrimerIndexCatalog, catalog_id)
+            sequence = str(getattr(catalog, "short_sequence", "") or "").strip().upper()
+            if sequence:
+                primers[key] = sequence
+        return primers
+    if order.build_type not in _BARCODE_BUILDS:
+        return primers
+    mode = order.index_mode or INDEX_NONE
+    if mode in {INDEX_I5, INDEX_DUAL} and _text_filled(order.i5_sequence):
+        primers["i5"] = re.sub(r"\s+", "", str(order.i5_sequence).upper())
+    if mode in {INDEX_I7, INDEX_DUAL} and _text_filled(order.i7_sequence):
+        primers["i7"] = re.sub(r"\s+", "", str(order.i7_sequence).upper())
+    return primers
+
+
+def _final_names(links) -> set[str]:
+    return {link.original_name.casefold() for link in links if link.is_final_qc}
+
+
+def _replaced_by_final(link: MolecularLibraryResultLink, final_names: set[str]) -> bool:
+    """同名文件里另有一份标了最终时，这份不再参与质检。"""
+    return not link.is_final_qc and link.original_name.casefold() in final_names
+
+
+class QcFileFacts(NamedTuple):
+    has_gel: bool
+    has_read: bool
+    conflict: bool
+    all_matched: bool
+    partial: bool
+    checks_primers: bool
+    arm_only: bool
+
+
+def _qc_file_facts(db: Session, order: MolecularLibraryOrder) -> QcFileFacts:
+    if not order.id:
+        return QcFileFacts(False, False, False, False, False, False, False)
+    links = db.scalars(
+        select(MolecularLibraryResultLink).where(
+            MolecularLibraryResultLink.order_id == order.id,
+        )
+    ).all()
+    final_names = _final_names(links)
+    has_gel = False
+    has_read = False
+    by_target: dict[str, set[str]] = {}
+    for link in links:
+        if _replaced_by_final(link, final_names):
+            continue
+        suffix = extension_of(link.original_name)
+        if suffix in GEL_EXTENSIONS:
+            has_gel = True
+        if suffix in READ_EXTENSIONS:
+            has_read = True
+        if link.sequence_target and link.sequence_status:
+            by_target.setdefault(link.sequence_target, set()).add(link.sequence_status)
+    statuses = [by_target.get(target, set()) for target in _configured_primers(db, order)]
+    failed = {SEQUENCE_NOT_FOUND, SEQUENCE_ARM_ONLY}
+    return QcFileFacts(
+        has_gel,
+        has_read,
+        any(found & failed for found in statuses),
+        all(SEQUENCE_MATCHED in found and not (found & failed) for found in statuses),
+        any(SEQUENCE_MATCHED in found and found & failed for found in statuses),
+        bool(statuses),
+        any(SEQUENCE_ARM_ONLY in found for found in statuses),
+    )
+
+
+def _advance_order_status(
+    db: Session,
+    row: MolecularLibraryOrder,
+    *,
+    status_chosen: bool = False,
+) -> None:
+    """按当前实验事实辅助刷新；当次手工选择及终态不覆盖。"""
+    if row.status == STATUS_CANCELLED:
+        return
+    if row.qc_result == QC_FAIL:
+        row.status = STATUS_QC_FAIL
+        return
+    if row.qc_result == QC_PASS:
+        row.status = STATUS_DONE if _text_filled(row.library_location) else STATUS_QC_PASS
+        return
+    if status_chosen or row.status in {STATUS_DONE, STATUS_QC_FAIL}:
+        return
+    facts = _qc_file_facts(db, row)
+    if facts.has_read and facts.conflict:
+        row.status = STATUS_QC_HOLD
+        return
+    if facts.has_gel and facts.has_read and facts.all_matched:
+        row.status = STATUS_QC_PASS
+        return
+    if facts.has_gel or facts.has_read:
+        row.status = STATUS_WAIT_QC
+        return
+    if (
+        _text_filled(row.rna_location) or _text_filled(row.cdna_location)
+    ):
+        row.status = STATUS_IN_PROGRESS
+        return
+    if row.status in {STATUS_WAIT_QC, STATUS_QC_HOLD, STATUS_QC_PASS}:
+        row.status = STATUS_PENDING
+
+
+def _stamp_work_dates(row: MolecularLibraryOrder) -> None:
+    """位置填上才记日期，已有日期不改，清空位置也不收回。"""
+    today = date.today()
+    if row.started_at is None and (
+        _text_filled(row.rna_location) or _text_filled(row.cdna_location)
+    ):
+        row.started_at = today
+    if row.finished_at is None and _text_filled(row.library_location):
+        row.finished_at = today
+
+
+def _advance_linked_orders(db: Session, links: list[MolecularLibraryResultLink]) -> None:
+    seen: set[int] = set()
+    for link in links:
+        if link.order_id in seen:
+            continue
+        seen.add(link.order_id)
+        order = db.get(MolecularLibraryOrder, link.order_id)
+        if order is not None:
+            _advance_order_status(db, order)
+
+
+def _qc_status_detail(
+    status: str,
+    *,
+    has_gel: bool,
+    has_read: bool,
+    all_matched: bool,
+    partial: bool = False,
+    checks_primers: bool = False,
+    arm_only: bool = False,
+) -> str:
+    if status in {STATUS_QC_PASS, STATUS_DONE}:
+        return "引物已对上" if checks_primers else ""
+    if status == STATUS_QC_HOLD:
+        if arm_only and not partial:
+            return "同源臂对上，引物不对"
+        return "有文件没对上引物" if partial else "引物未对上"
+    if status != STATUS_WAIT_QC:
+        return ""
+    if not checks_primers:
+        if has_gel and not has_read:
+            return "还没有测序结果"
+        if has_read and not has_gel:
+            return "还没有胶图"
+        return "质检材料还没齐"
+    if all_matched and not has_gel:
+        return "引物已对上，还没有胶图"
+    if has_gel and not has_read:
+        return "还没有测序结果"
+    if has_read and not all_matched:
+        return "引物还没对全"
+    return "质检材料还没齐"
+
+
+def _qc_order_rows(db: Session, order_ids: set[int]) -> list[dict[str, str]]:
+    rows = []
+    for order_id in order_ids:
+        order = db.get(MolecularLibraryOrder, order_id)
+        if order is None:
+            continue
+        code = str(order.library_code or "").strip().upper()
+        if not code:
+            continue
+        facts = _qc_file_facts(db, order)
+        status = order.status or ""
+        rows.append({
+            "id": order.id,
+            "library_code": code,
+            "status": status,
+            "detail": _qc_status_detail(
+                status,
+                has_gel=facts.has_gel,
+                has_read=facts.has_read,
+                all_matched=facts.all_matched,
+                partial=facts.partial,
+                checks_primers=facts.checks_primers,
+                arm_only=facts.arm_only,
+            ),
+        })
+    rows.sort(key=lambda row: row["library_code"])
+    return rows
 
 
 def _contains(column, value: Any, *, upper: bool = False):
@@ -756,21 +978,6 @@ def _append_date_range(filters: list, column, data: dict[str, Any], start_key: s
         filters.append(column >= start)
     if end:
         filters.append(column <= end)
-
-
-def _append_datetime_range(
-    filters: list,
-    column,
-    data: dict[str, Any],
-    start_key: str,
-    end_key: str,
-) -> None:
-    start = _normalize_date(data.get(start_key)) if data.get(start_key) else None
-    end = _normalize_date(data.get(end_key)) if data.get(end_key) else None
-    if start:
-        filters.append(column >= datetime.combine(start, time.min))
-    if end:
-        filters.append(column <= datetime.combine(end, time.max))
 
 
 def _apply_list_filters(stmt, data: dict[str, Any]):
@@ -826,8 +1033,8 @@ def _apply_list_filters(stmt, data: dict[str, Any]):
         "instrument_on_start",
         "instrument_on_end",
     )
-    _append_datetime_range(filters, MolecularLibraryOrder.started_at, data, "started_at_start", "started_at_end")
-    _append_datetime_range(filters, MolecularLibraryOrder.finished_at, data, "finished_at_start", "finished_at_end")
+    _append_date_range(filters, MolecularLibraryOrder.started_at, data, "started_at_start", "started_at_end")
+    _append_date_range(filters, MolecularLibraryOrder.finished_at, data, "finished_at_start", "finished_at_end")
     return stmt.where(*filters) if filters else stmt
 
 
@@ -875,8 +1082,16 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     total = db.scalar(
         _apply_list_filters(select(func.count()).select_from(MolecularLibraryOrder), payload)
     ) or 0
+    last_page = max(1, (int(total) + limit - 1) // limit)
+    if page > last_page:
+        page = last_page
+    ordering = (
+        MolecularLibraryOrder.id.asc()
+        if str(payload.get("order") or "").strip() == "id_asc"
+        else MolecularLibraryOrder.id.desc()
+    )
     rows = db.scalars(
-        stmt.order_by(MolecularLibraryOrder.id.desc())
+        stmt.order_by(ordering)
         .offset((page - 1) * limit)
         .limit(limit)
     ).all()
@@ -891,6 +1106,36 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
 
 PROTECTED_SAVE_FIELDS = ("library_order_id", "source_discovery_id", "created_by")
 MAX_BATCH_SAVE_ITEMS = 500
+
+
+def _ensure_unique_library_codes(
+    db: Session,
+    pairs: list[tuple[int | None, Any]],
+) -> None:
+    """有内容的建库编号不能和别的工单相同。空编号不占号。"""
+    claims: dict[str, int | None] = {}
+    for row_id, raw in pairs:
+        code = _normalize_library_code(raw)
+        if not code:
+            continue
+        if code in claims:
+            raise ValueError(f"建库编号 {code} 重复")
+        claims[code] = row_id
+    if not claims:
+        return
+    rows = db.execute(
+        select(MolecularLibraryOrder.id, MolecularLibraryOrder.library_code).where(
+            MolecularLibraryOrder.library_code.in_(list(claims))
+        )
+    ).all()
+    claimed_ids = {row_id for row_id in claims.values() if row_id}
+    taken = sorted({
+        str(code or "").strip().upper()
+        for row_id, code in rows
+        if row_id not in claimed_ids and str(code or "").strip().upper() in claims
+    })
+    if taken:
+        raise ValueError(f"建库编号 {'、'.join(taken)} 已存在")
 
 
 def _writable_payload(data: dict[str, Any] | None) -> dict[str, Any]:
@@ -909,6 +1154,8 @@ def save(
     row_id = _parse_row_id(payload.get("id"))
     if payload.get("id") not in (None, "") and row_id is None:
         raise ValueError("工单 ID 不正确")
+    if "library_code" in payload:
+        _ensure_unique_library_codes(db, [(row_id, payload.get("library_code"))])
     if row_id is None:
         build_type = _normalize_build_type(payload.get("build_type"))
         row = MolecularLibraryOrder(
@@ -961,6 +1208,14 @@ def batch_save(db: Session, items: list[dict[str, Any]]) -> dict[str, Any]:
     rows_by_id = {int(row.id): row for row in locked_rows}
     if len(rows_by_id) != len(seen_ids):
         raise ValueError(MISSING_ROW)
+    _ensure_unique_library_codes(
+        db,
+        [
+            (row_id, payload.get("library_code"))
+            for row_id, payload in payloads
+            if "library_code" in payload
+        ],
+    )
     rows = []
     for row_id, payload in payloads:
         row = rows_by_id[row_id]
@@ -990,21 +1245,66 @@ def delete_order(db: Session, row_id: int) -> dict[str, int]:
         link.file_id: db.get(MolecularLibraryResultFile, link.file_id)
         for link in links
     }
+    package_ids = {
+        int(record.package_id)
+        for record in records.values()
+        if record and record.package_id
+    }
+    owned_packages = list(
+        db.scalars(
+            select(MolecularLibraryResultPackage).where(
+                MolecularLibraryResultPackage.owner_order_id == row.id
+            )
+        ).all()
+    )
+    package_ids.update(int(package.id) for package in owned_packages)
+    for package in owned_packages:
+        package.owner_order_id = None
     for link in links:
         db.delete(link)
     db.flush()
     files_to_remove: list[Path] = []
     for file_id, record in records.items():
         remaining = _count_file_links(db, file_id)
-        if not record or remaining:
+        if not record or record.package_id or remaining:
             continue
         files_to_remove.append(_full_path(record.storage_path))
         db.delete(record)
+    package_dirs_to_remove: list[Path] = []
+    for package_id in package_ids:
+        package = db.get(MolecularLibraryResultPackage, package_id)
+        if not package:
+            continue
+        remaining = int(
+            db.scalar(
+                select(func.count())
+                .select_from(MolecularLibraryResultLink)
+                .join(
+                    MolecularLibraryResultFile,
+                    MolecularLibraryResultFile.id == MolecularLibraryResultLink.file_id,
+                )
+                .where(MolecularLibraryResultFile.package_id == package.id)
+            )
+            or 0
+        )
+        if remaining or package.owner_order_id is not None:
+            continue
+        package_dirs_to_remove.append(_full_path(package.storage_prefix))
+        package_records = db.scalars(
+            select(MolecularLibraryResultFile).where(
+                MolecularLibraryResultFile.package_id == package.id
+            )
+        ).all()
+        for package_record in package_records:
+            db.delete(package_record)
+        db.delete(package)
     deleted_id = int(row.id)
     db.delete(row)
     db.commit()
     for path in files_to_remove:
         _remove_file_if_exists(path)
+    for directory in package_dirs_to_remove:
+        shutil.rmtree(directory, ignore_errors=True)
     return {"id": deleted_id}
 
 
@@ -1058,8 +1358,8 @@ def _suggested_handoff(
     }
     methods = {part.strip() for part in str(row.screening_methods or "").split(",") if part.strip()}
     suggested: list[dict[str, str]] = []
-    has_beacon = "Beacon" in methods
-    has_dapu = "达普" in methods
+    has_beacon = SCREENING_METHOD_BEACON in methods
+    has_dapu = SCREENING_METHOD_DAPU in methods
     if BUILD_PLATE not in existing_types:
         if has_beacon and has_dapu:
             suggested.append(
@@ -1069,7 +1369,7 @@ def _suggested_handoff(
             suggested.append(
                 {"build_type": BUILD_PLATE, "sample_source": SOURCE_BEACON}
             )
-    if "噬菌体" in methods and BUILD_PHAGE_DISPLAY not in existing_types:
+    if SCREENING_METHOD_PHAGE in methods and BUILD_PHAGE_DISPLAY not in existing_types:
         suggested.append(
             {"build_type": BUILD_PHAGE_DISPLAY, "sample_source": SOURCE_DIRECT}
         )
@@ -1124,7 +1424,7 @@ def _validate_handoff_item(row: DiscoveryWorkbench, item: dict[str, Any]) -> tup
 
 def _apply_discovery_status(row: DiscoveryWorkbench, created_types: list[str]) -> None:
     current = str(row.status or "").strip() or DISCOVERY_PLANNING
-    if current in {DISCOVERY_DONE, DISCOVERY_CANCELLED, DISCOVERY_WAIT_SEQ}:
+    if current in DISCOVERY_TERMINAL_STATUSES or current == DISCOVERY_WAIT_SEQ:
         return
     if BUILD_PHAGE_DISPLAY in created_types and current in {
         DISCOVERY_PLANNING,
@@ -1153,7 +1453,7 @@ def handoff(
         discovery_workbench_id=_parse_row_id(payload.get("discovery_workbench_id")),
         discovery_id=str(payload.get("discovery_id") or "").strip() or None,
     )
-    if str(row.status or "").strip() in {DISCOVERY_DONE, DISCOVERY_CANCELLED}:
+    if str(row.status or "").strip() in DISCOVERY_TERMINAL_STATUSES:
         raise ValueError("已完成或已取消的发现安排不能交接")
     normalized = [_validate_handoff_item(row, item) for item in raw_items]
     codes = row.target_codes if isinstance(row.target_codes, list) else []
@@ -1293,9 +1593,6 @@ def export_list_workbook(db: Session, data: dict[str, Any]):
             item["sample_type"], item["sample_type"]
         )
         item["index_mode"] = INDEX_MODE_LABELS.get(item["index_mode"], item["index_mode"])
-        for list_key in ("target_codes", "plate_nos"):
-            if isinstance(item.get(list_key), list):
-                item[list_key] = "、".join(item[list_key])
         table_rows.append(
             [cell_text(item.get(key)) for _, key in EXPORT_COLUMNS]
         )
@@ -1312,7 +1609,7 @@ def _full_path(relative_path: str) -> Path:
 
 
 def _infer_file_kind(filename: str) -> str:
-    suffix = Path(filename or "").suffix.lower()
+    suffix = extension_of(filename)
     if suffix in GEL_EXTENSIONS:
         return FILE_KIND_GEL
     if suffix in PRIMER_QC_EXTENSIONS:
@@ -1322,8 +1619,21 @@ def _infer_file_kind(filename: str) -> str:
     return FILE_KIND_OTHER
 
 
-def _load_order(db: Session, order_id: int) -> MolecularLibraryOrder:
-    row = db.get(MolecularLibraryOrder, int(order_id))
+def _load_order(
+    db: Session,
+    order_id: int,
+    *,
+    for_update: bool = False,
+) -> MolecularLibraryOrder:
+    row = (
+        db.scalar(
+            select(MolecularLibraryOrder)
+            .where(MolecularLibraryOrder.id == int(order_id))
+            .with_for_update()
+        )
+        if for_update
+        else db.get(MolecularLibraryOrder, int(order_id))
+    )
     if not row:
         raise ValueError(MISSING_ROW)
     return row
@@ -1336,16 +1646,127 @@ def _link_payload(
 ) -> dict[str, Any]:
     return {
         "id": link.id,
+        "package_id": record.package_id,
         "result_kind": _infer_file_kind(link.original_name),
         "original_name": link.original_name,
         "is_final_qc": bool(link.is_final_qc),
         "qc_regions": link.qc_regions if isinstance(link.qc_regions, list) else [],
         "uploaded_by": link.uploaded_by,
+        "sequence_status": link.sequence_status,
+        "sequence_target": link.sequence_target,
+        "sequence_check": sequence_check_text(
+            link.sequence_status,
+            link.sequence_target,
+        ),
+        "order_id": link.order_id,
         "created_at": link.to_dict()["created_at"],
         "mime_type": record.mime_type,
         "byte_size": record.byte_size,
         "linked_order_count": int(linked_order_count),
     }
+
+
+def _sequencing_packages(
+    db: Session,
+    order: MolecularLibraryOrder,
+) -> list[dict[str, Any]]:
+    linked_package_ids = (
+        select(MolecularLibraryResultFile.package_id)
+        .join(
+            MolecularLibraryResultLink,
+            MolecularLibraryResultLink.file_id == MolecularLibraryResultFile.id,
+        )
+        .where(
+            MolecularLibraryResultLink.order_id == order.id,
+            MolecularLibraryResultFile.package_id.is_not(None),
+        )
+    )
+    rows = db.scalars(
+        select(MolecularLibraryResultPackage)
+        .where(
+            or_(
+                MolecularLibraryResultPackage.owner_order_id == order.id,
+                MolecularLibraryResultPackage.id.in_(linked_package_ids),
+            )
+        )
+        .order_by(MolecularLibraryResultPackage.id.desc())
+    ).all()
+    packages = []
+    for package in rows:
+        records = db.scalars(
+            select(MolecularLibraryResultFile)
+            .where(MolecularLibraryResultFile.package_id == package.id)
+            .order_by(
+                MolecularLibraryResultFile.relative_path,
+                MolecularLibraryResultFile.id,
+            )
+        ).all()
+        record_ids = [record.id for record in records]
+        own_links = db.scalars(
+            select(MolecularLibraryResultLink).where(
+                MolecularLibraryResultLink.order_id == order.id,
+                MolecularLibraryResultLink.file_id.in_(record_ids),
+            )
+        ).all() if record_ids else []
+        own_by_file = {link.file_id: link for link in own_links}
+        linked_orders = set(
+            db.scalars(
+                select(MolecularLibraryResultLink.order_id)
+                .join(
+                    MolecularLibraryResultFile,
+                    MolecularLibraryResultFile.id == MolecularLibraryResultLink.file_id,
+                )
+                .where(
+                    MolecularLibraryResultFile.package_id == package.id,
+                )
+                .distinct()
+            ).all()
+        )
+        if package.owner_order_id:
+            linked_orders.add(package.owner_order_id)
+        files = []
+        for record in records:
+            own = own_by_file.get(record.id)
+            relative = record.relative_path or Path(record.storage_path).name
+            display_name = own.original_name if own else relative.rsplit("/", 1)[-1]
+            files.append(
+                {
+                    "file_id": record.id,
+                    "link_id": own.id if own else None,
+                    "original_name": display_name,
+                    "relative_path": relative,
+                    "byte_size": record.byte_size,
+                    "mime_type": record.mime_type,
+                    "result_kind": _infer_file_kind(display_name),
+                    "sequence_status": own.sequence_status if own else None,
+                    "sequence_target": own.sequence_target if own else None,
+                    "sequence_check": (
+                        sequence_check_text(own.sequence_status, own.sequence_target)
+                        if own else None
+                    ),
+                    "for_qc": own is not None,
+                }
+            )
+        packages.append(
+            {
+                "id": package.id,
+                "name": package.original_name,
+                "file_count": len(files),
+                "qc_count": sum(
+                    1
+                    for item in files
+                    if item["for_qc"]
+                    and extension_of(item["original_name"]) in READ_EXTENSIONS
+                ),
+                "linked_count": sum(1 for item in files if item["for_qc"]),
+                "shared": len(linked_orders) > 1,
+                "linked_order_count": len(linked_orders),
+                "owned": package.owner_order_id == order.id,
+                "created_at": package.to_dict()["created_at"],
+                "files": files,
+            }
+        )
+    return packages
 
 
 def list_files(db: Session, order_id: int) -> dict[str, Any]:
@@ -1369,18 +1790,27 @@ def list_files(db: Session, order_id: int) -> dict[str, Any]:
             MolecularLibraryResultFile.id == MolecularLibraryResultLink.file_id,
         )
         .join(link_counts, link_counts.c.file_id == MolecularLibraryResultLink.file_id)
-        .where(MolecularLibraryResultLink.order_id == order.id)
+        .where(
+            MolecularLibraryResultLink.order_id == order.id,
+        )
         .order_by(
             MolecularLibraryResultLink.is_final_qc.desc(),
             MolecularLibraryResultLink.id.desc(),
         )
     ).all()
+    final_names = _final_names(link for link, _record, _count in rows)
+    items = [
+        {
+            **_link_payload(link, record, linked_order_count),
+            "replaced": _replaced_by_final(link, final_names),
+        }
+        for link, record, linked_order_count in rows
+    ]
     return {
         "order": order.to_dict(),
-        "items": [
-            _link_payload(link, record, linked_order_count)
-            for link, record, linked_order_count in rows
-        ],
+        "primer_sequences": _configured_primers(db, order),
+        "items": items,
+        "packages": _sequencing_packages(db, order),
     }
 
 
@@ -1412,92 +1842,1041 @@ def _count_file_links(db: Session, file_id: int) -> int:
     )
 
 
+def _uploads_root() -> Path:
+    return Path(get_settings().repository_root) / "uploads"
+
+
+def _storage_path(relative: str) -> str:
+    return f"/{relative.replace(chr(92), '/')}"
+
+
+def _read_upload(file_obj: UploadFile, db: Session) -> tuple[str, str | None, bytes]:
+    filename = Path(file_obj.filename or "").name
+    if not filename or len(filename) > 255:
+        raise ValueError("缺少文件名")
+    content = file_obj.file.read(MAX_FILE_BYTES + 1)
+    if not content:
+        raise ValueError(f"{filename}：文件内容为空")
+    if len(content) > MAX_FILE_BYTES:
+        raise ValueError(f"{filename}：文件不能超过 50MB")
+    extension = extension_of(filename)
+    temp_path = _uploads_root() / "library_results" / ".tmp" / f"{secrets.token_hex(16)}{extension}"
+    try:
+        _write_content(temp_path, content)
+        drm_service.decrypt_upload_file_if_available(db, temp_path)
+        stored = temp_path.read_bytes()
+    finally:
+        _remove_file_if_exists(temp_path)
+    if not stored:
+        raise ValueError(f"{filename}：文件内容为空")
+    if len(stored) > MAX_FILE_BYTES:
+        raise ValueError(f"{filename}：文件不能超过 50MB")
+    return filename, file_obj.content_type, stored
+
+
+def _find_gel_record(db: Session, digest: str) -> MolecularLibraryResultFile | None:
+    return db.scalar(
+        select(MolecularLibraryResultFile).where(
+            MolecularLibraryResultFile.dedupe_key == f"gel:{digest}"
+        )
+    )
+
+
+def _place_bytes(
+    relative: str,
+    content: bytes,
+    created_paths: list[Path],
+) -> str:
+    uploads_root = _uploads_root()
+    target = uploads_root / relative
+    if target.exists():
+        path = Path(relative)
+        relative = f"{path.parent.as_posix()}/{path.stem}-{secrets.token_hex(3)}{path.suffix}"
+        target = uploads_root / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(content)
+    created_paths.append(target)
+    return relative
+
+
+def _place_shared_bytes(relative: str, content: bytes) -> bool:
+    """按确定路径排他写入可复用文件；已存在时不覆盖。"""
+    target = _uploads_root() / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with target.open("xb") as output:
+            output.write(content)
+        return True
+    except FileExistsError:
+        return False
+
+
+def _get_or_create_gel_record(
+    db: Session,
+    entry: dict[str, Any],
+    now: datetime,
+    created_paths: list[Path],
+) -> MolecularLibraryResultFile:
+    digest = entry["digest"]
+    record = _find_gel_record(db, digest)
+    if record is not None:
+        if not _full_path(record.storage_path).exists():
+            _place_shared_bytes(record.storage_path.lstrip("/"), entry["content"])
+        return record
+
+    relative = f"{month_directory('gels', now)}/{digest}{extension_of(entry['filename'])}"
+    created_path = _place_shared_bytes(relative, entry["content"])
+    try:
+        if db.get_bind().dialect.name == "sqlite":
+            record = _new_file_record(
+                db,
+                relative,
+                entry["content"],
+                entry["mime_type"],
+                digest,
+                dedupe_key=f"gel:{digest}",
+            )
+        else:
+            with db.begin_nested():
+                record = _new_file_record(
+                    db,
+                    relative,
+                    entry["content"],
+                    entry["mime_type"],
+                    digest,
+                    dedupe_key=f"gel:{digest}",
+                )
+    except IntegrityError:
+        record = _find_gel_record(db, digest)
+        if record is None:
+            raise
+        if created_path and record.storage_path != _storage_path(relative):
+            _remove_file_if_exists(_uploads_root() / relative)
+            created_path = False
+    if created_path:
+        created_paths.append(_uploads_root() / relative)
+    return record
+
+
+def _orders_for_code(db: Session, code: str) -> list[MolecularLibraryOrder]:
+    if not code:
+        return []
+    return list(db.scalars(
+        select(MolecularLibraryOrder)
+        .where(MolecularLibraryOrder.library_code == code)
+        .with_for_update()
+    ).all())
+
+
+def _linked_same_file(
+    db: Session,
+    digest: str,
+    order_id: int,
+    filename: str,
+) -> MolecularLibraryResultLink | None:
+    return db.scalar(
+        select(MolecularLibraryResultLink)
+        .join(
+            MolecularLibraryResultFile,
+            MolecularLibraryResultFile.id == MolecularLibraryResultLink.file_id,
+        )
+        .where(
+            MolecularLibraryResultFile.sha256 == digest,
+            MolecularLibraryResultLink.order_id == order_id,
+            MolecularLibraryResultLink.original_name == filename,
+        )
+    )
+
+
+def _existing_link(
+    db: Session,
+    record: MolecularLibraryResultFile,
+    order: MolecularLibraryOrder,
+) -> MolecularLibraryResultLink | None:
+    return db.scalar(
+        select(MolecularLibraryResultLink).where(
+            MolecularLibraryResultLink.file_id == record.id,
+            MolecularLibraryResultLink.order_id == order.id,
+        )
+    )
+
+
+def _attach_link(
+    db: Session,
+    record: MolecularLibraryResultFile,
+    order: MolecularLibraryOrder,
+    filename: str,
+    user_name: str,
+    sequence_status: str | None,
+    sequence_target: str | None,
+) -> MolecularLibraryResultLink:
+    link = MolecularLibraryResultLink(
+        file_id=record.id,
+        order_id=order.id,
+        original_name=filename,
+        uploaded_by=(user_name or "").strip() or None,
+        sequence_status=sequence_status,
+        sequence_target=sequence_target,
+    )
+    db.add(link)
+    db.flush()
+    return link
+
+
+def _new_file_record(
+    db: Session,
+    relative: str,
+    content: bytes,
+    mime_type: str | None,
+    digest: str,
+    *,
+    package_id: int | None = None,
+    relative_path: str | None = None,
+    dedupe_key: str | None = None,
+) -> MolecularLibraryResultFile:
+    record = MolecularLibraryResultFile(
+        package_id=package_id,
+        relative_path=relative_path,
+        storage_path=_storage_path(relative),
+        mime_type=mime_type,
+        byte_size=len(content),
+        sha256=digest,
+        dedupe_key=dedupe_key,
+    )
+    db.add(record)
+    db.flush()
+    return record
+
+
+def _safe_inner_path(value: str) -> str:
+    parts = [
+        safe_path_part(part, "file")
+        for part in normalize_relative_path(value, value).split("/")
+    ]
+    return "/".join(parts)
+
+
+def _resolve_upload_targets(
+    role: str,
+    filename: str,
+    lookup,
+) -> tuple[list[MolecularLibraryOrder], str]:
+    if role not in {ROLE_GEL, ROLE_READ}:
+        return [], ""
+    codes = (
+        library_codes_in_name(filename)
+        if role == ROLE_GEL
+        else [parse_library_filename(filename)[0]]
+    )
+    codes = [code for code in codes if code]
+    if not codes:
+        return [], (
+            "图片文件名里没有建库编号"
+            if role == ROLE_GEL
+            else "文件名里没有建库编号"
+        )
+    targets: list[MolecularLibraryOrder] = []
+    seen: set[int] = set()
+    for code in codes:
+        found = lookup(code)
+        if len(found) > 1:
+            return [], f"建库编号 {code} 对应多个工单"
+        if len(found) == 1 and found[0].id not in seen:
+            seen.add(found[0].id)
+            targets.append(found[0])
+    if targets:
+        return targets, ""
+    return [], f"建库编号 {codes[0]} 还没有对应工单"
+
+
+def _upload_targets(
+    db: Session,
+    role: str,
+    filename: str,
+) -> tuple[list[MolecularLibraryOrder], str]:
+    return _resolve_upload_targets(
+        role,
+        filename,
+        lambda code: _orders_for_code(db, code),
+    )
+
+
+def _issue_rows(reasons: list[str]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for reason in reasons:
+        if reason:
+            counts[reason] = counts.get(reason, 0) + 1
+    return [{"reason": reason, "count": count} for reason, count in counts.items()]
+
+
+def _merge_preflight_summary(
+    actual: list[dict[str, Any]],
+    preliminary: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """把未上传项和预检告警并入真实上传结果。"""
+    by_key = {
+        item.get("group_id") or item["name"]: item
+        for item in actual
+    }
+    for preview in preliminary:
+        current = by_key.get(preview.get("group_id") or preview["name"])
+        if current is None:
+            if preview["outcome"] == "skipped":
+                actual.append(preview)
+            continue
+        for key in (
+            "group_id",
+            "kind",
+            "source_path",
+            "file_count",
+            "accepted_count",
+            "matched_count",
+            "matched_codes",
+            "matched_files",
+        ):
+            if key in preview:
+                current[key] = preview[key]
+        issue_counts = {
+            issue["reason"]: int(issue["count"])
+            for issue in current.get("issues", [])
+        }
+        for issue in preview.get("issues", []):
+            reason = issue["reason"]
+            issue_counts[reason] = max(
+                issue_counts.get(reason, 0),
+                int(issue["count"]),
+            )
+        current["issues"] = [
+            {"reason": reason, "count": count}
+            for reason, count in issue_counts.items()
+        ]
+    return actual
+
+
+def _preflight_order_map(
+    db: Session,
+    codes: set[str],
+) -> dict[str, list[MolecularLibraryOrder]]:
+    if not codes:
+        return {}
+    rows = db.scalars(
+        select(MolecularLibraryOrder).where(
+            MolecularLibraryOrder.library_code.in_(sorted(codes))
+        )
+    ).all()
+    result: dict[str, list[MolecularLibraryOrder]] = {}
+    for row in rows:
+        code = str(row.library_code or "").strip().upper()
+        result.setdefault(code, []).append(row)
+    return result
+
+
+def _preflight_targets(
+    role: str,
+    filename: str,
+    orders_by_code: dict[str, list[MolecularLibraryOrder]],
+) -> tuple[list[MolecularLibraryOrder], str]:
+    return _resolve_upload_targets(
+        role,
+        filename,
+        lambda code: orders_by_code.get(code, []),
+    )
+
+
+def preflight_upload(
+    db: Session,
+    relative_paths: list[str],
+) -> dict[str, Any]:
+    """只检查批量入口的路径、文件名和工单匹配，不读取文件内容。"""
+    if not relative_paths:
+        raise ValueError("请选择文件")
+    if len(relative_paths) > MAX_UPLOAD_FILES:
+        raise ValueError(f"一次最多上传 {MAX_UPLOAD_FILES} 个文件")
+    plan = plan_upload_paths(relative_paths, strict_batch=True)
+    roles: dict[int, str] = {}
+    names = {
+        index: Path(path).name
+        for index, path in enumerate(plan.paths)
+    }
+    codes: set[str] = set()
+
+    for group in plan.packages:
+        for index, inner_path in group.entries:
+            role = package_file_role(inner_path, strict=True)
+            roles[index] = role
+            if role == ROLE_READ:
+                code, _direction = parse_library_filename(names[index])
+                if code:
+                    codes.add(code)
+    for index in plan.loose_indexes:
+        role = loose_file_role(plan.paths[index], current_order=False)
+        roles[index] = role
+        candidate_codes = (
+            library_codes_in_name(names[index])
+            if role == ROLE_GEL
+            else [parse_library_filename(names[index])[0]]
+            if role == ROLE_READ
+            else []
+        )
+        codes.update(code for code in candidate_codes if code)
+
+    orders_by_code = _preflight_order_map(db, codes)
+    accepted: set[int] = set()
+    summary: list[dict[str, Any]] = []
+
+    if plan.rootless_indexes:
+        summary.append({
+            "group_id": "rootless",
+            "kind": "rejected",
+            "name": "未选择测序包父文件夹",
+            "outcome": "skipped",
+            "file_count": len(plan.rootless_indexes),
+            "accepted_count": 0,
+            "matched_count": 0,
+            "matched_codes": [],
+            "issues": [{
+                "reason": "请同时选择包含三个已知目录的父文件夹",
+                "count": len(plan.rootless_indexes),
+            }],
+        })
+    for rejected in plan.rejected_packages:
+        summary.append({
+            "group_id": f"rejected:{rejected.root.casefold()}",
+            "kind": "rejected",
+            "source_path": rejected.root,
+            "name": package_name(rejected.root),
+            "outcome": "skipped",
+            "file_count": len(rejected.indexes),
+            "accepted_count": 0,
+            "matched_count": 0,
+            "matched_codes": [],
+            "issues": [{
+                "reason": f"不完整测序包，缺少：{'、'.join(rejected.missing_folders)}",
+                "count": 1,
+            }],
+        })
+
+    for group in plan.packages:
+        prepared: list[int] = []
+        reasons: list[str] = []
+        matched_count = 0
+        matched_codes: set[str] = set()
+        matched_files: dict[str, int] = {}
+        has_target = False
+        for index, inner_path in group.entries:
+            role = roles[index]
+            if role == ROLE_SKIP:
+                reasons.append(f"忽略其他子目录：{inner_path.split('/', 1)[0]}")
+                continue
+            prepared.append(index)
+            if role != ROLE_READ:
+                continue
+            targets, reason = _preflight_targets(role, names[index], orders_by_code)
+            if targets:
+                has_target = True
+                matched_count += 1
+                hit_codes = {
+                    str(target.library_code or "").strip().upper()
+                    for target in targets
+                    if target.library_code
+                }
+                matched_codes.update(hit_codes)
+                for code in hit_codes:
+                    matched_files[code] = matched_files.get(code, 0) + 1
+            elif reason:
+                reasons.append(reason)
+        if has_target:
+            accepted.update(prepared)
+        summary.append({
+            "group_id": f"package:{group.root.casefold()}",
+            "kind": "package",
+            "source_path": group.root,
+            "name": package_name(group.root),
+            "outcome": "ready" if has_target else "skipped",
+            "file_count": len(prepared),
+            "accepted_count": len(prepared) if has_target else 0,
+            "matched_count": matched_count,
+            "matched_codes": sorted(matched_codes),
+            "matched_files": [
+                {"code": code, "count": matched_files[code]}
+                for code in sorted(matched_files)
+            ],
+            "issues": _issue_rows(
+                reasons or ([] if has_target else ["测序包里没有文件能唯一匹配工单"])
+            ),
+        })
+
+    loose_reasons: list[str] = []
+    loose_accepted = 0
+    loose_matched_codes: set[str] = set()
+    loose_matched_files: dict[str, int] = {}
+    for index in plan.loose_indexes:
+        role = roles[index]
+        targets, reason = _preflight_targets(role, names[index], orders_by_code)
+        if targets:
+            accepted.add(index)
+            loose_accepted += 1
+            hit_codes = {
+                str(target.library_code or "").strip().upper()
+                for target in targets
+                if target.library_code
+            }
+            loose_matched_codes.update(hit_codes)
+            for code in hit_codes:
+                loose_matched_files[code] = loose_matched_files.get(code, 0) + 1
+        else:
+            loose_reasons.append(reason or "无法按建库编号归入工单")
+    if plan.loose_indexes:
+        summary.append({
+            "group_id": "loose",
+            "kind": "loose",
+            "name": "零散文件",
+            "outcome": "ready" if loose_accepted else "skipped",
+            "file_count": len(plan.loose_indexes),
+            "accepted_count": loose_accepted,
+            "matched_count": loose_accepted,
+            "matched_codes": sorted(loose_matched_codes),
+            "matched_files": [
+                {"code": code, "count": loose_matched_files[code]}
+                for code in sorted(loose_matched_files)
+            ],
+            "issues": _issue_rows(loose_reasons),
+        })
+    return {
+        "accepted_indexes": sorted(accepted),
+        "summary": summary,
+    }
+
+
+def _package_file_rows(
+    db: Session,
+    package_id: int,
+) -> list[MolecularLibraryResultFile]:
+    return list(db.scalars(
+        select(MolecularLibraryResultFile)
+        .where(MolecularLibraryResultFile.package_id == package_id)
+        .order_by(MolecularLibraryResultFile.id)
+    ).all())
+
+
+def _same_named_packages(
+    db: Session,
+    name: str,
+) -> list[MolecularLibraryResultPackage]:
+    rows = db.scalars(
+        select(MolecularLibraryResultPackage)
+        .where(func.lower(MolecularLibraryResultPackage.original_name) == name.casefold())
+        .order_by(MolecularLibraryResultPackage.id.desc())
+        .with_for_update()
+    ).all()
+    return list(rows)
+
+
+def _extendable_package(
+    db: Session,
+    name: str,
+    prepared: list[dict[str, Any]],
+) -> MolecularLibraryResultPackage | None:
+    """同名包里的文件这次都原样还在（路径和内容都相同），才往里追加。"""
+    incoming = {(entry["inner_path"].casefold(), entry["digest"]) for entry in prepared}
+    best = None
+    best_count = 0
+    for candidate in _same_named_packages(db, name):
+        stored = {
+            (str(record.relative_path or "").casefold(), record.sha256)
+            for record in _package_file_rows(db, candidate.id)
+        }
+        if stored and stored <= incoming and len(stored) > best_count:
+            best = candidate
+            best_count = len(stored)
+    return best
+
+
+def _store_package(
+    db: Session,
+    *,
+    root: str,
+    entries: list[dict[str, Any]],
+    strict: bool,
+    current_order: MolecularLibraryOrder | None,
+    user_name: str,
+    created_paths: list[Path],
+    now: datetime,
+) -> tuple[list[MolecularLibraryResultLink], dict[str, Any]]:
+    name = package_name(root)
+    prepared = []
+    reasons: list[str] = []
+    matched: list[tuple[dict[str, Any], MolecularLibraryOrder]] = []
+    matched_keys: set[tuple[str, int]] = set()
+    matched_order_ids: set[int] = set()
+    current_code = (
+        str(current_order.library_code or "").strip().upper()
+        if current_order is not None
+        else ""
+    )
+    for entry in entries:
+        inner_path = entry["inner_path"]
+        role = package_file_role(inner_path, strict=strict)
+        entry["role"] = role
+        if role == ROLE_SKIP:
+            reasons.append(f"忽略其他子目录：{inner_path.split('/', 1)[0]}")
+            continue
+        prepared.append(entry)
+        if current_order is not None:
+            # 质检页：整包挂当前工单；只关联测序结果里、编号属于当前工单的文件
+            if role != ROLE_READ or not current_code:
+                continue
+            code, _ = parse_library_filename(entry["filename"])
+            if code != current_code:
+                continue
+            key = (entry["inner_path"], int(current_order.id))
+            if key not in matched_keys:
+                matched_keys.add(key)
+                matched.append((entry, current_order))
+            matched_order_ids.add(int(current_order.id))
+            continue
+        targets, reason = _upload_targets(db, role, entry["filename"])
+        if role == ROLE_READ and not targets and reason:
+            reasons.append(reason)
+        for target in targets:
+            key = (entry["inner_path"], int(target.id))
+            if key not in matched_keys:
+                matched_keys.add(key)
+                matched.append((entry, target))
+            matched_order_ids.add(int(target.id))
+
+    if not prepared:
+        return [], {
+            "group_id": f"package:{root.casefold()}",
+            "kind": "package",
+            "source_path": root,
+            "name": name,
+            "outcome": "skipped",
+            "linked": 0,
+            "newly_linked": 0,
+            "issues": _issue_rows(reasons or ["文件夹里没有可保存的文件"]),
+        }
+    normalized_paths = [entry["inner_path"].casefold() for entry in prepared]
+    if len(normalized_paths) != len(set(normalized_paths)):
+        raise ValueError(f"测序包 {name} 中存在重复相对路径")
+    if current_order is None and not matched_order_ids:
+        return [], {
+            "group_id": f"package:{root.casefold()}",
+            "kind": "package",
+            "source_path": root,
+            "name": name,
+            "outcome": "skipped",
+            "linked": 0,
+            "newly_linked": 0,
+            "issues": _issue_rows(reasons or ["测序包里没有文件能唯一匹配工单"]),
+        }
+
+    signature = package_signature(
+        name,
+        [
+            (entry["inner_path"], entry["digest"], len(entry["content"]))
+            for entry in prepared
+        ],
+    )
+    package = db.scalar(
+        select(MolecularLibraryResultPackage)
+        .where(MolecularLibraryResultPackage.signature == signature)
+        .with_for_update()
+    )
+    if package is None:
+        package = _extendable_package(db, name, prepared)
+    created = False
+    if package is None:
+        folder = f"{safe_path_part(name, 'package')}--{signature[:8]}"
+        storage_prefix = f"{month_directory('sequencing', now)}/{folder}"
+        candidate = MolecularLibraryResultPackage(
+            original_name=name,
+            signature=signature,
+            storage_prefix=_storage_path(storage_prefix),
+            uploaded_by=(user_name or "").strip() or None,
+        )
+        try:
+            if db.get_bind().dialect.name == "sqlite":
+                db.add(candidate)
+                db.flush()
+            else:
+                with db.begin_nested():
+                    db.add(candidate)
+                    db.flush()
+            package = candidate
+            created = True
+        except IntegrityError:
+            package = db.scalar(
+                select(MolecularLibraryResultPackage)
+                .where(MolecularLibraryResultPackage.signature == signature)
+                .with_for_update()
+            )
+            if package is None:
+                raise
+    if (
+        current_order is not None
+        and not matched
+        and package.owner_order_id not in {None, current_order.id}
+    ):
+        return [], {
+            "group_id": f"package:{root.casefold()}",
+            "kind": "package",
+            "source_path": root,
+            "name": name,
+            "outcome": "skipped",
+            "linked": 0,
+            "newly_linked": 0,
+            "issues": _issue_rows(["相同文件夹已挂在其他工单"]),
+        }
+
+    storage_prefix = package.storage_prefix.lstrip("/")
+    stored = {} if created else {
+        str(record.relative_path or "").casefold(): record
+        for record in _package_file_rows(db, package.id)
+    }
+    added = False
+    for entry in prepared:
+        path_key = entry["inner_path"].casefold()
+        record = stored.get(path_key)
+        if record is not None:
+            if not _full_path(record.storage_path).exists():
+                _place_shared_bytes(record.storage_path.lstrip("/"), entry["content"])
+            continue
+        relative = _place_bytes(
+            f"{storage_prefix}/{_safe_inner_path(entry['inner_path'])}",
+            entry["content"],
+            created_paths,
+        )
+        stored[path_key] = _new_file_record(
+            db,
+            relative,
+            entry["content"],
+            entry["mime_type"],
+            entry["digest"],
+            package_id=package.id,
+            relative_path=entry["inner_path"],
+        )
+        added = True
+
+    links: list[MolecularLibraryResultLink] = []
+    new_link_count = 0
+    for entry, target in matched:
+        record = stored[entry["inner_path"].casefold()]
+        link = _existing_link(db, record, target)
+        if link is None:
+            status, sequence_target = (
+                sequence_check(
+                    entry["filename"],
+                    entry["content"],
+                    _configured_primers(db, target),
+                )
+                if entry["role"] == ROLE_READ else (None, None)
+            )
+            link = _attach_link(
+                db,
+                record,
+                target,
+                entry["filename"],
+                user_name,
+                status,
+                sequence_target,
+            )
+            new_link_count += 1
+        links.append(link)
+
+    owner_added = False
+    if current_order is not None:
+        owner_added = package.owner_order_id is None
+        if owner_added:
+            package.owner_order_id = current_order.id
+        if created:
+            outcome = "stored" if matched else "pinned"
+        elif new_link_count or added:
+            outcome = "reused"
+        elif owner_added:
+            outcome = "pinned"
+        else:
+            outcome = "already"
+    else:
+        outcome = "stored" if created else ("reused" if new_link_count or added else "already")
+
+    return links, {
+        "group_id": f"package:{root.casefold()}",
+        "kind": "package",
+        "source_path": root,
+        "id": package.id,
+        "name": name,
+        "outcome": outcome,
+        "linked": len(matched),
+        "newly_linked": new_link_count,
+        "issues": _issue_rows(reasons),
+    }
+
+
+def _restrict_qc_page_loose_targets(
+    targets: list[MolecularLibraryOrder],
+    current_order: MolecularLibraryOrder,
+) -> tuple[list[MolecularLibraryOrder], str]:
+    """质检页零散文件只挂当前工单。明确属于其他工单的不保存。"""
+    own = [item for item in targets if item.id == current_order.id]
+    if own:
+        return own, ""
+    others = [item for item in targets if item.id != current_order.id]
+    if not others:
+        return [current_order], ""
+    codes: list[str] = []
+    for item in others:
+        code = str(item.library_code or "").strip().upper()
+        if code and code not in codes:
+            codes.append(code)
+    label = "、".join(codes) if codes else "其他工单"
+    return [], f"建库编号 {label} 属于其他工单"
+
+
+def _store_loose(
+    db: Session,
+    *,
+    entry: dict[str, Any],
+    current_order: MolecularLibraryOrder | None,
+    user_name: str,
+    created_paths: list[Path],
+    now: datetime,
+) -> tuple[list[MolecularLibraryResultLink], str, int]:
+    role = loose_file_role(entry["path"], current_order=current_order is not None)
+    filename = entry["filename"]
+    targets, reason = _upload_targets(db, role, filename)
+    if current_order is not None:
+        targets, reason = _restrict_qc_page_loose_targets(targets, current_order)
+    if not targets:
+        return [], reason or "无法按建库编号归入工单", 0
+
+    if role == ROLE_GEL:
+        record = _get_or_create_gel_record(db, entry, now, created_paths)
+        links = []
+        new_count = 0
+        for target in targets:
+            link = _existing_link(db, record, target)
+            if link is None:
+                link = _attach_link(db, record, target, filename, user_name, None, None)
+                new_count += 1
+            links.append(link)
+        return links, "", new_count
+
+    links = []
+    new_count = 0
+    for target in targets:
+        existing = _linked_same_file(
+            db,
+            entry["digest"],
+            target.id,
+            filename,
+        )
+        if existing is not None:
+            links.append(existing)
+            continue
+        code, _direction = parse_library_filename(filename)
+        can_check = (
+            role == ROLE_READ
+            and bool(code)
+            and code == str(target.library_code or "").strip().upper()
+        )
+        status, sequence_target = (
+            sequence_check(filename, entry["content"], _configured_primers(db, target))
+            if can_check else (None, None)
+        )
+        new_count += 1
+        relative = _place_bytes(
+            f"{other_directory(target, now)}/{safe_path_part(filename, 'file')}",
+            entry["content"],
+            created_paths,
+        )
+        record = _new_file_record(
+            db,
+            relative,
+            entry["content"],
+            entry["mime_type"],
+            entry["digest"],
+        )
+        links.append(
+            _attach_link(
+                db,
+                record,
+                target,
+                filename,
+                user_name,
+                status,
+                sequence_target,
+            )
+        )
+    return links, "", new_count
+
+
 def upload_file(
     db: Session,
     file_obj: UploadFile,
     order_id: int,
     user_name: str = "unknown",
 ) -> dict[str, Any]:
-    order = _load_order(db, order_id)
-    filename = Path(file_obj.filename or "").name
-    if not filename:
-        raise ValueError("缺少文件名")
-    content = file_obj.file.read(MAX_FILE_BYTES + 1)
-    if not content:
-        raise ValueError("文件内容为空")
-    if len(content) > MAX_FILE_BYTES:
-        raise ValueError("文件不能超过 50MB")
-    now = datetime.now()
-    extension = Path(filename).suffix.lower()
-    uploads_root = Path(get_settings().repository_root) / "uploads"
-    temp_path = (
-        uploads_root
-        / "library_results"
-        / ".tmp"
-        / f"{secrets.token_hex(16)}{extension}"
+    result = upload_batch(
+        db,
+        [file_obj],
+        [file_obj.filename or "file"],
+        user_name,
+        order_id,
     )
-    created_path: Path | None = None
+    if not result["items"]:
+        issue = next(
+            (
+                issue["reason"]
+                for summary in result["summary"]
+                for issue in summary.get("issues", [])
+            ),
+            "文件未保存",
+        )
+        raise ValueError(issue)
+    return result["items"][0]
+
+
+def upload_batch(
+    db: Session,
+    files: list[UploadFile],
+    relative_paths: list[str],
+    user_name: str = "unknown",
+    order_id: int | None = None,
+) -> dict[str, Any]:
+    if not files:
+        raise ValueError("请选择文件")
+    if len(files) > MAX_UPLOAD_FILES:
+        raise ValueError(f"一次最多上传 {MAX_UPLOAD_FILES} 个文件")
+    raw_paths = [
+        relative_paths[index] if index < len(relative_paths) else (file_obj.filename or "file")
+        for index, file_obj in enumerate(files)
+    ]
+    preliminary_summary: list[dict[str, Any]] = []
+    if order_id is None:
+        preflight = preflight_upload(db, raw_paths)
+        accepted_indexes = preflight["accepted_indexes"]
+        preliminary_summary = preflight["summary"]
+        if not accepted_indexes:
+            return {"items": [], "summary": preliminary_summary}
+        files = [files[index] for index in accepted_indexes]
+        raw_paths = [raw_paths[index] for index in accepted_indexes]
+
+    prepared: list[dict[str, Any]] = []
+    total_bytes = 0
+    for index, file_obj in enumerate(files):
+        filename, mime_type, content = _read_upload(file_obj, db)
+        total_bytes += len(content)
+        if total_bytes > MAX_BATCH_BYTES:
+            raise ValueError("一次上传的文件总大小不能超过 500MB")
+        raw_path = raw_paths[index] if index < len(raw_paths) else filename
+        prepared.append({
+            "filename": filename,
+            "path": normalize_relative_path(raw_path, filename),
+            "mime_type": mime_type,
+            "content": content,
+            "digest": _hash_bytes(content),
+        })
+
+    current_order = _load_order(db, order_id, for_update=True) if order_id else None
+    paths = [entry["path"] for entry in prepared]
+    path_plan = plan_upload_paths(paths, strict_batch=current_order is None)
+    grouped = {
+        group.root: [
+            {**prepared[index], "inner_path": inner_path}
+            for index, inner_path in group.entries
+        ]
+        for group in path_plan.packages
+    }
+    loose = [prepared[index] for index in path_plan.loose_indexes]
+
+    created_paths: list[Path] = []
+    links: list[MolecularLibraryResultLink] = []
+    summary: list[dict[str, Any]] = []
+    summary_order_ids: list[set[int]] = []
+    now = datetime.now()
     try:
-        _write_content(temp_path, content)
-        drm_service.decrypt_upload_file_if_available(db, temp_path)
-        stored_content = temp_path.read_bytes()
-        digest = _hash_bytes(stored_content)
-        record = db.scalar(
-            select(MolecularLibraryResultFile).where(
-                MolecularLibraryResultFile.sha256 == digest
+        for root, entries in grouped.items():
+            stored_links, result = _store_package(
+                db,
+                root=root,
+                entries=entries,
+                strict=current_order is None,
+                current_order=current_order,
+                user_name=user_name,
+                created_paths=created_paths,
+                now=now,
             )
-        )
-        if record is None:
-            relative = (
-                f"library_results/{now.strftime('%Y')}/{now.strftime('%m')}/"
-                f"{digest}{extension}"
+            links.extend(stored_links)
+            summary.append(result)
+            summary_order_ids.append({int(link.order_id) for link in stored_links})
+        loose_reasons: list[str] = []
+        loose_links = []
+        loose_new_count = 0
+        for entry in loose:
+            stored_links, reason, new_count = _store_loose(
+                db,
+                entry=entry,
+                current_order=current_order,
+                user_name=user_name,
+                created_paths=created_paths,
+                now=now,
             )
-            full_path = uploads_root / relative
-            full_path.parent.mkdir(parents=True, exist_ok=True)
-            temp_path.replace(full_path)
-            created_path = full_path
-            record = MolecularLibraryResultFile(
-                storage_path=f"/{relative.replace(chr(92), '/')}",
-                mime_type=file_obj.content_type,
-                byte_size=len(stored_content),
-                sha256=digest,
-            )
-            db.add(record)
-            db.flush()
-        else:
-            existing_path = _full_path(record.storage_path)
-            if not existing_path.exists():
-                existing_path.parent.mkdir(parents=True, exist_ok=True)
-                temp_path.replace(existing_path)
-                created_path = existing_path
-            else:
-                _remove_file_if_exists(temp_path)
-        link = db.scalar(
-            select(MolecularLibraryResultLink).where(
-                MolecularLibraryResultLink.file_id == record.id,
-                MolecularLibraryResultLink.order_id == order.id,
-            )
-        )
-        if link is None:
-            link = MolecularLibraryResultLink(
-                file_id=record.id,
-                order_id=order.id,
-                original_name=filename,
-                uploaded_by=(user_name or "").strip() or None,
-            )
-            db.add(link)
-        else:
-            link.original_name = filename
-            link.uploaded_by = (user_name or "").strip() or None
+            loose_links.extend(stored_links)
+            loose_new_count += new_count
+            if reason:
+                loose_reasons.append(reason)
+        links.extend(loose_links)
+        if loose or loose_reasons:
+            summary.append({
+                "group_id": "loose",
+                "kind": "loose",
+                "name": "零散文件",
+                "outcome": (
+                    "stored"
+                    if loose_new_count
+                    else "already"
+                    if loose_links
+                    else "skipped"
+                ),
+                "linked": len(loose_links),
+                "newly_linked": loose_new_count,
+                "issues": _issue_rows(loose_reasons),
+            })
+            summary_order_ids.append({int(link.order_id) for link in loose_links})
+        _advance_linked_orders(db, links)
+        for item, order_ids in zip(summary, summary_order_ids, strict=True):
+            item["orders"] = _qc_order_rows(db, order_ids)
         db.commit()
     except Exception:
         db.rollback()
-        _remove_file_if_exists(temp_path)
-        if created_path is not None:
-            _remove_file_if_exists(created_path)
+        for path in created_paths:
+            try:
+                relative = path.relative_to(_uploads_root()).as_posix()
+                referenced = db.scalar(
+                    select(MolecularLibraryResultFile.id).where(
+                        MolecularLibraryResultFile.storage_path == _storage_path(relative)
+                    )
+                )
+            except Exception:
+                db.rollback()
+                referenced = None
+            if referenced is None:
+                _remove_file_if_exists(path)
         raise
-    db.refresh(link)
-    return _link_payload(link, record, _count_file_links(db, record.id))
+    items = []
+    for link in links:
+        db.refresh(link)
+        record = db.get(MolecularLibraryResultFile, link.file_id)
+        items.append(_link_payload(
+            link,
+            record,
+            _count_file_links(db, record.id),
+        ))
+    return {
+        "items": items,
+        "summary": _merge_preflight_summary(summary, preliminary_summary),
+    }
 
 
 def _normalize_qc_region(value: Any) -> dict[str, float | str]:
@@ -1554,6 +2933,43 @@ def _normalize_result_filename(value: Any, current_name: str) -> str:
     return name
 
 
+def _recheck_link_sequence(
+    link: MolecularLibraryResultLink,
+    record: MolecularLibraryResultFile,
+    order: MolecularLibraryOrder,
+    primers: dict[str, str],
+) -> None:
+    if extension_of(link.original_name) not in READ_EXTENSIONS:
+        link.sequence_status = None
+        link.sequence_target = None
+        return
+    path = _full_path(record.storage_path)
+    if not path.exists():
+        return
+    status, target = sequence_check(link.original_name, path.read_bytes(), primers)
+    link.sequence_status = status
+    link.sequence_target = target
+
+
+def _recheck_order_sequences(
+    db: Session,
+    order: MolecularLibraryOrder,
+) -> None:
+    rows = db.execute(
+        select(MolecularLibraryResultLink, MolecularLibraryResultFile)
+        .join(
+            MolecularLibraryResultFile,
+            MolecularLibraryResultFile.id == MolecularLibraryResultLink.file_id,
+        )
+        .where(
+            MolecularLibraryResultLink.order_id == order.id,
+        )
+    ).all()
+    primers = _configured_primers(db, order)
+    for link, record in rows:
+        _recheck_link_sequence(link, record, order, primers)
+
+
 def update_file_link(
     db: Session,
     link_id: int,
@@ -1564,8 +2980,6 @@ def update_file_link(
     link = db.get(MolecularLibraryResultLink, int(link_id))
     if not link or link.order_id != order.id:
         raise ValueError(MISSING_FILE)
-    if "is_final_qc" in data:
-        link.is_final_qc = bool(data.get("is_final_qc"))
     if "qc_regions" in data:
         link.qc_regions = _normalize_qc_regions(data.get("qc_regions"))
     if "original_name" in data:
@@ -1573,12 +2987,35 @@ def update_file_link(
             data.get("original_name"),
             link.original_name,
         )
+        record = db.get(MolecularLibraryResultFile, link.file_id)
+        if record:
+            _recheck_link_sequence(link, record, order, _configured_primers(db, order))
+    if "is_final_qc" in data:
+        link.is_final_qc = bool(data.get("is_final_qc"))
+        if link.is_final_qc:
+            others = db.scalars(
+                select(MolecularLibraryResultLink).where(
+                    MolecularLibraryResultLink.order_id == order.id,
+                    MolecularLibraryResultLink.id != link.id,
+                    MolecularLibraryResultLink.is_final_qc.is_(True),
+                )
+            ).all()
+            for other in others:
+                if other.original_name.casefold() == link.original_name.casefold():
+                    other.is_final_qc = False
+    if "original_name" in data or "is_final_qc" in data:
+        db.flush()
+        _advance_order_status(db, order)
     db.commit()
     db.refresh(link)
     record = db.get(MolecularLibraryResultFile, link.file_id)
     if not record:
         raise ValueError(MISSING_FILE)
-    return _link_payload(link, record, _count_file_links(db, record.id))
+    return _link_payload(
+        link,
+        record,
+        _count_file_links(db, record.id),
+    )
 
 
 def delete_file(db: Session, link_id: int, order_id: int | None = None) -> dict[str, Any]:
@@ -1590,16 +3027,87 @@ def delete_file(db: Session, link_id: int, order_id: int | None = None) -> dict[
         if link.order_id != int(order_id):
             raise ValueError(MISSING_FILE)
     record = db.get(MolecularLibraryResultFile, link.file_id)
+    if record and record.package_id:
+        raise ValueError("测序包里的文件不单独删除，请移除整个测序包")
+    affected_order = db.get(MolecularLibraryOrder, link.order_id)
     full_path: Path | None = None
     db.delete(link)
     db.flush()
-    remaining = _count_file_links(db, link.file_id)
-    if record and not remaining:
+    if record and not _count_file_links(db, link.file_id):
         full_path = _full_path(record.storage_path)
         db.delete(record)
+    if affected_order:
+        _advance_order_status(db, affected_order)
     db.commit()
-    file_deleted = full_path is not None and _remove_file_if_exists(full_path)
-    return {"id": int(link_id), "file_deleted": file_deleted}
+    return {
+        "id": int(link_id),
+        "file_deleted": full_path is not None and _remove_file_if_exists(full_path),
+    }
+
+
+def delete_package(db: Session, order_id: int, package_id: int) -> dict[str, Any]:
+    order = _load_order(db, order_id)
+    package = db.get(MolecularLibraryResultPackage, int(package_id))
+    if not package:
+        raise ValueError(MISSING_FILE)
+    records = list(db.scalars(
+        select(MolecularLibraryResultFile).where(
+            MolecularLibraryResultFile.package_id == package.id
+        )
+    ).all())
+    record_ids = [record.id for record in records]
+    own_links = list(db.scalars(
+        select(MolecularLibraryResultLink).where(
+            MolecularLibraryResultLink.order_id == order.id,
+            MolecularLibraryResultLink.file_id.in_(record_ids),
+        )
+    ).all()) if record_ids else []
+    owns_package = package.owner_order_id == order.id or bool(own_links)
+    if not owns_package:
+        raise ValueError(MISSING_FILE)
+    for link in own_links:
+        db.delete(link)
+    if package.owner_order_id == order.id:
+        package.owner_order_id = None
+    db.flush()
+    remaining_links = int(
+        db.scalar(
+            select(func.count())
+            .select_from(MolecularLibraryResultLink)
+            .join(
+                MolecularLibraryResultFile,
+                MolecularLibraryResultFile.id == MolecularLibraryResultLink.file_id,
+            )
+            .where(MolecularLibraryResultFile.package_id == package.id)
+        )
+        or 0
+    )
+    package_deleted = not remaining_links and package.owner_order_id is None
+    storage_dir = _full_path(package.storage_prefix)
+    if package_deleted:
+        for record in records:
+            db.delete(record)
+        db.delete(package)
+    _advance_order_status(db, order)
+    db.commit()
+    if package_deleted:
+        shutil.rmtree(storage_dir, ignore_errors=True)
+    return {
+        "id": int(package_id),
+        "package_deleted": package_deleted,
+        "unlinked": len(own_links),
+    }
+
+
+def get_stored_file(db: Session, file_id: int) -> tuple[str, Path]:
+    record = db.get(MolecularLibraryResultFile, int(file_id))
+    if not record or record.package_id is None:
+        raise ValueError(MISSING_FILE)
+    full_path = _full_path(record.storage_path)
+    if not full_path.exists():
+        raise ValueError("磁盘上找不到文件")
+    name = (record.relative_path or Path(record.storage_path).name).rsplit("/", 1)[-1]
+    return name, full_path
 
 
 def get_download_record(
@@ -1635,3 +3143,71 @@ def create_thumbnail(
         return None
     output.seek(0)
     return output, f"image/{image_format.lower()}"
+
+
+def read_trace_preview(file_path: Path) -> dict[str, Any]:
+    """读取 ABI/AB1 峰图，返回给前端绘制所需的结构化数据。"""
+    try:
+        from Bio import SeqIO
+
+        record = SeqIO.read(file_path, "abi")
+        raw = record.annotations["abif_raw"]
+        order_value = raw.get("FWO_1", b"GATC")
+        order = (
+            order_value.decode("ascii", "ignore")
+            if isinstance(order_value, bytes)
+            else str(order_value)
+        )
+        channels = {
+            base: tuple(raw[f"DATA{9 + index}"])
+            for index, base in enumerate(order[:4])
+            if base in {"A", "C", "G", "T"} and f"DATA{9 + index}" in raw
+        }
+        if set(channels) != {"A", "C", "G", "T"}:
+            raise ValueError("峰图中没有通道数据")
+        sample_count = min(min(len(values) for values in channels.values()), 100_000)
+        if sample_count < 2:
+            raise ValueError("峰图通道数据不完整")
+        base_calls = raw.get("PBAS2", bytes(str(record.seq), "ascii"))
+        if isinstance(base_calls, bytes):
+            base_calls = base_calls.decode("ascii", "ignore")
+        base_positions = tuple(raw.get("PLOC2", ()))
+        qualities = tuple(raw.get("PCON2", ()))
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        raise ValueError("ABI/AB1 峰图解析失败") from exc
+
+    base_entries = [
+        {
+            "base": base,
+            "position": int(position),
+            "quality": int(qualities[index]) if index < len(qualities) else None,
+        }
+        for index, (base, position) in enumerate(zip(base_calls, base_positions))
+        if 0 <= int(position) < sample_count
+    ]
+    percentile_step = max(1, sample_count // 20_000)
+    values = sorted(
+        value
+        for channel in channels.values()
+        for value in channel[:sample_count:percentile_step]
+    )
+    signal_max = max(values[min(int(len(values) * 0.995), len(values) - 1)], 1)
+    average_spacing = (
+        (base_entries[-1]["position"] - base_entries[0]["position"])
+        / max(len(base_entries) - 1, 1)
+        if len(base_entries) > 1
+        else 12
+    )
+    return {
+        "sample_count": sample_count,
+        "signal_max": signal_max,
+        "initial_window": min(
+            sample_count - 1,
+            max(300, int(average_spacing * 30)),
+        ),
+        "channels": {
+            base: list(channels[base][:sample_count])
+            for base in ("A", "C", "G", "T")
+        },
+        "bases": base_entries,
+    }

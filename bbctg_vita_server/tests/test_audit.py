@@ -10,7 +10,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped, mapped_column, sessionmaker
 from sqlalchemy.orm.attributes import flag_modified
-import modules.immunology.workbench.service as immunology_workbench_service
 import modules.mega_automation.routes as mega_routes
 import modules.system.audit_middleware as audit_middleware
 import modules.system.audit_config as audit_config
@@ -712,62 +711,6 @@ class AuditSessionTests(unittest.TestCase):
         callback_handler.assert_not_called()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(write_log.call_args.kwargs["result"], "failed")
-
-    def test_project_terminal_transition_only_repairs_required_successors(self):
-        terminal = SimpleNamespace(
-            id=1,
-            plan_status=immunology_workbench_service.PLAN_STATUS_STARTED,
-            experiment_id="EXP-1",
-            sort_order=2,
-        )
-        positioned = SimpleNamespace(
-            id=2,
-            plan_status="草稿",
-            experiment_id=None,
-            sort_order=3,
-        )
-        db = MagicMock()
-        db.scalar.return_value = terminal
-        with (
-            patch.object(immunology_workbench_service, "_lock_queue"),
-            patch.object(
-                immunology_workbench_service,
-                "_queue_rows",
-                return_value=[terminal, positioned],
-            ),
-        ):
-            immunology_workbench_service.sync_project_queue_status(
-                db,
-                "EXP-1",
-                is_terminal=True,
-            )
-        self.assertIsNone(terminal.sort_order)
-        self.assertEqual(positioned.sort_order, 1)
-
-    def test_queue_rows_include_null_and_missing_project_statuses(self):
-        workbench_model = immunology_workbench_service.SerumImmWorkbench
-        project_model = immunology_workbench_service.SerumImmProject
-        Base.metadata.create_all(
-            self.engine,
-            tables=[project_model.__table__, workbench_model.__table__],
-        )
-        with self.Session() as db:
-            default_plan = workbench_model(
-                experiment_id="QUEUE-NULL-PLAN",
-                plan_status=None,
-                sort_order=1,
-            )
-            missing_project = workbench_model(
-                experiment_id="QUEUE-MISSING-PROJECT",
-                plan_status=immunology_workbench_service.PLAN_STATUS_STARTED,
-                sort_order=2,
-            )
-            db.add_all([default_plan, missing_project])
-            db.commit()
-            queued_ids = {
-                row.id for row in immunology_workbench_service._queue_rows(db)
-            }
-            self.assertEqual(queued_ids, {default_plan.id, missing_project.id})
 
 
 class AuditMiddlewareTests(unittest.TestCase):

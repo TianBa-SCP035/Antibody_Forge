@@ -1,9 +1,23 @@
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, CHAR, Date, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, CHAR, Date, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
+
+LIBRARY_PRIMER_REFERENCE_FIELDS = (
+    ("h_forward_primer_id", "h_forward_primer_name", None),
+    ("h_reverse_primer_id", "h_reverse_primer_name", None),
+    ("k_forward_primer_id", "k_forward_primer_name", None),
+    ("k_reverse_primer_id", "k_reverse_primer_name", None),
+    ("l_forward_primer_id", "l_forward_primer_name", None),
+    ("l_reverse_primer_id", "l_reverse_primer_name", None),
+    ("i7_catalog_id", "i7_name", "i7_sequence"),
+    ("i5_catalog_id", "i5_name", "i5_sequence"),
+)
+LIBRARY_PRIMER_ID_FIELDS = tuple(
+    id_field for id_field, _, _ in LIBRARY_PRIMER_REFERENCE_FIELDS
+)
 
 
 def _format_value(value):
@@ -155,18 +169,62 @@ class MolecularPrimerIndexCatalog(Base):
         }
 
 
+class MolecularLibraryResultPackage(Base):
+    __tablename__ = "molecular_library_result_package"
+    __table_args__ = (
+        UniqueConstraint("signature", name="uk_molecular_library_result_package_signature"),
+        {"comment": "文库测序结果包"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False, comment="原文件夹名")
+    signature: Mapped[str] = mapped_column(CHAR(64), nullable=False, comment="包内容指纹")
+    storage_prefix: Mapped[str] = mapped_column(String(1024), nullable=False, comment="包存储目录")
+    owner_order_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("molecular_library_order.id"),
+        index=True,
+        comment="质检页上传所属工单",
+    )
+    uploaded_by: Mapped[str | None] = mapped_column(String(64), comment="上传人")
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), comment="上传时间"
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            column.name: _format_value(getattr(self, column.name))
+            for column in self.__table__.columns
+        }
+
+
 class MolecularLibraryResultFile(Base):
     __tablename__ = "molecular_library_result_file"
     __table_args__ = (
-        UniqueConstraint("sha256", name="uk_molecular_library_result_sha256"),
+        Index("idx_molecular_library_result_sha256", "sha256"),
+        UniqueConstraint("dedupe_key", name="uk_molecular_library_result_dedupe_key"),
         {"comment": "文库结果文件"},
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    package_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("molecular_library_result_package.id"),
+        index=True,
+        comment="所属测序包",
+    )
+    relative_path: Mapped[str | None] = mapped_column(
+        String(1024),
+        comment="包内相对路径",
+    )
     storage_path: Mapped[str] = mapped_column(String(1024), nullable=False, comment="存储路径")
     mime_type: Mapped[str | None] = mapped_column(String(128), comment="文件MIME")
     byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="文件大小")
     sha256: Mapped[str] = mapped_column(CHAR(64), nullable=False, comment="文件哈希")
+    dedupe_key: Mapped[str | None] = mapped_column(
+        String(80),
+        comment="可复用物理文件去重键",
+    )
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime, server_default=func.current_timestamp(), comment="首次保存时间"
     )
@@ -213,6 +271,8 @@ class MolecularLibraryResultLink(Base):
         comment="质检选区列表",
     )
     uploaded_by: Mapped[str | None] = mapped_column(String(64), comment="上传人")
+    sequence_status: Mapped[str | None] = mapped_column(String(32), comment="序列核对状态")
+    sequence_target: Mapped[str | None] = mapped_column(String(8), comment="序列核对目标")
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime, server_default=func.current_timestamp(), comment="上传时间"
     )

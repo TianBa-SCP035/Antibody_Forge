@@ -279,8 +279,6 @@
 </template>
 
 <script>
-import { useAccessStore } from '@vben/stores'
-
 import {
   Aim,
   Collection,
@@ -314,9 +312,9 @@ import {
 } from 'element-plus'
 import * as XLSX from 'xlsx'
 
-import { ApiFetchError, fetchApiResource, notifyApiError } from '#/api/errors'
+import { notifyApiError } from '#/api/errors'
 import { fetchElisaPlates, fetchFacsPlates, fetchIndexFiles, skipGlobalErrorHandler } from '#/api/serum'
-import { handleUnauthorizedError } from '#/utils/auth-session'
+import { downloadFile, fetchFileBlob } from '#/utils/file-resource'
 import { SERUM_ERRORS } from '../shared/errors'
 import {
   createDefaultLowerSlotList,
@@ -373,10 +371,6 @@ export default {
       type: Boolean,
       default: false,
     },
-  },
-  setup() {
-    const accessStore = useAccessStore()
-    return { accessStore }
   },
   data() {
     return {
@@ -593,7 +587,7 @@ export default {
           const file = this.fileList.find((f) => f.id === plate.excel_file_id)
           if (!file || !this.isExcel(file.file_name)) return null
           try {
-            const blob = await this.fetchFileBlob(this.getDownloadUrl(file, true))
+            const blob = await fetchFileBlob(this.getDownloadUrl(file, true))
             const parsed = parseElisaArrayBuffer(await blob.arrayBuffer(), file.file_name)
             if (parsed.error || !parsed.primary?.matrix) return null
             return { key: this.getPlateKey(plate), sheets: parsed.extraSheets || [] }
@@ -650,15 +644,7 @@ export default {
     },
     async handleDownload(file) {
       try {
-        const blob = await this.fetchFileBlob(this.getDownloadUrl(file))
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = file.file_name
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        URL.revokeObjectURL(url)
+        await downloadFile(this.getDownloadUrl(file), file.file_name)
       } catch (error) {
         notifyApiError(error, { messages: SERUM_ERRORS.titer.download })
       }
@@ -704,21 +690,6 @@ export default {
       const ext = this.getFileExt(filename)
       return ['xls', 'xlsx', 'csv'].includes(ext)
     },
-    authHeaders() {
-      const token = this.accessStore.accessToken
-      return token ? { Authorization: `Bearer ${token}` } : {}
-    },
-    async fetchFileBlob(url) {
-      try {
-        const response = await fetchApiResource(url, { headers: this.authHeaders() })
-        return await response.blob()
-      } catch (error) {
-        if (error instanceof ApiFetchError && error.status === 401) {
-          await handleUnauthorizedError({ response: { status: 401 } })
-        }
-        throw error
-      }
-    },
     setFileObjectUrl(file, field, key, blob) {
       const previous = file[field]
       if (previous) URL.revokeObjectURL(previous)
@@ -736,7 +707,7 @@ export default {
           .map(async (file) => {
             const key = `thumb_${file.id}_${file._timestamp || ''}`
             try {
-              const blob = await this.fetchFileBlob(this.getThumbnailUrl(file))
+              const blob = await fetchFileBlob(this.getThumbnailUrl(file))
               if (this.experimentId !== expId) return
               this.setFileObjectUrl(file, 'thumb_object_url', key, blob)
             } catch (error) {
@@ -751,7 +722,7 @@ export default {
     async loadPreviewImage(file) {
       const key = `preview_${file.id}_${file._timestamp || ''}`
       try {
-        const blob = await this.fetchFileBlob(this.getDownloadUrl(file, true))
+        const blob = await fetchFileBlob(this.getDownloadUrl(file, true))
         this.setFileObjectUrl(file, 'preview_object_url', key, blob)
       } catch (error) {
         notifyApiError(error, { messages: SERUM_ERRORS.titer.download })
@@ -762,7 +733,7 @@ export default {
       this.excelLoading = true
       this.excelData = []
       try {
-        const blob = await this.fetchFileBlob(this.getDownloadUrl(file, true))
+        const blob = await fetchFileBlob(this.getDownloadUrl(file, true))
         const arrayBuffer = await blob.arrayBuffer()
         const workbook = XLSX.read(arrayBuffer, { type: 'array' })
         const firstSheetName = workbook.SheetNames[0]

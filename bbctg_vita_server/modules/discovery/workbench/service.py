@@ -7,6 +7,19 @@ from sqlalchemy import String, and_, case, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from models.discovery import DiscoveryWorkbench
+from modules.discovery.workbench.constants import (
+    HARVEST_VIEW_STATUSES,
+    LIBRARY_VIEW_STATUSES,
+    PLAN_STATUS_CANCELLED,
+    PLAN_STATUS_OPTIONS,
+    PLAN_STATUS_PLANNING,
+    PLAN_STATUS_WAIT_BOOST,
+    PLAN_STATUS_WAIT_HARVEST,
+    PLAN_STATUS_WAIT_SEQ,
+    SCREENING_METHOD_OPTIONS,
+    TERMINAL_STATUSES,
+    VIEW_GROUP_STATUSES,
+)
 from utils.workbench_queue import (
     DEFAULT_PRIORITY,
     PRIORITY_ORDER,
@@ -17,35 +30,6 @@ from utils.workbench_queue import (
     queued_sort,
     renumber_queue,
 )
-
-SCREENING_METHOD_OPTIONS = ("达普", "噬菌体", "Beacon", "NGS")
-PLAN_STATUS_PLANNING = "规划中"
-PLAN_STATUS_WAIT_BOOST = "待冲击"
-PLAN_STATUS_WAIT_HARVEST = "待剖鼠"
-PLAN_STATUS_WAIT_LIBRARY = "待建库"
-PLAN_STATUS_WAIT_PHAGE = "待噬菌体"
-PLAN_STATUS_WAIT_SEQ = "待测序"
-PLAN_STATUS_DONE = "已完成"
-PLAN_STATUS_CANCELLED = "已取消"
-PLAN_STATUS_OPTIONS = (
-    PLAN_STATUS_PLANNING,
-    PLAN_STATUS_WAIT_BOOST,
-    PLAN_STATUS_WAIT_HARVEST,
-    PLAN_STATUS_WAIT_LIBRARY,
-    PLAN_STATUS_WAIT_PHAGE,
-    PLAN_STATUS_WAIT_SEQ,
-    PLAN_STATUS_DONE,
-    PLAN_STATUS_CANCELLED,
-)
-TERMINAL_STATUSES = frozenset({PLAN_STATUS_DONE, PLAN_STATUS_CANCELLED})
-HARVEST_VIEW_STATUSES = frozenset({PLAN_STATUS_PLANNING, PLAN_STATUS_WAIT_BOOST, PLAN_STATUS_WAIT_HARVEST})
-LIBRARY_VIEW_STATUSES = frozenset({PLAN_STATUS_WAIT_LIBRARY, PLAN_STATUS_WAIT_PHAGE})
-VIEW_GROUP_STATUSES = {
-    "harvest": HARVEST_VIEW_STATUSES,
-    "library": LIBRARY_VIEW_STATUSES,
-    "sequencing": frozenset({PLAN_STATUS_WAIT_SEQ}),
-    "cancelled": frozenset({PLAN_STATUS_CANCELLED}),
-}
 MISSING_ROW = "发现工作台记录不存在"
 DISCOVERY_ID_PREFIX = "DSC"
 DISCOVERY_ID_RANDOM_LEN = 6

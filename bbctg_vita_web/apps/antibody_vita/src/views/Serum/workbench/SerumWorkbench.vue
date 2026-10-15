@@ -831,6 +831,7 @@ import {
   loadSerumUserOptions,
 } from '#/utils/serumUserOptions'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
+import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import { SERUM_ERRORS } from '../shared/errors'
 import SerumUserSelect from '../shared/SerumUserSelect.vue'
@@ -1058,6 +1059,7 @@ const WORKBENCH_COLUMNS = [
   { key: 'actions', label: '操作', defaultVisible: true, width: 240, className: 'action-column-cell', fixed: 'right' },
 ]
 let lastViewMode = WORKBENCH_VIEW
+const SERUM_WORKBENCH_FILTER_KEY = 'serumWorkbench'
 const SHEET_HEADER_ALIASES = Object.freeze({
   排序: 'sort_order',
   序号: 'sort_order',
@@ -1297,6 +1299,7 @@ export default {
     },
   },
   created() {
+    this.restoreListFilters()
     this.loading = true
     this.loadFilterOptions()
     this.getList()
@@ -1306,7 +1309,12 @@ export default {
     this.scheduleSortable()
     document.addEventListener('mousedown', this.onDocumentPointerDown, true)
   },
+  beforeRouteLeave(_to, _from, next) {
+    this.persistListFilters()
+    next()
+  },
   beforeUnmount() {
+    this.persistListFilters()
     this.destroySortable()
     document.removeEventListener('mousedown', this.onDocumentPointerDown, true)
   },
@@ -2212,6 +2220,18 @@ export default {
         has_scheme_data: '',
       })
       this.handleFilter()
+      this.persistListFilters()
+    },
+    persistListFilters() {
+      saveListFilters(SERUM_WORKBENCH_FILTER_KEY, {
+        listQuery: { ...this.listQuery, sort_field: undefined },
+      })
+    },
+    restoreListFilters() {
+      const state = loadListFilters(SERUM_WORKBENCH_FILTER_KEY)
+      if (state?.listQuery && typeof state.listQuery === 'object') {
+        Object.assign(this.listQuery, state.listQuery)
+      }
     },
     handleFilter() {
       this.listQuery.page = 1

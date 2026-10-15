@@ -23,7 +23,7 @@
     <template #reference>
       <el-tag
         class="list-status-tag workbench-status-tag"
-        :class="{ 'is-editable': editable }"
+        :class="[tagClass, { 'is-editable': editable }]"
         :type="type"
         effect="plain"
         @click.stop
@@ -44,6 +44,7 @@ export default {
     value: { type: [String, Number], default: '' },
     options: { type: Array, default: () => [] },
     type: { type: String, default: 'info' },
+    tagClass: { type: String, default: '' },
     editable: { type: Boolean, default: false },
   },
   emits: ['change'],
@@ -72,6 +73,14 @@ export default {
 <style>
 .workbench-status-tag.is-editable {
   cursor: pointer;
+}
+.el-tag.workbench-status-tag.status-tone-king {
+  --el-tag-text-color: #6f4d9c;
+  --el-tag-bg-color: #efe8f6;
+  --el-tag-border-color: #d4c4ea;
+  color: #6f4d9c;
+  background-color: #efe8f6;
+  border-color: #d4c4ea;
 }
 .workbench-status-option-list {
   display: flex;

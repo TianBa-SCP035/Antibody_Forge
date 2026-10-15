@@ -49,8 +49,6 @@ class FlowWorkOrderValidationTests(unittest.TestCase):
         titer = build_content_body(_payload("TITER"))
         plasmid = build_content_body(_payload("PLAS"))
         pcr = build_content_body(_payload("PCR"))
-        kept = build_content_body(_payload("TITER"))
-        kept["sample_plates"][0]["secondary_antibody"] = "猴"
         kept = build_content_body({**_payload("TITER"), "sample_plates": [
             {**_payload("TITER")["sample_plates"][0], "secondary_antibody": "猴"}
         ]})

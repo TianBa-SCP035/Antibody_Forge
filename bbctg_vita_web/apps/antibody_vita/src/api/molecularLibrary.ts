@@ -5,6 +5,7 @@ export const LIBRARY_CREATED_KEY = 'molecular.library.created';
 const SAVE_TIMEOUT = 5000;
 const DOWNLOAD_TIMEOUT = 360_000;
 const LONG_TIMEOUT = 120_000;
+const UPLOAD_TIMEOUT = 600_000;
 
 type PostConfig = Parameters<typeof requestClient.post>[2];
 const downloadConfig = {
@@ -13,10 +14,6 @@ const downloadConfig = {
 
 export function fetchLibraryOrderList(data: any, config?: PostConfig) {
   return requestClient.post('/molecular-cell/library-orders/list', data, config);
-}
-
-export function fetchLibraryMeta() {
-  return requestClient.get('/molecular-cell/library-orders/meta');
 }
 
 export function fetchPrimerIndexOptions(params: {
@@ -83,15 +80,31 @@ export function fetchLibraryFiles(orderId: number | string) {
   );
 }
 
-export function uploadLibraryFile(data: FormData) {
-  return requestClient.post('/molecular-cell/library-orders/files/upload', data, {
+export function uploadLibraryFileBatch(data: FormData) {
+  return requestClient.post('/molecular-cell/library-orders/files/upload_batch', data, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: LONG_TIMEOUT,
+    timeout: UPLOAD_TIMEOUT,
     ...skipGlobalErrorHandler,
   });
 }
 
+export function preflightLibraryFileBatch(paths: string[]) {
+  return requestClient.post(
+    '/molecular-cell/library-orders/files/preflight',
+    { paths },
+    skipGlobalErrorHandler,
+  );
+}
+
 export function deleteLibraryFile(data: { link_id: number; order_id?: number }) {
+  return requestClient.post(
+    '/molecular-cell/library-orders/files/delete',
+    data,
+    skipGlobalErrorHandler,
+  );
+}
+
+export function deleteLibraryPackage(data: { order_id: number | string; package_id: number }) {
   return requestClient.post(
     '/molecular-cell/library-orders/files/delete',
     data,
@@ -121,4 +134,8 @@ export function updateLibraryFile(data: {
 
 export function libraryFileDownloadUrl(id: number, extra = '') {
   return `/api/molecular-cell/library-orders/files/download?id=${id}${extra}`;
+}
+
+export function libraryStoredFileDownloadUrl(fileId: number, extra = '') {
+  return `/api/molecular-cell/library-orders/files/download?file_id=${fileId}${extra}`;
 }

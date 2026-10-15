@@ -9,6 +9,7 @@ from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
 from modules.molecular_cell.library_orders import service
+from modules.molecular_cell.library_orders.result_upload import TRACE_EXTENSIONS, preview_extension
 from modules.system.permissions import (
     DEFAULT_PERMISSION_MESSAGE,
     PERMISSION_MESSAGES,
@@ -60,9 +61,14 @@ class FileListRequest(BaseModel):
     order_id: int = Field(gt=0)
 
 
+class FilePreflightRequest(BaseModel):
+    paths: list[str] = Field(min_length=1, max_length=service.MAX_UPLOAD_FILES)
+
+
 class FileDeleteRequest(BaseModel):
-    link_id: int = Field(gt=0)
+    link_id: int | None = Field(default=None, gt=0)
     order_id: int | None = Field(default=None, gt=0)
+    package_id: int | None = Field(default=None, gt=0)
 
 
 class FileUpdateRequest(BaseModel):
@@ -114,15 +120,6 @@ def _run_write(db: Session, fn):
     except Exception as exc:
         db.rollback()
         return error(str(exc))
-
-
-@router.get("/meta")
-def meta(
-    db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
-) -> dict:
-    require_permission(db, current_user, PAGE_PERMISSION)
-    return success(service.get_meta())
 
 
 @router.post("/list")
@@ -241,23 +238,38 @@ def file_list(
         raise HTTPException(status_code=422, detail=message) from exc
 
 
-@router.post("/files/upload")
-def file_upload(
-    file: UploadFile = File(...),
-    order_id: int = Form(...),
+@router.post("/files/upload_batch")
+def file_upload_batch(
+    files: list[UploadFile] = File(...),
+    paths: list[str] = Form(default=[]),
+    order_id: int | None = Form(default=None),
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, FILE_PERMISSION)
     return _run_write(
         db,
-        lambda: service.upload_file(
+        lambda: service.upload_batch(
             db,
-            file,
-            order_id,
+            files,
+            paths,
             _actor_name(current_user),
+            order_id,
         ),
     )
+
+
+@router.post("/files/preflight")
+def file_preflight(
+    data: FilePreflightRequest,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, FILE_PERMISSION)
+    try:
+        return success(service.preflight_upload(db, data.paths))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/files/delete")
@@ -267,6 +279,15 @@ def file_delete(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, FILE_PERMISSION)
+    if data.package_id:
+        if not data.order_id:
+            raise HTTPException(status_code=422, detail="请指定工单")
+        return _run_write(
+            db,
+            lambda: service.delete_package(db, data.order_id, data.package_id),
+        )
+    if not data.link_id:
+        raise HTTPException(status_code=422, detail="请选择要删除的文件")
     return _run_write(db, lambda: service.delete_file(db, data.link_id, data.order_id))
 
 
@@ -292,9 +313,10 @@ def file_update(
 @router.get("/files/download")
 def file_download(
     background_tasks: BackgroundTasks,
-    id: int = Query(...),
-    preview: str | None = None,
-    thumb: str | None = None,
+    id: int | None = Query(default=None),
+    file_id: int | None = Query(default=None),
+    preview: bool = False,
+    thumb: bool = False,
     w: int = Query(default=400, ge=32, le=1600),
     h: int = Query(default=400, ge=32, le=1600),
     db: Session = Depends(get_db),
@@ -302,27 +324,37 @@ def file_download(
 ):
     require_permission(db, current_user, DETAIL_PERMISSION)
     try:
-        record, file_path = service.get_download_record(db, id)
-        if thumb and thumb.lower() in {"1", "true"}:
+        if file_id:
+            original_name, file_path = service.get_stored_file(db, file_id)
+        elif id:
+            record, file_path = service.get_download_record(db, id)
+            original_name = record.original_name
+        else:
+            raise ValueError("缺少文件")
+        if thumb:
             thumbnail = service.create_thumbnail(file_path, w, h)
             if thumbnail:
                 output, media_type = thumbnail
                 return StreamingResponse(output, media_type=media_type)
-        is_inline_preview = preview == "true"
+        recognized = TRACE_EXTENSIONS | service.INLINE_PREVIEW_EXTENSIONS
+        suffix = preview_extension(file_path.name, original_name, recognized)
+        if preview and suffix in TRACE_EXTENSIONS:
+            return service.read_trace_preview(file_path)
+        is_inline_preview = preview and suffix in service.INLINE_PREVIEW_EXTENSIONS
         serve_path = file_path
         temp_path = None
         if not is_inline_preview:
-            serve_path, temp_path = prepare_office_download_file(db, file_path, record.original_name)
+            serve_path, temp_path = prepare_office_download_file(db, file_path, original_name)
             if temp_path is not None:
                 background_tasks.add_task(remove_temp_file, temp_path)
         return FileResponse(
             serve_path,
-            filename=record.original_name,
+            filename=original_name,
             media_type=None,
             headers={
                 "Content-Disposition": (
                     f"{'inline' if is_inline_preview else 'attachment'}; "
-                    f"filename*=UTF-8''{quote(record.original_name)}"
+                    f"filename*=UTF-8''{quote(original_name)}"
                 )
             },
         )

@@ -179,25 +179,27 @@ export class ApiFetchError extends Error {
   }
 }
 
+function resourceErrorMessage(body: unknown, fallback: string): string {
+  return extractApiError(body).backendMessage ?? fallback;
+}
+
 export async function fetchApiResource(
   url: string,
   init?: RequestInit,
+  options: { allowJson?: boolean } = {},
 ): Promise<Response> {
   const response = await fetch(url, init);
   const contentType = response.headers.get('content-type') ?? '';
 
   if (response.ok) {
-    if (contentType.includes('application/json')) {
+    if (contentType.includes('application/json') && !options.allowJson) {
       let body: unknown;
       try {
         body = await response.json();
       } catch {
         body = null;
       }
-      const message =
-        typeof (body as { message?: string })?.message === 'string'
-          ? (body as { message: string }).message
-          : '下载失败';
+      const message = resourceErrorMessage(body, '下载失败');
       throw new ApiFetchError(message, response.status, body);
     }
     return response;
@@ -209,9 +211,6 @@ export async function fetchApiResource(
   } catch {
     body = null;
   }
-  const message =
-    typeof (body as { message?: string })?.message === 'string'
-      ? (body as { message: string }).message
-      : `HTTP ${response.status}`;
+  const message = resourceErrorMessage(body, `HTTP ${response.status}`);
   throw new ApiFetchError(message, response.status, body);
 }

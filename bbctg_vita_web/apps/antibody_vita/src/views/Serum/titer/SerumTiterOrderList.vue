@@ -845,6 +845,7 @@ import {
 } from '#/utils/serumPermission';
 import { useUserStore } from '@vben/stores';
 
+import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage';
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
 import { DISCOVERY_WORKBENCH_CREATED_KEY } from '#/api/discoveryWorkbench';
 import { canEditDiscoveryWorkbench } from '#/utils/discoveryPermission';
@@ -854,7 +855,7 @@ import TiterMouseSelectWizard from './TiterMouseSelectWizard.vue';
 import TiterOrderCreateDialog from './TiterOrderCreateDialog.vue';
 import SerumProjectStatusEditor from '../shared/SerumProjectStatusEditor.vue';
 
-const TITER_ORDER_LIST_FILTER_KEY = 'titerOrderListFilters';
+const TITER_ORDER_LIST_FILTER_KEY = 'titerOrderList';
 let pendingTiterOrderId = '';
 
 export function rememberTiterOrderFocus(titerOrderId) {
@@ -1210,48 +1211,40 @@ export default {
   },
   methods: {
     persistListFilters() {
-      sessionStorage.setItem(
-        TITER_ORDER_LIST_FILTER_KEY,
-        JSON.stringify({
-          listQuery: { ...this.listQuery, sort_field: undefined, sort_order: undefined },
-          bloodCollectionRange: this.bloodCollectionRange,
-          testDatesRange: this.testDatesRange,
-          statFilterActive: this.statFilterActive,
-          testDateStatScope: this.testDateStatScope,
-          pendingStatScope: this.pendingStatScope,
-        }),
-      );
+      saveListFilters(TITER_ORDER_LIST_FILTER_KEY, {
+        listQuery: { ...this.listQuery, sort_field: undefined, sort_order: undefined },
+        bloodCollectionRange: this.bloodCollectionRange,
+        testDatesRange: this.testDatesRange,
+        statFilterActive: this.statFilterActive,
+        testDateStatScope: this.testDateStatScope,
+        pendingStatScope: this.pendingStatScope,
+      });
     },
     restoreListFilters() {
-      const raw = sessionStorage.getItem(TITER_ORDER_LIST_FILTER_KEY);
-      if (!raw) {
+      const state = loadListFilters(TITER_ORDER_LIST_FILTER_KEY);
+      if (!state) {
         return;
       }
-      try {
-        const state = JSON.parse(raw);
-        if (state.listQuery) {
-          Object.assign(this.listQuery, state.listQuery);
-        }
-        if (state.bloodCollectionRange) {
-          this.bloodCollectionRange = state.bloodCollectionRange;
-        }
-        if (state.testDatesRange) {
-          this.testDatesRange = state.testDatesRange;
-        }
-        if (state.statFilterActive) {
-          this.statFilterActive = state.statFilterActive;
-        }
-        if (state.testDateStatScope !== undefined) {
-          this.testDateStatScope = state.testDateStatScope;
-        }
-        if (state.pendingStatScope !== undefined) {
-          this.pendingStatScope = state.pendingStatScope;
-        }
-        this.listQuery.test_dates_empty = Boolean(this.listQuery.test_dates_empty);
-        this.listQuery.tested_unsubmitted = Boolean(this.listQuery.tested_unsubmitted);
-      } catch {
-        /* ignore */
+      if (state.listQuery) {
+        Object.assign(this.listQuery, state.listQuery);
       }
+      if (state.bloodCollectionRange) {
+        this.bloodCollectionRange = state.bloodCollectionRange;
+      }
+      if (state.testDatesRange) {
+        this.testDatesRange = state.testDatesRange;
+      }
+      if (state.statFilterActive) {
+        this.statFilterActive = state.statFilterActive;
+      }
+      if (state.testDateStatScope !== undefined) {
+        this.testDateStatScope = state.testDateStatScope;
+      }
+      if (state.pendingStatScope !== undefined) {
+        this.pendingStatScope = state.pendingStatScope;
+      }
+      this.listQuery.test_dates_empty = Boolean(this.listQuery.test_dates_empty);
+      this.listQuery.tested_unsubmitted = Boolean(this.listQuery.tested_unsubmitted);
     },
     getSerumTiterStatusTagType,
     getTiterPriorityTone,

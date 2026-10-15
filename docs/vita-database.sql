@@ -720,15 +720,37 @@ CREATE TABLE IF NOT EXISTS molecular_primer_index_catalog (
   KEY idx_molecular_primer_index_family (family)
 ) COMMENT='引物与Barcode字典';
 
+CREATE TABLE IF NOT EXISTS molecular_library_result_package (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  original_name VARCHAR(255) NOT NULL COMMENT '原文件夹名',
+  signature CHAR(64) NOT NULL COMMENT '包内容指纹',
+  storage_prefix VARCHAR(1024) NOT NULL COMMENT '包存储目录',
+  owner_order_id BIGINT NULL COMMENT '质检页上传所属工单',
+  uploaded_by VARCHAR(64) NULL COMMENT '上传人',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_molecular_library_result_package_signature (signature),
+  KEY idx_molecular_library_result_package_owner_order (owner_order_id),
+  CONSTRAINT fk_molecular_library_result_package_owner_order
+    FOREIGN KEY (owner_order_id) REFERENCES molecular_library_order (id)
+) COMMENT='文库测序结果包';
+
 CREATE TABLE IF NOT EXISTS molecular_library_result_file (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  package_id BIGINT NULL COMMENT '所属测序包',
+  relative_path VARCHAR(1024) NULL COMMENT '包内相对路径',
   storage_path VARCHAR(1024) NOT NULL COMMENT '存储路径',
   mime_type VARCHAR(128) NULL COMMENT '文件MIME',
   byte_size BIGINT NOT NULL COMMENT '文件大小',
   sha256 CHAR(64) NOT NULL COMMENT '文件哈希',
+  dedupe_key VARCHAR(80) NULL COMMENT '可复用物理文件去重键',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '首次保存时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_molecular_library_result_sha256 (sha256)
+  UNIQUE KEY uk_molecular_library_result_dedupe_key (dedupe_key),
+  KEY idx_molecular_library_result_sha256 (sha256),
+  KEY idx_molecular_library_result_package (package_id),
+  CONSTRAINT fk_molecular_library_result_file_package
+    FOREIGN KEY (package_id) REFERENCES molecular_library_result_package (id)
 ) COMMENT='文库结果文件';
 
 CREATE TABLE IF NOT EXISTS molecular_library_result_link (
@@ -739,6 +761,8 @@ CREATE TABLE IF NOT EXISTS molecular_library_result_link (
   is_final_qc TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否最终质检文件',
   qc_regions JSON NULL COMMENT '质检选区列表',
   uploaded_by VARCHAR(64) NULL COMMENT '上传人',
+  sequence_status VARCHAR(32) NULL COMMENT '序列核对状态',
+  sequence_target VARCHAR(8) NULL COMMENT '序列核对目标',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_molecular_library_result_link (file_id, order_id),
@@ -848,7 +872,8 @@ VALUES
   ('molecular.library.edit', 'POST', '/api/molecular-cell/library-orders/batch_save', '批量保存文库构建工单'),
   ('molecular.library.edit', 'POST', '/api/molecular-cell/library-orders/delete', '删除文库构建工单'),
   ('molecular.library.edit', 'POST', '/api/molecular-cell/library-orders/handoff', '交接发现安排至文库构建'),
-  ('molecular.library.file.manage', 'POST', '/api/molecular-cell/library-orders/files/upload', '上传文库构建结果文件'),
+  ('molecular.library.file.manage', 'POST', '/api/molecular-cell/library-orders/files/preflight', '预检文库构建结果路径'),
+  ('molecular.library.file.manage', 'POST', '/api/molecular-cell/library-orders/files/upload_batch', '批量上传文库构建结果'),
   ('molecular.library.file.manage', 'POST', '/api/molecular-cell/library-orders/files/update', '更新文库构建结果文件标记'),
   ('molecular.library.file.manage', 'POST', '/api/molecular-cell/library-orders/files/delete', '删除文库构建结果文件'),
   ('molecular.primer.edit', 'POST', '/api/molecular-cell/library-orders/catalog/save', '保存引物'),
@@ -866,6 +891,7 @@ VALUES
   ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/resume-ack', '确认设备已恢复'),
   ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/confirm-execution', '确认流式工单开始执行'),
   ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/complete', '完成流式工单'),
+  ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/continue-execution', '继续执行流式工单'),
   ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/fail', '标记流式工单执行失败'),
   ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/delete', '删除流式工单'),
   ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/cancel', '作废流式工单'),

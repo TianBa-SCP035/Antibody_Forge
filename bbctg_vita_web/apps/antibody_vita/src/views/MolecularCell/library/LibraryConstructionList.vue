@@ -54,6 +54,7 @@
       <template #actions>
         <el-button v-if="!isExcelMode" @click="openColumnPicker">显示字段</el-button>
         <el-button type="warning" :icon="Download" @click="handleListExport">列表导出</el-button>
+        <el-button v-if="canManageFiles" type="primary" :icon="Upload" @click="resultUploadVisible = true">批量质检上传</el-button>
       </template>
     </AdvancedOpsBar>
 
@@ -199,7 +200,11 @@
         :row-class-name="workbenchRowClassName"
         @row-click="onWorkbenchRowClick"
         @row-contextmenu="onWorkbenchRowContextMenu"
+        @header-contextmenu="onWorkbenchHeaderContextMenu"
       >
+        <template #header-library_code>
+          <span class="library-code-head" :class="{ 'is-asc': libraryCodeOldestFirst }" :title="libraryCodeHeadTitle">建库编号</span>
+        </template>
         <template #build_type="{ row }">{{ buildTypeLabel(row.build_type) || '—' }}</template>
         <template #mouse_model="{ row }">{{ mouseCategoryLabel(row.mouse_model) || '—' }}</template>
         <template #sample_source="{ row }">{{ sampleSourceLabel(row.sample_source) || '—' }}</template>
@@ -210,7 +215,8 @@
             v-if="canEdit"
             v-model="row.priority"
             size="small"
-            class="inline-select"
+            class="inline-select priority-select"
+            :class="'status-tone-' + priorityTone(row)"
             @click.stop
             @change="persistRow(row, 'priority')"
           >
@@ -265,6 +271,7 @@
         @compositionend.capture="onSheetCompositionEnd"
         @mousedown="onSheetWrapMouseDown"
         @mouseover="onSheetWrapMouseOver"
+        @contextmenu="onSheetContextMenu"
         @selectstart="onSheetSelectStart"
       >
         <div ref="sheetTableStage" class="sheet-table-stage">
@@ -391,7 +398,11 @@
                 :min-width="column.minWidth || column.width || 120"
                 :edit-render="sheetEditRender(column)"
                 :formatter="sheetFormatter(column)"
-              />
+              >
+                <template v-if="column.key === 'library_code'" #header>
+                  <span class="library-code-head" :class="{ 'is-asc': libraryCodeOldestFirst }" :title="libraryCodeHeadTitle">建库编号</span>
+                </template>
+              </vxe-column>
             </template>
             <vxe-column title="操作" width="240" fixed="right" align="center">
               <template #default="{ row }">
@@ -409,7 +420,16 @@
               </template>
             </vxe-column>
           </vxe-table>
-          <div ref="sheetRangeOverlay" class="sheet-range-overlay" aria-hidden="true" />
+          <div ref="sheetRangeOverlay" class="sheet-range-overlay" aria-hidden="true">
+            <button
+              v-if="showLibraryCodeFillHandle"
+              type="button"
+              class="library-code-fill-handle"
+              title="往下按序号填充建库编号"
+              aria-label="往下按序号填充建库编号"
+              @mousedown.stop.prevent="onLibraryCodeFillStart"
+            />
+          </div>
           <div ref="sheetColumnDropLine" class="sheet-column-drop-line" aria-hidden="true" />
           <div ref="sheetColumnGhost" class="sheet-column-ghost" aria-hidden="true" />
         </div>
@@ -669,11 +689,12 @@
         <el-button type="primary" :disabled="!createPick" @click="confirmCreate">创建</el-button>
       </template>
     </el-dialog>
+    <LibraryResultUploadDialog v-model="resultUploadVisible" @uploaded="getList" />
   </div>
 </template>
 
 <script>
-import { Download, Plus, Search, Tools } from '@element-plus/icons-vue'
+import { Download, Plus, Search, Tools, Upload } from '@element-plus/icons-vue'
 import {
   ElButton,
   ElCard,
@@ -702,7 +723,6 @@ import {
   batchSaveLibraryOrders,
   deleteLibraryOrder,
   exportLibraryOrderList,
-  fetchLibraryMeta,
   fetchLibraryOrderList,
   fetchPrimerIndexOptions,
   LIBRARY_CREATED_KEY,
@@ -728,12 +748,15 @@ import {
   coerceOptionalNonnegInt,
 } from '#/components/workbench'
 import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
+import LibraryResultUploadDialog from './LibraryResultUploadDialog.vue'
 import LibraryRowActions from './LibraryRowActions.vue'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
-import { canEditLibrary, canViewLibraryDetail } from '#/utils/molecularPermission'
+import { canEditLibrary, canManageLibraryFiles, canViewLibraryDetail } from '#/utils/molecularPermission'
 import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/DiscoveryWorkbench.vue'
 import { getSerumUserName } from '#/utils/serumPermission'
 import { loadSerumUserOptions } from '#/utils/serumUserOptions'
+import { getTiterPriorityTone } from '#/utils/serumProjectStatus'
+import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import {
   allSheetColumns,
@@ -777,6 +800,8 @@ import {
   WORKBENCH_COLUMNS,
 } from './libraryColumns'
 
+const LIBRARY_LIST_FILTER_KEY = 'libraryConstructionList'
+
 function emptyQuery() {
   return {
     page: 1,
@@ -803,7 +828,27 @@ function emptyQuery() {
     started_at_end: '',
     finished_at_start: '',
     finished_at_end: '',
+    order: '',
   }
+}
+
+function libraryCodeSeries(seed, count) {
+  const text = String(seed || '').trim().toUpperCase()
+  const matched = text.match(/^(.*?)(\d+)$/)
+  if (!matched || count < 1) return null
+  const prefix = matched[1]
+  const width = matched[2].length
+  const start = Number(matched[2])
+  if (!Number.isSafeInteger(start)) return null
+  const codes = []
+  for (let step = 1; step <= count; step += 1) {
+    const next = start + step
+    if (!Number.isSafeInteger(next) || next < 0) return null
+    const code = `${prefix}${String(next).padStart(width, '0')}`
+    if (code.length > SHEET_STRING_MAX.library_code) return null
+    codes.push(code)
+  }
+  return codes
 }
 
 const SHEET_COLUMN_ORDER = createColumnOrder(
@@ -812,6 +857,7 @@ const SHEET_COLUMN_ORDER = createColumnOrder(
   { pinFirstKey: 'library_order_id' },
 )
 const INDEX_LINKED_KEYS = ['i7_catalog_id', 'i7_name', 'i7_sequence', 'i5_catalog_id', 'i5_name', 'i5_sequence']
+const DERIVED_FIELDS = ['status', 'started_at', 'finished_at']
 const SHEET_DATE_KEYS = [
   'received_on',
   'instrument_on',
@@ -876,6 +922,7 @@ export default {
     ElOption,
     ElPagination,
     ElSelect,
+    LibraryResultUploadDialog,
     LibraryRowActions,
     SerumUserSelect,
     Tools,
@@ -889,7 +936,7 @@ export default {
     VxeTable,
   },
   setup() {
-    return { Download, Plus, Search }
+    return { Download, Plus, Search, Upload }
   },
   data() {
     return {
@@ -900,7 +947,6 @@ export default {
       list: [],
       total: 0,
       stats: {},
-      meta: null,
       listQuery: emptyQuery(),
       instrumentRange: [],
       startedRange: [],
@@ -920,19 +966,39 @@ export default {
       targetFilterLoading: false,
       consumingCreated: false,
       createVisible: false,
+      resultUploadVisible: false,
       createPick: '',
       drawerPointerBound: false,
       sheetColumns: allSheetColumns(),
       listLoaded: false,
       tabDataFetchedAt: 0,
+      libraryCodeFill: null,
     }
   },
   computed: {
     canEdit() {
       return canEditLibrary(useUserStore().userInfo)
     },
+    libraryCodeOldestFirst() {
+      return this.listQuery.order === 'id_asc'
+    },
+    libraryCodeHeadTitle() {
+      return this.libraryCodeOldestFirst
+        ? '当前按创建时间正序，右键恢复倒序'
+        : '右键改为按创建时间正序，方便接着往下编号'
+    },
+    showLibraryCodeFillHandle() {
+      if (!this.canEdit || !this.isExcelMode || !this.libraryCodeOldestFirst) return false
+      const range = this.normalizedSheetRange()
+      if (!range || range.c1 !== range.c2) return false
+      if (this.sheetColumns[range.c1]?.key !== 'library_code') return false
+      return Boolean(this.libraryCodeFill) || range.r1 === range.r2
+    },
     canViewDetail() {
       return canViewLibraryDetail(useUserStore().userInfo)
+    },
+    canManageFiles() {
+      return canManageLibraryFiles(useUserStore().userInfo)
     },
     activeType() {
       return this.listQuery.build_type || ''
@@ -967,10 +1033,10 @@ export default {
       }))
     },
     statusOptions() {
-      return this.meta?.statuses || STATUS_OPTIONS
+      return STATUS_OPTIONS
     },
     priorityOptions() {
-      return this.meta?.priorities || PRIORITY_OPTIONS
+      return PRIORITY_OPTIONS
     },
     sheetTargetSelectOptions() {
       return this.targetOptions.map((item) => ({
@@ -986,14 +1052,14 @@ export default {
       return options
     },
     sampleSourceOptions() {
-      return (this.meta?.sample_sources || SAMPLE_SOURCE_OPTIONS).map((item) => ({
-        value: item.value || item.code,
+      return SAMPLE_SOURCE_OPTIONS.map((item) => ({
+        value: item.value,
         label: item.label,
       }))
     },
     sampleTypeOptions() {
-      return (this.meta?.sample_types || SAMPLE_TYPE_OPTIONS).map((item) => ({
-        value: item.value || item.code,
+      return SAMPLE_TYPE_OPTIONS.map((item) => ({
+        value: item.value,
         label: item.label,
       }))
     },
@@ -1050,10 +1116,10 @@ export default {
     },
   },
   created() {
+    this.restoreListFilters()
     this.viewMode = coerceWorkbenchViewMode(this.viewMode)
     this.rebuildSheetColumns()
     this.loadAllUserOptions()
-    this.loadMeta()
     this.getList({ flushEditor: false }).finally(() => {
       this.listLoaded = true
       this.consumeCreatedQuery()
@@ -1069,10 +1135,17 @@ export default {
   mounted() {
     this.bindDrawerPointer()
   },
+  beforeRouteLeave(_to, _from, next) {
+    this.persistListFilters()
+    next()
+  },
   beforeUnmount() {
+    this.persistListFilters()
+    this.stopLibraryCodeFill()
     this.unbindDrawerPointer()
   },
   deactivated() {
+    this.stopLibraryCodeFill()
     this.closeDrawer()
     this.unbindDrawerPointer()
   },
@@ -1092,6 +1165,9 @@ export default {
     sampleSourceLabel,
     sampleTypeLabel,
     statusTone,
+    priorityTone(row) {
+      return getTiterPriorityTone(row?.priority)
+    },
     typeGroup,
     isRequiredChoice(key) {
       return REQUIRED_CHOICE_KEYS.includes(key)
@@ -1105,13 +1181,6 @@ export default {
       if (!this.drawerPointerBound) return
       document.removeEventListener('mousedown', this.onDocumentPointerDown, true)
       this.drawerPointerBound = false
-    },
-    async loadMeta() {
-      try {
-        this.meta = await fetchLibraryMeta()
-      } catch {
-        this.meta = null
-      }
     },
     async searchCatalog(query = '') {
       this.catalogLoading = true
@@ -1199,13 +1268,151 @@ export default {
       this.listQuery.page = 1
       this.getList()
     },
+    onWorkbenchHeaderContextMenu(column, event) {
+      if (column?.key !== 'library_code') return
+      event.preventDefault()
+      this.showLibraryCodesInCreatedOrder()
+    },
+    onSheetContextMenu(event) {
+      const headerHit = this.hitSheetHeader(event.target)
+      const column = headerHit ? this.sheetColumns[headerHit.colIndex] : null
+      if (column?.key !== 'library_code') return
+      event.preventDefault()
+      this.showLibraryCodesInCreatedOrder()
+    },
+    async showLibraryCodesInCreatedOrder() {
+      if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
+      this.clearSheetRange?.()
+      const oldestFirst = !this.libraryCodeOldestFirst
+      this.listQuery.order = oldestFirst ? 'id_asc' : ''
+      this.listQuery.page = oldestFirst ? 1_000_000 : 1
+      if (await this.getList()) {
+        ElMessage.success(oldestFirst ? '已改为创建时间正序' : '已恢复创建时间倒序')
+      }
+    },
+    onLibraryCodeFillStart() {
+      const range = this.normalizedSheetRange()
+      if (!range || !this.showLibraryCodeFillHandle) return
+      this.libraryCodeFill = { rowIndex: range.r1, colIndex: range.c1 }
+      window.addEventListener('mousemove', this.onLibraryCodeFillMove)
+      window.addEventListener('mouseup', this.onLibraryCodeFillEnd)
+    },
+    onLibraryCodeFillMove(event) {
+      const fill = this.libraryCodeFill
+      if (!fill) return
+      const hit = this.hitSheetCell(event.target)
+      if (!hit || hit.colIndex !== fill.colIndex || hit.rowIndex < fill.rowIndex) return
+      if (this.sheetRange?.r2 === hit.rowIndex && this.sheetRange?.c2 === fill.colIndex) return
+      this.setSheetRange({
+        r1: fill.rowIndex,
+        c1: fill.colIndex,
+        r2: hit.rowIndex,
+        c2: fill.colIndex,
+      })
+    },
+    stopLibraryCodeFill() {
+      window.removeEventListener('mousemove', this.onLibraryCodeFillMove)
+      window.removeEventListener('mouseup', this.onLibraryCodeFillEnd)
+      this.libraryCodeFill = null
+    },
+    async onLibraryCodeFillEnd() {
+      const fill = this.libraryCodeFill
+      const range = this.normalizedSheetRange()
+      this.stopLibraryCodeFill()
+      if (!fill || !range || range.r2 <= fill.rowIndex) {
+        if (fill) {
+          this.setSheetRange({
+            r1: fill.rowIndex,
+            c1: fill.colIndex,
+            r2: fill.rowIndex,
+            c2: fill.colIndex,
+          })
+        }
+        return
+      }
+      await this.fillLibraryCodesDown(fill.rowIndex, range.r2, fill.colIndex)
+    },
+    async fillLibraryCodesDown(startIndex, endIndex, colIndex) {
+      if (!this.libraryCodeOldestFirst) return
+      if (!await this.flushPendingSheetEdits()) return
+      const column = this.sheetColumns[colIndex]
+      const seedRow = this.list[startIndex]
+      if (!seedRow || column?.key !== 'library_code') return
+      const targets = this.list.slice(startIndex + 1, endIndex + 1)
+      if (targets.some((row) => this.isSheetCellLocked(row, 'library_code'))) {
+        ElMessage.warning('选中的建库编号有不能修改的格子，本次未填充')
+        this.setSheetRange({ r1: startIndex, c1: colIndex, r2: startIndex, c2: colIndex })
+        return
+      }
+      const codes = libraryCodeSeries(seedRow.library_code, targets.length)
+      if (!codes) {
+        ElMessage.warning('建库编号末尾要有数字才能往下填充')
+        this.setSheetRange({ r1: startIndex, c1: colIndex, r2: startIndex, c2: colIndex })
+        return
+      }
+      const overwritten = targets.filter((row, index) => row.library_code && row.library_code !== codes[index]).length
+      if (overwritten) {
+        try {
+          await ElMessageBox.confirm(
+            `其中 ${overwritten} 行已有建库编号，填充后会被改掉。`,
+            '覆盖确认',
+            { type: 'warning', confirmButtonText: '覆盖' },
+          )
+        } catch {
+          this.setSheetRange({ r1: startIndex, c1: colIndex, r2: startIndex, c2: colIndex })
+          return
+        }
+      }
+      try {
+        const saved = await batchSaveLibraryOrders(targets.map((row, index) => ({
+          id: row.id,
+          library_code: codes[index],
+        })))
+        const savedById = new Map((saved?.items || []).map((item) => [item.id, item]))
+        targets.forEach((row) => {
+          const item = savedById.get(row.id)
+          if (item) this.applySavedFields(this.normalizeRow(item), ['library_code'])
+        })
+        ElMessage.success(`已填充 ${targets.length} 个建库编号`)
+        this.setSheetRange({ r1: startIndex, c1: colIndex, r2: endIndex, c2: colIndex })
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '建库编号填充失败' } })
+        this.setSheetRange({ r1: startIndex, c1: colIndex, r2: startIndex, c2: colIndex })
+      }
+    },
     resetFilters() {
       this.listQuery = emptyQuery()
       this.instrumentRange = []
       this.startedRange = []
       this.finishedRange = []
       this.targetFilterOptions = []
+      this.persistListFilters()
       this.getList()
+    },
+    persistListFilters() {
+      saveListFilters(LIBRARY_LIST_FILTER_KEY, {
+        // 排序不存，正序下的页码换到默认倒序里是另一批行
+        listQuery: { ...this.listQuery, order: undefined, page: this.listQuery.order ? 1 : this.listQuery.page },
+        instrumentRange: this.instrumentRange,
+        startedRange: this.startedRange,
+        finishedRange: this.finishedRange,
+      })
+    },
+    restoreListFilters() {
+      const state = loadListFilters(LIBRARY_LIST_FILTER_KEY)
+      if (!state) return
+      if (state.listQuery && typeof state.listQuery === 'object') {
+        Object.assign(this.listQuery, state.listQuery)
+      }
+      if (Array.isArray(state.instrumentRange)) this.instrumentRange = state.instrumentRange
+      if (Array.isArray(state.startedRange)) this.startedRange = state.startedRange
+      if (Array.isArray(state.finishedRange)) this.finishedRange = state.finishedRange
+      if (this.listQuery.target) {
+        this.targetFilterOptions = [{
+          snum: this.listQuery.target,
+          name: this.listQuery.target_name || this.listQuery.target,
+        }]
+      }
     },
     async searchTargetFilter(keyword) {
       this.targetFilterLoading = true
@@ -1269,10 +1476,11 @@ export default {
       try {
         if (flushEditor) await this.flushPendingSheetEdits()
         const data = await fetchLibraryOrderList(this.buildQuery(), skipGlobalErrorHandler)
-        if (requestId !== this.listRequestId) return
+        if (requestId !== this.listRequestId) return false
         this.list = (data?.items || []).map((row) => this.normalizeRow(row))
         this.list.forEach((row) => this.updateRowBaseline(row))
         this.total = data?.total || 0
+        if (data?.page) this.listQuery.page = data.page
         this.stats = { ...Object.fromEntries(this.typeSheets.map((item) => [item.statKey, 0])), ...(data?.stats || {}) }
         if (this.editingId) {
           const selected = this.list.find((row) => row.id === this.editingId)
@@ -1284,9 +1492,11 @@ export default {
           }
         }
         this.tabDataFetchedAt = Date.now()
+        return true
       } catch (error) {
-        if (requestId !== this.listRequestId) return
+        if (requestId !== this.listRequestId) return false
         notifyApiError(error, { messages: { default: '加载文库工单失败' } })
+        return false
       } finally {
         if (requestId === this.listRequestId) this.loading = false
       }
@@ -1397,7 +1607,7 @@ export default {
                 : [field]
         this.applySavedFields(
           this.normalizeRow(saved),
-          field === 'build_type' ? undefined : [...savedFields, ...qcFields],
+          field === 'build_type' ? undefined : [...savedFields, ...qcFields, ...DERIVED_FIELDS],
         )
       } catch (error) {
         if (baseline) {
@@ -1462,7 +1672,13 @@ export default {
       if (target.closest('.el-table__row, .vxe-body--row, .action-cell')) return
       this.closeDrawer()
     },
+    flushDrawerEdit() {
+      const active = document.activeElement
+      if (!(active instanceof HTMLElement) || !active.closest('.el-drawer')) return
+      active.blur()
+    },
     closeDrawer() {
+      this.flushDrawerEdit()
       this.drawerVisible = false
       this.editingId = null
       this.editingRow = null
@@ -1474,6 +1690,7 @@ export default {
         this.closeDrawer()
         return
       }
+      this.flushDrawerEdit()
       this.editingId = row.id
       this.editingRow = this.normalizeRow(JSON.parse(JSON.stringify(row)))
       this.plateDraft = plateNumbersText(this.editingRow.plate_nos)
@@ -1551,7 +1768,11 @@ export default {
     async handleListExport() {
       try {
         await downloadListExcel(
-          () => exportLibraryOrderList(this.buildQuery()),
+          () => {
+            const query = this.buildQuery()
+            delete query.order
+            return exportLibraryOrderList(query)
+          },
           `文库构建_${excelTimestamp()}.xlsx`,
         )
       } catch (error) {
@@ -1625,9 +1846,7 @@ export default {
       if (key === 'mouse_model') return this.mouseCategoryLabel(row[key])
       if (key === 'sample_source') return sampleSourceLabel(row[key])
       if (key === 'sample_type') return sampleTypeLabel(row[key])
-      if (key === 'index_mode') {
-        return INDEX_MODE_OPTIONS.find((item) => item.value === row[key])?.label || row[key] || ''
-      }
+      if (key === 'index_mode') return indexModeLabel(row[key])
       if (key === 'target_codes') return uniqueTargetCodes(row[key]).join(',')
       if (key === 'plate_nos') {
         return Array.isArray(row[key]) ? row[key].join('、') : (row[key] || '')
@@ -1721,7 +1940,7 @@ export default {
       if (key === 'plate_nos') {
         return {
           ok: true,
-          value: raw ? raw.split(/[,，、\t\r\n]+/).map((item) => item.trim()).filter(Boolean) : [],
+          value: plateNumbersFromText(raw),
         }
       }
       if (key === 'target_forms') {
@@ -2148,6 +2367,7 @@ export default {
           const savedFields = [...fields]
           if (fields.has('mouse_model')) savedFields.push('sample_type')
           if (fields.has('index_mode')) savedFields.push(...INDEX_LINKED_KEYS)
+          savedFields.push(...DERIVED_FIELDS)
           fields.forEach((field) => {
             const catalogMeta = CATALOG_NAME_FIELDS[field]
             if (!catalogMeta) return
@@ -2198,6 +2418,24 @@ export default {
 <style scoped src="#/components/workbench/workbenchDrawerChrome.css"></style>
 <style src="#/components/workbench/workbenchDrawer.css"></style>
 <style scoped>
+.library-code-head.is-asc {
+  color: var(--el-color-primary);
+}
+
+.library-code-fill-handle {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  z-index: 1;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  pointer-events: auto;
+  cursor: crosshair;
+  background: var(--el-color-primary);
+  border: 1px solid #fff;
+}
+
 .library-order-page {
   position: relative;
   min-height: 100%;
@@ -2475,6 +2713,31 @@ export default {
 .inline-select :deep(.el-select__wrapper) {
   min-height: 28px;
   padding: 0 8px;
+}
+
+.table-card :deep(.priority-select.status-tone-info .el-select__wrapper) {
+  background-color: var(--el-color-info-light-9);
+}
+.table-card :deep(.priority-select.status-tone-info .el-select__selected-item) {
+  color: var(--el-color-info);
+}
+.table-card :deep(.priority-select.status-tone-warning .el-select__wrapper) {
+  background-color: var(--el-color-warning-light-9);
+}
+.table-card :deep(.priority-select.status-tone-warning .el-select__selected-item) {
+  color: var(--el-color-warning);
+}
+.table-card :deep(.priority-select.status-tone-danger .el-select__wrapper) {
+  background-color: var(--el-color-danger-light-9);
+}
+.table-card :deep(.priority-select.status-tone-danger .el-select__selected-item) {
+  color: var(--el-color-danger);
+}
+.table-card :deep(.priority-select.status-tone-king .el-select__wrapper) {
+  background-color: #efe8f6;
+}
+.table-card :deep(.priority-select.status-tone-king .el-select__selected-item) {
+  color: #6f4d9c;
 }
 
 .drawer-heading {

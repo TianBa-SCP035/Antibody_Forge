@@ -1,3 +1,5 @@
+import { WORKBENCH_PRIORITY_OPTIONS } from '#/utils/serumProjectStatus'
+import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS } from '#/utils/serumMouseOptions'
 import { WORKBENCH_STUDY_TYPE_OPTIONS } from '#/utils/workbenchStudyTypes'
 
 export const STUDY_TYPE_OPTIONS = [...WORKBENCH_STUDY_TYPE_OPTIONS]
@@ -65,8 +67,8 @@ export const INDEX_MODE_OPTIONS = [
   { value: 'dual', label: '双端 i7 + i5' },
 ]
 export const TARGET_FORM_OPTIONS = ['多穿', '分泌', 'I型', 'II型']
-export const STATUS_OPTIONS = ['待处理', '建库中', '待质检', '已完成', '质检不通过', '已取消']
-export const PRIORITY_OPTIONS = ['吉吉国王', '非常紧急', '加急', '正常']
+export const STATUS_OPTIONS = ['待处理', '建库中', '待质检', '质检待确认', '质检通过', '已完成', '质检不通过', '已取消']
+export const PRIORITY_OPTIONS = [...WORKBENCH_PRIORITY_OPTIONS]
 export const QC_RESULT_OPTIONS = ['待判定', '通过', '不通过']
 export const REQUIRED_CHOICE_KEYS = ['build_type', 'status', 'priority']
 export const CELL_TYPE_OPTIONS = ['全细胞', '浆细胞', '流穿液']
@@ -95,23 +97,14 @@ export function stampQcFields(row, ownerName) {
 }
 
 export function statusTone(status) {
-  if (status === '已完成') return 'success'
+  if (status === '已完成' || status === '质检通过') return 'success'
   if (status === '质检不通过' || status === '已取消') return 'danger'
-  if (status === '建库中' || status === '待质检') return 'warning'
+  if (status === '建库中' || status === '待质检') return 'primary'
+  if (status === '质检待确认') return 'warning'
   return 'info'
 }
 
-export const MOUSE_CATEGORY_OPTIONS = [
-  'RL-KO',
-  'RN-KO',
-  'RM-KO',
-  'RL',
-  'RN',
-  'RM',
-  'RN-VM',
-  'RN-VR',
-  'RN-VM-KO',
-]
+export const MOUSE_CATEGORY_OPTIONS = [...SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS]
 export const MOUSE_CATEGORY_LABELS = {
   RN: 'Nano',
   RL: 'Lite',
@@ -197,7 +190,7 @@ export const HANDOFF_METHOD_ROWS = [
   },
 ]
 export function normalizePlateInputText(value) {
-  return String(value || '').replace(/\r\n?/g, '\n').replace(/[，,\t]+/g, '\n')
+  return String(value || '').replace(/\r\n?/g, '\n').replace(/[，,、\t]+/g, '\n')
 }
 export function plateNumbersFromText(value) {
   return [...new Set(normalizePlateInputText(value).split('\n').map((item) => item.trim()).filter(Boolean))]

@@ -1,3 +1,4 @@
+import { cleanFieldText } from '#/components/workbench/clipboardGrid'
 import { WORKBENCH_PRIORITY_OPTIONS } from '#/utils/serumProjectStatus'
 import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS } from '#/utils/serumMouseOptions'
 import { WORKBENCH_STUDY_TYPE_OPTIONS } from '#/utils/workbenchStudyTypes'
@@ -190,7 +191,7 @@ export const HANDOFF_METHOD_ROWS = [
   },
 ]
 export function normalizePlateInputText(value) {
-  return String(value || '').replace(/\r\n?/g, '\n').replace(/[，,、\t]+/g, '\n')
+  return cleanFieldText(value, { keepBreaks: true }).replace(/[，,、\t]+/g, '\n')
 }
 export function plateNumbersFromText(value) {
   return [...new Set(normalizePlateInputText(value).split('\n').map((item) => item.trim()).filter(Boolean))]
@@ -660,7 +661,7 @@ export const WORKBENCH_COLUMNS = [
   { key: 'immunization_stage', label: '免疫阶段', minWidth: 120, defaultVisible: false, showOverflowTooltip: true },
   { key: 'target_forms', label: '靶点形式', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
   { key: 'source_experiment_type', label: '实验类型', minWidth: 120, defaultVisible: false, showOverflowTooltip: true },
-  { key: 'project_goal', label: '实验目标', minWidth: 180, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'project_goal', label: '实验目标', minWidth: 180, defaultVisible: false, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'library_batch_no', label: '建库批号', minWidth: 130, defaultVisible: false, showOverflowTooltip: true },
   { key: 'rna_location', label: 'RNA 位置', minWidth: 140, defaultVisible: false, showOverflowTooltip: true },
   { key: 'cdna_location', label: 'cDNA 位置', minWidth: 140, defaultVisible: false, showOverflowTooltip: true },
@@ -685,7 +686,7 @@ export const WORKBENCH_COLUMNS = [
   { key: 'i5_name', label: 'i5 名称', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
   { key: 'i5_sequence', label: 'i5 序列', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
   { key: 'qc_owner', label: '质检人', minWidth: 110, defaultVisible: false, showOverflowTooltip: true },
-  { key: 'qc_note', label: '质检说明', minWidth: 180, defaultVisible: false, showOverflowTooltip: true },
-  { key: 'remark', label: '备注', minWidth: 180, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'qc_note', label: '质检说明', minWidth: 180, defaultVisible: false, showOverflowTooltip: true, keepLineBreaks: true },
+  { key: 'remark', label: '备注', minWidth: 180, defaultVisible: false, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'actions', label: '操作', defaultVisible: true, width: 240, align: 'center', className: 'action-column-cell', fixed: 'right' },
 ]

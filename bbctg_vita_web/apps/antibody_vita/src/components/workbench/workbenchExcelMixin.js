@@ -1,3 +1,5 @@
+import { clipboardCell } from './clipboardGrid'
+
 /**
  * Excel 划选 / 键入 / 列序。约定见 docs/modules/workbench.md。
  * 页面需提供：list, sheetColumns, canEdit, persistSheetColumnOrder, finishSheetEdit。
@@ -748,7 +750,7 @@ export default {
         for (let c = range.c1; c <= range.c2; c += 1) {
           const column = this.sheetColumns[c]
           if (!column) continue
-          cells.push(this.sheetDirectTextValue(row, column.key))
+          cells.push(clipboardCell(this.sheetDirectTextValue(row, column.key)))
         }
         lines.push(cells.join('\t'))
       }

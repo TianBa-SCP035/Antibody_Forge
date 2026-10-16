@@ -468,6 +468,38 @@ def _join_strain_parts(groups: list[dict[str, Any]], key: str) -> str:
     return "+".join(sorted(value for value in values if value))
 
 
+def _unique_project_name_strains(values: Any) -> list[str]:
+    strains: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        strain = str(value or "")
+        if not strain.strip() or strain in seen:
+            continue
+        seen.add(strain)
+        strains.append(strain)
+    return strains
+
+
+def _project_name_strains(db: Session, row: SerumImmWorkbench) -> list[str]:
+    """品系优先取方案分组；还没有分组时用工作台行上的规划品系。"""
+    experiment_id = str(row.experiment_id or "").strip()
+    if experiment_id:
+        group_strains = db.scalars(
+            select(SerumImmMouse.mouse_strain)
+            .where(SerumImmMouse.experiment_id == experiment_id)
+            .order_by(SerumImmMouse.id.asc())
+        ).all()
+        if group_strains:
+            return _unique_project_name_strains(group_strains)
+    header = str(row.mouse_strain or "").strip()
+    return [header] if header else []
+
+
+def _auto_project_name(target_name: Any, strains: list[str]) -> str:
+    # 与方案页、正式编辑页的 updateProjectName 同一句。
+    return f"{str(target_name or '')}基于{','.join(strains)}的抗体发现"[:255]
+
+
 def serialize_row(
     row: SerumImmWorkbench,
     project: SerumImmProject | None = None,
@@ -1230,6 +1262,16 @@ def save(
     previous_sort = queued_sort(row.sort_order)
     previous_priority = row.priority
     _validate_expected_fields(row, expected)
+    refresh_project_name = (
+        not _is_started(row)
+        and "project_name" not in payload
+        and ("target_name" in payload or "mouse_strain" in payload)
+    )
+    previous_auto_name = (
+        _auto_project_name(row.target_name, _project_name_strains(db, row))
+        if refresh_project_name
+        else ""
+    )
 
     if _is_started(row):
         incoming_status = str(payload.get("plan_status") or "").strip()
@@ -1258,6 +1300,13 @@ def save(
             raise ValueError("提供地区不在允许的选项中")
         _apply_fields(row, payload, ALIGNED_FIELDS + PREP_FIELDS)
         _assign_temp_experiment_id(db, row)
+        if refresh_project_name:
+            current_name = str(row.project_name or "").strip()
+            if not current_name or current_name == previous_auto_name:
+                row.project_name = _auto_project_name(
+                    row.target_name,
+                    _project_name_strains(db, row),
+                )
     project = _project_by_experiment(db, row.experiment_id) if _is_started(row) else None
     _apply_queue(
         db,

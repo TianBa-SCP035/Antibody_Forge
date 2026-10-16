@@ -15,7 +15,7 @@
         :align="col.align || 'center'"
         :class-name="col.className"
         :fixed="col.fixed"
-        :show-overflow-tooltip="col.showOverflowTooltip"
+        :show-overflow-tooltip="col.keepLineBreaks ? false : col.showOverflowTooltip"
       >
         <template #header>
           <div
@@ -32,7 +32,22 @@
           <slot :name="col.key" v-bind="scope" />
         </template>
         <template v-else #default="{ row }">
-          {{ formatPlain(row[col.prop || col.key]) }}
+          <el-tooltip
+            v-if="col.keepLineBreaks"
+            :visible="tipKey === tipId(row, col)"
+            placement="top"
+            popper-class="wb-cell-tooltip"
+          >
+            <template #content>
+              <span class="wb-cell-tooltip-text">{{ formatPlain(row[col.prop || col.key]) }}</span>
+            </template>
+            <span
+              class="wb-cell-clip"
+              @mouseenter="showBreakTip($event, row, col)"
+              @mouseleave="hideBreakTip"
+            >{{ formatPlain(row[col.prop || col.key]) }}</span>
+          </el-tooltip>
+          <template v-else>{{ formatPlain(row[col.prop || col.key]) }}</template>
         </template>
       </el-table-column>
     </el-table>
@@ -78,13 +93,13 @@
 </template>
 
 <script>
-import { ElButton, ElCheckbox, ElCheckboxGroup, ElDialog, ElTable, ElTableColumn } from 'element-plus'
+import { ElButton, ElCheckbox, ElCheckboxGroup, ElDialog, ElTable, ElTableColumn, ElTooltip } from 'element-plus'
 
 import { createColumnOrder } from './columnOrder'
 
 export default {
   name: 'WorkbenchDataTable',
-  components: { ElButton, ElCheckbox, ElCheckboxGroup, ElDialog, ElTable, ElTableColumn },
+  components: { ElButton, ElCheckbox, ElCheckboxGroup, ElDialog, ElTable, ElTableColumn, ElTooltip },
   inheritAttrs: false,
   props: {
     columns: { type: Array, required: true },
@@ -102,6 +117,7 @@ export default {
       orderDraft: [],
       pickerDragFrom: '',
       drag: null,
+      tipKey: '',
     }
   },
   computed: {
@@ -143,6 +159,19 @@ export default {
       if (Array.isArray(value)) return value.filter(Boolean).join('、')
       if (value == null) return ''
       return String(value)
+    },
+    tipId(row, column) {
+      return `${row?.id ?? ''}:${column.key}`
+    },
+    showBreakTip(event, row, column) {
+      const text = this.formatPlain(row[column.prop || column.key])
+      const el = event.currentTarget
+      if (!text) return
+      if (!text.includes('\n') && el.scrollWidth <= el.clientWidth + 1) return
+      this.tipKey = this.tipId(row, column)
+    },
+    hideBreakTip() {
+      this.tipKey = ''
     },
     openColumnPicker() {
       this.orderDraft = [...this.orderedColumns]
@@ -298,6 +327,14 @@ export default {
   user-select: none;
 }
 
+.wb-cell-clip {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wb-col-hd {
   display: flex;
   align-items: center;
@@ -397,5 +434,14 @@ export default {
   overflow: hidden;
   font-size: 13px;
   text-overflow: ellipsis;
+}
+</style>
+
+<style>
+.wb-cell-tooltip-text {
+  display: block;
+  max-width: 480px;
+  line-height: 1.5;
+  white-space: pre-line;
 }
 </style>

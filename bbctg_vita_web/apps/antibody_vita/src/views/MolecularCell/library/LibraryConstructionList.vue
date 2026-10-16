@@ -732,8 +732,10 @@ import { skipGlobalErrorHandler } from '#/api/request'
 import { notifyApiError } from '#/api/errors'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import {
+  cleanFieldText,
   coerceWorkbenchViewMode,
   createColumnOrder,
+  parseClipboardGrid,
   EXCEL_VIEW,
   searchWorkbenchTargets,
   splitTargetNames,
@@ -1563,6 +1565,11 @@ export default {
       if (!this.canEdit || !row?.id) return
       const baseline = this.rowBaselines.get(row.id)
       const catalogMeta = linkCatalog ? CATALOG_NAME_FIELDS[field] : null
+      if (typeof row[field] === 'string') {
+        row[field] = cleanFieldText(row[field], {
+          keepBreaks: ['remark', 'qc_note', 'project_goal'].includes(field),
+        })
+      }
       row[field] = persistValue(row[field])
       if (catalogMeta) {
         const selected = row[field] ? this.catalogOptions.find((item) => item.name === row[field]) : null
@@ -1759,6 +1766,11 @@ export default {
           ...(pick.sampleType ? { sample_type: pick.sampleType } : {}),
         })
         this.createVisible = false
+        if (this.isExcelMode) {
+          this.listQuery.page = this.libraryCodeOldestFirst ? 1_000_000 : 1
+          await this.getList({ flushEditor: false })
+          return
+        }
         await this.getList({ flushEditor: false })
         this.openDrawer(this.normalizeRow(saved))
       } catch (error) {
@@ -1936,7 +1948,10 @@ export default {
       return { ok: true, value: raw || null }
     },
     coerceSheetValue(row, key, text) {
-      const raw = Array.isArray(text) ? text.join(',') : String(text ?? '').trim()
+      const keepBreaks = key === 'plate_nos' || ['remark', 'qc_note', 'project_goal'].includes(key)
+      const raw = Array.isArray(text)
+        ? text.join(',')
+        : cleanFieldText(text, { keepBreaks })
       if (key === 'plate_nos') {
         return {
           ok: true,
@@ -2196,9 +2211,7 @@ export default {
       if (!text.includes('\t') && !text.includes('\n') && !this.sheetRange) return
       event.preventDefault()
       if (!await this.flushPendingSheetEdits()) return
-      const lines = text.replace(/\r/g, '').split('\n')
-      if (lines.at(-1) === '') lines.pop()
-      const grid = lines.map((line) => line.split('\t'))
+      const grid = parseClipboardGrid(text)
       if (!grid.length) return
       const columns = allSheetColumns()
       const labelToKey = new Map(columns.map((column) => [column.label, column.key]))

@@ -787,8 +787,10 @@ import 'vxe-table/styles/cssvar.scss'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import {
   coerceRequiredPositiveInt,
+  cleanFieldText,
   coerceWorkbenchViewMode,
   createColumnOrder,
+  parseClipboardGrid,
   EXCEL_VIEW,
   WORKBENCH_VIEW,
   syncDrawerControlTooltip,
@@ -1025,7 +1027,7 @@ const WORKBENCH_COLUMNS = [
   { key: 'pm', label: 'PM', defaultVisible: true, prop: 'pm', minWidth: 72, showOverflowTooltip: true },
   { key: 'mouse_strain_category', label: '归类鼠型', defaultVisible: true, prop: 'mouse_strain_category', minWidth: 90, showOverflowTooltip: true },
   { key: 'project_code', label: '免疫项目号', defaultVisible: true, prop: 'project_code', minWidth: 120, showOverflowTooltip: true },
-  { key: 'remark', label: '备注', defaultVisible: true, prop: 'remark', minWidth: 120, showOverflowTooltip: true },
+  { key: 'remark', label: '备注', defaultVisible: true, prop: 'remark', minWidth: 120, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'status', label: '状态', defaultVisible: true, minWidth: 110, className: 'status-column-cell' },
   { key: 'mouse_status', label: '小鼠运输', defaultVisible: true, minWidth: 100, className: 'status-column-cell' },
   { key: 'antigen_ready', label: '抗原到货', defaultVisible: true, minWidth: 90, className: 'status-column-cell' },
@@ -1048,13 +1050,13 @@ const WORKBENCH_COLUMNS = [
   { key: 'mouse_region', label: '提供地区', prop: 'mouse_region', minWidth: 100, showOverflowTooltip: true },
   { key: 'mouse_room', label: '房间号', prop: 'mouse_room', minWidth: 90, showOverflowTooltip: true },
   { key: 'mouse_arrive_date', label: '到鼠时间', prop: 'mouse_arrive_date', minWidth: 110, showOverflowTooltip: true },
-  { key: 'mouse_remark', label: '小鼠备注', prop: 'mouse_remark', minWidth: 160, showOverflowTooltip: true },
+  { key: 'mouse_remark', label: '小鼠备注', prop: 'mouse_remark', minWidth: 160, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'antigen_source', label: '抗原来源', prop: 'antigen_source', minWidth: 110, showOverflowTooltip: true },
   { key: 'antigen_eta', label: '抗原预计日', prop: 'antigen_eta', minWidth: 110, showOverflowTooltip: true },
   { key: 'mouse_expand_requested', label: '代下扩繁', prop: 'mouse_expand_requested', minWidth: 110, showOverflowTooltip: true },
   { key: 'lnp_ordered', label: 'LNP下单', prop: 'lnp_ordered', minWidth: 110, showOverflowTooltip: true },
   { key: 'cell_prep_status', label: '冲击细胞', prop: 'cell_prep_status', minWidth: 110, showOverflowTooltip: true },
-  { key: 'antigen_remark', label: '抗原备注', prop: 'antigen_remark', minWidth: 160, showOverflowTooltip: true },
+  { key: 'antigen_remark', label: '抗原备注', prop: 'antigen_remark', minWidth: 160, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'experiment_id', label: '实验号', prop: 'experiment_id', minWidth: 190, showOverflowTooltip: true },
   { key: 'actions', label: '操作', defaultVisible: true, width: 240, className: 'action-column-cell', fixed: 'right' },
 ]
@@ -1890,7 +1892,11 @@ export default {
       return valid ? { ok: true, value: raw } : { ok: false, reason: 'date' }
     },
     coerceSheetValue(key, text) {
-      const raw = String(text ?? '').trim()
+      const raw = Array.isArray(text)
+        ? ''
+        : cleanFieldText(text, {
+          keepBreaks: ['remark', 'mouse_remark', 'antigen_remark'].includes(key),
+        })
       const column = this.sheetColumns.find((item) => item.key === key)
       if (!column) return { ok: false, reason: 'unknown' }
       if (['remark', 'mouse_remark', 'antigen_remark'].includes(key) && raw.length > 255) {
@@ -2327,6 +2333,12 @@ export default {
     },
     async saveRow(row, { fields = [], resort = false } = {}) {
       if (!row?.id || !fields.length || fields.some((field) => !this.canEditField(row, field))) return
+      fields.forEach((field) => {
+        if (typeof row[field] !== 'string') return
+        row[field] = cleanFieldText(row[field], {
+          keepBreaks: ['remark', 'mouse_remark', 'antigen_remark'].includes(field),
+        })
+      })
       const rowId = row.id
       const changedValues = Object.fromEntries(
         fields.map((field) => [field, JSON.parse(JSON.stringify(row[field] ?? null))]),
@@ -2361,6 +2373,10 @@ export default {
               if (current) current[field] = normalized[field]
               if (editor) editor[field] = normalized[field]
             })
+            if (Object.prototype.hasOwnProperty.call(normalized, 'project_name')) {
+              if (current) current.project_name = normalized.project_name
+              if (editor) editor.project_name = normalized.project_name
+            }
             if (fields.includes('project_code')) {
               if (current) current.experiment_id = normalized.experiment_id
               if (editor) editor.experiment_id = normalized.experiment_id
@@ -2578,9 +2594,7 @@ export default {
       if (!text.includes('\t') && !text.includes('\n') && !this.sheetRange) return
       event.preventDefault()
       if (!await this.flushPendingSheetEdits()) return
-      const lines = text.replace(/\r/g, '').split('\n')
-      if (lines.at(-1) === '') lines.pop()
-      const grid = lines.map((line) => line.split('\t'))
+      const grid = parseClipboardGrid(text)
       if (!grid.length) return
 
       const labelToKey = new Map([

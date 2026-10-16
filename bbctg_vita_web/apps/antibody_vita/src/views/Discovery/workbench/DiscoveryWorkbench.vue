@@ -593,7 +593,7 @@
                 v-for="field in section.fields"
                 :key="field.key"
                 :label="field.label"
-                :class="['drawer-field', field.wide ? 'is-wide' : '']"
+                :class="['drawer-field', field.wide ? 'is-wide' : '', field.sync ? 'is-synced' : '']"
               >
                 <el-date-picker
                   v-if="field.type === 'date'"
@@ -663,8 +663,10 @@
                   v-else-if="field.type === 'textarea'"
                   v-model="editingRow[field.key]"
                   type="textarea"
-                  :autosize="{ minRows: 1, maxRows: 4 }"
+                  :rows="field.sync ? 1 : 2"
+                  :autosize="field.sync ? false : { minRows: 1, maxRows: 4 }"
                   :disabled="!canEdit"
+                  @input="field.sync && syncDrawerTextareas()"
                   @blur="persistRow(editingRow, field.key)"
                 />
                 <span v-else-if="field.key === 'sort_order' && isQueueTerminalRow(editingRow)">-</span>
@@ -725,8 +727,10 @@ import LibraryHandoffDialog from '#/views/MolecularCell/library/LibraryHandoffDi
 import {
   coerceOptionalNonnegInt,
   coerceRequiredPositiveInt,
+  cleanFieldText,
   coerceWorkbenchViewMode,
   createColumnOrder,
+  parseClipboardGrid,
   EXCEL_VIEW,
   searchWorkbenchTargets,
   splitTargetNames,
@@ -806,6 +810,7 @@ const STRING_MAX = {
   boost_antigen: 255,
   remark: 500,
 }
+const BREAK_FIELDS = new Set(['mouse_nos', 'plate_nos', 'serum_titer', 'positive_cell_count', 'remark'])
 const STATUS_VIEWS = [
   { key: '', label: '全部安排', hint: '本台全部发现安排', valueKey: 'all', tone: 'all', step: '00' },
   { key: 'harvest', label: '待剖鼠', hint: '规划中、待冲击与待剖鼠', valueKey: 'harvest', tone: 'planned', step: '01' },
@@ -849,10 +854,10 @@ const EDITOR_SECTIONS = [
     title: '筛选',
     fields: [
       { key: 'screening_methods', label: '筛选方式', type: 'multi', wide: true },
-      { key: 'serum_titer', label: '血清效价', type: 'text' },
       { key: 'immune_antigen', label: '免疫抗原', type: 'text' },
-      { key: 'positive_cell_count', label: '阳性细胞数', type: 'text' },
       { key: 'screening_antigen', label: '筛选抗原', type: 'suggest', optionsKey: 'screening_antigens' },
+      { key: 'serum_titer', label: '血清效价', type: 'textarea', sync: true },
+      { key: 'positive_cell_count', label: '阳性细胞数', type: 'textarea', sync: true },
       { key: 'plate_nos', label: '板号', type: 'textarea', wide: true },
     ],
   },
@@ -911,7 +916,7 @@ const WORKBENCH_COLUMNS = [
   { key: 'boost_antigen', label: '冲击抗原', defaultVisible: true, prop: 'boost_antigen', minWidth: 120, showOverflowTooltip: true },
   { key: 'harvest_date', label: '剖鼠日期', defaultVisible: true, minWidth: 135, className: 'date-column-cell' },
   { key: 'boost_date', label: '冲击日期', defaultVisible: true, minWidth: 135, className: 'date-column-cell' },
-  { key: 'remark', label: '备注', defaultVisible: true, prop: 'remark', minWidth: 140, showOverflowTooltip: true },
+  { key: 'remark', label: '备注', defaultVisible: true, prop: 'remark', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'owner', label: '负责人', prop: 'owner', minWidth: 90, showOverflowTooltip: true },
   { key: 'experiment_id', label: '实验号', prop: 'experiment_id', minWidth: 130, showOverflowTooltip: true },
   { key: 'target_codes', label: '靶点编号', prop: 'target_codes', minWidth: 140, showOverflowTooltip: true },
@@ -919,11 +924,11 @@ const WORKBENCH_COLUMNS = [
   { key: 'mouse_strain', label: '小鼠品系', prop: 'mouse_strain', minWidth: 120, showOverflowTooltip: true },
   { key: 'cage_position', label: '笼位', prop: 'cage_position', minWidth: 100, showOverflowTooltip: true },
   { key: 'mouse_count', label: '只数', prop: 'mouse_count', minWidth: 80, showOverflowTooltip: true },
-  { key: 'mouse_nos', label: '鼠号', prop: 'mouse_nos', minWidth: 140, showOverflowTooltip: true },
-  { key: 'serum_titer', label: '血清效价', prop: 'serum_titer', minWidth: 110, showOverflowTooltip: true },
+  { key: 'mouse_nos', label: '鼠号', prop: 'mouse_nos', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
+  { key: 'serum_titer', label: '血清效价', prop: 'serum_titer', minWidth: 110, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'immune_antigen', label: '免疫抗原', prop: 'immune_antigen', minWidth: 140, showOverflowTooltip: true },
-  { key: 'positive_cell_count', label: '阳性细胞数', prop: 'positive_cell_count', minWidth: 110, showOverflowTooltip: true },
-  { key: 'plate_nos', label: '板号', prop: 'plate_nos', minWidth: 140, showOverflowTooltip: true },
+  { key: 'positive_cell_count', label: '阳性细胞数', prop: 'positive_cell_count', minWidth: 110, showOverflowTooltip: true, keepLineBreaks: true },
+  { key: 'plate_nos', label: '板号', prop: 'plate_nos', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'actions', label: '操作', defaultVisible: true, width: 240, className: 'action-column-cell', fixed: 'right' },
 ]
 const SHEET_HEADER_ALIASES = Object.freeze({
@@ -1230,17 +1235,30 @@ export default {
       }
     },
     drawerVisible(open) {
+      if (open) this.syncDrawerTextareas()
       if (!open && this.editingId) {
         this.rememberDrawerSave(this.flushDirtyEditor())
         this.editingId = null
         this.editingRowData = null
       }
     },
+    editingId() {
+      if (this.drawerVisible) this.syncDrawerTextareas()
+    },
     '$route.query.created'() {
       if (this.listLoaded) this.consumeCreatedQuery()
     },
   },
   methods: {
+    syncDrawerTextareas() {
+      this.$nextTick(() => {
+        const nodes = [...document.querySelectorAll('.workbench-drawer .drawer-field.is-synced textarea')]
+        if (nodes.length < 2) return
+        nodes.forEach((node) => { node.style.height = 'auto' })
+        const height = Math.max(...nodes.map((node) => node.scrollHeight))
+        nodes.forEach((node) => { node.style.height = `${height}px` })
+      })
+    },
     splitCsv,
     formatMethods(row) {
       const list = row?.screening_method_list || splitCsv(row?.screening_methods)
@@ -1338,6 +1356,11 @@ export default {
     },
     async persistRow(row, field) {
       if (!this.canEdit || !row?.id) return
+      if (typeof row[field] === 'string') {
+        row[field] = cleanFieldText(row[field], {
+          keepBreaks: BREAK_FIELDS.has(field),
+        })
+      }
       if (field === 'mouse_count' || field === 'sort_order') {
         const result = this.coerceSheetValue(field, row[field])
         if (!result.ok) {
@@ -1995,7 +2018,7 @@ export default {
       if (!column) return { ok: false, reason: 'unknown' }
       const raw = Array.isArray(text)
         ? text
-        : String(text ?? '').trim()
+        : cleanFieldText(text, { keepBreaks: BREAK_FIELDS.has(key) })
       if (key === 'sort_order') return coerceRequiredPositiveInt(raw)
       if (key === 'priority') {
         const canon = canonicalizeWorkbenchPriority(raw)
@@ -2189,9 +2212,7 @@ export default {
       if (!text.includes('\t') && !text.includes('\n') && !this.sheetRange) return
       event.preventDefault()
       if (!await this.flushPendingSheetEdits()) return
-      const lines = text.replace(/\r/g, '').split('\n')
-      if (lines.at(-1) === '') lines.pop()
-      const grid = lines.map((line) => line.split('\t'))
+      const grid = parseClipboardGrid(text)
       if (!grid.length) return
 
       const labelToKey = new Map([
@@ -2656,6 +2677,9 @@ export default {
 }
 .drawer-field.is-wide {
   grid-column: 1 / -1;
+}
+.drawer-field.is-synced :deep(.el-textarea__inner) {
+  resize: none;
 }
 .drawer-form :deep(.el-form-item) {
   margin-bottom: 8px;

@@ -176,6 +176,13 @@ class PrimerCatalogServiceTests(unittest.TestCase):
         self.assertEqual(refreshed.family, "自建系列")
         self.assertFalse(refreshed.active)
 
+        self.assertEqual(service.batch_update(self.db, [first["id"]], direction="反向")["total"], 1)
+        refreshed = self.db.get(MolecularPrimerIndexCatalog, first["id"])
+        self.assertEqual(refreshed.direction, "R")
+        self.assertEqual(refreshed.short_sequence, "AAAA")
+        with self.assertRaisesRegex(ValueError, "方向只能是正向或反向"):
+            service.batch_update(self.db, [first["id"]], direction="X")
+
         result = service.batch_delete(self.db, [first["id"], second["id"]])
         self.assertEqual(result["deleted"], 1)
         self.assertEqual(result["skipped"], ["BATCH-R"])

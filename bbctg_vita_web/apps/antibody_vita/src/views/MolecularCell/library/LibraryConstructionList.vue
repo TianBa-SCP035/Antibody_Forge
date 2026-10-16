@@ -2,6 +2,22 @@
   <div class="library-order-page">
     <AdvancedOpsBar v-model="showAdvancedOps">
       <template v-if="showAdvancedOps">
+        <el-input
+          v-model="listQuery.source_project_code"
+          clearable
+          placeholder="项目编号"
+          title="多个编号用逗号、空格或换行分隔，按完整编号查找；只填一个时按包含查找"
+          @keyup.enter="handleFilter"
+          @clear="handleFilter"
+        />
+        <el-input
+          v-model="listQuery.library_batch_no"
+          clearable
+          placeholder="建库批号"
+          title="多个批号用逗号、空格或换行分隔，按完整批号查找；只填一个时按包含查找"
+          @keyup.enter="handleFilter"
+          @clear="handleFilter"
+        />
         <el-select
           :model-value="listQuery.build_type"
           clearable
@@ -96,10 +112,11 @@
 
       <div class="filter-strip list-filter-controls">
         <el-input
-          v-model="listQuery.keyword"
+          v-model="listQuery.library_code"
           class="filter-item filter-keyword"
           clearable
-          placeholder="项目编号 / 建库编号 / 建库批号"
+          placeholder="建库编号"
+          title="多个编号用逗号、空格或换行分隔，按完整编号查找；只填一个时按包含查找"
           :prefix-icon="Search"
           @keyup.enter="handleFilter"
           @clear="handleFilter"
@@ -809,7 +826,9 @@ function emptyQuery() {
     page: 1,
     limit: 20,
     build_type: '',
-    keyword: '',
+    library_code: '',
+    source_project_code: '',
+    library_batch_no: '',
     target: '',
     target_name: '',
     study_type: '',
@@ -1019,6 +1038,8 @@ export default {
         'sample_type',
         'mouse_model',
         'cell_type',
+        'source_project_code',
+        'library_batch_no',
         'source_discovery_id',
         'notebook_no',
         'remark',
@@ -1404,7 +1425,10 @@ export default {
       const state = loadListFilters(LIBRARY_LIST_FILTER_KEY)
       if (!state) return
       if (state.listQuery && typeof state.listQuery === 'object') {
-        Object.assign(this.listQuery, state.listQuery)
+        const saved = { ...state.listQuery }
+        if (saved.keyword && !saved.library_code) saved.library_code = saved.keyword
+        delete saved.keyword
+        Object.assign(this.listQuery, saved)
       }
       if (Array.isArray(state.instrumentRange)) this.instrumentRange = state.instrumentRange
       if (Array.isArray(state.startedRange)) this.startedRange = state.startedRange

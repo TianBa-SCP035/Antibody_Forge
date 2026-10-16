@@ -57,7 +57,7 @@ async function filesFromEntry(entry, prefix, state) {
   }
 }
 
-const PACKAGE_ROOT_FOLDERS = new Set(['测序结果', '拼接结果', '去载体序列'])
+const PACKAGE_MARKERS = new Set(['测序结果', '测序合格结果', '完成'])
 
 function isZipPath(path) {
   return String(path || '').toLowerCase().endsWith('.zip')
@@ -90,7 +90,7 @@ export function pathsFromZipEntries(entryNames, archivePath) {
   const cleaned = entryNames.map(cleanZipPath).filter(Boolean)
   const tops = new Set(cleaned.map((path) => path.split('/')[0]))
   const onlyTop = tops.size === 1 ? [...tops][0] : ''
-  const prefix = !onlyTop || PACKAGE_ROOT_FOLDERS.has(onlyTop) ? zipStem(archivePath) : ''
+  const prefix = !onlyTop || PACKAGE_MARKERS.has(onlyTop) ? zipStem(archivePath) : ''
   const parent = parentPath(archivePath)
   return cleaned.map((path) => [parent, prefix, path].filter(Boolean).join('/'))
 }

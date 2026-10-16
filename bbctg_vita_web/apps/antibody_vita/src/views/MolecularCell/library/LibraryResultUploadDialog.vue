@@ -26,7 +26,7 @@
           <el-icon><UploadFilled /></el-icon>
           <strong>上传结果文件</strong>
           <span>拖入文件或文件夹</span>
-          <small>标准测序包须同时包含“测序结果”“拼接结果”“去载体序列”。zip 会自动展开，右键可选已解开的文件夹</small>
+          <small>按“测序结果”“测序合格结果”或“完成”的上一层拆成测序包。zip 会自动展开，右键可选已解开的文件夹</small>
         </button>
         <input ref="fileInput" class="batch-file-input" type="file" multiple @change="onFilePick" />
         <input ref="folderInput" class="batch-file-input" type="file" webkitdirectory multiple @change="onFolderPick" />

@@ -42,21 +42,22 @@ from modules.discovery.workbench.constants import (
 from modules.molecular_cell.library_orders.result_upload import (
     ROLE_GEL,
     ROLE_READ,
-    ROLE_SKIP,
     SEQUENCE_ARM_ONLY,
     SEQUENCE_MATCHED,
     SEQUENCE_NOT_FOUND,
     extension_of,
     IMAGE_EXTENSIONS,
+    library_code_stem,
     library_codes_in_name,
+    longest_library_code,
     month_directory,
     normalize_relative_path,
     other_directory,
     package_file_role,
     package_name,
     package_signature,
-    parse_library_filename,
     plan_upload_paths,
+    read_direction,
     READ_EXTENSIONS,
     safe_path_part,
     sequence_check,
@@ -980,18 +981,56 @@ def _append_date_range(filters: list, column, data: dict[str, Any], start_key: s
         filters.append(column <= end)
 
 
+_CODE_SEARCH_SEPARATORS = (",", "\t", "\n", "\r", "，", "、", " ")
+_CODE_SEARCH_SPLIT = re.compile(r"[,，、\s]+")
+_MAX_CODE_SEARCH = 500
+
+
+def _append_code_search(
+    filters: list,
+    column,
+    value: Any,
+    *,
+    upper: bool = False,
+    label: str,
+) -> None:
+    text = str(value or "").strip()
+    if not text:
+        return
+    parts = [part for part in _CODE_SEARCH_SPLIT.split(text) if part]
+    if not parts:
+        return
+    if upper:
+        parts = [part.upper() for part in parts]
+    if any(separator in text for separator in _CODE_SEARCH_SEPARATORS):
+        if len(parts) > _MAX_CODE_SEARCH:
+            raise ValueError(f"{label}一次最多搜索 {_MAX_CODE_SEARCH} 个")
+        filters.append(column.in_(parts))
+        return
+    filters.append(column.like(f"%{parts[0]}%"))
+
+
 def _apply_list_filters(stmt, data: dict[str, Any]):
     filters = []
-    keyword = str(data.get("keyword") or "").strip()
-    if keyword:
-        like = f"%{keyword}%"
-        filters.append(
-            or_(
-                MolecularLibraryOrder.library_code.like(f"%{keyword.upper()}%"),
-                MolecularLibraryOrder.source_project_code.like(like),
-                MolecularLibraryOrder.library_batch_no.like(like),
-            )
-        )
+    _append_code_search(
+        filters,
+        MolecularLibraryOrder.library_code,
+        data.get("library_code"),
+        upper=True,
+        label="建库编号",
+    )
+    _append_code_search(
+        filters,
+        MolecularLibraryOrder.source_project_code,
+        data.get("source_project_code"),
+        label="项目编号",
+    )
+    _append_code_search(
+        filters,
+        MolecularLibraryOrder.library_batch_no,
+        data.get("library_batch_no"),
+        label="建库批号",
+    )
     target_clauses = []
     target_code = str(data.get("target") or "").strip()
     target_name = str(data.get("target_name") or "").strip()
@@ -2056,25 +2095,49 @@ def _safe_inner_path(value: str) -> str:
     return "/".join(parts)
 
 
+def _read_targets(
+    filename: str,
+    orders: list[MolecularLibraryOrder],
+) -> tuple[list[MolecularLibraryOrder], str]:
+    stem = library_code_stem(filename)
+    if not stem:
+        return [], "文件名里没有建库编号"
+    code = longest_library_code(filename, [order.library_code for order in orders])
+    if not code:
+        return [], f"建库编号 {stem} 还没有对应工单"
+    found = [order for order in orders if (order.library_code or "").upper() == code]
+    if len(found) > 1:
+        return [], f"建库编号 {code} 对应多个工单"
+    return found, ""
+
+
+def _orders_for_stems(
+    db: Session,
+    stems: set[str],
+    *,
+    lock: bool,
+) -> list[MolecularLibraryOrder]:
+    if not stems:
+        return []
+    query = select(MolecularLibraryOrder).where(or_(*(
+        MolecularLibraryOrder.library_code.like(f"{stem}%")
+        for stem in sorted(stems)
+    )))
+    if lock:
+        query = query.with_for_update()
+    return list(db.scalars(query).all())
+
+
 def _resolve_upload_targets(
     role: str,
     filename: str,
     lookup,
 ) -> tuple[list[MolecularLibraryOrder], str]:
-    if role not in {ROLE_GEL, ROLE_READ}:
+    if role != ROLE_GEL:
         return [], ""
-    codes = (
-        library_codes_in_name(filename)
-        if role == ROLE_GEL
-        else [parse_library_filename(filename)[0]]
-    )
-    codes = [code for code in codes if code]
+    codes = [code for code in library_codes_in_name(filename) if code]
     if not codes:
-        return [], (
-            "图片文件名里没有建库编号"
-            if role == ROLE_GEL
-            else "文件名里没有建库编号"
-        )
+        return [], "图片文件名里没有建库编号"
     targets: list[MolecularLibraryOrder] = []
     seen: set[int] = set()
     for code in codes:
@@ -2094,6 +2157,11 @@ def _upload_targets(
     role: str,
     filename: str,
 ) -> tuple[list[MolecularLibraryOrder], str]:
+    if role == ROLE_READ:
+        stem = library_code_stem(filename)
+        if not stem:
+            return [], "文件名里没有建库编号"
+        return _read_targets(filename, _orders_for_stems(db, {stem}, lock=True))
     return _resolve_upload_targets(
         role,
         filename,
@@ -2175,7 +2243,10 @@ def _preflight_targets(
     role: str,
     filename: str,
     orders_by_code: dict[str, list[MolecularLibraryOrder]],
+    read_orders: list[MolecularLibraryOrder],
 ) -> tuple[list[MolecularLibraryOrder], str]:
+    if role == ROLE_READ:
+        return _read_targets(filename, read_orders)
     return _resolve_upload_targets(
         role,
         filename,
@@ -2192,69 +2263,37 @@ def preflight_upload(
         raise ValueError("请选择文件")
     if len(relative_paths) > MAX_UPLOAD_FILES:
         raise ValueError(f"一次最多上传 {MAX_UPLOAD_FILES} 个文件")
-    plan = plan_upload_paths(relative_paths, strict_batch=True)
+    plan = plan_upload_paths(relative_paths)
     roles: dict[int, str] = {}
     names = {
         index: Path(path).name
         for index, path in enumerate(plan.paths)
     }
     codes: set[str] = set()
+    stems: set[str] = set()
 
     for group in plan.packages:
         for index, inner_path in group.entries:
-            role = package_file_role(inner_path, strict=True)
+            role = package_file_role(inner_path)
             roles[index] = role
             if role == ROLE_READ:
-                code, _direction = parse_library_filename(names[index])
-                if code:
-                    codes.add(code)
+                stem = library_code_stem(names[index])
+                if stem:
+                    stems.add(stem)
     for index in plan.loose_indexes:
         role = loose_file_role(plan.paths[index], current_order=False)
         roles[index] = role
-        candidate_codes = (
-            library_codes_in_name(names[index])
-            if role == ROLE_GEL
-            else [parse_library_filename(names[index])[0]]
-            if role == ROLE_READ
-            else []
-        )
-        codes.update(code for code in candidate_codes if code)
+        if role == ROLE_GEL:
+            codes.update(code for code in library_codes_in_name(names[index]) if code)
+        elif role == ROLE_READ:
+            stem = library_code_stem(names[index])
+            if stem:
+                stems.add(stem)
 
     orders_by_code = _preflight_order_map(db, codes)
+    read_orders = _orders_for_stems(db, stems, lock=False)
     accepted: set[int] = set()
     summary: list[dict[str, Any]] = []
-
-    if plan.rootless_indexes:
-        summary.append({
-            "group_id": "rootless",
-            "kind": "rejected",
-            "name": "未选择测序包父文件夹",
-            "outcome": "skipped",
-            "file_count": len(plan.rootless_indexes),
-            "accepted_count": 0,
-            "matched_count": 0,
-            "matched_codes": [],
-            "issues": [{
-                "reason": "请同时选择包含三个已知目录的父文件夹",
-                "count": len(plan.rootless_indexes),
-            }],
-        })
-    for rejected in plan.rejected_packages:
-        summary.append({
-            "group_id": f"rejected:{rejected.root.casefold()}",
-            "kind": "rejected",
-            "source_path": rejected.root,
-            "name": package_name(rejected.root),
-            "outcome": "skipped",
-            "file_count": len(rejected.indexes),
-            "accepted_count": 0,
-            "matched_count": 0,
-            "matched_codes": [],
-            "issues": [{
-                "reason": f"不完整测序包，缺少：{'、'.join(rejected.missing_folders)}",
-                "count": 1,
-            }],
-        })
 
     for group in plan.packages:
         prepared: list[int] = []
@@ -2263,15 +2302,12 @@ def preflight_upload(
         matched_codes: set[str] = set()
         matched_files: dict[str, int] = {}
         has_target = False
-        for index, inner_path in group.entries:
+        for index, _inner_path in group.entries:
             role = roles[index]
-            if role == ROLE_SKIP:
-                reasons.append(f"忽略其他子目录：{inner_path.split('/', 1)[0]}")
-                continue
             prepared.append(index)
             if role != ROLE_READ:
                 continue
-            targets, reason = _preflight_targets(role, names[index], orders_by_code)
+            targets, reason = _preflight_targets(role, names[index], orders_by_code, read_orders)
             if targets:
                 has_target = True
                 matched_count += 1
@@ -2312,7 +2348,7 @@ def preflight_upload(
     loose_matched_files: dict[str, int] = {}
     for index in plan.loose_indexes:
         role = roles[index]
-        targets, reason = _preflight_targets(role, names[index], orders_by_code)
+        targets, reason = _preflight_targets(role, names[index], orders_by_code, read_orders)
         if targets:
             accepted.add(index)
             loose_accepted += 1
@@ -2397,7 +2433,6 @@ def _store_package(
     *,
     root: str,
     entries: list[dict[str, Any]],
-    strict: bool,
     current_order: MolecularLibraryOrder | None,
     user_name: str,
     created_paths: list[Path],
@@ -2409,25 +2444,17 @@ def _store_package(
     matched: list[tuple[dict[str, Any], MolecularLibraryOrder]] = []
     matched_keys: set[tuple[str, int]] = set()
     matched_order_ids: set[int] = set()
-    current_code = (
-        str(current_order.library_code or "").strip().upper()
-        if current_order is not None
-        else ""
-    )
     for entry in entries:
         inner_path = entry["inner_path"]
-        role = package_file_role(inner_path, strict=strict)
+        role = package_file_role(inner_path)
         entry["role"] = role
-        if role == ROLE_SKIP:
-            reasons.append(f"忽略其他子目录：{inner_path.split('/', 1)[0]}")
-            continue
         prepared.append(entry)
         if current_order is not None:
-            # 质检页：整包挂当前工单；只关联测序结果里、编号属于当前工单的文件
-            if role != ROLE_READ or not current_code:
+            # 质检页：整包挂当前工单，只关联编号属于当前工单的测序文件
+            if role != ROLE_READ:
                 continue
-            code, _ = parse_library_filename(entry["filename"])
-            if code != current_code:
+            targets, _reason = _upload_targets(db, role, entry["filename"])
+            if not any(target.id == current_order.id for target in targets):
                 continue
             key = (entry["inner_path"], int(current_order.id))
             if key not in matched_keys:
@@ -2674,11 +2701,10 @@ def _store_loose(
         if existing is not None:
             links.append(existing)
             continue
-        code, _direction = parse_library_filename(filename)
         can_check = (
             role == ROLE_READ
-            and bool(code)
-            and code == str(target.library_code or "").strip().upper()
+            and bool(library_code_stem(filename))
+            and read_direction(filename) in {"F", "R"}
         )
         status, sequence_target = (
             sequence_check(filename, entry["content"], _configured_primers(db, target))
@@ -2780,7 +2806,7 @@ def upload_batch(
 
     current_order = _load_order(db, order_id, for_update=True) if order_id else None
     paths = [entry["path"] for entry in prepared]
-    path_plan = plan_upload_paths(paths, strict_batch=current_order is None)
+    path_plan = plan_upload_paths(paths)
     grouped = {
         group.root: [
             {**prepared[index], "inner_path": inner_path}
@@ -2801,7 +2827,6 @@ def upload_batch(
                 db,
                 root=root,
                 entries=entries,
-                strict=current_order is None,
                 current_order=current_order,
                 user_name=user_name,
                 created_paths=created_paths,
@@ -3018,6 +3043,18 @@ def update_file_link(
     )
 
 
+def _finish_file_delete(
+    db: Session,
+    orders: list[MolecularLibraryOrder | None],
+    path: Path | None,
+) -> bool:
+    for order in orders:
+        if order is not None:
+            _advance_order_status(db, order)
+    db.commit()
+    return path is not None and _remove_file_if_exists(path)
+
+
 def delete_file(db: Session, link_id: int, order_id: int | None = None) -> dict[str, Any]:
     link = db.get(MolecularLibraryResultLink, int(link_id))
     if not link:
@@ -3027,21 +3064,58 @@ def delete_file(db: Session, link_id: int, order_id: int | None = None) -> dict[
         if link.order_id != int(order_id):
             raise ValueError(MISSING_FILE)
     record = db.get(MolecularLibraryResultFile, link.file_id)
-    if record and record.package_id:
-        raise ValueError("测序包里的文件不单独删除，请移除整个测序包")
+    in_package = bool(record and record.package_id)
     affected_order = db.get(MolecularLibraryOrder, link.order_id)
     full_path: Path | None = None
     db.delete(link)
     db.flush()
-    if record and not _count_file_links(db, link.file_id):
+    if record and not in_package and not _count_file_links(db, link.file_id):
         full_path = _full_path(record.storage_path)
         db.delete(record)
-    if affected_order:
-        _advance_order_status(db, affected_order)
-    db.commit()
     return {
         "id": int(link_id),
-        "file_deleted": full_path is not None and _remove_file_if_exists(full_path),
+        "file_deleted": _finish_file_delete(db, [affected_order], full_path),
+    }
+
+
+def delete_stored_file(db: Session, order_id: int, file_id: int) -> dict[str, Any]:
+    """文件夹预览里删除：取消所有工单关联，并删除磁盘文件。"""
+    order = _load_order(db, order_id)
+    record = db.get(MolecularLibraryResultFile, int(file_id))
+    if not record or not record.package_id:
+        raise ValueError(MISSING_FILE)
+    package = db.get(MolecularLibraryResultPackage, record.package_id)
+    if not package:
+        raise ValueError(MISSING_FILE)
+    visible = package.owner_order_id == order.id or db.scalar(
+        select(MolecularLibraryResultLink.id)
+        .join(
+            MolecularLibraryResultFile,
+            MolecularLibraryResultFile.id == MolecularLibraryResultLink.file_id,
+        )
+        .where(
+            MolecularLibraryResultFile.package_id == package.id,
+            MolecularLibraryResultLink.order_id == order.id,
+        )
+        .limit(1)
+    )
+    if not visible:
+        raise ValueError(MISSING_FILE)
+    links = list(db.scalars(
+        select(MolecularLibraryResultLink).where(
+            MolecularLibraryResultLink.file_id == record.id
+        )
+    ).all())
+    affected_ids = {int(link.order_id) for link in links}
+    for link in links:
+        db.delete(link)
+    full_path = _full_path(record.storage_path)
+    db.delete(record)
+    db.flush()
+    affected = [db.get(MolecularLibraryOrder, affected_id) for affected_id in affected_ids]
+    return {
+        "id": int(file_id),
+        "file_deleted": _finish_file_delete(db, affected, full_path),
     }
 
 

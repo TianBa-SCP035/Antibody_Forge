@@ -856,6 +856,60 @@ class LibraryOrderTests(unittest.TestCase):
         second = service.handoff(self.db, payload)
         self.assertNotEqual(first["items"][0]["id"], second["items"][0]["id"])
 
+    def test_code_searches_stay_on_their_own_field(self):
+        service.save(
+            self.db,
+            {
+                "build_type": service.BUILD_PHAGE_NGS,
+                "library_code": "C244",
+                "source_project_code": "26D000001",
+                "library_batch_no": "BATCH-1",
+            },
+        )
+        service.save(
+            self.db,
+            {
+                "build_type": service.BUILD_PHAGE_NGS,
+                "library_code": "C245",
+                "source_project_code": "26D000002",
+                "library_batch_no": "BATCH-2",
+            },
+        )
+        service.save(
+            self.db,
+            {
+                "build_type": service.BUILD_PHAGE_NGS,
+                "library_code": "C300",
+                "source_project_code": "C244",
+                "library_batch_no": "C245",
+            },
+        )
+        service.save(
+            self.db,
+            {
+                "build_type": service.BUILD_POOLED_BCR,
+                "library_code": "C2440",
+                "source_project_code": "26D000001-X",
+            },
+        )
+
+        def codes(payload):
+            result = service.get_list(self.db, payload)
+            return {item["library_code"] for item in result["items"]}
+
+        self.assertEqual(codes({"library_code": "C244, C245"}), {"C244", "C245"})
+        self.assertEqual(codes({"library_code": "C244,"}), {"C244"})
+        self.assertEqual(codes({"library_code": "c24"}), {"C244", "C245", "C2440"})
+        self.assertEqual(
+            codes({"source_project_code": "26D000001\n26D000002"}),
+            {"C244", "C245"},
+        )
+        self.assertEqual(codes({"source_project_code": "C244"}), {"C300"})
+        self.assertEqual(codes({"library_batch_no": "BATCH-1 BATCH-2"}), {"C244", "C245"})
+        self.assertEqual(codes({"library_batch_no": "C245"}), {"C300"})
+        with self.assertRaisesRegex(ValueError, "建库编号一次最多搜索"):
+            service.get_list(self.db, {"library_code": ",".join(f"C{index}" for index in range(501))})
+
     def test_type_stats_match_filtered_list_including_cancelled(self):
         first = service.save(self.db, {"build_type": service.BUILD_POOLED_BCR})
         service.save(self.db, {"build_type": service.BUILD_POOLED_BCR})
@@ -1377,26 +1431,18 @@ class LibraryFileTests(unittest.TestCase):
         self.assertEqual([item["name"] for item in result["summary"]], ["pkg", "pkg"])
         self.assertEqual(len({item["group_id"] for item in result["summary"]}), 2)
 
-    def test_batch_preflight_rejects_before_reading_incomplete_package(self):
-        paths = [
-            "pkg/测序结果/C123_M13F.seq",
-            "pkg/拼接结果/assembled.txt",
-        ]
-        result = service.preflight_upload(self.db, paths)
-        self.assertEqual(result["accepted_indexes"], [])
-        self.assertIn("去载体序列", result["summary"][0]["issues"][0]["reason"])
-        with patch.object(service, "_read_upload") as read_upload:
-            uploaded = service.upload_batch(
-                self.db,
-                [
-                    UploadFile(filename="C123_M13F.seq", file=io.BytesIO(b"seq")),
-                    UploadFile(filename="assembled.txt", file=io.BytesIO(b"assembled")),
-                ],
-                paths,
-                "tester",
-            )
-        read_upload.assert_not_called()
-        self.assertEqual(uploaded["items"], [])
+    def test_batch_preflight_accepts_a_package_missing_a_folder(self):
+        self._barcode_order("C123", i5_sequence="AAAA")
+        result = service.preflight_upload(
+            self.db,
+            [
+                "pkg/测序结果/C123_M13F.seq",
+                "pkg/拼接结果/assembled.txt",
+            ],
+        )
+        self.assertEqual(result["accepted_indexes"], [0, 1])
+        self.assertEqual(result["summary"][0]["outcome"], "ready")
+        self.assertEqual(result["summary"][0]["matched_codes"], ["C123"])
 
     def test_batch_upload_reads_only_preflight_accepted_packages(self):
         self._barcode_order("C123", i5_sequence="AAAA")
@@ -1465,6 +1511,7 @@ class LibraryFileTests(unittest.TestCase):
                 "vector.TXT",
                 "明细表.xlsx",
                 "plain.png",
+                "skip.txt",
             },
         )
         self.assertEqual(result["summary"][0]["outcome"], "stored")
@@ -1474,10 +1521,6 @@ class LibraryFileTests(unittest.TestCase):
             "status": service.STATUS_WAIT_QC,
             "detail": "引物已对上，还没有胶图",
         }])
-        self.assertTrue(any(
-            issue["reason"].startswith("忽略其他子目录")
-            for issue in result["summary"][0]["issues"]
-        ))
         again = service.upload_batch(
             self.db,
             [
@@ -1503,8 +1546,8 @@ class LibraryFileTests(unittest.TestCase):
         self.assertTrue(any(path.endswith("拼接结果/C123-1.seq") for path in relative))
         self.assertTrue(any(path.endswith("去载体序列/vector.TXT") for path in relative))
 
-    def test_batch_rejects_incomplete_package(self):
-        self._barcode_order("C123", i5_sequence="AAAA")
+    def test_batch_keeps_a_package_missing_a_folder(self):
+        order = self._barcode_order("C123", i5_sequence="AAAA")
         result = service.upload_batch(
             self.db,
             [
@@ -1517,23 +1560,91 @@ class LibraryFileTests(unittest.TestCase):
             ],
             "tester",
         )
-        self.assertEqual(result["items"], [])
-        self.assertEqual(result["summary"][0]["outcome"], "skipped")
-        self.assertIn("去载体序列", result["summary"][0]["issues"][0]["reason"])
-        self.assertEqual(self.db.query(MolecularLibraryResultPackage).count(), 0)
+        self.assertEqual(result["summary"][0]["outcome"], "stored")
+        self.assertEqual(result["summary"][0]["name"], "pkg")
+        self.assertEqual(
+            service.list_files(self.db, order["id"])["items"][0]["original_name"],
+            "C123_M13F.seq",
+        )
 
-    def test_batch_rejects_known_folder_without_parent(self):
-        self._barcode_order("C123", i5_sequence="AAAA")
+    def test_marker_folder_itself_is_a_package(self):
+        order = self._barcode_order("C123", i5_sequence="AAAA")
         result = service.upload_batch(
             self.db,
             [UploadFile(filename="C123_M13F.seq", file=io.BytesIO(b"TTTT"))],
             ["测序结果/C123_M13F.seq"],
             "tester",
         )
-        self.assertEqual(result["items"], [])
-        self.assertEqual(result["summary"][0]["outcome"], "skipped")
-        self.assertIn("父文件夹", result["summary"][0]["issues"][0]["reason"])
-        self.assertEqual(self.db.query(MolecularLibraryResultFile).count(), 0)
+        self.assertEqual(result["summary"][0]["outcome"], "stored")
+        self.assertEqual(result["summary"][0]["name"], "测序结果")
+        self.assertEqual(
+            service.list_files(self.db, order["id"])["packages"][0]["name"],
+            "测序结果",
+        )
+
+    def test_company_folders_split_and_match_the_longest_code(self):
+        orders = {
+            code: self._barcode_order(code, i5_sequence="AAAA", i7_sequence="CCCC")
+            for code in ("C782", "C600", "C634", "C601", "X101", "C766", "C766-L169", "C782-1")
+        }
+        files = [
+            ("C782-1-(M13F)(261015).seq", _read("AAAA")),
+            ("C782-2-(M13R)(261015).seq", _read("CCCC", "R")),
+            ("第一次结果.pdf", b"report"),
+            ("C600-KM-1-M13F-77.seq", _read("AAAA")),
+            ("C634-K-1-M13F-77.seq", _read("AAAA")),
+            ("C601-KM-2-M13F-77.seq", _read("AAAA")),
+            ("X101-5_M13F_TSS.seq", _read("AAAA")),
+            ("X101-5_TSS.seq", b"assembly"),
+            ("X101-5_TSS.TXT", b"trimmed"),
+            ("C766-L169_M13F.seq", _read("AAAA")),
+            ("C782-10-(M13F).seq", _read("AAAA")),
+            ("C766-L169_M13F_M13R.seq", _read("AAAA")),
+        ]
+        paths = [
+            "batch/20261015-050/20261015-050/测序合格结果/C782-1-(M13F)(261015).seq",
+            "batch/20261015-050/20261015-050/特殊合格结果/C782-2-(M13R)(261015).seq",
+            "batch/20261015-050/20261015-050/第一次结果.pdf",
+            "batch/CN/完成/C600-KM-1-M13F-77.seq",
+            "batch/CN/完成-套峰/C634-K-1-M13F-77.seq",
+            "batch/CN/无信号/C601-KM-2-M13F-77.seq",
+            "batch/TJ/测序结果/X101-5_M13F_TSS.seq",
+            "batch/TJ/拼接结果/X101-5_TSS.seq",
+            "batch/TJ/去载体序列/X101-5_TSS.TXT",
+            "batch/old/测序结果/C766-L169_M13F.seq",
+            "batch/old/测序结果/C782-10-(M13F).seq",
+            "batch/old/测序结果/C766-L169_M13F_M13R.seq",
+        ]
+        result = service.upload_batch(
+            self.db,
+            [UploadFile(filename=name, file=io.BytesIO(content)) for name, content in files],
+            paths,
+            "tester",
+        )
+        self.assertEqual(
+            [item["name"] for item in result["summary"]],
+            ["20261015-050", "CN", "TJ", "old"],
+        )
+        linked = {item["original_name"]: item for item in result["items"]}
+        self.assertEqual(linked["C782-1-(M13F)(261015).seq"]["order_id"], orders["C782-1"]["id"])
+        self.assertEqual(linked["C782-1-(M13F)(261015).seq"]["sequence_check"], "i5 与核对序列一致")
+        self.assertEqual(linked["C782-2-(M13R)(261015).seq"]["order_id"], orders["C782"]["id"])
+        self.assertEqual(linked["C782-2-(M13R)(261015).seq"]["sequence_check"], "i7 与核对序列一致")
+        self.assertEqual(linked["C600-KM-1-M13F-77.seq"]["order_id"], orders["C600"]["id"])
+        self.assertEqual(linked["C634-K-1-M13F-77.seq"]["order_id"], orders["C634"]["id"])
+        self.assertEqual(linked["C634-K-1-M13F-77.seq"]["sequence_target"], "i5")
+        self.assertEqual(linked["C601-KM-2-M13F-77.seq"]["order_id"], orders["C601"]["id"])
+        self.assertEqual(linked["X101-5_M13F_TSS.seq"]["order_id"], orders["X101"]["id"])
+        self.assertNotIn("X101-5_TSS.seq", linked)
+        self.assertEqual(linked["C766-L169_M13F.seq"]["order_id"], orders["C766-L169"]["id"])
+        self.assertEqual(linked["C782-10-(M13F).seq"]["order_id"], orders["C782"]["id"])
+        self.assertEqual(linked["C766-L169_M13F_M13R.seq"]["order_id"], orders["C766-L169"]["id"])
+        self.assertFalse(linked["C766-L169_M13F_M13R.seq"]["sequence_check"])
+        tj = service.list_files(self.db, orders["X101"]["id"])["packages"][0]
+        self.assertEqual(
+            {item["original_name"] for item in tj["files"]},
+            {"X101-5_M13F_TSS.seq", "X101-5_TSS.seq", "X101-5_TSS.TXT"},
+        )
 
     def test_changed_file_goes_to_a_new_package(self):
         order = self._barcode_order("C123", i5_sequence="AAAA")
@@ -1820,26 +1931,81 @@ class LibraryFileTests(unittest.TestCase):
         names = {item["id"]: item["original_name"] for item in service.list_files(self.db, order["id"])["items"]}
         self.assertEqual(names[read["id"]], "C123_M13F_redo.seq")
 
-    def test_package_files_are_not_deleted_one_by_one(self):
+    def test_unlinking_a_package_file_keeps_it_in_the_package(self):
         order = self._barcode_order("C123", i5_sequence="AAAA")
         service.upload_batch(
             self.db,
             [
-                UploadFile(filename="C123_M13F.seq", file=io.BytesIO(_read("AAAA"))),
+                UploadFile(filename="C123-1_M13F.seq", file=io.BytesIO(_read("AAAA"))),
+                UploadFile(filename="C123-2_M13F.seq", file=io.BytesIO(_read("AAAA"))),
                 UploadFile(filename="assembled.txt", file=io.BytesIO(b"assembled")),
                 UploadFile(filename="trimmed.txt", file=io.BytesIO(b"trimmed")),
             ],
             [
-                "pkg/测序结果/C123_M13F.seq",
+                "pkg/测序结果/C123-1_M13F.seq",
+                "pkg/测序结果/C123-2_M13F.seq",
                 "pkg/拼接结果/assembled.txt",
                 "pkg/去载体序列/trimmed.txt",
             ],
             "tester",
         )
-        read = service.list_files(self.db, order["id"])["items"][0]
-        with self.assertRaisesRegex(ValueError, "移除整个测序包"):
-            service.delete_file(self.db, read["id"], order["id"])
-        self.assertEqual(len(service.list_files(self.db, order["id"])["items"]), 1)
+        listed = service.list_files(self.db, order["id"])
+        target = next(item for item in listed["items"] if item["original_name"] == "C123-1_M13F.seq")
+        link = self.db.get(MolecularLibraryResultLink, target["id"])
+        record = self.db.get(MolecularLibraryResultFile, link.file_id)
+        disk = self.repo / "uploads" / record.storage_path.lstrip("/")
+        removed = service.delete_file(self.db, target["id"], order["id"])
+        self.assertFalse(removed["file_deleted"])
+        self.assertIsNone(self.db.get(MolecularLibraryResultLink, target["id"]))
+        self.assertIsNotNone(self.db.get(MolecularLibraryResultFile, record.id))
+        self.assertTrue(disk.exists())
+        self.assertEqual(self.db.query(MolecularLibraryResultPackage).count(), 1)
+        again = service.list_files(self.db, order["id"])
+        self.assertEqual(
+            {item["original_name"] for item in again["items"]},
+            {"C123-2_M13F.seq"},
+        )
+        stored = {item["original_name"]: item["for_qc"] for item in again["packages"][0]["files"]}
+        self.assertFalse(stored["C123-1_M13F.seq"])
+        self.assertTrue(stored["C123-2_M13F.seq"])
+        self.assertFalse(stored["assembled.txt"])
+
+    def test_folder_preview_delete_removes_the_file_from_every_order(self):
+        order = self._barcode_order("C123", i5_sequence="AAAA")
+        other = self._barcode_order("C456")
+        service.upload_batch(
+            self.db,
+            [
+                UploadFile(filename="C123_M13F.seq", file=io.BytesIO(_read("AAAA"))),
+                UploadFile(filename="assembled.txt", file=io.BytesIO(b"assembled")),
+            ],
+            [
+                "pkg/测序结果/C123_M13F.seq",
+                "pkg/拼接结果/assembled.txt",
+            ],
+            "tester",
+        )
+        listed = service.list_files(self.db, order["id"])
+        target = listed["items"][0]
+        link = self.db.get(MolecularLibraryResultLink, target["id"])
+        record = self.db.get(MolecularLibraryResultFile, link.file_id)
+        self.db.add(MolecularLibraryResultLink(
+            file_id=record.id,
+            order_id=other["id"],
+            original_name=target["original_name"],
+        ))
+        self.db.commit()
+        disk = self.repo / "uploads" / record.storage_path.lstrip("/")
+        removed = service.delete_stored_file(self.db, order["id"], record.id)
+        self.assertTrue(removed["file_deleted"])
+        self.assertFalse(disk.exists())
+        self.assertIsNone(self.db.get(MolecularLibraryResultFile, record.id))
+        self.assertEqual(self.db.query(MolecularLibraryResultLink).count(), 0)
+        self.assertEqual(self.db.query(MolecularLibraryResultPackage).count(), 1)
+        remaining = list(self.db.scalars(select(MolecularLibraryResultFile)).all())
+        self.assertEqual([item.relative_path for item in remaining], ["拼接结果/assembled.txt"])
+        self.assertEqual(service.list_files(self.db, order["id"])["items"], [])
+        self.assertEqual(service.list_files(self.db, other["id"])["items"], [])
 
     def test_primer_change_rechecks_existing_sequence(self):
         order = self._barcode_order("C123", i5_sequence="AAAA")

@@ -96,15 +96,12 @@ export function preflightLibraryFileBatch(paths: string[]) {
   );
 }
 
-export function deleteLibraryFile(data: { link_id: number; order_id?: number }) {
-  return requestClient.post(
-    '/molecular-cell/library-orders/files/delete',
-    data,
-    skipGlobalErrorHandler,
-  );
-}
-
-export function deleteLibraryPackage(data: { order_id: number | string; package_id: number }) {
+export function deleteLibraryResult(data: {
+  link_id?: number;
+  file_id?: number;
+  order_id?: number | string;
+  package_id?: number;
+}) {
   return requestClient.post(
     '/molecular-cell/library-orders/files/delete',
     data,

@@ -62,7 +62,12 @@ export function fetchPrimerIds(data: PrimerListQuery = {}) {
   return requestClient.post<{ ids: number[] }>(`${BASE}/ids`, data);
 }
 
-export function batchUpdatePrimers(data: { ids: number[]; active?: boolean; family?: string }) {
+export function batchUpdatePrimers(data: {
+  ids: number[];
+  active?: boolean;
+  family?: string;
+  direction?: string;
+}) {
   return requestClient.post<{ total: number }>(`${BASE}/batch_update`, data, {
     timeout: 30_000,
     ...skipGlobalErrorHandler,

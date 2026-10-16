@@ -72,6 +72,7 @@ class PrimerBatchIdsRequest(BaseModel):
     ids: list[int] = Field(min_length=1, max_length=service.MAX_BATCH_IDS)
     active: bool | None = None
     family: str | None = Field(default=None, max_length=service.FIELD_LIMITS["family"])
+    direction: str | None = Field(default=None, max_length=service.FIELD_LIMITS["direction"])
 
 
 class PrimerBatchSaveRequest(BaseModel):
@@ -145,7 +146,9 @@ def primer_batch_update(
     require_permission(db, current_user, EDIT_PERMISSION)
     return _write(
         db,
-        lambda: service.batch_update(db, data.ids, active=data.active, family=data.family),
+        lambda: service.batch_update(
+            db, data.ids, active=data.active, family=data.family, direction=data.direction
+        ),
     )
 
 

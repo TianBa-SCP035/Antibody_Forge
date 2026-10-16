@@ -67,6 +67,7 @@ class FilePreflightRequest(BaseModel):
 
 class FileDeleteRequest(BaseModel):
     link_id: int | None = Field(default=None, gt=0)
+    file_id: int | None = Field(default=None, gt=0)
     order_id: int | None = Field(default=None, gt=0)
     package_id: int | None = Field(default=None, gt=0)
 
@@ -279,12 +280,17 @@ def file_delete(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, FILE_PERMISSION)
+    if (data.package_id or data.file_id) and not data.order_id:
+        raise HTTPException(status_code=422, detail="请指定工单")
     if data.package_id:
-        if not data.order_id:
-            raise HTTPException(status_code=422, detail="请指定工单")
         return _run_write(
             db,
             lambda: service.delete_package(db, data.order_id, data.package_id),
+        )
+    if data.file_id:
+        return _run_write(
+            db,
+            lambda: service.delete_stored_file(db, data.order_id, data.file_id),
         )
     if not data.link_id:
         raise HTTPException(status_code=422, detail="请选择要删除的文件")

@@ -283,12 +283,19 @@ def batch_update(
     *,
     active: bool | None = None,
     family: str | None = None,
+    direction: str | None = None,
 ) -> dict[str, int]:
-    if active is None and family is None:
-        raise ValueError("请选择停用、启用或新系列")
+    if active is None and family is None and direction is None:
+        raise ValueError("请选择停用、启用、新系列或方向")
     if active is not None and not isinstance(active, bool):
         raise ValueError("启用状态不正确")
     next_family = _text(family, "family", True) if family is not None else None
+    next_direction = None
+    if direction is not None:
+        raw_direction = str(direction).strip()
+        next_direction = DIRECTION_VALUES.get(raw_direction) or DIRECTION_VALUES.get(raw_direction.upper())
+        if not next_direction:
+            raise ValueError("方向只能是正向或反向")
     id_list = _id_list(ids)
     rows = db.scalars(select(Primer).where(Primer.id.in_(id_list))).all()
     if len(rows) != len(id_list):
@@ -296,6 +303,8 @@ def batch_update(
     for row in rows:
         if next_family is not None:
             row.family = next_family
+        if next_direction is not None:
+            row.direction = next_direction
         if active is not None:
             row.active = active
     db.commit()

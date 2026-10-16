@@ -38,6 +38,17 @@ test('a zip whose files sit at the root uses the zip name as the folder', () => 
   )
 })
 
+test('a zip whose only folder is a marker uses the zip name', () => {
+  assert.deepEqual(
+    pathsFromZipEntries(['测序合格结果/a.ab1', '完成/b.seq'], 'batch.zip'),
+    ['batch/测序合格结果/a.ab1', 'batch/完成/b.seq'],
+  )
+  assert.deepEqual(
+    pathsFromZipEntries(['完成/a.seq'], 'CN.zip'),
+    ['CN/完成/a.seq'],
+  )
+})
+
 test('a zip that already contains one folder keeps that folder name', () => {
   assert.deepEqual(
     pathsFromZipEntries([

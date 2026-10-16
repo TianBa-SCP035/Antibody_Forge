@@ -11,6 +11,10 @@
       >
         <ElOption v-for="name in libraryNames" :key="name" :label="name" :value="name" />
       </ElSelect>
+      <ElSelect v-if="selectionMode" v-model="batchDirection" clearable placeholder="改到这个方向">
+        <ElOption label="正向" value="F" />
+        <ElOption label="反向" value="R" />
+      </ElSelect>
       <template #actions>
         <ElButton
           :type="selectionMode ? 'primary' : 'default'"
@@ -22,6 +26,9 @@
         <template v-if="selectionMode">
           <ElButton :disabled="!selectedIds.size || !batchFamily.trim()" :loading="batching" @click="runBatch({ family: batchFamily.trim() })">
             改系列
+          </ElButton>
+          <ElButton :disabled="!selectedIds.size || !batchDirection" :loading="batching" @click="runBatch({ direction: batchDirection })">
+            改方向
           </ElButton>
           <ElButton :disabled="!selectedIds.size" :loading="batching" @click="runBatch({ active: false })">停用</ElButton>
           <ElButton :disabled="!selectedIds.size" :loading="batching" @click="runBatch({ active: true })">启用</ElButton>
@@ -411,6 +418,7 @@ const importVisible = ref(false);
 const showAdvancedOps = ref(false);
 const selectionMode = ref(false);
 const batchFamily = ref('');
+const batchDirection = ref('');
 const batching = ref(false);
 const selectedIds = ref(new Set<number>());
 let checkDrag: { checking: boolean } | null = null;
@@ -606,6 +614,7 @@ function leaveSelection() {
   selectionMode.value = false;
   clearSelected();
   batchFamily.value = '';
+  batchDirection.value = '';
 }
 
 function toggleSelectionMode() {
@@ -621,7 +630,7 @@ watch(showAdvancedOps, (open) => {
   if (!open) leaveSelection();
 });
 
-async function runBatch(action: { active?: boolean; family?: string; remove?: boolean }) {
+async function runBatch(action: { active?: boolean; direction?: string; family?: string; remove?: boolean }) {
   const ids = [...selectedIds.value];
   if (!ids.length) {
     ElMessage.warning('请先勾选引物');
@@ -637,6 +646,9 @@ async function runBatch(action: { active?: boolean; family?: string; remove?: bo
       );
     } else if (action.family) {
       await ElMessageBox.confirm(`确认把选中的 ${count} 条改到「${action.family}」？`, '改系列', { type: 'warning' });
+    } else if (action.direction) {
+      const label = action.direction === 'F' ? '正向' : '反向';
+      await ElMessageBox.confirm(`确认把选中的 ${count} 条改为${label}？`, '改方向', { type: 'warning' });
     } else if (action.active === false) {
       await ElMessageBox.confirm(
         `确认停用选中的 ${count} 条？停用后不再出现在文库构建的引物选项里。`,
@@ -660,11 +672,15 @@ async function runBatch(action: { active?: boolean; family?: string; remove?: bo
     } else if (action.family) {
       await batchUpdatePrimers({ ids, family: action.family });
       ElMessage.success('系列已更新');
+    } else if (action.direction) {
+      await batchUpdatePrimers({ ids, direction: action.direction });
+      ElMessage.success('方向已更新');
     } else {
       await batchUpdatePrimers({ ids, active: action.active });
       ElMessage.success(action.active ? '已启用' : '已停用');
     }
     batchFamily.value = '';
+    batchDirection.value = '';
     clearSelected();
     await load();
   } catch (error) {

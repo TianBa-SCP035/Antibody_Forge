@@ -212,7 +212,6 @@
               <span>下载</span>
             </el-button>
             <el-button
-              v-if="!currentFile.package_id"
               size="small"
               type="danger"
               plain
@@ -374,7 +373,20 @@
                       <small>{{ packageDirectory(packageFocus.relative_path) }} · {{ fileSize(packageFocus.byte_size) }}</small>
                       <small v-if="packageFocus.sequence_check">{{ packageFocus.sequence_check }}</small>
                     </div>
-                    <el-button size="small" plain @click="downloadStored(packageFocus)">下载</el-button>
+                    <div class="package-preview-actions">
+                      <el-button size="small" plain @click="downloadStored(packageFocus)">下载</el-button>
+                      <el-button
+                        size="small"
+                        type="danger"
+                        plain
+                        :disabled="!canManageFiles"
+                        aria-label="删除这个文件"
+                        title="删除这个文件"
+                        @click="deleteStoredFile(packageFocus)"
+                      >
+                        <el-icon><Delete /></el-icon>
+                      </el-button>
+                    </div>
                   </header>
                   <AbiTracePreview
                     v-if="isTrace(packageFocus)"
@@ -852,8 +864,7 @@ import {
 import { useUserStore } from '@vben/stores'
 
 import {
-  deleteLibraryFile,
-  deleteLibraryPackage,
+  deleteLibraryResult,
   fetchLibraryFiles,
   libraryStoredFileDownloadUrl,
   fetchPrimerIndexOptions,
@@ -2281,25 +2292,25 @@ export default {
       ))
       this.files = [...gels, ...pairs.flatMap((item) => item.group), ...others]
     },
-    async removePackage(folder) {
+    async confirmDelete(message, confirmButtonText = '删除') {
       if (!this.canManageFiles) {
         ElMessage.warning('您没有权限删除结果文件')
-        return
+        return false
       }
+      try {
+        await ElMessageBox.confirm(message, '删除确认', { type: 'warning', confirmButtonText })
+        return true
+      } catch {
+        return false
+      }
+    },
+    async removePackage(folder) {
       const shared = folder.shared
         ? '该包还关联其他工单，本次只从当前工单移除，原始包会保留。'
         : '这是最后一个工单关联，原始包和包内文件也会删除。'
+      if (!await this.confirmDelete(`移除测序包 ${folder.name}？${shared}`, '移除')) return
       try {
-        await ElMessageBox.confirm(
-          `移除测序包 ${folder.name}？${shared}`,
-          '移除确认',
-          { type: 'warning', confirmButtonText: '移除' },
-        )
-      } catch {
-        return
-      }
-      try {
-        const result = await deleteLibraryPackage({
+        const result = await deleteLibraryResult({
           order_id: this.orderId,
           package_id: folder.id,
         })
@@ -2309,25 +2320,30 @@ export default {
         notifyApiError(error, { messages: { default: '删除失败' } })
       }
     },
-    async removeFile(file) {
-      if (!this.canManageFiles) {
-        ElMessage.warning('您没有权限删除结果文件')
-        return
-      }
-      const shared = Number(file.linked_order_count || 1) > 1
-      const message = shared
-        ? `${file.original_name} 还挂在其他工单上。本次只会从当前工单移除，其他工单不受影响。`
-        : `确认删除 ${file.original_name}？这是最后一个引用，磁盘文件也会删除。`
+    async deleteStoredFile(file) {
+      const message = `删除 ${file.original_name}？文件会从测序包里去掉，并取消它和所有工单的关联。`
+      if (!await this.confirmDelete(message)) return
       try {
-        await ElMessageBox.confirm(message, '删除确认', { type: 'warning', confirmButtonText: '删除' })
-      } catch {
-        return
+        await deleteLibraryResult({ file_id: file.file_id, order_id: this.orderId })
+        ElMessage.success('已删除')
+        await this.load()
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '删除失败' } })
       }
+    },
+    async removeFile(file) {
+      const shared = Number(file.linked_order_count || 1) > 1
+      const message = file.package_id
+        ? `取消 ${file.original_name} 与当前工单的关联？文件仍留在测序包里。`
+        : shared
+          ? `${file.original_name} 还挂在其他工单上。本次只会从当前工单移除，其他工单不受影响。`
+          : `确认删除 ${file.original_name}？这是最后一个引用，磁盘文件也会删除。`
+      if (!await this.confirmDelete(message)) return
       const index = this.files.findIndex((item) => item.id === file.id)
       const neighbor = this.files[index + 1] || this.files[index - 1]
       try {
-        await deleteLibraryFile({ link_id: file.id, order_id: this.orderId })
-        ElMessage.success('已删除')
+        await deleteLibraryResult({ link_id: file.id, order_id: this.orderId })
+        ElMessage.success(file.package_id ? '已取消关联' : '已删除')
         await this.load(neighbor?.id)
       } catch (error) {
         notifyApiError(error, { messages: { default: '删除失败' } })
@@ -3107,6 +3123,12 @@ export default {
 
 .package-preview-head > div {
   min-width: 0;
+}
+
+.package-preview-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
 }
 
 .package-preview-head strong,

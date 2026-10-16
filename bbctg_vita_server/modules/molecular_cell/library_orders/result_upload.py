@@ -1,8 +1,7 @@
 """文库结果上传的纯规则。
 
 本模块只负责路径识别、建库编号解析、包指纹和序列核对，不读写数据库或磁盘。
-列表批量入口只接受三个已知目录齐全的标准测序包；质检页也可把普通文件夹
-作为一个完整文件夹归属当前工单。
+列表批量上传和质检页用同一套规则：有标记文件夹时其上一层是一个测序包。
 """
 
 from __future__ import annotations
@@ -19,12 +18,12 @@ from modules.molecular_cell.primer_catalog.service import check_sequence as prim
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".gif"}
 TRACE_EXTENSIONS = {".ab1", ".abi"}
 READ_EXTENSIONS = TRACE_EXTENSIONS | {".seq"}
-READ_FOLDER = "测序结果"
-ASSEMBLY_FOLDER = "拼接结果"
-TRIMMED_FOLDER = "去载体序列"
-KNOWN_PACKAGE_FOLDERS = (READ_FOLDER, ASSEMBLY_FOLDER, TRIMMED_FOLDER)
+PACKAGE_MARKERS = frozenset({"测序结果", "测序合格结果", "完成"})
+ARCHIVE_FOLDERS = frozenset({"拼接结果", "去载体序列"})
+CODE_BOUNDARIES = set("-_()（）. ")
 
 LIBRARY_CODE_RE = re.compile(r"(?:[HKL])?[NLCX]\d+", re.IGNORECASE)
+PRIMER_MARK_RE = re.compile(r"(?<![A-Z0-9])M13([FR])(?![A-Z0-9])")
 ROLE_GEL = "gel"
 ROLE_READ = "read"
 ROLE_PACKAGE = "package"
@@ -58,18 +57,9 @@ class PackagePathGroup:
 
 
 @dataclass(frozen=True)
-class RejectedPackageGroup:
-    root: str
-    indexes: tuple[int, ...]
-    missing_folders: tuple[str, ...]
-
-
-@dataclass(frozen=True)
 class UploadPathPlan:
     paths: tuple[str, ...]
     packages: tuple[PackagePathGroup, ...]
-    rejected_packages: tuple[RejectedPackageGroup, ...]
-    rootless_indexes: tuple[int, ...]
     loose_indexes: tuple[int, ...]
 
 
@@ -86,42 +76,28 @@ def normalize_relative_path(value: str | None, filename: str) -> str:
     return "/".join(parts)
 
 
-def package_folder_sets(paths: list[str]) -> dict[str, set[str]]:
-    """返回每个候选包根目录下实际出现的已知直接子目录。"""
-    roots: dict[str, set[str]] = {}
-    for raw in paths:
-        parts = PurePosixPath(normalize_relative_path(raw, raw)).parts
+def _marked_package_roots(paths: list[str]) -> set[str]:
+    """标记文件夹的上一层是一包；标记就在最外层时，它自己是一包。"""
+    roots: set[str] = set()
+    for path in paths:
+        parts = PurePosixPath(path).parts
         for index, part in enumerate(parts[:-1]):
-            if part in KNOWN_PACKAGE_FOLDERS and index:
-                root = "/".join(parts[:index])
-                roots.setdefault(root, set()).add(part)
-    return roots
-
-
-def complete_package_roots(paths: list[str]) -> set[str]:
-    required = set(KNOWN_PACKAGE_FOLDERS)
+            if part not in PACKAGE_MARKERS:
+                continue
+            roots.add("/".join(parts[:index]) if index else part)
+            break
     return {
         root
-        for root, folders in package_folder_sets(paths).items()
-        if folders == required
+        for root in roots
+        if not any(other != root and root.startswith(f"{other}/") for other in roots)
     }
 
 
-def incomplete_package_roots(paths: list[str]) -> dict[str, tuple[str, ...]]:
-    required = set(KNOWN_PACKAGE_FOLDERS)
+def _top_folder_roots(paths: list[str]) -> set[str]:
     return {
-        root: tuple(folder for folder in KNOWN_PACKAGE_FOLDERS if folder not in folders)
-        for root, folders in package_folder_sets(paths).items()
-        if folders != required
-    }
-
-
-def detail_folder_roots(paths: list[str]) -> set[str]:
-    """质检页把每个有子路径的顶层目录作为普通文件夹。"""
-    return {
-        PurePosixPath(normalize_relative_path(path, path)).parts[0]
+        PurePosixPath(path).parts[0]
         for path in paths
-        if len(PurePosixPath(normalize_relative_path(path, path)).parts) > 1
+        if len(PurePosixPath(path).parts) > 1
     }
 
 
@@ -133,30 +109,18 @@ def locate_in_package(relative_path: str, package_roots: set[str]) -> tuple[str,
     return None
 
 
-def plan_upload_paths(relative_paths: list[str], *, strict_batch: bool) -> UploadPathPlan:
-    """仅按路径规划包、零散文件和拒绝项，不读取文件内容。"""
+def plan_upload_paths(relative_paths: list[str]) -> UploadPathPlan:
+    """按标记文件夹拆包。没有标记时，每个顶层文件夹自己是一包。"""
     paths = tuple(normalize_relative_path(path, path) for path in relative_paths)
-    complete = complete_package_roots(list(paths))
-    incomplete = incomplete_package_roots(list(paths)) if strict_batch else {}
-    roots = complete if strict_batch else detail_folder_roots(list(paths))
+    roots = _marked_package_roots(list(paths)) or _top_folder_roots(list(paths))
     grouped: dict[str, list[tuple[int, str]]] = {root: [] for root in roots}
-    rejected: dict[str, list[int]] = {}
-    rootless: list[int] = []
     loose: list[int] = []
 
     for index, path in enumerate(paths):
-        first_part = path.split("/", 1)[0]
-        if strict_batch and first_part in KNOWN_PACKAGE_FOLDERS:
-            rootless.append(index)
-            continue
         located = locate_in_package(path, roots)
         if located:
             root, inner_path = located
             grouped[root].append((index, inner_path))
-            continue
-        partial = locate_in_package(path, set(incomplete))
-        if strict_batch and partial:
-            rejected.setdefault(partial[0], []).append(index)
             continue
         loose.append(index)
 
@@ -167,11 +131,6 @@ def plan_upload_paths(relative_paths: list[str], *, strict_batch: bool) -> Uploa
             for root, entries in sorted(grouped.items())
             if entries
         ),
-        rejected_packages=tuple(
-            RejectedPackageGroup(root, tuple(indexes), incomplete[root])
-            for root, indexes in sorted(rejected.items())
-        ),
-        rootless_indexes=tuple(rootless),
         loose_indexes=tuple(loose),
     )
 
@@ -180,22 +139,12 @@ def package_name(root: str) -> str:
     return PurePosixPath(root).name or "package"
 
 
-def package_file_role(inner_path: str, *, strict: bool) -> str:
-    """分类包内文件。测序编号只认「测序结果」，拼接结果和去载体序列只保存。"""
-    inner = normalize_relative_path(inner_path, inner_path)
-    parts = PurePosixPath(inner).parts
-    if strict and len(parts) > 1 and parts[0] not in KNOWN_PACKAGE_FOLDERS:
-        return ROLE_SKIP
-    filename = parts[-1]
-    suffix = extension_of(filename)
-    folder = parts[0] if len(parts) > 1 else ""
-    if suffix in READ_EXTENSIONS and folder == READ_FOLDER:
-        return ROLE_READ
-    if (
-        not strict
-        and suffix in READ_EXTENSIONS
-        and folder not in {ASSEMBLY_FOLDER, TRIMMED_FOLDER}
-    ):
+def package_file_role(inner_path: str) -> str:
+    """包内的 ab1/abi/seq 参与匹配。拼接结果和去载体序列只保存。"""
+    parts = PurePosixPath(normalize_relative_path(inner_path, inner_path)).parts
+    if any(part in ARCHIVE_FOLDERS for part in parts[:-1]):
+        return ROLE_PACKAGE
+    if extension_of(parts[-1]) in READ_EXTENSIONS:
         return ROLE_READ
     return ROLE_PACKAGE
 
@@ -238,19 +187,45 @@ def leading_library_token(filename: str) -> str:
     return match.group(0).upper() if match else ""
 
 
+def code_match_head(filename: str) -> str:
+    """HC223_… 去掉链字母后再和工单编号比较。"""
+    name = PurePosixPath(filename or "").name.upper()
+    if re.match(r"[HKL](?=[NLCX]\d+)", name):
+        return name[1:]
+    return name
+
+
+def library_code_stem(filename: str) -> str:
+    """文件名开头的短编号，用来缩小工单查询。C766-L169_… 得到 C766。"""
+    matched = re.match(r"[NLCX]\d+", code_match_head(filename))
+    return matched.group(0) if matched else ""
+
+
+def read_direction(filename: str) -> str:
+    """M13F / M13R 两边不是字母或数字即认方向。两个都有则不猜。"""
+    name = PurePosixPath(filename or "").name.upper()
+    marks = {item.group(1) for item in PRIMER_MARK_RE.finditer(name)}
+    if len(marks) == 1:
+        return marks.pop()
+    return ""
+
+
+def longest_library_code(filename: str, codes: list[str | None]) -> str:
+    """取工单编号里最长的前缀。编号后面必须是分隔符或结束。"""
+    head = code_match_head(filename)
+    best = ""
+    for raw in codes:
+        code = str(raw or "").strip().upper()
+        if len(code) <= len(best) or not head.startswith(code):
+            continue
+        if len(head) == len(code) or head[len(code)] in CODE_BOUNDARIES:
+            best = code
+    return best
+
+
 def parse_library_filename(filename: str) -> tuple[str, str]:
-    """返回 (建库编号, F/R/空)。测序结果的编号取文件名开头，HC223 的建库编号是 C223。"""
-    token = leading_library_token(filename)
-    if not token:
-        return "", ""
-    code, _chain = library_token_parts(token)
-    upper = PurePosixPath(filename or "").name.upper()
-    direction = ""
-    if "_M13F" in upper or "-M13F" in upper:
-        direction = "F"
-    elif "_M13R" in upper or "-M13R" in upper:
-        direction = "R"
-    return code, direction
+    """返回 (短编号, F/R/空)。工单归属用最长前缀，不看这个短编号。"""
+    return library_code_stem(filename), read_direction(filename)
 
 
 def parse_chain(filename: str) -> str:

@@ -6,6 +6,8 @@ from typing import Any
 from sqlalchemy import String, and_, case, cast, func, or_, select
 from sqlalchemy.orm import Session
 
+from utils.filter_values import combine_any, match_any
+
 from models.discovery import DiscoveryWorkbench
 from modules.discovery.workbench.constants import (
     HARVEST_VIEW_STATUSES,
@@ -329,10 +331,7 @@ def _view_group_for_status(status: str) -> str | None:
 
 
 def _contains_filter(column, value: Any):
-    text = str(value or "").strip()
-    if not text:
-        return None
-    return column.like(f"%{text}%")
+    return combine_any(value, lambda text: column.like(f"%{text}%"))
 
 
 def _apply_date_range(filters: list, column, data: dict[str, Any], start_key: str, end_key: str) -> None:
@@ -346,6 +345,12 @@ def _apply_date_range(filters: list, column, data: dict[str, Any], start_key: st
 
 def _status_column():
     return func.coalesce(DiscoveryWorkbench.status, PLAN_STATUS_PLANNING)
+
+
+def _status_filter_clause(status: str):
+    if status not in PLAN_STATUS_OPTIONS:
+        raise ValueError("状态不在允许的选项中")
+    return _status_column() == status
 
 
 def _view_group_filter(view_group: str):
@@ -397,23 +402,24 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, apply_view: bool = True, 
         filters.append(
             or_(*[_csv_token_filter(DiscoveryWorkbench.screening_methods, method) for method in methods])
         )
-    pm = str(data.get("pm") or "").strip()
-    if pm:
-        filters.append(DiscoveryWorkbench.pm == pm)
-    owner = str(data.get("owner") or "").strip()
-    if owner:
-        filters.append(DiscoveryWorkbench.owner == owner)
-    study_type = str(data.get("study_type") or "").strip()
-    if study_type:
-        filters.append(DiscoveryWorkbench.study_type == study_type)
-    status = str(data.get("status") or "").strip()
-    if status:
-        if status not in PLAN_STATUS_OPTIONS:
-            raise ValueError("状态不在允许的选项中")
-        filters.append(_status_column() == status)
-    priority = str(data.get("priority") or "").strip()
-    if priority:
-        filters.append(DiscoveryWorkbench.priority == _normalize_priority(priority))
+    pm = match_any(DiscoveryWorkbench.pm, data.get("pm"))
+    if pm is not None:
+        filters.append(pm)
+    owner = match_any(DiscoveryWorkbench.owner, data.get("owner"))
+    if owner is not None:
+        filters.append(owner)
+    study_type = match_any(DiscoveryWorkbench.study_type, data.get("study_type"))
+    if study_type is not None:
+        filters.append(study_type)
+    status = combine_any(data.get("status"), _status_filter_clause)
+    if status is not None:
+        filters.append(status)
+    priority = combine_any(
+        data.get("priority"),
+        lambda value: DiscoveryWorkbench.priority == _normalize_priority(value),
+    )
+    if priority is not None:
+        filters.append(priority)
     for field in (
         "cage_position",
         "mouse_strain",

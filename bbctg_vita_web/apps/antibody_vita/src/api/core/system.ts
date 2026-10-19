@@ -79,12 +79,12 @@ export interface SystemOperationLogQuery {
   date_end?: string;
   date_start?: string;
   keyword?: string;
-  operation_type?: string;
+  operation_type?: string | string[];
   page?: number;
   page_size?: number;
   request_id?: string;
-  result?: string;
-  source?: string;
+  result?: string | string[];
+  source?: string | string[];
   target_type?: string;
   username?: string;
 }
@@ -164,16 +164,16 @@ export interface SystemJobRunLog {
 }
 
 export interface SystemUserQuery {
-  department?: string;
-  employment_status?: string;
-  gender?: string;
-  group_name?: string;
-  has_admin_role?: string;
+  department?: string | string[];
+  employment_status?: string | string[];
+  gender?: string | string[];
+  group_name?: string | string[];
+  has_admin_role?: string | string[];
   keyword?: string;
   page?: number;
   page_size?: number;
-  role_id?: number;
-  status?: string;
+  role_id?: Array<number | string> | number | string;
+  status?: string | string[];
 }
 
 export function getSystemUsersApi(
@@ -188,8 +188,9 @@ export function getSystemUsersApi(
     page_size?: number;
     total?: number;
   }>('/system/users', {
-    params: query,
     ...config,
+    params: query,
+    paramsSerializer: 'repeat',
   });
 }
 
@@ -331,8 +332,9 @@ export function getSystemOperationLogsByQueryApi(
   return requestClient.get<{ items: SystemOperationLog[]; page: number; page_size: number; total: number }>(
     '/system/operation_logs',
     {
-      params,
       ...config,
+      params,
+      paramsSerializer: 'repeat',
     },
   );
 }

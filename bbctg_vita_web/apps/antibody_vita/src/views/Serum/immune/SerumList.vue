@@ -98,7 +98,7 @@
                 <el-input v-model="listQuery.project_name" placeholder="项目名称" class="filter-item" @keyup.enter="handleFilter" clearable :prefix-icon="Search" />
             </el-col>
             <el-col :span="3">
-                 <el-select 
+                 <ListFilterSelect 
                       v-model="listQuery.target_name" 
                       placeholder="靶点" 
                       clearable 
@@ -108,10 +108,10 @@
                       style="width: 100%" 
                       @change="handleFilter">
                       <el-option v-for="item in filterOptions(allTargetOptions, targetFilterQuery)" :key="item" :label="item" :value="item" />
-                  </el-select>
+                  </ListFilterSelect>
             </el-col>
             <el-col :span="3">
-                 <el-select 
+                 <ListFilterSelect 
                       v-model="listQuery.owner" 
                       placeholder="负责人" 
                       clearable 
@@ -121,7 +121,7 @@
                       style="width: 100%" 
                       @change="handleFilter">
                       <el-option v-for="item in filterOptions(allOwnerOptions, ownerFilterQuery)" :key="item" :label="item" :value="item" />
-                  </el-select>
+                  </ListFilterSelect>
             </el-col>
              <el-col :span="5">
                 <el-date-picker
@@ -151,7 +151,7 @@
             </el-col>
             <el-col :span="4" style="text-align: right;">
                 <div class="list-filter-actions">
-                  <el-button class="list-filter-action-button" type="primary" :icon="Search" @click="handleFilter">查询</el-button>
+                  <el-button class="list-filter-action-button" type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilters">查询</el-button>
                   <el-button
                     class="list-filter-action-button"
                     type="success"
@@ -169,7 +169,7 @@
           <div v-show="showAdvancedFilters" class="advanced-filters">
             <el-row :gutter="15" type="flex" align="middle" style="flex-wrap: wrap;">
               <el-col :span="4">
-                 <el-select 
+                 <ListFilterSelect 
                       v-model="listQuery.study_type" 
                       placeholder="课题类型" 
                       clearable 
@@ -179,10 +179,10 @@
                       style="width: 100%" 
                       @change="handleFilter">
                       <el-option v-for="item in filterOptions(allStudyTypeOptions, studyTypeFilterQuery)" :key="item" :label="item" :value="item" />
-                  </el-select>
+                  </ListFilterSelect>
               </el-col>
               <el-col :span="4">
-                 <el-select 
+                 <ListFilterSelect 
                       v-model="listQuery.pm" 
                       placeholder="PM" 
                       clearable 
@@ -192,10 +192,10 @@
                       style="width: 100%" 
                       @change="handleFilter">
                       <el-option v-for="item in filterOptions(allPMOptions, pmFilterQuery)" :key="item" :label="item" :value="item" />
-                  </el-select>
+                  </ListFilterSelect>
               </el-col>
               <el-col :span="3">
-                 <el-select 
+                 <ListFilterSelect 
                       v-model="listQuery.mouse_strain" 
                       placeholder="鼠型" 
                       clearable 
@@ -205,10 +205,10 @@
                       style="width: 100%" 
                       @change="handleFilter">
                       <el-option v-for="item in filterOptions(allMouseStrainOptions, mouseStrainFilterQuery)" :key="item" :label="item" :value="item" />
-                  </el-select>
+                  </ListFilterSelect>
               </el-col>
               <el-col :span="3">
-                 <el-select 
+                 <ListFilterSelect 
                       v-model="listQuery.project_status" 
                       placeholder="状态" 
                       clearable 
@@ -220,10 +220,10 @@
                       <el-option label="进行中" value="ongoing" />
                       <el-option label="已完成" value="completed" />
                       <el-option v-for="item in filterOptions(allStatusOptions, statusFilterQuery)" :key="item" :label="item" :value="item" />
-                  </el-select>
+                  </ListFilterSelect>
               </el-col>
               <el-col :span="5">
-                 <el-select 
+                 <ListFilterSelect 
                       v-model="listQuery.mouse_strain_category" 
                       placeholder="归类鼠型" 
                       clearable 
@@ -233,7 +233,7 @@
                       style="width: 100%" 
                       @change="handleFilter">
                       <el-option v-for="item in filterOptions(allMouseStrainCategoryOptions, mouseStrainCategoryFilterQuery)" :key="item" :label="item" :value="item" />
-                  </el-select>
+                  </ListFilterSelect>
               </el-col>
               <el-col :span="1" style="text-align: center;">
                 <button
@@ -498,6 +498,7 @@ import { fetchList, fetchStats, getSerumFilterOptions, export_mouse, exportSerum
 import { skipGlobalErrorHandler } from '#/api/request'
 import { SERUM_ERRORS } from '../shared/errors'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
+import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import SerumProjectStatusEditor from '../shared/SerumProjectStatusEditor.vue'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 import { downloadBlob } from '#/utils/file-resource'
@@ -537,6 +538,7 @@ export default {
     ElTable,
     ElTableColumn,
     AdvancedOpsBar,
+    ListFilterSelect,
     SerumProjectStatusEditor,
     ArrowDown,
     ArrowUp,
@@ -853,6 +855,38 @@ export default {
     },
     handleCurrentChange(page) {
       this.listQuery.page = page
+      this.getList()
+    },
+    resetFilters() {
+      const { limit, sort_field, sort_order } = this.listQuery
+      this.listQuery = {
+        page: 1,
+        limit,
+        project_code: undefined,
+        project_name: undefined,
+        lab_notebook: undefined,
+        cage_position: undefined,
+        owner: undefined,
+        target_name: undefined,
+        study_type: undefined,
+        pm: undefined,
+        mouse_strain: undefined,
+        mouse_strain_category: undefined,
+        project_status: undefined,
+        start_date: undefined,
+        end_date: undefined,
+        sort_field,
+        sort_order,
+      }
+      this.dateRange = []
+      this.ownerFilterQuery = ''
+      this.targetFilterQuery = ''
+      this.studyTypeFilterQuery = ''
+      this.pmFilterQuery = ''
+      this.mouseStrainFilterQuery = ''
+      this.mouseStrainCategoryFilterQuery = ''
+      this.statusFilterQuery = ''
+      this.persistListFilters()
       this.getList()
     },
     handleFilter() {

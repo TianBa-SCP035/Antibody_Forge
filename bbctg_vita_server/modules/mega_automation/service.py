@@ -7,6 +7,8 @@ from typing import Any
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, defer
 
+from utils.filter_values import combine_any, filter_terms, match_any
+
 from models.immunology import SerumImmProject, SerumTiterOrder
 from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
 
@@ -457,6 +459,13 @@ def _json_overlaps(column, value: str):
     return func.json_overlaps(column, json.dumps([value]))
 
 
+def _list_status_clause(status: str):
+    text = clean_text(status)
+    if text == "execution_failed":
+        return MegaFlowWorkOrder.status.in_(tuple(EXECUTION_ISSUE_STATUSES))
+    return MegaFlowWorkOrder.status == text
+
+
 def _work_order_list_stmt(data: dict[str, Any]):
     stmt = select(MegaFlowWorkOrder)
     keyword = clean_text(data.get("keyword"))
@@ -468,14 +477,15 @@ def _work_order_list_stmt(data: dict[str, Any]):
                 MegaFlowWorkOrder.orderName.like(pattern),
             )
         )
-    status = clean_text(data.get("status"))
-    if status == "execution_failed":
-        stmt = stmt.where(MegaFlowWorkOrder.status.in_(tuple(EXECUTION_ISSUE_STATUSES)))
-    elif status:
-        stmt = stmt.where(MegaFlowWorkOrder.status == status)
-    orderType = clean_text(data.get("orderType"))
-    if orderType:
-        stmt = stmt.where(MegaFlowWorkOrder.orderType == orderType)
+    status = combine_any(data.get("status"), _list_status_clause)
+    if status is not None:
+        stmt = stmt.where(status)
+    order_type = match_any(
+        MegaFlowWorkOrder.orderType,
+        [clean_text(item) for item in filter_terms(data.get("orderType"))],
+    )
+    if order_type is not None:
+        stmt = stmt.where(order_type)
     project_no = clean_text(data.get("project_no"))
     if project_no:
         stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.project_nos, project_no))

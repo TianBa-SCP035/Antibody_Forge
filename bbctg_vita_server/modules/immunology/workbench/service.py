@@ -11,6 +11,8 @@ from sqlalchemy import String, and_, case, cast, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from utils.filter_values import restrict
+
 from models.immunology import (
     SerumElisaPlate,
     SerumFacsPlate,
@@ -813,27 +815,6 @@ def _has_scheme_data_expr():
 def _apply_list_filters(stmt, data: dict[str, Any], *, skip_status: bool = False):
     keyword = str(data.get("keyword") or "").strip()
     view_group = str(data.get("view_group") or "").strip()
-    can_start = _normalize_yes_no(data.get("can_start"))
-    has_scheme_data = _normalize_yes_no(data.get("has_scheme_data"))
-    study_type = str(data.get("study_type") or "").strip()
-    mouse_strain_category = str(data.get("mouse_strain_category") or "").strip()
-    species_cross = str(data.get("species_cross") or "").strip()
-    mouse_status = str(data.get("mouse_status") or "").strip()
-    antigen_ready = _normalize_yes_no(data.get("antigen_ready"))
-    pm = str(data.get("pm") or "").strip()
-    priority = str(data.get("priority") or "").strip()
-    owner = str(data.get("owner") or "").strip()
-    reviewer = str(data.get("reviewer") or "").strip()
-    review_status = str(data.get("review_status") or "").strip()
-    display_status = str(data.get("display_status") or "").strip()
-    immuno_method = str(data.get("immuno_method") or "").strip()
-    mouse_strain = str(data.get("mouse_strain") or "").strip()
-    mouse_zygosity = str(data.get("mouse_zygosity") or "").strip()
-    mouse_region = str(data.get("mouse_region") or "").strip()
-    mouse_expand_requested = _normalize_yes_no(data.get("mouse_expand_requested"))
-    antigen_source = str(data.get("antigen_source") or "").strip()
-    lnp_ordered = _normalize_yes_no(data.get("lnp_ordered"))
-    cell_prep_status = str(data.get("cell_prep_status") or "").strip()
 
     if keyword:
         like = f"%{keyword}%"
@@ -842,74 +823,75 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, skip_status: bool = False
         view_filter = _view_group_expr(view_group)
         if view_filter is not None:
             stmt = stmt.where(view_filter)
-        if can_start:
-            stmt = stmt.where(SerumImmWorkbench.can_start == can_start)
-    if has_scheme_data in {"是", "否"}:
-        condition = _has_scheme_data_expr()
-        stmt = stmt.where(condition if has_scheme_data == "是" else ~condition)
-    if study_type:
-        stmt = stmt.where(
-            _aligned_value_expr(
-                SerumImmWorkbench.study_type,
-                SerumImmProject.study_type,
-            )
-            == study_type
-        )
-    if mouse_strain_category:
-        stmt = stmt.where(
-            _composed_value_filter(
-                SerumImmWorkbench.mouse_strain_category,
-                SerumImmProject.mouse_strain_category,
-                mouse_strain_category,
-            )
-        )
-    if species_cross:
-        stmt = stmt.where(_species_cross_filter(species_cross))
-    if mouse_status:
-        stmt = stmt.where(SerumImmWorkbench.mouse_status == mouse_status)
-    if antigen_ready:
-        stmt = stmt.where(SerumImmWorkbench.antigen_ready == antigen_ready)
-    if pm:
-        stmt = stmt.where(
-            _aligned_value_expr(SerumImmWorkbench.pm, SerumImmProject.pm) == pm
-        )
-    if priority:
-        stmt = stmt.where(SerumImmWorkbench.priority == priority)
-    if owner:
-        stmt = stmt.where(
-            _aligned_value_expr(SerumImmWorkbench.owner, SerumImmProject.owner) == owner
-        )
-    if reviewer:
-        stmt = stmt.where(SerumImmWorkbench.reviewer == reviewer)
-    if review_status:
-        stmt = stmt.where(SerumImmWorkbench.review_status == review_status)
-    if display_status:
-        stmt = stmt.where(_display_status_expr() == display_status)
-    if immuno_method:
-        stmt = stmt.where(_immuno_method_filter(immuno_method))
-    if mouse_strain:
-        stmt = stmt.where(
-            _composed_value_filter(
-                SerumImmWorkbench.mouse_strain,
-                SerumImmProject.mouse_strain,
-                mouse_strain,
-            )
-        )
-    if mouse_zygosity:
-        stmt = stmt.where(SerumImmWorkbench.mouse_zygosity == mouse_zygosity)
-    if mouse_region:
-        stmt = stmt.where(SerumImmWorkbench.mouse_region == mouse_region)
-    if mouse_expand_requested:
-        stmt = stmt.where(
-            SerumImmWorkbench.mouse_expand_requested == mouse_expand_requested
-        )
-    if antigen_source:
-        stmt = stmt.where(SerumImmWorkbench.antigen_source == antigen_source)
-    if lnp_ordered:
-        stmt = stmt.where(SerumImmWorkbench.lnp_ordered == lnp_ordered)
-    if cell_prep_status:
-        stmt = stmt.where(SerumImmWorkbench.cell_prep_status == cell_prep_status)
+        stmt = restrict(stmt, data.get("can_start"), lambda value: SerumImmWorkbench.can_start == value)
+    stmt = restrict(stmt, data.get("has_scheme_data"), _has_scheme_data_clause)
+    stmt = restrict(
+        stmt,
+        data.get("study_type"),
+        lambda value: _aligned_value_expr(
+            SerumImmWorkbench.study_type,
+            SerumImmProject.study_type,
+        ) == value,
+    )
+    stmt = restrict(
+        stmt,
+        data.get("mouse_strain_category"),
+        lambda value: _composed_value_filter(
+            SerumImmWorkbench.mouse_strain_category,
+            SerumImmProject.mouse_strain_category,
+            value,
+        ),
+    )
+    stmt = restrict(stmt, data.get("species_cross"), _species_cross_filter)
+    stmt = restrict(stmt, data.get("mouse_status"), lambda value: SerumImmWorkbench.mouse_status == value)
+    stmt = restrict(stmt, data.get("antigen_ready"), lambda value: SerumImmWorkbench.antigen_ready == value)
+    stmt = restrict(
+        stmt,
+        data.get("pm"),
+        lambda value: _aligned_value_expr(SerumImmWorkbench.pm, SerumImmProject.pm) == value,
+    )
+    stmt = restrict(stmt, data.get("priority"), lambda value: SerumImmWorkbench.priority == value)
+    stmt = restrict(
+        stmt,
+        data.get("owner"),
+        lambda value: _aligned_value_expr(SerumImmWorkbench.owner, SerumImmProject.owner) == value,
+    )
+    stmt = restrict(stmt, data.get("reviewer"), lambda value: SerumImmWorkbench.reviewer == value)
+    stmt = restrict(stmt, data.get("review_status"), lambda value: SerumImmWorkbench.review_status == value)
+    stmt = restrict(stmt, data.get("display_status"), lambda value: _display_status_expr() == value)
+    stmt = restrict(stmt, data.get("immuno_method"), _immuno_method_filter)
+    stmt = restrict(
+        stmt,
+        data.get("mouse_strain"),
+        lambda value: _composed_value_filter(
+            SerumImmWorkbench.mouse_strain,
+            SerumImmProject.mouse_strain,
+            value,
+        ),
+    )
+    stmt = restrict(stmt, data.get("mouse_zygosity"), lambda value: SerumImmWorkbench.mouse_zygosity == value)
+    stmt = restrict(stmt, data.get("mouse_region"), lambda value: SerumImmWorkbench.mouse_region == value)
+    stmt = restrict(
+        stmt,
+        data.get("mouse_expand_requested"),
+        lambda value: SerumImmWorkbench.mouse_expand_requested == value,
+    )
+    stmt = restrict(stmt, data.get("antigen_source"), lambda value: SerumImmWorkbench.antigen_source == value)
+    stmt = restrict(stmt, data.get("lnp_ordered"), lambda value: SerumImmWorkbench.lnp_ordered == value)
+    stmt = restrict(
+        stmt,
+        data.get("cell_prep_status"),
+        lambda value: SerumImmWorkbench.cell_prep_status == value,
+    )
     return stmt
+
+
+def _has_scheme_data_clause(value: str):
+    if value == "是":
+        return _has_scheme_data_expr()
+    if value == "否":
+        return ~_has_scheme_data_expr()
+    return None
 
 
 def _base_stmt():

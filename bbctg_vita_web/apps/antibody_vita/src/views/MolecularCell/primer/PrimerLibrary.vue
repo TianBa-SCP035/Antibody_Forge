@@ -121,7 +121,7 @@
           @keyup.enter="search"
           @clear="search"
         />
-        <ElSelect
+        <ListFilterSelect
           v-model="query.direction"
           class="filter-item"
           clearable
@@ -130,8 +130,8 @@
         >
           <ElOption label="正向" value="F" />
           <ElOption label="反向" value="R" />
-        </ElSelect>
-        <ElSelect
+        </ListFilterSelect>
+        <ListFilterSelect
           v-model="query.status"
           class="filter-item"
           clearable
@@ -140,7 +140,7 @@
         >
           <ElOption label="启用" value="active" />
           <ElOption label="停用" value="inactive" />
-        </ElSelect>
+        </ListFilterSelect>
         <div class="list-filter-actions">
           <button
             type="button"
@@ -151,7 +151,7 @@
           >
             <ElIcon><Tools /></ElIcon>
           </button>
-          <ElButton type="primary" :icon="Search" @click="search">查询</ElButton>
+          <ElButton type="primary" :icon="Search" title="右键清空筛选" @click="search" @contextmenu.prevent="reset">查询</ElButton>
           <ElButton :icon="Refresh" @click="reset">重置</ElButton>
         </div>
       </div>
@@ -333,6 +333,7 @@ import {
 import { VxeColumn, VxeTable } from 'vxe-table';
 
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
+import ListFilterSelect from '#/components/ListFilterSelect.vue';
 import { notifyApiError } from '#/api/errors';
 import {
   batchDeletePrimers,
@@ -362,7 +363,7 @@ import {
 } from './primerSeries';
 import { useSheetRange } from './sheetRange';
 
-type StatusFilter = '' | 'active' | 'inactive';
+type StatusFilter = '' | 'active' | 'inactive' | Array<'active' | 'inactive'>;
 type SheetColumn = {
   key: string;
   title: string;
@@ -400,7 +401,7 @@ const query = reactive({
   checkKeyword: '',
   note: '',
   family: '',
-  direction: '',
+  direction: '' as '' | 'F' | 'R' | Array<'F' | 'R'>,
   status: '' as StatusFilter,
   page: 1,
   limit: 20,
@@ -493,7 +494,12 @@ function clearSelected() {
   checkAnchor = -1;
 }
 
+function filterTerms(value: string | string[] | Array<'active' | 'inactive'> | Array<'F' | 'R'>) {
+  return (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
+}
+
 function listPayload(): PrimerListQuery {
+  const statuses = filterTerms(query.status);
   return {
     name: query.name.trim() || undefined,
     sequence: query.sequence.trim() || undefined,
@@ -501,7 +507,7 @@ function listPayload(): PrimerListQuery {
     note: query.note.trim() || undefined,
     family: query.family || undefined,
     direction: query.direction || undefined,
-    active: query.status === '' ? undefined : query.status === 'active',
+    active: statuses.length === 1 ? statuses[0] === 'active' : undefined,
     page: query.page,
     limit: query.limit,
   };

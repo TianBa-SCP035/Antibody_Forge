@@ -24,8 +24,8 @@ export interface PrimerListQuery {
   sequence?: string;
   check_keyword?: string;
   note?: string;
-  family?: string;
-  direction?: string;
+  family?: string | string[];
+  direction?: string | string[];
   active?: boolean;
   page?: number;
   limit?: number;

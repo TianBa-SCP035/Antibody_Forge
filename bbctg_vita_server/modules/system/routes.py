@@ -1,7 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import String, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -24,6 +24,7 @@ from modules.auth.security import hash_password
 from modules.system.features import list_feature_flags, list_job_run_logs, save_feature_flag
 from modules.system.permissions import build_user_context, require_permission
 from jobs.registry import run_scheduled_job_now
+from utils.filter_values import filter_terms, restrict
 
 router = APIRouter()
 
@@ -34,6 +35,29 @@ def _compact_text(value: str | None) -> str:
 
 def _compact_column(column):
     return func.replace(func.replace(func.coalesce(column, ""), " ", ""), "　", "")
+
+
+def _compact_like(column, value: str):
+    text = _compact_text(value)
+    if not text:
+        return None
+    return _compact_column(column).like(f"%{text}%")
+
+
+def _apply_user_role_filter(stmt, role_id):
+    terms = filter_terms(role_id)
+    if not terms:
+        return stmt
+    if "all" in terms:
+        return stmt.where(SysUser.id.in_(select(SysUserRole.user_id)))
+    role_ids = [int(term) for term in terms if term.isdigit()]
+    if not role_ids:
+        return stmt
+    return stmt.where(
+        SysUser.id.in_(
+            select(SysUserRole.user_id).where(SysUserRole.role_id.in_(role_ids))
+        )
+    )
 
 
 @router.get("/permissions/current")
@@ -54,13 +78,13 @@ def current_permissions(
 @router.get("/users")
 def list_users(
     keyword: str = "",
-    department: str = "",
-    group_name: str = "",
-    gender: str = "",
-    status: str = "",
-    employment_status: str = "",
-    role_id: int | None = None,
-    has_admin_role: str = "",
+    department: list[str] | None = Query(default=None),
+    group_name: list[str] | None = Query(default=None),
+    gender: list[str] | None = Query(default=None),
+    status: list[str] | None = Query(default=None),
+    employment_status: list[str] | None = Query(default=None),
+    role_id: list[str] | None = Query(default=None),
+    has_admin_role: list[str] | None = Query(default=None),
     page: int = 1,
     page_size: int = 50,
     db: Session = Depends(get_db),
@@ -76,32 +100,21 @@ def list_users(
             | (_compact_column(SysUser.display_name).like(pattern))
             | (_compact_column(SysUser.job_no).like(pattern))
         )
-    compact_department = _compact_text(department)
-    if compact_department:
-        stmt = stmt.where(_compact_column(SysUser.department).like(f"%{compact_department}%"))
-    compact_group_name = _compact_text(group_name)
-    if compact_group_name:
-        stmt = stmt.where(_compact_column(SysUser.group_name).like(f"%{compact_group_name}%"))
-    if gender:
-        stmt = stmt.where(SysUser.gender == gender)
-    if status:
-        stmt = stmt.where(SysUser.status == status)
-    if employment_status:
-        stmt = stmt.where(SysUser.employment_status == employment_status)
-    if role_id:
-        stmt = stmt.where(
-            SysUser.id.in_(
-                select(SysUserRole.user_id).where(SysUserRole.role_id == role_id)
-            )
-        )
+    stmt = restrict(stmt, department, lambda value: _compact_like(SysUser.department, value))
+    stmt = restrict(stmt, group_name, lambda value: _compact_like(SysUser.group_name, value))
+    stmt = restrict(stmt, gender, lambda value: SysUser.gender == value)
+    stmt = restrict(stmt, status, lambda value: SysUser.status == value)
+    stmt = restrict(stmt, employment_status, lambda value: SysUser.employment_status == value)
+    stmt = _apply_user_role_filter(stmt, role_id)
     admin_user_ids = (
         select(SysUserRole.user_id)
         .join(SysRole, SysRole.id == SysUserRole.role_id)
         .where(SysRole.name.like("%管理员%"))
     )
-    if has_admin_role == "yes":
+    admin_terms = set(filter_terms(has_admin_role))
+    if admin_terms == {"yes"}:
         stmt = stmt.where(SysUser.id.in_(admin_user_ids))
-    elif has_admin_role == "no":
+    elif admin_terms == {"no"}:
         stmt = stmt.where(SysUser.id.not_in(admin_user_ids))
 
     page = max(page, 1)
@@ -140,7 +153,7 @@ def user_suggestions(
     require_permission(db, current_user, "system.user.manage")
     compact_keyword = _compact_text(keyword)
     pattern = f"%{compact_keyword}%"
-    limit = min(max(limit, 1), 50)
+    limit = min(max(limit, 1), 200)
 
     if field == "department":
         stmt = select(SysUser.department).where(SysUser.department.is_not(None))
@@ -631,10 +644,10 @@ def list_operation_logs(
     keyword: str = "",
     username: str = "",
     action: str = "",
-    result: str = "",
-    operation_type: str = "",
+    result: list[str] | None = Query(default=None),
+    operation_type: list[str] | None = Query(default=None),
     target_type: str = "",
-    source: str = "",
+    source: list[str] | None = Query(default=None),
     request_id: str = "",
     date_start: str = "",
     date_end: str = "",
@@ -650,10 +663,8 @@ def list_operation_logs(
         stmt = stmt.where(SysOperationLog.username.like(f"%{username}%"))
     if action:
         stmt = stmt.where(SysOperationLog.action.like(f"%{action}%"))
-    if result:
-        stmt = stmt.where(SysOperationLog.result == result)
-    if operation_type:
-        stmt = stmt.where(SysOperationLog.operation_type == operation_type)
+    stmt = restrict(stmt, result, lambda value: SysOperationLog.result == value)
+    stmt = restrict(stmt, operation_type, lambda value: SysOperationLog.operation_type == value)
     if target_type:
         stmt = stmt.where(
             or_(
@@ -666,8 +677,7 @@ def list_operation_logs(
                 ),
             )
         )
-    if source:
-        stmt = stmt.where(SysOperationLog.source == source)
+    stmt = restrict(stmt, source, lambda value: SysOperationLog.source == value)
     if request_id:
         stmt = stmt.where(SysOperationLog.request_id == request_id)
     if date_start:

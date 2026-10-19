@@ -53,7 +53,7 @@
           :prefix-icon="Search"
           @keyup.enter="handleFilter"
         />
-        <el-select
+        <ListFilterSelect
           v-model="listQuery.orderType"
           class="filter-item"
           clearable
@@ -66,8 +66,8 @@
             :label="item.label"
             :value="item.value"
           />
-        </el-select>
-        <el-select
+        </ListFilterSelect>
+        <ListFilterSelect
           v-model="listQuery.status"
           class="filter-item"
           clearable
@@ -80,7 +80,7 @@
             :label="item.label"
             :value="item.value"
           />
-        </el-select>
+        </ListFilterSelect>
         <el-input
           v-model="listQuery.project_no"
           class="filter-item"
@@ -119,7 +119,7 @@
           <el-icon><Tools /></el-icon>
         </button>
         <div class="filter-actions list-filter-actions">
-          <el-button class="list-filter-action-button" type="primary" :icon="Search" @click="handleFilter">查询</el-button>
+          <el-button class="list-filter-action-button" type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilter">查询</el-button>
           <el-button class="list-filter-action-button" :icon="Refresh" @click="resetFilter">重置</el-button>
         </div>
       </div>
@@ -268,7 +268,8 @@ import {
   fetchFlowWorkOrderMeta,
   exportFlowWorkOrderList,
 } from '#/api/megaAutomation';
-import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
+import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
+import ListFilterSelect from '#/components/ListFilterSelect.vue';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
 import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage';
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
@@ -325,6 +326,7 @@ export default {
     ElTableColumn,
     ElTag,
     AdvancedOpsBar,
+    ListFilterSelect,
     Tools,
   },
   setup() {

@@ -1,7 +1,7 @@
 <template>
   <div class="titer-order-page">
     <AdvancedOpsBar v-model="showAdvancedOps">
-      <el-select
+      <ListFilterSelect
         v-model="listQuery.order_status"
         clearable
         placeholder="工单状态"
@@ -13,7 +13,7 @@
           :label="item.label"
           :value="item.value"
         />
-      </el-select>
+      </ListFilterSelect>
       <template #actions>
         <el-button type="warning" :icon="Download" @click="handleListExport">
           列表导出
@@ -113,7 +113,7 @@
           :prefix-icon="Search"
           @keyup.enter="handleFilter"
         />
-        <el-select
+        <ListFilterSelect
           v-model="listQuery.target_name"
           class="filter-item"
           clearable
@@ -130,8 +130,8 @@
             :label="item"
             :value="item"
           />
-        </el-select>
-        <el-select
+        </ListFilterSelect>
+        <ListFilterSelect
           v-model="listQuery.assay_method"
           class="filter-item"
           clearable
@@ -151,8 +151,8 @@
             :label="item"
             :value="item"
           />
-        </el-select>
-        <el-select
+        </ListFilterSelect>
+        <ListFilterSelect
           v-model="listQuery.immune_owner"
           class="filter-item"
           clearable
@@ -169,8 +169,8 @@
             :label="name"
             :value="name"
           />
-        </el-select>
-        <el-select
+        </ListFilterSelect>
+        <ListFilterSelect
           v-model="listQuery.titer_owner"
           class="filter-item"
           clearable
@@ -187,8 +187,8 @@
             :label="name"
             :value="name"
           />
-        </el-select>
-        <el-select
+        </ListFilterSelect>
+        <ListFilterSelect
           v-model="listQuery.immune_status"
           class="filter-item"
           clearable
@@ -205,7 +205,7 @@
             :label="item"
             :value="item"
           />
-        </el-select>
+        </ListFilterSelect>
         <el-date-picker
           v-model="bloodCollectionRange"
           class="filter-item"
@@ -226,7 +226,7 @@
           value-format="YYYY-MM-DD"
           @change="handleTestDatesFilterChange"
         />
-        <el-select
+        <ListFilterSelect
           v-model="listQuery.serum_status"
           class="filter-item"
           clearable
@@ -239,8 +239,8 @@
             :label="item"
             :value="item"
           />
-        </el-select>
-        <el-select
+        </ListFilterSelect>
+        <ListFilterSelect
           v-model="listQuery.priority"
           class="filter-item"
           clearable
@@ -253,8 +253,8 @@
             :label="item"
             :value="item"
           />
-        </el-select>
-        <el-select
+        </ListFilterSelect>
+        <ListFilterSelect
           v-model="listQuery.summary_status"
           class="filter-item"
           clearable
@@ -263,7 +263,7 @@
         >
           <el-option label="未填写小结" value="empty" />
           <el-option label="已填写小结" value="filled" />
-        </el-select>
+        </ListFilterSelect>
         <div class="filter-actions list-filter-actions">
           <button
             type="button"
@@ -274,7 +274,7 @@
           >
             <el-icon><Tools /></el-icon>
           </button>
-          <el-button class="list-filter-action-button" type="primary" :icon="Search" @click="handleFilter">查询</el-button>
+          <el-button class="list-filter-action-button" type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilter()">查询</el-button>
           <el-button class="list-filter-action-button" :icon="Refresh" @click="resetFilter">重置</el-button>
         </div>
       </div>
@@ -830,6 +830,7 @@ import {
   saveTiterOrder,
 } from '#/api/serum';
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
+import ListFilterSelect from '#/components/ListFilterSelect.vue';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
 import { getSerumTiterStatusTagType, getTiterPriorityTone, mergeTiterSerumStatusOptions, TITER_PRIORITY_DEFAULT, TITER_PRIORITY_OPTIONS, TITER_SERUM_STATUS_OPTIONS } from '#/utils/serumProjectStatus';
 import { FLOW_WORK_ORDER_STATUS_OPTIONS, orderStatusTagType } from '#/utils/megaFlowWorkOrderStatus';
@@ -884,6 +885,11 @@ const SERUM_STATUS_PENDING_TEST = '已采血';
 
 /** 统计「待汇报」：已检测且效价小结为空 */
 const SERUM_STATUS_TESTED = '已检测';
+
+function summaryTerms(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  return value ? [value] : [];
+}
 
 function formatLocalDate(date) {
   const y = date.getFullYear();
@@ -1009,6 +1015,7 @@ export default {
     ElTag,
     ElTooltip,
     AdvancedOpsBar,
+    ListFilterSelect,
     SerumProjectStatusEditor,
     Tools,
     TiterInstrumentOrderDialogs,
@@ -1612,8 +1619,8 @@ export default {
       const payload = {
         ...rest,
         ...this.buildProjectCodeFilter(project_code),
-        summary_empty: summary_status === 'empty',
-        summary_filled: summary_status === 'filled',
+        summary_empty: summaryTerms(summary_status).includes('empty'),
+        summary_filled: summaryTerms(summary_status).includes('filled'),
       };
       this.appendDateRange(payload, this.bloodCollectionRange, 'blood_collection_start', 'blood_collection_end');
       if (test_dates_empty) {

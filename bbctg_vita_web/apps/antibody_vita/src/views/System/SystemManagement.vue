@@ -64,6 +64,7 @@ import {
 } from '#/api';
 import { notifyApiError, resolveUserMessage } from '#/api/errors';
 import { skipGlobalErrorHandler } from '#/api/request';
+import ListFilterSelect from '#/components/ListFilterSelect.vue';
 import { useStaleTabRefresh } from '#/utils/staleTabRefresh';
 import { SYSTEM_ERRORS } from './errors';
 
@@ -115,8 +116,16 @@ const permissions = ref<SystemPermission[]>([]);
 const permissionBundles = ref<SystemPermissionBundle[]>([]);
 const logs = ref<SystemOperationLog[]>([]);
 const selectedUserRows = ref<SystemUser[]>([]);
+const departmentOptions = ref<string[]>([]);
+const groupOptions = ref<string[]>([]);
 
-const userFilters = reactive({
+const userFilters = reactive<{
+  department: string | string[];
+  employment_status: string | string[];
+  gender: string | string[];
+  group_name: string | string[];
+  status: string | string[];
+}>({
   department: '',
   employment_status: '',
   gender: '',
@@ -125,8 +134,8 @@ const userFilters = reactive({
 });
 
 /** 任一已绑定角色的名称包含「管理员」 */
-const systemAdminRoleFilter = ref<'' | 'no' | 'yes'>('');
-const userRoleFilter = ref<number | ''>('');
+const systemAdminRoleFilter = ref<'' | 'no' | 'yes' | Array<'no' | 'yes'>>('');
+const userRoleFilter = ref<'' | 'all' | number | Array<'all' | number>>('');
 
 const userForm = reactive<SystemUser & { password?: string }>({
   username: '',
@@ -640,17 +649,23 @@ async function loadData() {
   try {
     ensureActiveTab();
     if (canManageUsers.value) {
-      const userResult = await getSystemUsersApi({
-        ...userFilters,
-        has_admin_role: systemAdminRoleFilter.value,
-        keyword: userKeyword.value.trim(),
-        page: userQuery.page,
-        page_size: userQuery.page_size,
-        role_id: userRoleFilter.value || undefined,
-      }, skipGlobalErrorHandler);
+      const [userResult, departments, groups] = await Promise.all([
+        getSystemUsersApi({
+          ...userFilters,
+          has_admin_role: systemAdminRoleFilter.value,
+          keyword: userKeyword.value.trim(),
+          page: userQuery.page,
+          page_size: userQuery.page_size,
+          role_id: userRoleFilter.value || undefined,
+        }, skipGlobalErrorHandler),
+        getSystemUserSuggestionsApi({ field: 'department', limit: 200 }),
+        getSystemUserSuggestionsApi({ field: 'group_name', limit: 200 }),
+      ]);
       users.value = userResult?.items || [];
       userTotal.value = userResult?.total || users.value.length;
       activeUserTotal.value = userResult?.active_total || 0;
+      departmentOptions.value = departments?.items || [];
+      groupOptions.value = groups?.items || [];
     } else {
       users.value = [];
       userTotal.value = 0;
@@ -747,6 +762,31 @@ function toggleAuditChanges(itemId: number) {
   expandedAuditEntities.value = next;
 }
 
+function resetUserFilters() {
+  userKeyword.value = '';
+  userFilters.department = '';
+  userFilters.employment_status = '';
+  userFilters.gender = '';
+  userFilters.group_name = '';
+  userFilters.status = '';
+  systemAdminRoleFilter.value = '';
+  userRoleFilter.value = '';
+  handleUserSearch();
+}
+
+function resetLogFilters() {
+  logQuery.keyword = '';
+  logQuery.username = '';
+  logQuery.result = '';
+  logQuery.source = '';
+  logQuery.operation_type = '';
+  logQuery.date_start = '';
+  logQuery.date_end = '';
+  logQuery.page = 1;
+  logDateRange.value = [];
+  void loadLogs();
+}
+
 function handleUserSearch() {
   userQuery.page = 1;
   selectedUserRows.value = [];
@@ -778,14 +818,6 @@ async function fetchUserSuggestions(
 
 function fetchKeywordSuggestions(query: string, callback: (items: Array<{ value: string }>) => void) {
   fetchUserSuggestions('keyword', query, callback);
-}
-
-function fetchDepartmentSuggestions(query: string, callback: (items: Array<{ value: string }>) => void) {
-  fetchUserSuggestions('department', query, callback);
-}
-
-function fetchGroupSuggestions(query: string, callback: (items: Array<{ value: string }>) => void) {
-  fetchUserSuggestions('group_name', query, callback);
 }
 
 function handleUserSuggestionSelect() {
@@ -1173,88 +1205,92 @@ onMounted(loadData);
                 @keyup.enter="handleUserSearch"
                 @select="handleUserSuggestionSelect"
               />
-              <el-autocomplete
+              <ListFilterSelect
                 v-model="userFilters.department"
                 clearable
-                :debounce="250"
-                :fetch-suggestions="fetchDepartmentSuggestions"
+                filterable
                 placeholder="部门"
                 style="width: 140px"
-                value-key="value"
+                @change="handleUserSearch"
                 @clear="handleUserSearch"
-                @keyup.enter="handleUserSearch"
-                @select="handleUserSuggestionSelect"
-              />
-              <el-autocomplete
+              >
+                <el-option v-for="item in departmentOptions" :key="item" :label="item" :value="item" />
+              </ListFilterSelect>
+              <ListFilterSelect
                 v-model="userFilters.group_name"
                 clearable
-                :debounce="250"
-                :fetch-suggestions="fetchGroupSuggestions"
+                filterable
                 placeholder="组别"
                 style="width: 140px"
-                value-key="value"
+                @change="handleUserSearch"
                 @clear="handleUserSearch"
-                @keyup.enter="handleUserSearch"
-                @select="handleUserSuggestionSelect"
-              />
-              <el-select
+              >
+                <el-option v-for="item in groupOptions" :key="item" :label="item" :value="item" />
+              </ListFilterSelect>
+              <ListFilterSelect
                 v-model="userFilters.gender"
                 clearable
                 placeholder="性别"
                 style="width: 110px"
                 @change="handleUserSearch"
+                @clear="handleUserSearch"
               >
                 <el-option label="男" value="male" />
                 <el-option label="女" value="female" />
                 <el-option label="未知" value="unknown" />
-              </el-select>
-              <el-select
+              </ListFilterSelect>
+              <ListFilterSelect
                 v-model="userFilters.status"
                 clearable
                 placeholder="账号状态"
                 style="width: 120px"
                 @change="handleUserSearch"
+                @clear="handleUserSearch"
               >
                 <el-option label="启用" value="active" />
                 <el-option label="禁用" value="disabled" />
-              </el-select>
-              <el-select
+              </ListFilterSelect>
+              <ListFilterSelect
                 v-model="userFilters.employment_status"
                 clearable
                 placeholder="在职状态"
                 style="width: 120px"
                 @change="handleUserSearch"
+                @clear="handleUserSearch"
               >
                 <el-option label="在职" value="active" />
                 <el-option label="休假中" value="on_leave" />
                 <el-option label="已离职" value="resigned" />
-              </el-select>
-              <el-select
+              </ListFilterSelect>
+              <ListFilterSelect
                 v-model="userRoleFilter"
                 clearable
                 filterable
                 placeholder="角色"
                 style="width: 150px"
                 @change="handleUserSearch"
+                @clear="handleUserSearch"
               >
+                <el-option label="全部角色" value="all" />
                 <el-option
                   v-for="role in rolesWithId"
                   :key="role.id"
                   :label="role.name"
                   :value="role.id"
                 />
-              </el-select>
-              <el-select
+              </ListFilterSelect>
+              <ListFilterSelect
                 v-model="systemAdminRoleFilter"
                 clearable
                 placeholder="系统管理员"
                 style="width: 130px"
                 @change="handleUserSearch"
+                @clear="handleUserSearch"
               >
                 <el-option label="是" value="yes" />
                 <el-option label="否" value="no" />
-              </el-select>
-              <el-button :loading="loading" @click="handleUserSearch">查询</el-button>
+              </ListFilterSelect>
+              <el-button :loading="loading" title="右键清空筛选" @click="handleUserSearch" @contextmenu.prevent="resetUserFilters">查询</el-button>
             </el-space>
             <el-space>
               <el-button @click="openBatchRoleDialog">
@@ -1428,21 +1464,21 @@ onMounted(loadData);
                 placeholder="操作账号"
                 style="width: 160px"
               />
-              <el-select v-model="logQuery.result" clearable placeholder="结果" style="width: 120px">
+              <ListFilterSelect v-model="logQuery.result" clearable placeholder="结果" style="width: 120px">
                 <el-option label="成功" value="success" />
                 <el-option label="失败" value="failed" />
-              </el-select>
-              <el-select v-model="logQuery.source" clearable placeholder="来源" style="width: 120px">
+              </ListFilterSelect>
+              <ListFilterSelect v-model="logQuery.source" clearable placeholder="来源" style="width: 120px">
                 <el-option label="用户" value="user" />
                 <el-option label="设备" value="device" />
                 <el-option label="定时任务" value="job" />
                 <el-option label="系统" value="system" />
-              </el-select>
-              <el-select v-model="logQuery.operation_type" clearable placeholder="类型" style="width: 120px">
+              </ListFilterSelect>
+              <ListFilterSelect v-model="logQuery.operation_type" clearable placeholder="类型" style="width: 120px">
                 <el-option label="新增" value="create" />
                 <el-option label="修改" value="update" />
                 <el-option label="删除" value="delete" />
-              </el-select>
+              </ListFilterSelect>
               <el-date-picker
                 v-model="logDateRange"
                 end-placeholder="结束日期"
@@ -1451,7 +1487,7 @@ onMounted(loadData);
                 type="daterange"
                 value-format="YYYY-MM-DD"
               />
-              <el-button :loading="loading" @click="loadLogs">查询</el-button>
+              <el-button :loading="loading" title="右键清空筛选" @click="loadLogs" @contextmenu.prevent="resetLogFilters">查询</el-button>
             </el-space>
           </div>
 

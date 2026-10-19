@@ -11,6 +11,7 @@ from sqlalchemy import JSON, String, and_, bindparam, case, cast, func, or_, sel
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
+from utils.filter_values import restrict
 from integrations import drm_service
 from models.immunology import (
     SerumElisaPlate,
@@ -212,19 +213,20 @@ def _apply_numeric_column_filters(stmt, data: dict[str, Any]):
     return stmt
 
 
-def _apply_assay_method_filter(stmt, assay_method: str):
-    """检测方法筛选：按检测方法文案列匹配。"""
+def _assay_method_clause(assay_method: str):
+    """检测方法筛选：按检测方法文案列匹配。多个值满足任一即可。"""
     expr = _assay_method_expr()
     if assay_method == ASSAY_FILTER_FACS:
-        return stmt.where(expr.like("%FACS%"))
+        return expr.like("%FACS%")
     if assay_method == ASSAY_FILTER_ELISA:
-        return stmt.where(expr.like("%ELISA%"))
+        return expr.like("%ELISA%")
     if assay_method == ASSAY_FILTER_FACS_ELISA:
-        return stmt.where(expr.like("%FACS%"), expr.like("%ELISA%"))
-    target = str(assay_method or "").strip()
-    if not target:
-        return stmt
-    return stmt.where(expr == target)
+        return and_(expr.like("%FACS%"), expr.like("%ELISA%"))
+    return expr == assay_method
+
+
+def _apply_assay_method_filter(stmt, assay_method: Any):
+    return restrict(stmt, assay_method, _assay_method_clause)
 
 
 def _normalize_test_dates(value: Any) -> list[str]:
@@ -882,62 +884,60 @@ def _serum_status_pre_tested_condition():
     )
 
 
+def _titer_priority_clause(priority: str):
+    if priority == TITER_ORDER_PRIORITY_DEFAULT:
+        return or_(
+            SerumTiterOrder.priority == priority,
+            SerumTiterOrder.priority.is_(None),
+            SerumTiterOrder.priority == "",
+        )
+    return SerumTiterOrder.priority == priority
+
+
+def _titer_order_status_clause(order_status: str):
+    latest_flow = _latest_titer_flow_status_subquery()
+    return SerumTiterOrder.titer_order_id.in_(
+        select(latest_flow.c.source_id).where(latest_flow.c.status == order_status)
+    )
+
+
 def _apply_titer_order_list_filters(stmt, data: dict[str, Any]):
     titer_order_id = str(data.get("titer_order_id") or "").strip()
     if titer_order_id:
         stmt = stmt.where(SerumTiterOrder.titer_order_id == titer_order_id)
     project_code = str(data.get("project_code") or "").strip()
     project_codes = data.get("project_codes")
-    target_name = str(data.get("target_name") or "").strip()
-    owner = str(data.get("titer_owner") or "").strip()
-    immune_owner = str(data.get("immune_owner") or "").strip()
-    immune_status = str(data.get("immune_status") or "").strip()
-    serum_status = str(data.get("serum_status") or "").strip()
     if project_codes:
         codes = [str(code).strip() for code in project_codes if str(code or "").strip()]
         if codes:
             stmt = stmt.where(SerumImmProject.project_code.in_(codes))
     elif project_code:
         stmt = stmt.where(SerumImmProject.project_code.like(f"%{project_code}%"))
-    if target_name:
-        stmt = stmt.where(SerumImmProject.target_name == target_name)
+    stmt = restrict(stmt, data.get("target_name"), lambda value: SerumImmProject.target_name == value)
     if data.get("titer_owner_unassigned"):
         stmt = stmt.where(_empty_titer_owners_condition())
-    elif owner:
-        stmt = stmt.where(cast(SerumTiterOrder.titer_owners, String).like(f"%{owner}%"))
-    if immune_owner:
-        stmt = stmt.where(SerumImmProject.owner == immune_owner)
-    if immune_status:
-        stmt = stmt.where(SerumImmProject.project_status == immune_status)
-    if serum_status:
-        stmt = stmt.where(SerumTiterOrder.serum_status == serum_status)
-    priority = str(data.get("priority") or "").strip()
-    if priority:
-        if priority == TITER_ORDER_PRIORITY_DEFAULT:
-            stmt = stmt.where(
-                or_(
-                    SerumTiterOrder.priority == priority,
-                    SerumTiterOrder.priority.is_(None),
-                    SerumTiterOrder.priority == "",
-                )
-            )
-        else:
-            stmt = stmt.where(SerumTiterOrder.priority == priority)
-    order_status = str(data.get("order_status") or "").strip()
-    if order_status:
-        latest_flow = _latest_titer_flow_status_subquery()
-        stmt = stmt.where(
-            SerumTiterOrder.titer_order_id.in_(
-                select(latest_flow.c.source_id).where(latest_flow.c.status == order_status)
-            )
+    else:
+        stmt = restrict(
+            stmt,
+            data.get("titer_owner"),
+            lambda owner: cast(SerumTiterOrder.titer_owners, String).like(f"%{owner}%"),
         )
-    assay_method = str(data.get("assay_method") or "").strip()
-    if assay_method:
-        stmt = _apply_assay_method_filter(stmt, assay_method)
+    stmt = restrict(stmt, data.get("immune_owner"), lambda value: SerumImmProject.owner == value)
+    stmt = restrict(
+        stmt,
+        data.get("immune_status"),
+        lambda value: SerumImmProject.project_status == value,
+    )
+    stmt = restrict(stmt, data.get("serum_status"), lambda value: SerumTiterOrder.serum_status == value)
+    stmt = restrict(stmt, data.get("priority"), _titer_priority_clause)
+    stmt = restrict(stmt, data.get("order_status"), _titer_order_status_clause)
+    stmt = _apply_assay_method_filter(stmt, data.get("assay_method"))
     stmt = _apply_numeric_column_filters(stmt, data)
-    if data.get("summary_empty"):
+    summary_empty = bool(data.get("summary_empty"))
+    summary_filled = bool(data.get("summary_filled"))
+    if summary_empty and not summary_filled:
         stmt = stmt.where(or_(SerumTiterOrder.summary.is_(None), SerumTiterOrder.summary == ""))
-    if data.get("summary_filled"):
+    elif summary_filled and not summary_empty:
         stmt = stmt.where(SerumTiterOrder.summary.is_not(None), SerumTiterOrder.summary != "")
     if data.get("test_dates_empty"):
         stmt = stmt.where(_empty_test_dates_condition())

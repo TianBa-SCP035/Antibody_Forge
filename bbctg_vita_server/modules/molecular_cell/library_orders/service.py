@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
+from utils.filter_values import filter_terms, match_any
 from integrations import drm_service
 from models.discovery import DiscoveryWorkbench
 from models.molecular_cell import (
@@ -960,10 +961,13 @@ def _qc_order_rows(db: Session, order_ids: set[int]) -> list[dict[str, str]]:
 
 
 def _contains(column, value: Any, *, upper: bool = False):
-    text = str(value or "").strip()
-    if not text:
+    terms = [term.upper() if upper else term for term in filter_terms(value)]
+    if not terms:
         return None
-    return column.like(f"%{text.upper() if upper else text}%")
+    clauses = [column.like(f"%{term}%") for term in terms]
+    if len(clauses) == 1:
+        return clauses[0]
+    return or_(*clauses)
 
 
 def _append_contains(filters: list, column, value: Any, *, upper: bool = False) -> None:
@@ -1032,13 +1036,11 @@ def _apply_list_filters(stmt, data: dict[str, Any]):
         label="建库批号",
     )
     target_clauses = []
-    target_code = str(data.get("target") or "").strip()
-    target_name = str(data.get("target_name") or "").strip()
-    if target_code:
+    for target_code in filter_terms(data.get("target")):
         target_clauses.append(
             cast(MolecularLibraryOrder.target_codes, String).like(f"%{target_code}%")
         )
-    if target_name:
+    for target_name in filter_terms(data.get("target_name")):
         target_clauses.append(MolecularLibraryOrder.target_name.like(f"%{target_name}%"))
     if target_clauses:
         filters.append(or_(*target_clauses))
@@ -1059,12 +1061,14 @@ def _apply_list_filters(stmt, data: dict[str, Any]):
         ("owner", MolecularLibraryOrder.owner),
         ("mouse_model", MolecularLibraryOrder.mouse_model),
     ):
-        value = str(data.get(key) or "").strip()
-        if value and value != "all":
-            filters.append(column == value)
-    priority = str(data.get("priority") or "").strip()
-    if priority:
-        filters.append(MolecularLibraryOrder.priority == _normalize_priority(priority))
+        terms = [term for term in filter_terms(data.get(key)) if term != "all"]
+        condition = match_any(column, terms)
+        if condition is not None:
+            filters.append(condition)
+    priority_terms = [_normalize_priority(term) for term in filter_terms(data.get("priority"))]
+    priority = match_any(MolecularLibraryOrder.priority, priority_terms)
+    if priority is not None:
+        filters.append(priority)
     _append_date_range(
         filters,
         MolecularLibraryOrder.instrument_on,

@@ -1,7 +1,7 @@
 <template>
   <div class="app-container">
     <AdvancedOpsBar v-model="showAdvancedOps">
-      <el-select
+      <ListFilterSelect
         v-model="listQuery.pm"
         clearable
         filterable
@@ -9,16 +9,16 @@
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.pms" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.priority"
         clearable
         placeholder="优先级"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.priority" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.owner"
         clearable
         filterable
@@ -26,8 +26,8 @@
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.owners" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.reviewer"
         clearable
         filterable
@@ -35,8 +35,8 @@
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.reviewers" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.display_status"
         clearable
         filterable
@@ -44,16 +44,16 @@
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.statuses" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.species_cross"
         clearable
         placeholder="种属交叉"
         @change="handleFilter"
       >
         <el-option v-for="item in tokenMultiOptions('species_cross')" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.mouse_strain"
         clearable
         filterable
@@ -61,56 +61,56 @@
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.mouse_strain" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.mouse_zygosity"
         clearable
         placeholder="纯合/杂合"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.mouse_zygosity" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.mouse_region"
         clearable
         placeholder="提供地区"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.mouse_region" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.mouse_expand_requested"
         clearable
         placeholder="代下扩繁"
         @change="handleFilter"
       >
         <el-option v-for="item in yesNoOptions" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.antigen_source"
         clearable
         placeholder="抗原来源"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.antigen_source" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.lnp_ordered"
         clearable
         placeholder="LNP下单"
         @change="handleFilter"
       >
         <el-option v-for="item in yesNoOptions" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.cell_prep_status"
         clearable
         placeholder="冲击细胞"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.cell_prep_status" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.has_scheme_data"
         clearable
         placeholder="方案内容"
@@ -118,7 +118,7 @@
       >
         <el-option label="有内容" value="是" />
         <el-option label="未填写" value="否" />
-      </el-select>
+      </ListFilterSelect>
       <template #actions>
         <el-button v-if="hasSecondaryFilters" @click="resetFilters">重置全部筛选</el-button>
         <el-button v-if="!isExcelMode" @click="openColumnPicker">显示字段</el-button>
@@ -181,7 +181,7 @@
             @keyup.enter="handleFilter"
             @clear="handleFilter"
           />
-          <el-select
+          <ListFilterSelect
             v-model="listQuery.study_type"
             placeholder="课题类型"
             clearable
@@ -190,8 +190,8 @@
             @change="handleFilter"
           >
             <el-option v-for="item in optionLists.study_type" :key="item" :label="item" :value="item" />
-          </el-select>
-          <el-select
+          </ListFilterSelect>
+          <ListFilterSelect
             v-model="listQuery.immuno_method"
             placeholder="免疫方式"
             clearable
@@ -199,8 +199,8 @@
             @change="handleFilter"
           >
             <el-option v-for="item in tokenMultiOptions('immuno_method')" :key="item" :label="item" :value="item" />
-          </el-select>
-          <el-select
+          </ListFilterSelect>
+          <ListFilterSelect
             v-model="listQuery.mouse_strain_category"
             placeholder="归类鼠型"
             clearable
@@ -209,8 +209,8 @@
             @change="handleFilter"
           >
             <el-option v-for="item in optionLists.mouse_strain_category" :key="item" :label="item" :value="item" />
-          </el-select>
-          <el-select
+          </ListFilterSelect>
+          <ListFilterSelect
             v-model="listQuery.mouse_status"
             placeholder="小鼠运输"
             clearable
@@ -218,8 +218,8 @@
             @change="handleFilter"
           >
             <el-option v-for="item in optionLists.mouse_status" :key="item" :label="item" :value="item" />
-          </el-select>
-          <el-select
+          </ListFilterSelect>
+          <ListFilterSelect
             v-model="listQuery.antigen_ready"
             placeholder="抗原到货"
             clearable
@@ -227,8 +227,8 @@
             @change="handleFilter"
           >
             <el-option v-for="item in yesNoOptions" :key="item" :label="item" :value="item" />
-          </el-select>
-          <el-select
+          </ListFilterSelect>
+          <ListFilterSelect
             v-model="listQuery.review_status"
             placeholder="审核结果"
             clearable
@@ -236,8 +236,8 @@
             @change="handleFilter"
           >
             <el-option v-for="item in optionLists.review_status" :key="item" :label="item" :value="item" />
-          </el-select>
-          <el-select
+          </ListFilterSelect>
+          <ListFilterSelect
             v-model="listQuery.can_start"
             placeholder="开展条件"
             clearable
@@ -245,7 +245,7 @@
             @change="handleFilter"
           >
             <el-option v-for="item in yesNoOptions" :key="item" :label="item === '是' ? '可开展' : '暂不可开展'" :value="item" />
-          </el-select>
+          </ListFilterSelect>
         </div>
         <div class="data-view-controls list-filter-actions">
           <button
@@ -257,7 +257,7 @@
           >
             <el-icon><Tools /></el-icon>
           </button>
-          <el-button class="list-filter-action-button" type="primary" @click="handleFilter">
+          <el-button class="list-filter-action-button" type="primary" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilters">
             <el-icon><Search /></el-icon>
             <span>查询</span>
           </el-button>
@@ -836,6 +836,7 @@ import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import { SERUM_ERRORS } from '../shared/errors'
+import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import SerumUserSelect from '../shared/SerumUserSelect.vue'
 import WorkbenchStatusEditor from '#/components/workbench/WorkbenchStatusEditor.vue'
 import WorkbenchTargetSelect from '#/components/workbench/WorkbenchTargetSelect.vue'
@@ -1094,6 +1095,7 @@ export default {
     ElTag,
     WorkbenchDataTable,
     Search,
+    ListFilterSelect,
     SerumUserSelect,
     Tools,
     VxeColumn,

@@ -4,6 +4,7 @@
       <div class="ops-user-select">
         <SerumUserSelect
           v-model="listQuery.pm"
+          multi-gesture
           :options="optionLists.pms"
           placeholder="PM"
           clearable
@@ -13,6 +14,7 @@
       <div class="ops-user-select">
         <SerumUserSelect
           v-model="listQuery.owner"
+          multi-gesture
           :options="optionLists.owners"
           placeholder="负责人"
           clearable
@@ -47,7 +49,7 @@
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
-      <el-select
+      <ListFilterSelect
         v-model="listQuery.immune_antigen"
         clearable
         filterable
@@ -57,8 +59,8 @@
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.immune_antigens" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.screening_antigen"
         clearable
         filterable
@@ -68,8 +70,8 @@
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.screening_antigens" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.boost_antigen"
         clearable
         filterable
@@ -79,7 +81,7 @@
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.boost_antigens" :key="item" :label="item" :value="item" />
-      </el-select>
+      </ListFilterSelect>
       <el-date-picker
         v-model="boostRange"
         type="daterange"
@@ -154,13 +156,10 @@
             @keyup.enter="handleFilter"
             @clear="handleFilter"
           />
-          <el-select
+          <ListFilterSelect
             v-model="listQuery.screening_methods"
             placeholder="筛选方式"
             clearable
-            multiple
-            collapse-tags
-            collapse-tags-tooltip
             class="filter-select"
             @change="handleFilter"
           >
@@ -170,8 +169,8 @@
               :label="item"
               :value="item"
             />
-          </el-select>
-          <el-select
+          </ListFilterSelect>
+          <ListFilterSelect
             v-model="listQuery.status"
             placeholder="状态"
             clearable
@@ -179,8 +178,8 @@
             @change="handleFilter"
           >
             <el-option v-for="item in planStatusOptions" :key="item" :label="item" :value="item" />
-          </el-select>
-          <el-select
+          </ListFilterSelect>
+          <ListFilterSelect
             v-model="listQuery.priority"
             placeholder="优先级"
             clearable
@@ -188,8 +187,8 @@
             @change="handleFilter"
           >
             <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
-          </el-select>
-          <el-select
+          </ListFilterSelect>
+          <ListFilterSelect
             v-model="listQuery.mouse_strain_category"
             placeholder="归类鼠型"
             clearable
@@ -200,8 +199,8 @@
             @change="handleFilter"
           >
             <el-option v-for="item in mouseStrainCategoryOptions" :key="item" :label="item" :value="item" />
-          </el-select>
-          <el-select
+          </ListFilterSelect>
+          <ListFilterSelect
             v-model="listQuery.study_type"
             placeholder="课题类型"
             clearable
@@ -209,7 +208,7 @@
             @change="handleFilter"
           >
             <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
-          </el-select>
+          </ListFilterSelect>
           <el-date-picker
             v-model="harvestRange"
             class="harvest-range"
@@ -231,7 +230,7 @@
           >
             <el-icon><Tools /></el-icon>
           </button>
-          <el-button class="list-filter-action-button" type="primary" @click="handleFilter">
+          <el-button class="list-filter-action-button" type="primary" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilters">
             <el-icon><Search /></el-icon>
             <span>查询</span>
           </el-button>
@@ -774,6 +773,7 @@ import {
 } from '#/utils/serumUserOptions'
 import { WORKBENCH_STUDY_TYPE_OPTIONS } from '#/utils/workbenchStudyTypes'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
+import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
 import DiscoveryRowActions from './DiscoveryRowActions.vue'
 
@@ -1042,6 +1042,7 @@ export default {
     ElTag,
     WorkbenchDataTable,
     Search,
+    ListFilterSelect,
     SerumUserSelect,
     Tools,
     WorkbenchMultiTagEditor,

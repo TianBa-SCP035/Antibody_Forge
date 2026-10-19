@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from core.config import get_settings
 from core.errors import BusinessError
+from utils.filter_values import restrict
 
 from models.immunology import (
     SerumElisaPlate,
@@ -221,44 +222,41 @@ def apply_project_filters(stmt, data: dict[str, Any]):
                     )
                 )
             )
-    if owner:
-        stmt = stmt.where(SerumImmProject.owner == owner)
-    if status:
-        if status == "ongoing":
-            stmt = stmt.where(
-                or_(
-                    SerumImmProject.project_status.like("%待%"),
-                    SerumImmProject.project_status.like("%已%"),
-                    SerumImmProject.project_status == "加免中",
-                )
-            )
-        elif status == "completed":
-            stmt = stmt.where(
-                SerumImmProject.project_status.in_(("无效价处死", "结题"))
-            )
-        else:
-            stmt = stmt.where(SerumImmProject.project_status == status)
-    if target_name:
-        selected_target = str(target_name).strip()
-        stmt = stmt.where(
-            or_(
-                SerumImmProject.target_name == selected_target,
-                func.find_in_set(
-                    selected_target,
-                    func.replace(func.replace(SerumImmProject.target_name, "，", ","), "&", ","),
-                )
-                > 0,
-            )
-        )
-    if study_type:
-        stmt = stmt.where(SerumImmProject.study_type == study_type)
-    if pm:
-        stmt = stmt.where(SerumImmProject.pm == pm)
-    if mouse_strain:
-        stmt = stmt.where(SerumImmProject.mouse_strain == mouse_strain)
-    if mouse_strain_category:
-        stmt = stmt.where(SerumImmProject.mouse_strain_category == mouse_strain_category)
+    stmt = restrict(stmt, owner, lambda value: SerumImmProject.owner == value)
+    stmt = restrict(stmt, status, _project_status_clause)
+    stmt = restrict(stmt, target_name, _target_name_clause)
+    stmt = restrict(stmt, study_type, lambda value: SerumImmProject.study_type == value)
+    stmt = restrict(stmt, pm, lambda value: SerumImmProject.pm == value)
+    stmt = restrict(stmt, mouse_strain, lambda value: SerumImmProject.mouse_strain == value)
+    stmt = restrict(
+        stmt,
+        mouse_strain_category,
+        lambda value: SerumImmProject.mouse_strain_category == value,
+    )
     return stmt
+
+
+def _project_status_clause(status: str):
+    if status == "ongoing":
+        return or_(
+            SerumImmProject.project_status.like("%待%"),
+            SerumImmProject.project_status.like("%已%"),
+            SerumImmProject.project_status == "加免中",
+        )
+    if status == "completed":
+        return SerumImmProject.project_status.in_(("无效价处死", "结题"))
+    return SerumImmProject.project_status == status
+
+
+def _target_name_clause(selected_target: str):
+    return or_(
+        SerumImmProject.target_name == selected_target,
+        func.find_in_set(
+            selected_target,
+            func.replace(func.replace(SerumImmProject.target_name, "，", ","), "&", ","),
+        )
+        > 0,
+    )
 
 
 def get_stats(db: Session) -> dict:

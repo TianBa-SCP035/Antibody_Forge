@@ -7,6 +7,8 @@ from typing import Any
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from utils.filter_values import filter_terms, match_any
+
 from models.molecular_cell import (
     LIBRARY_PRIMER_ID_FIELDS,
     MolecularLibraryOrder,
@@ -152,10 +154,14 @@ def _filters(data: dict[str, Any], *, include_family: bool = True) -> list:
             filters.append(Primer.short_sequence.like(f"%{check_sequence(check_keyword)}%"))
         else:
             filters.append(Primer.id < 0)
-    if include_family and data.get("family"):
-        filters.append(Primer.family == str(data["family"]).strip())
-    if data.get("direction"):
-        filters.append(Primer.direction == str(data["direction"]).strip().upper())
+    if include_family:
+        family = match_any(Primer.family, data.get("family"))
+        if family is not None:
+            filters.append(family)
+    directions = [term.upper() for term in filter_terms(data.get("direction"))]
+    direction = match_any(Primer.direction, directions)
+    if direction is not None:
+        filters.append(direction)
     if isinstance(data.get("active"), bool):
         filters.append(Primer.active == data["active"])
     return filters
@@ -173,9 +179,9 @@ def _stats(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     }
     names = list(PRESET_LIBRARIES)
     names.extend(sorted(name for name in grouped if name not in names))
-    selected = str(data.get("family") or "").strip()
-    if selected and selected not in names:
-        names.append(selected)
+    for selected in filter_terms(data.get("family")):
+        if selected not in names:
+            names.append(selected)
     return {
         "total": sum(grouped.values()),
         "families": [{"name": name, "count": grouped.get(name, 0)} for name in names],

@@ -18,25 +18,25 @@
           @keyup.enter="handleFilter"
           @clear="handleFilter"
         />
-        <el-select
+        <ListFilterSelect
           :model-value="listQuery.build_type"
           clearable
           placeholder="建库类型"
           @change="onBuildTypeFilter"
         >
           <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-        <SerumUserSelect v-model="listQuery.pm" :options="selectedUserOptions(listQuery.pm)" placeholder="PM" clearable @change="handleFilter" />
-        <el-select v-model="listQuery.study_type" clearable filterable placeholder="课题类型" @change="handleFilter">
+        </ListFilterSelect>
+        <SerumUserSelect v-model="listQuery.pm" multi-gesture :options="selectedUserOptions(listQuery.pm)" placeholder="PM" clearable @change="handleFilter" />
+        <ListFilterSelect v-model="listQuery.study_type" clearable filterable placeholder="课题类型" @change="handleFilter">
           <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
-        </el-select>
-        <el-select v-model="listQuery.sample_type" clearable placeholder="样品类型" @change="handleFilter">
+        </ListFilterSelect>
+        <ListFilterSelect v-model="listQuery.sample_type" clearable placeholder="样品类型" @change="handleFilter">
           <el-option v-for="item in sampleTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-        <el-select v-model="listQuery.mouse_model" clearable placeholder="归类鼠型" @change="handleFilter">
+        </ListFilterSelect>
+        <ListFilterSelect v-model="listQuery.mouse_model" clearable placeholder="归类鼠型" @change="handleFilter">
           <el-option v-for="item in mouseCategoryOptions" :key="item" :label="mouseCategoryLabel(item)" :value="item" />
-        </el-select>
-        <el-select
+        </ListFilterSelect>
+        <ListFilterSelect
           v-model="listQuery.cell_type"
           clearable
           filterable
@@ -46,7 +46,7 @@
           @change="handleFilter"
         >
           <el-option v-for="item in cellTypeOptions" :key="item" :label="item" :value="item" />
-        </el-select>
+        </ListFilterSelect>
         <el-input v-model="listQuery.source_discovery_id" clearable placeholder="来源发现 ID" @keyup.enter="handleFilter" @clear="handleFilter" />
         <el-input v-model="listQuery.notebook_no" clearable placeholder="实验记录本号" @keyup.enter="handleFilter" @clear="handleFilter" />
         <el-input v-model="listQuery.remark" clearable placeholder="备注" @keyup.enter="handleFilter" @clear="handleFilter" />
@@ -121,24 +121,25 @@
           @keyup.enter="handleFilter"
           @clear="handleFilter"
         />
-        <el-select v-model="listQuery.status" class="filter-item" clearable placeholder="状态" @change="handleFilter">
+        <ListFilterSelect v-model="listQuery.status" class="filter-item" clearable placeholder="状态" @change="handleFilter">
           <el-option v-for="item in statusOptions" :key="item" :label="item" :value="item" />
-        </el-select>
-        <el-select v-model="listQuery.priority" class="filter-item" clearable placeholder="优先级" @change="handleFilter">
+        </ListFilterSelect>
+        <ListFilterSelect v-model="listQuery.priority" class="filter-item" clearable placeholder="优先级" @change="handleFilter">
           <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
-        </el-select>
+        </ListFilterSelect>
         <SerumUserSelect
           v-model="listQuery.owner"
           class="filter-item"
+          multi-gesture
           :options="selectedUserOptions(listQuery.owner)"
           placeholder="负责人"
           clearable
           @change="handleFilter"
         />
-        <el-select v-model="listQuery.sample_source" class="filter-item" clearable placeholder="样品来源" @change="handleFilter">
+        <ListFilterSelect v-model="listQuery.sample_source" class="filter-item" clearable placeholder="样品来源" @change="handleFilter">
           <el-option v-for="item in sampleSourceOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-        <el-select
+        </ListFilterSelect>
+        <ListFilterSelect
           v-model="listQuery.target"
           class="filter-item"
           clearable
@@ -159,7 +160,7 @@
             <span>{{ item.name }}</span>
             <span class="target-option-code">{{ item.snum }}</span>
           </el-option>
-        </el-select>
+        </ListFilterSelect>
         <el-date-picker
           v-model="instrumentRange"
           class="filter-range"
@@ -748,6 +749,7 @@ import {
 import { skipGlobalErrorHandler } from '#/api/request'
 import { notifyApiError } from '#/api/errors'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
+import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import {
   cleanFieldText,
   coerceWorkbenchViewMode,
@@ -931,6 +933,7 @@ export default {
   mixins: [workbenchExcelMixin],
   components: {
     AdvancedOpsBar,
+    ListFilterSelect,
     ElButton,
     ElCard,
     ElDatePicker,
@@ -1260,14 +1263,15 @@ export default {
     },
     async onBuildTypeFilter(value) {
       if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
-      const next = value || ''
+      const terms = Array.isArray(value) ? value.filter(Boolean) : (value ? [value] : [])
+      const next = terms.length <= 1 ? (terms[0] || '') : terms
       const leavingPlasma = this.listQuery.build_type === BUILD_PLASMA_NGS
         && next !== BUILD_PLASMA_NGS
         && ['nano', 'lite'].includes(this.listQuery.sample_type)
       this.listQuery.build_type = next
       if (leavingPlasma) this.listQuery.sample_type = ''
-      if (next && this.listQuery.sample_source) {
-        const allowed = optionsForBuild(SAMPLE_SOURCE_OPTIONS, next)
+      if (terms.length === 1 && this.listQuery.sample_source) {
+        const allowed = optionsForBuild(SAMPLE_SOURCE_OPTIONS, terms[0])
           .some((item) => item.value === this.listQuery.sample_source)
         if (!allowed) this.listQuery.sample_source = ''
       }
@@ -1452,9 +1456,12 @@ export default {
       }
     },
     onTargetFilterChange(code) {
-      const selected = this.targetFilterOptions.find((item) => item.snum === code)
-      this.listQuery.target = code || ''
-      this.listQuery.target_name = selected?.name || ''
+      const codes = Array.isArray(code) ? code.filter(Boolean) : (code ? [code] : [])
+      const names = codes
+        .map((item) => this.targetFilterOptions.find((option) => option.snum === item)?.name)
+        .filter(Boolean)
+      this.listQuery.target = codes.length <= 1 ? (codes[0] || '') : codes
+      this.listQuery.target_name = names.length <= 1 ? (names[0] || '') : names
       this.handleFilter()
     },
     openColumnPicker() {
@@ -1493,6 +1500,7 @@ export default {
       }
     },
     selectedUserOptions(value) {
+      if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean)
       const text = String(value || '').trim()
       return text ? [text] : []
     },

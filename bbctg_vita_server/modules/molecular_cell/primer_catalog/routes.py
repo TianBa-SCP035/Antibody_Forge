@@ -34,8 +34,8 @@ class PrimerListRequest(BaseModel):
     sequence: str | None = Field(default=None, max_length=64)
     check_keyword: str | None = Field(default=None, max_length=64)
     note: str | None = Field(default=None, max_length=128)
-    family: str | None = Field(default=None, max_length=32)
-    direction: str | None = Field(default=None, max_length=8)
+    family: str | list[str] | None = None
+    direction: str | list[str] | None = None
     active: bool | None = None
     page: int = Field(default=1, ge=1)
     limit: int = Field(default=service.DEFAULT_PAGE_LIMIT, ge=1, le=service.MAX_PAGE_LIMIT)

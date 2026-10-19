@@ -28,13 +28,14 @@
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
-      <el-input
+      <ListFilterSelect
         v-model="listQuery.mouse_strain"
         clearable
         placeholder="小鼠品系"
-        @keyup.enter="handleFilter"
-        @clear="handleFilter"
-      />
+        @change="handleFilter"
+      >
+        <el-option v-for="item in mouseStrainOptions" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
       <el-input
         v-model="listQuery.mouse_nos"
         clearable
@@ -330,6 +331,12 @@
             @change="value => updatePlanStatus(row, value)"
           />
         </template>
+        <template #mouse_strain_category="{ row }">
+          {{ displayCsvField(row.mouse_strain_category) }}
+        </template>
+        <template #mouse_strain="{ row }">
+          {{ displayCsvField(row.mouse_strain) }}
+        </template>
         <template #screening_methods="{ row }">
           <WorkbenchMultiTagEditor
             v-model="row.screening_method_list"
@@ -468,17 +475,27 @@
               >
                 <template #edit="{ row }">
                   <ListFilterSelect
-                    v-if="column.key === 'mouse_strain_category' && sheetEditSource === 'dblclick'"
-                    :model-value="splitCategories(row.mouse_strain_category)"
+                    v-if="isCsvField(column.key) && sheetEditSource === 'dblclick'"
+                    :model-value="splitCategories(row[column.key])"
+                    joined
+                    filterable
+                    allow-create
+                    default-first-option
                     class="sheet-category-select"
                     popper-class="vxe-table--ignore-clear"
                     clearable
-                    @change="onCategoryChange(row, $event)"
+                    @change="onCsvFieldChange(row, column.key, $event)"
                     @visible-change="onCategorySheetVisible"
                   >
                     <el-option
-                      v-for="item in mouseStrainCategoryOptions"
+                      v-for="item in csvFieldOptions(column.key)"
                       :key="item"
+                      :label="item"
+                      :value="item"
+                    />
+                    <el-option
+                      v-for="item in extraCsvOptions(column.key, row[column.key])"
+                      :key="`extra-${item}`"
                       :label="item"
                       :value="item"
                     />
@@ -645,15 +662,25 @@
                 <ListFilterSelect
                   v-else-if="field.type === 'csv'"
                   :model-value="splitCategories(editingRow[field.key])"
+                  joined
+                  filterable
+                  allow-create
+                  default-first-option
                   clearable
-                  placeholder="选择归类鼠型"
+                  :placeholder="`选择${field.label}`"
                   style="width: 100%;"
                   :disabled="!canEdit"
-                  @change="onCategoryChange(editingRow, $event)"
+                  @change="onCsvFieldChange(editingRow, field.key, $event)"
                 >
                   <el-option
                     v-for="item in fieldOptions(field)"
                     :key="item"
+                    :label="item"
+                    :value="item"
+                  />
+                  <el-option
+                    v-for="item in extraCsvOptions(field.key, editingRow[field.key])"
+                    :key="`extra-${item}`"
                     :label="item"
                     :value="item"
                   />
@@ -820,7 +847,7 @@ import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 import { canEditDiscoveryWorkbench } from '#/utils/discoveryPermission'
 import { canHandoffLibrary } from '#/utils/molecularPermission'
 import { canAccessSerumDetail } from '#/utils/serumPermission'
-import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS } from '#/utils/serumMouseOptions'
+import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS, SERUM_MOUSE_STRAIN_OPTIONS } from '#/utils/serumMouseOptions'
 import {
   WORKBENCH_PRIORITY_OPTIONS,
   canonicalizeWorkbenchPriority,
@@ -847,6 +874,11 @@ const PLAN_STATUS_OPTIONS = ['规划中', '待冲击', '待剖鼠', '待建库',
 const PRIORITY_OPTIONS = [...WORKBENCH_PRIORITY_OPTIONS]
 const STUDY_TYPE_OPTIONS = [...WORKBENCH_STUDY_TYPE_OPTIONS]
 const MOUSE_STRAIN_CATEGORY_OPTIONS = [...SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS]
+const MOUSE_STRAIN_OPTIONS = [...SERUM_MOUSE_STRAIN_OPTIONS]
+const CSV_FIELD_OPTIONS = {
+  mouse_strain_category: MOUSE_STRAIN_CATEGORY_OPTIONS,
+  mouse_strain: MOUSE_STRAIN_OPTIONS,
+}
 const DATE_KEYS = ['harvest_date', 'boost_date']
 const QUEUE_KEYS = ['status', 'priority', 'sort_order']
 const QUEUE_TERMINAL_STATUSES = ['已完成', '已取消']
@@ -922,7 +954,7 @@ const EDITOR_SECTIONS = [
     title: '小鼠',
     fields: [
       { key: 'mouse_strain_category', label: '归类鼠型', type: 'csv', options: MOUSE_STRAIN_CATEGORY_OPTIONS },
-      { key: 'mouse_strain', label: '小鼠品系', type: 'text' },
+      { key: 'mouse_strain', label: '小鼠品系', type: 'csv', options: MOUSE_STRAIN_OPTIONS },
       { key: 'cage_position', label: '笼位', type: 'text' },
       { key: 'mouse_count', label: '只数', type: 'text' },
       { key: 'mouse_nos', label: '鼠号', type: 'textarea', wide: true },
@@ -966,7 +998,7 @@ const SHEET_COLUMNS = [
   { key: 'pm', label: 'PM', edit: 'select', width: 90 },
   { key: 'study_type', label: '课题类型', edit: 'select' },
   { key: 'mouse_strain_category', label: '归类鼠型', edit: 'multi', minWidth: 140 },
-  { key: 'mouse_strain', label: '小鼠品系', edit: 'text', minWidth: 120 },
+  { key: 'mouse_strain', label: '小鼠品系', edit: 'multi', minWidth: 140 },
   { key: 'cage_position', label: '笼位', edit: 'text', minWidth: 100 },
   { key: 'mouse_count', label: '只数', edit: 'text', width: 80 },
   { key: 'mouse_nos', label: '鼠号', edit: 'text', minWidth: 140 },
@@ -1095,9 +1127,18 @@ function splitCategories(value) {
   return tokens.map((item) => String(item || '').trim()).filter(Boolean)
 }
 
-function joinCategories(value) {
-  const tokens = new Set(splitCategories(value))
-  return MOUSE_STRAIN_CATEGORY_OPTIONS.filter((item) => tokens.has(item)).join(',')
+function displayCsvField(value) {
+  return splitCategories(value).join('、')
+}
+
+function joinCsvField(key, value) {
+  const options = CSV_FIELD_OPTIONS[key] || []
+  const tokens = splitCategories(value)
+  const known = new Set(options)
+  const present = new Set(tokens)
+  const ordered = options.filter((item) => present.has(item))
+  const extras = tokens.filter((item) => !known.has(item))
+  return [...ordered, ...extras].join('、')
 }
 
 function emptyQuery() {
@@ -1203,6 +1244,7 @@ export default {
       priorityOptions: [...PRIORITY_OPTIONS],
       studyTypeOptions: [...STUDY_TYPE_OPTIONS],
       mouseStrainCategoryOptions: [...MOUSE_STRAIN_CATEGORY_OPTIONS],
+      mouseStrainOptions: [...MOUSE_STRAIN_OPTIONS],
       editorSections: EDITOR_SECTIONS,
       statusViews: STATUS_VIEWS,
       sheetColumns: SHEET_COLUMN_ORDER.load(),
@@ -1579,13 +1621,24 @@ export default {
       return column?.edit === 'multi' || column?.edit === 'select'
     },
     splitCategories,
+    displayCsvField,
     categorySheetSelect() {
       return document.querySelector('.sheet-category-select')?.__vueParentComponent?.proxy
     },
-    onCategoryChange(row, values) {
-      row.mouse_strain_category = joinCategories(values) || null
+    isCsvField(key) {
+      return Object.prototype.hasOwnProperty.call(CSV_FIELD_OPTIONS, key)
+    },
+    csvFieldOptions(key) {
+      return CSV_FIELD_OPTIONS[key] || []
+    },
+    extraCsvOptions(key, value) {
+      const known = new Set(this.csvFieldOptions(key))
+      return splitCategories(value).filter((item) => !known.has(item))
+    },
+    onCsvFieldChange(row, key, values) {
+      row[key] = joinCsvField(key, values) || null
       if (this.sheetEditSource === 'dblclick') return
-      this.persistRow(row, 'mouse_strain_category')
+      this.persistRow(row, key)
     },
     onCategorySheetVisible(visible) {
       if (visible) return
@@ -1595,7 +1648,7 @@ export default {
       })
     },
     openSheetEditorPanel(row, key) {
-      if (key !== 'mouse_strain_category') {
+      if (!this.isCsvField(key)) {
         workbenchExcelMixin.methods.openSheetEditorPanel.call(this, row, key)
         return
       }
@@ -2130,6 +2183,9 @@ export default {
     sheetFormatter(column) {
       if (column.key === 'sort_order') return this.formatSortColumnCell
       if (column.key === 'screening_methods') return this.formatMethodsCell
+      if (column.key === 'mouse_strain' || column.key === 'mouse_strain_category') {
+        return ({ cellValue }) => displayCsvField(cellValue)
+      }
       if (column.key === 'target_codes') return this.formatCodes
       return undefined
     },
@@ -2214,13 +2270,10 @@ export default {
       }
       if (key === 'mouse_count') return coerceOptionalNonnegInt(raw)
       if (DATE_KEYS.includes(key)) return this.normalizeSheetDate(raw)
-      if (key === 'mouse_strain_category') {
+      if (this.isCsvField(key)) {
         const tokens = splitCategories(raw)
         if (!tokens.length) return { ok: true, value: null }
-        if (tokens.some((token) => !MOUSE_STRAIN_CATEGORY_OPTIONS.includes(token))) {
-          return { ok: false, reason: 'option' }
-        }
-        return { ok: true, value: joinCategories(tokens) }
+        return { ok: true, value: joinCsvField(key, tokens) }
       }
       if (key === 'screening_methods') {
         const options = this.screeningMethodOptions
@@ -2854,7 +2907,7 @@ export default {
 }
 .drawer-card-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   column-gap: 12px;
 }
 .drawer-field.is-wide {

@@ -31,22 +31,26 @@ ROLE_OTHER = "other"
 ROLE_SKIP = "skip"
 
 SEQUENCE_MATCHED = "matched"
+SEQUENCE_MATCHED_RC = "matched_rc"
 SEQUENCE_NOT_FOUND = "not_found"
 SEQUENCE_ARM_ONLY = "arm_only"
+SEQUENCE_ARM_ONLY_RC = "arm_only_rc"
 SEQUENCE_TRACE_ONLY = "trace_only"
+MATCHED_STATUSES = frozenset({SEQUENCE_MATCHED, SEQUENCE_MATCHED_RC})
+ARM_STATUSES = frozenset({SEQUENCE_ARM_ONLY, SEQUENCE_ARM_ONLY_RC})
 FORWARD_ARM_1 = "ACCGAGATCTACAC"
 FORWARD_ARM_2 = "ACACTCTTTCC"
-REVERSE_ARM_1 = "AACTCCAGTCAC"
-REVERSE_ARM_2 = "ATCTCGTATGCC"
+REVERSE_ARM_1 = "GGCATACGAGAT"
+REVERSE_ARM_2 = "GTGACTGGAGTT"
 PRIMER_TARGET_LABELS = {
     "i5": "i5",
     "i7": "i7",
-    "hF": "H 正向",
-    "hR": "H 反向",
-    "kF": "K 正向",
-    "kR": "K 反向",
-    "lF": "L 正向",
-    "lR": "L 反向",
+    "hF": "H链正向",
+    "hR": "H链反向",
+    "kF": "K链正向",
+    "kR": "K链反向",
+    "lF": "L链正向",
+    "lR": "L链反向",
 }
 
 
@@ -202,7 +206,7 @@ def library_code_stem(filename: str) -> str:
 
 
 def read_direction(filename: str) -> str:
-    """M13F / M13R 两边不是字母或数字即认方向。两个都有则不猜。"""
+    """文件名里的 M13F、M13R 决定核 i5 端还是 i7 端。两个都有则不猜。"""
     name = PurePosixPath(filename or "").name.upper()
     marks = {item.group(1) for item in PRIMER_MARK_RE.finditer(name)}
     if len(marks) == 1:
@@ -247,7 +251,7 @@ def direction_arms(direction: str) -> tuple[str, str]:
 
 
 def assembled_primer(primer: str, direction: str) -> str:
-    """正向读数对正向同源臂加引物核对序列，反向读数对反向那一套。中间用核对序列，不是显示序列。"""
+    """i5 端用 i5 同源臂加核对序列，i7 端用 i7 那一套。中间用核对序列，不是显示序列。"""
     left, right = direction_arms(direction)
     return f"{left}{primer_body(primer)}{right}"
 
@@ -328,6 +332,19 @@ def _observed_sequence(content: bytes) -> str:
     )
 
 
+def _wrong_middle_side(observed: str, left: str, right: str, middle: str) -> str:
+    if _wrong_middle(observed, left, right, middle):
+        return "direct"
+    if _wrong_middle(
+        observed,
+        primer_check_sequence(right),
+        primer_check_sequence(left),
+        primer_check_sequence(middle),
+    ):
+        return "rc"
+    return ""
+
+
 def _wrong_middle(observed: str, left: str, right: str, expected_middle: str) -> bool:
     start = 0
     while True:
@@ -343,6 +360,39 @@ def _wrong_middle(observed: str, left: str, right: str, expected_middle: str) ->
         start = opening + 1
 
 
+def classify_observed(observed: str, primer: str, direction: str) -> str:
+    """同一套规则：整段、整段反补、同源臂对上但引物不对、都没有。"""
+    expected = assembled_primer(primer, direction)
+    if expected in observed:
+        return SEQUENCE_MATCHED
+    if primer_check_sequence(expected) in observed:
+        return SEQUENCE_MATCHED_RC
+    left, right = direction_arms(direction)
+    side = _wrong_middle_side(observed, left, right, primer_body(primer))
+    if side == "direct":
+        return SEQUENCE_ARM_ONLY
+    if side == "rc":
+        return SEQUENCE_ARM_ONLY_RC
+    return SEQUENCE_NOT_FOUND
+
+
+def called_bases_from_abi(content: bytes) -> str:
+    """读 ABI/AB1 里已经判出的碱基。读不出来就返回空，核对显示保持不做结论。"""
+    try:
+        from io import BytesIO
+
+        from Bio import SeqIO
+
+        record = SeqIO.read(BytesIO(content), "abi")
+        raw = record.annotations.get("abif_raw", {})
+        base_calls = raw.get("PBAS2", bytes(str(record.seq), "ascii"))
+        if isinstance(base_calls, bytes):
+            base_calls = base_calls.decode("ascii", "ignore")
+    except Exception:
+        return ""
+    return re.sub(r"[^ACGTN]", "", str(base_calls).upper())
+
+
 def sequence_check(
     filename: str,
     content: bytes,
@@ -356,24 +406,25 @@ def sequence_check(
     if not target:
         return None, None
     if extension_of(filename) in TRACE_EXTENSIONS:
-        return SEQUENCE_TRACE_ONLY, target
+        observed = called_bases_from_abi(content)
+        if not observed:
+            return SEQUENCE_TRACE_ONLY, target
+        return classify_observed(observed, primers[target], direction), target
     if extension_of(filename) != ".seq":
         return None, None
-    observed = _observed_sequence(content)
-    if assembled_primer(primers[target], direction) in observed:
-        return SEQUENCE_MATCHED, target
-    left, right = direction_arms(direction)
-    if _wrong_middle(observed, left, right, primer_body(primers[target])):
-        return SEQUENCE_ARM_ONLY, target
-    return SEQUENCE_NOT_FOUND, target
+    return classify_observed(_observed_sequence(content), primers[target], direction), target
 
 
 def sequence_check_text(status: str | None, target: str | None) -> str | None:
     label = PRIMER_TARGET_LABELS.get(target or "", target or "引物")
     if status == SEQUENCE_MATCHED:
-        return f"{label} 与核对序列一致"
+        return f"{label} 匹配"
+    if status == SEQUENCE_MATCHED_RC:
+        return f"{label} 匹配-反补"
     if status == SEQUENCE_ARM_ONLY:
-        return f"同源臂对上，{label} 不对"
+        return f"{label} 引物错误"
+    if status == SEQUENCE_ARM_ONLY_RC:
+        return f"{label} 引物错误-反补"
     if status == SEQUENCE_NOT_FOUND:
-        return f"序列中未找到 {label} 核对序列"
+        return f"{label} 同源臂未匹配"
     return None

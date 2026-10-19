@@ -1,5 +1,4 @@
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path
 import hashlib
@@ -39,13 +38,15 @@ from modules.discovery.workbench.constants import (
     SCREENING_METHOD_DAPU,
     SCREENING_METHOD_PHAGE,
     TERMINAL_STATUSES as DISCOVERY_TERMINAL_STATUSES,
+    MOUSE_STRAIN_OPTIONS,
 )
 from modules.molecular_cell.library_orders.result_upload import (
     ROLE_GEL,
     ROLE_READ,
-    SEQUENCE_ARM_ONLY,
-    SEQUENCE_MATCHED,
+    ARM_STATUSES,
+    MATCHED_STATUSES,
     SEQUENCE_NOT_FOUND,
+    SEQUENCE_TRACE_ONLY,
     extension_of,
     IMAGE_EXTENSIONS,
     library_code_stem,
@@ -63,6 +64,7 @@ from modules.molecular_cell.library_orders.result_upload import (
     safe_path_part,
     sequence_check,
     sequence_check_text,
+    TRACE_EXTENSIONS,
     loose_file_role,
 )
 from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_ORDER
@@ -158,22 +160,56 @@ SAMPLE_TYPE_LABELS = {
     SAMPLE_PHAGE: "噬菌体",
 }
 AUTO_SAMPLE_TYPES = {
-    "RN": SAMPLE_NANO,
-    "RN-KO": SAMPLE_NANO,
     "RL": SAMPLE_LITE,
-    "RL-KO": SAMPLE_LITE,
+    "RLB/C": SAMPLE_LITE,
+    "RLSJL": SAMPLE_LITE,
+    "RLKO": SAMPLE_LITE,
+    "RLCKO": SAMPLE_LITE,
+    "RLDF": SAMPLE_LITE,
+    "RN": SAMPLE_NANO,
+    "RNKO": SAMPLE_NANO,
+    "RNVR": SAMPLE_NANO,
+    "RNVM": SAMPLE_NANO,
+    "RNVMKO": SAMPLE_NANO,
 }
 
 
-def _auto_sample_type(mouse_model: Any) -> str | None:
-    tokens = [
-        item.strip().upper()
-        for item in re.split(r"[,，、]", str(mouse_model or ""))
-        if item.strip()
-    ]
+def _mouse_strain_tokens(value: Any) -> list[str]:
+    if value is None:
+        return []
+    raw = value if isinstance(value, (list, tuple)) else re.split(r"[,，、+]", str(value))
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        token = str(item or "").strip()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+    return tokens
+
+
+def _normalize_mouse_strain(value: Any) -> str | None:
+    tokens = _mouse_strain_tokens(value)
     if not tokens:
         return None
-    return AUTO_SAMPLE_TYPES.get(tokens[0])
+    known = set(MOUSE_STRAIN_OPTIONS)
+    ordered = [item for item in MOUSE_STRAIN_OPTIONS if item in tokens]
+    extras = [item for item in tokens if item not in known]
+    kept: list[str] = []
+    for item in [*ordered, *extras]:
+        nxt = "、".join([*kept, item])
+        if len(nxt) > 128:
+            break
+        kept.append(item)
+    return "、".join(kept) or None
+
+
+def _auto_sample_type(mouse_strain: Any) -> str | None:
+    text = _normalize_mouse_strain(mouse_strain)
+    if not text:
+        return None
+    return AUTO_SAMPLE_TYPES.get(text.split("、", 1)[0])
 
 
 PHAGE_EXPERIMENT_TYPES = ("抗体发现", "亲和力改造")
@@ -192,8 +228,6 @@ QC_RESULT_OPTIONS = ("待判定", "通过", "不通过")
 CELL_TYPE_OPTIONS = ("全细胞", "浆细胞", "流穿液")
 DEFAULT_PLASMA_CELL_TYPE = "浆细胞"
 TARGET_FORM_OPTIONS = ("多穿", "分泌", "I型", "II型")
-_INT32_MAX = 2_147_483_647
-
 PROFILE_SOURCES = {
     BUILD_PLATE: (SOURCE_BEACON, SOURCE_DAPU_PLATE, SOURCE_BEACON_DAPU),
     BUILD_POOLED_BCR: (SOURCE_DAPU_TUBE,),
@@ -315,8 +349,9 @@ STRING_FIELDS = {
     "project_goal": 1000,
     "target_name": 128,
     "pm": 64,
-    "mouse_model": 128,
+    "mouse_strain": 128,
     "positive_cell_count": 64,
+    "fragment_size_bp": 64,
     "cell_type": 64,
     "notebook_no": 64,
     "immunization_stage": 64,
@@ -354,9 +389,6 @@ DATE_FIELDS = (
     "started_at",
     "finished_at",
 )
-INTEGER_FIELDS = (
-    "fragment_size_bp",
-)
 INSTRUMENT_DATE_BUILDS = frozenset({
     BUILD_PLATE,
     BUILD_POOLED_BCR,
@@ -372,27 +404,6 @@ POSITIVE_CELL_COUNT_BUILDS = frozenset({
 })
 FILLS_INSTRUMENT_ON = INSTRUMENT_DATE_BUILDS | {BUILD_PLASMA_NGS}
 CELL_TYPE_CHOICE_BUILDS = frozenset({BUILD_PLASMA_NGS, BUILD_PHAGE_DISPLAY})
-
-FIELD_LABELS = {
-    "source_project_code": "项目编号",
-    "study_type": "课题类型",
-    "source_experiment_type": "实验类型",
-    "project_goal": "实验目标",
-    "target_name": "靶点",
-    "target_codes": "靶点编号",
-    "pm": "PM",
-    "mouse_model": "归类鼠型",
-    "sample_type": "样品类型",
-    "sample_source": "样品来源",
-    "received_on": "样品交接日期",
-    "instrument_on": "上机日期",
-    "positive_cell_count": "阳性细胞数",
-    "fragment_size_bp": "片段大小",
-    "status": "状态",
-    "priority": "优先级",
-    "owner": "负责人",
-    "library_code": "建库编号",
-}
 
 FILE_KIND_PCR_QC = "PCR检测报告"
 FILE_KIND_GEL = "胶图"
@@ -477,20 +488,6 @@ def _normalize_date(value: Any) -> date | None:
         return datetime.strptime(matched.group(1), "%Y-%m-%d").date()
     except ValueError as exc:
         raise ValueError("日期必须是 YYYY-MM-DD") from exc
-
-
-def _normalize_nonnegative_int(value: Any, label: str) -> int | None:
-    if value in (None, ""):
-        return None
-    try:
-        number = Decimal(str(value).strip())
-    except (InvalidOperation, ValueError) as exc:
-        raise ValueError(f"{label}必须是非负整数") from exc
-    if not number.is_finite() or number < 0 or number != number.to_integral_value():
-        raise ValueError(f"{label}必须是非负整数")
-    if number > _INT32_MAX:
-        raise ValueError(f"{label}必须是不超过 {_INT32_MAX} 的非负整数")
-    return int(number)
 
 
 def _normalize_string_list(value: Any, label: str) -> list[str]:
@@ -596,10 +593,30 @@ def _apply_catalog_reference(
     sequence_field: str | None = None,
 ) -> None:
     if id_field not in data:
-        if name_field in data:
+        if name_field not in data:
+            return
+        name = str(data.get(name_field) or "").strip()
+        if not name:
             setattr(row, id_field, None)
-            if sequence_field and sequence_field not in data:
+            setattr(row, name_field, None)
+            if sequence_field:
                 setattr(row, sequence_field, None)
+            return
+        catalog = db.scalar(
+            select(MolecularPrimerIndexCatalog).where(
+                MolecularPrimerIndexCatalog.name == name,
+                MolecularPrimerIndexCatalog.active.is_(True),
+            )
+        )
+        if catalog is not None:
+            setattr(row, id_field, catalog.id)
+            setattr(row, name_field, catalog.name)
+            if sequence_field:
+                setattr(row, sequence_field, catalog.short_sequence)
+            return
+        setattr(row, id_field, None)
+        if sequence_field and sequence_field not in data:
+            setattr(row, sequence_field, None)
         return
     catalog_id = _parse_row_id(data.get(id_field))
     if data.get(id_field) not in (None, "") and catalog_id is None:
@@ -650,7 +667,9 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
     for field, max_len in STRING_FIELDS.items():
         if field == "library_code" or field not in data:
             continue
-        if field in {"i7_sequence", "i5_sequence"}:
+        if field == "mouse_strain":
+            setattr(row, field, _normalize_mouse_strain(data.get(field)))
+        elif field in {"i7_sequence", "i5_sequence"}:
             setattr(row, field, _normalize_sequence(data.get(field), max_len))
         else:
             setattr(row, field, _normalize_text(data.get(field), max_len))
@@ -661,20 +680,13 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
             "样品类型",
             nullable=True,
         )
-    elif "mouse_model" in data:
-        auto_type = _auto_sample_type(row.mouse_model)
+    elif "mouse_strain" in data:
+        auto_type = _auto_sample_type(row.mouse_strain)
         if auto_type:
             row.sample_type = auto_type
     for field in DATE_FIELDS:
         if field in data:
             setattr(row, field, _normalize_date(data.get(field)))
-    for field in INTEGER_FIELDS:
-        if field in data:
-            setattr(
-                row,
-                field,
-                _normalize_nonnegative_int(data.get(field), FIELD_LABELS.get(field, field)),
-            )
     if "sample_source" in data:
         row.sample_source = _normalize_choice(
             data.get("sample_source"),
@@ -825,18 +837,22 @@ def _qc_file_facts(db: Session, order: MolecularLibraryOrder) -> QcFileFacts:
             has_gel = True
         if suffix in READ_EXTENSIONS:
             has_read = True
-        if link.sequence_target and link.sequence_status:
+        if (
+            suffix not in TRACE_EXTENSIONS
+            and link.sequence_target
+            and link.sequence_status
+        ):
             by_target.setdefault(link.sequence_target, set()).add(link.sequence_status)
     statuses = [by_target.get(target, set()) for target in _configured_primers(db, order)]
-    failed = {SEQUENCE_NOT_FOUND, SEQUENCE_ARM_ONLY}
+    failed = {SEQUENCE_NOT_FOUND, *ARM_STATUSES}
     return QcFileFacts(
         has_gel,
         has_read,
         any(found & failed for found in statuses),
-        all(SEQUENCE_MATCHED in found and not (found & failed) for found in statuses),
-        any(SEQUENCE_MATCHED in found and found & failed for found in statuses),
+        all(found & MATCHED_STATUSES and not (found & failed) for found in statuses),
+        any(found & MATCHED_STATUSES and found & failed for found in statuses),
         bool(statuses),
-        any(SEQUENCE_ARM_ONLY in found for found in statuses),
+        any(found & ARM_STATUSES for found in statuses),
     )
 
 
@@ -912,7 +928,7 @@ def _qc_status_detail(
         return "引物已对上" if checks_primers else ""
     if status == STATUS_QC_HOLD:
         if arm_only and not partial:
-            return "同源臂对上，引物不对"
+            return "引物错误"
         return "有文件没对上引物" if partial else "引物未对上"
     if status != STATUS_WAIT_QC:
         return ""
@@ -968,6 +984,15 @@ def _contains(column, value: Any, *, upper: bool = False):
     if len(clauses) == 1:
         return clauses[0]
     return or_(*clauses)
+
+
+def _strain_token_filter(column, value: str):
+    return or_(
+        column == value,
+        column.like(f"{value}、%"),
+        column.like(f"%、{value}"),
+        column.like(f"%、{value}、%"),
+    )
 
 
 def _append_contains(filters: list, column, value: Any, *, upper: bool = False) -> None:
@@ -1059,12 +1084,14 @@ def _apply_list_filters(stmt, data: dict[str, Any]):
         ("sample_type", MolecularLibraryOrder.sample_type),
         ("status", MolecularLibraryOrder.status),
         ("owner", MolecularLibraryOrder.owner),
-        ("mouse_model", MolecularLibraryOrder.mouse_model),
     ):
         terms = [term for term in filter_terms(data.get(key)) if term != "all"]
         condition = match_any(column, terms)
         if condition is not None:
             filters.append(condition)
+    strain_terms = [term for term in filter_terms(data.get("mouse_strain")) if term != "all"]
+    if strain_terms:
+        filters.append(or_(*(_strain_token_filter(MolecularLibraryOrder.mouse_strain, term) for term in strain_terms)))
     priority_terms = [_normalize_priority(term) for term in filter_terms(data.get("priority"))]
     priority = match_any(MolecularLibraryOrder.priority, priority_terms)
     if priority is not None:
@@ -1380,8 +1407,8 @@ def _handoff_preview(row: DiscoveryWorkbench) -> dict[str, Any]:
         "target_codes": row.target_codes if isinstance(row.target_codes, list) else [],
         "pm": row.pm,
         "study_type": row.study_type,
-        "mouse_model": row.mouse_strain_category,
-        "sample_type": _auto_sample_type(row.mouse_strain_category),
+        "mouse_strain": row.mouse_strain,
+        "sample_type": _auto_sample_type(row.mouse_strain),
         "instrument_on": row.harvest_date,
         "positive_cell_count": row.positive_cell_count,
         "screening_methods": row.screening_methods,
@@ -1502,8 +1529,8 @@ def handoff(
     codes = row.target_codes if isinstance(row.target_codes, list) else []
     created: list[MolecularLibraryOrder] = []
     for build_type, sample_source, sample_type in normalized:
-        mouse_model = str(row.mouse_strain_category or "").strip() or None
-        resolved_sample_type = sample_type or _auto_sample_type(mouse_model)
+        mouse_strain = _normalize_mouse_strain(row.mouse_strain)
+        resolved_sample_type = sample_type or _auto_sample_type(mouse_strain)
         if build_type == BUILD_PLASMA_NGS and resolved_sample_type not in (None, *PLASMA_SAMPLE_TYPES):
             resolved_sample_type = None
         order = MolecularLibraryOrder(
@@ -1516,7 +1543,7 @@ def handoff(
             target_name=row.target_name,
             target_codes=list(codes),
             pm=row.pm,
-            mouse_model=mouse_model,
+            mouse_strain=mouse_strain,
             sample_type=resolved_sample_type,
             instrument_on=(
                 _normalize_date(row.harvest_date)
@@ -1571,7 +1598,7 @@ EXPORT_COLUMNS = (
     ("靶点", "target_name"),
     ("靶点编号", "target_codes"),
     ("PM", "pm"),
-    ("归类鼠型", "mouse_model"),
+    ("小鼠品系", "mouse_strain"),
     ("样品类型", "sample_type"),
     ("交接日期", "received_on"),
     ("上机日期", "instrument_on"),
@@ -1812,6 +1839,21 @@ def _sequencing_packages(
     return packages
 
 
+def _fill_trace_checks(db: Session, order: MolecularLibraryOrder, rows: list) -> None:
+    """已经上传、当时还没核对的峰图，打开列表时补一次显示用结果。"""
+    pending = [
+        (link, record)
+        for link, record, _count in rows
+        if extension_of(link.original_name) in TRACE_EXTENSIONS
+        and link.sequence_status == SEQUENCE_TRACE_ONLY
+    ]
+    if not pending:
+        return
+    primers = _configured_primers(db, order)
+    for link, record in pending:
+        _recheck_link_sequence(link, record, order, primers)
+
+
 def list_files(db: Session, order_id: int) -> dict[str, Any]:
     order = _load_order(db, order_id)
     link_counts = (
@@ -1841,6 +1883,7 @@ def list_files(db: Session, order_id: int) -> dict[str, Any]:
             MolecularLibraryResultLink.id.desc(),
         )
     ).all()
+    _fill_trace_checks(db, order, rows)
     final_names = _final_names(link for link, _record, _count in rows)
     items = [
         {

@@ -20,7 +20,7 @@ NAME_TAKEN = "引物名称已存在"
 PRIMER_IN_USE = "这条引物已被文库工单使用，可以停用，不能删除"
 DEFAULT_PAGE_LIMIT = 20
 MAX_PAGE_LIMIT = 500
-MAX_OPTIONS = 500
+MAX_OPTIONS = 2000
 MAX_BATCH_ITEMS = 1000
 MAX_BATCH_IDS = 5000
 
@@ -220,12 +220,16 @@ def list_options(
     stmt = select(Primer).where(Primer.active.is_(True))
     keyword = str(query or "").strip()
     if keyword:
-        stmt = stmt.where(
-            or_(
-                Primer.name.like(f"%{keyword}%"),
-                Primer.short_sequence.like(f"%{keyword.upper()}%"),
-            )
-        )
+        sequence = re.sub(r"\s+", "", keyword).upper()
+        clauses = [Primer.name.like(f"%{keyword}%")]
+        if DNA_PATTERN.fullmatch(sequence):
+            clauses.append(Primer.short_sequence.like(f"%{sequence}%"))
+            flipped = check_sequence(sequence)
+            if flipped != sequence:
+                clauses.append(Primer.short_sequence.like(f"%{flipped}%"))
+        else:
+            clauses.append(Primer.short_sequence.like(f"%{keyword.upper()}%"))
+        stmt = stmt.where(or_(*clauses))
     if family:
         stmt = stmt.where(Primer.family == family.strip())
     rows = db.scalars(

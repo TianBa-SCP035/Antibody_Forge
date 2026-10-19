@@ -8,7 +8,7 @@ import AbiTraceViewer from './AbiTraceViewer.vue'
 const props = defineProps({
   sourceUrl: { type: String, required: true },
   direction: { type: String, default: '' },
-  primerLabel: { type: String, default: '' },
+  sequenceStatus: { type: String, default: '' },
   targetSequence: { type: String, default: '' },
   height: { type: String, default: '100%' },
 })
@@ -56,7 +56,7 @@ onBeforeUnmount(() => {
       v-else-if="trace"
       :trace="trace"
       :direction="direction"
-      :primer-label="primerLabel"
+      :sequence-status="sequenceStatus"
       :target-sequence="targetSequence"
       height="100%"
     />

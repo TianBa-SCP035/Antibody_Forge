@@ -699,6 +699,11 @@
                   clearable
                   @change="persistRow(editingRow, field.key)"
                 />
+                <el-input
+                  v-else-if="isGroupStrainLocked(editingRow, field.key)"
+                  :model-value="editingRow[field.key] || ''"
+                  disabled
+                />
                 <el-select
                   v-else-if="field.type === 'select' || field.type === 'yesno' || field.type === 'status'"
                   :model-value="drawerFieldValue(field, editingRow)"
@@ -820,7 +825,7 @@ import {
   canOpenSerumEdit,
   getSerumUserName,
 } from '#/utils/serumPermission'
-import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS } from '#/utils/serumMouseOptions'
+import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS, SERUM_MOUSE_STRAIN_OPTIONS } from '#/utils/serumMouseOptions'
 import { WORKBENCH_STUDY_TYPE_OPTIONS } from '#/utils/workbenchStudyTypes'
 import {
   WORKBENCH_PLAN_STATUS_OPTIONS,
@@ -850,6 +855,7 @@ const MOUSE_STATUS_OPTIONS = ['未定', '扩繁中', '可运', '在途', '已到
 const ZYGOSITY_OPTIONS = ['纯合', '杂合', '混合']
 const STUDY_TYPE_OPTIONS = [...WORKBENCH_STUDY_TYPE_OPTIONS]
 const MOUSE_STRAIN_CATEGORY_OPTIONS = [...SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS]
+const MOUSE_STRAIN_OPTIONS = [...SERUM_MOUSE_STRAIN_OPTIONS]
 const SPECIES_CROSS_OPTIONS = ['人', '猴', '鼠', '狗', '猫', '空白']
 const IMMUNO_METHOD_OPTIONS = ['蛋白', 'DNA', 'LNP', '细胞', '混合']
 const TOKEN_MULTI_OPTIONS = {
@@ -944,7 +950,7 @@ const EDITOR_SECTIONS = [
       { key: 'study_type', label: '课题类型', type: 'select', optionsKey: 'study_type', lock: 'aligned' },
       { key: 'immuno_method', label: '免疫方式', type: 'multi' },
       { key: 'mouse_strain_category', label: '归类鼠型', type: 'select', optionsKey: 'mouse_strain_category', lock: 'aligned' },
-      { key: 'mouse_strain', label: '小鼠品系', type: 'text', lock: 'aligned' },
+      { key: 'mouse_strain', label: '小鼠品系', type: 'select', optionsKey: 'mouse_strain', lock: 'aligned' },
       { key: 'species_cross', label: '种属交叉', type: 'multi', wide: true },
       { key: 'remark', label: '备注', type: 'textarea', maxlength: 255, lock: 'aligned', wide: true },
     ],
@@ -1001,7 +1007,7 @@ const SHEET_COLUMNS = [
   { key: 'remark', label: '备注', edit: 'text' },
   { key: 'mouse_scheme_no', label: '小鼠方案号', edit: 'text' },
   { key: 'mouse_strain_category', label: '归类鼠型', edit: 'select', optionsKey: 'mouse_strain_category' },
-  { key: 'mouse_strain', label: '小鼠品系', edit: 'text' },
+  { key: 'mouse_strain', label: '小鼠品系', edit: 'select', optionsKey: 'mouse_strain' },
   { key: 'mouse_count', label: '数量', width: 80, edit: 'text' },
   { key: 'mouse_zygosity', label: '纯合/杂合', width: 90, edit: 'select', optionsKey: 'mouse_zygosity' },
   { key: 'mouse_birth_date', label: '出生日期', width: 110, edit: 'date' },
@@ -1115,6 +1121,7 @@ export default {
     return {
       loading: false,
       tabDataFetchedAt: 0,
+      schemeReturnRefresh: false,
       list: [],
       total: 0,
       stats: { all: 0, planned: 0, ongoing: 0, completed: 0, cancelled: 0, can_start: 0 },
@@ -1326,6 +1333,11 @@ export default {
   activated() {
     document.addEventListener('mousedown', this.onDocumentPointerDown, true)
     if (this.loading) return
+    if (this.schemeReturnRefresh) {
+      this.schemeReturnRefresh = false
+      this.getList()
+      return
+    }
     if (shouldRefreshTabData(this.tabDataFetchedAt)) {
       this.getList()
     } else {
@@ -1398,7 +1410,10 @@ export default {
           '已开展',
           ...(data?.statuses || []),
         ])
-        this.optionLists.mouse_strain = this.uniq(data?.mouse_strains || [])
+        this.optionLists.mouse_strain = this.uniq([
+          ...MOUSE_STRAIN_OPTIONS,
+          ...(data?.mouse_strains || []),
+        ])
         this.optionLists.mouse_strain_category = this.uniq([
           ...MOUSE_STRAIN_CATEGORY_OPTIONS,
           ...(data?.mouse_strain_categories || []),
@@ -1423,6 +1438,7 @@ export default {
       if (field.type === 'multi') return this.tokenMultiOptions(field.key)
       if (field.key === 'study_type') return STUDY_TYPE_OPTIONS
       if (field.key === 'mouse_strain_category') return MOUSE_STRAIN_CATEGORY_OPTIONS
+      if (field.key === 'mouse_strain') return MOUSE_STRAIN_OPTIONS
       if (field.key === 'mouse_region') return MOUSE_REGION_OPTIONS
       if (field.key === 'mouse_zygosity') return ZYGOSITY_OPTIONS
       if (field.key === 'antigen_source') return ANTIGEN_SOURCE_OPTIONS
@@ -1521,8 +1537,12 @@ export default {
     canDeleteRow(row) {
       return this.canFullEdit || (this.canDraftEdit && this.isDraftRow(row))
     },
+    isGroupStrainLocked(row, key) {
+      return Number(row?.mouse_group_count) >= 2 && (key === 'mouse_strain' || key === 'mouse_strain_category')
+    },
     isFieldLocked(row, field) {
       if (!this.canEditField(row, field.key)) return true
+      if (this.isGroupStrainLocked(row, field.key)) return true
       return field.lock === 'aligned' && row.aligned_locked
     },
     drawerSelectClass(field, row) {
@@ -1834,6 +1854,7 @@ export default {
       if (key === 'priority') return [...PRIORITY_OPTIONS]
       if (key === 'study_type') return [...STUDY_TYPE_OPTIONS]
       if (key === 'mouse_strain_category') return [...MOUSE_STRAIN_CATEGORY_OPTIONS]
+      if (key === 'mouse_strain') return [...MOUSE_STRAIN_OPTIONS]
       if (key === 'mouse_region') return [...MOUSE_REGION_OPTIONS]
       if (key === 'mouse_zygosity') return [...ZYGOSITY_OPTIONS]
       if (key === 'antigen_source') return [...ANTIGEN_SOURCE_OPTIONS]
@@ -1869,6 +1890,7 @@ export default {
     },
     isSheetCellLocked(row, key) {
       if (key === 'sort_order' && !this.isQueueSorted) return true
+      if (this.isGroupStrainLocked(row, key)) return true
       if (!this.canEditField(row, key)) return true
       const column = this.sheetColumns.find((item) => item.key === key)
       if (column?.edit === 'readonly') return true
@@ -2563,6 +2585,7 @@ export default {
         ElMessage.warning('工作台记录尚未保存，请刷新列表后重试')
         return
       }
+      this.schemeReturnRefresh = true
       this.$router.push({ name: 'SerumWorkbenchScheme', query: { id: workbenchId } })
     },
     async openStartedDetail(row) {

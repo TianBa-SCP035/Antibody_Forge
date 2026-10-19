@@ -356,12 +356,19 @@
             </el-table-column>
             <el-table-column label="小鼠名称/品系" min-width="120">
                     <template #default="{ row }">
-                    <el-input v-model="row.mouse_strain" size="small" @change="updateProjectName" />
+                    <el-select v-model="row.mouse_strain" size="small" filterable allow-create default-first-option style="width:100%" placeholder="选择小鼠品系" @change="updateProjectName">
+                        <el-option
+                          v-for="item in mouseStrainOptions"
+                          :key="item"
+                          :label="item"
+                          :value="item"
+                        />
+                    </el-select>
                 </template>
             </el-table-column>
             <el-table-column label="归类鼠型" min-width="120">
                     <template #default="{ row }">
-                    <el-select v-model="row.mouse_strain_category" size="small" filterable allow-create default-first-option style="width:100%" placeholder>
+                    <el-select v-model="row.mouse_strain_category" size="small" filterable allow-create default-first-option style="width:100%" placeholder="选择归类鼠型">
                         <el-option
                           v-for="item in mouseStrainCategoryOptions"
                           :key="item"
@@ -802,7 +809,7 @@ import {
   canOpenSerumEdit,
   hasSerumProjectEditPermission,
 } from '#/utils/serumPermission'
-import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS } from '#/utils/serumMouseOptions'
+import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS, SERUM_MOUSE_STRAIN_OPTIONS } from '#/utils/serumMouseOptions'
 import {
   isWorkbenchPlanClosed,
   SERUM_PROJECT_STATUS_DEFAULT,
@@ -988,6 +995,7 @@ export default {
       usedUserOptions: { owner: [], pm: [] },
       schemeProjectStatusOptions: SCHEME_PROJECT_STATUS_OPTIONS,
       mouseStrainCategoryOptions: SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS,
+      mouseStrainOptions: SERUM_MOUSE_STRAIN_OPTIONS,
       remarkDialogVisible: false,
       currentRemark: '',
       currentRemarkRow: null,
@@ -1773,11 +1781,15 @@ export default {
         row.mouse_registry = mouse_registry
         row.mouse_no_list = mouse_no_list
     },
+    planningStrain(value) {
+        const text = String(value || '').trim()
+        return text.includes('+') ? '' : text
+    },
     createMouseGroup(groupId, seedWorkbench = false) {
         return {
             group_id: groupId,
-            mouse_strain: seedWorkbench ? (this.postForm.mouse_strain || '') : '',
-            mouse_strain_category: seedWorkbench ? (this.postForm.mouse_strain_category || '') : '',
+            mouse_strain: seedWorkbench ? this.planningStrain(this.postForm.mouse_strain) : '',
+            mouse_strain_category: seedWorkbench ? this.planningStrain(this.postForm.mouse_strain_category) : '',
             mouse_count: '10',
             age_weeks: '6-8',
             sex: 'F/M',
@@ -1790,7 +1802,7 @@ export default {
     },
     ensureInitialMouseGroup() {
         if (this.postForm.mouse_groups.length > 0) return
-        if (!this.postForm.mouse_strain && !this.postForm.mouse_strain_category) return
+        if (!this.planningStrain(this.postForm.mouse_strain) && !this.planningStrain(this.postForm.mouse_strain_category)) return
         this.postForm.mouse_groups.push(this.createMouseGroup('G1', true))
     },
     addMouseGroup() {

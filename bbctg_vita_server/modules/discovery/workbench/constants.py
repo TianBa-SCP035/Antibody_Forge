@@ -19,6 +19,24 @@ MOUSE_STRAIN_CATEGORY_OPTIONS = (
     "RN-VR",
     "RN-VM-KO",
 )
+MOUSE_STRAIN_OPTIONS = (
+    "RM",
+    "RMB/C",
+    "RMSJL",
+    "RMKO",
+    "RMCKO",
+    "RL",
+    "RLB/C",
+    "RLSJL",
+    "RLKO",
+    "RLCKO",
+    "RLDF",
+    "RN",
+    "RNVM",
+    "RNVR",
+    "RNKO",
+    "RNVMKO",
+)
 
 PLAN_STATUS_PLANNING = "规划中"
 PLAN_STATUS_WAIT_BOOST = "待冲击"

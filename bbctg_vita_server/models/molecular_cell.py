@@ -46,7 +46,7 @@ class MolecularLibraryOrder(Base):
     target_name: Mapped[str | None] = mapped_column(String(128), comment="靶点名称")
     target_codes: Mapped[list[str] | None] = mapped_column(JSON, comment="靶点编号列表")
     pm: Mapped[str | None] = mapped_column(String(64), comment="PM")
-    mouse_model: Mapped[str | None] = mapped_column(String(128), comment="归类鼠型")
+    mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="小鼠品系")
     sample_type: Mapped[str | None] = mapped_column(String(32), index=True, comment="样品类型")
 
     build_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True, comment="建库类型")
@@ -75,7 +75,7 @@ class MolecularLibraryOrder(Base):
     library_concentration: Mapped[str | None] = mapped_column(String(64), comment="文库浓度")
     initial_library_size: Mapped[str | None] = mapped_column(String(64), comment="初始库容")
     effective_library_size: Mapped[str | None] = mapped_column(String(64), comment="有效库容")
-    fragment_size_bp: Mapped[int | None] = mapped_column(Integer, comment="片段大小bp")
+    fragment_size_bp: Mapped[str | None] = mapped_column(String(64), comment="片段大小")
 
     h_forward_primer_id: Mapped[int | None] = mapped_column(BigInteger, comment="H正向引物字典ID")
     h_forward_primer_name: Mapped[str | None] = mapped_column(String(128), comment="H正向引物名称快照")

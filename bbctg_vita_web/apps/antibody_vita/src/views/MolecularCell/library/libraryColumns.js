@@ -1,6 +1,6 @@
 import { cleanFieldText } from '#/components/workbench/clipboardGrid'
 import { WORKBENCH_PRIORITY_OPTIONS } from '#/utils/serumProjectStatus'
-import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS } from '#/utils/serumMouseOptions'
+import { SERUM_MOUSE_STRAIN_OPTIONS } from '#/utils/serumMouseOptions'
 import { WORKBENCH_STUDY_TYPE_OPTIONS } from '#/utils/workbenchStudyTypes'
 
 export const STUDY_TYPE_OPTIONS = [...WORKBENCH_STUDY_TYPE_OPTIONS]
@@ -74,10 +74,24 @@ export const QC_RESULT_OPTIONS = ['待判定', '通过', '不通过']
 export const REQUIRED_CHOICE_KEYS = ['build_type', 'status', 'priority']
 export const CELL_TYPE_OPTIONS = ['全细胞', '浆细胞', '流穿液']
 
+export const SYNC_TEXT_KEYS = new Set(['positive_cell_count', 'fragment_size_bp'])
+
+export function isSyncedText(field) {
+  return SYNC_TEXT_KEYS.has(field?.key)
+}
+
 export function persistValue(value) {
   if (Array.isArray(value)) return value
   if (value == null || (typeof value === 'string' && !value.trim())) return null
   return value
+}
+
+export function syncPairedTextareas(selector) {
+  const nodes = [...document.querySelectorAll(selector)].filter((node) => node.getClientRects().length)
+  if (!nodes.length) return
+  nodes.forEach((node) => { node.style.height = 'auto' })
+  const height = Math.max(...nodes.map((node) => node.scrollHeight))
+  nodes.forEach((node) => { node.style.height = `${height}px` })
 }
 
 export function stampQcFields(row, ownerName) {
@@ -105,27 +119,27 @@ export function statusTone(status) {
   return 'info'
 }
 
-export const MOUSE_CATEGORY_OPTIONS = [...SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS]
-export const MOUSE_CATEGORY_LABELS = {
-  RN: 'Nano',
-  RL: 'Lite',
-  RM: 'RenMab',
-  'RN-VM': 'Nano-VM',
-  'RN-VR': 'Nano-VR',
-  'RN-KO': 'Nano-KO',
-  'RL-KO': 'Lite-KO',
-  'RM-KO': 'RenMab-KO',
-  'RN-VM-KO': 'Nano-VM-KO',
+export const MOUSE_STRAIN_OPTIONS = [...SERUM_MOUSE_STRAIN_OPTIONS]
+
+export function splitMouseStrain(value) {
+  const tokens = Array.isArray(value) ? value : String(value || '').split(/[,，、+]/)
+  const seen = new Set()
+  const out = []
+  for (const item of tokens) {
+    const text = String(item || '').trim()
+    if (!text || seen.has(text)) continue
+    seen.add(text)
+    out.push(text)
+  }
+  return out
 }
-export function mouseCategoryLabel(code) {
-  const text = String(code || '').trim()
-  if (!text) return ''
-  return text
-    .split(/[,，、]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item) => MOUSE_CATEGORY_LABELS[item] || item)
-    .join('、')
+
+export function joinMouseStrain(value) {
+  const tokens = splitMouseStrain(value)
+  const known = new Set(MOUSE_STRAIN_OPTIONS)
+  const ordered = MOUSE_STRAIN_OPTIONS.filter((item) => tokens.includes(item))
+  const extras = tokens.filter((item) => !known.has(item))
+  return [...ordered, ...extras].join('、')
 }
 
 export function sampleSourceLabel(value) {
@@ -208,7 +222,7 @@ const COMMON_IDENTITY = [
   { key: 'pm', label: 'PM', type: 'user' },
   { key: 'notebook_no', label: '实验记录本号' },
   { key: 'target_name', label: '靶点', type: 'target', wide: true },
-  { key: 'mouse_model', label: '归类鼠型', type: 'select', options: MOUSE_CATEGORY_OPTIONS.map((item) => ({ value: item, label: mouseCategoryLabel(item) })) },
+  { key: 'mouse_strain', label: '小鼠品系', type: 'select', options: MOUSE_STRAIN_OPTIONS.map((item) => ({ value: item, label: item })) },
   { key: 'sample_type', label: '样品类型', type: 'select', options: SAMPLE_TYPE_OPTIONS },
 ]
 const COMMON_SOURCE = [
@@ -416,7 +430,7 @@ export const FIELD_DEFS = {
   target_name: def('target_name', '靶点', 'target'),
   target_codes: def('target_codes', '靶点编号', 'target', 140),
   pm: def('pm', 'PM', 'select', 100),
-  mouse_model: def('mouse_model', '归类鼠型', 'select'),
+  mouse_strain: def('mouse_strain', '小鼠品系', 'select'),
   sample_type: def('sample_type', '样品类型', 'select'),
   received_on: def('received_on', '交接日期', 'date', 130),
   instrument_on: def('instrument_on', '上机日期', 'date', 130),
@@ -470,7 +484,7 @@ const SHEET_IDENTITY_KEYS = [
   'target_codes',
   'study_type',
   'pm',
-  'mouse_model',
+  'mouse_strain',
   'sample_type',
   'build_type',
   'sample_source',
@@ -641,7 +655,7 @@ export const WORKBENCH_COLUMNS = [
   { key: 'owner', label: '负责人', prop: 'owner', minWidth: 100, defaultVisible: true, showOverflowTooltip: true },
   { key: 'status', label: '状态', minWidth: 110, defaultVisible: true, className: 'status-column-cell' },
   { key: 'priority', label: '优先级', minWidth: 112, defaultVisible: true },
-  { key: 'mouse_model', label: '归类鼠型', minWidth: 110, defaultVisible: false, showOverflowTooltip: true },
+  { key: 'mouse_strain', label: '小鼠品系', minWidth: 110, defaultVisible: false, showOverflowTooltip: true },
   { key: 'study_type', label: '课题类型', minWidth: 120, defaultVisible: false, showOverflowTooltip: true },
   { key: 'pm', label: 'PM', minWidth: 100, defaultVisible: false, showOverflowTooltip: true },
   { key: 'source_discovery_id', label: '来源发现 ID', minWidth: 160, defaultVisible: false, showOverflowTooltip: true },
@@ -655,7 +669,7 @@ export const WORKBENCH_COLUMNS = [
   { key: 'library_order_id', label: '系统工单号', minWidth: 170, defaultVisible: false, showOverflowTooltip: true },
   { key: 'target_codes', label: '靶点编号', minWidth: 140, defaultVisible: false, showOverflowTooltip: true },
   { key: 'blood_collected_on', label: '采血日期', minWidth: 130, defaultVisible: false, className: 'date-column-cell' },
-  { key: 'positive_cell_count', label: '阳性细胞数', minWidth: 120, defaultVisible: false },
+  { key: 'positive_cell_count', label: '阳性细胞数', minWidth: 120, defaultVisible: false, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'plate_nos', label: '板号', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
   { key: 'cell_type', label: '细胞类型', minWidth: 120, defaultVisible: false, showOverflowTooltip: true },
   { key: 'immunization_stage', label: '免疫阶段', minWidth: 120, defaultVisible: false, showOverflowTooltip: true },
@@ -670,7 +684,7 @@ export const WORKBENCH_COLUMNS = [
   { key: 'library_concentration', label: '文库浓度', minWidth: 120, defaultVisible: false },
   { key: 'initial_library_size', label: '初始库容', minWidth: 120, defaultVisible: false },
   { key: 'effective_library_size', label: '有效库容', minWidth: 120, defaultVisible: false },
-  { key: 'fragment_size_bp', label: '片段大小', minWidth: 120, defaultVisible: false },
+  { key: 'fragment_size_bp', label: '片段大小', minWidth: 120, defaultVisible: false, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'h_forward_primer_name', label: 'H 正向引物', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
   { key: 'h_reverse_primer_name', label: 'H 反向引物', minWidth: 150, defaultVisible: false, showOverflowTooltip: true },
   { key: 'h_primer_concentration', label: 'H 浓度', minWidth: 120, defaultVisible: false },

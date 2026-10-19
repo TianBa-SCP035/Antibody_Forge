@@ -72,8 +72,8 @@ class LibraryOrderTests(unittest.TestCase):
             "target_codes": ["T1"],
             "study_type": "抗体发现",
             "pm": "张三",
-            "mouse_strain_category": "RN",
-            "mouse_strain": "BALB/c",
+            "mouse_strain_category": "RL-KO",
+            "mouse_strain": "RN",
             "harvest_date": "2026-09-21",
             "positive_cell_count": "120",
             "screening_methods": "达普,噬菌体",
@@ -145,39 +145,53 @@ class LibraryOrderTests(unittest.TestCase):
             "C200",
         )
 
-    def test_sample_type_is_only_auto_mapped_for_rn_and_rl(self):
+    def test_sample_type_follows_mouse_strain(self):
         saved = service.save(
             self.db,
-            {"build_type": service.BUILD_POOLED_BCR, "mouse_model": "RN"},
+            {"build_type": service.BUILD_POOLED_BCR, "mouse_strain": "RN"},
         )
         self.assertEqual(saved["sample_type"], service.SAMPLE_NANO)
-        updated = service.save(self.db, {"id": saved["id"], "mouse_model": "RL"})
+        updated = service.save(self.db, {"id": saved["id"], "mouse_strain": "RL"})
         self.assertEqual(updated["sample_type"], service.SAMPLE_LITE)
+        nano_variant = service.save(self.db, {"id": saved["id"], "mouse_strain": "RNVMKO"})
+        self.assertEqual(nano_variant["sample_type"], service.SAMPLE_NANO)
         manual = service.save(
             self.db,
             {
                 "id": saved["id"],
-                "mouse_model": "RN-VM",
+                "mouse_strain": "RNVM",
                 "sample_type": service.SAMPLE_RNVM_BLOOD,
             },
         )
         self.assertEqual(manual["sample_type"], service.SAMPLE_RNVM_BLOOD)
         first_of_many = service.save(
             self.db,
-            {"id": saved["id"], "mouse_model": "RL-KO，RN-KO"},
+            {"id": saved["id"], "mouse_strain": "RN、RLKO"},
         )
+        self.assertEqual(first_of_many["mouse_strain"], "RLKO、RN")
         self.assertEqual(first_of_many["sample_type"], service.SAMPLE_LITE)
+        custom = service.save(
+            self.db,
+            {"id": saved["id"], "mouse_strain": "自建品系、RL"},
+        )
+        self.assertEqual(custom["mouse_strain"], "RL、自建品系")
+        self.assertEqual(custom["sample_type"], service.SAMPLE_LITE)
         unmapped_first = service.save(
             self.db,
-            {"id": saved["id"], "mouse_model": "RM、RN"},
+            {"id": saved["id"], "mouse_strain": "RM、RN"},
         )
         self.assertEqual(unmapped_first["sample_type"], service.SAMPLE_LITE)
+        renmab = service.save(
+            self.db,
+            {"build_type": service.BUILD_POOLED_BCR, "mouse_strain": "RMB/C"},
+        )
+        self.assertIsNone(renmab["sample_type"])
         typed = service.save(
             self.db,
             {"id": saved["id"], "sample_type": service.SAMPLE_PHAGE},
         )
         self.assertEqual(typed["sample_type"], service.SAMPLE_PHAGE)
-        self.assertEqual(typed["mouse_model"], "RM、RN")
+        self.assertEqual(typed["mouse_strain"], "RM、RN")
 
     def test_experiment_type_is_phage_only(self):
         pooled = service.save(
@@ -631,6 +645,37 @@ class LibraryOrderTests(unittest.TestCase):
         self.assertIsNone(updated["i5_name"])
         self.assertIsNone(updated["i5_sequence"])
 
+    def test_primer_name_without_id_uses_the_active_catalog_row(self):
+        catalog = MolecularPrimerIndexCatalog(
+            name="UDP0055V3-F",
+            family="UDP",
+            direction="F",
+            short_sequence="TGCGCATAGC",
+            active=True,
+        )
+        self.db.add(catalog)
+        self.db.commit()
+        saved = service.save(
+            self.db,
+            {
+                "build_type": service.BUILD_POOLED_BARCODE,
+                "index_mode": service.INDEX_I5,
+                "i5_name": "UDP0055V3-F",
+            },
+        )
+        self.assertEqual(saved["i5_catalog_id"], catalog.id)
+        self.assertEqual(saved["i5_name"], "UDP0055V3-F")
+        self.assertEqual(saved["i5_sequence"], "TGCGCATAGC")
+        pooled = service.save(
+            self.db,
+            {
+                "build_type": service.BUILD_POOLED_BCR,
+                "h_forward_primer_name": "UDP0055V3-F",
+            },
+        )
+        self.assertEqual(pooled["h_forward_primer_id"], catalog.id)
+        self.assertEqual(pooled["h_forward_primer_name"], "UDP0055V3-F")
+
     def test_concentrations_keep_experimentalist_text(self):
         saved = service.save(
             self.db,
@@ -645,23 +690,21 @@ class LibraryOrderTests(unittest.TestCase):
         self.assertEqual(saved["library_concentration"], "ND")
         self.assertEqual(saved["h_primer_concentration"], "10x")
 
-    def test_numeric_fields_reject_non_finite_values(self):
-        for value in ("NaN", "Infinity"):
-            with self.subTest(value=value):
-                with self.assertRaisesRegex(ValueError, "必须是非负"):
-                    service.save(
-                        self.db,
-                        {
-                            "build_type": service.BUILD_PERIPHERAL_BLOOD,
-                            "fragment_size_bp": value,
-                        },
-                    )
-                self.db.rollback()
+    def test_cell_count_and_fragment_keep_line_breaks(self):
+        saved = service.save(
+            self.db,
+            {
+                "build_type": service.BUILD_POOLED_BCR,
+                "positive_cell_count": "约120\n>100",
+                "fragment_size_bp": "450\n380",
+            },
+        )
+        self.assertEqual(saved["positive_cell_count"], "约120\n>100")
+        self.assertEqual(saved["fragment_size_bp"], "450\n380")
+        with self.assertRaisesRegex(ValueError, "不能超过 64"):
+            service.save(self.db, {"id": saved["id"], "fragment_size_bp": "1" * 65})
 
-    def test_numeric_fields_reject_overflow_and_unknown_target_forms(self):
-        with self.assertRaisesRegex(ValueError, "不超过 2147483647"):
-            service.save(self.db, {"build_type": service.BUILD_PERIPHERAL_BLOOD, "fragment_size_bp": "2147483648"})
-        self.db.rollback()
+    def test_target_forms_stay_a_single_choice(self):
         saved = service.save(self.db, {"build_type": service.BUILD_PHAGE_DISPLAY, "target_forms": "分泌"})
         self.assertEqual(saved["target_forms"], "分泌")
         with self.assertRaisesRegex(ValueError, "只能选一个"):
@@ -712,7 +755,7 @@ class LibraryOrderTests(unittest.TestCase):
             },
         )
         self.assertIsNone(saved["cell_type"])
-        self.assertEqual(saved["fragment_size_bp"], 450)
+        self.assertEqual(saved["fragment_size_bp"], "450")
         self.assertEqual(saved["library_concentration"], "12.5")
         cleared = service.save(
             self.db,
@@ -788,7 +831,7 @@ class LibraryOrderTests(unittest.TestCase):
         self.assertEqual(item["source_discovery_id"], row["discovery_id"])
         self.assertEqual(item["source_project_code"], "P1")
         self.assertEqual(item["study_type"], "抗体发现")
-        self.assertEqual(item["mouse_model"], "RN")
+        self.assertEqual(item["mouse_strain"], "RN")
         self.assertEqual(item["sample_type"], service.SAMPLE_NANO)
         self.assertEqual(item["positive_cell_count"], "120")
         self.assertEqual(item["instrument_on"], "2026-09-21")
@@ -1004,6 +1047,21 @@ class LibraryFileTests(unittest.TestCase):
         self._upload("C123_M13R.seq", _read("CCCC", "R"), order["id"])
         passed = self.db.get(MolecularLibraryOrder, order["id"])
         self.assertEqual(passed.status, service.STATUS_QC_PASS)
+        trace = self._upload("C123_M13F.ab1", b"not-a-trace", order["id"])
+        self.assertEqual(trace["sequence_status"], "trace_only")
+        link = self.db.scalar(
+            select(MolecularLibraryResultLink).where(
+                MolecularLibraryResultLink.order_id == order["id"],
+                MolecularLibraryResultLink.original_name == "C123_M13F.ab1",
+            )
+        )
+        link.sequence_status = "not_found"
+        self.db.commit()
+        service._advance_order_status(self.db, self.db.get(MolecularLibraryOrder, order["id"]))
+        self.assertEqual(
+            self.db.get(MolecularLibraryOrder, order["id"]).status,
+            service.STATUS_QC_PASS,
+        )
         mismatched = service.save(
             self.db,
             {
@@ -1379,10 +1437,10 @@ class LibraryFileTests(unittest.TestCase):
 
         uploaded = self._upload("C123-1_M13F.seq", _read("AAAA"), named["id"])
         self.assertEqual(uploaded["order_id"], named["id"])
-        self.assertEqual(uploaded["sequence_check"], "i5 与核对序列一致")
+        self.assertEqual(uploaded["sequence_check"], "i5 匹配")
 
         missing = self._upload("C123-1_M13R.seq", b"NNNN", named["id"])
-        self.assertEqual(missing["sequence_check"], "序列中未找到 i7 核对序列")
+        self.assertEqual(missing["sequence_check"], "i7 同源臂未匹配")
         trace = self._upload("C123-1_M13F.ab1", b"chromatogram", named["id"])
         self.assertEqual(trace["sequence_status"], "trace_only")
         self.assertEqual(trace["sequence_target"], "i5")
@@ -1495,7 +1553,7 @@ class LibraryFileTests(unittest.TestCase):
         names = {item["original_name"]: item for item in result["items"]}
         self.assertNotIn("C123.png", names)
         self.assertNotIn("C123-1.seq", names)
-        self.assertEqual(names["C123-1_M13F.seq"]["sequence_check"], "i5 与核对序列一致")
+        self.assertEqual(names["C123-1_M13F.seq"]["sequence_check"], "i5 匹配")
         listed = service.list_files(self.db, order["id"])
         self.assertEqual(len(listed["items"]), 1)
         self.assertEqual(len(service.list_files(self.db, self.order["id"])["items"]), 0)
@@ -1627,9 +1685,9 @@ class LibraryFileTests(unittest.TestCase):
         )
         linked = {item["original_name"]: item for item in result["items"]}
         self.assertEqual(linked["C782-1-(M13F)(261015).seq"]["order_id"], orders["C782-1"]["id"])
-        self.assertEqual(linked["C782-1-(M13F)(261015).seq"]["sequence_check"], "i5 与核对序列一致")
+        self.assertEqual(linked["C782-1-(M13F)(261015).seq"]["sequence_check"], "i5 匹配")
         self.assertEqual(linked["C782-2-(M13R)(261015).seq"]["order_id"], orders["C782"]["id"])
-        self.assertEqual(linked["C782-2-(M13R)(261015).seq"]["sequence_check"], "i7 与核对序列一致")
+        self.assertEqual(linked["C782-2-(M13R)(261015).seq"]["sequence_check"], "i7 匹配")
         self.assertEqual(linked["C600-KM-1-M13F-77.seq"]["order_id"], orders["C600"]["id"])
         self.assertEqual(linked["C634-K-1-M13F-77.seq"]["order_id"], orders["C634"]["id"])
         self.assertEqual(linked["C634-K-1-M13F-77.seq"]["sequence_target"], "i5")
@@ -2284,10 +2342,26 @@ class LibraryFileTests(unittest.TestCase):
         self.assertEqual(service._qc_order_rows(self.db, {order["id"]})[0]["detail"], "")
 
     def test_matching_arms_with_wrong_primer_are_reported_separately(self):
-        order = self._barcode_order("C123", i5_sequence="AAAA")
+        order = self._barcode_order("C123", i5_sequence="AAAA", i7_sequence="TTTT")
         uploaded = self._upload("C123_M13F.seq", _read("CCCC"), order["id"])
         self.assertEqual(uploaded["sequence_status"], "arm_only")
-        self.assertEqual(uploaded["sequence_check"], "同源臂对上，i5 不对")
+        self.assertEqual(uploaded["sequence_check"], "i5 引物错误")
+        flipped = self._upload(
+            "C123-2_M13F.seq",
+            f"NN{primer_check_sequence(assembled_primer('CCCC', 'F'))}NN".encode(),
+            order["id"],
+        )
+        self.assertEqual(flipped["sequence_status"], "arm_only_rc")
+        self.assertEqual(flipped["sequence_check"], "i5 引物错误-反补")
+        expected_reverse = self._upload("C123_M13R.seq", _read("TTTT", "R"), order["id"])
+        self.assertEqual(expected_reverse["sequence_check"], "i7 匹配")
+        flipped_reverse = self._upload(
+            "C123-2_M13R.seq",
+            f"NN{primer_check_sequence(assembled_primer('TTTT', 'R'))}NN".encode(),
+            order["id"],
+        )
+        self.assertEqual(flipped_reverse["sequence_status"], "matched_rc")
+        self.assertEqual(flipped_reverse["sequence_check"], "i7 匹配-反补")
         self.assertEqual(
             self.db.get(MolecularLibraryOrder, order["id"]).status,
             service.STATUS_QC_HOLD,
@@ -2331,7 +2405,8 @@ class LibraryFileTests(unittest.TestCase):
         self.assertEqual(display_only["sequence_status"], "arm_only")
         flipped = f"NN{primer_check_sequence(assembled_primer('AAAA', 'F'))}NN".encode()
         other_strand = self._upload("HC223-3_M13F.seq", flipped, order["id"])
-        self.assertEqual(other_strand["sequence_status"], "not_found")
+        self.assertEqual(other_strand["sequence_status"], "matched_rc")
+        self.assertEqual(other_strand["sequence_check"], "H链正向 匹配-反补")
         other = self._upload("KC223-1_M13F.seq", _read("AAAA"), order["id"])
         self.assertEqual(other["sequence_target"], "kF")
         self.assertEqual(other["sequence_status"], "arm_only")

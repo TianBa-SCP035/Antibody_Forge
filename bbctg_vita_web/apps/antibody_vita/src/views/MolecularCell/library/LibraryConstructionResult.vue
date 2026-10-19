@@ -131,10 +131,7 @@
             <small
               v-if="railSequenceLabel(file)"
               class="tile-check"
-              :class="{
-                'is-matched': file.sequence_status === 'matched',
-                'is-unmatched': file.sequence_status === 'not_found',
-              }"
+              :class="checkTone(file.sequence_status)"
             >
               {{ railSequenceLabel(file) }}
             </small>
@@ -371,7 +368,7 @@
                     <div>
                       <strong>{{ packageFocus.original_name }}</strong>
                       <small>{{ packageDirectory(packageFocus.relative_path) }} · {{ fileSize(packageFocus.byte_size) }}</small>
-                      <small v-if="packageFocus.sequence_check">{{ packageFocus.sequence_check }}</small>
+                      <small v-if="packageFocus.sequence_check" :class="checkTone(packageFocus.sequence_status)">{{ packageFocus.sequence_check }}</small>
                     </div>
                     <div class="package-preview-actions">
                       <el-button size="small" plain @click="downloadStored(packageFocus)">下载</el-button>
@@ -394,7 +391,7 @@
                     class="package-preview-body"
                     :source-url="storedFilePreviewUrl(packageFocus.file_id)"
                     :direction="traceDirection(packageFocus)"
-                    :primer-label="primerLabel(packageFocus)"
+                    :sequence-status="previewSequenceStatus(packageFocus)"
                     :target-sequence="traceTargetSequence(packageFocus)"
                     height="100%"
                   />
@@ -404,7 +401,7 @@
                     class="package-preview-body"
                     :source-url="storedFilePreviewUrl(packageFocus.file_id)"
                     :direction="traceDirection(packageFocus)"
-                    :primer-label="primerLabel(packageFocus)"
+                    :sequence-status="previewSequenceStatus(packageFocus)"
                     :target-sequence="traceTargetSequence(packageFocus)"
                     height="100%"
                   />
@@ -439,7 +436,7 @@
             class="stage-document-preview"
             :source-url="linkedFilePreviewUrl(currentFile.id)"
             :direction="traceDirection(currentFile)"
-            :primer-label="primerLabel(currentFile)"
+            :sequence-status="previewSequenceStatus(currentFile)"
             :target-sequence="traceTargetSequence(currentFile)"
             height="100%"
           />
@@ -449,7 +446,7 @@
             class="stage-document-preview"
             :source-url="linkedFilePreviewUrl(currentFile.id)"
             :direction="traceDirection(currentFile)"
-            :primer-label="primerLabel(currentFile)"
+            :sequence-status="previewSequenceStatus(currentFile)"
             :target-sequence="traceTargetSequence(currentFile)"
             height="100%"
           />
@@ -600,7 +597,7 @@
             <dl class="metric-list">
               <div v-for="item in keyMetrics" :key="item.label">
                 <dt>{{ item.label }}</dt>
-                <dd :title="item.value">{{ item.value }}</dd>
+                <dd :class="{ 'is-multiline': String(item.value || '').includes('\n') }" :title="item.value">{{ item.value }}</dd>
               </div>
             </dl>
             <el-form size="small" class="inspector-form" @submit.prevent>
@@ -669,7 +666,7 @@
                 <el-form-item
                   :label="field.label"
                   :label-width="field.type === 'primer-matrix' ? '0' : undefined"
-                  :class="{ 'is-wide': field.wide }"
+                  :class="{ 'is-wide': field.wide, 'is-synced': isSyncedText(field) }"
                 >
                   <el-date-picker
                     v-if="field.type === 'date'"
@@ -722,13 +719,11 @@
                         allow-create
                         clearable
                         filterable
-                        remote
-                        reserve-keyword
+                        no-data-text="输入名称或序列"
                         :loading="catalogLoading"
-                        :remote-method="searchCatalog"
+                        :filter-method="filterCatalog"
                         :disabled="!canEdit"
                         @change="(value) => onCatalogChange(primer.forward, value)"
-                        @visible-change="(visible) => visible && searchCatalog('')"
                       >
                         <el-option v-for="item in catalogOptions" :key="item.id" :label="item.name" :value="item.name" />
                       </el-select>
@@ -737,13 +732,11 @@
                         allow-create
                         clearable
                         filterable
-                        remote
-                        reserve-keyword
+                        no-data-text="输入名称或序列"
                         :loading="catalogLoading"
-                        :remote-method="searchCatalog"
+                        :filter-method="filterCatalog"
                         :disabled="!canEdit"
                         @change="(value) => onCatalogChange(primer.reverse, value)"
-                        @visible-change="(visible) => visible && searchCatalog('')"
                       >
                         <el-option v-for="item in catalogOptions" :key="item.id" :label="item.name" :value="item.name" />
                       </el-select>
@@ -760,13 +753,11 @@
                     allow-create
                     clearable
                     filterable
-                    remote
-                    reserve-keyword
+                    no-data-text="输入名称或序列"
                     :loading="catalogLoading"
-                    :remote-method="searchCatalog"
+                    :filter-method="filterCatalog"
                     :disabled="!canEdit"
                     @change="(value) => onCatalogChange(field, value)"
-                    @visible-change="(visible) => visible && searchCatalog('')"
                   >
                     <el-option
                       v-for="item in catalogOptions"
@@ -807,9 +798,11 @@
                     v-else
                     v-model="order[field.key]"
                     :disabled="!canEdit"
-                    :type="field.type === 'textarea' ? 'textarea' : 'text'"
-                    :autosize="field.type === 'textarea' ? { minRows: 2, maxRows: 5 } : undefined"
+                    :type="isSyncedText(field) || field.type === 'textarea' ? 'textarea' : 'text'"
+                    :rows="isSyncedText(field) ? 1 : undefined"
+                    :autosize="isSyncedText(field) ? false : (field.type === 'textarea' ? { minRows: 2, maxRows: 5 } : undefined)"
                     :placeholder="field.placeholder || ''"
+                    @input="isSyncedText(field) && syncSyncedTextareas()"
                     @blur="persist(field.key)"
                   />
                 </el-form-item>
@@ -863,11 +856,13 @@ import {
 } from 'element-plus'
 import { useUserStore } from '@vben/stores'
 
+import { armPair, reverseComplement } from './primerSearch'
+import { filterPrimerCatalog, loadPrimerCatalog } from './primerCatalogOptions'
+
 import {
   deleteLibraryResult,
   fetchLibraryFiles,
   libraryStoredFileDownloadUrl,
-  fetchPrimerIndexOptions,
   libraryFileDownloadUrl,
   saveLibraryOrder,
   updateLibraryFile,
@@ -877,6 +872,7 @@ import { expandResultArchives, readDroppedFiles, resultUploadLimitError } from '
 import { extractApiError, notifyApiError } from '#/api/errors'
 import { FilePreviewer } from '#/components/file-preview'
 import { WorkbenchStatusEditor, WorkbenchTargetSelect } from '#/components/workbench'
+import { cleanFieldText } from '#/components/workbench/clipboardGrid'
 import { downloadFile, fetchFileBlob } from '#/utils/file-resource'
 import { canEditLibrary, canManageLibraryFiles } from '#/utils/molecularPermission'
 import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/DiscoveryWorkbench.vue'
@@ -892,10 +888,12 @@ import {
   BUILD_POOLED_BARCODE,
   BUILD_POOLED_BCR,
   buildTypeLabel,
-  mouseCategoryLabel,
   normalizePlateInputText,
   optionsForBuild,
   orderEditorSections,
+  isSyncedText,
+  SYNC_TEXT_KEYS,
+  syncPairedTextareas,
   plateNumbersFromText,
   persistValue,
   plateNumbersText,
@@ -914,44 +912,27 @@ import {
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']
 const VIDEO_EXT = ['mp4', 'webm', 'ogg', 'ogv', 'mov']
 const BARCODE_BUILDS = new Set([BUILD_POOLED_BARCODE, BUILD_PHAGE_NGS, BUILD_PERIPHERAL_BLOOD])
-const FORWARD_ARM_1 = 'ACCGAGATCTACAC'
-const FORWARD_ARM_2 = 'ACACTCTTTCC'
-const REVERSE_ARM_1 = 'AACTCCAGTCAC'
-const REVERSE_ARM_2 = 'ATCTCGTATGCC'
+function assembledCheck(primer, direction) {
+  const body = reverseComplement(primer)
+  const pair = armPair(direction === 'F' ? 'F' : 'R')
+  if (!body || pair.length < 2) return ''
+  return `${pair[0]}${body}${pair[1]}`
+}
 const PRIMER_TARGET_LABELS = {
   i5: 'i5',
   i7: 'i7',
-  hF: 'H正向',
-  hR: 'H反向',
-  kF: 'K正向',
-  kR: 'K反向',
-  lF: 'L正向',
-  lR: 'L反向',
+  hF: 'H链正向',
+  hR: 'H链反向',
+  kF: 'K链正向',
+  kR: 'K链反向',
+  lF: 'L链正向',
+  lR: 'L链反向',
 }
 const AbiTracePreview = defineAsyncComponent(() => import('./AbiTracePreview.vue'))
 const SeqReadPreview = defineAsyncComponent(() => import('./SeqReadPreview.vue'))
 const ZOOM_MIN = 0.2
 const ZOOM_MAX = 8
 const MAX_QC_REGIONS = 20
-
-function reverseComplement(value) {
-  const complement = { A: 'T', C: 'G', G: 'C', T: 'A', N: 'N' }
-  return String(value || '')
-    .toUpperCase()
-    .replace(/[^ACGTN]/g, '')
-    .split('')
-    .reverse()
-    .map((base) => complement[base] || base)
-    .join('')
-}
-
-function assembledCheck(primer, direction) {
-  const body = reverseComplement(primer)
-  if (!body) return ''
-  return direction === 'F'
-    ? `${FORWARD_ARM_1}${body}${FORWARD_ARM_2}`
-    : `${REVERSE_ARM_1}${body}${REVERSE_ARM_2}`
-}
 
 const PRIMER_RESULT_FIELDS = ['index_mode', 'i5_sequence', 'i7_sequence']
 
@@ -1022,7 +1003,8 @@ export default {
       packagePath: '',
       packageSelectedKey: '',
       currentFileId: null,
-      catalogOptions: [],
+      catalogQuery: '',
+      primerCatalog: [],
       catalogLoading: false,
       fileObjectUrls: {},
       fileSaveVersions: {},
@@ -1047,6 +1029,9 @@ export default {
     }
   },
   computed: {
+    catalogOptions() {
+      return filterPrimerCatalog(this.primerCatalog, this.catalogQuery)
+    },
     orderId() {
       if (this.$route.name !== 'LibraryConstructionResult') return 0
       return Number(this.$route.query.id)
@@ -1109,7 +1094,7 @@ export default {
       return [
         { label: '项目', value: this.order.source_project_code || '—' },
         { label: '靶点', value: this.order.target_name || '—' },
-        { label: '归类鼠型', value: mouseCategoryLabel(this.order.mouse_model) || '—' },
+        { label: '小鼠品系', value: this.order.mouse_strain || '—' },
         { label: '样品类型', value: sampleTypeLabel(this.order.sample_type) || '—' },
         { label: '样品来源', value: sampleSourceLabel(this.order.sample_source) || '—' },
         { label: '交接日期', value: this.order.received_on || '—' },
@@ -1157,7 +1142,7 @@ export default {
       }
       if (this.group === BUILD_PHAGE_NGS) {
         metrics.push({ label: '建库批号', value: this.order.library_batch_no || '—' })
-        metrics.push({ label: '片段大小', value: this.order.fragment_size_bp ? `${this.order.fragment_size_bp} bp` : '—' })
+        metrics.push({ label: '片段大小', value: this.order.fragment_size_bp || '—' })
       }
       metrics.push({ label: '完成时间', value: this.order.finished_at || '—' })
       return metrics
@@ -1175,12 +1160,12 @@ export default {
         !file.replaced && ['SEQ', 'AB1', 'ABI'].includes(this.fileExt(file.original_name))
       ))
       const unmatched = reads.filter((file) => file.sequence_status === 'not_found')
-      const armOnly = reads.filter((file) => file.sequence_status === 'arm_only')
+      const armOnly = reads.filter((file) => file.sequence_status === 'arm_only' || file.sequence_status === 'arm_only_rc')
       if (unmatched.length) {
-        gaps.push({ text: '引物未对上', title: `${unmatched.length} 个测序文件没对上引物`, tone: 'is-fail' })
+        gaps.push({ text: '同源臂未匹配', title: `${unmatched.length} 个测序文件的同源臂未匹配`, tone: 'is-fail' })
       }
       if (armOnly.length) {
-        gaps.push({ text: '引物不对', title: '同源臂对上，中间的引物不对', tone: 'is-fail' })
+        gaps.push({ text: '引物错误', title: '同源臂对上，引物错误', tone: 'is-fail' })
       }
       const required = []
       if (this.order.build_type === 'pooled_bcr') {
@@ -1200,7 +1185,7 @@ export default {
         if (['single_i7', 'dual'].includes(mode) && String(this.order.i7_sequence || '').trim()) required.push('i7')
       }
       const matchedTargets = new Set(
-        reads.filter((file) => file.sequence_status === 'matched').map((file) => file.sequence_target),
+        reads.filter((file) => this.sequenceMatched(file.sequence_status)).map((file) => file.sequence_target),
       )
       const failedTargets = new Set([...unmatched, ...armOnly].map((file) => file.sequence_target))
       if (reads.length && required.some((target) => !matchedTargets.has(target) && !failedTargets.has(target))) {
@@ -1340,8 +1325,14 @@ export default {
       this.currentFileId = null
       this.load()
     },
+    activeInspector: 'syncSyncedTextareas',
+    order: 'syncSyncedTextareas',
   },
   methods: {
+    isSyncedText,
+    syncSyncedTextareas() {
+      this.$nextTick(() => syncPairedTextareas('.record-inspector .is-synced textarea'))
+    },
     packageEntryIcon(entry) {
       return entry?.type === 'folder' ? FolderOpened : this.fileIcon(entry?.name)
     },
@@ -1358,19 +1349,20 @@ export default {
       if (field.type === 'source-select') return this.sourceOptions
       return field.options || []
     },
-    async searchCatalog(query = '') {
+    async filterCatalog(query = '') {
+      this.catalogQuery = String(query || '')
+      if (!this.catalogQuery.trim() || this.primerCatalog.length) return
       this.catalogLoading = true
       try {
-        const data = await fetchPrimerIndexOptions({ query, limit: 100 })
-        this.catalogOptions = data?.items || []
+        this.primerCatalog = await loadPrimerCatalog()
       } catch {
-        this.catalogOptions = []
+        this.primerCatalog = []
       } finally {
         this.catalogLoading = false
       }
     },
     async onCatalogChange(field, value) {
-      const selected = this.catalogOptions.find((item) => item.name === value)
+      const selected = this.primerCatalog.find((item) => item.name === value)
       this.order[field.catalogIdKey] = selected?.id || null
       if (field.sequenceKey) this.order[field.sequenceKey] = selected?.short_sequence || ''
       const payload = {
@@ -1533,6 +1525,25 @@ export default {
     isSequence(file) {
       return this.fileExt(file?.original_name).toLowerCase() === 'seq'
     },
+    previewSequenceStatus(file) {
+      const status = String(file?.sequence_status || '')
+      if (status && status !== 'trace_only') return status
+      const name = String(file?.original_name || '')
+      const dot = name.lastIndexOf('.')
+      const stem = dot > 0 ? name.slice(0, dot).toLowerCase() : ''
+      if (!stem) return status
+      const seq = this.files.find((item) => {
+        if (this.fileExt(item.original_name) !== 'SEQ') return false
+        if ((item.package_id || null) !== (file?.package_id || null)) return false
+        const other = String(item.original_name || '')
+        const otherDot = other.lastIndexOf('.')
+        return otherDot > 0
+          && other.slice(0, otherDot).toLowerCase() === stem
+          && item.sequence_status
+          && item.sequence_status !== 'trace_only'
+      })
+      return seq?.sequence_status || status
+    },
     traceDirection(file) {
       const target = String(file?.sequence_target || '')
       if (target === 'i5' || /F$/.test(target)) return 'F'
@@ -1540,9 +1551,6 @@ export default {
       const match = String(file?.original_name || '').match(/(?:^|[_-])M13([FR])(?=$|[_.-])/i)
       if (match) return match[1].toUpperCase()
       return ''
-    },
-    primerLabel(file) {
-      return PRIMER_TARGET_LABELS[file?.sequence_target] || ''
     },
     traceTargetSequence(file) {
       const target = String(file?.sequence_target || '')
@@ -1563,11 +1571,22 @@ export default {
       if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
       return `${(size / (1024 * 1024)).toFixed(1)} MB`
     },
+    sequenceMatched(status) {
+      return status === 'matched' || status === 'matched_rc'
+    },
+    checkTone(status) {
+      if (status === 'matched' || status === 'matched_rc') return 'is-matched'
+      if (status === 'arm_only' || status === 'arm_only_rc') return 'is-primer'
+      if (status === 'not_found') return 'is-arm'
+      return ''
+    },
     railSequenceLabel(file) {
       const target = PRIMER_TARGET_LABELS[file?.sequence_target] || file?.sequence_target || '引物'
       if (file?.sequence_status === 'matched') return `${target} 匹配`
-      if (file?.sequence_status === 'arm_only') return `${target} 不对`
-      if (file?.sequence_status === 'not_found') return `${target} 未匹配`
+      if (file?.sequence_status === 'matched_rc') return `${target} 匹配-反补`
+      if (file?.sequence_status === 'arm_only') return `${target} 引物错误`
+      if (file?.sequence_status === 'arm_only_rc') return `${target} 引物错误-反补`
+      if (file?.sequence_status === 'not_found') return `${target} 同源臂未匹配`
       return ''
     },
     fileMeta(file) {
@@ -2352,6 +2371,9 @@ export default {
     async persist(field) {
       const qcConclusion = ['qc_result', 'qc_owner', 'qc_on', 'qc_note'].includes(field)
       if (!(qcConclusion ? this.canEditQc : this.canEdit) || !this.order?.id) return
+      if (typeof this.order[field] === 'string' && SYNC_TEXT_KEYS.has(field)) {
+        this.order[field] = cleanFieldText(this.order[field], { keepBreaks: true })
+      }
       this.order[field] = persistValue(this.order[field])
       const qcFields = field === 'qc_result'
         ? stampQcFields(this.order, getSerumUserName(useUserStore().userInfo))
@@ -3267,6 +3289,15 @@ export default {
   white-space: nowrap;
 }
 
+.metric-list dd.is-multiline {
+  text-overflow: unset;
+  white-space: pre-line;
+}
+
+.record-inspector .is-synced :deep(.el-textarea__inner) {
+  resize: none;
+}
+
 /* ---------- 表单通用 ---------- */
 
 .field-grid {
@@ -3570,12 +3601,19 @@ export default {
   color: var(--el-color-primary);
 }
 
-.file-tile small.tile-check.is-matched {
+.file-tile small.tile-check.is-matched,
+.package-preview-head small.is-matched {
   color: var(--el-color-success);
 }
 
-.file-tile small.tile-check.is-unmatched {
+.file-tile small.tile-check.is-primer,
+.package-preview-head small.is-primer {
   color: var(--el-color-danger);
+}
+
+.file-tile small.tile-check.is-arm,
+.package-preview-head small.is-arm {
+  color: var(--el-color-warning);
 }
 
 .record-inspector {

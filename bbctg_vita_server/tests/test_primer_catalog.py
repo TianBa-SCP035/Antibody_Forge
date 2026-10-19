@@ -45,6 +45,8 @@ class PrimerCatalogServiceTests(unittest.TestCase):
         self.assertEqual(saved["short_sequence"], "ACGTN")
         self.assertTrue(saved["active"])
         self.assertEqual(service.list_options(self.db, query="UDP-1")["items"][0]["name"], "UDP-1-F")
+        self.assertEqual(service.list_options(self.db, query="nacgt")["items"][0]["name"], "UDP-1-F")
+        self.assertEqual(service.list_options(self.db, query="AC GT")["items"][0]["name"], "UDP-1-F")
 
         hidden = service.save(
             self.db,

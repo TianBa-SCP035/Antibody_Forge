@@ -33,8 +33,8 @@
         <ListFilterSelect v-model="listQuery.sample_type" clearable placeholder="样品类型" @change="handleFilter">
           <el-option v-for="item in sampleTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
         </ListFilterSelect>
-        <ListFilterSelect v-model="listQuery.mouse_model" clearable placeholder="归类鼠型" @change="handleFilter">
-          <el-option v-for="item in mouseCategoryOptions" :key="item" :label="mouseCategoryLabel(item)" :value="item" />
+        <ListFilterSelect v-model="listQuery.mouse_strain" clearable placeholder="小鼠品系" @change="handleFilter">
+          <el-option v-for="item in mouseStrainOptions" :key="item" :label="item" :value="item" />
         </ListFilterSelect>
         <ListFilterSelect
           v-model="listQuery.cell_type"
@@ -224,7 +224,7 @@
           <span class="library-code-head" :class="{ 'is-asc': libraryCodeOldestFirst }" :title="libraryCodeHeadTitle">建库编号</span>
         </template>
         <template #build_type="{ row }">{{ buildTypeLabel(row.build_type) || '—' }}</template>
-        <template #mouse_model="{ row }">{{ mouseCategoryLabel(row.mouse_model) || '—' }}</template>
+        <template #mouse_strain="{ row }">{{ row.mouse_strain || '—' }}</template>
         <template #sample_source="{ row }">{{ sampleSourceLabel(row.sample_source) || '—' }}</template>
         <template #sample_type="{ row }">{{ sampleTypeLabel(row.sample_type) || '—' }}</template>
         <template #index_mode="{ row }">{{ indexModeLabel(row.index_mode) || '—' }}</template>
@@ -358,7 +358,28 @@
                 :formatter="sheetFormatter(column)"
               >
                 <template #edit="{ row }">
-                  <div v-if="sheetEditSource === 'dblclick' && isSheetChoiceForRow(column, row)" class="sheet-picker-editor">
+                  <ListFilterSelect
+                    v-if="column.key === 'mouse_strain' && sheetEditSource === 'dblclick'"
+                    :model-value="splitMouseStrain(row.mouse_strain)"
+                    joined
+                    filterable
+                    allow-create
+                    default-first-option
+                    class="sheet-strain-select"
+                    popper-class="vxe-table--ignore-clear"
+                    clearable
+                    @change="onMouseStrainChange(row, $event, false)"
+                    @visible-change="onMouseStrainSheetVisible"
+                  >
+                    <el-option v-for="item in mouseStrainOptions" :key="item" :label="item" :value="item" />
+                    <el-option
+                      v-for="item in extraMouseStrains(row.mouse_strain)"
+                      :key="`extra-${item}`"
+                      :label="item"
+                      :value="item"
+                    />
+                  </ListFilterSelect>
+                  <div v-else-if="sheetEditSource === 'dblclick' && isSheetChoiceForRow(column, row)" class="sheet-picker-editor">
                     <span class="sheet-picker-editor__value">{{ sheetPickerDisplayValue(row, column) }}</span>
                     <VxeSelect
                       v-model="row[column.key]"
@@ -396,8 +417,8 @@
                       clearable
                       :options="sheetCatalogSelectOptions"
                       :popup-config="{ className: 'sheet-picker-popup', placement: 'bottom', width: 280 }"
-                      :remote-config="{ autoLoad: true, queryMethod: querySheetCatalogOptions }"
-                      empty-text="未找到匹配名称"
+                      :remote-config="{ autoLoad: false, queryMethod: querySheetCatalogOptions }"
+                      empty-text="输入名称或序列"
                       @visible-change="onSheetPickerVisibleChange"
                     />
                   </div>
@@ -525,7 +546,7 @@
               <el-form-item
                 :label="field.label"
                 :label-width="field.type === 'primer-matrix' ? '0' : undefined"
-                :class="['drawer-field', field.wide ? 'is-wide' : '']"
+                :class="['drawer-field', field.wide ? 'is-wide' : '', isSyncedText(field) ? 'is-synced' : '']"
               >
                 <el-date-picker
                   v-if="field.type === 'date'"
@@ -550,13 +571,11 @@
                       allow-create
                       clearable
                       filterable
-                      remote
-                      reserve-keyword
+                      no-data-text="输入名称或序列"
                       :loading="catalogLoading"
-                      :remote-method="searchCatalog"
+                      :filter-method="filterCatalog"
                       :disabled="!canEdit"
                       @change="(value) => onCatalogChange(editingRow, primer.forward, value)"
-                      @visible-change="(visible) => visible && searchCatalog('')"
                     >
                       <el-option v-for="item in catalogOptions" :key="item.id" :label="item.name" :value="item.name" />
                     </el-select>
@@ -565,13 +584,11 @@
                       allow-create
                       clearable
                       filterable
-                      remote
-                      reserve-keyword
+                      no-data-text="输入名称或序列"
                       :loading="catalogLoading"
-                      :remote-method="searchCatalog"
+                      :filter-method="filterCatalog"
                       :disabled="!canEdit"
                       @change="(value) => onCatalogChange(editingRow, primer.reverse, value)"
-                      @visible-change="(visible) => visible && searchCatalog('')"
                     >
                       <el-option v-for="item in catalogOptions" :key="item.id" :label="item.name" :value="item.name" />
                     </el-select>
@@ -617,14 +634,12 @@
                   allow-create
                   clearable
                   filterable
-                  remote
-                  reserve-keyword
+                  no-data-text="输入名称或序列"
                   :loading="catalogLoading"
-                  :remote-method="searchCatalog"
+                  :filter-method="filterCatalog"
                   style="width: 100%"
                   :disabled="!canEdit"
                   @change="(value) => onCatalogChange(editingRow, field, value)"
-                  @visible-change="(visible) => visible && searchCatalog('')"
                 >
                   <el-option
                     v-for="item in catalogOptions"
@@ -657,6 +672,27 @@
                   @update:model-value="onPlateDraftInput"
                   @blur="persistRow(editingRow, 'plate_nos')"
                 />
+                <ListFilterSelect
+                  v-else-if="field.key === 'mouse_strain'"
+                  :model-value="splitMouseStrain(editingRow.mouse_strain)"
+                  joined
+                  filterable
+                  allow-create
+                  default-first-option
+                  clearable
+                  placeholder="选择小鼠品系"
+                  style="width: 100%"
+                  :disabled="!canEditField(editingRow, field.key)"
+                  @change="onMouseStrainChange(editingRow, $event)"
+                >
+                  <el-option v-for="item in mouseStrainOptions" :key="item" :label="item" :value="item" />
+                  <el-option
+                    v-for="item in extraMouseStrains(editingRow.mouse_strain)"
+                    :key="`extra-${item}`"
+                    :label="item"
+                    :value="item"
+                  />
+                </ListFilterSelect>
                 <el-select
                   v-else-if="field.type === 'select'"
                   v-model="editingRow[field.key]"
@@ -671,8 +707,10 @@
                   v-else
                   v-model="editingRow[field.key]"
                   :disabled="!canEdit"
-                  :type="field.type === 'textarea' ? 'textarea' : 'text'"
-                  :autosize="field.type === 'textarea' ? { minRows: 1, maxRows: 4 } : undefined"
+                  :type="isSyncedText(field) || field.type === 'textarea' ? 'textarea' : 'text'"
+                  :rows="isSyncedText(field) ? 1 : undefined"
+                  :autosize="isSyncedText(field) ? false : (field.type === 'textarea' ? { minRows: 1, maxRows: 4 } : undefined)"
+                  @input="isSyncedText(field) && syncDrawerTextareas()"
                   @blur="persistRow(editingRow, field.key)"
                 />
               </el-form-item>
@@ -742,7 +780,6 @@ import {
   deleteLibraryOrder,
   exportLibraryOrderList,
   fetchLibraryOrderList,
-  fetchPrimerIndexOptions,
   LIBRARY_CREATED_KEY,
   saveLibraryOrder,
 } from '#/api/molecularLibrary'
@@ -766,7 +803,6 @@ import {
   WorkbenchStatusEditor,
   WorkbenchTargetSelect,
   WorkbenchViewToggle,
-  coerceOptionalNonnegInt,
 } from '#/components/workbench'
 import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
 import LibraryResultUploadDialog from './LibraryResultUploadDialog.vue'
@@ -788,15 +824,18 @@ import {
   CATALOG_NAME_FIELDS,
   CELL_TYPE_OPTIONS,
   INDEX_MODE_OPTIONS,
-  MOUSE_CATEGORY_LABELS,
-  MOUSE_CATEGORY_OPTIONS,
-  mouseCategoryLabel,
+  MOUSE_STRAIN_OPTIONS,
+  joinMouseStrain,
+  splitMouseStrain,
   normalizePlateInputText,
   optionsForBuild,
   orderEditorSections,
   plateNumbersFromText,
   persistValue,
   plateNumbersText,
+  isSyncedText,
+  SYNC_TEXT_KEYS,
+  syncPairedTextareas,
   PHAGE_EXPERIMENT_TYPE_OPTIONS,
   PLASMA_SAMPLE_TYPE_OPTIONS,
   CELL_TYPE_CHOICE_BUILDS,
@@ -820,6 +859,7 @@ import {
   typeGroup,
   WORKBENCH_COLUMNS,
 } from './libraryColumns'
+import { filterPrimerCatalog, loadPrimerCatalog } from './primerCatalogOptions'
 
 const LIBRARY_LIST_FILTER_KEY = 'libraryConstructionList'
 
@@ -841,7 +881,7 @@ function emptyQuery() {
     sample_source: '',
     sample_type: '',
     cell_type: '',
-    mouse_model: '',
+    mouse_strain: '',
     source_discovery_id: '',
     notebook_no: '',
     remark: '',
@@ -889,6 +929,12 @@ const SHEET_DATE_KEYS = [
   'started_at',
   'finished_at',
 ]
+const TEXT_BREAK_KEYS = new Set(['remark', 'qc_note', 'project_goal'])
+
+function keepsLineBreaks(key) {
+  return key === 'plate_nos' || SYNC_TEXT_KEYS.has(key) || TEXT_BREAK_KEYS.has(key)
+}
+
 const SHEET_STRING_MAX = {
   library_code: 64,
   source_project_code: 64,
@@ -896,8 +942,9 @@ const SHEET_STRING_MAX = {
   project_goal: 1000,
   target_name: 128,
   pm: 64,
-  mouse_model: 128,
+  mouse_strain: 128,
   positive_cell_count: 64,
+  fragment_size_bp: 64,
   cell_type: 64,
   notebook_no: 64,
   immunization_stage: 64,
@@ -984,7 +1031,8 @@ export default {
       allUserOptions: [],
       targetOptions: [],
       targetRequestToken: 0,
-      catalogOptions: [],
+      catalogQuery: '',
+      primerCatalog: [],
       catalogLoading: false,
       targetFilterOptions: [],
       targetFilterLoading: false,
@@ -1000,6 +1048,9 @@ export default {
     }
   },
   computed: {
+    catalogOptions() {
+      return filterPrimerCatalog(this.primerCatalog, this.catalogQuery)
+    },
     canEdit() {
       return canEditLibrary(useUserStore().userInfo)
     },
@@ -1039,7 +1090,7 @@ export default {
         'pm',
         'study_type',
         'sample_type',
-        'mouse_model',
+        'mouse_strain',
         'cell_type',
         'source_project_code',
         'library_batch_no',
@@ -1089,8 +1140,8 @@ export default {
         label: item.label,
       }))
     },
-    mouseCategoryOptions() {
-      return MOUSE_CATEGORY_OPTIONS
+    mouseStrainOptions() {
+      return MOUSE_STRAIN_OPTIONS
     },
     workbenchColumns() {
       return WORKBENCH_COLUMNS
@@ -1183,11 +1234,22 @@ export default {
       this.clearSheetRange()
       this.rebuildSheetColumns()
     },
+    drawerVisible(open) {
+      if (open) this.syncDrawerTextareas()
+    },
+    editingId() {
+      if (this.drawerVisible) this.syncDrawerTextareas()
+    },
   },
   methods: {
+    isSyncedText,
+    syncDrawerTextareas() {
+      this.$nextTick(() => syncPairedTextareas('.workbench-drawer .drawer-field.is-synced textarea'))
+    },
     buildTypeLabel,
     indexModeLabel,
-    mouseCategoryLabel,
+    joinMouseStrain,
+    splitMouseStrain,
     sampleSourceLabel,
     sampleTypeLabel,
     statusTone,
@@ -1208,20 +1270,21 @@ export default {
       document.removeEventListener('mousedown', this.onDocumentPointerDown, true)
       this.drawerPointerBound = false
     },
-    async searchCatalog(query = '') {
+    async filterCatalog(query = '') {
+      this.catalogQuery = String(query || '')
+      if (!this.catalogQuery.trim() || this.primerCatalog.length) return
       this.catalogLoading = true
       try {
-        const data = await fetchPrimerIndexOptions({ query, limit: 100 })
-        this.catalogOptions = data?.items || []
+        this.primerCatalog = await loadPrimerCatalog()
       } catch {
-        this.catalogOptions = []
+        this.primerCatalog = []
       } finally {
         this.catalogLoading = false
       }
     },
     async onCatalogChange(row, field, value) {
       if (!row) return
-      const selected = this.catalogOptions.find((item) => item.name === value)
+      const selected = this.primerCatalog.find((item) => item.name === value)
       row[field.catalogIdKey] = selected?.id || null
       if (field.sequenceKey) row[field.sequenceKey] = selected?.short_sequence || ''
       const payload = {
@@ -1602,12 +1665,12 @@ export default {
       const catalogMeta = linkCatalog ? CATALOG_NAME_FIELDS[field] : null
       if (typeof row[field] === 'string') {
         row[field] = cleanFieldText(row[field], {
-          keepBreaks: ['remark', 'qc_note', 'project_goal'].includes(field),
+          keepBreaks: keepsLineBreaks(field),
         })
       }
       row[field] = persistValue(row[field])
       if (catalogMeta) {
-        const selected = row[field] ? this.catalogOptions.find((item) => item.name === row[field]) : null
+        const selected = row[field] ? this.primerCatalog.find((item) => item.name === row[field]) : null
         row[catalogMeta.idKey] = selected?.id || null
         if (catalogMeta.sequenceKey) row[catalogMeta.sequenceKey] = selected?.short_sequence || null
       }
@@ -1642,7 +1705,7 @@ export default {
           ? ['target_codes', 'target_name']
           : catalogMeta
             ? [field, catalogMeta.idKey, ...(catalogMeta.sequenceKey ? [catalogMeta.sequenceKey] : [])]
-            : field === 'mouse_model'
+            : field === 'mouse_strain'
               ? [field, 'sample_type']
               : field === 'index_mode'
                 ? [field, ...INDEX_LINKED_KEYS]
@@ -1862,6 +1925,39 @@ export default {
     isSheetChoiceColumn(column) {
       return column?.edit === 'select'
     },
+    extraMouseStrains(value) {
+      const known = new Set(MOUSE_STRAIN_OPTIONS)
+      return splitMouseStrain(value).filter((item) => !known.has(item))
+    },
+    onMouseStrainChange(row, values, persist = true) {
+      row.mouse_strain = joinMouseStrain(values) || null
+      if (persist && this.sheetEditSource !== 'dblclick') this.persistRow(row, 'mouse_strain')
+    },
+    mouseStrainSheetSelect() {
+      return document.querySelector('.sheet-strain-select')?.__vueParentComponent?.proxy
+    },
+    onMouseStrainSheetVisible(visible) {
+      if (visible) return
+      this.$nextTick(() => {
+        if (this.mouseStrainSheetSelect()?.expanded) return
+        this.$refs.sheetTable?.clearEdit?.()
+      })
+    },
+    openSheetEditorPanel(row, key) {
+      if (key !== 'mouse_strain') {
+        workbenchExcelMixin.methods.openSheetEditorPanel.call(this, row, key)
+        return
+      }
+      const open = () => {
+        const select = this.mouseStrainSheetSelect()
+        if (!select) return false
+        select.expanded = true
+        return true
+      }
+      this.$nextTick(() => {
+        if (!open()) this.$nextTick(open)
+      })
+    },
     isSheetChoiceForRow(column, row) {
       return column.key !== 'cell_type' || CELL_TYPE_CHOICE_BUILDS.includes(row?.build_type)
     },
@@ -1871,9 +1967,6 @@ export default {
       if (column.key === 'priority') return this.priorityOptions.map((item) => ({ label: item, value: item }))
       if (column.key === 'status') return this.statusOptions.map((item) => ({ label: item, value: item }))
       if (column.key === 'build_type') return this.typeOptions
-      if (column.key === 'mouse_model') {
-        return this.mouseCategoryOptions.map((item) => ({ label: this.mouseCategoryLabel(item), value: item }))
-      }
       if (column.key === 'sample_source') return optionsForBuild(SAMPLE_SOURCE_OPTIONS, row?.build_type)
       if (column.key === 'sample_type') {
         return row?.build_type === BUILD_PLASMA_NGS ? PLASMA_SAMPLE_TYPE_OPTIONS : SAMPLE_TYPE_OPTIONS
@@ -1890,7 +1983,6 @@ export default {
     sheetDirectTextValue(row, key) {
       if (!row) return ''
       if (key === 'build_type') return buildTypeLabel(row[key])
-      if (key === 'mouse_model') return this.mouseCategoryLabel(row[key])
       if (key === 'sample_source') return sampleSourceLabel(row[key])
       if (key === 'sample_type') return sampleTypeLabel(row[key])
       if (key === 'index_mode') return indexModeLabel(row[key])
@@ -1902,9 +1994,9 @@ export default {
     },
     sheetFormatter(column) {
       if (column.key === 'build_type') return ({ cellValue }) => buildTypeLabel(cellValue) || ''
-      if (column.key === 'mouse_model') return ({ cellValue }) => this.mouseCategoryLabel(cellValue) || ''
       if (column.key === 'sample_source') return ({ cellValue }) => sampleSourceLabel(cellValue) || ''
       if (column.key === 'sample_type') return ({ cellValue }) => sampleTypeLabel(cellValue) || ''
+      if (column.key === 'index_mode') return ({ cellValue }) => indexModeLabel(cellValue) || ''
       if (column.key === 'target_codes') return ({ row }) => uniqueTargetCodes(row.target_codes).join(',')
       if (column.key === 'plate_nos') {
         return ({ cellValue }) => Array.isArray(cellValue) ? cellValue.join('、') : (cellValue || '')
@@ -1945,7 +2037,7 @@ export default {
       row.target_name = targetNameFromCodes(codes, this.targetOptions)
     },
     querySheetCatalogOptions({ searchValue }) {
-      return this.searchCatalog(searchValue)
+      return this.filterCatalog(searchValue)
     },
     sheetOptionValue(options, raw) {
       const text = String(raw || '').trim().toLowerCase()
@@ -1983,7 +2075,7 @@ export default {
       return { ok: true, value: raw || null }
     },
     coerceSheetValue(row, key, text) {
-      const keepBreaks = key === 'plate_nos' || ['remark', 'qc_note', 'project_goal'].includes(key)
+      const keepBreaks = keepsLineBreaks(key)
       const raw = Array.isArray(text)
         ? text.join(',')
         : cleanFieldText(text, { keepBreaks })
@@ -2008,11 +2100,10 @@ export default {
         const value = this.sheetOptionValue(this.typeOptions, raw)
         return value ? { ok: true, value } : { ok: false, reason: 'option' }
       }
-      if (key === 'mouse_model') {
+      if (key === 'mouse_strain') {
         if (!raw) return { ok: true, value: null }
-        if (MOUSE_CATEGORY_OPTIONS.includes(raw)) return { ok: true, value: raw }
-        const matched = Object.entries(MOUSE_CATEGORY_LABELS).find(([, label]) => label === raw)
-        return matched ? { ok: true, value: matched[0] } : { ok: false, reason: 'option' }
+        const value = joinMouseStrain(raw)
+        return value ? { ok: true, value } : { ok: true, value: null }
       }
       if (key === 'sample_source') {
         if (!raw) return { ok: true, value: null }
@@ -2055,14 +2146,6 @@ export default {
         const hit = this.allUserOptions.find((item) => item === raw || item.toLowerCase() === raw.toLowerCase())
         return hit ? { ok: true, value: hit } : { ok: false, reason: 'option' }
       }
-      if (key === 'fragment_size_bp') {
-        const result = coerceOptionalNonnegInt(raw)
-        if (!result.ok || result.value == null) return result
-        if (!Number.isSafeInteger(result.value) || result.value > 2147483647) {
-          return { ok: false, reason: 'integer' }
-        }
-        return result
-      }
       if (key === 'i7_sequence' || key === 'i5_sequence') return this.normalizeSheetSequence(raw)
       if (key === 'library_code') return this.sheetTextLimit(key, raw.toUpperCase())
       if (key === 'target_codes') return { ok: true, value: uniqueTargetCodes(raw.split(/[,，、]/)) }
@@ -2088,7 +2171,6 @@ export default {
         || allSheetColumns().find((item) => item.key === key)?.label
         || '当前字段'
       if (reason === 'date') return `${label}必须是 YYYY-MM-DD 格式的有效日期`
-      if (reason === 'integer') return `${label}必须是不超过 2147483647 的非负整数`
       if (reason === 'sequence') return `${label}只能包含 IUPAC 碱基字符`
       if (reason === 'index') return `当前 Barcode 方式不填写「${label}」`
       if (reason === 'plasma') return '浆细胞 NGS 的样品类型只能是 Nano 或 Lite'
@@ -2415,7 +2497,7 @@ export default {
           const saved = savedById.get(payload.id)
           if (!saved) return
           const savedFields = [...fields]
-          if (fields.has('mouse_model')) savedFields.push('sample_type')
+          if (fields.has('mouse_strain')) savedFields.push('sample_type')
           if (fields.has('index_mode')) savedFields.push(...INDEX_LINKED_KEYS)
           savedFields.push(...DERIVED_FIELDS)
           fields.forEach((field) => {
@@ -2902,6 +2984,10 @@ export default {
 
 .drawer-field.is-wide {
   grid-column: 1 / -1;
+}
+
+.drawer-field.is-synced :deep(.el-textarea__inner) {
+  resize: none;
 }
 
 .drawer-field-break {

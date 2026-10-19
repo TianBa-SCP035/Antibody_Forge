@@ -129,12 +129,12 @@ function assemblePayload(
     immune_owner: text(project?.owner).slice(0, LIMIT.immune_owner),
     mouse_strain_category: joinFit(
       groupTexts(project, picked.groupIds, 'mouse_strain_category'),
-      ',',
+      '、',
       LIMIT.mouse_strain_category,
     ),
     mouse_strain: joinFit(
       groupTexts(project, picked.groupIds, 'mouse_strain'),
-      ',',
+      '、',
       LIMIT.mouse_strain,
     ),
     cage_position: text(selection.cage_position).slice(0, LIMIT.cage_position),

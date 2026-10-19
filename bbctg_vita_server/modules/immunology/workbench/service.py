@@ -176,6 +176,7 @@ READONLY_RESPONSE_KEYS = frozenset(
         "titer_targets",
         "titer_pcs",
         "scheme_revision",
+        "mouse_group_count",
     }
 )
 COPY_CHILD_MODELS = [
@@ -465,9 +466,104 @@ def _overlay_identity(data: dict[str, Any], project: SerumImmProject | None) -> 
     return data
 
 
-def _join_strain_parts(groups: list[dict[str, Any]], key: str) -> str:
-    values = {str(item.get(key) or "").strip() for item in groups}
-    return "+".join(sorted(value for value in values if value))
+def _join_strain_parts(groups: list[dict[str, Any]], key: str, separator: str) -> str | None:
+    values: list[str] = []
+    seen: set[str] = set()
+    for item in groups:
+        text = str(item.get(key) or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        values.append(text)
+    if separator == "+":
+        values.sort()
+    return separator.join(values) or None
+
+
+def _strain_groups_by_experiment(
+    db: Session,
+    experiment_ids: list[str],
+) -> dict[str, list[dict[str, Any]]]:
+    ids = [item for item in dict.fromkeys(experiment_ids) if item]
+    if not ids:
+        return {}
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    rows = db.execute(
+        select(
+            SerumImmMouse.experiment_id,
+            SerumImmMouse.mouse_strain,
+            SerumImmMouse.mouse_strain_category,
+        )
+        .where(SerumImmMouse.experiment_id.in_(ids))
+        .order_by(SerumImmMouse.id.asc())
+    ).all()
+    for experiment_id, mouse_strain, mouse_strain_category in rows:
+        eid = str(experiment_id or "").strip()
+        if not eid:
+            continue
+        grouped.setdefault(eid, []).append(
+            {
+                "mouse_strain": mouse_strain,
+                "mouse_strain_category": mouse_strain_category,
+            }
+        )
+    return grouped
+
+
+def _show_scheme_strains(
+    items: list[dict[str, Any]],
+    grouped: dict[str, list[dict[str, Any]]],
+) -> None:
+    """有方案分组时，列表展示分组本身，用顿号拼接。不读项目上用加号存的字段。"""
+    for item in items:
+        experiment_id = str(item.get("experiment_id") or "").strip()
+        groups = grouped.get(experiment_id) or []
+        item["mouse_group_count"] = len(groups)
+        if not groups:
+            continue
+        item["mouse_strain"] = _join_strain_parts(groups, "mouse_strain", "、")
+        item["mouse_strain_category"] = _join_strain_parts(groups, "mouse_strain_category", "、")
+
+
+def _write_strain_to_single_group(db: Session, row: SerumImmWorkbench) -> None:
+    """没有分组时写入 G1；只有一组时改这一组。两组及以上不在这里改。"""
+    experiment_id = str(row.experiment_id or "").strip()
+    if not experiment_id:
+        return
+    groups = list(
+        db.scalars(
+            select(SerumImmMouse)
+            .where(SerumImmMouse.experiment_id == experiment_id)
+            .order_by(SerumImmMouse.id.asc())
+        ).all()
+    )
+    if len(groups) >= 2:
+        return
+    strain = row.mouse_strain or None
+    category = row.mouse_strain_category or None
+    if len(groups) == 1:
+        groups[0].mouse_strain = strain
+        groups[0].mouse_strain_category = category
+        return
+    if not strain and not category:
+        return
+    db.add(
+        SerumImmMouse(
+            experiment_id=experiment_id,
+            group_id="G1",
+            mouse_strain=strain,
+            mouse_strain_category=category,
+        )
+    )
+
+
+def _with_mouse_group_flag(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    grouped = _strain_groups_by_experiment(
+        db,
+        [str(data.get("experiment_id") or "").strip()],
+    )
+    _show_scheme_strains([data], grouped)
+    return data
 
 
 def _unique_project_name_strains(values: Any) -> list[str]:
@@ -724,14 +820,19 @@ def _aligned_value_expr(workbench_column, project_column):
     )
 
 
-def _composed_value_filter(workbench_column, project_column, value: str):
-    field = _aligned_value_expr(workbench_column, project_column)
-    return or_(
-        field == value,
-        field.like(f"{value}+%"),
-        field.like(f"%+{value}"),
-        field.like(f"%+{value}+%"),
-    )
+def _scheme_strain_filter(field_name: str, value: str):
+    group_column = getattr(SerumImmMouse, field_name)
+    header_column = getattr(SerumImmWorkbench, field_name)
+    in_scheme = exists(
+        select(1).where(
+            SerumImmMouse.experiment_id == SerumImmWorkbench.experiment_id,
+            group_column == value,
+        )
+    ).correlate(SerumImmWorkbench)
+    no_scheme = ~exists(
+        select(1).where(SerumImmMouse.experiment_id == SerumImmWorkbench.experiment_id)
+    ).correlate(SerumImmWorkbench)
+    return or_(in_scheme, and_(no_scheme, header_column == value))
 
 
 def _display_status_expr():
@@ -836,11 +937,7 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, skip_status: bool = False
     stmt = restrict(
         stmt,
         data.get("mouse_strain_category"),
-        lambda value: _composed_value_filter(
-            SerumImmWorkbench.mouse_strain_category,
-            SerumImmProject.mouse_strain_category,
-            value,
-        ),
+        lambda value: _scheme_strain_filter("mouse_strain_category", value),
     )
     stmt = restrict(stmt, data.get("species_cross"), _species_cross_filter)
     stmt = restrict(stmt, data.get("mouse_status"), lambda value: SerumImmWorkbench.mouse_status == value)
@@ -863,11 +960,7 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, skip_status: bool = False
     stmt = restrict(
         stmt,
         data.get("mouse_strain"),
-        lambda value: _composed_value_filter(
-            SerumImmWorkbench.mouse_strain,
-            SerumImmProject.mouse_strain,
-            value,
-        ),
+        lambda value: _scheme_strain_filter("mouse_strain", value),
     )
     stmt = restrict(stmt, data.get("mouse_zygosity"), lambda value: SerumImmWorkbench.mouse_zygosity == value)
     stmt = restrict(stmt, data.get("mouse_region"), lambda value: SerumImmWorkbench.mouse_region == value)
@@ -970,6 +1063,7 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
         .limit(limit)
     ).unique().all()
     experiment_ids = [str(row.experiment_id or "").strip() for row in rows if row.experiment_id]
+    strain_groups = _strain_groups_by_experiment(db, experiment_ids)
     projects = {}
     if experiment_ids:
         projects = {
@@ -985,6 +1079,7 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
         )
         for row in rows
     ]
+    _show_scheme_strains(items, strain_groups)
     return {
         "items": items,
         "total": total,
@@ -1028,6 +1123,7 @@ def export_list_workbook(
         )
         for row in workbench_rows
     ]
+    _show_scheme_strains(items, _strain_groups_by_experiment(db, experiment_ids))
     columns = (
         ("编号", "id"),
         ("排序", "sort_order"),
@@ -1097,20 +1193,13 @@ def get_options(db: Session) -> dict[str, list[str]]:
                     result.add(text)
         return sorted(result)
 
-    def composed_values(workbench_column, project_column) -> list[str]:
+    def token_values(*columns) -> list[str]:
         result: set[str] = set()
-        statements = (
-            select(workbench_column)
-            .where(
-                SerumImmWorkbench.plan_status != PLAN_STATUS_STARTED,
-                workbench_column.is_not(None),
-            )
-            .distinct(),
-            select(project_column).where(project_column.is_not(None)).distinct(),
-        )
-        for statement in statements:
-            for value in db.scalars(statement).all():
-                result.update(part.strip() for part in str(value).split("+") if part.strip())
+        for column in columns:
+            for value in db.scalars(select(column).where(column.is_not(None)).distinct()).all():
+                for part in str(value).replace("、", "+").split("+"):
+                    if part.strip():
+                        result.add(part.strip())
         return sorted(result)
 
     owners = values(SerumImmProject.owner, SerumImmWorkbench.owner)
@@ -1120,13 +1209,13 @@ def get_options(db: Session) -> dict[str, list[str]]:
         "pms": pms,
         "reviewers": values(SerumImmWorkbench.reviewer),
         "study_types": values(SerumImmWorkbench.study_type, SerumImmProject.study_type),
-        "mouse_strains": composed_values(
+        "mouse_strains": token_values(
+            SerumImmMouse.mouse_strain,
             SerumImmWorkbench.mouse_strain,
-            SerumImmProject.mouse_strain,
         ),
-        "mouse_strain_categories": composed_values(
+        "mouse_strain_categories": token_values(
+            SerumImmMouse.mouse_strain_category,
             SerumImmWorkbench.mouse_strain_category,
-            SerumImmProject.mouse_strain_category,
         ),
         "statuses": values(
             SerumImmWorkbench.plan_status,
@@ -1274,6 +1363,11 @@ def save(
         incoming_status = str(payload.get("plan_status") or "").strip()
         if incoming_status == PLAN_STATUS_STARTED:
             raise ValueError("请使用开展接口将计划状态改为已开展")
+        wrote_strain = any(field in payload for field in STRAIN_FIELDS)
+        if wrote_strain:
+            experiment_id = str(row.experiment_id or "").strip()
+            if len(_strain_groups_by_experiment(db, [experiment_id]).get(experiment_id) or []) >= 2:
+                raise ValueError("方案已有两组及以上小鼠，请在方案中修改小鼠品系和归类鼠型")
         incoming_category = str(payload.get("mouse_strain_category") or "").strip()
         if incoming_category and incoming_category not in MOUSE_STRAIN_CATEGORY_OPTIONS:
             raise ValueError("归类鼠型不在允许的选项中")
@@ -1282,6 +1376,9 @@ def save(
             raise ValueError("提供地区不在允许的选项中")
         _apply_fields(row, payload, ALIGNED_FIELDS + PREP_FIELDS)
         _assign_temp_experiment_id(db, row)
+        if wrote_strain:
+            _write_strain_to_single_group(db, row)
+            db.flush()
         if refresh_project_name:
             current_name = str(row.project_name or "").strip()
             if not current_name or current_name == previous_auto_name:
@@ -1299,12 +1396,11 @@ def save(
         is_new=is_new,
         project=project,
     )
-
     if commit:
         db.commit()
         db.refresh(row)
     project = _project_by_experiment(db, row.experiment_id) if _is_started(row) else None
-    return serialize_row(row, project)
+    return _with_mouse_group_flag(db, serialize_row(row, project))
 
 
 def save_batch(
@@ -1375,6 +1471,13 @@ def save_batch(
         project = _project_by_experiment(db, row.experiment_id) if row and _is_started(row) else None
         if row:
             saved.append(serialize_row(row, project))
+    _show_scheme_strains(
+        saved,
+        _strain_groups_by_experiment(
+            db,
+            [str(item.get("experiment_id") or "").strip() for item in saved],
+        ),
+    )
     return {"items": saved}
 
 
@@ -1443,14 +1546,16 @@ def start(db: Session, workbench_id: int) -> dict[str, Any]:
                     if field == "experiment_id" or field in STRAIN_FIELDS:
                         continue
                     setattr(project, field, getattr(row, field))
-                project.mouse_strain = _join_strain_parts(
-                    mouse_group_data,
-                    "mouse_strain",
-                ) or None
-                project.mouse_strain_category = _join_strain_parts(
-                    mouse_group_data,
-                    "mouse_strain_category",
-                ) or None
+                if mouse_group_data:
+                    project.mouse_strain = _join_strain_parts(mouse_group_data, "mouse_strain", "+")
+                    project.mouse_strain_category = _join_strain_parts(
+                        mouse_group_data,
+                        "mouse_strain_category",
+                        "+",
+                    )
+                else:
+                    project.mouse_strain = row.mouse_strain or None
+                    project.mouse_strain_category = row.mouse_strain_category or None
                 project.experiment_id = new_eid
                 project.project_status = DEFAULT_PROJECT_STATUS
                 db.add(project)
@@ -1482,7 +1587,7 @@ def start(db: Session, workbench_id: int) -> dict[str, Any]:
         db.refresh(project)
     else:
         project = _project_by_experiment(db, row.experiment_id)
-    return serialize_row(row, project)
+    return _with_mouse_group_flag(db, serialize_row(row, project))
 
 
 def _count_by_experiment(db: Session, model, experiment_id: str) -> int:
@@ -1573,7 +1678,7 @@ def unlist(
 
     db.commit()
     db.refresh(row)
-    return serialize_row(row)
+    return _with_mouse_group_flag(db, serialize_row(row))
 
 
 def copy_row(
@@ -1618,7 +1723,7 @@ def copy_row(
     _clone_children(db, source.experiment_id, clone.experiment_id)
     db.commit()
     db.refresh(clone)
-    return serialize_row(clone)
+    return _with_mouse_group_flag(db, serialize_row(clone))
 
 
 def reorder(
@@ -1839,6 +1944,10 @@ def save_scheme(
     new_pcs = _replace_owned_children(
         db, SerumTiterPc, sanitized_children["titer_pcs"], experiment_id
     )
+    scheme_groups = sanitized_children["mouse_groups"]
+    if len(scheme_groups) == 1:
+        row.mouse_strain = str(scheme_groups[0].get("mouse_strain") or "").strip() or None
+        row.mouse_strain_category = str(scheme_groups[0].get("mouse_strain_category") or "").strip() or None
     db.flush()
     scheme_revision = _scheme_revision(db, row)
     db.commit()

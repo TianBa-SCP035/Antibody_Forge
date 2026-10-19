@@ -3,15 +3,19 @@
     ref="selectRef"
     v-bind="boundAttrs"
     class="list-filter-select"
+    :class="{ 'is-joined': joined }"
     :model-value="selectModel"
     :multiple="isMulti"
-    :collapse-tags="isMulti"
-    :collapse-tags-tooltip="isMulti"
+    :collapse-tags="isMulti && !joined"
+    :collapse-tags-tooltip="isMulti && !joined"
     :max-collapse-tags="1"
     @update:model-value="onNativeUpdate"
     @clear="emit('clear', $event)"
     @visible-change="onVisible"
   >
+    <template v-if="joined && terms.length" #tag>
+      <span class="list-filter-joined">{{ terms.join('、') }}</span>
+    </template>
     <slot />
   </el-select>
 </template>
@@ -28,6 +32,8 @@ defineOptions({
 
 const props = defineProps<{
   modelValue?: unknown
+  /** 多个值时在框里显示拼接文本，不显示选项胶囊。 */
+  joined?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -39,16 +45,13 @@ const emit = defineEmits<{
 
 const attrs = useAttrs()
 const selectRef = ref<any>(null)
-const boundAttrs = computed(() => ({
-  title: '左键单选并收起，右键追加或取消',
-  ...attrs,
-}))
+const boundAttrs = computed(() => ({ ...attrs }))
 
 let applying = false
 let popper: HTMLElement | null = null
 
 const terms = computed(() => normalize(props.modelValue))
-const isMulti = computed(() => terms.value.length > 1)
+const isMulti = computed(() => (props.joined ? terms.value.length > 0 : terms.value.length > 1))
 const selectModel = computed(() => (isMulti.value ? terms.value : (terms.value[0] ?? '')))
 
 function normalize(value: unknown) {
@@ -103,6 +106,10 @@ function bindPopper() {
   popper.addEventListener('contextmenu', onOptionContext, true)
 }
 
+function willBeMulti(count: number) {
+  return props.joined ? count > 0 : count > 1
+}
+
 function commit(next: unknown[], keepOpen: boolean) {
   const wasMulti = isMulti.value
   const value = stored(next)
@@ -116,18 +123,19 @@ function commit(next: unknown[], keepOpen: boolean) {
     })
     return
   }
-  const willMulti = next.length > 1
-  if (wasMulti !== willMulti) {
+  const modeChanged = wasMulti !== willBeMulti(next.length)
+  nextTick(() => {
+    setExpanded(true)
+    if (!modeChanged) {
+      bindPopper()
+      applying = false
+      return
+    }
     nextTick(() => {
-      setExpanded(true)
-      nextTick(() => {
-        bindPopper()
-        applying = false
-      })
+      bindPopper()
+      applying = false
     })
-    return
-  }
-  applying = false
+  })
 }
 
 function onOptionClick(event: Event) {
@@ -163,3 +171,33 @@ function onVisible(visible: boolean) {
 
 onBeforeUnmount(unbindPopper)
 </script>
+
+<style scoped>
+.list-filter-select.is-joined {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.list-filter-select.is-joined:deep(.el-select__wrapper) {
+  width: 100%;
+  max-width: 100%;
+}
+.list-filter-select.is-joined:deep(.el-select__selection) {
+  flex-wrap: nowrap;
+}
+.list-filter-select.is-joined:deep(.el-select__selection.is-near) {
+  margin-left: 0;
+}
+.list-filter-joined {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--el-text-color-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list-filter-select.is-joined:deep(.el-select__input-wrapper) {
+  flex: 0 0 auto;
+  max-width: none;
+}
+</style>

@@ -73,5 +73,25 @@ class ProjectQueueTests(unittest.TestCase):
             self.assertEqual(queued_ids, {default_plan.id, missing_project.id})
 
 
+class SchemeStrainTextTests(unittest.TestCase):
+    def test_project_join_is_sorted_with_plus(self):
+        groups = [
+            {"mouse_strain": " RMB/C ", "mouse_strain_category": "RL"},
+            {"mouse_strain": "RM", "mouse_strain_category": "RM"},
+            {"mouse_strain": "RM", "mouse_strain_category": ""},
+        ]
+        self.assertEqual(workbench_service._join_strain_parts(groups, "mouse_strain", "+"), "RM+RMB/C")
+        self.assertEqual(workbench_service._join_strain_parts(groups, "mouse_strain_category", "+"), "RL+RM")
+
+    def test_scheme_join_keeps_group_order_with_ideographic_comma(self):
+        groups = [
+            {"mouse_strain": "RMB/C"},
+            {"mouse_strain": "RM"},
+            {"mouse_strain": "RM"},
+        ]
+        self.assertEqual(workbench_service._join_strain_parts(groups, "mouse_strain", "、"), "RMB/C、RM")
+        self.assertIsNone(workbench_service._join_strain_parts([], "mouse_strain", "、"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -107,7 +107,7 @@ class DiscoveryWorkbenchIdTests(unittest.TestCase):
                 "boost_date": "2020-01-01",
             },
         )
-        self.assertEqual(saved["mouse_strain_category"], "RL,RN")
+        self.assertEqual(saved["mouse_strain_category"], "RL、RN")
         self.assertEqual(saved["harvest_date"], harvest.isoformat())
         self.assertEqual(saved["boost_date"], (harvest - timedelta(days=5)).isoformat())
         self.assertEqual(saved["status"], "待冲击")
@@ -130,8 +130,21 @@ class DiscoveryWorkbenchIdTests(unittest.TestCase):
         self.assertEqual(wrapped["boost_date"], "2026-02-24")
         self.assertEqual(wrapped["status"], "规划中")
 
-        with self.assertRaisesRegex(ValueError, "归类鼠型"):
-            service.save(self.db, {"mouse_strain_category": "自定义"})
+        custom_category = service.save(self.db, {"mouse_strain_category": "自定鼠型+RN"})
+        self.assertEqual(custom_category["mouse_strain_category"], "RN、自定鼠型")
+
+        strain = service.save(self.db, {"mouse_strain": "RMB/C+RM"})
+        self.assertEqual(strain["mouse_strain"], "RM、RMB/C")
+        self.assertEqual(service.get_list(self.db, {"mouse_strain": "RM"})["total"], 1)
+        self.assertEqual(service.get_list(self.db, {"mouse_strain": "RMKO"})["total"], 0)
+        custom = service.save(self.db, {"mouse_strain": "自定义+RM"})
+        self.assertEqual(custom["mouse_strain"], "RM、自定义")
+
+        legacy = self.db.get(DiscoveryWorkbench, saved["id"])
+        legacy.mouse_strain_category = "RN+RL"
+        self.db.commit()
+        self.assertEqual(service.get_list(self.db, {"mouse_strain_category": "RL"})["total"], 1)
+        self.assertEqual(service.get_list(self.db, {"mouse_strain_category": "RN-KO"})["total"], 0)
 
     def test_keyword_can_find_system_discovery_id(self):
         saved = service.save(self.db, {"project_code": "P1"})

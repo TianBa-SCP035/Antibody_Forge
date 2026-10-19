@@ -332,12 +332,19 @@
             </el-table-column>
             <el-table-column label="小鼠名称/品系" min-width="120">
                     <template #default="{ row }">
-                    <el-input v-model="row.mouse_strain" size="small" @change="updateProjectName" />
+                    <el-select v-model="row.mouse_strain" size="small" filterable allow-create default-first-option style="width:100%" placeholder="选择小鼠品系" @change="updateProjectName">
+                        <el-option
+                          v-for="item in mouseStrainOptions"
+                          :key="item"
+                          :label="item"
+                          :value="item"
+                        />
+                    </el-select>
                 </template>
             </el-table-column>
             <el-table-column label="归类鼠型" min-width="120">
                     <template #default="{ row }">
-                    <el-select v-model="row.mouse_strain_category" size="small" filterable allow-create default-first-option style="width:100%" placeholder>
+                    <el-select v-model="row.mouse_strain_category" size="small" filterable allow-create default-first-option style="width:100%" placeholder="选择归类鼠型">
                         <el-option
                           v-for="item in mouseStrainCategoryOptions"
                           :key="item"
@@ -803,7 +810,7 @@ import {
   canEditSerumProject,
   getSerumUserName,
 } from '#/utils/serumPermission'
-import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS } from '#/utils/serumMouseOptions'
+import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS, SERUM_MOUSE_STRAIN_OPTIONS } from '#/utils/serumMouseOptions'
 import {
   SERUM_PROJECT_STATUS_DEFAULT,
   SERUM_PROJECT_STATUS_OPTIONS,
@@ -963,6 +970,7 @@ export default {
       ownerOptions: [],
       pmOptions: [],
       mouseStrainCategoryOptions: SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS,
+      mouseStrainOptions: SERUM_MOUSE_STRAIN_OPTIONS,
       projectStatusOptions: SERUM_PROJECT_STATUS_OPTIONS,
       remarkDialogVisible: false,
       currentRemark: '',

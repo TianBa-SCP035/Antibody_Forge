@@ -87,7 +87,6 @@ import {
   buildTypeLabel,
   HANDOFF_METHOD_ROWS,
   INSTRUMENT_DATE_BUILDS,
-  mouseCategoryLabel,
   sampleSourceLabel,
 } from './libraryColumns'
 
@@ -125,7 +124,7 @@ export default {
     metaItems() {
       return [
         { label: '课题类型', value: this.preview.study_type },
-        { label: '归类鼠型', value: this.preview.mouse_model ? mouseCategoryLabel(this.preview.mouse_model) : '' },
+        { label: '小鼠品系', value: this.preview.mouse_strain },
         { label: '优先级', value: this.preview.priority },
         { label: '上机日期', value: this.preview.instrument_on },
         { label: '阳性细胞', value: this.preview.positive_cell_count },
@@ -292,6 +291,7 @@ export default {
   margin-left: 4px;
   color: var(--el-text-color-primary);
   font-weight: 500;
+  white-space: pre-line;
 }
 
 .meta-line b.empty {

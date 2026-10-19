@@ -3,6 +3,20 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { EchartsUI, useEcharts } from '@vben/plugins/echarts'
 
+import {
+  SEARCH_STEPS,
+  complementQueryText,
+  matchCount,
+  matchSpans,
+  normalizeSequence,
+  openingSearch,
+  pairSearch,
+  readDirectionInfo,
+  searchSummaryText,
+  searchTarget,
+  viewForStep,
+} from './primerSearch'
+
 const props = defineProps({
   trace: {
     type: Object,
@@ -16,7 +30,7 @@ const props = defineProps({
     type: String,
     default: '',
   },
-  primerLabel: {
+  sequenceStatus: {
     type: String,
     default: '',
   },
@@ -39,53 +53,36 @@ const { renderEcharts } = useEcharts(chartRef)
 const baseCount = computed(() => props.trace?.bases?.length || 0)
 const sequenceMarks = ref([])
 const searchQuery = ref('')
+const complementOn = ref(false)
 const searchMatches = ref([])
 const activeMatchIndex = ref(-1)
 const activeMatchRange = ref(null)
 const searchKind = ref('manual')
+const searchStep = ref(0)
 const armViewIndex = ref(0)
 let activeChart = null
 let resizeObserver = null
 let resizeFrame = 0
-let lastSearchTerm = ''
 
-const ARM_BY_DIRECTION = {
-  F: ['ACCGAGATCTACAC', 'ACACTCTTTCC'],
-  R: ['AACTCCAGTCAC', 'ATCTCGTATGCC'],
-}
+const searchSummary = computed(() => searchSummaryText(
+  searchKind.value,
+  armViewIndex.value,
+  searchMatches.value.length,
+  activeMatchIndex.value,
+  searchQuery.value,
+))
 
-const searchSummary = computed(() => {
-  if (searchKind.value === 'arm') {
-    const view = armViews(props.direction)[armViewIndex.value]
-    if (!view) return '未找到同源臂'
-    const found = new Set(searchMatches.value.map((match) => match.term))
-    if (view.terms.length > 1) {
-      const present = view.terms
-        .map((term, index) => (found.has(term) ? ['左臂', '右臂'][index] : ''))
-        .filter(Boolean)
-      if (!present.length) return '两侧 未找到'
-      if (present.length < view.terms.length) return `两侧只找到${present.join('、')}`
-      return `两侧 ${searchMatches.value.length} 处`
-    }
-    return searchMatches.value.length
-      ? `${view.label} ${searchMatches.value.length} 处`
-      : `${view.label} 未找到`
-  }
-  if (!normalizeSequence(searchQuery.value)) return ''
-  if (!searchMatches.value.length) return '未找到'
-  return `找到 ${activeMatchIndex.value + 1}/${searchMatches.value.length}`
-})
+const canStep = computed(() => matchCount(
+  searchMatches.value.length,
+  pairSearch(searchKind.value, armViewIndex.value),
+) >= 2)
 
-const directionInfo = computed(() => {
-  const primer = props.primerLabel ? ` · ${props.primerLabel}` : ''
-  if (props.direction === 'F') {
-    return { label: `正向 M13F${primer}`, arrow: '→', tone: 'forward' }
-  }
-  if (props.direction === 'R') {
-    return { label: `反向 M13R${primer}`, arrow: '←', tone: 'reverse' }
-  }
-  return { label: '方向未识别', arrow: '↔', tone: 'unknown' }
-})
+const directionInfo = computed(() => readDirectionInfo(
+  props.direction,
+  props.sequenceStatus,
+  calledSequence(),
+  props.targetSequence,
+))
 
 function nearestBaseIndex(sample) {
   const bases = props.trace?.bases || []
@@ -106,27 +103,12 @@ function nearestBaseIndex(sample) {
     : Math.max(0, low - 1)
 }
 
-function normalizeSequence(value) {
-  return String(value || '').toUpperCase().replace(/[^ACGTN]/g, '')
-}
-
-function armTerms(direction) {
-  return ARM_BY_DIRECTION[direction] || []
-}
-
-function armViews(direction) {
-  const terms = armTerms(direction)
-  if (terms.length < 2) return []
-  return [
-    { label: '左臂', terms: [terms[0]] },
-    { label: '右臂', terms: [terms[1]] },
-    { label: '两侧', terms },
-  ]
-}
-
 function highlightedMatches() {
-  if (searchKind.value === 'arm') return searchMatches.value
-  return activeMatchRange.value ? [activeMatchRange.value] : []
+  return matchSpans(
+    searchMatches.value,
+    activeMatchIndex.value,
+    pairSearch(searchKind.value, armViewIndex.value),
+  )
 }
 
 function calledSequence() {
@@ -474,83 +456,96 @@ function focusMatches(matches) {
   })
 }
 
-function collectArmMatches(terms) {
+function showStep(step) {
+  const view = viewForStep(step, props.direction, props.targetSequence)
+  searchStep.value = view.stepIndex
+  armViewIndex.value = view.armIndex
+  searchQuery.value = complementOn.value ? complementQueryText(view.query) : view.query
+  applySearch(view.kind)
+}
+
+function cycleSearch() {
+  showStep(SEARCH_STEPS[(searchStep.value + 1) % SEARCH_STEPS.length])
+}
+
+function stepMatch(step) {
+  const paired = pairSearch(searchKind.value, armViewIndex.value)
+  const count = matchCount(searchMatches.value.length, paired)
+  if (count < 2) return
+  const unit = paired ? 2 : 1
+  const current = Math.floor(activeMatchIndex.value / unit)
+  activeMatchIndex.value = ((current + step + count) % count) * unit
+  const spans = matchSpans(searchMatches.value, activeMatchIndex.value, paired)
+  activeMatchRange.value = spans[0] || null
+  renderMatchHighlight()
+  if (paired) focusMatches(spans)
+  else if (spans[0]) focusMatch(spans[0])
+}
+
+function findFlankMatches(left, right) {
   const sequence = calledSequence()
   const matches = []
-  terms.forEach((term) => {
-    let offset = sequence.indexOf(term)
-    while (offset >= 0) {
-      matches.push({ start: offset, end: offset + term.length, term })
-      offset = sequence.indexOf(term, offset + 1)
-    }
-  })
-  matches.sort((left, right) => left.start - right.start || right.end - left.end)
+  let from = 0
+  while (from <= sequence.length) {
+    const leftAt = sequence.indexOf(left, from)
+    if (leftAt < 0) break
+    const rightAt = sequence.indexOf(right, leftAt + left.length)
+    if (rightAt < 0) break
+    matches.push({ start: leftAt, end: leftAt + left.length })
+    matches.push({ start: rightAt, end: rightAt + right.length })
+    from = rightAt + right.length
+  }
   return matches
 }
 
-function showArmView(index) {
-  const views = armViews(props.direction)
-  if (!views.length) return
-  const next = (index + views.length) % views.length
-  const view = views[next]
-  const matches = collectArmMatches(view.terms)
-  armViewIndex.value = next
-  searchKind.value = 'arm'
+function focusFound(matches, paired) {
   searchMatches.value = matches
   activeMatchIndex.value = matches.length ? 0 : -1
-  activeMatchRange.value = matches[0] || null
-  lastSearchTerm = '\0arm'
-  searchQuery.value = view.terms.length === 1 ? view.terms[0] : ''
+  const spans = matchSpans(matches, activeMatchIndex.value, paired)
+  activeMatchRange.value = spans[0] || null
   renderMatchHighlight()
-  focusMatches(matches)
+  if (paired) {
+    if (spans.length) focusMatches(spans)
+    return
+  }
+  if (spans[0]) focusMatch(spans[0])
 }
 
-function searchArms() {
-  if (searchKind.value === 'arm') {
-    armViewIndex.value = 0
-    searchQuery.value = normalizeSequence(props.targetSequence)
-    lastSearchTerm = ''
-    runSearch(0, props.targetSequence ? 'primer' : 'manual')
+function applySearch(kind = 'manual') {
+  const target = searchTarget(searchQuery.value, false)
+  searchKind.value = target.flank && kind !== 'arm' ? 'flank' : kind
+  if (target.flank) {
+    focusFound(findFlankMatches(target.left, target.right), true)
     return
   }
-  showArmView(0)
-}
-
-function runSearch(step = 0, kind = 'manual') {
-  if (kind === 'arm' && step) {
-    showArmView(armViewIndex.value + step)
-    return
-  }
-  const term = normalizeSequence(searchQuery.value)
-  searchQuery.value = term
-  searchKind.value = kind
-  if (!term) {
-    lastSearchTerm = ''
-    searchMatches.value = []
-    activeMatchIndex.value = -1
-    activeMatchRange.value = null
-    renderMatchHighlight()
-    return
-  }
-  if (term !== lastSearchTerm) {
+  const matches = []
+  if (target.term) {
     const sequence = calledSequence()
-    const matches = []
-    let offset = sequence.indexOf(term)
+    let offset = sequence.indexOf(target.term)
     while (offset >= 0) {
-      matches.push({ start: offset, end: offset + term.length })
-      offset = sequence.indexOf(term, offset + 1)
+      matches.push({ start: offset, end: offset + target.term.length })
+      offset = sequence.indexOf(target.term, offset + 1)
     }
-    lastSearchTerm = term
-    searchMatches.value = matches
-    activeMatchIndex.value = matches.length ? 0 : -1
-  } else if (searchMatches.value.length && step) {
-    activeMatchIndex.value = (
-      activeMatchIndex.value + step + searchMatches.value.length
-    ) % searchMatches.value.length
   }
-  activeMatchRange.value = searchMatches.value[activeMatchIndex.value] || null
-  renderMatchHighlight()
-  if (activeMatchRange.value) focusMatch(activeMatchRange.value)
+  focusFound(matches, false)
+}
+
+function applyOpening() {
+  const opening = openingSearch(
+    props.sequenceStatus,
+    props.direction,
+    calledSequence(),
+    props.targetSequence,
+  )
+  complementOn.value = opening.complement
+  showStep(opening.step)
+}
+
+function toggleComplement() {
+  if (!normalizeSequence(searchQuery.value)) return
+  complementOn.value = !complementOn.value
+  searchQuery.value = complementQueryText(searchQuery.value)
+  applySearch(searchKind.value)
 }
 
 function updateZoomLimit() {
@@ -593,13 +588,7 @@ async function draw() {
   activeChart.on('datazoom', syncSequenceMarks)
   activeChart.on('finished', syncSequenceMarks)
   await nextTick()
-  lastSearchTerm = ''
-  runSearch(
-    0,
-    normalizeSequence(searchQuery.value) === normalizeSequence(props.targetSequence)
-      ? 'primer'
-      : 'manual',
-  )
+  applyOpening()
 }
 
 onMounted(() => {
@@ -609,13 +598,11 @@ onMounted(() => {
 })
 watch(() => props.trace, draw)
 watch(
-  () => props.targetSequence,
-  (value) => {
-    searchQuery.value = normalizeSequence(value)
-    lastSearchTerm = ''
-    if (activeChart) runSearch(0, 'primer')
+  () => [props.targetSequence, props.sequenceStatus, props.direction],
+  () => {
+    if (!activeChart) return
+    applyOpening()
   },
-  { immediate: true },
 )
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
@@ -634,14 +621,14 @@ onBeforeUnmount(() => {
         type="button"
         class="direction-badge"
         :class="[`is-${directionInfo.tone}`, { 'is-arm': searchKind === 'arm' }]"
-        :title="searchKind === 'arm' ? '回到完整引物' : '查找同源臂。上一个、下一个可切换左臂、右臂和两侧'"
-        @click="searchArms"
+        title="点击切换：完整引物、两侧同源臂、左臂、右臂"
+        @click="cycleSearch"
       >
-        <b>{{ directionInfo.arrow }}</b>
+        <b v-if="directionInfo.arrow">{{ directionInfo.arrow }}</b>
         {{ directionInfo.label }}
       </button>
       <span v-else class="direction-badge" :class="`is-${directionInfo.tone}`">
-        <b>{{ directionInfo.arrow }}</b>
+        <b v-if="directionInfo.arrow">{{ directionInfo.arrow }}</b>
         {{ directionInfo.label }}
       </span>
       <span>{{ baseCount }} bp · 滚轮缩放 · 拖动平移</span>
@@ -651,28 +638,38 @@ onBeforeUnmount(() => {
         v-model="searchQuery"
         maxlength="120"
         placeholder="输入一段序列（A/C/G/T/N）"
-        @keydown.enter.prevent="runSearch(0, 'manual')"
+        @keydown.enter.prevent="applySearch('manual')"
       >
-      <button type="button" @click="runSearch(0, 'manual')">查找</button>
+      <button type="button" @click="applySearch('manual')">查找</button>
       <button
         type="button"
-        :disabled="searchKind !== 'arm' && searchMatches.length < 2"
-        @click="runSearch(-1, searchKind)"
+        title="按下后搜索框换成反向互补，再按一次换回"
+        :class="{ 'is-on': complementOn }"
+        :aria-pressed="complementOn"
+        :disabled="!normalizeSequence(searchQuery)"
+        @click="toggleComplement"
+      >
+        反补
+      </button>
+      <button
+        type="button"
+        :disabled="!canStep"
+        @click="stepMatch(-1)"
       >
         上一个
       </button>
       <button
         type="button"
-        :disabled="searchKind !== 'arm' && searchMatches.length < 2"
-        @click="runSearch(1, searchKind)"
+        :disabled="!canStep"
+        @click="stepMatch(1)"
       >
         下一个
       </button>
       <span
         :class="{
-          'is-found': searchMatches.length && !String(searchSummary).includes('只找到'),
+          'is-found': searchMatches.length,
           'is-primer': searchKind === 'primer',
-          'is-empty': searchSummary && (!searchMatches.length || String(searchSummary).includes('只找到')),
+          'is-empty': searchSummary && !searchMatches.length,
         }"
       >
         {{ searchSummary }}
@@ -811,6 +808,12 @@ button.direction-badge.is-arm {
   border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.trace-search button.is-on {
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-5);
 }
 
 .trace-search button:disabled {

@@ -13,6 +13,7 @@ from modules.discovery.workbench.constants import (
     HARVEST_VIEW_STATUSES,
     LIBRARY_VIEW_STATUSES,
     MOUSE_STRAIN_CATEGORY_OPTIONS,
+    MOUSE_STRAIN_OPTIONS,
     PLAN_STATUS_CANCELLED,
     PLAN_STATUS_OPTIONS,
     PLAN_STATUS_PLANNING,
@@ -98,7 +99,12 @@ def _assign_discovery_id(db: Session, row: DiscoveryWorkbench) -> None:
     row.discovery_id = _next_discovery_id(db)
 
 
-def _normalize_csv_options(value: Any, options: tuple[str, ...], error: str) -> str | None:
+def _normalize_csv_options(
+    value: Any,
+    options: tuple[str, ...],
+    error: str,
+    separator: str = ",",
+) -> str | None:
     if value is None:
         return None
     if isinstance(value, (list, tuple)):
@@ -112,17 +118,50 @@ def _normalize_csv_options(value: Any, options: tuple[str, ...], error: str) -> 
     if any(token not in allowed for token in tokens):
         raise ValueError(error)
     ordered = [option for option in options if option in tokens]
-    return ",".join(ordered) or None
+    return separator.join(ordered) or None
 
 
 def _normalize_screening_methods(value: Any) -> str | None:
     return _normalize_csv_options(value, SCREENING_METHOD_OPTIONS, "筛选方式包含不允许的选项")
 
 
+def _mouse_csv_tokens(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        raw = [str(item).strip() for item in value]
+    else:
+        text = str(value).strip()
+        if not text:
+            return []
+        raw = text.replace("，", ",").replace("、", ",").replace("+", ",").split(",")
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        token = item.strip()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+    return tokens
+
+
+def _normalize_mouse_csv(value: Any, options: tuple[str, ...]) -> str | None:
+    tokens = _mouse_csv_tokens(value)
+    if not tokens:
+        return None
+    known = set(options)
+    ordered = [option for option in options if option in tokens]
+    extras = [token for token in tokens if token not in known]
+    return "、".join([*ordered, *extras]) or None
+
+
 def _normalize_mouse_strain_category(value: Any) -> str | None:
-    if isinstance(value, str):
-        value = value.replace("、", ",").replace("+", ",")
-    return _normalize_csv_options(value, MOUSE_STRAIN_CATEGORY_OPTIONS, "归类鼠型不在允许的选项中")
+    return _normalize_mouse_csv(value, MOUSE_STRAIN_CATEGORY_OPTIONS)
+
+
+def _normalize_mouse_strain(value: Any) -> str | None:
+    return _normalize_mouse_csv(value, MOUSE_STRAIN_OPTIONS)
 
 
 def _shift_date(value: str | None, days: int) -> str | None:
@@ -237,13 +276,15 @@ def _boost_expired(boost_date: Any, today: str | None = None) -> bool:
     return text < (today or _today_text())
 
 
-def _csv_token_filter(column, value: str):
-    return or_(
-        column == value,
-        column.like(f"{value},%"),
-        column.like(f"%,{value}"),
-        column.like(f"%,{value},%"),
-    )
+def _csv_token_filter(column, value: str, separators: tuple[str, ...] = (",",)):
+    clauses = [column == value]
+    for sep in separators:
+        clauses.extend((
+            column.like(f"{value}{sep}%"),
+            column.like(f"%{sep}{value}"),
+            column.like(f"%{sep}{value}{sep}%"),
+        ))
+    return or_(*clauses)
 
 
 def _split_filter_tokens(value: Any) -> list[str]:
@@ -290,6 +331,8 @@ def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> bool:
             value = _normalize_screening_methods(value)
         elif field == "mouse_strain_category":
             value = _normalize_mouse_strain_category(value)
+        elif field == "mouse_strain":
+            value = _normalize_mouse_strain(value)
         elif field == "mouse_count":
             value = _normalize_mouse_count(value)
         elif field == "sort_order":
@@ -445,7 +488,28 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, apply_view: bool = True, 
         if any(token not in MOUSE_STRAIN_CATEGORY_OPTIONS for token in categories):
             raise ValueError("归类鼠型不在允许的选项中")
         filters.append(
-            or_(*[_csv_token_filter(DiscoveryWorkbench.mouse_strain_category, item) for item in categories])
+            or_(*[
+                _csv_token_filter(
+                    DiscoveryWorkbench.mouse_strain_category,
+                    item,
+                    separators=(",", "、", "+"),
+                )
+                for item in categories
+            ])
+        )
+    strains = _split_filter_tokens(data.get("mouse_strain"))
+    if strains:
+        if any(token not in MOUSE_STRAIN_OPTIONS for token in strains):
+            raise ValueError("小鼠品系不在允许的选项中")
+        filters.append(
+            or_(*[
+                _csv_token_filter(
+                    DiscoveryWorkbench.mouse_strain,
+                    item,
+                    separators=(",", "、", "+"),
+                )
+                for item in strains
+            ])
         )
     status = combine_any(data.get("status"), _status_filter_clause)
     if status is not None:
@@ -458,7 +522,6 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, apply_view: bool = True, 
         filters.append(priority)
     for field in (
         "cage_position",
-        "mouse_strain",
         "mouse_nos",
         "immune_antigen",
         "screening_antigen",

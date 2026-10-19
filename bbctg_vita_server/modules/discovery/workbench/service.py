@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import secrets
 import string
 from typing import Any
@@ -12,6 +12,7 @@ from models.discovery import DiscoveryWorkbench
 from modules.discovery.workbench.constants import (
     HARVEST_VIEW_STATUSES,
     LIBRARY_VIEW_STATUSES,
+    MOUSE_STRAIN_CATEGORY_OPTIONS,
     PLAN_STATUS_CANCELLED,
     PLAN_STATUS_OPTIONS,
     PLAN_STATUS_PLANNING,
@@ -44,6 +45,8 @@ STRING_FIELDS = {
     "study_type": 64,
     "pm": 64,
     "owner": 64,
+    "immune_owner": 64,
+    "cell_collector": 64,
     "mouse_strain_category": 128,
     "mouse_strain": 128,
     "cage_position": 64,
@@ -54,6 +57,7 @@ STRING_FIELDS = {
     "positive_cell_count": 64,
     "plate_nos": 512,
     "boost_antigen": 255,
+    "boost_cells": 255,
     "remark": 500,
 }
 DATE_FIELDS = ("harvest_date", "boost_date")
@@ -113,6 +117,18 @@ def _normalize_csv_options(value: Any, options: tuple[str, ...], error: str) -> 
 
 def _normalize_screening_methods(value: Any) -> str | None:
     return _normalize_csv_options(value, SCREENING_METHOD_OPTIONS, "筛选方式包含不允许的选项")
+
+
+def _normalize_mouse_strain_category(value: Any) -> str | None:
+    if isinstance(value, str):
+        value = value.replace("、", ",").replace("+", ",")
+    return _normalize_csv_options(value, MOUSE_STRAIN_CATEGORY_OPTIONS, "归类鼠型不在允许的选项中")
+
+
+def _shift_date(value: str | None, days: int) -> str | None:
+    if not value:
+        return None
+    return (date.fromisoformat(value) + timedelta(days=days)).isoformat()
 
 
 def _normalize_target_codes(value: Any) -> list[str]:
@@ -259,10 +275,11 @@ def _page_limit(data: dict[str, Any]) -> tuple[int, int]:
         limit = int(data.get("limit", 20) or 20)
     except (TypeError, ValueError):
         limit = 20
-    return max(page, 1), min(max(limit, 1), 200)
+    return max(page, 1), min(max(limit, 1), 500)
 
 
-def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> None:
+def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> bool:
+    previous_harvest = row.harvest_date or None
     for field in WRITABLE_FIELDS:
         if field not in data:
             continue
@@ -271,6 +288,8 @@ def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> None:
             value = _normalize_target_codes(value)
         elif field == "screening_methods":
             value = _normalize_screening_methods(value)
+        elif field == "mouse_strain_category":
+            value = _normalize_mouse_strain_category(value)
         elif field == "mouse_count":
             value = _normalize_mouse_count(value)
         elif field == "sort_order":
@@ -286,14 +305,22 @@ def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> None:
         else:
             value = _normalize_text(value, STRING_FIELDS[field])
         setattr(row, field, value)
+    harvest_changed = "harvest_date" in data and (row.harvest_date or None) != previous_harvest
+    if harvest_changed:
+        row.boost_date = _shift_date(row.harvest_date, -5)
+    return harvest_changed
 
 
-def _apply_status_from_dates(row: DiscoveryWorkbench, payload: dict[str, Any]) -> None:
+def _apply_status_from_dates(
+    row: DiscoveryWorkbench,
+    payload: dict[str, Any],
+    harvest_changed: bool = False,
+) -> None:
     status = _current_status(row)
     if _is_terminal(status):
         return
     today = _today_text()
-    if "boost_date" in payload and "status" not in payload:
+    if ("boost_date" in payload or harvest_changed) and "status" not in payload:
         if _has_date_value(row.boost_date):
             if status in {PLAN_STATUS_PLANNING, PLAN_STATUS_WAIT_HARVEST, PLAN_STATUS_WAIT_BOOST}:
                 row.status = PLAN_STATUS_WAIT_HARVEST if _boost_expired(row.boost_date, today) else PLAN_STATUS_WAIT_BOOST
@@ -391,6 +418,8 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, apply_view: bool = True, 
                 DiscoveryWorkbench.target_name.like(like),
                 DiscoveryWorkbench.pm.like(like),
                 DiscoveryWorkbench.owner.like(like),
+                DiscoveryWorkbench.immune_owner.like(like),
+                DiscoveryWorkbench.cell_collector.like(like),
                 DiscoveryWorkbench.remark.like(like),
                 cast(DiscoveryWorkbench.target_codes, String).like(like),
             )
@@ -411,6 +440,13 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, apply_view: bool = True, 
     study_type = match_any(DiscoveryWorkbench.study_type, data.get("study_type"))
     if study_type is not None:
         filters.append(study_type)
+    categories = _split_filter_tokens(data.get("mouse_strain_category"))
+    if categories:
+        if any(token not in MOUSE_STRAIN_CATEGORY_OPTIONS for token in categories):
+            raise ValueError("归类鼠型不在允许的选项中")
+        filters.append(
+            or_(*[_csv_token_filter(DiscoveryWorkbench.mouse_strain_category, item) for item in categories])
+        )
     status = combine_any(data.get("status"), _status_filter_clause)
     if status is not None:
         filters.append(status)
@@ -423,7 +459,6 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, apply_view: bool = True, 
     for field in (
         "cage_position",
         "mouse_strain",
-        "mouse_strain_category",
         "mouse_nos",
         "immune_antigen",
         "screening_antigen",
@@ -579,6 +614,16 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _distinct_lines(db: Session, column) -> list[str]:
+    result: set[str] = set()
+    for value in db.scalars(select(column).where(column.is_not(None))).all():
+        for part in str(value or "").splitlines():
+            text = part.strip()
+            if text:
+                result.add(text)
+    return sorted(result)
+
+
 def get_options(db: Session) -> dict[str, list[str]]:
     def values(*columns) -> list[str]:
         result: set[str] = set()
@@ -595,9 +640,11 @@ def get_options(db: Session) -> dict[str, list[str]]:
         "priorities": list(PRIORITY_ORDER),
         "pms": values(DiscoveryWorkbench.pm),
         "owners": values(DiscoveryWorkbench.owner),
-        "immune_antigens": values(DiscoveryWorkbench.immune_antigen),
-        "screening_antigens": values(DiscoveryWorkbench.screening_antigen),
-        "boost_antigens": values(DiscoveryWorkbench.boost_antigen),
+        "immune_owners": values(DiscoveryWorkbench.immune_owner),
+        "cell_collectors": values(DiscoveryWorkbench.cell_collector),
+        "immune_antigens": _distinct_lines(db, DiscoveryWorkbench.immune_antigen),
+        "screening_antigens": _distinct_lines(db, DiscoveryWorkbench.screening_antigen),
+        "boost_antigens": _distinct_lines(db, DiscoveryWorkbench.boost_antigen),
     }
 
 
@@ -634,8 +681,8 @@ def save(
         is_new = False
         previous_sort = queued_sort(row.sort_order)
         previous_priority = row.priority
-    _apply_fields(row, payload)
-    _apply_status_from_dates(row, payload)
+    harvest_changed = _apply_fields(row, payload)
+    _apply_status_from_dates(row, payload, harvest_changed)
     _apply_queue(
         db,
         row,
@@ -737,6 +784,8 @@ EXPORT_COLUMNS = (
     ("课题类型", "study_type"),
     ("PM", "pm"),
     ("负责人", "owner"),
+    ("免疫负责人", "immune_owner"),
+    ("细胞收集人", "cell_collector"),
     ("归类鼠型", "mouse_strain_category"),
     ("小鼠品系", "mouse_strain"),
     ("笼位", "cage_position"),
@@ -751,6 +800,7 @@ EXPORT_COLUMNS = (
     ("剖鼠日期", "harvest_date"),
     ("冲击日期", "boost_date"),
     ("冲击免抗原", "boost_antigen"),
+    ("冲击免细胞", "boost_cells"),
     ("备注", "remark"),
     ("创建人", "created_by"),
 )

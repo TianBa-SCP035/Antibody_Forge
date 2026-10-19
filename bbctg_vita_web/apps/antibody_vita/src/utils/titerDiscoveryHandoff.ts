@@ -18,6 +18,7 @@ const LIMIT = {
   cage_position: 64,
   mouse_nos: 512,
   immune_antigen: 255,
+  immune_owner: 64,
 } as const;
 
 export interface TiterMouseSelection {
@@ -85,19 +86,27 @@ function groupTexts(project: Record<string, any> | null, groupIds: string[], key
   );
 }
 
+function antigenCode(value: unknown): string {
+  const raw = text(value).replace(/[\r\n]+/g, '');
+  if (!raw || /^[-－—–―\s]+$/.test(raw)) return '';
+  return raw;
+}
+
 function immuneAntigenNames(project: Record<string, any> | null, groupIds: string[]): string[] {
   const wanted = new Set(groupIds);
-  const nameById = new Map<string, string>();
+  const labelById = new Map<string, string>();
   for (const antigen of Array.isArray(project?.antigens) ? project.antigens : []) {
     const id = text(antigen?.antigen_id);
     const name = text(antigen?.antigen_name);
-    if (id && name) nameById.set(id, name);
+    if (!id || !name) continue;
+    const code = antigenCode(antigen?.catalog_no) || antigenCode(antigen?.lot_no);
+    labelById.set(id, code ? `${name}——${code}` : name);
   }
   const names: string[] = [];
   for (const step of Array.isArray(project?.steps) ? project.steps : []) {
     if (!wanted.has(text(step?.group_id))) continue;
     for (const antigenId of text(step?.antigen_id).split(',').map((item) => item.trim()).filter(Boolean)) {
-      const name = nameById.get(antigenId);
+      const name = labelById.get(antigenId);
       if (name) names.push(name);
     }
   }
@@ -117,6 +126,7 @@ function assemblePayload(
     target_codes: codes(project?.target_codes),
     study_type: text(project?.study_type),
     pm: text(project?.pm),
+    immune_owner: text(project?.owner).slice(0, LIMIT.immune_owner),
     mouse_strain_category: joinFit(
       groupTexts(project, picked.groupIds, 'mouse_strain_category'),
       ',',
@@ -131,7 +141,7 @@ function assemblePayload(
     mouse_count: picked.mouseNos.length,
     mouse_nos: joinFit(picked.mouseLines, '\n', LIMIT.mouse_nos),
     serum_titer: text(serumTiter),
-    immune_antigen: joinFit(immuneAntigenNames(project, picked.groupIds), '、', LIMIT.immune_antigen),
+    immune_antigen: joinFit(immuneAntigenNames(project, picked.groupIds), '\n', LIMIT.immune_antigen),
   };
 }
 

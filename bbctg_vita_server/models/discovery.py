@@ -33,7 +33,10 @@ class DiscoveryWorkbench(Base):
     harvest_date: Mapped[str | None] = mapped_column(String(32), comment="剖鼠取细胞日")
     boost_date: Mapped[str | None] = mapped_column(String(32), comment="冲击免日期")
     boost_antigen: Mapped[str | None] = mapped_column(String(255), comment="冲击免抗原")
+    boost_cells: Mapped[str | None] = mapped_column(String(255), comment="冲击免细胞")
     owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
+    immune_owner: Mapped[str | None] = mapped_column(String(64), comment="免疫负责人")
+    cell_collector: Mapped[str | None] = mapped_column(String(64), comment="细胞收集人")
     status: Mapped[str | None] = mapped_column(String(32), comment="状态")
     priority: Mapped[str | None] = mapped_column(String(32), comment="优先级")
     sort_order: Mapped[int | None] = mapped_column(Integer, comment="排序值")
@@ -80,7 +83,10 @@ class DiscoveryWorkbench(Base):
             "harvest_date": self.harvest_date,
             "boost_date": self.boost_date,
             "boost_antigen": self.boost_antigen,
+            "boost_cells": self.boost_cells,
             "owner": self.owner,
+            "immune_owner": self.immune_owner,
+            "cell_collector": self.cell_collector,
             "status": self.status,
             "priority": self.priority,
             "sort_order": self.sort_order,

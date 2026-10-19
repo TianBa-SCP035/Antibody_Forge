@@ -48,7 +48,7 @@ TARGET_FIELDS = tuple(column.key for column in Target.__table__.columns)
 
 def get_target_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     page = max(_to_int(data.get("page"), 1), 1)
-    limit = min(max(_to_int(data.get("limit"), 20), 1), 100)
+    limit = min(max(_to_int(data.get("limit"), 20), 1), 500)
     conditions = []
 
     if not _to_bool(data.get("include_inactive")):

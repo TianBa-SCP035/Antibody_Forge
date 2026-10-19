@@ -424,7 +424,7 @@
                 :current-page="listQuery.page"
                 :page-size="listQuery.limit"
                 :total="total"
-                :page-sizes="[20, 50, 100, 200]"
+                :page-sizes="[20, 50, 100, 200, 500]"
                 layout="total, sizes, prev, pager, next, jumper"
                 @size-change="handleSizeChange"
                 @current-change="handleCurrentChange"
@@ -488,7 +488,6 @@ import {
   ElOption,
   ElPagination,
   ElRow,
-  ElSelect,
   ElTable,
   ElTableColumn,
 } from 'element-plus'
@@ -534,7 +533,6 @@ export default {
     ElOption,
     ElPagination,
     ElRow,
-    ElSelect,
     ElTable,
     ElTableColumn,
     AdvancedOpsBar,

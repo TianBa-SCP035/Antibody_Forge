@@ -458,7 +458,7 @@
         v-model:current-page="listQuery.page"
         v-model:page-size="listQuery.limit"
         :total="total"
-        :page-sizes="[20, 50, 100, 200]"
+        :page-sizes="[20, 50, 100, 200, 500]"
         layout="total, sizes, prev, pager, next, jumper"
         class="list-pagination"
         @size-change="handleFilter"
@@ -754,7 +754,7 @@ import {
   cleanFieldText,
   coerceWorkbenchViewMode,
   createColumnOrder,
-  parseClipboardGrid,
+  readClipboardGrid,
   EXCEL_VIEW,
   searchWorkbenchTargets,
   splitTargetNames,
@@ -1303,9 +1303,12 @@ export default {
     onSheetContextMenu(event) {
       const headerHit = this.hitSheetHeader(event.target)
       const column = headerHit ? this.sheetColumns[headerHit.colIndex] : null
-      if (column?.key !== 'library_code') return
-      event.preventDefault()
-      this.showLibraryCodesInCreatedOrder()
+      if (column?.key === 'library_code') {
+        event.preventDefault()
+        this.showLibraryCodesInCreatedOrder()
+        return
+      }
+      this.onSheetWrapContextMenu(event)
     },
     async showLibraryCodesInCreatedOrder() {
       if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
@@ -2238,13 +2241,15 @@ export default {
     async onSheetPaste(event) {
       if (!this.canEdit) return
       if (event.target?.closest?.('input, textarea')) return
-      const text = event.clipboardData?.getData('text/plain') || ''
-      if (!text) return
-      if (!text.includes('\t') && !text.includes('\n') && !this.sheetRange) return
+      const plain = event.clipboardData?.getData('text/plain') || ''
+      const grid = readClipboardGrid(event.clipboardData)
+      if (!grid.length) return
+      const singleValue = grid.length === 1
+        && grid[0].length === 1
+        && !String(grid[0][0]).includes('\n')
+      if (!plain.includes('\t') && !plain.includes('\n') && singleValue && !this.sheetRange) return
       event.preventDefault()
       if (!await this.flushPendingSheetEdits()) return
-      const grid = parseClipboardGrid(text)
-      if (!grid.length) return
       const columns = allSheetColumns()
       const labelToKey = new Map(columns.map((column) => [column.label, column.key]))
       const headerKeys = grid[0].map((cell) => labelToKey.get(String(cell || '').trim()) || null)

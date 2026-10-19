@@ -1,6 +1,6 @@
 import re
 import unittest
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 from sqlalchemy import BigInteger, create_engine
@@ -73,6 +73,65 @@ class DiscoveryWorkbenchIdTests(unittest.TestCase):
             second = service.save(self.db, {"project_code": "B"})
         self.assertEqual(first["discovery_id"], "DSC-260917-AAAAAA")
         self.assertEqual(second["discovery_id"], "DSC-260917-BBBBBB")
+
+    def test_schedule_people_and_antigen_options(self):
+        saved = service.save(
+            self.db,
+            {
+                "immune_owner": "张三",
+                "cell_collector": "李四",
+                "boost_cells": "脾细胞\n淋巴结",
+                "immune_antigen": "蛋白甲\n蛋白乙",
+                "boost_antigen": "自填抗原",
+                "screening_antigen": "筛A\n筛B",
+            },
+        )
+        self.assertEqual(saved["immune_owner"], "张三")
+        self.assertEqual(saved["cell_collector"], "李四")
+        self.assertEqual(saved["boost_cells"], "脾细胞\n淋巴结")
+        self.assertEqual(saved["immune_antigen"], "蛋白甲\n蛋白乙")
+        options = service.get_options(self.db)
+        self.assertEqual(options["immune_antigens"], ["蛋白乙", "蛋白甲"])
+        self.assertEqual(options["boost_antigens"], ["自填抗原"])
+        self.assertEqual(options["screening_antigens"], ["筛A", "筛B"])
+        self.assertEqual(options["immune_owners"], ["张三"])
+        self.assertEqual(options["cell_collectors"], ["李四"])
+
+    def test_mouse_category_is_joined_text_and_harvest_shifts_boost(self):
+        harvest = date.today() + timedelta(days=30)
+        saved = service.save(
+            self.db,
+            {
+                "mouse_strain_category": "RN+RL",
+                "harvest_date": harvest.isoformat(),
+                "boost_date": "2020-01-01",
+            },
+        )
+        self.assertEqual(saved["mouse_strain_category"], "RL,RN")
+        self.assertEqual(saved["harvest_date"], harvest.isoformat())
+        self.assertEqual(saved["boost_date"], (harvest - timedelta(days=5)).isoformat())
+        self.assertEqual(saved["status"], "待冲击")
+        self.assertEqual(service.get_list(self.db, {"mouse_strain_category": "RN"})["total"], 1)
+        self.assertEqual(service.get_list(self.db, {"mouse_strain_category": "RN-KO"})["total"], 0)
+
+        adjusted = service.save(self.db, {"id": saved["id"], "boost_date": (harvest - timedelta(days=1)).isoformat()})
+        self.assertEqual(adjusted["boost_date"], (harvest - timedelta(days=1)).isoformat())
+        self.assertEqual(adjusted["harvest_date"], harvest.isoformat())
+
+        untouched = service.save(self.db, {"id": saved["id"], "harvest_date": harvest.isoformat()})
+        self.assertEqual(untouched["boost_date"], (harvest - timedelta(days=1)).isoformat())
+
+        cleared = service.save(self.db, {"id": saved["id"], "harvest_date": ""})
+        self.assertIsNone(cleared["harvest_date"])
+        self.assertIsNone(cleared["boost_date"])
+        self.assertEqual(cleared["status"], "规划中")
+
+        wrapped = service.save(self.db, {"harvest_date": "2026-03-01", "status": "规划中"})
+        self.assertEqual(wrapped["boost_date"], "2026-02-24")
+        self.assertEqual(wrapped["status"], "规划中")
+
+        with self.assertRaisesRegex(ValueError, "归类鼠型"):
+            service.save(self.db, {"mouse_strain_category": "自定义"})
 
     def test_keyword_can_find_system_discovery_id(self):
         saved = service.save(self.db, {"project_code": "P1"})

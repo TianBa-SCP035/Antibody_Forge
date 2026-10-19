@@ -8,6 +8,17 @@ SCREENING_METHOD_OPTIONS = (
     SCREENING_METHOD_BEACON,
     SCREENING_METHOD_NGS,
 )
+MOUSE_STRAIN_CATEGORY_OPTIONS = (
+    "RL-KO",
+    "RN-KO",
+    "RM-KO",
+    "RL",
+    "RN",
+    "RM",
+    "RN-VM",
+    "RN-VR",
+    "RN-VM-KO",
+)
 
 PLAN_STATUS_PLANNING = "规划中"
 PLAN_STATUS_WAIT_BOOST = "待冲击"

@@ -192,9 +192,6 @@
             v-model="listQuery.mouse_strain_category"
             placeholder="归类鼠型"
             clearable
-            filterable
-            allow-create
-            default-first-option
             class="filter-select"
             @change="handleFilter"
           >
@@ -393,6 +390,7 @@
         @compositionend.capture="onSheetCompositionEnd"
         @mousedown="onSheetWrapMouseDown"
         @mouseover="onSheetWrapMouseOver"
+        @contextmenu="onSheetWrapContextMenu"
         @selectstart="onSheetSelectStart"
       >
         <div ref="sheetTableStage" class="sheet-table-stage">
@@ -469,14 +467,30 @@
                 :formatter="sheetFormatter(column)"
               >
                 <template #edit="{ row }">
-                  <div v-if="sheetEditSource === 'dblclick'" class="sheet-picker-editor">
+                  <ListFilterSelect
+                    v-if="column.key === 'mouse_strain_category' && sheetEditSource === 'dblclick'"
+                    :model-value="splitCategories(row.mouse_strain_category)"
+                    class="sheet-category-select"
+                    popper-class="vxe-table--ignore-clear"
+                    clearable
+                    @change="onCategoryChange(row, $event)"
+                    @visible-change="onCategorySheetVisible"
+                  >
+                    <el-option
+                      v-for="item in mouseStrainCategoryOptions"
+                      :key="item"
+                      :label="item"
+                      :value="item"
+                    />
+                  </ListFilterSelect>
+                  <div v-else-if="sheetEditSource === 'dblclick'" class="sheet-picker-editor">
                     <span class="sheet-picker-editor__value">
                       {{ sheetPickerDisplayValue(row, column) }}
                     </span>
                     <VxeSelect
                       v-model="row[column.key === 'screening_methods' ? 'screening_method_list' : column.key]"
                       class-name="sheet-grid-editor sheet-picker-control"
-                      :filterable="isUserColumn(column) || column.edit === 'suggest'"
+                      :filterable="isUserColumn(column)"
                       :multiple="column.edit === 'multi'"
                       :options="sheetChoiceSelectOptions(column)"
                       :popup-config="{
@@ -530,7 +544,7 @@
           :total="total"
           v-model:current-page="listQuery.page"
           v-model:page-size="listQuery.limit"
-          :page-sizes="[20, 50, 100, 200]"
+          :page-sizes="[20, 50, 100, 200, 500]"
           @current-change="getList"
           @size-change="handleFilter"
         />
@@ -628,14 +642,28 @@
                   clearable
                   @change="persistRow(editingRow, field.key)"
                 />
+                <ListFilterSelect
+                  v-else-if="field.type === 'csv'"
+                  :model-value="splitCategories(editingRow[field.key])"
+                  clearable
+                  placeholder="选择归类鼠型"
+                  style="width: 100%;"
+                  :disabled="!canEdit"
+                  @change="onCategoryChange(editingRow, $event)"
+                >
+                  <el-option
+                    v-for="item in fieldOptions(field)"
+                    :key="item"
+                    :label="item"
+                    :value="item"
+                  />
+                </ListFilterSelect>
                 <el-select
-                  v-else-if="field.type === 'select' || field.type === 'suggest'"
+                  v-else-if="field.type === 'select'"
                   v-model="editingRow[field.key]"
                   class="drawer-select"
                   :class="drawerSelectClass(field)"
-                  :clearable="field.type === 'suggest' || field.key === 'study_type'"
-                  :filterable="field.type === 'suggest'"
-                  :allow-create="field.type === 'suggest'"
+                  :clearable="field.key === 'study_type'"
                   default-first-option
                   style="width: 100%;"
                   :disabled="!canEdit"
@@ -658,11 +686,42 @@
                   align="start"
                   @change="persistRow(editingRow, 'screening_methods')"
                 />
+                <div v-else-if="field.type === 'lines'" class="line-field">
+                  <el-input
+                    v-model="editingRow[field.key]"
+                    type="textarea"
+                    resize="none"
+                    :autosize="{ minRows: 1, maxRows: 4 }"
+                    :disabled="!canEdit"
+                    @focus="openLineSuggest(field, $event)"
+                    @input="placeLineSuggest($event)"
+                    @blur="closeLineSuggest(field)"
+                  />
+                  <teleport to="body">
+                    <div
+                      v-if="lineOpen === field.key && lineSuggestions(field).length"
+                      class="line-suggest"
+                      :style="lineSuggestStyle"
+                      @mousedown.prevent
+                    >
+                      <button
+                        v-for="item in lineSuggestions(field)"
+                        :key="item"
+                        type="button"
+                        class="line-suggest-item"
+                        @mousedown.prevent="fillAntigenLine(field, item)"
+                      >
+                        {{ item }}
+                      </button>
+                    </div>
+                  </teleport>
+                </div>
                 <el-input
                   v-else-if="field.type === 'textarea'"
                   v-model="editingRow[field.key]"
                   type="textarea"
                   :rows="field.sync ? 1 : 2"
+                  :resize="field.resize"
                   :autosize="field.sync ? false : { minRows: 1, maxRows: 4 }"
                   :disabled="!canEdit"
                   @input="field.sync && syncDrawerTextareas()"
@@ -729,7 +788,7 @@ import {
   cleanFieldText,
   coerceWorkbenchViewMode,
   createColumnOrder,
-  parseClipboardGrid,
+  readClipboardGrid,
   EXCEL_VIEW,
   searchWorkbenchTargets,
   splitTargetNames,
@@ -808,9 +867,28 @@ const STRING_MAX = {
   positive_cell_count: 64,
   plate_nos: 512,
   boost_antigen: 255,
+  boost_cells: 255,
+  immune_owner: 64,
+  cell_collector: 64,
   remark: 500,
 }
-const BREAK_FIELDS = new Set(['mouse_nos', 'plate_nos', 'serum_titer', 'positive_cell_count', 'remark'])
+const BREAK_FIELDS = new Set([
+  'mouse_nos',
+  'plate_nos',
+  'serum_titer',
+  'positive_cell_count',
+  'immune_antigen',
+  'screening_antigen',
+  'boost_antigen',
+  'boost_cells',
+  'remark',
+])
+const USER_OPTION_LIST = {
+  owner: 'owners',
+  pm: 'pms',
+  immune_owner: 'immune_owners',
+  cell_collector: 'cell_collectors',
+}
 const STATUS_VIEWS = [
   { key: '', label: '全部安排', hint: '本台全部发现安排', valueKey: 'all', tone: 'all', step: '00' },
   { key: 'harvest', label: '待剖鼠', hint: '规划中、待冲击与待剖鼠', valueKey: 'harvest', tone: 'planned', step: '01' },
@@ -843,7 +921,7 @@ const EDITOR_SECTIONS = [
   {
     title: '小鼠',
     fields: [
-      { key: 'mouse_strain_category', label: '归类鼠型', type: 'suggest', options: MOUSE_STRAIN_CATEGORY_OPTIONS },
+      { key: 'mouse_strain_category', label: '归类鼠型', type: 'csv', options: MOUSE_STRAIN_CATEGORY_OPTIONS },
       { key: 'mouse_strain', label: '小鼠品系', type: 'text' },
       { key: 'cage_position', label: '笼位', type: 'text' },
       { key: 'mouse_count', label: '只数', type: 'text' },
@@ -854,8 +932,8 @@ const EDITOR_SECTIONS = [
     title: '筛选',
     fields: [
       { key: 'screening_methods', label: '筛选方式', type: 'multi', wide: true },
-      { key: 'immune_antigen', label: '免疫抗原', type: 'text' },
-      { key: 'screening_antigen', label: '筛选抗原', type: 'suggest', optionsKey: 'screening_antigens' },
+      { key: 'immune_antigen', label: '免疫抗原', type: 'textarea', wide: true, resize: 'none' },
+      { key: 'screening_antigen', label: '筛选抗原', type: 'textarea', wide: true, resize: 'none' },
       { key: 'serum_titer', label: '血清效价', type: 'textarea', sync: true },
       { key: 'positive_cell_count', label: '阳性细胞数', type: 'textarea', sync: true },
       { key: 'plate_nos', label: '板号', type: 'textarea', wide: true },
@@ -866,7 +944,10 @@ const EDITOR_SECTIONS = [
     fields: [
       { key: 'harvest_date', label: '剖鼠日期', type: 'date' },
       { key: 'boost_date', label: '冲击日期', type: 'date' },
-      { key: 'boost_antigen', label: '冲击免抗原', type: 'suggest', optionsKey: 'boost_antigens', wide: true },
+      { key: 'immune_owner', label: '免疫负责人', type: 'user' },
+      { key: 'cell_collector', label: '细胞收集人', type: 'user' },
+      { key: 'boost_antigen', label: '冲击免抗原', type: 'lines', wide: true },
+      { key: 'boost_cells', label: '冲击免细胞', type: 'textarea', wide: true, resize: 'none' },
       { key: 'remark', label: '备注', type: 'textarea', wide: true },
     ],
   },
@@ -876,13 +957,15 @@ const SHEET_COLUMNS = [
   { key: 'priority', label: '优先级', edit: 'select', width: 100 },
   { key: 'status', label: '状态', edit: 'select', width: 110 },
   { key: 'owner', label: '负责人', edit: 'select', width: 90 },
+  { key: 'immune_owner', label: '免疫负责人', edit: 'select', width: 110 },
+  { key: 'cell_collector', label: '细胞收集人', edit: 'select', width: 110 },
   { key: 'project_code', label: '项目编号', edit: 'text', minWidth: 120 },
   { key: 'experiment_id', label: '实验号', edit: 'text', minWidth: 130 },
   { key: 'target_name', label: '靶点名称', edit: 'target' },
   { key: 'target_codes', label: '靶点编号', edit: 'target', minWidth: 140 },
   { key: 'pm', label: 'PM', edit: 'select', width: 90 },
   { key: 'study_type', label: '课题类型', edit: 'select' },
-  { key: 'mouse_strain_category', label: '归类鼠型', edit: 'suggest' },
+  { key: 'mouse_strain_category', label: '归类鼠型', edit: 'multi', minWidth: 140 },
   { key: 'mouse_strain', label: '小鼠品系', edit: 'text', minWidth: 120 },
   { key: 'cage_position', label: '笼位', edit: 'text', minWidth: 100 },
   { key: 'mouse_count', label: '只数', edit: 'text', width: 80 },
@@ -891,11 +974,12 @@ const SHEET_COLUMNS = [
   { key: 'immune_antigen', label: '免疫抗原', edit: 'text', minWidth: 140 },
   { key: 'screening_methods', label: '筛选方式', edit: 'multi', minWidth: 160 },
   { key: 'positive_cell_count', label: '阳性细胞数', edit: 'text', minWidth: 110 },
-  { key: 'screening_antigen', label: '筛选抗原', edit: 'suggest', minWidth: 140 },
+  { key: 'screening_antigen', label: '筛选抗原', edit: 'text', minWidth: 140 },
   { key: 'plate_nos', label: '板号', edit: 'text', minWidth: 140 },
   { key: 'harvest_date', label: '剖鼠日期', edit: 'date', width: 120 },
   { key: 'boost_date', label: '冲击日期', edit: 'date', width: 120 },
-  { key: 'boost_antigen', label: '冲击免抗原', edit: 'suggest', minWidth: 140 },
+  { key: 'boost_antigen', label: '冲击免抗原', edit: 'text', minWidth: 140 },
+  { key: 'boost_cells', label: '冲击免细胞', edit: 'text', minWidth: 140 },
   { key: 'remark', label: '备注', edit: 'text', minWidth: 180 },
 ]
 const SHEET_COLUMN_ORDER = createColumnOrder(
@@ -912,12 +996,14 @@ const WORKBENCH_COLUMNS = [
   { key: 'target_name', label: '靶点名称', defaultVisible: true, prop: 'target_name', minWidth: 100, showOverflowTooltip: true },
   { key: 'mouse_strain_category', label: '归类鼠型', defaultVisible: true, prop: 'mouse_strain_category', minWidth: 100, showOverflowTooltip: true },
   { key: 'screening_methods', label: '筛选方式', defaultVisible: true, minWidth: 145 },
-  { key: 'screening_antigen', label: '筛选抗原', defaultVisible: true, prop: 'screening_antigen', minWidth: 120, showOverflowTooltip: true },
-  { key: 'boost_antigen', label: '冲击抗原', defaultVisible: true, prop: 'boost_antigen', minWidth: 120, showOverflowTooltip: true },
+  { key: 'screening_antigen', label: '筛选抗原', defaultVisible: true, prop: 'screening_antigen', minWidth: 120, showOverflowTooltip: true, keepLineBreaks: true },
+  { key: 'boost_antigen', label: '冲击抗原', defaultVisible: true, prop: 'boost_antigen', minWidth: 120, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'harvest_date', label: '剖鼠日期', defaultVisible: true, minWidth: 135, className: 'date-column-cell' },
   { key: 'boost_date', label: '冲击日期', defaultVisible: true, minWidth: 135, className: 'date-column-cell' },
   { key: 'remark', label: '备注', defaultVisible: true, prop: 'remark', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'owner', label: '负责人', prop: 'owner', minWidth: 90, showOverflowTooltip: true },
+  { key: 'immune_owner', label: '免疫负责人', prop: 'immune_owner', minWidth: 110, showOverflowTooltip: true },
+  { key: 'cell_collector', label: '细胞收集人', prop: 'cell_collector', minWidth: 110, showOverflowTooltip: true },
   { key: 'experiment_id', label: '实验号', prop: 'experiment_id', minWidth: 130, showOverflowTooltip: true },
   { key: 'target_codes', label: '靶点编号', prop: 'target_codes', minWidth: 140, showOverflowTooltip: true },
   { key: 'study_type', label: '课题类型', prop: 'study_type', minWidth: 110, showOverflowTooltip: true },
@@ -926,7 +1012,8 @@ const WORKBENCH_COLUMNS = [
   { key: 'mouse_count', label: '只数', prop: 'mouse_count', minWidth: 80, showOverflowTooltip: true },
   { key: 'mouse_nos', label: '鼠号', prop: 'mouse_nos', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'serum_titer', label: '血清效价', prop: 'serum_titer', minWidth: 110, showOverflowTooltip: true, keepLineBreaks: true },
-  { key: 'immune_antigen', label: '免疫抗原', prop: 'immune_antigen', minWidth: 140, showOverflowTooltip: true },
+  { key: 'immune_antigen', label: '免疫抗原', prop: 'immune_antigen', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
+  { key: 'boost_cells', label: '冲击免细胞', prop: 'boost_cells', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'positive_cell_count', label: '阳性细胞数', prop: 'positive_cell_count', minWidth: 110, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'plate_nos', label: '板号', prop: 'plate_nos', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'actions', label: '操作', defaultVisible: true, width: 240, className: 'action-column-cell', fixed: 'right' },
@@ -952,6 +1039,9 @@ const SHEET_HEADER_ALIASES = Object.freeze({
   小鼠品系: 'mouse_strain',
   品系: 'mouse_strain',
   负责人: 'owner',
+  免疫负责人: 'immune_owner',
+  细胞收集人: 'cell_collector',
+  冲击免细胞: 'boost_cells',
 })
 let lastViewMode = WORKBENCH_VIEW
 const EDITABLE_FIELDS = [
@@ -962,6 +1052,8 @@ const EDITABLE_FIELDS = [
   'study_type',
   'pm',
   'owner',
+  'immune_owner',
+  'cell_collector',
   'mouse_strain_category',
   'mouse_strain',
   'cage_position',
@@ -976,11 +1068,19 @@ const EDITABLE_FIELDS = [
   'harvest_date',
   'boost_date',
   'boost_antigen',
+  'boost_cells',
   'remark',
   'status',
   'priority',
   'sort_order',
 ]
+
+function antigenLines(value) {
+  return String(value || '')
+    .split(/\n+|、+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
 
 function splitCsv(value) {
   return String(value || '')
@@ -988,6 +1088,16 @@ function splitCsv(value) {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function splitCategories(value) {
+  const tokens = Array.isArray(value) ? value : String(value || '').split(/[,，、+]/)
+  return tokens.map((item) => String(item || '').trim()).filter(Boolean)
+}
+
+function joinCategories(value) {
+  const tokens = new Set(splitCategories(value))
+  return MOUSE_STRAIN_CATEGORY_OPTIONS.filter((item) => tokens.has(item)).join(',')
 }
 
 function emptyQuery() {
@@ -1079,10 +1189,14 @@ export default {
       optionLists: {
         pms: [],
         owners: [],
+        immune_owners: [],
+        cell_collectors: [],
         immune_antigens: [],
-        screening_antigens: [],
         boost_antigens: [],
+        screening_antigens: [],
       },
+      lineOpen: '',
+      lineSuggestStyle: {},
       screeningMethodOptions: [...SCREENING_METHOD_OPTIONS],
       screeningMethodTones: { ...SCREENING_METHOD_TONES },
       planStatusOptions: [...PLAN_STATUS_OPTIONS],
@@ -1335,6 +1449,7 @@ export default {
         keys.add('target_name')
       }
       if (keys.has('screening_methods')) keys.add('screening_method_list')
+      if (keys.has('harvest_date')) keys.add('boost_date')
       if (keys.has('boost_date') || keys.has('harvest_date')) keys.add('status')
       return keys
     },
@@ -1397,10 +1512,6 @@ export default {
     uniq(values) {
       return uniqueNames(values)
     },
-    mergedOptions(key) {
-      const extra = this.list.map((row) => row[key]).filter(Boolean)
-      return this.uniq([...(this.optionLists[key] || []), ...extra])
-    },
     syncDrawerControlTooltip,
     drawerSelectClass(field) {
       if (field?.key === 'status') {
@@ -1415,25 +1526,88 @@ export default {
       if (field?.options) return field.options
       if (field?.key === 'status') return this.planStatusOptions
       if (field?.key === 'priority') return this.priorityOptions
-      if (field?.optionsKey) {
-        return this.uniq([...this.mergedOptions(field.optionsKey), this.editingRow?.[field.key]])
-      }
       return []
     },
     usedUserOptions(field) {
-      const named = field?.key === 'owner' ? this.optionLists.owners : this.optionLists.pms
       return this.uniq([
-        ...(named || []),
+        ...(this.optionLists[USER_OPTION_LIST[field?.key]] || []),
         this.editingRow?.[field?.key],
       ])
     },
+    lineSuggestions(field) {
+      const options = this.uniq(antigenLines(this.editingRow?.immune_antigen))
+      const line = String(this.editingRow?.[field.key] || '').split('\n').pop().trim().toLowerCase()
+      if (!line) return options
+      if (options.some((item) => item.toLowerCase() === line)) return []
+      return options.filter((item) => item.toLowerCase().includes(line))
+    },
+    placeLineSuggest(event) {
+      const box = event?.target?.closest?.('.line-field')?.getBoundingClientRect()
+      if (!box) return
+      const gap = 6
+      const spaceBelow = window.innerHeight - box.bottom
+      const openUp = spaceBelow < 160 && box.top > spaceBelow
+      const maxHeight = Math.min(220, (openUp ? box.top : spaceBelow) - gap - 8)
+      this.lineSuggestStyle = {
+        left: `${box.left}px`,
+        width: `${box.width}px`,
+        maxHeight: `${Math.max(maxHeight, 80)}px`,
+        top: openUp ? 'auto' : `${box.bottom + gap}px`,
+        bottom: openUp ? `${window.innerHeight - box.top + gap}px` : 'auto',
+      }
+    },
+    openLineSuggest(field, event) {
+      this.placeLineSuggest(event)
+      this.lineOpen = field.key
+    },
+    closeLineSuggest(field) {
+      if (this.lineOpen === field.key) this.lineOpen = ''
+      this.persistRow(this.editingRow, field.key)
+    },
+    fillAntigenLine(field, value) {
+      const picked = String(value || '').trim()
+      if (!picked || !this.editingRow) return
+      const lines = String(this.editingRow[field.key] || '').split('\n')
+      lines[lines.length - 1] = picked
+      this.editingRow[field.key] = lines.join('\n')
+      this.lineOpen = field.key
+    },
     isUserColumn(column) {
-      return column?.key === 'pm' || column?.key === 'owner'
+      return Object.prototype.hasOwnProperty.call(USER_OPTION_LIST, column?.key)
     },
     isSheetChoiceColumn(column) {
-      return column?.edit === 'multi'
-        || column?.edit === 'suggest'
-        || column?.edit === 'select'
+      return column?.edit === 'multi' || column?.edit === 'select'
+    },
+    splitCategories,
+    categorySheetSelect() {
+      return document.querySelector('.sheet-category-select')?.__vueParentComponent?.proxy
+    },
+    onCategoryChange(row, values) {
+      row.mouse_strain_category = joinCategories(values) || null
+      if (this.sheetEditSource === 'dblclick') return
+      this.persistRow(row, 'mouse_strain_category')
+    },
+    onCategorySheetVisible(visible) {
+      if (visible) return
+      this.$nextTick(() => {
+        if (this.categorySheetSelect()?.expanded) return
+        this.$refs.sheetTable?.clearEdit?.()
+      })
+    },
+    openSheetEditorPanel(row, key) {
+      if (key !== 'mouse_strain_category') {
+        workbenchExcelMixin.methods.openSheetEditorPanel.call(this, row, key)
+        return
+      }
+      const open = () => {
+        const select = this.categorySheetSelect()
+        if (!select) return false
+        select.expanded = true
+        return true
+      }
+      this.$nextTick(() => {
+        if (!open()) this.$nextTick(open)
+      })
     },
     formatCodesText(value) {
       return uniqueTargetCodes(value).join(',')
@@ -1506,7 +1680,7 @@ export default {
       }
       if (this.isUserColumn(column)) {
         return this.uniq([
-          ...(column.key === 'owner' ? (this.optionLists.owners || []) : (this.optionLists.pms || [])),
+          ...(this.optionLists[USER_OPTION_LIST[column.key]] || []),
           ...this.allUserOptions,
         ]).map((item) => ({
           label: item,
@@ -1519,14 +1693,7 @@ export default {
           value: item,
         }))
       }
-      if (column.key === 'mouse_strain_category') {
-        return this.mouseStrainCategoryOptions.map((item) => ({ label: item, value: item }))
-      }
-      const optionKey = {
-        screening_antigen: 'screening_antigens',
-        boost_antigen: 'boost_antigens',
-      }[column.key]
-      return this.mergedOptions(optionKey || column.key).map((item) => ({ label: item, value: item }))
+      return []
     },
     sheetChoiceDirectValue(row, column) {
       if (column.key === 'screening_methods') return this.sheetDirectTextValue(row, column.key)
@@ -1693,7 +1860,7 @@ export default {
       if (!this.drawerVisible) return
       const target = event.target
       if (!(target instanceof Element)) return
-      if (target.closest('.el-drawer, .el-popper, .el-select-dropdown, .el-picker-panel, .el-message-box, .el-overlay-message-box, .sheet-picker-popup')) {
+      if (target.closest('.el-drawer, .el-popper, .el-select-dropdown, .el-picker-panel, .el-message-box, .el-overlay-message-box, .sheet-picker-popup, .line-suggest')) {
         return
       }
       if (target.closest('.el-table__row, .vxe-body--row, .action-cell')) {
@@ -1726,9 +1893,11 @@ export default {
         }
         this.optionLists.pms = this.uniq(data?.pms || [])
         this.optionLists.owners = this.uniq(data?.owners || [])
+        this.optionLists.immune_owners = this.uniq(data?.immune_owners || [])
+        this.optionLists.cell_collectors = this.uniq(data?.cell_collectors || [])
         this.optionLists.immune_antigens = this.uniq(data?.immune_antigens || [])
-        this.optionLists.screening_antigens = this.uniq(data?.screening_antigens || [])
         this.optionLists.boost_antigens = this.uniq(data?.boost_antigens || [])
+        this.optionLists.screening_antigens = this.uniq(data?.screening_antigens || [])
       } catch (error) {
         notifyApiError(error, { messages: { default: '加载发现工作台选项失败' } })
       }
@@ -2038,11 +2207,21 @@ export default {
       if (this.isUserColumn({ key })) {
         const text = String(raw || '').trim()
         if (!text) return { ok: true, value: null }
-        const named = key === 'owner' ? this.optionLists.owners : this.optionLists.pms
-        return this.matchSheetOption(this.uniq([...(named || []), ...this.allUserOptions]), text)
+        return this.matchSheetOption(
+          this.uniq([...(this.optionLists[USER_OPTION_LIST[key]] || []), ...this.allUserOptions]),
+          text,
+        )
       }
       if (key === 'mouse_count') return coerceOptionalNonnegInt(raw)
       if (DATE_KEYS.includes(key)) return this.normalizeSheetDate(raw)
+      if (key === 'mouse_strain_category') {
+        const tokens = splitCategories(raw)
+        if (!tokens.length) return { ok: true, value: null }
+        if (tokens.some((token) => !MOUSE_STRAIN_CATEGORY_OPTIONS.includes(token))) {
+          return { ok: false, reason: 'option' }
+        }
+        return { ok: true, value: joinCategories(tokens) }
+      }
       if (key === 'screening_methods') {
         const options = this.screeningMethodOptions
         const tokens = splitCsv(Array.isArray(raw) ? raw.join(',') : raw)
@@ -2208,13 +2387,15 @@ export default {
     async onSheetPaste(event) {
       if (!this.canEdit) return
       if (event.target?.closest?.('input, textarea')) return
-      const text = event.clipboardData?.getData('text/plain') || ''
-      if (!text) return
-      if (!text.includes('\t') && !text.includes('\n') && !this.sheetRange) return
+      const plain = event.clipboardData?.getData('text/plain') || ''
+      const grid = readClipboardGrid(event.clipboardData)
+      if (!grid.length) return
+      const singleValue = grid.length === 1
+        && grid[0].length === 1
+        && !String(grid[0][0]).includes('\n')
+      if (!plain.includes('\t') && !plain.includes('\n') && singleValue && !this.sheetRange) return
       event.preventDefault()
       if (!await this.flushPendingSheetEdits()) return
-      const grid = parseClipboardGrid(text)
-      if (!grid.length) return
 
       const labelToKey = new Map([
         ...Object.entries(SHEET_HEADER_ALIASES),
@@ -2693,6 +2874,9 @@ export default {
   min-width: 0;
   justify-content: flex-start;
 }
+.sheet-category-select {
+  width: 100%;
+}
 @media (max-width: 1100px) {
   .lifecycle-nav {
     grid-template-columns: repeat(5, minmax(130px, 1fr));
@@ -2741,5 +2925,39 @@ export default {
 }
 .workbench-drawer .priority-select.status-tone-king .el-select__selected-item {
   color: #6f4d9c;
+}
+.line-field {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+.line-field .el-textarea {
+  width: 100%;
+}
+.line-suggest {
+  position: fixed;
+  z-index: 4100;
+  overflow: auto;
+  padding: 6px 0;
+  background: var(--el-bg-color-overlay);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--el-border-radius-base);
+  box-shadow: var(--el-box-shadow-light);
+}
+.line-suggest-item {
+  display: block;
+  width: 100%;
+  height: 34px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--el-text-color-regular);
+  font-size: 14px;
+  line-height: 34px;
+  text-align: left;
+  cursor: pointer;
+}
+.line-suggest-item:hover {
+  background: var(--el-fill-color-light);
 }
 </style>

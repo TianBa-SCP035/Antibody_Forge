@@ -615,12 +615,10 @@ export default {
       )
       if (editor) return
       if (event.key === 'Delete') {
-        const row = this.list[this.pasteAnchor?.rowIndex]
-        const key = this.pasteAnchor?.colKey
-        if (row && key && this.isSheetCellLocked(row, key)) {
-          event.preventDefault()
-          event.stopPropagation()
-        }
+        if (!this.sheetRange) return
+        event.preventDefault()
+        event.stopPropagation()
+        this.clearSelectedSheetCells()
         return
       }
       if (
@@ -755,6 +753,29 @@ export default {
         lines.push(cells.join('\t'))
       }
       return lines.join('\n')
+    },
+    onSheetWrapContextMenu(event) {
+      if (event.target?.closest?.('input, textarea')) return
+      event.preventDefault()
+      this.clearSheetRange()
+    },
+    async clearSelectedSheetCells() {
+      if (!this.canEdit) return
+      const range = this.normalizedSheetRange()
+      if (!range) return
+      for (let rowIndex = range.r1; rowIndex <= range.r2; rowIndex += 1) {
+        const row = this.list[rowIndex]
+        if (!row) continue
+        for (let colIndex = range.c1; colIndex <= range.c2; colIndex += 1) {
+          const key = this.sheetColumns[colIndex]?.key
+          if (!key || this.isSheetCellLocked(row, key)) continue
+          if (!String(this.sheetDirectTextValue(row, key) ?? '').trim()) continue
+          this.sheetEditSource = ''
+          this.sheetEditOriginal = this.createSheetEditOriginal(row, key)
+          this.setSheetDirectValue(row, key, '')
+          await this.finishSheetEdit({ row, column: { field: key } })
+        }
+      }
     },
     onSheetCopy(event) {
       const text = this.sheetRangeTsv()

@@ -695,7 +695,7 @@
         v-model:current-page="listQuery.page"
         v-model:page-size="listQuery.limit"
         :total="total"
-        :page-sizes="[20, 50, 100, 200]"
+        :page-sizes="[20, 50, 100, 200, 500]"
         layout="total, sizes, prev, pager, next, jumper"
         class="list-pagination"
         @size-change="handleSizeChange"

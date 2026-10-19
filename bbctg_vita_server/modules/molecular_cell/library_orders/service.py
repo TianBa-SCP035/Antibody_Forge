@@ -571,7 +571,7 @@ def _page_limit(data: dict[str, Any]) -> tuple[int, int]:
         limit = int(data.get("limit", 20) or 20)
     except (TypeError, ValueError):
         page, limit = 1, 20
-    return max(page, 1), min(max(limit, 1), 200)
+    return max(page, 1), min(max(limit, 1), 500)
 
 
 def _current_status(row: MolecularLibraryOrder) -> str:

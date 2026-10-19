@@ -428,6 +428,7 @@
         @compositionend.capture="onSheetCompositionEnd"
         @mousedown="onSheetWrapMouseDown"
         @mouseover="onSheetWrapMouseOver"
+        @contextmenu="onSheetWrapContextMenu"
         @selectstart="onSheetSelectStart"
       >
         <div ref="sheetTableStage" class="sheet-table-stage">
@@ -578,7 +579,7 @@
           :total="total"
           v-model:current-page="listQuery.page"
           v-model:page-size="listQuery.limit"
-          :page-sizes="[20, 50, 100, 200]"
+          :page-sizes="[20, 50, 100, 200, 500]"
           @current-change="getList"
           @size-change="handleFilter"
         />
@@ -790,7 +791,7 @@ import {
   cleanFieldText,
   coerceWorkbenchViewMode,
   createColumnOrder,
-  parseClipboardGrid,
+  readClipboardGrid,
   EXCEL_VIEW,
   WORKBENCH_VIEW,
   syncDrawerControlTooltip,
@@ -2591,13 +2592,15 @@ export default {
     async onSheetPaste(event) {
       if (!this.canEdit) return
       if (event.target?.closest?.('input, textarea')) return
-      const text = event.clipboardData?.getData('text/plain') || ''
-      if (!text) return
-      if (!text.includes('\t') && !text.includes('\n') && !this.sheetRange) return
+      const plain = event.clipboardData?.getData('text/plain') || ''
+      const grid = readClipboardGrid(event.clipboardData)
+      if (!grid.length) return
+      const singleValue = grid.length === 1
+        && grid[0].length === 1
+        && !String(grid[0][0]).includes('\n')
+      if (!plain.includes('\t') && !plain.includes('\n') && singleValue && !this.sheetRange) return
       event.preventDefault()
       if (!await this.flushPendingSheetEdits()) return
-      const grid = parseClipboardGrid(text)
-      if (!grid.length) return
 
       const labelToKey = new Map([
         ...Object.entries(SHEET_HEADER_ALIASES),

@@ -565,6 +565,7 @@ function formatLogTargetType(log: SystemOperationLog) {
     library: '文库构建工单',
     library_detail: '文库构建工单',
     library_file: '文库质检文件',
+    primer: '引物库',
   };
   return log.target_type ? map[log.target_type] || log.target_type : '-';
 }
@@ -574,6 +575,8 @@ function formatLogTableName(name?: string) {
     molecular_library_order: '文库构建工单',
     molecular_library_result_file: '文库结果文件',
     molecular_library_result_link: '文库质检文件',
+    molecular_library_result_package: '测序包',
+    molecular_primer_index_catalog: '引物库',
   };
   return name ? map[name] || name : '-';
 }

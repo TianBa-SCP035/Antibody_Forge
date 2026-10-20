@@ -1,5 +1,5 @@
 <template>
-  <div class="titer-order-page">
+  <div class="titer-order-page" :class="{ 'is-list-table-locked': listTableLocked }">
     <AdvancedOpsBar v-model="showAdvancedOps">
       <ListFilterSelect
         v-model="listQuery.order_status"
@@ -125,11 +125,14 @@
           @change="handleFilter"
         >
           <el-option
-            v-for="item in filterOptions(allTargetOptions, targetFilterQuery)"
-            :key="item"
-            :label="item"
-            :value="item"
-          />
+            v-for="item in filteredTargetOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          >
+            <span>{{ item.label }}</span>
+            <span v-if="targetOptionExtra(item)" class="target-option-code">{{ targetOptionExtra(item) }}</span>
+          </el-option>
         </ListFilterSelect>
         <ListFilterSelect
           v-model="listQuery.assay_method"
@@ -281,6 +284,7 @@
     </section>
 
     <el-card shadow="never" class="table-card list-table-card">
+      <div ref="listTableBody" class="list-table-body">
       <div
         ref="tablePlateWrap"
         class="table-plate-wrap"
@@ -288,6 +292,7 @@
       >
         <el-table
           ref="orderTable"
+          :height="listTableHeight"
           v-loading="listLoading"
           :data="list"
           border
@@ -689,6 +694,7 @@
           </div>
         </Transition>
       </div>
+      </div>
 
       <el-pagination
         v-show="total > 0"
@@ -832,6 +838,7 @@ import {
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
 import ListFilterSelect from '#/components/ListFilterSelect.vue';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
+import { listTableLockMixin } from '#/utils/listTableLock';
 import { getSerumTiterStatusTagType, getTiterPriorityTone, mergeTiterSerumStatusOptions, TITER_PRIORITY_DEFAULT, TITER_PRIORITY_OPTIONS, TITER_SERUM_STATUS_OPTIONS } from '#/utils/serumProjectStatus';
 import { FLOW_WORK_ORDER_STATUS_OPTIONS, orderStatusTagType } from '#/utils/megaFlowWorkOrderStatus';
 import {
@@ -847,6 +854,7 @@ import {
 import { useUserStore } from '@vben/stores';
 
 import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage';
+import { filterTargetOptions, normalizeTargetOptions, targetOptionExtra as targetOptionHint } from '#/utils/targetFilterOptions';
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
 import { DISCOVERY_WORKBENCH_CREATED_KEY } from '#/api/discoveryWorkbench';
 import { canEditDiscoveryWorkbench } from '#/utils/discoveryPermission';
@@ -995,6 +1003,7 @@ const OWNER_TAG_COLORS = [
 
 export default {
   name: 'SerumTiterOrderList',
+  mixins: [listTableLockMixin],
   components: {
     ElButton,
     ElButtonGroup,
@@ -1068,6 +1077,9 @@ export default {
       return Boolean(this.plateSelectColumn)
         && Object.keys(this.plateSelectedCounts).length > 0
         && this.plateOverlayRects.length > 0;
+    },
+    filteredTargetOptions() {
+      return filterTargetOptions(this.allTargetOptions, this.targetFilterQuery);
     },
     plateSelectBubbleText() {
       const column = this.plateSelectColumn;
@@ -1681,6 +1693,9 @@ export default {
     clearFilterQuery(queryKey) {
       this[queryKey] = '';
     },
+    targetOptionExtra(item) {
+      return targetOptionHint(item, this.targetFilterQuery);
+    },
     filterOptions(dataArray, query) {
       const queryLower = (query || '').toLowerCase();
       if (!queryLower) {
@@ -1739,7 +1754,7 @@ export default {
         const meta = await fetchTiterOrderMeta(skipGlobalErrorHandler);
         this.stats = { ...DEFAULT_STATS, ...meta.stats };
         this.allOwnerOptions = meta.owners || [];
-        this.allTargetOptions = meta.targets || [];
+        this.allTargetOptions = normalizeTargetOptions(meta.targets);
         this.allAssayMethodOptions = meta.assay_methods || [];
         this.allImmuneOwnerOptions = meta.immune_owners || [];
         this.allImmuneStatusOptions = meta.immune_statuses || [];
@@ -2392,6 +2407,11 @@ export default {
 </script>
 
 <style scoped>
+.target-option-code {
+  margin-left: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
 /*
  * 尺寸维护约定（L1 页面壳子 / L2 数据区）：
  * 1. 表格卡片 → 使用 list-data-table / list-table-card 共享类

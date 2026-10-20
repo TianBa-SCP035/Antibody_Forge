@@ -40,6 +40,7 @@ export interface FlowWorkOrderSamplePlate {
   project_no: string;
   secondary_antibody: string;
   target: string;
+  target_codes?: string[];
   wells: FlowWorkOrderWell[];
 }
 

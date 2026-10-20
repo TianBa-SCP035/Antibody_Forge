@@ -464,6 +464,7 @@ export default {
         titer_order_id: this.titerOrder?.titer_order_id || '',
         project_code: this.titerOrder?.project_code || '',
         target_name: this.titerOrder?.target_name || '',
+        target_codes: Array.isArray(this.titerOrder?.target_codes) ? this.titerOrder.target_codes : [],
         cage_position: this.titerOrder?.cage_position || '',
         groups,
         mouseGroups: this.mouseGroups,

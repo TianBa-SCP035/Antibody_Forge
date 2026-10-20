@@ -285,8 +285,22 @@ export function createDefaultSamplePlate(
     project_no: '',
     secondary_antibody: defaultSecondaryAntibody(defaults.orderType),
     target: '',
+    target_codes: [] as string[],
     wells: createDefaultWells(defaults),
   };
+}
+
+function targetCodes(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value : String(value || '').split(/[,，]/);
+  const seen = new Set<string>();
+  const codes: string[] = [];
+  for (const item of raw) {
+    const text = String(item || '').trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    codes.push(text);
+  }
+  return codes;
 }
 
 function normalizeSamplePlate(
@@ -307,6 +321,7 @@ function normalizeSamplePlate(
     project_no: plate.project_no || '',
     secondary_antibody: plate.secondary_antibody || defaultSecondaryAntibody(defaults.orderType),
     target: plate.target || '',
+    target_codes: targetCodes(plate.target_codes),
     wells: plate.wells?.length ? buildFullWells(plate.wells) : createDefaultWells(defaults),
   };
 }

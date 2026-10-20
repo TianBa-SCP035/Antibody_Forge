@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from db.session import Base
 from models.discovery import DiscoveryWorkbench
+from models.target import Target
 from modules.discovery.workbench import service
 
 
@@ -23,7 +24,10 @@ DISCOVERY_ID_RE = re.compile(r"^DSC-\d{6}-[A-Z0-9]{6}$")
 class DiscoveryWorkbenchIdTests(unittest.TestCase):
     def setUp(self):
         self.engine = create_engine("sqlite+pysqlite:///:memory:")
-        Base.metadata.create_all(self.engine, tables=[DiscoveryWorkbench.__table__])
+        Base.metadata.create_all(
+            self.engine,
+            tables=[DiscoveryWorkbench.__table__, Target.__table__],
+        )
         self.Session = sessionmaker(bind=self.engine, autoflush=False, expire_on_commit=False)
         self.db = self.Session()
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="library-order-page">
+  <div class="library-order-page" :class="{ 'is-list-table-locked': listTableLocked }">
     <AdvancedOpsBar v-model="showAdvancedOps">
       <template v-if="showAdvancedOps">
         <el-input
@@ -140,25 +140,23 @@
           <el-option v-for="item in sampleSourceOptions" :key="item.value" :label="item.label" :value="item.value" />
         </ListFilterSelect>
         <ListFilterSelect
-          v-model="listQuery.target"
+          v-model="listQuery.target_name"
           class="filter-item"
           clearable
           filterable
-          remote
-          remote-show-suffix
-          :remote-method="searchTargetFilter"
-          :loading="targetFilterLoading"
-          placeholder="搜索靶点"
-          @change="onTargetFilterChange"
+          :filter-method="setTargetFilterQuery"
+          placeholder="靶点"
+          @clear="setTargetFilterQuery('')"
+          @change="handleFilter"
         >
           <el-option
-            v-for="item in targetFilterOptions"
-            :key="item.snum"
-            :label="`${item.name}（${item.snum}）`"
-            :value="item.snum"
+            v-for="item in filteredTargetOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
           >
-            <span>{{ item.name }}</span>
-            <span class="target-option-code">{{ item.snum }}</span>
+            <span>{{ item.label }}</span>
+            <span v-if="targetOptionExtra(item)" class="target-option-code">{{ targetOptionExtra(item) }}</span>
           </el-option>
         </ListFilterSelect>
         <el-date-picker
@@ -199,9 +197,11 @@
     </section>
 
     <el-card shadow="never" class="table-card list-table-card">
+      <div ref="listTableBody" class="list-table-body">
       <WorkbenchDataTable
         v-if="viewMode === 'workbench'"
         ref="workbenchTable"
+        :height="listTableHeight"
         v-loading="loading"
         storage-key="libraryConstructionWorkbench.v4"
         pin-first="source_project_code"
@@ -296,6 +296,7 @@
           <vxe-table
             :key="sheetColumnOrderKey"
             ref="sheetTable"
+            :height="listTableHeight"
             v-loading="loading"
             :data="list"
             border
@@ -472,6 +473,7 @@
           <div ref="sheetColumnDropLine" class="sheet-column-drop-line" aria-hidden="true" />
           <div ref="sheetColumnGhost" class="sheet-column-ghost" aria-hidden="true" />
         </div>
+      </div>
       </div>
 
       <el-pagination
@@ -779,6 +781,7 @@ import {
   batchSaveLibraryOrders,
   deleteLibraryOrder,
   exportLibraryOrderList,
+  fetchLibraryFilterOptions,
   fetchLibraryOrderList,
   LIBRARY_CREATED_KEY,
   saveLibraryOrder,
@@ -808,6 +811,7 @@ import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
 import LibraryResultUploadDialog from './LibraryResultUploadDialog.vue'
 import LibraryRowActions from './LibraryRowActions.vue'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
+import { listTableLockMixin } from '#/utils/listTableLock'
 import { canEditLibrary, canManageLibraryFiles, canViewLibraryDetail } from '#/utils/molecularPermission'
 import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/DiscoveryWorkbench.vue'
 import { getSerumUserName } from '#/utils/serumPermission'
@@ -860,6 +864,7 @@ import {
   WORKBENCH_COLUMNS,
 } from './libraryColumns'
 import { filterPrimerCatalog, loadPrimerCatalog } from './primerCatalogOptions'
+import { filterTargetOptions, normalizeTargetOptions, targetOptionExtra as targetOptionHint } from '#/utils/targetFilterOptions'
 
 const LIBRARY_LIST_FILTER_KEY = 'libraryConstructionList'
 
@@ -871,7 +876,6 @@ function emptyQuery() {
     library_code: '',
     source_project_code: '',
     library_batch_no: '',
-    target: '',
     target_name: '',
     study_type: '',
     status: '',
@@ -977,7 +981,7 @@ const SHEET_STRING_MAX = {
 
 export default {
   name: 'LibraryConstructionList',
-  mixins: [workbenchExcelMixin],
+  mixins: [workbenchExcelMixin, listTableLockMixin],
   components: {
     AdvancedOpsBar,
     ListFilterSelect,
@@ -1034,8 +1038,8 @@ export default {
       catalogQuery: '',
       primerCatalog: [],
       catalogLoading: false,
-      targetFilterOptions: [],
-      targetFilterLoading: false,
+      recordedTargetOptions: [],
+      targetFilterQuery: '',
       consumingCreated: false,
       createVisible: false,
       resultUploadVisible: false,
@@ -1191,12 +1195,16 @@ export default {
     sourceOptionsForType() {
       return optionsForBuild(SAMPLE_SOURCE_OPTIONS, this.editingRow?.build_type)
     },
+    filteredTargetOptions() {
+      return filterTargetOptions(this.recordedTargetOptions, this.targetFilterQuery)
+    },
   },
   created() {
     this.restoreListFilters()
     this.viewMode = coerceWorkbenchViewMode(this.viewMode)
     this.rebuildSheetColumns()
     this.loadAllUserOptions()
+    this.loadTargetFilterOptions()
     this.getList({ flushEditor: false }).finally(() => {
       this.listLoaded = true
       this.consumeCreatedQuery()
@@ -1478,7 +1486,7 @@ export default {
       this.instrumentRange = []
       this.startedRange = []
       this.finishedRange = []
-      this.targetFilterOptions = []
+      this.targetFilterQuery = ''
       this.persistListFilters()
       this.getList()
     },
@@ -1498,37 +1506,27 @@ export default {
         const saved = { ...state.listQuery }
         if (saved.keyword && !saved.library_code) saved.library_code = saved.keyword
         delete saved.keyword
+        if (saved.target) saved.target_name = ''
+        delete saved.target
         Object.assign(this.listQuery, saved)
       }
       if (Array.isArray(state.instrumentRange)) this.instrumentRange = state.instrumentRange
       if (Array.isArray(state.startedRange)) this.startedRange = state.startedRange
       if (Array.isArray(state.finishedRange)) this.finishedRange = state.finishedRange
-      if (this.listQuery.target) {
-        this.targetFilterOptions = [{
-          snum: this.listQuery.target,
-          name: this.listQuery.target_name || this.listQuery.target,
-        }]
-      }
     },
-    async searchTargetFilter(keyword) {
-      this.targetFilterLoading = true
+    setTargetFilterQuery(query) {
+      this.targetFilterQuery = query || ''
+    },
+    targetOptionExtra(item) {
+      return targetOptionHint(item, this.targetFilterQuery)
+    },
+    async loadTargetFilterOptions() {
       try {
-        const selected = this.listQuery.target ? [this.listQuery.target] : []
-        this.targetFilterOptions = await searchWorkbenchTargets(keyword, selected)
+        const data = await fetchLibraryFilterOptions()
+        this.recordedTargetOptions = normalizeTargetOptions(data?.targets)
       } catch {
-        this.targetFilterOptions = []
-      } finally {
-        this.targetFilterLoading = false
+        this.recordedTargetOptions = []
       }
-    },
-    onTargetFilterChange(code) {
-      const codes = Array.isArray(code) ? code.filter(Boolean) : (code ? [code] : [])
-      const names = codes
-        .map((item) => this.targetFilterOptions.find((option) => option.snum === item)?.name)
-        .filter(Boolean)
-      this.listQuery.target = codes.length <= 1 ? (codes[0] || '') : codes
-      this.listQuery.target_name = names.length <= 1 ? (names[0] || '') : names
-      this.handleFilter()
     },
     openColumnPicker() {
       this.$refs.workbenchTable?.openColumnPicker()
@@ -2789,8 +2787,8 @@ export default {
 }
 
 .filter-keyword {
-  flex: 2 1 250px;
-  min-width: 200px;
+  flex: 2 1 150px;
+  min-width: 100px;
 }
 
 .target-option-code {

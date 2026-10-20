@@ -60,6 +60,10 @@
 .sheet-wrap :deep(.sheet-selectable-header) {
   cursor: pointer;
 }
+.sheet-wrap :deep(.is-date-sorted .vxe-cell) {
+  color: var(--el-color-primary);
+  font-weight: 650;
+}
 .sheet-wrap :deep(.sheet-selectable-header:hover) {
   background-color: var(--el-color-primary-light-9) !important;
 }

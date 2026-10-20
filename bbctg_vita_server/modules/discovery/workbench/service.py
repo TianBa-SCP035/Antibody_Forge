@@ -3,10 +3,16 @@ import secrets
 import string
 from typing import Any
 
-from sqlalchemy import String, and_, case, cast, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from utils.filter_values import combine_any, match_any
+from utils.filter_values import (
+    catalog_names_for_pairs,
+    combine_any,
+    match_any,
+    recorded_target_clause,
+    target_select_options,
+)
 
 from models.discovery import DiscoveryWorkbench
 from modules.discovery.workbench.constants import (
@@ -448,7 +454,14 @@ def _need_boost_filter():
     )
 
 
-def _apply_list_filters(stmt, data: dict[str, Any], *, apply_view: bool = True, apply_boost: bool = True):
+def _apply_list_filters(
+    stmt,
+    data: dict[str, Any],
+    *,
+    apply_view: bool = True,
+    apply_boost: bool = True,
+    db: Session | None = None,
+):
     filters = []
     keyword = str(data.get("keyword") or "").strip()
     if keyword:
@@ -458,15 +471,20 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, apply_view: bool = True, 
                 DiscoveryWorkbench.discovery_id.like(like),
                 DiscoveryWorkbench.project_code.like(like),
                 DiscoveryWorkbench.experiment_id.like(like),
-                DiscoveryWorkbench.target_name.like(like),
-                DiscoveryWorkbench.pm.like(like),
-                DiscoveryWorkbench.owner.like(like),
-                DiscoveryWorkbench.immune_owner.like(like),
-                DiscoveryWorkbench.cell_collector.like(like),
-                DiscoveryWorkbench.remark.like(like),
-                cast(DiscoveryWorkbench.target_codes, String).like(like),
             )
         )
+    target_clause = recorded_target_clause(
+        db,
+        DiscoveryWorkbench.target_name,
+        DiscoveryWorkbench.target_codes,
+        data.get("target_name"),
+        select(DiscoveryWorkbench.target_name, DiscoveryWorkbench.target_codes),
+    )
+    if target_clause is not None:
+        filters.append(target_clause)
+    remark = _contains_filter(DiscoveryWorkbench.remark, data.get("remark"))
+    if remark is not None:
+        filters.append(remark)
     methods = _split_filter_tokens(data.get("screening_methods"))
     if methods:
         if any(token not in SCREENING_METHOD_OPTIONS for token in methods):
@@ -562,9 +580,27 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, apply_view: bool = True, 
     return stmt
 
 
+_DATE_SORT_COLUMNS = {
+    "harvest_date": DiscoveryWorkbench.harvest_date,
+    "boost_date": DiscoveryWorkbench.boost_date,
+}
+
+
 def _list_order(data: dict[str, Any] | None = None):
+    payload = data or {}
+    field = str(payload.get("sort_field") or "").strip()
+    column = _DATE_SORT_COLUMNS.get(field)
+    direction = str(payload.get("sort_dir") or "").strip()
+    if column is not None and direction in {"asc", "desc"}:
+        blank = or_(column.is_(None), column == "")
+        ordered = column.asc() if direction == "asc" else column.desc()
+        return (
+            case((blank, 1), else_=0),
+            ordered,
+            DiscoveryWorkbench.id.desc(),
+        )
     return list_order_clauses(
-        (data or {}).get("sort_field"),
+        field,
         DiscoveryWorkbench.sort_order,
         DiscoveryWorkbench.id,
     )
@@ -637,6 +673,7 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
         payload,
         apply_view=False,
         apply_boost=False,
+        db=db,
     )
     stats = {
         "all": 0,
@@ -661,8 +698,10 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
 def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     payload = data or {}
     page, limit = _page_limit(payload)
-    stmt = _apply_list_filters(select(DiscoveryWorkbench), payload)
-    total = db.scalar(_apply_list_filters(select(func.count()).select_from(DiscoveryWorkbench), payload)) or 0
+    stmt = _apply_list_filters(select(DiscoveryWorkbench), payload, db=db)
+    total = db.scalar(
+        _apply_list_filters(select(func.count()).select_from(DiscoveryWorkbench), payload, db=db)
+    ) or 0
     rows = db.scalars(
         stmt.order_by(*_list_order(payload))
         .offset((page - 1) * limit)
@@ -687,7 +726,7 @@ def _distinct_lines(db: Session, column) -> list[str]:
     return sorted(result)
 
 
-def get_options(db: Session) -> dict[str, list[str]]:
+def get_options(db: Session) -> dict[str, Any]:
     def values(*columns) -> list[str]:
         result: set[str] = set()
         for column in columns:
@@ -701,6 +740,12 @@ def get_options(db: Session) -> dict[str, list[str]]:
         "screening_methods": list(SCREENING_METHOD_OPTIONS),
         "statuses": list(PLAN_STATUS_OPTIONS),
         "priorities": list(PRIORITY_ORDER),
+        "targets": target_select_options(
+            (pairs := db.execute(
+                select(DiscoveryWorkbench.target_name, DiscoveryWorkbench.target_codes)
+            ).all()),
+            catalog_names_for_pairs(db, pairs),
+        ),
         "pms": values(DiscoveryWorkbench.pm),
         "owners": values(DiscoveryWorkbench.owner),
         "immune_owners": values(DiscoveryWorkbench.immune_owner),
@@ -874,7 +919,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]):
 
     payload = data or {}
     rows = db.scalars(
-        _apply_list_filters(select(DiscoveryWorkbench), payload).order_by(*_list_order(payload))
+        _apply_list_filters(select(DiscoveryWorkbench), payload, db=db).order_by(*_list_order(payload))
     ).all()
     items = [row.to_dict() for row in rows]
     table_rows = [

@@ -57,6 +57,14 @@ def safe_dict(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def clean_code_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        raw = value
+    else:
+        raw = str(value or "").replace("，", ",").split(",")
+    return unique_strings([clean_text(item) for item in raw])
+
+
 def unique_strings(values: list[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -217,6 +225,7 @@ def normalize_sample_plates(
                 "barcode": clean_text(plate_data.get("barcode")),
                 "project_no": clean_text(plate_data.get("project_no")),
                 "target": clean_text(plate_data.get("target")),
+                "target_codes": clean_code_list(plate_data.get("target_codes")),
                 "secondary_antibody": clean_text(plate_data.get("secondary_antibody")) or antibody_default,
                 "cell_keys": cell_keys,
                 "wells": wells,

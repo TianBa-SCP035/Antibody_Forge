@@ -16,6 +16,10 @@ export function fetchLibraryOrderList(data: any, config?: PostConfig) {
   return requestClient.post('/molecular-cell/library-orders/list', data, config);
 }
 
+export function fetchLibraryFilterOptions() {
+  return requestClient.get('/molecular-cell/library-orders/filter_options');
+}
+
 export function fetchPrimerIndexOptions(params: {
   query?: string;
   family?: string;

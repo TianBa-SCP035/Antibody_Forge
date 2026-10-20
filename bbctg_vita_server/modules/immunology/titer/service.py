@@ -11,7 +11,7 @@ from sqlalchemy import JSON, String, and_, bindparam, case, cast, func, or_, sel
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
-from utils.filter_values import restrict
+from utils.filter_values import catalog_names_for_pairs, recorded_target_clause, restrict, target_select_options
 from integrations import drm_service
 from models.immunology import (
     SerumElisaPlate,
@@ -707,6 +707,7 @@ def _order_to_list_item(
             "project_id": project.id,
             "project_code": project.project_code or "",
             "target_name": project.target_name or "",
+            "target_codes": project.target_codes if isinstance(project.target_codes, list) else [],
             "immune_owner": project.owner or "",
             "immune_status": project.project_status or "",
             "blood_collections": _blood_collections_payload(blood_dates),
@@ -901,7 +902,15 @@ def _titer_order_status_clause(order_status: str):
     )
 
 
-def _apply_titer_order_list_filters(stmt, data: dict[str, Any]):
+def _titer_target_pairs():
+    return (
+        select(SerumImmProject.target_name, SerumImmProject.target_codes)
+        .join(SerumTiterOrder, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
+        .where(or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"))
+    )
+
+
+def _apply_titer_order_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None):
     titer_order_id = str(data.get("titer_order_id") or "").strip()
     if titer_order_id:
         stmt = stmt.where(SerumTiterOrder.titer_order_id == titer_order_id)
@@ -913,7 +922,15 @@ def _apply_titer_order_list_filters(stmt, data: dict[str, Any]):
             stmt = stmt.where(SerumImmProject.project_code.in_(codes))
     elif project_code:
         stmt = stmt.where(SerumImmProject.project_code.like(f"%{project_code}%"))
-    stmt = restrict(stmt, data.get("target_name"), lambda value: SerumImmProject.target_name == value)
+    target_clause = recorded_target_clause(
+        db,
+        SerumImmProject.target_name,
+        SerumImmProject.target_codes,
+        data.get("target_name"),
+        _titer_target_pairs(),
+    )
+    if target_clause is not None:
+        stmt = stmt.where(target_clause)
     if data.get("titer_owner_unassigned"):
         stmt = stmt.where(_empty_titer_owners_condition())
     else:
@@ -956,7 +973,7 @@ def _apply_titer_order_list_filters(stmt, data: dict[str, Any]):
 
 
 def _titer_order_list_items(db: Session, data: dict[str, Any]) -> list[dict]:
-    stmt = _apply_titer_order_list_filters(_titer_order_query(), data)
+    stmt = _apply_titer_order_list_filters(_titer_order_query(), data, db=db)
     blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
     rows = db.execute(stmt.order_by(*_titer_order_sql_order_by(data))).all()
     items = _enrich_order_rows(db, rows)
@@ -972,7 +989,7 @@ def _titer_order_list_items(db: Session, data: dict[str, Any]) -> list[dict]:
 def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
     page = int(data.get("page", 1) or 1)
     limit = int(data.get("limit", 20) or 20)
-    stmt = _apply_titer_order_list_filters(_titer_order_query(), data)
+    stmt = _apply_titer_order_list_filters(_titer_order_query(), data, db=db)
 
     blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
 
@@ -1156,21 +1173,6 @@ def _collect_titer_owner_names(db: Session) -> list[str]:
     return sorted(seen)
 
 
-def _collect_titer_target_names(db: Session) -> list[str]:
-    rows = db.execute(
-        select(SerumImmProject.target_name)
-        .join(SerumTiterOrder, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
-        .where(
-            or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"),
-            SerumImmProject.target_name.is_not(None),
-            SerumImmProject.target_name != "",
-        )
-        .distinct()
-        .order_by(SerumImmProject.target_name)
-    ).all()
-    return [row[0] for row in rows if row[0]]
-
-
 def _collect_titer_assay_method_names(db: Session) -> list[str]:
     method_expr = func.coalesce(SerumTiterOrder.assay_method, SerumImmProject.assay_method)
     rows = db.execute(
@@ -1235,7 +1237,10 @@ def _collect_titer_serum_status_names(db: Session) -> list[str]:
 def get_titer_order_page_meta(db: Session) -> dict:
     return {
         "owners": _collect_titer_owner_names(db),
-        "targets": _collect_titer_target_names(db),
+        "targets": target_select_options(
+            (pairs := db.execute(_titer_target_pairs()).all()),
+            catalog_names_for_pairs(db, pairs),
+        ),
         "assay_methods": _collect_titer_assay_method_names(db),
         "immune_owners": _collect_titer_immune_owner_names(db),
         "immune_statuses": _collect_titer_immune_status_names(db),

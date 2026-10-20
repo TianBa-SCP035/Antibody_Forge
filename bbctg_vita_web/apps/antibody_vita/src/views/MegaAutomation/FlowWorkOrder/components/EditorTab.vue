@@ -58,14 +58,15 @@
                 />
               </template>
             </el-table-column>
-            <el-table-column label="靶点" min-width="90">
+            <el-table-column label="靶点" min-width="140">
               <template #default="{ row, $index }">
-                <el-input
-                  v-model="row.target"
-                  size="small"
+                <WorkbenchTargetSelect
+                  :model-value="row.target_codes"
+                  :display-name="row.target"
                   :disabled="fieldDisabled"
                   :class="{ 'is-invalid-control': hasFieldError(`sample_plates.${$index}.target`) }"
-                  placeholder="靶点"
+                  placeholder="搜索靶点"
+                  @change="onPlateTargetChange(row, $event)"
                 />
               </template>
             </el-table-column>
@@ -324,6 +325,7 @@ import {
   selectedCountInPlate,
   SPECIES_OPTIONS,
 } from '../flowWorkOrderModel';
+import WorkbenchTargetSelect from '#/components/workbench/WorkbenchTargetSelect.vue';
 import CellPlateEditor from './CellPlateEditor.vue';
 import PlateTabSwitch from './PlateTabSwitch.vue';
 import SamplePlateLayout from './SamplePlateLayout.vue';
@@ -350,6 +352,7 @@ export default {
     Plus,
     PlateTabSwitch,
     SamplePlateLayout,
+    WorkbenchTargetSelect,
   },
   props: {
     activeCellPlate: { type: String, default: '0' },
@@ -497,6 +500,10 @@ export default {
         if (token && !tokens.includes(token)) tokens.push(token);
       });
       return tokens.join('、');
+    },
+    onPlateTargetChange(row, payload) {
+      row.target_codes = payload?.codes || [];
+      row.target = payload?.name || '';
     },
     toggleCell(plate, barcode, columnNo) {
       const column = this.cellByKey[this.cellKey(barcode, columnNo)];

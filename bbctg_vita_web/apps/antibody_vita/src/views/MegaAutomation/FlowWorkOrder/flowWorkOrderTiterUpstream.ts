@@ -15,6 +15,7 @@ export interface TiterInstrumentWizardDraft {
   experiment_id: string;
   groups: Array<{ group_id: string; selected_mouse_nos: string[] }>;
   project_code?: string;
+  target_codes?: string[];
   target_name?: string;
   titer_order_id: string;
 }
@@ -73,6 +74,7 @@ function buildTiterUpstreamSamplePlates(
   mouseNos: string[],
   experimentId: string,
   targetName: string,
+  targetCodes: string[],
 ): FlowWorkOrderSamplePlate[] {
   const slots = TITER_UPSTREAM_SAMPLE_SLOTS.length;
   const plateCount = Math.max(1, Math.ceil(mouseNos.length / slots));
@@ -83,6 +85,7 @@ function buildTiterUpstreamSamplePlates(
       ...createDefaultSamplePlate({ orderType: 'TITER' }),
       project_no: experimentId,
       target: targetName,
+      target_codes: targetCodes,
       wells: buildTiterUpstreamPlateWells(mouseNos.slice(start, start + slots)),
     });
   }
@@ -106,6 +109,7 @@ export function buildFlowWorkOrderFromTiterWizardDraft(
 ): FlowWorkOrder {
   const experimentId = String(draft.experiment_id || '').trim();
   const targetName = String(draft.target_name || '').trim();
+  const targetCodeList = (draft.target_codes || []).map((code) => String(code || '').trim()).filter(Boolean);
   const orderName = buildTiterUpstreamOrderName(draft);
   const orderNo = buildTiterUpstreamOrderNo(draft.titer_order_id);
   return {
@@ -123,6 +127,7 @@ export function buildFlowWorkOrderFromTiterWizardDraft(
       flattenSelectedMouseNos(draft),
       experimentId,
       targetName,
+      targetCodeList,
     ),
   };
 }

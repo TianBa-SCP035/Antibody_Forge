@@ -1,16 +1,14 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" :class="{ 'is-list-table-locked': listTableLocked }">
     <AdvancedOpsBar v-model="showAdvancedOps">
-      <div class="ops-user-select">
-        <SerumUserSelect
-          v-model="listQuery.pm"
-          multi-gesture
-          :options="optionLists.pms"
-          placeholder="PM"
-          clearable
-          @change="handleFilter"
-        />
-      </div>
+      <ListFilterSelect
+        v-model="listQuery.study_type"
+        clearable
+        placeholder="课题类型"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
       <div class="ops-user-select">
         <SerumUserSelect
           v-model="listQuery.owner"
@@ -83,6 +81,14 @@
       >
         <el-option v-for="item in optionLists.boost_antigens" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
+      <el-input
+        v-model="listQuery.remark"
+        clearable
+        placeholder="备注"
+        title="备注包含这段文字"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
       <el-date-picker
         v-model="boostRange"
         type="daterange"
@@ -152,11 +158,43 @@
           <el-input
             v-model="listQuery.keyword"
             class="filter-keyword"
-            placeholder="搜索靶点、项目、实验号、PM 或备注"
+            placeholder="项目编号、实验号"
+            title="搜索发现编号、项目编号或实验号"
             clearable
             @keyup.enter="handleFilter"
             @clear="handleFilter"
           />
+          <ListFilterSelect
+            v-model="listQuery.target_name"
+            class="filter-select"
+            clearable
+            filterable
+            placeholder="靶点"
+            :filter-method="setTargetFilterQuery"
+            @clear="setTargetFilterQuery('')"
+            @change="handleFilter"
+          >
+            <el-option
+              v-for="item in filteredTargetOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            >
+              <span>{{ item.label }}</span>
+              <span v-if="targetOptionExtra(item)" class="target-option-code">{{ targetOptionExtra(item) }}</span>
+            </el-option>
+          </ListFilterSelect>
+          <div class="filter-select">
+            <SerumUserSelect
+              v-model="listQuery.pm"
+              multi-gesture
+              :options="optionLists.pms"
+              placeholder="PM"
+              title="左键单选，右键追加"
+              clearable
+              @change="handleFilter"
+            />
+          </div>
           <ListFilterSelect
             v-model="listQuery.screening_methods"
             placeholder="筛选方式"
@@ -198,15 +236,6 @@
           >
             <el-option v-for="item in mouseStrainCategoryOptions" :key="item" :label="item" :value="item" />
           </ListFilterSelect>
-          <ListFilterSelect
-            v-model="listQuery.study_type"
-            placeholder="课题类型"
-            clearable
-            class="filter-select"
-            @change="handleFilter"
-          >
-            <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
-          </ListFilterSelect>
           <el-date-picker
             v-model="harvestRange"
             class="harvest-range"
@@ -222,8 +251,8 @@
           <button
             type="button"
             class="list-advanced-trigger"
-            :class="{ 'is-active': showAdvancedOps }"
-            title="更多筛选与操作"
+            :class="{ 'is-active': showAdvancedOps || hasAdvancedFilters }"
+            :title="hasAdvancedFilters ? '高级筛选已启用' : '更多筛选与操作'"
             @click="showAdvancedOps = !showAdvancedOps"
           >
             <el-icon><Tools /></el-icon>
@@ -242,11 +271,13 @@
     </div>
 
     <el-card shadow="never" class="table-card list-table-card">
+      <div ref="listTableBody" class="list-table-body">
       <WorkbenchDataTable
         v-if="viewMode === 'workbench'"
         ref="workbenchTable"
+        :height="listTableHeight"
         v-loading="loading"
-        storage-key="discoveryWorkbenchViewPrefs"
+        storage-key="discoveryWorkbenchViewPrefs.v2"
         :columns="workbenchColumns"
         :data="list"
         border
@@ -346,6 +377,17 @@
             @change="persistRow(row, 'screening_methods')"
           />
         </template>
+        <template #header-harvest_date>
+          <button
+            type="button"
+            class="sort-header-btn"
+            :class="{ 'is-active': listQuery.sort_field === 'harvest_date' }"
+            :title="dateSortTitle('harvest_date')"
+            @click.stop="cycleDateSort('harvest_date')"
+          >
+            剖鼠日期{{ dateSortMark('harvest_date') }}
+          </button>
+        </template>
         <template #harvest_date="{ row }">
           <el-date-picker
             v-model="row.harvest_date"
@@ -358,6 +400,17 @@
             @click.stop
             @change="persistRow(row, 'harvest_date')"
           />
+        </template>
+        <template #header-boost_date>
+          <button
+            type="button"
+            class="sort-header-btn"
+            :class="{ 'is-active': listQuery.sort_field === 'boost_date' }"
+            :title="dateSortTitle('boost_date')"
+            @click.stop="cycleDateSort('boost_date')"
+          >
+            冲击日期{{ dateSortMark('boost_date') }}
+          </button>
         </template>
         <template #boost_date="{ row }">
           <el-date-picker
@@ -404,6 +457,7 @@
           <vxe-table
             :key="sheetColumnOrderKey"
             ref="sheetTable"
+            :height="listTableHeight"
             v-loading="loading"
             :data="list"
             border
@@ -553,6 +607,7 @@
           <div ref="sheetColumnDropLine" class="sheet-column-drop-line" aria-hidden="true" />
           <div ref="sheetColumnGhost" class="sheet-column-ghost" aria-hidden="true" />
         </div>
+      </div>
       </div>
 
       <div class="list-pagination">
@@ -826,6 +881,7 @@ import {
   WorkbenchDataTable,
   workbenchExcelMixin,
 } from '#/components/workbench'
+import { listTableLockMixin } from '#/utils/listTableLock'
 import WorkbenchMultiTagEditor from '#/components/workbench/WorkbenchMultiTagEditor.vue'
 import WorkbenchStatusEditor from '#/components/workbench/WorkbenchStatusEditor.vue'
 import WorkbenchTargetSelect from '#/components/workbench/WorkbenchTargetSelect.vue'
@@ -859,6 +915,7 @@ import {
 } from '#/utils/serumUserOptions'
 import { WORKBENCH_STUDY_TYPE_OPTIONS } from '#/utils/workbenchStudyTypes'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
+import { filterTargetOptions, normalizeTargetOptions, targetOptionExtra as targetOptionHint } from '#/utils/targetFilterOptions'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
 import DiscoveryRowActions from './DiscoveryRowActions.vue'
@@ -987,12 +1044,10 @@ const EDITOR_SECTIONS = [
 const SHEET_COLUMNS = [
   { key: 'sort_order', label: '排序', edit: 'text', width: 64 },
   { key: 'priority', label: '优先级', edit: 'select', width: 100 },
-  { key: 'status', label: '状态', edit: 'select', width: 110 },
   { key: 'owner', label: '负责人', edit: 'select', width: 90 },
   { key: 'immune_owner', label: '免疫负责人', edit: 'select', width: 110 },
   { key: 'cell_collector', label: '细胞收集人', edit: 'select', width: 110 },
   { key: 'project_code', label: '项目编号', edit: 'text', minWidth: 120 },
-  { key: 'experiment_id', label: '实验号', edit: 'text', minWidth: 130 },
   { key: 'target_name', label: '靶点名称', edit: 'target' },
   { key: 'target_codes', label: '靶点编号', edit: 'target', minWidth: 140 },
   { key: 'pm', label: 'PM', edit: 'select', width: 90 },
@@ -1013,9 +1068,11 @@ const SHEET_COLUMNS = [
   { key: 'boost_antigen', label: '冲击免抗原', edit: 'text', minWidth: 140 },
   { key: 'boost_cells', label: '冲击免细胞', edit: 'text', minWidth: 140 },
   { key: 'remark', label: '备注', edit: 'text', minWidth: 180 },
+  { key: 'experiment_id', label: '实验号', edit: 'text', minWidth: 130 },
+  { key: 'status', label: '状态', edit: 'select', width: 110 },
 ]
 const SHEET_COLUMN_ORDER = createColumnOrder(
-  'discoveryWorkbenchSheetColumnOrder',
+  'discoveryWorkbenchSheetColumnOrder.v2',
   SHEET_COLUMNS,
   { pinFirstKey: 'sort_order' },
 )
@@ -1026,7 +1083,7 @@ const WORKBENCH_COLUMNS = [
   { key: 'pm', label: 'PM', defaultVisible: true, prop: 'pm', minWidth: 100, showOverflowTooltip: true },
   { key: 'project_code', label: '项目编号', defaultVisible: true, prop: 'project_code', minWidth: 120, showOverflowTooltip: true },
   { key: 'target_name', label: '靶点名称', defaultVisible: true, prop: 'target_name', minWidth: 100, showOverflowTooltip: true },
-  { key: 'mouse_strain_category', label: '归类鼠型', defaultVisible: true, prop: 'mouse_strain_category', minWidth: 100, showOverflowTooltip: true },
+  { key: 'mouse_strain', label: '小鼠品系', defaultVisible: true, prop: 'mouse_strain', minWidth: 120, showOverflowTooltip: true },
   { key: 'screening_methods', label: '筛选方式', defaultVisible: true, minWidth: 145 },
   { key: 'screening_antigen', label: '筛选抗原', defaultVisible: true, prop: 'screening_antigen', minWidth: 120, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'boost_antigen', label: '冲击抗原', defaultVisible: true, prop: 'boost_antigen', minWidth: 120, showOverflowTooltip: true, keepLineBreaks: true },
@@ -1039,7 +1096,7 @@ const WORKBENCH_COLUMNS = [
   { key: 'experiment_id', label: '实验号', prop: 'experiment_id', minWidth: 130, showOverflowTooltip: true },
   { key: 'target_codes', label: '靶点编号', prop: 'target_codes', minWidth: 140, showOverflowTooltip: true },
   { key: 'study_type', label: '课题类型', prop: 'study_type', minWidth: 110, showOverflowTooltip: true },
-  { key: 'mouse_strain', label: '小鼠品系', prop: 'mouse_strain', minWidth: 120, showOverflowTooltip: true },
+  { key: 'mouse_strain_category', label: '归类鼠型', prop: 'mouse_strain_category', minWidth: 100, showOverflowTooltip: true },
   { key: 'cage_position', label: '笼位', prop: 'cage_position', minWidth: 100, showOverflowTooltip: true },
   { key: 'mouse_count', label: '只数', prop: 'mouse_count', minWidth: 80, showOverflowTooltip: true },
   { key: 'mouse_nos', label: '鼠号', prop: 'mouse_nos', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
@@ -1146,6 +1203,8 @@ function emptyQuery() {
     page: 1,
     limit: 20,
     keyword: '',
+    target_name: '',
+    remark: '',
     view_group: '',
     screening_methods: [],
     pm: '',
@@ -1155,6 +1214,7 @@ function emptyQuery() {
     status: '',
     priority: '',
     sort_field: '',
+    sort_dir: '',
     cage_position: '',
     mouse_strain: '',
     mouse_nos: '',
@@ -1174,7 +1234,7 @@ export function rememberDiscoveryFocus(discoveryId) {
 
 export default {
   name: 'DiscoveryWorkbench',
-  mixins: [workbenchExcelMixin],
+  mixins: [workbenchExcelMixin, listTableLockMixin],
   components: {
     AdvancedOpsBar,
     DiscoveryRowActions,
@@ -1228,6 +1288,7 @@ export default {
       boostRange: [],
       listQuery: emptyQuery(),
       optionLists: {
+        targets: [],
         pms: [],
         owners: [],
         immune_owners: [],
@@ -1258,6 +1319,7 @@ export default {
       allUserOptions: [],
       targetOptions: [],
       targetRequestToken: 0,
+      targetFilterQuery: '',
       handoffVisible: false,
       handoffRow: null,
     }
@@ -1283,6 +1345,9 @@ export default {
     },
     activeViewGroup() {
       return this.listQuery.view_group || ''
+    },
+    filteredTargetOptions() {
+      return filterTargetOptions(this.optionLists.targets, this.targetFilterQuery)
     },
     editingRow() {
       return this.editingRowData
@@ -1314,9 +1379,25 @@ export default {
         this.editingIndex < 0 ? '当前筛选结果外' : '',
       ].filter(Boolean).join(' · ')
     },
+    hasAdvancedFilters() {
+      return Boolean(
+        this.listQuery.study_type
+        || this.listQuery.owner
+        || this.listQuery.cage_position
+        || this.listQuery.mouse_strain
+        || this.listQuery.mouse_nos
+        || this.listQuery.plate_nos
+        || this.listQuery.immune_antigen
+        || this.listQuery.screening_antigen
+        || this.listQuery.boost_antigen
+        || this.listQuery.remark
+        || this.boostRange?.length,
+      )
+    },
     hasSecondaryFilters() {
       return Boolean(
         this.listQuery.keyword
+        || this.listQuery.target_name
         || this.listQuery.screening_methods?.length
         || this.listQuery.pm
         || this.listQuery.owner
@@ -1331,6 +1412,7 @@ export default {
         || this.listQuery.immune_antigen
         || this.listQuery.screening_antigen
         || this.listQuery.boost_antigen
+        || this.listQuery.remark
         || this.harvestRange?.length
         || this.boostRange?.length,
       )
@@ -1685,6 +1767,12 @@ export default {
       this.mergeTargetOptions(payload.items)
       this.persistRow(row, 'target_codes')
     },
+    setTargetFilterQuery(query) {
+      this.targetFilterQuery = query || ''
+    },
+    targetOptionExtra(item) {
+      return targetOptionHint(item, this.targetFilterQuery)
+    },
     async searchTargetOptions(keyword, selectedCodes) {
       const requestToken = ++this.targetRequestToken
       try {
@@ -1928,6 +2016,7 @@ export default {
       if (!payload.status) delete payload.status
       if (!payload.priority) delete payload.priority
       if (!payload.sort_field) delete payload.sort_field
+      if (!payload.sort_dir) delete payload.sort_dir
       if (Array.isArray(this.harvestRange) && this.harvestRange.length === 2) {
         payload.harvest_date_start = this.harvestRange[0]
         payload.harvest_date_end = this.harvestRange[1]
@@ -1944,6 +2033,7 @@ export default {
         if (Array.isArray(data?.screening_methods) && data.screening_methods.length) {
           this.screeningMethodOptions = data.screening_methods
         }
+        this.optionLists.targets = normalizeTargetOptions(data?.targets)
         this.optionLists.pms = this.uniq(data?.pms || [])
         this.optionLists.owners = this.uniq(data?.owners || [])
         this.optionLists.immune_owners = this.uniq(data?.immune_owners || [])
@@ -2002,10 +2092,45 @@ export default {
       this.listQuery.page = 1
       this.getList()
     },
+    toggleQueueSort() {
+      this.listQuery.sort_dir = ''
+      this.listQuery.sort_field = this.isQueueSorted ? '' : 'sort_order'
+      this.listQuery.page = 1
+      this.getList()
+    },
+    dateSortMark(field) {
+      if (this.listQuery.sort_field !== field) return ''
+      return this.listQuery.sort_dir === 'desc' ? ' ↓' : ' ↑'
+    },
+    dateSortTitle(field) {
+      const label = field === 'boost_date' ? '冲击日期' : '剖鼠日期'
+      if (this.listQuery.sort_field !== field) return `左键按${label}从早到晚`
+      if (this.listQuery.sort_dir === 'asc') return '当前从早到晚。再点改为从晚到早'
+      return '当前从晚到早。再点恢复最新在前'
+    },
+    excelHeaderClick(column) {
+      if (column?.key !== 'harvest_date' && column?.key !== 'boost_date') return false
+      this.cycleDateSort(column.key)
+      return true
+    },
+    cycleDateSort(field) {
+      if (this.listQuery.sort_field === field && this.listQuery.sort_dir === 'asc') {
+        this.listQuery.sort_dir = 'desc'
+      } else if (this.listQuery.sort_field === field && this.listQuery.sort_dir === 'desc') {
+        this.listQuery.sort_field = ''
+        this.listQuery.sort_dir = ''
+      } else {
+        this.listQuery.sort_field = field
+        this.listQuery.sort_dir = 'asc'
+      }
+      this.listQuery.page = 1
+      this.getList()
+    },
     resetFilters() {
       const viewGroup = this.listQuery.view_group
       const sortField = this.listQuery.sort_field
-      this.listQuery = { ...emptyQuery(), view_group: viewGroup, sort_field: sortField }
+      const sortDir = this.listQuery.sort_dir
+      this.listQuery = { ...emptyQuery(), view_group: viewGroup, sort_field: sortField, sort_dir: sortDir }
       this.harvestRange = []
       this.boostRange = []
       this.getList()
@@ -2738,8 +2863,8 @@ export default {
   min-width: 0;
 }
 .filter-keyword {
-  flex: 2 1 250px;
-  min-width: 200px;
+  flex: 2 1 120px;
+  min-width: 100px;
 }
 .ops-user-select {
   min-width: 0;
@@ -2748,8 +2873,13 @@ export default {
   flex: 1 1 100px;
   min-width: 100px;
 }
+.target-option-code {
+  margin-left: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
 .filter-strip :deep(.harvest-range) {
-  flex: 1 1 200px;
+  flex: 1 1 120px;
   width: auto;
   min-width: 100px;
 }

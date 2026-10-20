@@ -11,6 +11,8 @@
  * .list-status-tag               状态/优先级胶囊（el-tag）
  * .list-code-text                项目号/订单号
  * .list-pagination               底部分页
+ * .is-list-table-locked          每页 50 条及以上：表格卡片占满顶栏以下一屏
+ * .list-table-body               锁高时表格占满卡片里分页以上的高度
  */
 
 :root {
@@ -91,6 +93,35 @@
   display: flex;
   justify-content: flex-start;
   margin-top: 16px;
+}
+
+/* 每页 50 条及以上。窗口减去顶栏，再让出与筛选条相同的间距。 */
+html body .is-list-table-locked.is-list-table-locked {
+  padding-bottom: 0;
+}
+
+.is-list-table-locked > .el-card {
+  box-sizing: border-box;
+  height: calc(100vh - var(--vben-header-height, 90px) - var(--list-page-gap));
+  overflow: hidden;
+}
+
+.is-list-table-locked > .el-card > .el-card__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.is-list-table-locked > .el-card > .el-card__body > :not(.list-table-body) {
+  flex: none;
+}
+
+.is-list-table-locked .list-table-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* 操作列按钮：高度/字号与筛选条按钮同一套 token；左右 padding 更紧 */

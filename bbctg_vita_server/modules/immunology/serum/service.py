@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from core.config import get_settings
 from core.errors import BusinessError
-from utils.filter_values import restrict
+from utils.filter_values import catalog_names_for_pairs, recorded_target_clause, restrict, target_select_options
 
 from models.immunology import (
     SerumElisaPlate,
@@ -172,7 +172,13 @@ def _project_order_by(data: dict[str, Any]) -> list:
     return [ordered_column, SerumImmProject.id.desc()]
 
 
-def apply_project_filters(stmt, data: dict[str, Any]):
+def _project_target_pairs():
+    return select(SerumImmProject.target_name, SerumImmProject.target_codes).where(
+        SerumImmProject.project_status != "deleted"
+    )
+
+
+def apply_project_filters(stmt, data: dict[str, Any], *, db: Session | None = None):
     p_code = data.get("project_code")
     p_codes = data.get("project_codes")
     p_name = data.get("project_name")
@@ -224,7 +230,15 @@ def apply_project_filters(stmt, data: dict[str, Any]):
             )
     stmt = restrict(stmt, owner, lambda value: SerumImmProject.owner == value)
     stmt = restrict(stmt, status, _project_status_clause)
-    stmt = restrict(stmt, target_name, _target_name_clause)
+    target_clause = recorded_target_clause(
+        db,
+        SerumImmProject.target_name,
+        SerumImmProject.target_codes,
+        target_name,
+        _project_target_pairs(),
+    )
+    if target_clause is not None:
+        stmt = stmt.where(target_clause)
     stmt = restrict(stmt, study_type, lambda value: SerumImmProject.study_type == value)
     stmt = restrict(stmt, pm, lambda value: SerumImmProject.pm == value)
     stmt = restrict(stmt, mouse_strain, lambda value: SerumImmProject.mouse_strain == value)
@@ -246,17 +260,6 @@ def _project_status_clause(status: str):
     if status == "completed":
         return SerumImmProject.project_status.in_(("无效价处死", "结题"))
     return SerumImmProject.project_status == status
-
-
-def _target_name_clause(selected_target: str):
-    return or_(
-        SerumImmProject.target_name == selected_target,
-        func.find_in_set(
-            selected_target,
-            func.replace(func.replace(SerumImmProject.target_name, "，", ","), "&", ","),
-        )
-        > 0,
-    )
 
 
 def get_stats(db: Session) -> dict:
@@ -312,8 +315,8 @@ def generate_next_id(db: Session, project_code: str) -> str | None:
     return f"{project_code}{next_suffix:02d}"
 
 
-def _project_list_stmt(data: dict[str, Any]):
-    stmt = apply_project_filters(select(SerumImmProject), data)
+def _project_list_stmt(db: Session, data: dict[str, Any]):
+    stmt = apply_project_filters(select(SerumImmProject), data, db=db)
     if data.get("start_date"):
         stmt = stmt.where(SerumImmProject.start_date >= data["start_date"])
     if data.get("end_date"):
@@ -342,7 +345,7 @@ def _cages_by_experiment(db: Session, experiment_ids: list[str]) -> dict[str, st
 def get_list(db: Session, data: dict[str, Any]) -> dict:
     page = int(data.get("page", 1) or 1)
     limit = int(data.get("limit", 20) or 20)
-    stmt = _project_list_stmt(data)
+    stmt = _project_list_stmt(db, data)
 
     total_stmt = select(func.count()).select_from(stmt.subquery())
     total = db.scalar(total_stmt) or 0
@@ -370,7 +373,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, st
     from utils.excel import build_list_workbook
 
     projects = db.scalars(
-        _project_list_stmt(data or {}).order_by(*_project_order_by(data or {}))
+        _project_list_stmt(db, data or {}).order_by(*_project_order_by(data or {}))
     ).all()
     cages = _cages_by_experiment(
         db, [project.experiment_id for project in projects if project.experiment_id]
@@ -994,7 +997,7 @@ def _build_immunization_schedule(db: Session, experiment_ids: list[str], today: 
 
 def auto_update_status(db: Session, filters: dict[str, Any] | None = None) -> dict:
     filters = filters or {}
-    proj_stmt = apply_project_filters(select(SerumImmProject), filters)
+    proj_stmt = apply_project_filters(select(SerumImmProject), filters, db=db)
     if filters.get("start_date"):
         proj_stmt = proj_stmt.where(SerumImmProject.start_date >= filters["start_date"])
     if filters.get("end_date"):
@@ -1052,7 +1055,10 @@ def get_filter_options(db: Session) -> dict:
         return [row[0] for row in rows if row[0]]
 
     return {
-        "targets": distinct_values(SerumImmProject.target_name),
+        "targets": target_select_options(
+            (pairs := db.execute(_project_target_pairs()).all()),
+            catalog_names_for_pairs(db, pairs),
+        ),
         "owners": distinct_values(SerumImmProject.owner),
         "study_types": distinct_values(SerumImmProject.study_type),
         "pms": distinct_values(SerumImmProject.pm),
@@ -1106,7 +1112,7 @@ def _auto_fit_worksheet_columns(
 
 
 def export_mouse_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, str]:
-    stmt = apply_project_filters(select(SerumImmProject), data)
+    stmt = apply_project_filters(select(SerumImmProject), data, db=db)
     projects = db.scalars(stmt.order_by(SerumImmProject.id.desc())).all()
     filename = f"小鼠免疫导出_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 

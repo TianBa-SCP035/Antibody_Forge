@@ -1,14 +1,21 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" :class="{ 'is-list-table-locked': listTableLocked }">
     <AdvancedOpsBar v-model="showAdvancedOps">
       <ListFilterSelect
-        v-model="listQuery.pm"
+        v-model="listQuery.review_status"
         clearable
-        filterable
-        placeholder="PM"
+        placeholder="审核结果"
         @change="handleFilter"
       >
-        <el-option v-for="item in optionLists.pms" :key="item" :label="item" :value="item" />
+        <el-option v-for="item in optionLists.review_status" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.can_start"
+        clearable
+        placeholder="开展条件"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in yesNoOptions" :key="item" :label="item === '是' ? '可开展' : '暂不可开展'" :value="item" />
       </ListFilterSelect>
       <ListFilterSelect
         v-model="listQuery.priority"
@@ -176,11 +183,43 @@
           <el-input
             v-model="listQuery.keyword"
             class="filter-keyword"
-            placeholder="搜索靶点、项目、实验号、PM 或开展人"
+            placeholder="项目编号、实验号"
+            title="搜索项目名称、项目编号、项目集编号或实验号"
             clearable
             @keyup.enter="handleFilter"
             @clear="handleFilter"
           />
+          <ListFilterSelect
+            v-model="listQuery.target_name"
+            class="filter-select"
+            clearable
+            filterable
+            placeholder="靶点"
+            :filter-method="setTargetFilterQuery"
+            @clear="setTargetFilterQuery('')"
+            @change="handleFilter"
+          >
+            <el-option
+              v-for="item in filteredTargetOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            >
+              <span>{{ item.label }}</span>
+              <span v-if="targetOptionExtra(item)" class="target-option-code">{{ targetOptionExtra(item) }}</span>
+            </el-option>
+          </ListFilterSelect>
+          <div class="filter-select">
+            <SerumUserSelect
+              v-model="listQuery.pm"
+              multi-gesture
+              :options="optionLists.pms"
+              placeholder="PM"
+              title="左键单选，右键追加"
+              clearable
+              @change="handleFilter"
+            />
+          </div>
           <ListFilterSelect
             v-model="listQuery.study_type"
             placeholder="课题类型"
@@ -228,31 +267,13 @@
           >
             <el-option v-for="item in yesNoOptions" :key="item" :label="item" :value="item" />
           </ListFilterSelect>
-          <ListFilterSelect
-            v-model="listQuery.review_status"
-            placeholder="审核结果"
-            clearable
-            class="filter-select"
-            @change="handleFilter"
-          >
-            <el-option v-for="item in optionLists.review_status" :key="item" :label="item" :value="item" />
-          </ListFilterSelect>
-          <ListFilterSelect
-            v-model="listQuery.can_start"
-            placeholder="开展条件"
-            clearable
-            class="filter-select"
-            @change="handleFilter"
-          >
-            <el-option v-for="item in yesNoOptions" :key="item" :label="item === '是' ? '可开展' : '暂不可开展'" :value="item" />
-          </ListFilterSelect>
         </div>
         <div class="data-view-controls list-filter-actions">
           <button
             type="button"
             class="list-advanced-trigger"
-            :class="{ 'is-active': showAdvancedOps }"
-            title="更多筛选与操作"
+            :class="{ 'is-active': showAdvancedOps || hasAdvancedFilters }"
+            :title="hasAdvancedFilters ? '高级筛选已启用' : '更多筛选与操作'"
             @click="showAdvancedOps = !showAdvancedOps"
           >
             <el-icon><Tools /></el-icon>
@@ -274,9 +295,11 @@
       shadow="never"
       class="table-card list-table-card"
     >
+      <div ref="listTableBody" class="list-table-body">
       <WorkbenchDataTable
         v-if="viewMode === 'workbench'"
         ref="workbenchTable"
+        :height="listTableHeight"
         v-loading="loading"
         storage-key="serumWorkbenchViewPrefs"
         :columns="workbenchColumns"
@@ -435,6 +458,7 @@
           <vxe-table
             :key="sheetColumnOrderKey"
             ref="sheetTable"
+            :height="listTableHeight"
             v-loading="loading"
             :data="list"
             border
@@ -571,6 +595,7 @@
           <div ref="sheetColumnDropLine" class="sheet-column-drop-line" aria-hidden="true" />
           <div ref="sheetColumnGhost" class="sheet-column-ghost" aria-hidden="true" />
         </div>
+      </div>
       </div>
 
       <div class="list-pagination">
@@ -803,6 +828,7 @@ import {
   WorkbenchDataTable,
   workbenchExcelMixin,
 } from '#/components/workbench'
+import { listTableLockMixin } from '#/utils/listTableLock'
 import WorkbenchViewToggle from '#/components/workbench/WorkbenchViewToggle.vue'
 import { notifyApiError } from '#/api/errors'
 import { fetchSerumTargetOptions } from '#/api/serum'
@@ -840,6 +866,7 @@ import {
 } from '#/utils/serumUserOptions'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage'
+import { filterTargetOptions, normalizeTargetOptions, targetOptionExtra as targetOptionHint } from '#/utils/targetFilterOptions'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import { SERUM_ERRORS } from '../shared/errors'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
@@ -1084,7 +1111,7 @@ const SHEET_HEADER_ALIASES = Object.freeze({
 })
 export default {
   name: 'SerumWorkbench',
-  mixins: [workbenchExcelMixin],
+  mixins: [workbenchExcelMixin, listTableLockMixin],
   components: {
     AdvancedOpsBar,
     WorkbenchViewToggle,
@@ -1137,6 +1164,7 @@ export default {
       sortableInitToken: 0,
       targetOptions: [],
       targetLoading: false,
+      targetFilterQuery: '',
       targetRequestToken: 0,
       allUserOptions: getCachedSerumUserOptions(),
       listRequestToken: 0,
@@ -1154,6 +1182,7 @@ export default {
         page: 1,
         limit: 20,
         keyword: '',
+        target_name: '',
         view_group: null,
         sort_field: '',
         can_start: '',
@@ -1179,6 +1208,7 @@ export default {
         has_scheme_data: '',
       },
       optionLists: {
+        targets: [],
         pms: [],
         owners: [],
         reviewers: [],
@@ -1228,9 +1258,32 @@ export default {
     activeViewGroup() {
       return this.listQuery.view_group || ''
     },
+    filteredTargetOptions() {
+      return filterTargetOptions(this.optionLists.targets, this.targetFilterQuery)
+    },
+    hasAdvancedFilters() {
+      return [
+        'review_status',
+        'can_start',
+        'priority',
+        'owner',
+        'reviewer',
+        'display_status',
+        'species_cross',
+        'mouse_strain',
+        'mouse_zygosity',
+        'mouse_region',
+        'mouse_expand_requested',
+        'antigen_source',
+        'lnp_ordered',
+        'cell_prep_status',
+        'has_scheme_data',
+      ].some((key) => Boolean(this.listQuery[key]))
+    },
     hasSecondaryFilters() {
       return [
         'keyword',
+        'target_name',
         'can_start',
         'study_type',
         'immuno_method',
@@ -1399,9 +1452,16 @@ export default {
     uniq(values) {
       return [...new Set((values || []).map((item) => String(item || '').trim()).filter(Boolean))]
     },
+    setTargetFilterQuery(query) {
+      this.targetFilterQuery = query || ''
+    },
+    targetOptionExtra(item) {
+      return targetOptionHint(item, this.targetFilterQuery)
+    },
     async loadFilterOptions() {
       try {
         const data = await fetchWorkbenchOptions()
+        this.optionLists.targets = normalizeTargetOptions(data?.targets)
         this.optionLists.pms = this.uniq(data?.pms || [])
         this.optionLists.owners = this.uniq(data?.owners || [])
         this.optionLists.reviewers = this.uniq(data?.reviewers || [])
@@ -2228,6 +2288,7 @@ export default {
     resetFilters() {
       Object.assign(this.listQuery, {
         keyword: '',
+        target_name: '',
         can_start: '',
         study_type: '',
         immuno_method: '',
@@ -2261,7 +2322,9 @@ export default {
     restoreListFilters() {
       const state = loadListFilters(SERUM_WORKBENCH_FILTER_KEY)
       if (state?.listQuery && typeof state.listQuery === 'object') {
-        Object.assign(this.listQuery, state.listQuery)
+        const saved = { ...state.listQuery }
+        delete saved.target
+        Object.assign(this.listQuery, saved)
       }
     },
     handleFilter() {
@@ -2853,14 +2916,19 @@ export default {
   min-width: 0;
 }
 .filter-keyword {
-  flex: 2 1 250px;
+  flex: 2 1 150px;
   width: auto;
-  min-width: 200px;
+  min-width: 100px;
 }
 .filter-select {
   flex: 1 1 100px;
   width: auto;
   min-width: 100px;
+}
+.target-option-code {
+  margin-left: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 .data-view-controls {
   flex-shrink: 0;

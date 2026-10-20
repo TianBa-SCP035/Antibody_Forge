@@ -7,11 +7,16 @@ from datetime import datetime
 from io import BytesIO
 from typing import Any
 
-from sqlalchemy import String, and_, case, cast, exists, func, or_, select
+from sqlalchemy import and_, case, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from utils.filter_values import restrict
+from utils.filter_values import (
+    catalog_names_for_pairs,
+    recorded_target_clause,
+    restrict,
+    target_select_options,
+)
 
 from models.immunology import (
     SerumElisaPlate,
@@ -851,17 +856,6 @@ def _display_status_expr():
 def _keyword_field_exprs():
     return (
         _aligned_value_expr(
-            SerumImmWorkbench.target_name,
-            SerumImmProject.target_name,
-        ),
-        cast(
-            _aligned_value_expr(
-                SerumImmWorkbench.target_codes,
-                SerumImmProject.target_codes,
-            ),
-            String,
-        ),
-        _aligned_value_expr(
             SerumImmWorkbench.project_name,
             SerumImmProject.project_name,
         ),
@@ -874,8 +868,6 @@ def _keyword_field_exprs():
             SerumImmWorkbench.experiment_id,
             SerumImmProject.experiment_id,
         ),
-        _aligned_value_expr(SerumImmWorkbench.pm, SerumImmProject.pm),
-        _aligned_value_expr(SerumImmWorkbench.owner, SerumImmProject.owner),
     )
 
 
@@ -913,13 +905,30 @@ def _has_scheme_data_expr():
     ))
 
 
-def _apply_list_filters(stmt, data: dict[str, Any], *, skip_status: bool = False):
+def _target_pair_stmt():
+    name_expr = _aligned_value_expr(SerumImmWorkbench.target_name, SerumImmProject.target_name)
+    codes_expr = _aligned_value_expr(SerumImmWorkbench.target_codes, SerumImmProject.target_codes)
+    return (
+        select(name_expr, codes_expr)
+        .select_from(SerumImmWorkbench)
+        .outerjoin(
+            SerumImmProject,
+            SerumImmWorkbench.experiment_id == SerumImmProject.experiment_id,
+        )
+    ), name_expr, codes_expr
+
+
+def _apply_list_filters(stmt, data: dict[str, Any], *, skip_status: bool = False, db: Session | None = None):
     keyword = str(data.get("keyword") or "").strip()
     view_group = str(data.get("view_group") or "").strip()
 
     if keyword:
         like = f"%{keyword}%"
         stmt = stmt.where(or_(*(field.like(like) for field in _keyword_field_exprs())))
+    pair_stmt, name_expr, codes_expr = _target_pair_stmt()
+    target_clause = recorded_target_clause(db, name_expr, codes_expr, data.get("target_name"), pair_stmt)
+    if target_clause is not None:
+        stmt = stmt.where(target_clause)
     if not skip_status:
         view_filter = _view_group_expr(view_group)
         if view_filter is not None:
@@ -1025,6 +1034,7 @@ def _list_stats(db: Session, data: dict[str, Any]) -> dict[str, int]:
         ),
         data or {},
         skip_status=True,
+        db=db,
     )
     stats = {
         "all": 0,
@@ -1051,10 +1061,10 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     page = max(int(data.get("page", 1) or 1), 1)
     limit = min(max(int(data.get("limit", 20) or 20), 1), 500)
     payload = data or {}
-    stmt = _apply_list_filters(_base_stmt(), payload)
-    total = db.scalar(_apply_list_filters(_count_stmt(), payload)) or 0
-    keyword = str(payload.get("keyword") or "").strip()
+    stmt = _apply_list_filters(_base_stmt(), payload, db=db)
+    total = db.scalar(_apply_list_filters(_count_stmt(), payload, db=db)) or 0
     order_by = [*_list_order(payload)]
+    keyword = str(payload.get("keyword") or "").strip()
     if keyword:
         order_by.insert(0, _keyword_rank_expr(keyword))
     rows = db.scalars(
@@ -1096,7 +1106,7 @@ def export_list_workbook(
     from utils.excel import build_list_workbook
 
     payload = data or {}
-    stmt = _apply_list_filters(_base_stmt(), payload)
+    stmt = _apply_list_filters(_base_stmt(), payload, db=db)
     order_by = [*_list_order(payload)]
     keyword = str(payload.get("keyword") or "").strip()
     if keyword:
@@ -1183,7 +1193,7 @@ def export_list_workbook(
     )
 
 
-def get_options(db: Session) -> dict[str, list[str]]:
+def get_options(db: Session) -> dict[str, Any]:
     def values(*columns) -> list[str]:
         result: set[str] = set()
         for column in columns:
@@ -1204,7 +1214,12 @@ def get_options(db: Session) -> dict[str, list[str]]:
 
     owners = values(SerumImmProject.owner, SerumImmWorkbench.owner)
     pms = values(SerumImmProject.pm, SerumImmWorkbench.pm)
+    pair_stmt, _name_expr, _codes_expr = _target_pair_stmt()
     return {
+        "targets": target_select_options(
+            (pairs := db.execute(pair_stmt).all()),
+            catalog_names_for_pairs(db, pairs),
+        ),
         "owners": owners,
         "pms": pms,
         "reviewers": values(SerumImmWorkbench.reviewer),

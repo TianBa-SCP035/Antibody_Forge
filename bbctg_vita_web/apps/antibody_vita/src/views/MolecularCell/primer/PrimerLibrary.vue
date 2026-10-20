@@ -1,5 +1,5 @@
 <template>
-  <div class="primer-page">
+  <div class="primer-page" :class="{ 'is-list-table-locked': listTableLocked }">
     <AdvancedOpsBar v-model="showAdvancedOps" pinned>
       <ElSelect
         v-if="selectionMode"
@@ -162,6 +162,7 @@
         拖拽划选单元格，Ctrl+C 复制，右键取消选中。双击一行可编辑。
         <template v-if="selectionMode">勾选列可拖拽或按住 Shift 连选，表头菜单可当页全选、全部全选或取消。</template>
       </p>
+      <div ref="listTableBody" class="list-table-body">
       <div
         ref="wrapRef"
         class="sheet-wrap"
@@ -176,6 +177,7 @@
         <div ref="stageRef" class="sheet-stage">
           <vxe-table
             ref="tableRef"
+            :height="listTableHeight"
             v-loading="loading"
             :data="items"
             border
@@ -284,6 +286,7 @@
           <div ref="overlayRef" class="sheet-range" aria-hidden="true" />
         </div>
       </div>
+      </div>
 
       <ElPagination
         v-show="total > 0"
@@ -347,6 +350,7 @@ import {
   savePrimer,
 } from '#/api/primerCatalog';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
+import { useListTableLock } from '#/utils/listTableLock';
 import { canEditPrimerLibrary } from '#/utils/molecularPermission';
 
 import '#/adapter/vxe-table';
@@ -406,6 +410,7 @@ const query = reactive({
   page: 1,
   limit: 20,
 });
+const { listTableLocked, listTableHeight, listTableBody } = useListTableLock(() => query.limit);
 const items = ref<PrimerItem[]>([]);
 const total = ref(0);
 const statsTotal = ref(0);
@@ -465,6 +470,7 @@ const {
 });
 // 模板 ref="wrapRef" 会写入这些引用，vue-tsc 不把它算作读取。
 void wrapRef;
+void listTableBody;
 void stageRef;
 void overlayRef;
 void tableRef;

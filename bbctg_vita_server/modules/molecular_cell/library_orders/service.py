@@ -11,12 +11,18 @@ from typing import Any, NamedTuple
 
 from fastapi import UploadFile
 from PIL import Image
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
-from utils.filter_values import filter_terms, match_any
+from utils.filter_values import (
+    catalog_names_for_pairs,
+    filter_terms,
+    match_any,
+    recorded_target_clause,
+    target_select_options,
+)
 from integrations import drm_service
 from models.discovery import DiscoveryWorkbench
 from models.molecular_cell import (
@@ -1050,7 +1056,18 @@ def _append_code_search(
     filters.append(column.like(f"%{parts[0]}%"))
 
 
-def _apply_list_filters(stmt, data: dict[str, Any]):
+def _library_target_pairs():
+    return select(MolecularLibraryOrder.target_name, MolecularLibraryOrder.target_codes)
+
+
+def get_filter_options(db: Session) -> dict[str, Any]:
+    pairs = db.execute(_library_target_pairs()).all()
+    return {
+        "targets": target_select_options(pairs, catalog_names_for_pairs(db, pairs)),
+    }
+
+
+def _apply_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None):
     filters = []
     _append_code_search(
         filters,
@@ -1071,15 +1088,15 @@ def _apply_list_filters(stmt, data: dict[str, Any]):
         data.get("library_batch_no"),
         label="建库批号",
     )
-    target_clauses = []
-    for target_code in filter_terms(data.get("target")):
-        target_clauses.append(
-            cast(MolecularLibraryOrder.target_codes, String).like(f"%{target_code}%")
-        )
-    for target_name in filter_terms(data.get("target_name")):
-        target_clauses.append(MolecularLibraryOrder.target_name.like(f"%{target_name}%"))
-    if target_clauses:
-        filters.append(or_(*target_clauses))
+    target_clause = recorded_target_clause(
+        db,
+        MolecularLibraryOrder.target_name,
+        MolecularLibraryOrder.target_codes,
+        data.get("target_name"),
+        _library_target_pairs(),
+    )
+    if target_clause is not None:
+        filters.append(target_clause)
     for key, column in (
         ("study_type", MolecularLibraryOrder.study_type),
         ("pm", MolecularLibraryOrder.pm),
@@ -1134,6 +1151,7 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
         .select_from(MolecularLibraryOrder)
         .group_by(MolecularLibraryOrder.build_type),
         filtered,
+        db=db,
     )
     for build_type, count in db.execute(stmt).all():
         number = int(count or 0)
@@ -1148,6 +1166,7 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
         .where(MolecularLibraryOrder.build_type == BUILD_PLASMA_NGS)
         .group_by(MolecularLibraryOrder.sample_type),
         filtered,
+        db=db,
     )
     for sample_type, count in db.execute(plasma_stmt).all():
         key = f"{BUILD_PLASMA_NGS}:{sample_type}"
@@ -1159,9 +1178,9 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
 def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     payload = data or {}
     page, limit = _page_limit(payload)
-    stmt = _apply_list_filters(select(MolecularLibraryOrder), payload)
+    stmt = _apply_list_filters(select(MolecularLibraryOrder), payload, db=db)
     total = db.scalar(
-        _apply_list_filters(select(func.count()).select_from(MolecularLibraryOrder), payload)
+        _apply_list_filters(select(func.count()).select_from(MolecularLibraryOrder), payload, db=db)
     ) or 0
     last_page = max(1, (int(total) + limit - 1) // limit)
     if page > last_page:
@@ -1659,7 +1678,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]):
     from utils.excel import build_list_workbook, cell_text
 
     rows = db.scalars(
-        _apply_list_filters(select(MolecularLibraryOrder), data or {}).order_by(
+        _apply_list_filters(select(MolecularLibraryOrder), data or {}, db=db).order_by(
             MolecularLibraryOrder.id.desc()
         )
     ).all()

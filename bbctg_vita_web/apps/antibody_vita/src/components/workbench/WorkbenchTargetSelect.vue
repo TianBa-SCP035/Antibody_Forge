@@ -1,11 +1,13 @@
 <template>
   <el-select
+    ref="selectRef"
     :model-value="modelValue"
     filterable
     multiple
     remote
     remote-show-suffix
     class="target-name-select"
+    title="左键单选，右键追加"
     :remote-method="search"
     :loading="loading"
     :placeholder="placeholder"
@@ -13,6 +15,7 @@
     style="width: 100%;"
     @focus="search('')"
     @update:model-value="onCodesChange"
+    @visible-change="listen"
   >
     <template #tag>
       <span class="target-selected-text">{{ displayName }}</span>
@@ -30,7 +33,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref } from 'vue'
 import { ElOption, ElSelect } from 'element-plus'
 
 import { searchWorkbenchTargets, targetNameFromCodes, uniqueTargetCodes } from './targetOptions'
@@ -44,9 +47,11 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'change'])
 
+const selectRef = ref(null)
 const options = ref([])
 const loading = ref(false)
 let requestToken = 0
+let menu = null
 
 async function search(keyword) {
   const token = ++requestToken
@@ -64,10 +69,45 @@ async function search(keyword) {
 
 function onCodesChange(value) {
   const codes = uniqueTargetCodes(value)
-  const name = targetNameFromCodes(codes, options.value)
   emit('update:modelValue', codes)
-  emit('change', { codes, name, items: options.value })
+  emit('change', { codes, name: targetNameFromCodes(codes, options.value), items: options.value })
 }
+
+function onMenuClick(event) {
+  const item = event.target instanceof Element ? event.target.closest('.el-select-dropdown__item') : null
+  const option = item && selectRef.value?.optionsArray?.find((entry) => entry?.$el === item)
+  if (!option || item.classList.contains('is-disabled')) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.type !== 'contextmenu') {
+    onCodesChange([option.value])
+    selectRef.value.expanded = false
+    return
+  }
+  const next = uniqueTargetCodes(props.modelValue)
+  const index = next.indexOf(option.value)
+  if (index >= 0) next.splice(index, 1)
+  else next.push(option.value)
+  onCodesChange(next)
+}
+
+function listen(open) {
+  if (menu) {
+    menu.removeEventListener('click', onMenuClick, true)
+    menu.removeEventListener('contextmenu', onMenuClick, true)
+    menu = null
+  }
+  if (!open) return
+  nextTick(() => {
+    const root = selectRef.value?.tooltipRef?.popperRef?.contentRef
+    if (!(root instanceof HTMLElement)) return
+    menu = root
+    menu.addEventListener('click', onMenuClick, true)
+    menu.addEventListener('contextmenu', onMenuClick, true)
+  })
+}
+
+onBeforeUnmount(() => listen(false))
 </script>
 
 <style scoped>

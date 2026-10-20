@@ -1,5 +1,5 @@
 <template>
-  <div class="mega-flow-order-page">
+  <div class="mega-flow-order-page" :class="{ 'is-list-table-locked': listTableLocked }">
     <AdvancedOpsBar v-model="showAdvancedOps">
       <template #actions>
         <el-button type="warning" :icon="Download" @click="handleListExport">
@@ -130,7 +130,9 @@
     </div>
 
     <el-card shadow="never" class="list-table-card">
+      <div ref="listTableBody" class="list-table-body">
       <el-table
+        :height="listTableHeight"
         v-loading="listLoading"
         :data="list"
         border
@@ -220,6 +222,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
 
       <el-pagination
         v-show="total > 0"
@@ -270,6 +273,7 @@ import {
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import ListFilterSelect from '#/components/ListFilterSelect.vue';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
+import { listTableLockMixin } from '#/utils/listTableLock';
 import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage';
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
 import {
@@ -312,6 +316,7 @@ function emptyQuery() {
 
 export default {
   name: 'MegaFlowWorkOrderList',
+  mixins: [listTableLockMixin],
   components: {
     ElButton,
     ElButtonGroup,

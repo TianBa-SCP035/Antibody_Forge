@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" :class="{ 'is-list-table-locked': listTableLocked }">
     <!-- Advanced Ops: slide down overlay -->
     <AdvancedOpsBar v-model="showAdvancedOps">
       <el-input
@@ -107,7 +107,10 @@
                       @clear="setFilterQuery('target', '')"
                       style="width: 100%" 
                       @change="handleFilter">
-                      <el-option v-for="item in filterOptions(allTargetOptions, targetFilterQuery)" :key="item" :label="item" :value="item" />
+                      <el-option v-for="item in filteredTargetOptions" :key="item.value" :label="item.label" :value="item.value">
+                        <span>{{ item.label }}</span>
+                        <span v-if="targetOptionExtra(item)" class="target-option-code">{{ targetOptionExtra(item) }}</span>
+                      </el-option>
                   </ListFilterSelect>
             </el-col>
             <el-col :span="3">
@@ -278,8 +281,10 @@
 
     <!-- Main Table -->
     <el-card shadow="never" class="list-table-card">
+        <div ref="listTableBody" class="list-table-body">
         <el-table
         ref="serumTable"
+        :height="listTableHeight"
         v-loading="listLoading"
         :data="list"
         :row-key="row => row.id"
@@ -417,6 +422,7 @@
             </template>
         </el-table-column>
         </el-table>
+        </div>
 
          <div class="list-pagination">
             <el-pagination
@@ -500,6 +506,7 @@ import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import SerumProjectStatusEditor from '../shared/SerumProjectStatusEditor.vue'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
+import { listTableLockMixin } from '#/utils/listTableLock'
 import { downloadBlob } from '#/utils/file-resource'
 import {
   canAutoUpdateSerumStatus,
@@ -514,12 +521,14 @@ import {
   getSerumUserRoles,
 } from '#/utils/serumPermission'
 import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage'
+import { filterTargetOptions, normalizeTargetOptions, targetOptionExtra as targetOptionHint } from '#/utils/targetFilterOptions'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
 const SERUM_LIST_FILTER_KEY = 'serumList'
 
 export default {
   name: 'SerumList',
+  mixins: [listTableLockMixin],
   components: {
     ElButton,
     ElButtonGroup,
@@ -571,6 +580,9 @@ export default {
     },
     currentRoles() {
       return getSerumUserRoles(this.currentUserInfo)
+    },
+    filteredTargetOptions() {
+      return filterTargetOptions(this.allTargetOptions, this.targetFilterQuery)
     },
   },
   watch: {
@@ -791,7 +803,7 @@ export default {
           }
         }
         if (filterOptions) {
-          this.allTargetOptions = filterOptions.targets || []
+          this.allTargetOptions = normalizeTargetOptions(filterOptions.targets)
           this.allOwnerOptions = filterOptions.owners || []
           this.allStudyTypeOptions = filterOptions.study_types || []
           this.allPMOptions = filterOptions.pms || []
@@ -1005,6 +1017,9 @@ export default {
     },
     setFilterQuery(key, query) {
         this[`${key}FilterQuery`] = query;
+    },
+    targetOptionExtra(item) {
+        return targetOptionHint(item, this.targetFilterQuery)
     },
     filterOptions(dataArray, query) {
         const queryLower = (query || '').toLowerCase();
@@ -1267,6 +1282,11 @@ export default {
 </script>
 
 <style scoped>
+.target-option-code {
+  margin-left: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
 .app-container {
     position: relative;
     padding: var(--list-page-padding);

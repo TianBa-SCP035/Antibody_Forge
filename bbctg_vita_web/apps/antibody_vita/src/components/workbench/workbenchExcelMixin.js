@@ -189,7 +189,7 @@ export default {
     },
     sheetColumnTitle(column) {
       if (this.isExcelRowSelectField(column?.key)) return this.sortColumnLabel
-      return column?.label || ''
+      return `${column?.label || ''}${this.dateSortMark?.(column?.key) || ''}`
     },
     queueReorderPayload(oldIndex, newIndex) {
       const moved = this.list[oldIndex]
@@ -263,7 +263,9 @@ export default {
       }
     },
     sheetHeaderCellClassName({ column }) {
-      return column.field ? 'sheet-selectable-header' : ''
+      if (!column.field) return ''
+      const sorted = this.dateSortMark?.(column.field) ? ' is-date-sorted' : ''
+      return `sheet-selectable-header${sorted}`
     },
     sheetCellClassName() {
       return ''
@@ -669,6 +671,12 @@ export default {
         window.getSelection()?.removeAllRanges()
         this.$refs.sheetTable?.clearEdit?.()
         this.toggleQueueSort?.()
+        return
+      }
+      if (headerHit && this.excelHeaderClick?.(this.sheetColumns[headerHit.colIndex])) {
+        event.preventDefault()
+        window.getSelection()?.removeAllRanges()
+        this.$refs.sheetTable?.clearEdit?.()
         return
       }
       if (headerHit && this.list.length) {

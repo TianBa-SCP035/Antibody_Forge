@@ -123,6 +123,15 @@ def _run_write(db: Session, fn):
         return error(str(exc))
 
 
+@router.get("/filter_options")
+def filter_options(
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, PAGE_PERMISSION)
+    return success(service.get_filter_options(db))
+
+
 @router.post("/list")
 def list_orders(
     data: OrderListRequest | None = None,

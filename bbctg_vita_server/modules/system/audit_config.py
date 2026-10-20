@@ -39,6 +39,7 @@ INTENTIONALLY_IGNORED_ROUTES = frozenset(
         ("POST", "/api/mega-automation/flow-work-orders/export"),
         ("POST", "/api/mega-automation/flow-work-orders/list"),
         ("GET", "/api/molecular-cell/library-orders/by-discovery"),
+        ("GET", "/api/molecular-cell/library-orders/filter_options"),
         ("GET", "/api/molecular-cell/library-orders/files/download"),
         ("POST", "/api/molecular-cell/library-orders/export_list"),
         ("POST", "/api/molecular-cell/library-orders/files/list"),

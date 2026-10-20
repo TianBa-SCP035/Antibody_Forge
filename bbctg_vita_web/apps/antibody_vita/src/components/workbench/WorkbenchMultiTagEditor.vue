@@ -20,7 +20,8 @@
       >
         <el-tag
           class="list-status-tag"
-          :type="toneOf(item)"
+          :class="{ 'is-purple': toneOf(item) === 'purple' }"
+          :type="toneOf(item) === 'purple' ? 'info' : toneOf(item)"
           :effect="selected.includes(item) ? 'light' : 'plain'"
         >
           {{ item }}
@@ -40,8 +41,8 @@
           v-for="item in selected"
           :key="item"
           class="list-status-tag workbench-status-tag"
-          :class="{ 'is-editable': editable }"
-          :type="toneOf(item)"
+          :class="{ 'is-editable': editable, 'is-purple': toneOf(item) === 'purple' }"
+          :type="toneOf(item) === 'purple' ? 'info' : toneOf(item)"
           effect="plain"
         >
           {{ item }}
@@ -126,6 +127,16 @@ export default {
 }
 .workbench-multi-tags .workbench-status-tag.is-empty {
   color: var(--el-text-color-placeholder);
+}
+.el-tag.list-status-tag.is-purple {
+  --el-tag-text-color: #7c5cf0;
+  --el-tag-border-color: #beaef8;
+  color: #7c5cf0;
+  border-color: #beaef8;
+}
+.el-tag.list-status-tag.is-purple.el-tag--light {
+  --el-tag-bg-color: #f2effe;
+  background-color: #f2effe;
 }
 .workbench-multi-tag-popper.el-popover.el-popper {
   min-width: 0;

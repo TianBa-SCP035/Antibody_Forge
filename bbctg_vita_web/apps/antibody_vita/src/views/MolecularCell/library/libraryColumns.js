@@ -195,7 +195,7 @@ export const HANDOFF_METHOD_ROWS = [
   },
   {
     method: 'NGS',
-    tone: 'info',
+    tone: 'purple',
     picks: [
       { id: 'blood-retro', buildType: BUILD_PERIPHERAL_BLOOD, source: 'retro_orbital_blood', label: '眼眶血' },
       { id: 'blood-other', buildType: BUILD_PERIPHERAL_BLOOD, source: 'other_blood', label: '其他外周血' },

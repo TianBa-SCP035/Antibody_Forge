@@ -925,7 +925,7 @@ const SCREENING_METHOD_TONES = {
   达普: 'primary',
   噬菌体: 'warning',
   Beacon: 'success',
-  NGS: 'info',
+  NGS: 'purple',
 }
 const PLAN_STATUS_OPTIONS = ['规划中', '待冲击', '待剖鼠', '待建库', '待噬菌体', '待测序', '已完成', '已取消']
 const PRIORITY_OPTIONS = [...WORKBENCH_PRIORITY_OPTIONS]

@@ -20,6 +20,7 @@
         </div>
       </div>
       <p v-if="!loading && !methodNames.length" class="muted method-hint">未标筛选方式，下面四行仍可直接选</p>
+      <p v-else-if="!loading" class="muted method-hint">只交接已标的筛选方式，其余路线不能选</p>
 
       <div v-if="existing.length" class="handoff-existing">
         <span class="existing-label">已有</span>
@@ -42,7 +43,6 @@
           v-for="row in rows"
           :key="row.method"
           class="handoff-row"
-          :class="{ 'is-marked': methodNames.includes(row.method) }"
         >
           <div class="row-name" :class="`tone-${row.tone}`">{{ row.method }}</div>
           <div class="row-picks">
@@ -52,8 +52,9 @@
               type="button"
               class="handoff-chip"
               :class="{ on: selectedIds.includes(pick.id) }"
-              :title="pick.hint || ''"
-              @click="toggle(pick)"
+              :disabled="!pickOpen(row, pick)"
+              :title="pickTitle(row, pick)"
+              @click="toggle(row, pick)"
             >
               {{ pick.label }}
               <em v-if="alreadyHas(pick)">已有</em>
@@ -162,7 +163,21 @@ export default {
         return !pick.sampleType || item.sample_type === pick.sampleType
       })
     },
-    toggle(pick) {
+    pickOpen(row, pick) {
+      if (!this.methodNames.length) return true
+      if (!this.methodNames.includes(row.method)) return false
+      if (pick.id !== 'both-plate') return true
+      return this.methodNames.includes('达普') && this.methodNames.includes('Beacon')
+    },
+    pickTitle(row, pick) {
+      if (this.pickOpen(row, pick)) return pick.hint || ''
+      if (pick.id === 'both-plate' && this.methodNames.includes(row.method)) {
+        return '需要同时标达普和 Beacon'
+      }
+      return '这条安排未标该筛选方式'
+    },
+    toggle(row, pick) {
+      if (!this.pickOpen(row, pick)) return
       if (this.selectedIds.includes(pick.id)) {
         this.selectedIds = this.selectedIds.filter((item) => item !== pick.id)
         return
@@ -363,11 +378,10 @@ export default {
   color: var(--el-text-color-secondary);
 }
 
+.row-name.tone-primary { color: var(--el-color-primary); }
 .row-name.tone-success { color: var(--el-color-success); }
-
-.handoff-row.is-marked .row-name.tone-primary { color: var(--el-color-primary); }
-.handoff-row.is-marked .row-name.tone-warning { color: var(--el-color-warning); }
-.handoff-row.is-marked .row-name.tone-info { color: var(--el-text-color-secondary); }
+.row-name.tone-warning { color: var(--el-color-warning); }
+.row-name.tone-purple { color: #7c5cf0; }
 
 .row-picks {
   display: flex;
@@ -392,6 +406,13 @@ export default {
   border-color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
+}
+
+.handoff-chip:disabled {
+  border-color: var(--el-border-color-lighter);
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-placeholder);
+  cursor: not-allowed;
 }
 
 .handoff-chip em {

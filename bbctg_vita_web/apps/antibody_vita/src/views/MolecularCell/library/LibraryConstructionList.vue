@@ -3050,7 +3050,7 @@ export default {
 .create-name.tone-primary { color: var(--el-color-primary); }
 .create-name.tone-success { color: var(--el-color-success); }
 .create-name.tone-warning { color: var(--el-color-warning); }
-.create-name.tone-info { color: var(--el-text-color-secondary); }
+.create-name.tone-purple { color: #7c5cf0; }
 
 .create-picks {
   display: flex;

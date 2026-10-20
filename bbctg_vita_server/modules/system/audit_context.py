@@ -27,6 +27,7 @@ class AuditContext:
     ip_address: str | None = None
     fallback_action: str | None = None
     fallback_name: str | None = None
+    fallback_resource: str | None = None
     suppress_noop: bool = False
     committed_results: set[str] = field(default_factory=set)
 
@@ -58,6 +59,7 @@ class AuditContext:
             code=code[:128],
             name=(self.fallback_name or code)[:128],
             operation_type=change_type,
+            resource=self.fallback_resource,
         )
 
 
@@ -99,6 +101,7 @@ def audit_scope(
     *,
     source: str = "system",
     operation_type: str = "update",
+    resource: str | None = None,
 ):
     context = AuditContext(
         request_id=uuid.uuid4().hex,
@@ -107,11 +110,13 @@ def audit_scope(
         path=action,
         fallback_action=action,
         fallback_name=operation_name,
+        fallback_resource=resource,
         actions=(
             AuditAction(
                 code=action,
                 name=operation_name,
                 operation_type=operation_type,
+                resource=resource,
             ),
         ),
     )

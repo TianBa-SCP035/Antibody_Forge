@@ -765,7 +765,7 @@ class AuditMiddlewareTests(unittest.TestCase):
             action.code,
             audit_config.LABILLION_STATUS_SYNC_AUDIT_ACTION.code,
         )
-        self.assertEqual(action.name, "同步镁伽工单状态")
+        self.assertEqual(action.name, "同步镁伽状态")
 
 
 class AuditCoverageTests(unittest.TestCase):

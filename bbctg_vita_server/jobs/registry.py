@@ -17,7 +17,8 @@ _scheduler: BackgroundScheduler | None = None
 SCHEDULED_JOBS = [
     {
         "id": "serum_auto_update_status",
-        "description": "每天 01:00 自动更新免疫实验状态",
+        "name": "免疫状态自动更新",
+        "resource": "project",
         "feature_code": "job.serum_auto_update_status",
         "default_hour": 1,
         "default_minute": 0,
@@ -25,7 +26,8 @@ SCHEDULED_JOBS = [
     },
     {
         "id": "employee_profile_sync",
-        "description": "每天 00:30 同步外部员工基础资料",
+        "name": "员工资料同步",
+        "resource": "user",
         "feature_code": "job.employee_profile_sync",
         "default_hour": 0,
         "default_minute": 30,
@@ -33,7 +35,8 @@ SCHEDULED_JOBS = [
     },
     {
         "id": "target_master_sync",
-        "description": "每天 00:45 同步外部靶点主数据",
+        "name": "靶点同步",
+        "resource": "target",
         "feature_code": "job.target_master_sync",
         "default_hour": 0,
         "default_minute": 45,
@@ -41,7 +44,8 @@ SCHEDULED_JOBS = [
     },
     {
         "id": "discovery_auto_update_status",
-        "description": "每天 01:15 自动更新抗体发现状态",
+        "name": "发现状态更新",
+        "resource": "discovery_workbench",
         "feature_code": "job.discovery_auto_update_status",
         "default_hour": 1,
         "default_minute": 15,
@@ -50,7 +54,8 @@ SCHEDULED_JOBS = [
     },
     {
         "id": "labillion_status_sync",
-        "description": "每天 02:00 同步镁伽非终态工单状态",
+        "name": "镁伽状态同步",
+        "resource": "flow_work_order",
         "feature_code": "job.mega_labillion_status_sync",
         "default_hour": 2,
         "default_minute": 0,
@@ -126,8 +131,14 @@ def _run_job_with_audit(job: dict) -> None:
     if not callable(func):
         raise ValueError("定时任务未配置执行函数")
     action = str(job.get("feature_code") or job.get("id") or "job.unknown")
-    name = str(job.get("description") or action)
-    with audit_scope(action, name, source="job", operation_type="update"):
+    name = str(job.get("name") or action)
+    with audit_scope(
+        action,
+        name,
+        source="job",
+        operation_type="update",
+        resource=job.get("resource"),
+    ):
         func()
 
 

@@ -470,7 +470,21 @@ function formatLogOperator(log: SystemOperationLog) {
 }
 
 function formatLogAction(log: SystemOperationLog) {
-  return log.operation_name || log.action || '-';
+  const name = log.operation_name || log.action || '';
+  const map: Record<string, string> = {
+    'POST /api/molecular-cell/library-orders/files/list': '刷新质检核对',
+    'POST /api/auth/user/change_password': '修改密码',
+    'PUT /api/auth/user/profile': '更新个人资料',
+    'POST /api/order-experiment/sync': '回传工单数据',
+    '每天 01:00 自动更新免疫实验状态': '免疫状态自动更新',
+    '每天 00:30 同步外部员工基础资料': '员工资料同步',
+    '每天 00:45 同步外部靶点主数据': '靶点同步',
+    '每天 01:15 自动更新抗体发现状态': '发现状态更新',
+    '每天 02:00 同步镁伽非终态工单状态': '镁伽状态同步',
+    'Labillion 状态回调': '镁伽状态回调',
+    '同步镁伽工单状态': '同步镁伽状态',
+  };
+  return map[name] || name || '-';
 }
 
 function formatLogTarget(log: SystemOperationLog) {
@@ -549,7 +563,9 @@ function formatLogTargetType(log: SystemOperationLog) {
     cell: '细胞库存',
     feature: '系统功能',
     file: '文件',
-    flow_work_order: '工单',
+    flow_work_order: '流式工单',
+    target: '靶点',
+    order_sync: '工单回传',
     mouse: '小鼠数据',
     operation_log: '操作日志',
     permission: '权限',
@@ -562,9 +578,25 @@ function formatLogTargetType(log: SystemOperationLog) {
     user: '用户',
     serum_workbench: '免疫工作台',
     discovery_workbench: '发现工作台',
-    library: '文库构建工单',
-    library_detail: '文库构建工单',
-    library_file: '文库质检文件',
+    library: '文库工单',
+    library_detail: '文库工单',
+    library_file: '构建文件',
+    MolecularLibraryOrder: '文库工单',
+    MolecularLibraryResultFile: '构建文件',
+    MolecularLibraryResultLink: '构建文件',
+    MolecularLibraryResultPackage: '测序包',
+    MolecularPrimerIndexCatalog: '引物库',
+    SerumImmProject: '免疫项目',
+    SerumImmWorkbench: '免疫工作台',
+    SerumImmMouse: '小鼠数据',
+    SerumTiterOrder: '效价工单',
+    SerumFile: '文件',
+    DiscoveryWorkbench: '发现工作台',
+    SysUser: '用户',
+    Target: '靶点',
+    MegaFlowWorkOrder: '流式工单',
+    MegaFlowWorkOrderDispatch: '流式工单',
+    OrderSync: '工单回传',
     primer: '引物库',
   };
   return log.target_type ? map[log.target_type] || log.target_type : '-';
@@ -572,11 +604,22 @@ function formatLogTargetType(log: SystemOperationLog) {
 
 function formatLogTableName(name?: string) {
   const map: Record<string, string> = {
-    molecular_library_order: '文库构建工单',
-    molecular_library_result_file: '文库结果文件',
-    molecular_library_result_link: '文库质检文件',
+    molecular_library_order: '文库工单',
+    molecular_library_result_file: '构建文件',
+    molecular_library_result_link: '构建文件',
     molecular_library_result_package: '测序包',
     molecular_primer_index_catalog: '引物库',
+    serum_imm_project: '免疫项目',
+    serum_imm_workbench: '免疫工作台',
+    serum_imm_mouse: '小鼠数据',
+    serum_titer_order: '效价工单',
+    serum_file: '文件',
+    discovery_workbench: '发现工作台',
+    sys_user: '用户',
+    target: '靶点',
+    mega_flow_work_order: '流式工单',
+    mega_flow_work_order_dispatch: '流式工单',
+    order_sync: '工单回传',
   };
   return name ? map[name] || name : '-';
 }

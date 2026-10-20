@@ -63,23 +63,33 @@ INTENTIONALLY_IGNORED_ROUTES = frozenset(
 # 不依赖 sys_permission_api，由登录显式日志或 Session 捕获负责。
 LABILLION_CALLBACK_AUDIT_ACTION = AuditAction(
     code="mega.labillion.callback",
-    name="Labillion 状态回调",
+    name="镁伽状态回调",
     operation_type="update",
-    resource="MegaFlowWorkOrderDispatch",
+    resource="flow_work_order",
 )
 LABILLION_STATUS_SYNC_AUDIT_ACTION = AuditAction(
     code="mega.labillion.status_sync",
-    name="同步镁伽工单状态",
+    name="同步镁伽状态",
     operation_type="update",
-    resource="MegaFlowWorkOrder",
+    resource="flow_work_order",
 )
 SYSTEM_OR_MANUAL_AUDIT_ROUTES: dict[
     tuple[str, str],
     AuditAction | None,
 ] = {
     ("POST", "/api/auth/login"): None,
-    ("POST", "/api/auth/user/change_password"): None,
-    ("PUT", "/api/auth/user/profile"): None,
+    ("POST", "/api/auth/user/change_password"): AuditAction(
+        code="auth.change_password",
+        name="修改密码",
+        operation_type="update",
+        resource="user",
+    ),
+    ("PUT", "/api/auth/user/profile"): AuditAction(
+        code="auth.update_profile",
+        name="更新个人资料",
+        operation_type="update",
+        resource="user",
+    ),
     (
         "POST",
         "/api/mega-automation/flow-work-orders/{order_id}/sync-labillion-status",
@@ -88,7 +98,12 @@ SYSTEM_OR_MANUAL_AUDIT_ROUTES: dict[
         "POST",
         "/api/mega-automation/labillion/callback",
     ): LABILLION_CALLBACK_AUDIT_ACTION,
-    ("POST", "/api/order-experiment/sync"): None,
+    ("POST", "/api/order-experiment/sync"): AuditAction(
+        code="order.experiment.sync",
+        name="回传工单数据",
+        operation_type="update",
+        resource="order_sync",
+    ),
 }
 
 

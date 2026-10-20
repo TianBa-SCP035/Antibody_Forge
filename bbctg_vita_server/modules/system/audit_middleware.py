@@ -174,9 +174,22 @@ def _build_context(method: str, path: str, headers: dict[str, str], scope: dict)
         username=username or None,
         ip_address=ip_address,
         fallback_action=f"{method} {path}",
-        fallback_name=f"{method} {path}",
+        fallback_name=_fallback_name(method, path),
+        fallback_resource=_fallback_resource(method, path),
         suppress_noop=suppress_noop,
     )
+
+
+def _fallback_name(method: str, path: str) -> str:
+    if method == "POST" and path == "/api/molecular-cell/library-orders/files/list":
+        return "刷新质检核对"
+    return f"{method} {path}"
+
+
+def _fallback_resource(method: str, path: str) -> str | None:
+    if method == "POST" and path == "/api/molecular-cell/library-orders/files/list":
+        return "library_file"
+    return None
 
 
 def _source_for_path(path: str, has_user_token: bool) -> str:

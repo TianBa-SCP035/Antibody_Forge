@@ -36,6 +36,7 @@ SEQUENCE_NOT_FOUND = "not_found"
 SEQUENCE_ARM_ONLY = "arm_only"
 SEQUENCE_ARM_ONLY_RC = "arm_only_rc"
 SEQUENCE_TRACE_ONLY = "trace_only"
+MIN_CHECK_BASES = 400
 MATCHED_STATUSES = frozenset({SEQUENCE_MATCHED, SEQUENCE_MATCHED_RC})
 ARM_STATUSES = frozenset({SEQUENCE_ARM_ONLY, SEQUENCE_ARM_ONLY_RC})
 FORWARD_ARM_1 = "ACCGAGATCTACAC"
@@ -393,6 +394,23 @@ def called_bases_from_abi(content: bytes) -> str:
     return re.sub(r"[^ACGTN]", "", str(base_calls).upper())
 
 
+def is_short(status: str | None) -> bool:
+    return bool(status and status.endswith("_short"))
+
+
+def plain_status(status: str | None) -> str | None:
+    if is_short(status):
+        return status[: -len("_short")]
+    return status
+
+
+def _mark_short(status: str, observed: str) -> str:
+    bases = re.sub(r"[^ACGTN]", "", observed)
+    if len(bases) <= MIN_CHECK_BASES:
+        return f"{status}_short"
+    return status
+
+
 def sequence_check(
     filename: str,
     content: bytes,
@@ -409,22 +427,27 @@ def sequence_check(
         observed = called_bases_from_abi(content)
         if not observed:
             return SEQUENCE_TRACE_ONLY, target
-        return classify_observed(observed, primers[target], direction), target
+        return _mark_short(classify_observed(observed, primers[target], direction), observed), target
     if extension_of(filename) != ".seq":
         return None, None
-    return classify_observed(_observed_sequence(content), primers[target], direction), target
+    observed = _observed_sequence(content)
+    return _mark_short(classify_observed(observed, primers[target], direction), observed), target
 
 
 def sequence_check_text(status: str | None, target: str | None) -> str | None:
+    short = is_short(status)
+    status = plain_status(status)
     label = PRIMER_TARGET_LABELS.get(target or "", target or "引物")
     if status == SEQUENCE_MATCHED:
-        return f"{label} 匹配"
-    if status == SEQUENCE_MATCHED_RC:
-        return f"{label} 匹配-反补"
-    if status == SEQUENCE_ARM_ONLY:
-        return f"{label} 引物错误"
-    if status == SEQUENCE_ARM_ONLY_RC:
-        return f"{label} 引物错误-反补"
-    if status == SEQUENCE_NOT_FOUND:
-        return f"{label} 同源臂未匹配"
-    return None
+        text = f"{label} 匹配"
+    elif status == SEQUENCE_MATCHED_RC:
+        text = f"{label} 匹配-反补"
+    elif status == SEQUENCE_ARM_ONLY:
+        text = f"{label} 引物错误"
+    elif status == SEQUENCE_ARM_ONLY_RC:
+        text = f"{label} 引物错误-反补"
+    elif status == SEQUENCE_NOT_FOUND:
+        text = f"{label} 同源臂未匹配"
+    else:
+        return None
+    return f"{text}-过短" if short else text

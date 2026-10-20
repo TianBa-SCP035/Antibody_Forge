@@ -9,6 +9,7 @@ import {
   matchCount,
   matchSpans,
   normalizeSequence,
+  MIN_CHECK_BASES,
   openingSearch,
   pairSearch,
   readDirectionInfo,
@@ -51,6 +52,7 @@ const chartRef = ref()
 const sequenceLayer = ref(null)
 const { renderEcharts } = useEcharts(chartRef)
 const baseCount = computed(() => props.trace?.bases?.length || 0)
+const lengthIsShort = computed(() => baseCount.value <= MIN_CHECK_BASES)
 const sequenceMarks = ref([])
 const searchQuery = ref('')
 const complementOn = ref(false)
@@ -631,7 +633,10 @@ onBeforeUnmount(() => {
         <b v-if="directionInfo.arrow">{{ directionInfo.arrow }}</b>
         {{ directionInfo.label }}
       </span>
-      <span>{{ baseCount }} bp · 滚轮缩放 · 拖动平移</span>
+      <span>
+        <span class="read-length" :class="{ 'is-short': lengthIsShort }">{{ baseCount }} bp</span>
+        · 滚轮缩放 · 拖动平移
+      </span>
     </header>
     <div class="trace-search">
       <input
@@ -728,6 +733,11 @@ onBeforeUnmount(() => {
   color: var(--el-text-color-secondary);
   font-size: 11px;
   border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.read-length.is-short {
+  color: var(--el-color-danger);
+  font-weight: 600;
 }
 
 .direction-badge {

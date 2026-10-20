@@ -57,12 +57,19 @@ export function matchCount(length, paired) {
   return Math.floor(length / (paired ? 2 : 1))
 }
 
+export const MIN_CHECK_BASES = 400
+
 export function matchSpans(matches, index, paired) {
   if (index < 0 || !matches.length) return []
   return matches.slice(index, index + (paired ? 2 : 1))
 }
 
+export function plainStatus(status) {
+  return String(status || '').replace(/_short$/, '')
+}
+
 export function readDirectionInfo(direction, status, observed, target) {
+  status = plainStatus(status)
   if (direction !== 'F' && direction !== 'R') {
     return { label: '方向未识别', arrow: '↔', tone: 'unknown' }
   }
@@ -137,6 +144,7 @@ export function viewForStep(step, direction, target) {
 }
 
 export function openingSearch(status, direction, observed, target) {
+  status = plainStatus(status)
   const pair = armPair(direction)
   let step = 'primer'
   let complement = status === 'matched_rc' || status === 'arm_only_rc'

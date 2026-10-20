@@ -46,7 +46,6 @@ from modules.molecular_cell.library_orders.result_upload import (
     ARM_STATUSES,
     MATCHED_STATUSES,
     SEQUENCE_NOT_FOUND,
-    SEQUENCE_TRACE_ONLY,
     extension_of,
     IMAGE_EXTENSIONS,
     library_code_stem,
@@ -62,6 +61,8 @@ from modules.molecular_cell.library_orders.result_upload import (
     read_direction,
     READ_EXTENSIONS,
     safe_path_part,
+    is_short,
+    plain_status,
     sequence_check,
     sequence_check_text,
     TRACE_EXTENSIONS,
@@ -815,11 +816,12 @@ class QcFileFacts(NamedTuple):
     partial: bool
     checks_primers: bool
     arm_only: bool
+    short: bool
 
 
 def _qc_file_facts(db: Session, order: MolecularLibraryOrder) -> QcFileFacts:
     if not order.id:
-        return QcFileFacts(False, False, False, False, False, False, False)
+        return QcFileFacts(False, False, False, False, False, False, False, False)
     links = db.scalars(
         select(MolecularLibraryResultLink).where(
             MolecularLibraryResultLink.order_id == order.id,
@@ -828,6 +830,7 @@ def _qc_file_facts(db: Session, order: MolecularLibraryOrder) -> QcFileFacts:
     final_names = _final_names(links)
     has_gel = False
     has_read = False
+    short = False
     by_target: dict[str, set[str]] = {}
     for link in links:
         if _replaced_by_final(link, final_names):
@@ -842,17 +845,21 @@ def _qc_file_facts(db: Session, order: MolecularLibraryOrder) -> QcFileFacts:
             and link.sequence_target
             and link.sequence_status
         ):
-            by_target.setdefault(link.sequence_target, set()).add(link.sequence_status)
+            by_target.setdefault(link.sequence_target, set()).add(plain_status(link.sequence_status))
+            short = short or is_short(link.sequence_status)
     statuses = [by_target.get(target, set()) for target in _configured_primers(db, order)]
     failed = {SEQUENCE_NOT_FOUND, *ARM_STATUSES}
+    primer_conflict = any(found & failed for found in statuses)
+    all_matched = all(found & MATCHED_STATUSES and not (found & failed) for found in statuses)
     return QcFileFacts(
         has_gel,
         has_read,
-        any(found & failed for found in statuses),
-        all(found & MATCHED_STATUSES and not (found & failed) for found in statuses),
+        primer_conflict or (short and all_matched),
+        all_matched,
         any(found & MATCHED_STATUSES and found & failed for found in statuses),
         bool(statuses),
         any(found & ARM_STATUSES for found in statuses),
+        short,
     )
 
 
@@ -923,12 +930,15 @@ def _qc_status_detail(
     partial: bool = False,
     checks_primers: bool = False,
     arm_only: bool = False,
+    short: bool = False,
 ) -> str:
     if status in {STATUS_QC_PASS, STATUS_DONE}:
         return "引物已对上" if checks_primers else ""
     if status == STATUS_QC_HOLD:
         if arm_only and not partial:
             return "引物错误"
+        if short and all_matched:
+            return "读段过短"
         return "有文件没对上引物" if partial else "引物未对上"
     if status != STATUS_WAIT_QC:
         return ""
@@ -970,6 +980,7 @@ def _qc_order_rows(db: Session, order_ids: set[int]) -> list[dict[str, str]]:
                 partial=facts.partial,
                 checks_primers=facts.checks_primers,
                 arm_only=facts.arm_only,
+                short=facts.short,
             ),
         })
     rows.sort(key=lambda row: row["library_code"])
@@ -1839,19 +1850,22 @@ def _sequencing_packages(
     return packages
 
 
-def _fill_trace_checks(db: Session, order: MolecularLibraryOrder, rows: list) -> None:
-    """已经上传、当时还没核对的峰图，打开列表时补一次显示用结果。"""
-    pending = [
-        (link, record)
-        for link, record, _count in rows
-        if extension_of(link.original_name) in TRACE_EXTENSIONS
-        and link.sequence_status == SEQUENCE_TRACE_ONLY
-    ]
-    if not pending:
-        return
+def _refresh_listed_sequences(
+    db: Session,
+    order: MolecularLibraryOrder,
+    rows: list,
+) -> bool:
+    """打开质检页时按当前算法重核。核对结果没变就不改记录。"""
     primers = _configured_primers(db, order)
-    for link, record in pending:
+    changed = False
+    for link, record, _count in rows:
+        previous = (link.sequence_status, link.sequence_target)
         _recheck_link_sequence(link, record, order, primers)
+        if (link.sequence_status, link.sequence_target) != previous:
+            changed = True
+    if changed:
+        _advance_order_status(db, order)
+    return changed
 
 
 def list_files(db: Session, order_id: int) -> dict[str, Any]:
@@ -1883,7 +1897,7 @@ def list_files(db: Session, order_id: int) -> dict[str, Any]:
             MolecularLibraryResultLink.id.desc(),
         )
     ).all()
-    _fill_trace_checks(db, order, rows)
+    changed = _refresh_listed_sequences(db, order, rows)
     final_names = _final_names(link for link, _record, _count in rows)
     items = [
         {
@@ -1892,12 +1906,15 @@ def list_files(db: Session, order_id: int) -> dict[str, Any]:
         }
         for link, record, linked_order_count in rows
     ]
-    return {
+    payload = {
         "order": order.to_dict(),
         "primer_sequences": _configured_primers(db, order),
         "items": items,
         "packages": _sequencing_packages(db, order),
     }
+    if changed:
+        db.commit()
+    return payload
 
 
 def _hash_bytes(content: bytes) -> str:

@@ -9,6 +9,7 @@ import {
   matchCount,
   matchSpans,
   normalizeSequence,
+  MIN_CHECK_BASES,
   openingSearch,
   pairSearch,
   readDirectionInfo,
@@ -39,6 +40,13 @@ const textBody = ref(null)
 let requestVersion = 0
 let controller = null
 
+const sequenceText = computed(() => {
+  const text = textContent.value
+  return baseOffsets(text).map((index) => text[index]).join('')
+})
+const baseCount = computed(() => sequenceText.value.length)
+const lengthIsShort = computed(() => baseCount.value <= MIN_CHECK_BASES)
+
 const directionInfo = computed(() => readDirectionInfo(
   props.direction,
   props.sequenceStatus,
@@ -66,7 +74,7 @@ const highlightedRanges = computed(() => matchSpans(
 ))
 
 const textParts = computed(() => {
-  const text = textContent.value
+  const text = sequenceText.value
   const ranges = [...highlightedRanges.value]
     .filter((range) => range.start >= 0 && range.end > range.start && range.end <= text.length)
     .sort((left, right) => left.start - right.start || right.end - left.end)
@@ -112,14 +120,13 @@ function baseOffsets(text) {
 function findTermRanges(text, term) {
   const needle = normalizeSequence(term)
   if (!needle) return []
-  const offsets = baseOffsets(text)
-  const haystack = offsets.map((index) => text[index].toUpperCase()).join('')
+  const haystack = text.toUpperCase()
   const ranges = []
   let offset = haystack.indexOf(needle)
   while (offset >= 0) {
     ranges.push({
-      start: offsets[offset],
-      end: offsets[offset + needle.length - 1] + 1,
+      start: offset,
+      end: offset + needle.length,
       term: needle,
     })
     offset = haystack.indexOf(needle, offset + 1)
@@ -128,8 +135,7 @@ function findTermRanges(text, term) {
 }
 
 function findFlankRanges(text, left, right) {
-  const offsets = baseOffsets(text)
-  const haystack = offsets.map((index) => text[index].toUpperCase()).join('')
+  const haystack = text.toUpperCase()
   const ranges = []
   let from = 0
   while (from <= haystack.length) {
@@ -137,14 +143,8 @@ function findFlankRanges(text, left, right) {
     if (leftAt < 0) break
     const rightAt = haystack.indexOf(right, leftAt + left.length)
     if (rightAt < 0) break
-    ranges.push({
-      start: offsets[leftAt],
-      end: offsets[leftAt + left.length - 1] + 1,
-    })
-    ranges.push({
-      start: offsets[rightAt],
-      end: offsets[rightAt + right.length - 1] + 1,
-    })
+    ranges.push({ start: leftAt, end: leftAt + left.length })
+    ranges.push({ start: rightAt, end: rightAt + right.length })
     from = rightAt + right.length
   }
   return ranges
@@ -162,8 +162,8 @@ function applySearch(kind = 'manual') {
   const target = searchTarget(searchQuery.value, false)
   searchKind.value = target.flank && kind !== 'arm' ? 'flank' : kind
   const ranges = target.flank
-    ? findFlankRanges(textContent.value, target.left, target.right)
-    : (target.term ? findTermRanges(textContent.value, target.term) : [])
+    ? findFlankRanges(sequenceText.value, target.left, target.right)
+    : (target.term ? findTermRanges(sequenceText.value, target.term) : [])
   searchMatches.value = ranges
   activeMatchIndex.value = ranges.length ? 0 : -1
   scrollToMark()
@@ -266,6 +266,7 @@ onBeforeUnmount(() => {
           <b v-if="directionInfo.arrow">{{ directionInfo.arrow }}</b>
           {{ directionInfo.label }}
         </span>
+        <span v-if="!loading" class="read-length" :class="{ 'is-short': lengthIsShort }">{{ baseCount }} bp</span>
       </header>
       <div class="seq-search">
         <input
@@ -336,6 +337,15 @@ onBeforeUnmount(() => {
 
 .seq-state.is-error {
   color: var(--el-color-danger);
+}
+
+.read-length {
+  margin-left: auto;
+}
+
+.read-length.is-short {
+  color: var(--el-color-danger);
+  font-weight: 600;
 }
 
 .seq-head,
@@ -441,6 +451,7 @@ button.direction-badge.is-arm {
 }
 
 .seq-text pre {
+  width: 100%;
   min-height: 100%;
   margin: 0;
   padding: 16px;

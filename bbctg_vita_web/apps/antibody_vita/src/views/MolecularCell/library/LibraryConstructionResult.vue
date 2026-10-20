@@ -129,11 +129,11 @@
             <span class="tile-name">{{ file.original_name }}</span>
             <small>{{ fileSize(file.byte_size) }}</small>
             <small
-              v-if="railSequenceLabel(file)"
+              v-if="file.sequence_check"
               class="tile-check"
               :class="checkTone(file.sequence_status)"
             >
-              {{ railSequenceLabel(file) }}
+              {{ file.sequence_check }}
             </small>
             <span v-if="file.is_final_qc" class="tile-final">最终</span>
           </button>
@@ -856,7 +856,7 @@ import {
 } from 'element-plus'
 import { useUserStore } from '@vben/stores'
 
-import { armPair, reverseComplement } from './primerSearch'
+import { armPair, plainStatus, reverseComplement } from './primerSearch'
 import { filterPrimerCatalog, loadPrimerCatalog } from './primerCatalogOptions'
 
 import {
@@ -917,16 +917,6 @@ function assembledCheck(primer, direction) {
   const pair = armPair(direction === 'F' ? 'F' : 'R')
   if (!body || pair.length < 2) return ''
   return `${pair[0]}${body}${pair[1]}`
-}
-const PRIMER_TARGET_LABELS = {
-  i5: 'i5',
-  i7: 'i7',
-  hF: 'H链正向',
-  hR: 'H链反向',
-  kF: 'K链正向',
-  kR: 'K链反向',
-  lF: 'L链正向',
-  lR: 'L链反向',
 }
 const AbiTracePreview = defineAsyncComponent(() => import('./AbiTracePreview.vue'))
 const SeqReadPreview = defineAsyncComponent(() => import('./SeqReadPreview.vue'))
@@ -1159,13 +1149,22 @@ export default {
       const reads = this.files.filter((file) => (
         !file.replaced && ['SEQ', 'AB1', 'ABI'].includes(this.fileExt(file.original_name))
       ))
-      const unmatched = reads.filter((file) => file.sequence_status === 'not_found')
-      const armOnly = reads.filter((file) => file.sequence_status === 'arm_only' || file.sequence_status === 'arm_only_rc')
+      const unmatched = reads.filter((file) => plainStatus(file.sequence_status) === 'not_found')
+      const armOnly = reads.filter((file) => {
+        const status = plainStatus(file.sequence_status)
+        return status === 'arm_only' || status === 'arm_only_rc'
+      })
       if (unmatched.length) {
         gaps.push({ text: '同源臂未匹配', title: `${unmatched.length} 个测序文件的同源臂未匹配`, tone: 'is-fail' })
       }
       if (armOnly.length) {
         gaps.push({ text: '引物错误', title: '同源臂对上，引物错误', tone: 'is-fail' })
+      }
+      const shortReads = reads.filter((file) => (
+        this.isSequence(file) && String(file.sequence_status || '').endsWith('_short')
+      ))
+      if (shortReads.length) {
+        gaps.push({ text: '读段过短', title: `${shortReads.length} 个测序文件不超过 400 bp`, tone: 'is-fail' })
       }
       const required = []
       if (this.order.build_type === 'pooled_bcr') {
@@ -1572,21 +1571,14 @@ export default {
       return `${(size / (1024 * 1024)).toFixed(1)} MB`
     },
     sequenceMatched(status) {
+      status = plainStatus(status)
       return status === 'matched' || status === 'matched_rc'
     },
     checkTone(status) {
+      status = plainStatus(status)
       if (status === 'matched' || status === 'matched_rc') return 'is-matched'
       if (status === 'arm_only' || status === 'arm_only_rc') return 'is-primer'
       if (status === 'not_found') return 'is-arm'
-      return ''
-    },
-    railSequenceLabel(file) {
-      const target = PRIMER_TARGET_LABELS[file?.sequence_target] || file?.sequence_target || '引物'
-      if (file?.sequence_status === 'matched') return `${target} 匹配`
-      if (file?.sequence_status === 'matched_rc') return `${target} 匹配-反补`
-      if (file?.sequence_status === 'arm_only') return `${target} 引物错误`
-      if (file?.sequence_status === 'arm_only_rc') return `${target} 引物错误-反补`
-      if (file?.sequence_status === 'not_found') return `${target} 同源臂未匹配`
       return ''
     },
     fileMeta(file) {

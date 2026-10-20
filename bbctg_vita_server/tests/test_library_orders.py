@@ -33,8 +33,14 @@ from modules.molecular_cell.library_orders.result_upload import (
 )
 
 
+def _long_enough(sequence: str) -> bytes:
+    if len(sequence) <= 400:
+        sequence += "N" * (401 - len(sequence))
+    return sequence.encode()
+
+
 def _read(primer, direction="F"):
-    return f"NN{assembled_primer(primer, direction)}NN".encode()
+    return _long_enough(f"NN{assembled_primer(primer, direction)}NN")
 
 
 @compiles(BigInteger, "sqlite")
@@ -1439,7 +1445,7 @@ class LibraryFileTests(unittest.TestCase):
         self.assertEqual(uploaded["order_id"], named["id"])
         self.assertEqual(uploaded["sequence_check"], "i5 匹配")
 
-        missing = self._upload("C123-1_M13R.seq", b"NNNN", named["id"])
+        missing = self._upload("C123-1_M13R.seq", _long_enough("NNNN"), named["id"])
         self.assertEqual(missing["sequence_check"], "i7 同源臂未匹配")
         trace = self._upload("C123-1_M13F.ab1", b"chromatogram", named["id"])
         self.assertEqual(trace["sequence_status"], "trace_only")
@@ -1450,7 +1456,7 @@ class LibraryFileTests(unittest.TestCase):
         order = self._barcode_order("C123", i5_sequence="AAAN")
         mismatch = self._upload("C123-1_M13F.seq", b"ATTT", order["id"])
         matched = self._upload("C123-2_M13F.seq", _read("AAAN"), order["id"])
-        self.assertEqual(mismatch["sequence_status"], "not_found")
+        self.assertEqual(mismatch["sequence_status"], "not_found_short")
         self.assertEqual(matched["sequence_status"], "matched")
 
     def test_batch_preflight_uses_paths_without_file_content(self):
@@ -2087,6 +2093,75 @@ class LibraryFileTests(unittest.TestCase):
         )
         self.assertEqual(link.sequence_status, "arm_only")
 
+    def test_opening_qc_page_refreshes_stale_sequence_check(self):
+        order = self._barcode_order(
+            "C123",
+            index_mode=service.INDEX_I5,
+            i5_sequence="AAAA",
+        )
+        self._upload("C123.png", b"gel", order["id"])
+        uploaded = self._upload("C123_M13F.seq", _read("AAAA"), order["id"])
+        paths = [
+            "pkg/测序结果/C123_M13F.seq",
+            "pkg/拼接结果/assembled.txt",
+            "pkg/去载体序列/trimmed.txt",
+        ]
+        service.upload_batch(
+            self.db,
+            [
+                UploadFile(filename="C123_M13F.seq", file=io.BytesIO(_read("AAAA"))),
+                UploadFile(filename="assembled.txt", file=io.BytesIO(b"assembled")),
+                UploadFile(filename="trimmed.txt", file=io.BytesIO(b"trimmed")),
+            ],
+            paths,
+            "tester",
+            order["id"],
+        )
+        fresh = uploaded["sequence_status"]
+        links = self.db.scalars(
+            select(MolecularLibraryResultLink).where(
+                MolecularLibraryResultLink.order_id == order["id"],
+                MolecularLibraryResultLink.original_name == "C123_M13F.seq",
+            )
+        ).all()
+        self.assertEqual(len(links), 2)
+        for link in links:
+            link.sequence_status = "not_found"
+        self.db.commit()
+        service._advance_order_status(self.db, self.db.get(MolecularLibraryOrder, order["id"]))
+        self.db.commit()
+        self.assertEqual(
+            self.db.get(MolecularLibraryOrder, order["id"]).status,
+            service.STATUS_QC_HOLD,
+        )
+
+        listed = service.list_files(self.db, order["id"])
+        visible = [
+            item["sequence_status"]
+            for item in listed["items"]
+            if item["original_name"] == "C123_M13F.seq"
+        ]
+        packaged = [
+            item["sequence_status"]
+            for item in listed["packages"][0]["files"]
+            if item["original_name"] == "C123_M13F.seq"
+        ]
+        self.assertEqual(visible, [fresh, fresh])
+        self.assertEqual(packaged, [fresh])
+        self.assertEqual(listed["order"]["status"], service.STATUS_QC_PASS)
+        self.db.expire_all()
+        stored = self.db.scalars(
+            select(MolecularLibraryResultLink.sequence_status).where(
+                MolecularLibraryResultLink.order_id == order["id"],
+                MolecularLibraryResultLink.original_name == "C123_M13F.seq",
+            )
+        ).all()
+        self.assertEqual(set(stored), {fresh})
+        self.assertEqual(
+            self.db.get(MolecularLibraryOrder, order["id"]).status,
+            service.STATUS_QC_PASS,
+        )
+
     def test_hkl_primer_change_rechecks_existing_sequence(self):
         forward = MolecularPrimerIndexCatalog(
             name="H-old",
@@ -2348,7 +2423,7 @@ class LibraryFileTests(unittest.TestCase):
         self.assertEqual(uploaded["sequence_check"], "i5 引物错误")
         flipped = self._upload(
             "C123-2_M13F.seq",
-            f"NN{primer_check_sequence(assembled_primer('CCCC', 'F'))}NN".encode(),
+            _long_enough(f"NN{primer_check_sequence(assembled_primer('CCCC', 'F'))}NN"),
             order["id"],
         )
         self.assertEqual(flipped["sequence_status"], "arm_only_rc")
@@ -2357,7 +2432,7 @@ class LibraryFileTests(unittest.TestCase):
         self.assertEqual(expected_reverse["sequence_check"], "i7 匹配")
         flipped_reverse = self._upload(
             "C123-2_M13R.seq",
-            f"NN{primer_check_sequence(assembled_primer('TTTT', 'R'))}NN".encode(),
+            _long_enough(f"NN{primer_check_sequence(assembled_primer('TTTT', 'R'))}NN"),
             order["id"],
         )
         self.assertEqual(flipped_reverse["sequence_status"], "matched_rc")
@@ -2365,6 +2440,87 @@ class LibraryFileTests(unittest.TestCase):
         self.assertEqual(
             self.db.get(MolecularLibraryOrder, order["id"]).status,
             service.STATUS_QC_HOLD,
+        )
+
+    def test_reads_of_400_bases_or_fewer_keep_the_result_and_mark_short(self):
+        order = self._barcode_order("C123", i5_sequence="AAAA", i7_sequence="TTTT")
+        short = f"NN{assembled_primer('AAAA', 'F')}NN"
+        uploaded = self._upload("C123_M13F.seq", short.encode(), order["id"])
+        self.assertEqual(uploaded["sequence_status"], "matched_short")
+        self.assertEqual(uploaded["sequence_check"], "i5 匹配-过短")
+
+        boundary = short + ("N" * (400 - len(short)))
+        exactly = self._upload("C123-2_M13F.seq", boundary.encode(), order["id"])
+        self.assertEqual(exactly["sequence_status"], "matched_short")
+        self.assertEqual(exactly["sequence_check"], "i5 匹配-过短")
+
+        longer = self._upload("C123-3_M13F.seq", _read("AAAA"), order["id"])
+        self.assertEqual(longer["sequence_status"], "matched")
+        self.assertEqual(longer["sequence_check"], "i5 匹配")
+
+        spaced = self._upload(
+            "C123-4_M13F.seq",
+            f"{short}\n{' 12 ' * 30}".encode(),
+            order["id"],
+        )
+        self.assertEqual(spaced["sequence_status"], "matched_short")
+        self.assertEqual(spaced["sequence_check"], "i5 匹配-过短")
+
+        flipped = f"NN{primer_check_sequence(assembled_primer('TTTT', 'R'))}NN"
+        marked = self._upload("C123_M13R.seq", flipped.encode(), order["id"])
+        self.assertEqual(marked["sequence_status"], "matched_rc_short")
+        self.assertEqual(marked["sequence_check"], "i7 匹配-反补-过短")
+
+    def test_short_read_holds_qc_when_every_primer_matches(self):
+        order = self._barcode_order("C123", i5_sequence="AAAA")
+        self._upload("C123.png", b"gel", order["id"])
+        self._upload("C123-1_M13F.seq", _read("AAAA"), order["id"])
+        self.assertEqual(
+            self.db.get(MolecularLibraryOrder, order["id"]).status,
+            service.STATUS_QC_PASS,
+        )
+        short = self._upload(
+            "C123-2_M13F.seq",
+            f"NN{assembled_primer('AAAA', 'F')}NN".encode(),
+            order["id"],
+        )
+        self.assertEqual(short["sequence_check"], "i5 匹配-过短")
+        held = self.db.get(MolecularLibraryOrder, order["id"])
+        self.assertEqual(held.status, service.STATUS_QC_HOLD)
+        self.assertEqual(
+            service._qc_order_rows(self.db, {order["id"]})[0]["detail"],
+            "读段过短",
+        )
+        service.save(self.db, {"id": order["id"], "qc_result": service.QC_PASS})
+        self.assertEqual(
+            self.db.get(MolecularLibraryOrder, order["id"]).status,
+            service.STATUS_QC_PASS,
+        )
+
+    def test_short_read_waits_until_every_configured_primer_is_present(self):
+        order = self._barcode_order("C123", i5_sequence="AAAA", i7_sequence="TTTT")
+        self._upload("C123.png", b"gel", order["id"])
+        self._upload(
+            "C123_M13F.seq",
+            f"NN{assembled_primer('AAAA', 'F')}NN".encode(),
+            order["id"],
+        )
+        self.assertEqual(
+            self.db.get(MolecularLibraryOrder, order["id"]).status,
+            service.STATUS_WAIT_QC,
+        )
+        self.assertEqual(
+            service._qc_order_rows(self.db, {order["id"]})[0]["detail"],
+            "引物还没对全",
+        )
+        self._upload("C123_M13R.seq", _read("TTTT", "R"), order["id"])
+        self.assertEqual(
+            self.db.get(MolecularLibraryOrder, order["id"]).status,
+            service.STATUS_QC_HOLD,
+        )
+        self.assertEqual(
+            service._qc_order_rows(self.db, {order["id"]})[0]["detail"],
+            "读段过短",
         )
 
     def test_hkl_chain_is_the_prefix_before_the_library_code(self):
@@ -2400,10 +2556,10 @@ class LibraryFileTests(unittest.TestCase):
             service.list_files(self.db, order["id"])["primer_sequences"],
             {"hF": "AAAA", "kF": "CCCC"},
         )
-        shown = f"NN{FORWARD_ARM_1}AAAA{FORWARD_ARM_2}NN".encode()
+        shown = _long_enough(f"NN{FORWARD_ARM_1}AAAA{FORWARD_ARM_2}NN")
         display_only = self._upload("HC223-2_M13F.seq", shown, order["id"])
         self.assertEqual(display_only["sequence_status"], "arm_only")
-        flipped = f"NN{primer_check_sequence(assembled_primer('AAAA', 'F'))}NN".encode()
+        flipped = _long_enough(f"NN{primer_check_sequence(assembled_primer('AAAA', 'F'))}NN")
         other_strand = self._upload("HC223-3_M13F.seq", flipped, order["id"])
         self.assertEqual(other_strand["sequence_status"], "matched_rc")
         self.assertEqual(other_strand["sequence_check"], "H链正向 匹配-反补")

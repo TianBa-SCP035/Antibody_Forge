@@ -508,7 +508,7 @@ onMounted(loadFeatures);
               </div>
             </div>
             <el-table v-loading="loading" class="job-table" :data="jobFeatures" border stripe>
-              <el-table-column label="任务" min-width="240">
+              <el-table-column label="任务" min-width="200">
                 <template #default="{ row }">
                   <div class="primary-cell">
                     <span>{{ row.name }}</span>
@@ -586,7 +586,7 @@ onMounted(loadFeatures);
                   />
                 </template>
               </el-table-column>
-              <el-table-column align="center" label="启用" width="80">
+              <el-table-column align="center" label="启用" width="90">
                 <template #default="{ row }">
                   <el-switch
                     v-model="row.enabled"
@@ -596,14 +596,14 @@ onMounted(loadFeatures);
                   />
                 </template>
               </el-table-column>
-              <el-table-column align="center" label="生效" width="100">
+              <el-table-column align="center" label="生效" width="110">
                 <template #default>
                   <el-tag :type="systemStatus.scheduler_running ? 'success' : 'info'">
                     {{ systemStatus.scheduler_running ? '保存即生效' : '未启动' }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column align="center" label="操作" width="100">
+              <el-table-column align="center" label="操作" width="110">
                 <template #default="{ row }">
                   <el-button
                     link
@@ -616,7 +616,7 @@ onMounted(loadFeatures);
                   </el-button>
                 </template>
               </el-table-column>
-              <el-table-column prop="description" label="任务说明" min-width="260" />
+              <el-table-column prop="description" label="任务说明" min-width="200" />
             </el-table>
           </div>
 

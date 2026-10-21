@@ -42,6 +42,28 @@ import { SYSTEM_ERRORS } from './errors';
 
 defineOptions({ name: 'SystemFeatures' });
 
+const jobSchedules = [
+  { value: 'daily', label: '每天' },
+  { value: 'weekly', label: '每周' },
+  { value: 'monthly', label: '每月' },
+  { value: 'interval', label: '每隔' },
+];
+const jobWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+const jobMonthDays = Array.from({ length: 28 }, (_, index) => index + 1);
+const jobIntervals = [
+  { every: 1, unit: 'hour', label: '1 小时' },
+  { every: 2, unit: 'hour', label: '2 小时' },
+  { every: 3, unit: 'hour', label: '3 小时' },
+  { every: 4, unit: 'hour', label: '4 小时' },
+  { every: 6, unit: 'hour', label: '6 小时' },
+  { every: 8, unit: 'hour', label: '8 小时' },
+  { every: 12, unit: 'hour', label: '12 小时' },
+  { every: 2, unit: 'day', label: '2 天' },
+  { every: 3, unit: 'day', label: '3 天' },
+  { every: 7, unit: 'day', label: '7 天' },
+  { every: 14, unit: 'day', label: '14 天' },
+];
+
 type ConfiguredFeature = SystemFeatureFlag & { config: Record<string, any> };
 type FeatureRow = ConfiguredFeature & { children?: FeatureRow[] };
 
@@ -56,7 +78,7 @@ const runningJobCode = ref('');
 const errorMessage = ref('');
 const features = ref<SystemFeatureFlag[]>([]);
 const jobLogs = ref<SystemJobRunLog[]>([]);
-const systemStatus = ref<{ server_time?: string; timezone?: string }>({});
+const systemStatus = ref<{ app_env?: string; scheduler_running?: boolean; server_time?: string; timezone?: string }>({});
 
 const logQuery = reactive({
   date_range: defaultDateRange(),
@@ -212,29 +234,56 @@ function replaceFeature(feature: SystemFeatureFlag) {
 }
 
 function normalizeBeforeSave(feature: SystemFeatureFlag) {
-  if (feature.category === 'job') {
-    const { hour, minute } = parseRunTime(feature.config?.run_time, feature.config?.hour, feature.config?.minute);
-    const config = { ...(feature.config || {}) };
-    delete config.cron;
-    feature.config = {
-      ...config,
-      hour,
-      minute,
-      restart_required: true,
-      run_time: formatRunTime(hour, minute),
-    };
-  }
+  if (feature.category === 'job') syncJobConfig(feature);
 }
 
 function hydrateFeature(feature: SystemFeatureFlag) {
-  const config = { ...(feature.config || {}) };
-  if (feature.category === 'job') {
-    const { hour, minute } = parseRunTime(config.run_time, config.hour, config.minute);
-    config.hour = hour;
-    config.minute = minute;
-    config.run_time = formatRunTime(hour, minute);
+  const copy = { ...feature, config: { ...(feature.config || {}) } };
+  if (copy.category === 'job') syncJobConfig(copy);
+  return copy;
+}
+
+function syncJobConfig(feature: SystemFeatureFlag) {
+  const config = feature.config || {};
+  const schedule = jobSchedules.some((item) => item.value === config.schedule) ? config.schedule : 'daily';
+  const { hour, minute } = parseRunTime(config.run_time, config.hour, config.minute);
+  const interval =
+    jobIntervals.find((item) => `${item.every}-${item.unit}` === config.interval_key) ||
+    jobIntervals.find((item) => item.every === Number(config.every) && item.unit === config.unit) ||
+    jobIntervals[0];
+  const next = {
+    schedule,
+    hour,
+    minute,
+    weekday: boundNumber(config.weekday, 0, 6, 0),
+    day: boundNumber(config.day, 1, 28, 1),
+    every: interval.every,
+    unit: interval.unit,
+    interval_key: `${interval.every}-${interval.unit}`,
+    run_time: formatRunTime(hour, minute),
+  };
+  feature.config = next;
+  const source = features.value.find((item) => item.code === feature.code);
+  if (source && source !== feature) source.config = next;
+}
+
+const schedulerAlert = computed(() => {
+  if (systemStatus.value.scheduler_running) {
+    return '调度正在运行。保存后，下一次执行时间立即更新，不用重启后端。';
   }
-  return { ...feature, config };
+  const env = systemStatus.value.app_env || 'local';
+  return `当前是${env}环境，定时任务没有启动。本地和测试默认如此；这里的修改会先存进数据库，等调度进程启动后再按新时间计时。生产环境会启动调度。`;
+});
+
+function jobClockTitle(config: Record<string, any> | undefined) {
+  const clock = config?.run_time || formatRunTime(config?.hour, config?.minute);
+  if (config?.schedule === 'weekly') return `每${jobWeekdays[config.weekday] || '周一'} ${clock}`;
+  if (config?.schedule === 'monthly') return `每月 ${config.day} 日 ${clock}`;
+  if (config?.schedule === 'interval') {
+    const label = jobIntervals.find((item) => item.every === config.every && item.unit === config.unit)?.label || '1 小时';
+    return `每 ${label}，从 ${clock} 起`;
+  }
+  return `每天 ${clock}`;
 }
 
 function sortFeatures<T extends SystemFeatureFlag>(items: T[]) {
@@ -447,17 +496,17 @@ onMounted(loadFeatures);
             class="tab-tip"
             show-icon
             type="warning"
-            title="数据库里的任务开关和执行时间只在调度器启动时生效；本地 APP_ENV=local 且 ENABLE_SCHEDULER=false 时不会启动定时任务。"
+            :title="schedulerAlert"
           />
 
           <div class="section-card">
             <div class="section-title">
               <div>
                 <strong>任务配置</strong>
-                <p>调整任务启停和每日执行时间，保存后重启后端生效。</p>
+                <p>每天、每周、每月按所选时刻执行。每隔则从该时刻起，按固定的几小时或几天重复。</p>
               </div>
             </div>
-            <el-table v-loading="loading" :data="jobFeatures" border stripe>
+            <el-table v-loading="loading" class="job-table" :data="jobFeatures" border stripe>
               <el-table-column label="任务" min-width="240">
                 <template #default="{ row }">
                   <div class="primary-cell">
@@ -466,22 +515,77 @@ onMounted(loadFeatures);
                   </div>
                 </template>
               </el-table-column>
-              <el-table-column label="执行时间" width="160">
+              <el-table-column class-name="job-control" label="周期" width="120">
+                <template #default="{ row }">
+                  <el-select
+                    v-model="row.config.schedule"
+                    class="job-field"
+                    :disabled="!canManageFeatures || savingCode === row.code"
+                    size="small"
+                    @change="saveJobFeature(row)"
+                  >
+                    <el-option v-for="item in jobSchedules" :key="item.value" :label="item.label" :value="item.value" />
+                  </el-select>
+                </template>
+              </el-table-column>
+              <el-table-column class-name="job-control" label="设定" width="120">
+                <template #default="{ row }">
+                  <el-select
+                    v-if="row.config.schedule === 'weekly'"
+                    v-model="row.config.weekday"
+                    class="job-field"
+                    :disabled="!canManageFeatures || savingCode === row.code"
+                    size="small"
+                    @change="saveJobFeature(row)"
+                  >
+                    <el-option v-for="(label, index) in jobWeekdays" :key="label" :label="label" :value="index" />
+                  </el-select>
+                  <el-select
+                    v-else-if="row.config.schedule === 'monthly'"
+                    v-model="row.config.day"
+                    class="job-field"
+                    :disabled="!canManageFeatures || savingCode === row.code"
+                    size="small"
+                    title="29 日至 31 日在较短的月份会跳过，所以只到 28 日"
+                    @change="saveJobFeature(row)"
+                  >
+                    <el-option v-for="item in jobMonthDays" :key="item" :label="`${item} 日`" :value="item" />
+                  </el-select>
+                  <el-select
+                    v-else-if="row.config.schedule === 'interval'"
+                    v-model="row.config.interval_key"
+                    class="job-field"
+                    :disabled="!canManageFeatures || savingCode === row.code"
+                    size="small"
+                    @change="saveJobFeature(row)"
+                  >
+                    <el-option
+                      v-for="item in jobIntervals"
+                      :key="`${item.every}-${item.unit}`"
+                      :label="item.label"
+                      :value="`${item.every}-${item.unit}`"
+                    />
+                  </el-select>
+                  <span v-else class="job-blank">—</span>
+                </template>
+              </el-table-column>
+              <el-table-column class-name="job-control" label="时刻" width="120">
                 <template #default="{ row }">
                   <el-time-picker
                     v-model="row.config.run_time"
+                    class="job-field"
                     :clearable="false"
                     :disabled="!canManageFeatures || savingCode === row.code"
                     format="HH:mm"
-                    placeholder="选择时间"
+                    placeholder="时刻"
                     size="small"
-                    style="width: 120px"
+                    :title="jobClockTitle(row.config)"
                     value-format="HH:mm"
                     @change="saveJobFeature(row)"
                   />
                 </template>
               </el-table-column>
-              <el-table-column label="启用" width="100">
+              <el-table-column align="center" label="启用" width="80">
                 <template #default="{ row }">
                   <el-switch
                     v-model="row.enabled"
@@ -491,12 +595,14 @@ onMounted(loadFeatures);
                   />
                 </template>
               </el-table-column>
-              <el-table-column label="生效方式" width="110">
+              <el-table-column align="center" label="生效" width="100">
                 <template #default>
-                  <el-tag type="warning">重启生效</el-tag>
+                  <el-tag :type="systemStatus.scheduler_running ? 'success' : 'info'">
+                    {{ systemStatus.scheduler_running ? '保存即生效' : '未启动' }}
+                  </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="110">
+              <el-table-column align="center" label="操作" width="100">
                 <template #default="{ row }">
                   <el-button
                     link
@@ -687,6 +793,25 @@ onMounted(loadFeatures);
 .feature-card-footer small {
   color: var(--el-text-color-secondary);
   font-size: 12px;
+}
+
+.job-table :deep(td.job-control .cell) {
+  display: flex;
+  align-items: center;
+}
+
+.job-field {
+  width: 100%;
+}
+
+.job-table :deep(.job-field.el-date-editor) {
+  --el-date-editor-width: 100%;
+}
+
+.job-blank {
+  width: 100%;
+  color: var(--el-text-color-placeholder);
+  text-align: center;
 }
 
 .feature-card-grid,

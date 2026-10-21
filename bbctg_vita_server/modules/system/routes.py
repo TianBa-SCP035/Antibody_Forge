@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from core.config import get_settings
 from core.response import success
 from db.session import get_db
 from models.system import (
@@ -23,7 +24,7 @@ from modules.auth.dependencies import get_current_user
 from modules.auth.security import hash_password
 from modules.system.features import list_feature_flags, list_job_run_logs, save_feature_flag
 from modules.system.permissions import build_user_context, require_permission
-from jobs.registry import run_scheduled_job_now
+from jobs.registry import apply_job_schedule, run_scheduled_job_now, scheduler_is_running
 from utils.filter_values import filter_terms, restrict
 
 router = APIRouter()
@@ -318,6 +319,8 @@ def feature_system_status(
             "server_time": datetime.now().isoformat(timespec="seconds"),
             "timezone": "Asia/Shanghai",
             "user_id": current_user.id,
+            "app_env": get_settings().app_env,
+            "scheduler_running": scheduler_is_running(),
         }
     )
 
@@ -363,7 +366,10 @@ def save_feature(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, "system.feature.manage")
-    return success(save_feature_flag(db, data))
+    saved = save_feature_flag(db, data)
+    if saved.get("category") == "job":
+        apply_job_schedule(str(saved.get("code") or ""))
+    return success(saved)
 
 
 @router.post("/features/jobs/run")

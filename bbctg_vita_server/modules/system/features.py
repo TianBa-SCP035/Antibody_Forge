@@ -3,13 +3,45 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from db.session import SessionLocal
 from models.system import SysFeatureFlag, SysJobRunLog
+
+
+JOB_SCHEDULES = ("daily", "weekly", "monthly", "interval")
+JOB_INTERVALS = (
+    (1, "hour"),
+    (2, "hour"),
+    (3, "hour"),
+    (4, "hour"),
+    (6, "hour"),
+    (8, "hour"),
+    (12, "hour"),
+    (2, "day"),
+    (3, "day"),
+    (7, "day"),
+    (14, "day"),
+)
+_JOB_TIMEZONE = ZoneInfo("Asia/Shanghai")
+
+
+def _job_config(hour: int, minute: int) -> dict[str, Any]:
+    return {
+        "schedule": "daily",
+        "hour": hour,
+        "minute": minute,
+        "weekday": 0,
+        "day": 1,
+        "every": 1,
+        "unit": "hour",
+    }
 
 
 DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
@@ -205,51 +237,51 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "code": "job.employee_profile_sync",
         "name": "员工资料定时同步",
         "category": "job",
-        "description": "每天 00:30 同步外部员工基础资料",
+        "description": "同步外部员工基础资料",
         "enabled": True,
         "visible": True,
         "sort_order": 200,
-        "config": {"hour": 0, "minute": 30, "restart_required": True},
+        "config": _job_config(0, 30),
     },
     {
         "code": "job.target_master_sync",
         "name": "靶点主数据定时同步",
         "category": "job",
-        "description": "每天 00:45 同步外部靶点主数据",
+        "description": "同步外部靶点主数据",
         "enabled": True,
         "visible": True,
         "sort_order": 205,
-        "config": {"hour": 0, "minute": 45, "restart_required": True},
+        "config": _job_config(0, 45),
     },
     {
         "code": "job.serum_auto_update_status",
         "name": "免疫状态自动更新",
         "category": "job",
-        "description": "每天 01:00 自动更新免疫实验状态",
+        "description": "自动更新免疫实验状态",
         "enabled": True,
         "visible": True,
         "sort_order": 210,
-        "config": {"hour": 1, "minute": 0, "restart_required": True},
+        "config": _job_config(1, 0),
     },
     {
         "code": "job.discovery_auto_update_status",
         "name": "抗体发现状态自动更新",
         "category": "job",
-        "description": "每天 01:15 自动更新已过期的冲击免状态",
+        "description": "冲击日期过后，将待冲击改为待剖鼠",
         "enabled": True,
         "visible": True,
         "sort_order": 215,
-        "config": {"hour": 1, "minute": 15, "restart_required": True},
+        "config": _job_config(1, 15),
     },
     {
         "code": "job.mega_labillion_status_sync",
         "name": "镁伽工单状态同步",
         "category": "job",
-        "description": "每天 02:00 同步镁伽非终态工单状态",
+        "description": "同步镁伽非终态工单状态",
         "enabled": True,
         "visible": True,
         "sort_order": 220,
-        "config": {"hour": 2, "minute": 0, "restart_required": True},
+        "config": _job_config(2, 0),
     },
 ]
 
@@ -358,14 +390,11 @@ def get_feature_flag(db: Session, code: str) -> dict[str, Any] | None:
     }
 
 
-def get_job_schedule(db: Session, code: str, default_hour: int, default_minute: int) -> tuple[bool, int, int]:
+def get_job_schedule(db: Session, code: str, default_hour: int, default_minute: int) -> tuple[bool, dict[str, Any]]:
     flag = get_feature_flag(db, code)
     if flag is None:
-        return True, default_hour, default_minute
-    config = flag.get("config") or {}
-    hour = _bounded_int(config.get("hour"), 0, 23, default_hour)
-    minute = _bounded_int(config.get("minute"), 0, 59, default_minute)
-    return bool(flag.get("enabled", True)), hour, minute
+        return True, normalize_job_config({"hour": default_hour, "minute": default_minute}, default_hour, default_minute)
+    return bool(flag.get("enabled", True)), normalize_job_config(flag.get("config") or {}, default_hour, default_minute)
 
 
 def record_job_run(
@@ -460,16 +489,50 @@ def summarize_job_result(result: Any) -> str:
     return str(result)[:255]
 
 
+def normalize_job_config(
+    config: dict[str, Any] | None,
+    default_hour: int = 0,
+    default_minute: int = 0,
+) -> dict[str, Any]:
+    payload = config or {}
+    schedule = str(payload.get("schedule") or "daily").strip()
+    if schedule not in JOB_SCHEDULES:
+        schedule = "daily"
+    every = _bounded_int(payload.get("every"), 1, 14, 1)
+    unit = str(payload.get("unit") or "").strip()
+    if (every, unit) not in JOB_INTERVALS:
+        every, unit = JOB_INTERVALS[0]
+    return {
+        "schedule": schedule,
+        "hour": _bounded_int(payload.get("hour"), 0, 23, default_hour),
+        "minute": _bounded_int(payload.get("minute"), 0, 59, default_minute),
+        "weekday": _bounded_int(payload.get("weekday"), 0, 6, 0),
+        "day": _bounded_int(payload.get("day"), 1, 28, 1),
+        "every": every,
+        "unit": unit,
+    }
+
+
+def build_job_trigger(config: dict[str, Any]):
+    hour = int(config["hour"])
+    minute = int(config["minute"])
+    schedule = config["schedule"]
+    if schedule == "weekly":
+        return CronTrigger(day_of_week=int(config["weekday"]), hour=hour, minute=minute, timezone=_JOB_TIMEZONE)
+    if schedule == "monthly":
+        return CronTrigger(day=int(config["day"]), hour=hour, minute=minute, timezone=_JOB_TIMEZONE)
+    if schedule == "interval":
+        start = datetime(2020, 1, 1, hour, minute, tzinfo=_JOB_TIMEZONE)
+        step = int(config["every"])
+        if config["unit"] == "day":
+            return IntervalTrigger(days=step, start_date=start, timezone=_JOB_TIMEZONE)
+        return IntervalTrigger(hours=step, start_date=start, timezone=_JOB_TIMEZONE)
+    return CronTrigger(hour=hour, minute=minute, timezone=_JOB_TIMEZONE)
+
+
 def _normalize_config(category: str, config: dict[str, Any]) -> dict[str, Any]:
     if category == "job":
-        hour = _bounded_int(config.get("hour"), 0, 23, 0)
-        minute = _bounded_int(config.get("minute"), 0, 59, 0)
-        return {
-            **{key: value for key, value in config.items() if key != "cron"},
-            "hour": hour,
-            "minute": minute,
-            "restart_required": bool(config.get("restart_required", True)),
-        }
+        return normalize_job_config(config)
     return config
 
 

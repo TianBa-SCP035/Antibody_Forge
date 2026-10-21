@@ -1,9 +1,6 @@
-from datetime import datetime
 import threading
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
-
 from db.session import SessionLocal
 from jobs.discovery_status import discovery_auto_update_status_job
 from jobs.employee_profile_sync import employee_profile_sync_job
@@ -11,7 +8,7 @@ from jobs.labillion_status_sync import labillion_status_sync_job
 from jobs.serum_status import auto_update_status_job
 from jobs.target_master_sync import target_master_sync_job
 from modules.system.audit_context import audit_scope
-from modules.system.features import get_job_schedule
+from modules.system.features import build_job_trigger, get_job_schedule
 
 _scheduler: BackgroundScheduler | None = None
 SCHEDULED_JOBS = [
@@ -49,7 +46,6 @@ SCHEDULED_JOBS = [
         "feature_code": "job.discovery_auto_update_status",
         "default_hour": 1,
         "default_minute": 15,
-        "run_on_startup": True,
         "func": discovery_auto_update_status_job,
     },
     {
@@ -76,21 +72,14 @@ def get_scheduler() -> BackgroundScheduler:
             }
         )
         for job in SCHEDULED_JOBS:
-            enabled, hour, minute = _scheduled_job_config(
+            enabled, schedule = _scheduled_job_config(
                 job["feature_code"],
                 job["default_hour"],
                 job["default_minute"],
             )
             if not enabled:
                 continue
-            _scheduler.add_job(
-                _run_job_with_audit,
-                args=[job],
-                trigger=CronTrigger(hour=hour, minute=minute),
-                id=job["id"],
-                replace_existing=True,
-                **({"next_run_time": datetime.now()} if job.get("run_on_startup") else {}),
-            )
+            _register_job(_scheduler, job, schedule)
     return _scheduler
 
 
@@ -98,6 +87,33 @@ def start_scheduler() -> None:
     scheduler = get_scheduler()
     if not scheduler.running:
         scheduler.start()
+
+
+def scheduler_is_running() -> bool:
+    return _scheduler is not None and _scheduler.running
+
+
+def apply_job_schedule(job_code: str) -> bool:
+    scheduler = _scheduler
+    if scheduler is None or not scheduler.running:
+        return False
+    job = get_scheduled_job(job_code)
+    if job is None:
+        return False
+    enabled, schedule = _scheduled_job_config(
+        job["feature_code"],
+        job["default_hour"],
+        job["default_minute"],
+    )
+    if not enabled:
+        if scheduler.get_job(job["id"]):
+            scheduler.remove_job(job["id"])
+        return True
+    if scheduler.get_job(job["id"]):
+        scheduler.reschedule_job(job["id"], trigger=build_job_trigger(schedule))
+        return True
+    _register_job(scheduler, job, schedule)
+    return True
 
 
 def get_scheduled_job(job_code: str) -> dict | None:
@@ -142,7 +158,17 @@ def _run_job_with_audit(job: dict) -> None:
         func()
 
 
-def _scheduled_job_config(feature_code: str, default_hour: int, default_minute: int) -> tuple[bool, int, int]:
+def _register_job(scheduler: BackgroundScheduler, job: dict, schedule: dict) -> None:
+    scheduler.add_job(
+        _run_job_with_audit,
+        args=[job],
+        trigger=build_job_trigger(schedule),
+        id=job["id"],
+        replace_existing=True,
+    )
+
+
+def _scheduled_job_config(feature_code: str, default_hour: int, default_minute: int) -> tuple[bool, dict]:
     db = SessionLocal()
     try:
         return get_job_schedule(db, feature_code, default_hour, default_minute)

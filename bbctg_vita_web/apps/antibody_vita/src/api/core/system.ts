@@ -237,6 +237,8 @@ export function getSystemJobRunLogsApi(
 
 export function getSystemFeatureStatusApi() {
   return requestClient.get<{
+    app_env?: string;
+    scheduler_running?: boolean;
     server_time: string;
     timezone: string;
     user_id?: number;

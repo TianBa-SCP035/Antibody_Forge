@@ -95,12 +95,17 @@ const AUDIT_CHANGE_PREVIEW = 40;
 const userOverrideData = ref<SystemUserPermissionOverrides | null>(null);
 
 const logQuery = reactive<SystemOperationLogQuery>({
-  keyword: '',
+  action: '',
+  change: '',
+  error_message: '',
+  operator: '',
   page: 1,
   page_size: 50,
   result: '',
-  username: '',
+  source: '',
+  target: '',
 });
+const logTargetType = ref<string | string[]>('');
 const logDateRange = ref<string[]>([]);
 const userQuery = reactive({
   page: 1,
@@ -135,6 +140,8 @@ const userFilters = reactive<{
 
 /** 任一已绑定角色的名称包含「管理员」 */
 const systemAdminRoleFilter = ref<'' | 'no' | 'yes' | Array<'no' | 'yes'>>('');
+/** 有任意一条个人权限覆盖 */
+const permissionOverrideFilter = ref<'' | 'no' | 'yes' | Array<'no' | 'yes'>>('');
 const userRoleFilter = ref<'' | 'all' | number | Array<'all' | number>>('');
 
 const userForm = reactive<SystemUser & { password?: string }>({
@@ -556,50 +563,68 @@ function formatAuditValue(
   }
 }
 
+const LOG_TARGET_TYPE_LABELS: Record<string, string> = {
+  bundle: '权限包',
+  cage: '笼位',
+  cell: '细胞库存',
+  feature: '系统功能',
+  file: '文件',
+  flow_work_order: '流式工单',
+  target: '靶点',
+  order_sync: '工单回传',
+  mouse: '小鼠数据',
+  operation_log: '操作日志',
+  permission: '权限',
+  project: '免疫项目',
+  project_status: '项目状态',
+  role: '角色',
+  sys_user: '用户',
+  titer: '效价',
+  titer_order: '效价工单',
+  user: '用户',
+  serum_workbench: '免疫工作台',
+  discovery_workbench: '发现工作台',
+  library: '文库工单',
+  library_detail: '文库工单',
+  library_file: '构建文件',
+  MolecularLibraryOrder: '文库工单',
+  MolecularLibraryResultFile: '构建文件',
+  MolecularLibraryResultLink: '构建文件',
+  MolecularLibraryResultPackage: '测序包',
+  MolecularPrimerIndexCatalog: '引物库',
+  SerumImmProject: '免疫项目',
+  SerumImmWorkbench: '免疫工作台',
+  SerumImmMouse: '小鼠数据',
+  SerumTiterOrder: '效价工单',
+  SerumFile: '文件',
+  DiscoveryWorkbench: '发现工作台',
+  SysUser: '用户',
+  Target: '靶点',
+  MegaFlowWorkOrder: '流式工单',
+  MegaFlowWorkOrderDispatch: '流式工单',
+  OrderSync: '工单回传',
+  primer: '引物库',
+};
+
+const logTargetTypeOptions = [...new Set(Object.values(LOG_TARGET_TYPE_LABELS))].sort((a, b) =>
+  a.localeCompare(b, 'zh-CN'),
+);
+
 function formatLogTargetType(log: SystemOperationLog) {
-  const map: Record<string, string> = {
-    bundle: '权限包',
-    cage: '笼位',
-    cell: '细胞库存',
-    feature: '系统功能',
-    file: '文件',
-    flow_work_order: '流式工单',
-    target: '靶点',
-    order_sync: '工单回传',
-    mouse: '小鼠数据',
-    operation_log: '操作日志',
-    permission: '权限',
-    project: '免疫项目',
-    project_status: '项目状态',
-    role: '角色',
-    sys_user: '用户',
-    titer: '效价',
-    titer_order: '效价工单',
-    user: '用户',
-    serum_workbench: '免疫工作台',
-    discovery_workbench: '发现工作台',
-    library: '文库工单',
-    library_detail: '文库工单',
-    library_file: '构建文件',
-    MolecularLibraryOrder: '文库工单',
-    MolecularLibraryResultFile: '构建文件',
-    MolecularLibraryResultLink: '构建文件',
-    MolecularLibraryResultPackage: '测序包',
-    MolecularPrimerIndexCatalog: '引物库',
-    SerumImmProject: '免疫项目',
-    SerumImmWorkbench: '免疫工作台',
-    SerumImmMouse: '小鼠数据',
-    SerumTiterOrder: '效价工单',
-    SerumFile: '文件',
-    DiscoveryWorkbench: '发现工作台',
-    SysUser: '用户',
-    Target: '靶点',
-    MegaFlowWorkOrder: '流式工单',
-    MegaFlowWorkOrderDispatch: '流式工单',
-    OrderSync: '工单回传',
-    primer: '引物库',
+  return log.target_type ? LOG_TARGET_TYPE_LABELS[log.target_type] || log.target_type : '-';
+}
+
+function operationLogParams(): SystemOperationLogQuery {
+  const selected = (Array.isArray(logTargetType.value) ? logTargetType.value : [logTargetType.value])
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+  const codes = Object.entries(LOG_TARGET_TYPE_LABELS)
+    .filter(([, label]) => selected.includes(label))
+    .map(([code]) => code);
+  return {
+    ...logQuery,
+    target_type: codes.length ? codes : undefined,
   };
-  return log.target_type ? map[log.target_type] || log.target_type : '-';
 }
 
 function formatLogTableName(name?: string) {
@@ -699,6 +724,7 @@ async function loadData() {
         getSystemUsersApi({
           ...userFilters,
           has_admin_role: systemAdminRoleFilter.value,
+          has_permission_override: permissionOverrideFilter.value,
           keyword: userKeyword.value.trim(),
           page: userQuery.page,
           page_size: userQuery.page_size,
@@ -739,7 +765,7 @@ async function loadData() {
     }
 
     if (canViewLogs.value) {
-      const logResult = await getSystemOperationLogsByQueryApi(logQuery, skipGlobalErrorHandler);
+      const logResult = await getSystemOperationLogsByQueryApi(operationLogParams(), skipGlobalErrorHandler);
       logs.value = logResult?.items || [];
       logTotal.value = logResult?.total || logs.value.length;
     } else {
@@ -768,7 +794,7 @@ async function loadLogs() {
   logQuery.date_end = logDateRange.value?.[1] || '';
   loading.value = true;
   try {
-    const result = await getSystemOperationLogsByQueryApi(logQuery);
+    const result = await getSystemOperationLogsByQueryApi(operationLogParams());
     logs.value = result?.items || [];
     logTotal.value = result?.total || logs.value.length;
   } finally {
@@ -816,19 +842,23 @@ function resetUserFilters() {
   userFilters.group_name = '';
   userFilters.status = '';
   systemAdminRoleFilter.value = '';
+  permissionOverrideFilter.value = '';
   userRoleFilter.value = '';
   handleUserSearch();
 }
 
 function resetLogFilters() {
-  logQuery.keyword = '';
-  logQuery.username = '';
+  logQuery.action = '';
+  logQuery.change = '';
+  logQuery.error_message = '';
+  logQuery.operator = '';
   logQuery.result = '';
   logQuery.source = '';
-  logQuery.operation_type = '';
+  logQuery.target = '';
   logQuery.date_start = '';
   logQuery.date_end = '';
   logQuery.page = 1;
+  logTargetType.value = '';
   logDateRange.value = [];
   void loadLogs();
 }
@@ -1238,14 +1268,14 @@ onMounted(loadData);
       <el-tabs v-model="activeTab">
         <el-tab-pane v-if="canManageUsers" label="用户管理" name="users">
           <div class="table-toolbar">
-            <el-space wrap>
+            <div class="filter-line">
               <el-autocomplete
                 v-model="userKeyword"
                 clearable
                 :debounce="250"
                 :fetch-suggestions="fetchKeywordSuggestions"
                 placeholder="搜索账号、姓名、工号"
-                style="width: 220px"
+                style="--filter-size: 220px"
                 value-key="value"
                 @clear="handleUserSearch"
                 @keyup.enter="handleUserSearch"
@@ -1256,7 +1286,7 @@ onMounted(loadData);
                 clearable
                 filterable
                 placeholder="部门"
-                style="width: 140px"
+                style="--filter-size: 140px"
                 @change="handleUserSearch"
                 @clear="handleUserSearch"
               >
@@ -1267,7 +1297,7 @@ onMounted(loadData);
                 clearable
                 filterable
                 placeholder="组别"
-                style="width: 140px"
+                style="--filter-size: 140px"
                 @change="handleUserSearch"
                 @clear="handleUserSearch"
               >
@@ -1277,7 +1307,7 @@ onMounted(loadData);
                 v-model="userFilters.gender"
                 clearable
                 placeholder="性别"
-                style="width: 110px"
+                style="--filter-size: 120px"
                 @change="handleUserSearch"
                 @clear="handleUserSearch"
               >
@@ -1289,7 +1319,7 @@ onMounted(loadData);
                 v-model="userFilters.status"
                 clearable
                 placeholder="账号状态"
-                style="width: 120px"
+                style="--filter-size: 120px"
                 @change="handleUserSearch"
                 @clear="handleUserSearch"
               >
@@ -1300,7 +1330,7 @@ onMounted(loadData);
                 v-model="userFilters.employment_status"
                 clearable
                 placeholder="在职状态"
-                style="width: 120px"
+                style="--filter-size: 120px"
                 @change="handleUserSearch"
                 @clear="handleUserSearch"
               >
@@ -1313,7 +1343,7 @@ onMounted(loadData);
                 clearable
                 filterable
                 placeholder="角色"
-                style="width: 150px"
+                style="--filter-size: 150px"
                 @change="handleUserSearch"
                 @clear="handleUserSearch"
               >
@@ -1329,16 +1359,27 @@ onMounted(loadData);
                 v-model="systemAdminRoleFilter"
                 clearable
                 placeholder="系统管理员"
-                style="width: 130px"
+                style="--filter-size: 130px"
                 @change="handleUserSearch"
                 @clear="handleUserSearch"
               >
                 <el-option label="是" value="yes" />
                 <el-option label="否" value="no" />
               </ListFilterSelect>
-              <el-button :loading="loading" title="右键清空筛选" @click="handleUserSearch" @contextmenu.prevent="resetUserFilters">查询</el-button>
-            </el-space>
-            <el-space>
+              <ListFilterSelect
+                v-model="permissionOverrideFilter"
+                clearable
+                placeholder="个人权限覆盖"
+                style="--filter-size: 130px"
+                @change="handleUserSearch"
+                @clear="handleUserSearch"
+              >
+                <el-option label="有" value="yes" />
+                <el-option label="无" value="no" />
+              </ListFilterSelect>
+              <el-button class="filter-line-keep" :loading="loading" title="右键清空筛选" @click="handleUserSearch" @contextmenu.prevent="resetUserFilters">查询</el-button>
+            </div>
+            <el-space class="filter-actions">
               <el-button @click="openBatchRoleDialog">
                 批量设置角色
               </el-button>
@@ -1497,44 +1538,72 @@ onMounted(loadData);
 
         <el-tab-pane v-if="canViewLogs" label="操作日志" name="logs">
           <div class="table-toolbar">
-            <el-space wrap>
+            <div class="filter-line">
               <el-input
-                v-model="logQuery.keyword"
+                v-model="logQuery.operator"
                 clearable
-                placeholder="搜索账号、权限动作、目标、变更或结果"
-                style="width: 240px"
+                placeholder="搜索账号、用户"
+                style="--filter-size: 200px"
               />
               <el-input
-                v-model="logQuery.username"
+                v-model="logQuery.action"
                 clearable
-                placeholder="操作账号"
-                style="width: 160px"
+                placeholder="操作"
+                style="--filter-size: 120px"
               />
-              <ListFilterSelect v-model="logQuery.result" clearable placeholder="结果" style="width: 120px">
-                <el-option label="成功" value="success" />
-                <el-option label="失败" value="failed" />
+              <ListFilterSelect
+                v-model="logTargetType"
+                clearable
+                filterable
+                placeholder="目标类型"
+                style="--filter-size: 120px"
+              >
+                <el-option
+                  v-for="label in logTargetTypeOptions"
+                  :key="label"
+                  :label="label"
+                  :value="label"
+                />
               </ListFilterSelect>
-              <ListFilterSelect v-model="logQuery.source" clearable placeholder="来源" style="width: 120px">
+              <el-input
+                v-model="logQuery.target"
+                clearable
+                placeholder="目标"
+                style="--filter-size: 120px"
+              />
+              <ListFilterSelect v-model="logQuery.source" clearable placeholder="来源" style="--filter-size: 120px">
                 <el-option label="用户" value="user" />
                 <el-option label="设备" value="device" />
                 <el-option label="定时任务" value="job" />
                 <el-option label="系统" value="system" />
               </ListFilterSelect>
-              <ListFilterSelect v-model="logQuery.operation_type" clearable placeholder="类型" style="width: 120px">
-                <el-option label="新增" value="create" />
-                <el-option label="修改" value="update" />
-                <el-option label="删除" value="delete" />
+              <el-input
+                v-model="logQuery.change"
+                clearable
+                placeholder="变更"
+                style="--filter-size: 120px"
+              />
+              <ListFilterSelect v-model="logQuery.result" clearable placeholder="结果" style="--filter-size: 120px">
+                <el-option label="成功" value="success" />
+                <el-option label="失败" value="failed" />
               </ListFilterSelect>
+              <el-input
+                v-model="logQuery.error_message"
+                clearable
+                placeholder="失败原因"
+                style="--filter-size: 120px"
+              />
               <el-date-picker
                 v-model="logDateRange"
                 end-placeholder="结束日期"
                 range-separator="至"
                 start-placeholder="开始日期"
+                style="--filter-size: 250px"
                 type="daterange"
                 value-format="YYYY-MM-DD"
               />
-              <el-button :loading="loading" title="右键清空筛选" @click="loadLogs" @contextmenu.prevent="resetLogFilters">查询</el-button>
-            </el-space>
+              <el-button class="filter-line-keep" :loading="loading" title="右键清空筛选" @click="loadLogs" @contextmenu.prevent="resetLogFilters">查询</el-button>
+            </div>
           </div>
 
           <el-table v-loading="loading" :data="logs" border stripe>
@@ -2336,6 +2405,31 @@ onMounted(loadData);
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.filter-line {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.filter-line > :not(.filter-line-keep) {
+  flex: 0 1 var(--filter-size);
+  width: var(--filter-size);
+  max-width: var(--filter-size);
+  min-width: 72px;
+}
+
+.filter-line > .filter-line-keep,
+.filter-actions {
+  flex: 0 0 auto;
+}
+
+.filter-line > :not(.filter-line-keep) :deep(.el-input__wrapper),
+.filter-line > :not(.filter-line-keep) :deep(.el-select__wrapper) {
+  min-width: 0;
 }
 
 .hint-text {

@@ -2,7 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import String, cast, exists, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from core.response import success
@@ -27,6 +27,21 @@ from jobs.registry import run_scheduled_job_now
 from utils.filter_values import filter_terms, restrict
 
 router = APIRouter()
+
+# 与操作日志表格「操作」列的显示名一致。搜索显示名时要能命中原始动作。
+_LOG_ACTION_LABELS = {
+    "POST /api/molecular-cell/library-orders/files/list": "刷新质检核对",
+    "POST /api/auth/user/change_password": "修改密码",
+    "PUT /api/auth/user/profile": "更新个人资料",
+    "POST /api/order-experiment/sync": "回传工单数据",
+    "每天 01:00 自动更新免疫实验状态": "免疫状态自动更新",
+    "每天 00:30 同步外部员工基础资料": "员工资料同步",
+    "每天 00:45 同步外部靶点主数据": "靶点同步",
+    "每天 01:15 自动更新抗体发现状态": "发现状态更新",
+    "每天 02:00 同步镁伽非终态工单状态": "镁伽状态同步",
+    "Labillion 状态回调": "镁伽状态回调",
+    "同步镁伽工单状态": "同步镁伽状态",
+}
 
 
 def _compact_text(value: str | None) -> str:
@@ -85,6 +100,7 @@ def list_users(
     employment_status: list[str] | None = Query(default=None),
     role_id: list[str] | None = Query(default=None),
     has_admin_role: list[str] | None = Query(default=None),
+    has_permission_override: list[str] | None = Query(default=None),
     page: int = 1,
     page_size: int = 50,
     db: Session = Depends(get_db),
@@ -116,6 +132,12 @@ def list_users(
         stmt = stmt.where(SysUser.id.in_(admin_user_ids))
     elif admin_terms == {"no"}:
         stmt = stmt.where(SysUser.id.not_in(admin_user_ids))
+    override_user_ids = select(SysUserPermissionOverride.user_id)
+    override_terms = set(filter_terms(has_permission_override))
+    if override_terms == {"yes"}:
+        stmt = stmt.where(SysUser.id.in_(override_user_ids))
+    elif override_terms == {"no"}:
+        stmt = stmt.where(SysUser.id.not_in(override_user_ids))
 
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
@@ -641,13 +663,15 @@ def delete_permission_bundle(
 def list_operation_logs(
     page: int = 1,
     page_size: int = 50,
-    keyword: str = "",
-    username: str = "",
+    operator: str = "",
     action: str = "",
-    result: list[str] | None = Query(default=None),
-    operation_type: list[str] | None = Query(default=None),
-    target_type: str = "",
+    target_type: list[str] | None = Query(default=None),
+    target: str = "",
     source: list[str] | None = Query(default=None),
+    change: str = "",
+    result: list[str] | None = Query(default=None),
+    error_message: str = "",
+    operation_type: list[str] | None = Query(default=None),
     request_id: str = "",
     date_start: str = "",
     date_end: str = "",
@@ -658,60 +682,57 @@ def list_operation_logs(
     page = max(int(page or 1), 1)
     page_size = min(max(int(page_size or 50), 1), 500)
     stmt = select(SysOperationLog)
-    username = username.strip()
-    if username:
-        stmt = stmt.where(SysOperationLog.username.like(f"%{username}%"))
-    if action:
-        stmt = stmt.where(SysOperationLog.action.like(f"%{action}%"))
-    stmt = restrict(stmt, result, lambda value: SysOperationLog.result == value)
-    stmt = restrict(stmt, operation_type, lambda value: SysOperationLog.operation_type == value)
-    if target_type:
+    operator = operator.strip()
+    if operator:
+        pattern = f"%{operator}%"
         stmt = stmt.where(
             or_(
-                SysOperationLog.target_type == target_type,
-                exists(
-                    select(SysOperationLogItem.id).where(
-                        SysOperationLogItem.log_id == SysOperationLog.id,
-                        SysOperationLogItem.entity_type == target_type,
-                    )
-                ),
+                SysOperationLog.username.like(pattern),
+                SysOperationLog.operator_name.like(pattern),
+            )
+        )
+    action = action.strip()
+    if action:
+        pattern = f"%{action}%"
+        action_match = [
+            SysOperationLog.operation_name.like(pattern),
+            SysOperationLog.action.like(pattern),
+        ]
+        for raw, label in _LOG_ACTION_LABELS.items():
+            if action in label:
+                action_match.append(SysOperationLog.operation_name == raw)
+                action_match.append(SysOperationLog.action == raw)
+        stmt = stmt.where(or_(*action_match))
+    stmt = restrict(stmt, target_type, lambda value: SysOperationLog.target_type == value)
+    target = target.strip()
+    if target:
+        pattern = f"%{target}%"
+        stmt = stmt.where(
+            or_(
+                SysOperationLog.target_label.like(pattern),
+                SysOperationLog.target_id.like(pattern),
             )
         )
     stmt = restrict(stmt, source, lambda value: SysOperationLog.source == value)
+    change = change.strip()
+    if change:
+        pattern = f"%{change}%"
+        stmt = stmt.where(
+            func.json_unquote(
+                func.json_extract(SysOperationLog.detail, "$.change_summary")
+            ).like(pattern)
+        )
+    stmt = restrict(stmt, result, lambda value: SysOperationLog.result == value)
+    error_message = error_message.strip()
+    if error_message:
+        stmt = stmt.where(SysOperationLog.error_message.like(f"%{error_message}%"))
+    stmt = restrict(stmt, operation_type, lambda value: SysOperationLog.operation_type == value)
     if request_id:
         stmt = stmt.where(SysOperationLog.request_id == request_id)
     if date_start:
         stmt = stmt.where(SysOperationLog.created_at >= _parse_log_datetime(date_start, end=False))
     if date_end:
         stmt = stmt.where(SysOperationLog.created_at <= _parse_log_datetime(date_end, end=True))
-    if keyword:
-        pattern = f"%{keyword}%"
-        stmt = stmt.where(
-            or_(
-                SysOperationLog.username.like(pattern),
-                SysOperationLog.operator_name.like(pattern),
-                SysOperationLog.action.like(pattern),
-                SysOperationLog.operation_name.like(pattern),
-                SysOperationLog.target_type.like(pattern),
-                SysOperationLog.target_id.like(pattern),
-                SysOperationLog.target_label.like(pattern),
-                func.json_unquote(
-                    func.json_extract(SysOperationLog.detail, "$.change_summary")
-                ).like(pattern),
-                SysOperationLog.result.like(pattern),
-                SysOperationLog.request_id.like(pattern),
-                exists(
-                    select(SysOperationLogItem.id).where(
-                        SysOperationLogItem.log_id == SysOperationLog.id,
-                        or_(
-                            SysOperationLogItem.entity_id.like(pattern),
-                            SysOperationLogItem.entity_label.like(pattern),
-                            cast(SysOperationLogItem.changes, String).like(pattern),
-                        ),
-                    )
-                ),
-            )
-        )
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     logs = db.scalars(stmt.order_by(SysOperationLog.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
     return success({"items": [_log_to_dict(log) for log in logs], "total": total, "page": page, "page_size": page_size})

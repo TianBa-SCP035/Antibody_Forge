@@ -76,17 +76,19 @@ export interface SystemUserPermissionOverrides {
 
 export interface SystemOperationLogQuery {
   action?: string;
+  change?: string;
   date_end?: string;
   date_start?: string;
-  keyword?: string;
+  error_message?: string;
   operation_type?: string | string[];
+  operator?: string;
   page?: number;
   page_size?: number;
   request_id?: string;
   result?: string | string[];
   source?: string | string[];
-  target_type?: string;
-  username?: string;
+  target?: string;
+  target_type?: string | string[];
 }
 
 export interface SystemOperationLogChange {
@@ -169,6 +171,7 @@ export interface SystemUserQuery {
   gender?: string | string[];
   group_name?: string | string[];
   has_admin_role?: string | string[];
+  has_permission_override?: string | string[];
   keyword?: string;
   page?: number;
   page_size?: number;

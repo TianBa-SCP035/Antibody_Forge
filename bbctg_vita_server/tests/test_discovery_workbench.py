@@ -150,6 +150,21 @@ class DiscoveryWorkbenchIdTests(unittest.TestCase):
         self.assertEqual(service.get_list(self.db, {"mouse_strain_category": "RL"})["total"], 1)
         self.assertEqual(service.get_list(self.db, {"mouse_strain_category": "RN-KO"})["total"], 0)
 
+    def test_missing_date_filter_keeps_rows_with_either_date_blank(self):
+        future = (date.today() + timedelta(days=30)).isoformat()
+        service.save(self.db, {"project_code": "BOTH", "harvest_date": future})
+        service.save(self.db, {"project_code": "NONE"})
+        service.save(self.db, {"project_code": "BOOST", "boost_date": future})
+        harvest_only = service.save(self.db, {"project_code": "HARVEST", "harvest_date": future})
+        service.save(self.db, {"id": harvest_only["id"], "boost_date": ""})
+        service.save(self.db, {"project_code": "DONE", "status": "已完成"})
+
+        result = service.get_list(self.db, {"boost_filter": "missing_date", "limit": 50})
+        codes = {item["project_code"] for item in result["items"]}
+        self.assertEqual(codes, {"NONE", "BOOST", "HARVEST"})
+        self.assertEqual(result["stats"]["missing_date"], 3)
+        self.assertEqual(result["stats"]["boosting"], 2)
+
     def test_keyword_can_find_system_discovery_id(self):
         saved = service.save(self.db, {"project_code": "P1"})
         result = service.get_list(self.db, {"keyword": saved["discovery_id"]})

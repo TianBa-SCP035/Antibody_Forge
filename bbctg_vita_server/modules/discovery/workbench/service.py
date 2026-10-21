@@ -445,11 +445,16 @@ def _boosting_filter():
     )
 
 
-def _need_boost_filter():
+def _blank_date(column):
+    return or_(column.is_(None), column == "")
+
+
+def _missing_date_filter():
     return and_(
-        DiscoveryWorkbench.harvest_date.is_not(None),
-        DiscoveryWorkbench.harvest_date != "",
-        or_(DiscoveryWorkbench.boost_date.is_(None), DiscoveryWorkbench.boost_date == ""),
+        or_(
+            _blank_date(DiscoveryWorkbench.harvest_date),
+            _blank_date(DiscoveryWorkbench.boost_date),
+        ),
         ~_status_column().in_(tuple(TERMINAL_STATUSES)),
     )
 
@@ -571,10 +576,10 @@ def _apply_list_filters(
         boost_filter = str(data.get("boost_filter") or "").strip()
         if boost_filter == "boosting":
             filters.append(_boosting_filter())
-        elif boost_filter == "need_boost":
-            filters.append(_need_boost_filter())
+        elif boost_filter == "missing_date":
+            filters.append(_missing_date_filter())
         elif boost_filter:
-            raise ValueError("冲击免筛选不正确")
+            raise ValueError("日期快捷筛选不正确")
     if filters:
         return stmt.where(*filters)
     return stmt
@@ -666,7 +671,7 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
             status_col,
             func.count(),
             func.coalesce(func.sum(case((_boosting_filter(), 1), else_=0)), 0),
-            func.coalesce(func.sum(case((_need_boost_filter(), 1), else_=0)), 0),
+            func.coalesce(func.sum(case((_missing_date_filter(), 1), else_=0)), 0),
         )
         .select_from(DiscoveryWorkbench)
         .group_by(status_col),
@@ -682,16 +687,16 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
         "sequencing": 0,
         "cancelled": 0,
         "boosting": 0,
-        "need_boost": 0,
+        "missing_date": 0,
     }
-    for status, count, boosting, need_boost in db.execute(stmt).all():
+    for status, count, boosting, missing_date in db.execute(stmt).all():
         n = int(count or 0)
         stats["all"] += n
         group = _view_group_for_status(status)
         if group:
             stats[group] += n
         stats["boosting"] += int(boosting or 0)
-        stats["need_boost"] += int(need_boost or 0)
+        stats["missing_date"] += int(missing_date or 0)
     return stats
 
 

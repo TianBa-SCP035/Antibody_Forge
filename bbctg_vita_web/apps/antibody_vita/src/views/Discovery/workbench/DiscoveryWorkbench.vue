@@ -121,10 +121,11 @@
             :aria-pressed="Boolean(listQuery.boost_filter)"
             :title="boostFilterTitle"
             @click="toggleBoostFilter('boosting')"
-            @contextmenu.prevent="toggleBoostFilter('need_boost')"
+            @contextmenu.prevent="toggleBoostFilter('missing_date')"
           >
             <span class="ready-dot" />
-            <span><strong>{{ stats.boosting }}</strong> 个项目冲击免中</span>
+            <span v-if="listQuery.boost_filter === 'missing_date'"><strong>{{ stats.missing_date }}</strong> 个安排日期未填</span>
+            <span v-else><strong>{{ stats.boosting }}</strong> 个项目冲击免中</span>
           </button>
           <el-button v-if="canEdit" type="primary" @click="handleCreate">
             新增安排
@@ -140,12 +141,14 @@
           class="lifecycle-item"
           :class="[`stage-${item.tone}`, { 'is-active': activeViewGroup === item.key }]"
           :aria-pressed="activeViewGroup === item.key"
+          :title="lifecycleTitle(item)"
           @click="handleViewGroup(item.key)"
+          @contextmenu="onLifecycleContextMenu(item, $event)"
         >
           <span class="stage-marker">{{ item.step }}</span>
           <span class="stage-copy">
             <strong>{{ item.label }}</strong>
-            <small>{{ item.hint }}</small>
+            <small>{{ lifecycleHint(item) }}</small>
           </span>
           <span class="stage-count">{{ stats[item.valueKey] }}</span>
         </button>
@@ -1274,7 +1277,7 @@ export default {
       loading: false,
       list: [],
       total: 0,
-      stats: { all: 0, harvest: 0, library: 0, sequencing: 0, cancelled: 0, boosting: 0, need_boost: 0 },
+      stats: { all: 0, harvest: 0, library: 0, sequencing: 0, cancelled: 0, boosting: 0, missing_date: 0 },
       viewMode: coerceWorkbenchViewMode(lastViewMode),
       sortEditingId: null,
       sortInputRefs: {},
@@ -1334,14 +1337,17 @@ export default {
     canViewSerumProject() {
       return canAccessSerumDetail(this.userStore.userInfo || {})
     },
+    harvestStatusExact() {
+      return this.listQuery.view_group === 'harvest' && this.listQuery.status === '待剖鼠'
+    },
     boostFilterTitle() {
-      if (this.listQuery.boost_filter === 'need_boost') {
-        return '当前只看已排剖鼠、未排冲击免。右键取消；左键改看冲击免中。'
+      if (this.listQuery.boost_filter === 'missing_date') {
+        return '当前只看剖鼠或冲击日期还空着的，不含已完成和已取消。右键取消；左键改看冲击免中。'
       }
       if (this.listQuery.boost_filter === 'boosting') {
-        return '当前只看冲击免中。再点取消；右键改看未排冲击免。'
+        return '当前只看冲击免中。再点取消；右键改看剖鼠或冲击日期还空着的。'
       }
-      return '左键只看冲击免中；右键只看已排剖鼠但未排冲击免。'
+      return '左键只看冲击免中；右键只看剖鼠或冲击日期还空着的。'
     },
     activeViewGroup() {
       return this.listQuery.view_group || ''
@@ -2069,7 +2075,7 @@ export default {
           sequencing: data?.stats?.sequencing || 0,
           cancelled: data?.stats?.cancelled || 0,
           boosting: data?.stats?.boosting || 0,
-          need_boost: data?.stats?.need_boost || 0,
+          missing_date: data?.stats?.missing_date || 0,
         }
         this.listQuery.page = data?.page || this.listQuery.page
         this.listQuery.limit = data?.limit || this.listQuery.limit
@@ -2135,7 +2141,32 @@ export default {
       this.boostRange = []
       this.getList()
     },
+    lifecycleHint(item) {
+      if (item.key === 'harvest' && this.harvestStatusExact) return '只看状态为待剖鼠'
+      return item.hint
+    },
+    lifecycleTitle(item) {
+      if (item.key !== 'harvest') return item.hint
+      if (this.harvestStatusExact) {
+        return '当前只看状态为待剖鼠。右键回到规划中、待冲击与待剖鼠。'
+      }
+      return '左键看规划中、待冲击与待剖鼠；右键只看状态为待剖鼠。'
+    },
+    onLifecycleContextMenu(item, event) {
+      if (item.key !== 'harvest') return
+      event.preventDefault()
+      if (this.harvestStatusExact) {
+        this.listQuery.status = ''
+      } else {
+        this.listQuery.view_group = 'harvest'
+        this.listQuery.status = '待剖鼠'
+      }
+      this.handleFilter()
+    },
     handleViewGroup(key) {
+      if (key === 'harvest' && this.listQuery.status === '待剖鼠') {
+        this.listQuery.status = ''
+      }
       this.listQuery.view_group = key || ''
       this.handleFilter()
     },

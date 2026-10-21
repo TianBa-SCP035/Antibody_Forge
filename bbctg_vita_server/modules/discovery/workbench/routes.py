@@ -27,7 +27,7 @@ class WorkbenchListRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     view_group: Literal["harvest", "library", "sequencing", "cancelled"] | None = None
-    boost_filter: Literal["boosting", "need_boost"] | None = None
+    boost_filter: Literal["boosting", "missing_date"] | None = None
 
 
 class WorkbenchBatchSaveRequest(BaseModel):

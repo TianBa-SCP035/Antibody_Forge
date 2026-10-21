@@ -204,6 +204,30 @@ $drop: #f56c6c;
   }
 }
 
+.tio-text-btn {
+  margin-left: auto;
+  padding: 0;
+  font-size: 12px;
+  line-height: 20px;
+  color: $accent-deep;
+  cursor: pointer;
+  background: none;
+  border: none;
+
+  &:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+
+  &:disabled {
+    color: #c0c4cc;
+    cursor: not-allowed;
+  }
+}
+
+.tio-titer-full {
+  margin-bottom: 12px;
+}
+
 .tio-panel {
   overflow: hidden;
   background: $panel;

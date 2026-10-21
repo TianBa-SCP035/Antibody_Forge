@@ -728,6 +728,7 @@
       footer-hint="至少选择一只小鼠"
       :require-selection="true"
       :confirming="discoverySubmitting"
+      show-conclusion
       @confirm="onDiscoveryWizardConfirm"
     />
 

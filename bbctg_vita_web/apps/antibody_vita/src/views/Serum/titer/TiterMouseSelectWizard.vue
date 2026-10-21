@@ -96,6 +96,19 @@
           <span class="tio-hint-item">
             <i class="tio-hint-swatch tio-hint-swatch--drop" />划选取消
           </span>
+          <button
+            v-if="showConclusion"
+            type="button"
+            class="tio-text-btn"
+            :disabled="conclusionLoading || !conclusionModel"
+            @click="conclusionOpen = !conclusionOpen"
+          >
+            {{ conclusionOpen ? '收起完整结论' : '查看完整结论' }}
+          </button>
+        </div>
+
+        <div v-if="showConclusion && conclusionOpen" class="tio-titer-full">
+          <TiterConclusionPanel :model="conclusionModel" />
         </div>
 
         <el-empty
@@ -192,10 +205,19 @@ import {
 } from 'element-plus';
 
 import { notifyApiError } from '#/api/errors';
-import { fetchMouseGroups, saveMouseRegistry } from '#/api/serum';
+import {
+  fetchElisaPlates,
+  fetchFacsPlates,
+  fetchMouseGroups,
+  fetchSerumDetailByExperimentId,
+  saveMouseRegistry,
+  skipGlobalErrorHandler,
+} from '#/api/serum';
+import { buildFacsConclusionForPage } from '#/utils/serumTiterConclusion';
 
 import MouseRegistryDialog from '../shared/MouseRegistryDialog.vue';
 
+import TiterConclusionPanel from './TiterConclusionPanel.vue';
 import {
   PLATE_COLUMN_LIST,
   buildPlateGroup,
@@ -214,6 +236,7 @@ export default {
     ElTable,
     ElTableColumn,
     MouseRegistryDialog,
+    TiterConclusionPanel,
   },
   props: {
     modelValue: { type: Boolean, default: false },
@@ -223,6 +246,7 @@ export default {
     footerHint: { type: String, default: '未选小鼠也可继续（如仅补对照）' },
     requireSelection: { type: Boolean, default: false },
     confirming: { type: Boolean, default: false },
+    showConclusion: { type: Boolean, default: false },
   },
   emits: ['update:modelValue', 'confirm'],
   data() {
@@ -240,6 +264,10 @@ export default {
       cellDragStart: '',
       cellDragEnd: '',
       cellDragSelectMode: true,
+      conclusionLoading: false,
+      conclusionRequest: 0,
+      conclusionModel: null,
+      conclusionOpen: false,
     };
   },
   computed: {
@@ -277,7 +305,10 @@ export default {
     handleWizardOpen() {
       this.selectedKeys = new Set();
       this.resetCellDrag();
+      this.conclusionModel = null;
+      this.conclusionOpen = false;
       this.loadMouseGroups();
+      this.loadConclusion();
     },
     onWizardClosed() {
       this.teardownCellDragListeners();
@@ -288,6 +319,46 @@ export default {
       this.mouseRegistryEditingRow = null;
       this.savingRegistry = false;
       this.confirmBusy = false;
+      this.conclusionRequest += 1;
+      this.conclusionLoading = false;
+      this.conclusionModel = null;
+      this.conclusionOpen = false;
+    },
+    loadConclusion() {
+      if (!this.showConclusion) {
+        this.conclusionModel = null;
+        return;
+      }
+      const experimentId = (this.titerOrder?.experiment_id || '').trim();
+      if (!experimentId) {
+        this.conclusionModel = null;
+        return;
+      }
+      this.conclusionRequest += 1;
+      const requestId = this.conclusionRequest;
+      this.conclusionLoading = true;
+      Promise.all([
+        fetchSerumDetailByExperimentId(experimentId),
+        fetchFacsPlates({ experiment_id: experimentId }, skipGlobalErrorHandler),
+        fetchElisaPlates({ experiment_id: experimentId }, skipGlobalErrorHandler),
+      ])
+        .then(([project, facsRes, elisaRes]) => {
+          if (this.conclusionRequest !== requestId) return;
+          this.conclusionModel = buildFacsConclusionForPage(
+            project,
+            project?.titer_targets,
+            facsRes?.items || [],
+            elisaRes?.items || [],
+          );
+        })
+        .catch((error) => {
+          if (this.conclusionRequest !== requestId) return;
+          this.conclusionModel = null;
+          notifyApiError(error, { messages: { default: '加载效价结论失败' } });
+        })
+        .finally(() => {
+          if (this.conclusionRequest === requestId) this.conclusionLoading = false;
+        });
     },
     loadMouseGroups() {
       const experimentId = (this.titerOrder?.experiment_id || '').trim();

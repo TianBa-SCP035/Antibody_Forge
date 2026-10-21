@@ -921,7 +921,6 @@ function libraryCodeSeries(seed, count) {
 const SHEET_COLUMN_ORDER = createColumnOrder(
   'libraryConstructionSheetColumnOrder.v5',
   allSheetColumns(),
-  { pinFirstKey: 'library_order_id' },
 )
 const INDEX_LINKED_KEYS = ['i7_catalog_id', 'i7_name', 'i7_sequence', 'i5_catalog_id', 'i5_name', 'i5_sequence']
 const DERIVED_FIELDS = ['status', 'started_at', 'finished_at']

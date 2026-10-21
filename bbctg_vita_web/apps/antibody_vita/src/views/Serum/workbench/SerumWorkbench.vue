@@ -1055,7 +1055,9 @@ const SHEET_COLUMNS = [
   { key: 'plan_status', label: '状态', width: 110, edit: 'select', optionsKey: 'plan_status' },
   { key: 'experiment_id', label: '实验号', width: 190, edit: 'readonly' },
 ]
-const SHEET_COLUMN_ORDER = createColumnOrder('workbenchSheetColumnOrder', SHEET_COLUMNS)
+const SHEET_COLUMN_ORDER = createColumnOrder('workbenchSheetColumnOrder', SHEET_COLUMNS, {
+  pinFirstKey: 'sort_order',
+})
 const WORKBENCH_COLUMNS = [
   { key: 'sort_order', label: '序号', defaultVisible: true, width: 62, className: 'sort-column-cell' },
   { key: 'target_name', label: '靶点名称', defaultVisible: true, prop: 'target_name', minWidth: 100, showOverflowTooltip: true },

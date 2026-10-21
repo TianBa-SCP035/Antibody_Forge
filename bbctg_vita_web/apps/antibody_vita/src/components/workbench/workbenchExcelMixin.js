@@ -7,11 +7,14 @@ import { clipboardCell } from './clipboardGrid'
  * 单格保存必须 patchExistingListRow，禁止 splice 换行对象。
  * 数字格普通输入，提交时由本页 coerceSheetValue 校验。
  * 行选择列用 excelRowSelectKey（默认 sort_order）。
+ * 钉住的列用 sheetPinFirstKey / sheetPinLastKey，Shift 不能拖。默认钉住序号。
  */
 export default {
   data() {
     return {
       excelRowSelectKey: 'sort_order',
+      sheetPinFirstKey: 'sort_order',
+      sheetPinLastKey: '',
       pasteAnchor: null,
       pendingSheetOps: new Set(),
       sheetRange: null,
@@ -140,6 +143,11 @@ export default {
     },
     isExcelRowSelectField(field) {
       return field === this.excelRowSelectKey
+    },
+    isSheetColumnPinned(column) {
+      const key = column?.key
+      if (!key) return false
+      return key === this.sheetPinFirstKey || key === this.sheetPinLastKey
     },
     isSheetCellLocked(row, key) {
       if (!this.canEdit) return true
@@ -343,7 +351,9 @@ export default {
       if (this.sheetDragMode !== 'move-column' || !this.sheetColumnMove) return
       event.preventDefault()
       const hit = this.hitSheetColumnByX(event.clientX)
-      if (hit) this.sheetColumnMove.to = hit.colIndex
+      if (hit && !this.isSheetColumnPinned(this.sheetColumns[hit.colIndex])) {
+        this.sheetColumnMove.to = hit.colIndex
+      }
       this.paintSheetColumnMove(event)
     },
     finishSheetPointer() {
@@ -354,6 +364,7 @@ export default {
       this.sheetColumnMove = null
       this.paintSheetColumnMove()
       if (!move || move.from === move.to) return
+      if (this.isSheetColumnPinned(this.sheetColumns[move.from]) || this.isSheetColumnPinned(this.sheetColumns[move.to])) return
       const next = [...this.sheetColumns]
       const [column] = next.splice(move.from, 1)
       if (!column) return
@@ -651,7 +662,7 @@ export default {
       this.focusSheetWrap()
       const headerHit = this.hitSheetHeader(event.target)
       if (event.button !== 0) return
-      if (headerHit && event.shiftKey) {
+      if (headerHit && event.shiftKey && !this.isSheetColumnPinned(this.sheetColumns[headerHit.colIndex])) {
         event.preventDefault()
         window.getSelection()?.removeAllRanges()
         this.$refs.sheetTable?.clearEdit?.()

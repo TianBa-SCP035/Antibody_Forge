@@ -50,8 +50,9 @@ const jobSchedules = [
 ];
 const jobWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 const jobMonthDays = Array.from({ length: 28 }, (_, index) => index + 1);
+const defaultJobInterval = { every: 1, unit: 'hour', label: '1 小时' };
 const jobIntervals = [
-  { every: 1, unit: 'hour', label: '1 小时' },
+  defaultJobInterval,
   { every: 2, unit: 'hour', label: '2 小时' },
   { every: 3, unit: 'hour', label: '3 小时' },
   { every: 4, unit: 'hour', label: '4 小时' },
@@ -250,7 +251,7 @@ function syncJobConfig(feature: SystemFeatureFlag) {
   const interval =
     jobIntervals.find((item) => `${item.every}-${item.unit}` === config.interval_key) ||
     jobIntervals.find((item) => item.every === Number(config.every) && item.unit === config.unit) ||
-    jobIntervals[0];
+    defaultJobInterval;
   const next = {
     schedule,
     hour,

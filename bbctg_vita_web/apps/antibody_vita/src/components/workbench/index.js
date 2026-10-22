@@ -1,6 +1,10 @@
 export { default as workbenchExcelMixin } from './workbenchExcelMixin'
 export { default as WorkbenchViewToggle } from './WorkbenchViewToggle.vue'
-export { default as WorkbenchDataTable } from './WorkbenchDataTable.vue'
+export {
+  default as WorkbenchDataTable,
+  WorkbenchInlineDatePicker,
+  WorkbenchInlineSelect,
+} from './WorkbenchDataTable.vue'
 export { default as WorkbenchStatusEditor } from './WorkbenchStatusEditor.vue'
 export { default as WorkbenchMultiTagEditor } from './WorkbenchMultiTagEditor.vue'
 export { default as WorkbenchTargetSelect } from './WorkbenchTargetSelect.vue'

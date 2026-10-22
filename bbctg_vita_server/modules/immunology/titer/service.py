@@ -527,16 +527,32 @@ def _effective_blood_collection_date(order: SerumTiterOrder, blood_dates: list[s
 
 
 def _build_derive_contexts(db: Session, experiment_ids: list[str]) -> dict[str, dict[str, Any]]:
-    ids = [str(eid).strip() for eid in experiment_ids if str(eid or "").strip()]
+    ids = list(dict.fromkeys(str(eid).strip() for eid in experiment_ids if str(eid or "").strip()))
     if not ids:
         return {}
 
-    mice_by_exp: dict[str, list[SerumImmMouse]] = {eid: [] for eid in ids}
-    for mouse in db.scalars(select(SerumImmMouse).where(SerumImmMouse.experiment_id.in_(ids))).all():
+    mice_by_exp: dict[str, list[ Any ]] = {eid: [] for eid in ids}
+    mouse_rows = db.execute(
+        select(
+            SerumImmMouse.experiment_id,
+            SerumImmMouse.group_id,
+            SerumImmMouse.mouse_count,
+            SerumImmMouse.cage_position,
+        ).where(SerumImmMouse.experiment_id.in_(ids))
+    ).all()
+    for mouse in mouse_rows:
         mice_by_exp.setdefault(mouse.experiment_id, []).append(mouse)
 
-    steps_by_exp: dict[str, list[SerumImmStep]] = {eid: [] for eid in ids}
-    for step in db.scalars(select(SerumImmStep).where(SerumImmStep.experiment_id.in_(ids))).all():
+    steps_by_exp: dict[str, list[ Any ]] = {eid: [] for eid in ids}
+    step_rows = db.execute(
+        select(
+            SerumImmStep.experiment_id,
+            SerumImmStep.group_id,
+            SerumImmStep.stage_name,
+            SerumImmStep.date_actual,
+        ).where(SerumImmStep.experiment_id.in_(ids))
+    ).all()
+    for step in step_rows:
         steps_by_exp.setdefault(step.experiment_id, []).append(step)
 
     return {
@@ -547,6 +563,48 @@ def _build_derive_contexts(db: Session, experiment_ids: list[str]) -> dict[str, 
         }
         for eid in ids
     }
+
+
+def _build_blood_dates_by_experiment(db: Session, experiment_ids: list[str]) -> dict[str, list[str]]:
+    ids = list(dict.fromkeys(str(eid).strip() for eid in experiment_ids if str(eid or "").strip()))
+    if not ids:
+        return {}
+    steps_by_exp: dict[str, list[Any]] = {eid: [] for eid in ids}
+    step_rows = db.execute(
+        select(
+            SerumImmStep.experiment_id,
+            SerumImmStep.stage_name,
+            SerumImmStep.date_actual,
+        ).where(
+            SerumImmStep.experiment_id.in_(ids),
+            SerumImmStep.stage_name == BLOOD_COLLECTION_STAGE_NAME,
+        )
+    ).all()
+    for step in step_rows:
+        steps_by_exp.setdefault(step.experiment_id, []).append(step)
+    return {eid: _all_blood_collection_dates(steps) for eid, steps in steps_by_exp.items()}
+
+
+def _row_sort_key(
+    order: SerumTiterOrder,
+    project: SerumImmProject,
+    field: str,
+    blood_date: str,
+):
+    if field == "serum_status":
+        return TITER_SERUM_STATUS_RANK.get(str(order.serum_status or "").strip(), len(TITER_SERUM_STATUS_ORDER))
+    if field == "priority":
+        value = str(order.priority or "").strip() or TITER_ORDER_PRIORITY_DEFAULT
+        return TITER_PRIORITY_RANK.get(value, len(TITER_ORDER_PRIORITIES))
+    if field == "project_code":
+        return str(project.project_code or "")
+    if field == "blood_collection_date":
+        return blood_date
+    if field == "test_dates_display":
+        raw_dates = order.test_dates if isinstance(order.test_dates, list) else []
+        dates = sorted({str(item).strip()[:10] for item in raw_dates if str(item or "").strip()})
+        return "、".join(dates)
+    return ""
 
 
 def _resolve_followable_fields(
@@ -994,10 +1052,37 @@ def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
     blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
 
     if _titer_order_needs_full_scan(data, blood_start, blood_end):
-        items = _titer_order_list_items(db, data)
-        total = len(items)
+        rows = db.execute(stmt.order_by(*_titer_order_sql_order_by(data))).all()
+        need_blood_date = bool(blood_start or blood_end or str(data.get("sort_field") or "") == "blood_collection_date")
+        blood_dates_map = (
+            _build_blood_dates_by_experiment(
+                db,
+                [project.experiment_id for order, project in rows if order.blood_collection_date is None and project.experiment_id],
+            )
+            if need_blood_date
+            else {}
+        )
+        candidates: list[tuple[SerumTiterOrder, SerumImmProject, str]] = []
+        for order, project in rows:
+            blood_date = (
+                _effective_blood_collection_date(order, blood_dates_map.get(order.experiment_id, []))
+                if need_blood_date
+                else ""
+            )
+            if (blood_start or blood_end) and not _blood_date_in_range(blood_date, blood_start, blood_end):
+                continue
+            candidates.append((order, project, blood_date))
+
+        field = str(data.get("sort_field") or "")
+        if field in TITER_ORDER_ITEM_SORT_FIELDS:
+            reverse = str(data.get("sort_order") or "").lower() == "desc"
+            candidates.sort(key=lambda item: int(item[0].id or 0), reverse=True)
+            candidates.sort(key=lambda item: _row_sort_key(item[0], item[1], field, item[2]), reverse=reverse)
+
+        total = len(candidates)
         start = max(page - 1, 0) * limit
-        return {"items": items[start : start + limit], "total": total}
+        page_rows = [(order, project) for order, project, _ in candidates[start : start + limit]]
+        return {"items": _enrich_order_rows(db, page_rows), "total": total}
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.execute(
@@ -1249,86 +1334,46 @@ def get_titer_order_page_meta(db: Session) -> dict:
     }
 
 
-def _pending_detection_filters(deleted_filter):
-    return (
-        deleted_filter,
-        SerumTiterOrder.serum_status == "已采血",
-        _empty_test_dates_condition(),
-    )
-
-
-def _sum_pending_test_plate_counts(db: Session) -> tuple[int, int]:
-    join_on = SerumImmProject.experiment_id == SerumTiterOrder.experiment_id
-    deleted_filter = or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted")
-    base = (
-        select(
-            func.coalesce(
-                func.sum(func.coalesce(SerumTiterOrder.facs_plate_count, SerumImmProject.facs_plate_count)),
-                0,
-            ),
-            func.coalesce(
-                func.sum(func.coalesce(SerumTiterOrder.elisa_plate_count, SerumImmProject.elisa_plate_count)),
-                0,
-            ),
-        )
-        .select_from(SerumTiterOrder)
-        .join(SerumImmProject, join_on)
-        .where(*_pending_detection_filters(deleted_filter))
-    )
-    facs, elisa = db.execute(base).one()
-    return int(facs or 0), int(elisa or 0)
-
-
 def get_titer_order_stats(db: Session) -> dict[str, int]:
     join_on = SerumImmProject.experiment_id == SerumTiterOrder.experiment_id
     deleted_filter = or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted")
-
-    unassigned = db.scalar(
-        select(func.count(SerumTiterOrder.id))
-        .select_from(SerumTiterOrder)
-        .join(SerumImmProject, join_on)
-        .where(deleted_filter, _empty_titer_owners_condition())
-    ) or 0
-    pending = db.scalar(
-        select(func.count(SerumTiterOrder.id))
-        .select_from(SerumTiterOrder)
-        .join(SerumImmProject, join_on)
-        .where(*_pending_detection_filters(deleted_filter))
-    ) or 0
-    to_report = db.scalar(
-        select(func.count(SerumTiterOrder.id))
-        .select_from(SerumTiterOrder)
-        .join(SerumImmProject, join_on)
-        .where(
-            deleted_filter,
-            SerumTiterOrder.serum_status == "已检测",
-            or_(SerumTiterOrder.summary.is_(None), SerumTiterOrder.summary == ""),
-        )
-    ) or 0
-
+    pending_cond = and_(
+        SerumTiterOrder.serum_status == "已采血",
+        _empty_test_dates_condition(),
+    )
+    to_report_cond = and_(
+        SerumTiterOrder.serum_status == "已检测",
+        or_(SerumTiterOrder.summary.is_(None), SerumTiterOrder.summary == ""),
+    )
     week_start, week_end = _current_week_range()
-    this_week = db.scalar(
-        select(func.count(SerumTiterOrder.id))
+    this_week_cond = _test_dates_in_range_clause(
+        week_start.date().isoformat(),
+        week_end.date().isoformat(),
+    )
+    facs_expr = func.coalesce(SerumTiterOrder.facs_plate_count, SerumImmProject.facs_plate_count, 0)
+    elisa_expr = func.coalesce(SerumTiterOrder.elisa_plate_count, SerumImmProject.elisa_plate_count, 0)
+
+    row = db.execute(
+        select(
+            func.coalesce(func.sum(case((_empty_titer_owners_condition(), 1), else_=0)), 0),
+            func.coalesce(func.sum(case((pending_cond, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((to_report_cond, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((this_week_cond, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((pending_cond, facs_expr), else_=0)), 0),
+            func.coalesce(func.sum(case((pending_cond, elisa_expr), else_=0)), 0),
+        )
         .select_from(SerumTiterOrder)
         .join(SerumImmProject, join_on)
-        .where(
-            deleted_filter,
-            _test_dates_in_range_clause(
-                week_start.date().isoformat(),
-                week_end.date().isoformat(),
-            ),
-        )
-    ) or 0
-
-    pending_facs_plates, pending_elisa_plates = _sum_pending_test_plate_counts(db)
+        .where(deleted_filter)
+    ).one()
 
     return {
-        "unassigned": unassigned,
-        "pending": pending,
-        "pendingFacsPlates": pending_facs_plates,
-        "pendingElisaPlates": pending_elisa_plates,
-        "thisWeek": this_week,
-        "toReport": to_report,
+        "unassigned": int(row[0] or 0),
+        "pending": int(row[1] or 0),
+        "pendingFacsPlates": int(row[4] or 0),
+        "pendingElisaPlates": int(row[5] or 0),
+        "thisWeek": int(row[3] or 0),
+        "toReport": int(row[2] or 0),
     }
 
 

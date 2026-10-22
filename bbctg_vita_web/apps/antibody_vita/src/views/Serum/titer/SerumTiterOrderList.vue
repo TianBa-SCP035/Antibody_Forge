@@ -288,13 +288,14 @@
       <div
         ref="tablePlateWrap"
         class="table-plate-wrap"
-        :class="{ 'is-plate-dragging': plateDragging }"
+        @click.capture="onTableWrapClickCapture"
       >
         <el-table
           ref="orderTable"
           :height="listTableHeight"
           v-loading="listLoading"
           :data="list"
+          row-key="id"
           border
           stripe
           fit
@@ -303,6 +304,7 @@
           class="list-data-table"
           style="width: 100%"
           @sort-change="handleSortChange"
+          @header-dragend="onTableHeaderDragEnd"
         >
         <el-table-column label="项目编号" prop="project_code" align="left" sortable="custom" fixed min-width="120" show-overflow-tooltip>
           <template #default="{ row }">
@@ -425,39 +427,41 @@
               @mouseenter="onPlateCellMouseEnter('owner', $index)"
               @contextmenu.prevent="onPlateCellContextMenu('owner')"
             >
-              <el-select
-                :ref="'ownerSelect_' + row.id"
-                v-model="row.titer_owners"
-                class="owner-select inline-cell-control"
-                size="small"
-                multiple
-                allow-create
-                filterable
-                :reserve-keyword="false"
-                :disabled="!canEditTiterOrderOwner()"
-                popper-class="titer-select-dropdown"
-                placeholder="选择负责人"
-                @change="onTiterOwnerChange(row)"
+              <div
+                class="el-select el-select--small owner-select inline-cell-control inline-cell-preview"
+                :class="{ 'is-disabled': !canEditTiterOrderOwner() }"
+                role="button"
+                :tabindex="canEditTiterOrderOwner() ? 0 : -1"
+                @click="activateInlineControl($event, row, 'owner')"
+                @keydown="onInlinePreviewKeydown($event, row, 'owner')"
               >
-                <template #tag="{ data, deleteTag, selectDisabled }">
-                  <div
-                    v-for="item in data"
-                    :key="ownerTagName(item)"
-                    class="el-select__selected-item"
-                  >
-                    <el-tag
-                      class="owner-tag"
-                      :style="ownerTagStyle(item)"
-                      :closable="!selectDisabled"
-                      disable-transitions
-                      @close="(event) => deleteTag(event, item)"
-                    >
-                      {{ ownerTagName(item) }}
-                    </el-tag>
+                <div class="el-select__wrapper" :class="{ 'is-disabled': !canEditTiterOrderOwner() }">
+                  <div class="el-select__selection">
+                    <template v-if="row.titer_owners && row.titer_owners.length">
+                      <div
+                        v-for="item in row.titer_owners"
+                        :key="ownerTagName(item)"
+                        class="el-select__selected-item"
+                      >
+                        <span class="el-tag el-tag--small owner-tag" :style="ownerTagStyle(item)">
+                          <span class="el-tag__content">{{ ownerTagName(item) }}</span>
+                          <i
+                            v-if="canEditTiterOrderOwner()"
+                            class="el-icon el-tag__close"
+                            @click.stop="removeOwnerTag(row, item)"
+                          >×</i>
+                        </span>
+                      </div>
+                    </template>
+                    <div v-else class="el-select__selected-item el-select__placeholder is-transparent">
+                      <span>选择负责人</span>
+                    </div>
                   </div>
-                </template>
-                <el-option v-for="name in allOwnerOptions" :key="name" :label="name" :value="name" />
-              </el-select>
+                  <div class="el-select__suffix">
+                    <i class="el-icon el-select__caret el-select__icon"><svg viewBox="0 0 1024 1024"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z" /></svg></i>
+                  </div>
+                </div>
+              </div>
             </div>
           </template>
         </el-table-column>
@@ -476,28 +480,32 @@
               @mouseenter="onPlateCellMouseEnter('test_dates', $index)"
               @contextmenu.prevent="onPlateCellContextMenu('test_dates')"
             >
-              <el-tooltip
-                :content="row.test_dates_display"
-                placement="top"
-                :disabled="!isOverflowTooltip(row.id, 'test_dates')"
+              <div
+                class="cell-tooltip-target"
+                @mouseenter="handleOverflowMouseEnter($event, row.id, 'test_dates', row.test_dates_display)"
+                @mouseleave="handleOverflowMouseLeave(row.id, 'test_dates')"
               >
                 <div
-                  class="cell-tooltip-target"
-                  @mouseenter="handleOverflowMouseEnter($event, row.id, 'test_dates', row.test_dates_display)"
-                  @mouseleave="handleOverflowMouseLeave(row.id, 'test_dates')"
+                  class="el-date-editor el-date-editor--dates el-input el-input--small el-input--prefix el-input--suffix test-dates-picker inline-cell-control inline-cell-preview"
+                  :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }"
+                  role="button"
+                  :tabindex="canEditTiterOrderRecord(row) ? 0 : -1"
+                  @click="activateInlineControl($event, row, 'test_dates')"
+                  @keydown="onInlinePreviewKeydown($event, row, 'test_dates')"
                 >
-                  <el-date-picker
-                    v-model="row.test_dates"
-                    class="test-dates-picker inline-cell-control"
-                    size="small"
-                    type="dates"
-                    value-format="YYYY-MM-DD"
-                    placeholder="选择检测日"
-                    :disabled="!canEditTiterOrderRecord(row)"
-                    @change="onTestDatesChange(row)"
-                  />
+                  <div class="el-input__wrapper" :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }">
+                    <span class="el-input__prefix">
+                      <span class="el-input__prefix-inner">
+                        <i class="el-icon el-input__icon"><svg viewBox="0 0 1024 1024"><path fill="currentColor" d="M128 384v512h768V192H768v32a32 32 0 1 1-64 0v-32H320v32a32 32 0 0 1-64 0v-32H128v128h768v64H128zm192-256h384V96a32 32 0 1 1 64 0v32h160a32 32 0 0 1 32 32v768a32 32 0 0 1-32 32H96a32 32 0 0 1-32-32V160a32 32 0 0 1 32-32h160V96a32 32 0 0 1 64 0v32zm-32 384h64a32 32 0 0 1 0 64h-64a32 32 0 0 1 0-64zm0 192h64a32 32 0 1 1 0 64h-64a32 32 0 1 1 0-64zm192-192h64a32 32 0 0 1 0 64h-64a32 32 0 0 1 0-64zm0 192h64a32 32 0 1 1 0 64h-64a32 32 0 1 1 0-64zm192-192h64a32 32 0 0 1 0 64h-64a32 32 0 0 1 0-64zm0 192h64a32 32 0 1 1 0 64h-64a32 32 0 1 1 0-64z" /></svg></i>
+                      </span>
+                    </span>
+                    <span
+                      class="el-input__inner"
+                      :class="{ 'is-placeholder': !row.test_dates_display }"
+                    >{{ row.test_dates_display || '选择检测日' }}</span>
+                  </div>
                 </div>
-              </el-tooltip>
+              </div>
             </div>
           </template>
         </el-table-column>
@@ -516,23 +524,31 @@
               @mouseenter="onPlateCellMouseEnter('serum_status', $index)"
               @contextmenu.prevent="onPlateCellContextMenu('serum_status')"
             >
-              <el-select
-                v-model="row.serum_status"
-                class="inline-cell-control serum-status-select"
-                :class="row.serum_status ? 'status-tone-' + getSerumTiterStatusTagType(row.serum_status) : ''"
-                size="small"
-                clearable
-                :disabled="!canEditTiterOrderRecordOpen()"
-                placeholder="选择状态"
-                @change="onSerumStatusChange(row)"
+              <div
+                class="el-select el-select--small inline-cell-control serum-status-select inline-cell-preview"
+                :class="[
+                  row.serum_status ? 'status-tone-' + getSerumTiterStatusTagType(row.serum_status) : '',
+                  { 'is-disabled': !canEditTiterOrderRecordOpen() },
+                ]"
+                role="button"
+                :tabindex="canEditTiterOrderRecordOpen() ? 0 : -1"
+                @click="activateInlineControl($event, row, 'serum_status')"
+                @keydown="onInlinePreviewKeydown($event, row, 'serum_status')"
               >
-                <el-option
-                  v-for="item in titerSerumStatusOptions"
-                  :key="item"
-                  :label="item"
-                  :value="item"
-                />
-              </el-select>
+                <div class="el-select__wrapper" :class="{ 'is-disabled': !canEditTiterOrderRecordOpen() }">
+                  <div class="el-select__selection">
+                    <div
+                      class="el-select__selected-item el-select__placeholder"
+                      :class="{ 'is-transparent': !row.serum_status }"
+                    >
+                      <span>{{ row.serum_status || '选择状态' }}</span>
+                    </div>
+                  </div>
+                  <div class="el-select__suffix">
+                    <i class="el-icon el-select__caret el-select__icon"><svg viewBox="0 0 1024 1024"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z" /></svg></i>
+                  </div>
+                </div>
+              </div>
             </div>
           </template>
         </el-table-column>
@@ -544,72 +560,79 @@
               @mouseenter="onPlateCellMouseEnter('priority', $index)"
               @contextmenu.prevent="onPlateCellContextMenu('priority')"
             >
-              <el-select
-                v-model="row.priority"
-                class="inline-cell-control priority-select"
-                :class="'status-tone-' + getTiterPriorityTone(row.priority)"
-                size="small"
-                :disabled="!canEditTiterOrderRecordOpen()"
-                @change="onPriorityChange(row)"
+              <div
+                class="el-select el-select--small inline-cell-control priority-select inline-cell-preview"
+                :class="[
+                  'status-tone-' + getTiterPriorityTone(row.priority),
+                  { 'is-disabled': !canEditTiterOrderRecordOpen() },
+                ]"
+                role="button"
+                :tabindex="canEditTiterOrderRecordOpen() ? 0 : -1"
+                @click="activateInlineControl($event, row, 'priority')"
+                @keydown="onInlinePreviewKeydown($event, row, 'priority')"
               >
-                <el-option
-                  v-for="item in titerPriorityOptions"
-                  :key="item"
-                  :label="item"
-                  :value="item"
-                />
-              </el-select>
+                <div class="el-select__wrapper" :class="{ 'is-disabled': !canEditTiterOrderRecordOpen() }">
+                  <div class="el-select__selection">
+                    <div class="el-select__selected-item el-select__placeholder">
+                      <span>{{ row.priority }}</span>
+                    </div>
+                  </div>
+                  <div class="el-select__suffix">
+                    <i class="el-icon el-select__caret el-select__icon"><svg viewBox="0 0 1024 1024"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z" /></svg></i>
+                  </div>
+                </div>
+              </div>
             </div>
           </template>
         </el-table-column>
         <el-table-column label="备注" align="center" min-width="180">
           <template #default="{ row }">
-            <el-tooltip
-              :content="row.remark"
-              placement="top"
-              :disabled="!isOverflowTooltip(row.id, 'remark')"
+            <div
+              class="cell-tooltip-target"
+              @mouseenter="handleOverflowMouseEnter($event, row.id, 'remark', row.remark)"
+              @mouseleave="handleOverflowMouseLeave(row.id, 'remark')"
             >
               <div
-                class="cell-tooltip-target"
-                @mouseenter="handleOverflowMouseEnter($event, row.id, 'remark', row.remark)"
-                @mouseleave="handleOverflowMouseLeave(row.id, 'remark')"
+                class="el-input el-input--small inline-cell-control inline-cell-preview"
+                :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }"
+                role="textbox"
+                :tabindex="canEditTiterOrderRecord(row) ? 0 : -1"
+                @click="activateInlineControl($event, row, 'remark')"
+                @keydown="onInlinePreviewKeydown($event, row, 'remark')"
               >
-                <el-input
-                  v-model="row.remark"
-                  class="inline-cell-control"
-                  size="small"
-                  maxlength="500"
-                  placeholder="备注"
-                  :disabled="!canEditTiterOrderRecord(row)"
-                  @change="saveRow(row, '备注')"
-                />
+                <div class="el-input__wrapper" :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }">
+                  <span
+                    class="el-input__inner"
+                    :class="{ 'is-placeholder': !row.remark }"
+                  >{{ row.remark || '备注' }}</span>
+                </div>
               </div>
-            </el-tooltip>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="效价小结" align="center" min-width="180">
           <template #default="{ row }">
-            <el-tooltip
-              :content="row.summary"
-              placement="top"
-              :disabled="!isOverflowTooltip(row.id, 'summary')"
+            <div
+              class="cell-tooltip-target"
+              @mouseenter="handleOverflowMouseEnter($event, row.id, 'summary', row.summary)"
+              @mouseleave="handleOverflowMouseLeave(row.id, 'summary')"
             >
               <div
-                class="cell-tooltip-target"
-                @mouseenter="handleOverflowMouseEnter($event, row.id, 'summary', row.summary)"
-                @mouseleave="handleOverflowMouseLeave(row.id, 'summary')"
+                class="el-input el-input--small inline-cell-control inline-cell-preview"
+                :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }"
+                role="textbox"
+                :tabindex="canEditTiterOrderRecord(row) ? 0 : -1"
+                @click="activateInlineControl($event, row, 'summary')"
+                @keydown="onInlinePreviewKeydown($event, row, 'summary')"
               >
-                <el-input
-                  v-model="row.summary"
-                  class="inline-cell-control"
-                  size="small"
-                  maxlength="500"
-                  placeholder="填写小结"
-                  :disabled="!canEditTiterOrderRecord(row)"
-                  @change="saveRow(row, '效价小结')"
-                />
+                <div class="el-input__wrapper" :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }">
+                  <span
+                    class="el-input__inner"
+                    :class="{ 'is-placeholder': !row.summary }"
+                  >{{ row.summary || '填写小结' }}</span>
+                </div>
               </div>
-            </el-tooltip>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="工单状态" prop="order_status" align="center" min-width="100" class-name="status-column-cell">
@@ -667,32 +690,25 @@
         </el-table-column>
         </el-table>
 
-        <div v-if="plateDragging" class="plate-select-overlay">
-          <div
-            v-for="rect in plateOverlayRects"
-            :key="rect.key"
-            class="plate-select-region"
-            :style="rect.style"
-          />
-        </div>
-        <TransitionGroup v-else name="plate-region" tag="div" class="plate-select-overlay">
-          <div
-            v-for="rect in plateOverlayRects"
-            :key="rect.key"
-            class="plate-select-region"
-            :style="rect.style"
-          />
-        </TransitionGroup>
+        <div ref="plateOverlayEl" class="plate-select-overlay" aria-hidden="true" />
+        <div ref="plateBubbleEl" class="plate-select-bubble" aria-hidden="true" />
 
-        <Transition name="plate-bubble">
-          <div
-            v-if="plateBubbleVisible"
-            class="plate-select-bubble"
-            :style="plateBubbleStyle"
-          >
-            {{ plateSelectBubbleText }}
-          </div>
-        </Transition>
+        <TiterTableFloatingLayer
+          ref="floatingLayerRef"
+          :all-owner-options="allOwnerOptions"
+          :titer-serum-status-options="titerSerumStatusOptions"
+          :titer-priority-options="titerPriorityOptions"
+          :owner-tag-name="ownerTagName"
+          :owner-tag-style="ownerTagStyle"
+          :get-serum-titer-status-tag-type="getSerumTiterStatusTagType"
+          :get-titer-priority-tone="getTiterPriorityTone"
+          @owner-change="onTiterOwnerChange"
+          @test-dates-change="onTestDatesChange"
+          @serum-status-change="onSerumStatusChange"
+          @priority-change="onPriorityChange"
+          @remark-change="row => saveRow(row, '备注')"
+          @summary-change="row => saveRow(row, '效价小结')"
+        />
       </div>
       </div>
 
@@ -802,7 +818,7 @@
 
 <script>
 import { DataAnalysis, Document, Download, Plus, Refresh, Search, Tools, TrendCharts } from '@element-plus/icons-vue';
-import { markRaw } from 'vue';
+import { defineComponent, h, markRaw } from 'vue';
 import * as XLSX from 'xlsx';
 import {
   ElButton,
@@ -1002,6 +1018,300 @@ const OWNER_TAG_COLORS = [
   { bg: '#f4eef6', color: '#a878a0' }, // 香芋
 ];
 
+const TiterTableFloatingLayer = defineComponent({
+  name: 'TiterTableFloatingLayer',
+  props: {
+    allOwnerOptions: { type: Array, default: () => [] },
+    titerSerumStatusOptions: { type: Array, default: () => [] },
+    titerPriorityOptions: { type: Array, default: () => [] },
+    ownerTagName: { type: Function, required: true },
+    ownerTagStyle: { type: Function, required: true },
+    getSerumTiterStatusTagType: { type: Function, required: true },
+    getTiterPriorityTone: { type: Function, required: true },
+  },
+  emits: ['owner-change', 'test-dates-change', 'serum-status-change', 'priority-change', 'remark-change', 'summary-change'],
+  data() {
+    return {
+      editor: null,
+      tipVisible: false,
+      tipRef: null,
+      tipText: '',
+      tipKey: '',
+    };
+  },
+  methods: {
+    openEditor(targetEl, wrapEl, row, field) {
+      if (!targetEl || !wrapEl || !row) return;
+      if (this.editor && (this.editor.row !== row || this.editor.field !== field)) {
+        this.closeEditor();
+      }
+      const cellRect = targetEl.getBoundingClientRect();
+      const wrapRect = wrapEl.getBoundingClientRect();
+      this.tipVisible = false;
+      this.editor = {
+        targetEl,
+        wrapEl,
+        row,
+        field,
+        initialValue: row[field] ?? '',
+        saved: false,
+        style: {
+          top: `${cellRect.top - wrapRect.top}px`,
+          left: `${cellRect.left - wrapRect.left}px`,
+          width: `${cellRect.width}px`,
+          height: `${cellRect.height}px`,
+        },
+      };
+      this.$nextTick(() => {
+        const ins = this.$refs.controlRef;
+        if (!ins) return;
+        if (field === 'remark' || field === 'summary') {
+          ins.focus?.();
+        } else if (field === 'test_dates') {
+          ins.handleOpen?.();
+          ins.focus?.();
+        } else {
+          ins.expanded = true;
+          ins.focus?.();
+        }
+      });
+    },
+    syncPosition() {
+      const ed = this.editor;
+      if (!ed) return;
+      if (!ed.targetEl?.isConnected || !ed.wrapEl?.isConnected) {
+        this.editor = null;
+        return;
+      }
+      const cellRect = ed.targetEl.getBoundingClientRect();
+      const wrapRect = ed.wrapEl.getBoundingClientRect();
+      ed.style = {
+        top: `${cellRect.top - wrapRect.top}px`,
+        left: `${cellRect.left - wrapRect.left}px`,
+        width: `${cellRect.width}px`,
+        height: `${cellRect.height}px`,
+      };
+    },
+    closeEditor() {
+      const ed = this.editor;
+      if (!ed) return;
+      if (
+        (ed.field === 'remark' || ed.field === 'summary')
+        && !ed.saved
+        && String(ed.row?.[ed.field] ?? '') !== String(ed.initialValue ?? '')
+      ) {
+        ed.saved = true;
+        this.$emit(ed.field === 'remark' ? 'remark-change' : 'summary-change', ed.row);
+      }
+      this.editor = null;
+    },
+    onVisibleChange(visible) {
+      if (!visible) {
+        this.editor = null;
+      }
+    },
+    showTip(targetEl, key, text) {
+      if (this.editor) return;
+      this.tipRef = targetEl;
+      this.tipText = String(text || '');
+      this.tipKey = key;
+      this.tipVisible = true;
+    },
+    hideTip(key) {
+      if (!key || this.tipKey === key) {
+        if (this.tipVisible) this.tipVisible = false;
+        this.tipKey = '';
+      }
+    },
+  },
+  render() {
+    const children = [];
+    const ed = this.editor;
+    if (ed && ed.row) {
+      const { row, field, style } = ed;
+      let control = null;
+      if (field === 'owner') {
+        control = h(
+          ElSelect,
+          {
+            ref: 'controlRef',
+            modelValue: row.titer_owners,
+            'onUpdate:modelValue': (val) => {
+              row.titer_owners = val;
+            },
+            class: 'owner-select inline-cell-control',
+            size: 'small',
+            multiple: true,
+            allowCreate: true,
+            filterable: true,
+            reserveKeyword: false,
+            popperClass: 'titer-select-dropdown',
+            placeholder: '选择负责人',
+            onChange: () => {
+              this.$emit('owner-change', row);
+              this.$nextTick(() => {
+                this.$refs.controlRef?.blur?.();
+                this.syncPosition();
+              });
+            },
+            onVisibleChange: this.onVisibleChange,
+          },
+          {
+            tag: ({ data, deleteTag, selectDisabled }) =>
+              (data || []).map((item) =>
+                h(
+                  'div',
+                  { key: this.ownerTagName(item), class: 'el-select__selected-item' },
+                  [
+                    h(
+                      ElTag,
+                      {
+                        class: 'owner-tag',
+                        style: this.ownerTagStyle(item),
+                        closable: !selectDisabled,
+                        disableTransitions: true,
+                        onClose: (event) => deleteTag(event, item),
+                      },
+                      () => this.ownerTagName(item),
+                    ),
+                  ],
+                ),
+              ),
+            default: () =>
+              this.allOwnerOptions.map((name) =>
+                h(ElOption, { key: name, label: name, value: name }),
+              ),
+          },
+        );
+      } else if (field === 'test_dates') {
+        control = h(ElDatePicker, {
+          ref: 'controlRef',
+          modelValue: row.test_dates,
+          'onUpdate:modelValue': (val) => {
+            row.test_dates = val;
+          },
+          class: 'test-dates-picker inline-cell-control',
+          size: 'small',
+          type: 'dates',
+          valueFormat: 'YYYY-MM-DD',
+          placeholder: '选择检测日',
+          onChange: () => this.$emit('test-dates-change', row),
+          onVisibleChange: this.onVisibleChange,
+        });
+      } else if (field === 'serum_status') {
+        control = h(
+          ElSelect,
+          {
+            ref: 'controlRef',
+            modelValue: row.serum_status,
+            'onUpdate:modelValue': (val) => {
+              row.serum_status = val;
+            },
+            class: [
+              'inline-cell-control',
+              'serum-status-select',
+              row.serum_status ? `status-tone-${this.getSerumTiterStatusTagType(row.serum_status)}` : '',
+            ],
+            size: 'small',
+            clearable: true,
+            placeholder: '选择状态',
+            onChange: () => this.$emit('serum-status-change', row),
+            onVisibleChange: this.onVisibleChange,
+          },
+          () =>
+            this.titerSerumStatusOptions.map((item) =>
+              h(ElOption, { key: item, label: item, value: item }),
+            ),
+        );
+      } else if (field === 'priority') {
+        control = h(
+          ElSelect,
+          {
+            ref: 'controlRef',
+            modelValue: row.priority,
+            'onUpdate:modelValue': (val) => {
+              row.priority = val;
+            },
+            class: [
+              'inline-cell-control',
+              'priority-select',
+              `status-tone-${this.getTiterPriorityTone(row.priority)}`,
+            ],
+            size: 'small',
+            onChange: () => this.$emit('priority-change', row),
+            onVisibleChange: this.onVisibleChange,
+          },
+          () =>
+            this.titerPriorityOptions.map((item) =>
+              h(ElOption, { key: item, label: item, value: item }),
+            ),
+        );
+      } else if (field === 'remark' || field === 'summary') {
+        control = h(
+          'div',
+          { class: 'el-input el-input--small inline-cell-control is-focus' },
+          [
+            h('div', { class: 'el-input__wrapper is-focus' }, [
+              h('input', {
+                ref: 'controlRef',
+                value: row[field] ?? '',
+                class: 'el-input__inner',
+                maxlength: 500,
+                placeholder: field === 'remark' ? '备注' : '填写小结',
+                onInput: (e) => {
+                  row[field] = e.target.value;
+                },
+                onChange: () => {
+                  ed.saved = true;
+                  this.$emit(field === 'remark' ? 'remark-change' : 'summary-change', row);
+                },
+                onBlur: () => {
+                  this.closeEditor();
+                },
+                onKeydown: (e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.target.blur();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    row[field] = ed.initialValue;
+                    ed.saved = true;
+                    e.target.blur();
+                  }
+                },
+              }),
+            ]),
+          ],
+        );
+      }
+      if (control) {
+        children.push(
+          h(
+            'div',
+            {
+              key: `${row.id}:${field}`,
+              class: 'plate-floating-editor',
+              style,
+              onMousedown: (e) => e.stopPropagation(),
+            },
+            [control],
+          ),
+        );
+      }
+    }
+    children.push(
+      h(ElTooltip, {
+        visible: this.tipVisible,
+        virtualRef: this.tipRef,
+        content: this.tipText,
+        virtualTriggering: true,
+        placement: 'top',
+      }),
+    );
+    return h('div', { class: 'plate-floating-layer' }, children);
+  },
+});
+
 export default {
   name: 'SerumTiterOrderList',
   mixins: [listTableLockMixin],
@@ -1019,14 +1329,13 @@ export default {
     ElPopover,
     ElRadioButton,
     ElRadioGroup,
-    ElSelect,
     ElTable,
     ElTableColumn,
     ElTag,
-    ElTooltip,
     AdvancedOpsBar,
     ListFilterSelect,
     SerumProjectStatusEditor,
+    TiterTableFloatingLayer,
     Tools,
     TiterInstrumentOrderDialogs,
     TiterMouseSelectWizard,
@@ -1071,31 +1380,17 @@ export default {
       };
       return [...rows, totalRow];
     },
-    plateBubbleVisible() {
-      if (this.plateDragging) {
-        return Boolean(this.plateSelectColumn);
-      }
-      return Boolean(this.plateSelectColumn)
-        && Object.keys(this.plateSelectedCounts).length > 0
-        && this.plateOverlayRects.length > 0;
-    },
     filteredTargetOptions() {
       return filterTargetOptions(this.allTargetOptions, this.targetFilterQuery);
     },
-    plateSelectBubbleText() {
-      const column = this.plateSelectColumn;
-      if (!column) {
-        return '';
+    displayRowIndexMap() {
+      const map = new Map();
+      const rows = this.list || [];
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i];
+        if (row?.id != null) map.set(String(row.id), i);
       }
-      const { sum, count } = this.getPlateSelectionSummary(column, this.plateDragging);
-      if (FIELD_SELECT_COLUMNS.has(column)) {
-        return count > 0 ? `已选 ${count} 条 · 改一处同步` : '划选多行后改一处同步';
-      }
-      if (column === 'mouse') {
-        return `鼠鼠共计 ${sum} 只`;
-      }
-      const label = column === 'facs' ? 'FACS' : 'ELISA';
-      return `${label} ${sum} 板 · ${count} 条`;
+      return map;
     },
   },
   data() {
@@ -1110,7 +1405,7 @@ export default {
       Refresh: markRaw(Refresh),
       Search: markRaw(Search),
       TrendCharts: markRaw(TrendCharts),
-      _filterMethodCache: Object.create(null),
+      filterMethodCache: Object.create(null),
       createDialogVisible: false,
       discoveryWizardVisible: false,
       discoverySubmitting: false,
@@ -1163,7 +1458,6 @@ export default {
       stats: { ...DEFAULT_STATS },
       bloodCollectionRange: [],
       testDatesRange: [],
-      overflowCellKeys: {},
       statFilterActive: createDefaultStatFilterActive(),
       testDateStatScope: '',
       pendingStatScope: '',
@@ -1174,19 +1468,6 @@ export default {
       ownerStatsSummary: { total: {}, completed: {}, remaining: {}, period: {} },
       ownerStatsMonthRange: [],
       total: 0,
-      plateSelectColumn: null,
-      plateSelectedCounts: {},
-      plateDragging: false,
-      plateDragPending: null,
-      plateDragStartIndex: -1,
-      plateDragEndIndex: -1,
-      plateBubbleStyle: {
-        top: '0px',
-        left: '0px',
-        transform: 'translate3d(0px, 0px, 0) translateX(-50%)',
-      },
-      plateBubblePos: null,
-      plateOverlayRects: [],
       tabDataFetchedAt: 0,
       colFilterOpen: {
         mouse_count: false,
@@ -1195,16 +1476,46 @@ export default {
       },
     };
   },
+  watch: {
+    listTableHeight() {
+      this.invalidatePlateGeometryCache();
+      this.updatePlateSelectionUi();
+    },
+  },
   created() {
     this.skipActivatedLoad = true;
+    this.plateSelectColumn = null;
+    this.plateSelectedCounts = {};
+    this.plateDragging = false;
+    this.plateDragPending = null;
+    this.plateDragStartIndex = -1;
+    this.plateDragEndIndex = -1;
+    this.plateBubblePos = null;
+    this.plateBubbleHeight = 28;
+    this.plateBubbleHalfWidth = 60;
+    this.plateRenderedSegmentCount = 0;
+    this.plateSuppressInlineClick = false;
+    this.plateBaseSegments = null;
+    this.plateClipBox = null;
+    this.plateLastClipPath = '';
+    this.listRequestToken = 0;
   },
   mounted() {
     this.restoreListFilters();
     this.loadPageMeta();
     this.loadForRoute();
     this.onPlateDragMouseUp = () => this.finishPlateDrag();
-    this.onPlateTableScroll = () => this.updatePlateSelectionUi();
+    this.onPlateTableScroll = () => {
+      this.$refs.floatingLayerRef?.syncPosition?.();
+      this.updatePlateSelectionUi(false, true);
+    };
+    this.onPlateWindowResize = () => {
+      this.invalidatePlateGeometryCache();
+      this.$refs.floatingLayerRef?.syncPosition?.();
+      this.updatePlateSelectionUi();
+    };
     document.addEventListener('mouseup', this.onPlateDragMouseUp);
+    window.addEventListener('resize', this.onPlateWindowResize, { passive: true });
     this.$nextTick(() => this.bindPlateTableScroll());
   },
   activated() {
@@ -1212,6 +1523,7 @@ export default {
       this.skipActivatedLoad = false;
       return;
     }
+    this.invalidatePlateGeometryCache();
     if (pendingTiterOrderId) {
       this.loadForRoute();
       return;
@@ -1225,8 +1537,13 @@ export default {
     next();
   },
   beforeUnmount() {
+    if (this._plateUiRafId) {
+      cancelAnimationFrame(this._plateUiRafId);
+      this._plateUiRafId = 0;
+    }
     this.persistListFilters();
     document.removeEventListener('mouseup', this.onPlateDragMouseUp);
+    window.removeEventListener('resize', this.onPlateWindowResize);
     this.unbindPlateTableScroll();
   },
   methods: {
@@ -1322,12 +1639,43 @@ export default {
       if (event.button !== 0) {
         return;
       }
-      if (event.target.closest?.('.el-select, .el-date-editor, .el-input, .el-tag')) {
+      if (event.target.closest?.('.inline-cell-preview, .el-select, .el-date-editor, .el-input, .el-tag')) {
         this.plateDragPending = { column, index };
         return;
       }
       this.plateDragPending = null;
       this.onPlateCellMouseDown(column, index, event);
+    },
+    onTableWrapClickCapture(event) {
+      if (!this.plateSuppressInlineClick) return;
+      this.plateSuppressInlineClick = false;
+      if (event.target?.closest?.('.inline-cell-control')) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+    },
+    activateInlineControl(event, row, field) {
+      if (this.plateDragging || this.plateSuppressInlineClick) return;
+      if (field === 'owner' && !this.canEditTiterOrderOwner()) return;
+      if ((field === 'test_dates' || field === 'remark' || field === 'summary') && !this.canEditTiterOrderRecord(row)) return;
+      if ((field === 'serum_status' || field === 'priority') && !this.canEditTiterOrderRecordOpen()) return;
+      const targetEl = event?.currentTarget;
+      const wrapEl = this.$refs.tablePlateWrap;
+      this.$refs.floatingLayerRef?.openEditor?.(targetEl, wrapEl, row, field);
+    },
+    onInlinePreviewKeydown(event, row, field) {
+      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.activateInlineControl(event, row, field);
+    },
+    removeOwnerTag(row, item) {
+      if (!this.canEditTiterOrderOwner()) return;
+      const targetName = this.ownerTagName(item);
+      row.titer_owners = (row.titer_owners || []).filter(
+        (name) => this.ownerTagName(name) !== targetName,
+      );
+      this.onTiterOwnerChange(row);
     },
     canEditFieldForRow(row, label) {
       if (label === '效价负责人') {
@@ -1345,9 +1693,10 @@ export default {
       const keys = this.plateSelectColumn === column
         ? Object.keys(this.plateSelectedCounts)
         : [];
-      const inSelection = keys.some((id) => String(id) === String(sourceRow.id));
-      const selected = inSelection && keys.length > 1
-        ? this.getTableDisplayRows().filter((row) => keys.includes(String(row.id)))
+      const keySet = new Set(keys.map(String));
+      const inSelection = keySet.has(String(sourceRow.id));
+      const selected = inSelection && keySet.size > 1
+        ? this.getTableDisplayRows().filter((row) => keySet.has(String(row.id)))
         : [sourceRow];
       // 赋值前跳过无权限行，界面也不改
       const targets = selected.filter((row) => this.canEditFieldForRow(row, label));
@@ -1383,6 +1732,20 @@ export default {
       }
     },
     getPlateSelectSegments(column) {
+      // 空选区的连续拖选直接返回单段 [min, max]，避免 500 行每帧建 Set 与排序
+      if (
+        this.plateDragging
+        && column === this.plateSelectColumn
+        && this.plateDragStartIndex !== this.plateDragEndIndex
+        && this.plateDragStartIndex >= 0
+        && this.plateDragEndIndex >= 0
+        && Object.keys(this.plateSelectedCounts).length === 0
+      ) {
+        return [[
+          Math.min(this.plateDragStartIndex, this.plateDragEndIndex),
+          Math.max(this.plateDragStartIndex, this.plateDragEndIndex),
+        ]];
+      }
       const sorted = this.getPlateSelectRowIndices(column);
       if (!sorted.length) {
         return [];
@@ -1405,9 +1768,13 @@ export default {
     getPlateSelectRowIndices(column) {
       const indices = new Set();
       const rows = this.getTableDisplayRows();
+      const useCachedMap = rows === this.list;
+      const rowIndexMap = this.displayRowIndexMap;
       if (column === this.plateSelectColumn) {
         for (const rowId of Object.keys(this.plateSelectedCounts)) {
-          const index = rows.findIndex((row) => String(row.id) === String(rowId));
+          const index = useCachedMap
+            ? (rowIndexMap.get(String(rowId)) ?? -1)
+            : rows.findIndex((row) => String(row.id) === String(rowId));
           if (index >= 0) {
             indices.add(index);
           }
@@ -1416,30 +1783,172 @@ export default {
       if (this.plateDragging && column === this.plateSelectColumn) {
         const min = Math.min(this.plateDragStartIndex, this.plateDragEndIndex);
         const max = Math.max(this.plateDragStartIndex, this.plateDragEndIndex);
-        for (let index = min; index <= max; index += 1) {
-          indices.add(index);
+        if (min === max) {
+          const row = rows[min];
+          if (row?.id != null && Object.prototype.hasOwnProperty.call(this.plateSelectedCounts, row.id)) {
+            indices.delete(min);
+          } else if (min >= 0) {
+            indices.add(min);
+          }
+        } else {
+          for (let index = min; index <= max; index += 1) {
+            indices.add(index);
+          }
         }
       }
       return [...indices].sort((left, right) => left - right);
     },
-    updatePlateSelectionUi() {
-      this.$nextTick(() => {
-        const wrapEl = this.$refs.tablePlateWrap;
-        const tableEl = this.$refs.orderTable?.$el;
-        const column = this.plateSelectColumn;
-        if (!wrapEl || !tableEl || !column) {
-          this.plateOverlayRects = [];
-          return;
+    formatPlateBubbleText() {
+      const column = this.plateSelectColumn;
+      if (!column) return '';
+      const { sum, count } = this.getPlateSelectionSummary(column, this.plateDragging);
+      if (FIELD_SELECT_COLUMNS.has(column)) {
+        return count > 0 ? `已选 ${count} 条 · 改一处同步` : '划选多行后改一处同步';
+      }
+      if (column === 'mouse') {
+        return `鼠鼠共计 ${sum} 只`;
+      }
+      const label = column === 'facs' ? 'FACS' : 'ELISA';
+      return `${label} ${sum} 板 · ${count} 条`;
+    },
+    invalidatePlateGeometryCache() {
+      this.plateBaseSegments = null;
+      this.plateClipBox = null;
+    },
+    onListTableBodyResumed() {
+      this.invalidatePlateGeometryCache();
+      this.$refs.floatingLayerRef?.syncPosition?.();
+      this.updatePlateSelectionUi(true);
+    },
+    onTableHeaderDragEnd() {
+      this.invalidatePlateGeometryCache();
+      this.$refs.floatingLayerRef?.syncPosition?.();
+      this.updatePlateSelectionUi();
+    },
+    setPlateDraggingState(dragging) {
+      this.plateDragging = Boolean(dragging);
+    },
+    updatePlateSelectionUi(immediate = false, fromScroll = false) {
+      if (fromScroll) {
+        this._plateUiFromScroll = true;
+      }
+      if (immediate) {
+        if (this._plateUiRafId) {
+          cancelAnimationFrame(this._plateUiRafId);
+          this._plateUiRafId = 0;
         }
+        const scrollFlag = Boolean(this._plateUiFromScroll);
+        this._plateUiFromScroll = false;
+        this.syncPlateSelectionUi(scrollFlag);
+        return;
+      }
+      if (this._plateUiRafId) return;
+      this._plateUiRafId = requestAnimationFrame(() => {
+        this._plateUiRafId = 0;
+        const scrollFlag = Boolean(this._plateUiFromScroll);
+        this._plateUiFromScroll = false;
+        this.syncPlateSelectionUi(scrollFlag);
+      });
+    },
+    syncPlateSelectionUi(fromScroll = false) {
+      const wrapEl = this.$refs.tablePlateWrap;
+      const overlayEl = this.$refs.plateOverlayEl;
+      const bubbleEl = this.$refs.plateBubbleEl;
+      const tableEl = this.$refs.orderTable?.$el;
+      const column = this.plateSelectColumn;
+      if (!wrapEl || !overlayEl || !bubbleEl || !tableEl || !column) {
+        if (overlayEl) overlayEl.innerHTML = '';
+        this.plateRenderedSegmentCount = 0;
+        this.plateBaseSegments = null;
+        bubbleEl?.classList.remove('is-visible');
+        return;
+      }
+
+      const scrollEl = this.plateTableBodyEl;
+      const curScrollTop = scrollEl ? scrollEl.scrollTop || 0 : 0;
+      const curScrollLeft = scrollEl ? scrollEl.scrollLeft || 0 : 0;
+      let clipTop = 0;
+      let clipBottom = 0;
+      let clipLeft = 0;
+      let clipRight = 0;
+      let minVisibleTop = 0;
+      let maxVisibleBottom = 0;
+      let wrapWidth = 0;
+      let nextClipPath = this.plateLastClipPath || '';
+      let baseSegments = null;
+
+      // 纯滚动且已有基准几何时：直接用 scrollTop/scrollLeft 差值计算，零 getBoundingClientRect / 零强制布局
+      if (
+        fromScroll
+        && !this.plateDragging
+        && scrollEl
+        && this.plateBaseSegments?.length
+        && this.plateClipBox
+      ) {
+        const box = this.plateClipBox;
+        clipTop = box.clipTop;
+        clipBottom = box.clipBottom;
+        clipLeft = box.clipLeft;
+        clipRight = box.clipRight;
+        minVisibleTop = box.minVisibleTop;
+        maxVisibleBottom = box.maxVisibleBottom;
+        wrapWidth = box.wrapWidth;
+        const dy = curScrollTop - (this.plateAnchorScrollTop || 0);
+        const dx = curScrollLeft - (this.plateAnchorScrollLeft || 0);
+        baseSegments = this.plateBaseSegments.map((seg) => ({
+          rawTop: seg.rawTop0 - dy,
+          rawBottom: seg.rawBottom0 - dy,
+          left: seg.rawLeft0 - dx,
+          width: seg.width,
+        }));
+      } else {
         const colClass = this.getPlateColClass(column);
-        const bodyRows = tableEl.querySelector('.el-table__body-wrapper tbody')?.rows;
+        const bodyWrapper = tableEl.querySelector('.el-table__body-wrapper');
+        const bodyRows = bodyWrapper?.querySelector('tbody')?.rows;
         if (!bodyRows?.length) {
-          this.plateOverlayRects = [];
+          overlayEl.innerHTML = '';
+          this.plateRenderedSegmentCount = 0;
+          this.plateBaseSegments = null;
+          bubbleEl.classList.remove('is-visible');
           return;
         }
+
+        // 先完成全部几何读取（Read Phase），再统一写 DOM
         const wrapRect = wrapEl.getBoundingClientRect();
+        const bodyRect = bodyWrapper.getBoundingClientRect();
+        wrapWidth = wrapRect.width;
+        clipTop = bodyRect.top - wrapRect.top;
+        clipBottom = bodyRect.bottom - wrapRect.top;
+        const firstRow = bodyRows[0];
+        const leftFixedEl = firstRow?.querySelector('td.el-table-fixed-column--left');
+        const rightFixedEl = firstRow?.querySelector('td.el-table-fixed-column--right');
+        clipLeft = leftFixedEl
+          ? Math.max(0, leftFixedEl.getBoundingClientRect().right - wrapRect.left)
+          : 0;
+        clipRight = rightFixedEl
+          ? Math.max(0, wrapRect.right - rightFixedEl.getBoundingClientRect().left)
+          : 0;
+        minVisibleTop = Math.max(bodyRect.top, 90) - wrapRect.top;
+        maxVisibleBottom = Math.min(bodyRect.bottom, window.innerHeight - 6) - wrapRect.top;
+        nextClipPath = (clipLeft > 0 || clipRight > 0)
+          ? `inset(${Math.max(0, clipTop)}px ${clipRight}px 0px ${clipLeft}px)`
+          : '';
+
+        this.plateClipBox = {
+          clipTop,
+          clipBottom,
+          clipLeft,
+          clipRight,
+          minVisibleTop,
+          maxVisibleBottom,
+          wrapWidth,
+        };
+        this.plateAnchorScrollTop = curScrollTop;
+        this.plateAnchorScrollLeft = curScrollLeft;
+
         const segments = this.getPlateSelectSegments(column);
-        const rects = [];
+        const measured = [];
+        let colCellIndex = -1;
 
         for (const [start, end] of segments) {
           const topRow = bodyRows[start];
@@ -1447,59 +1956,157 @@ export default {
           if (!topRow || !bottomRow) {
             continue;
           }
-          const topCell = topRow.querySelector(`td.${colClass}`);
-          const bottomCell = bottomRow.querySelector(`td.${colClass}`);
+          if (colCellIndex < 0) {
+            const found = topRow.querySelector(`td.${colClass}`);
+            colCellIndex = found ? found.cellIndex : -1;
+          }
+          const topCell = colCellIndex >= 0 ? topRow.cells[colCellIndex] : topRow.querySelector(`td.${colClass}`);
+          const bottomCell = colCellIndex >= 0 ? bottomRow.cells[colCellIndex] : bottomRow.querySelector(`td.${colClass}`);
           if (!topCell || !bottomCell) {
             continue;
           }
           const topRect = topCell.getBoundingClientRect();
-          const bottomRect = bottomCell.getBoundingClientRect();
-          rects.push({
-            key: this.plateDragging ? `drag-${rects.length}` : `${start}-${end}`,
-            style: {
-              top: `${topRect.top - wrapRect.top}px`,
-              left: `${topRect.left - wrapRect.left}px`,
-              width: `${topRect.width}px`,
-              height: `${bottomRect.bottom - topRect.top}px`,
-            },
+          const bottomRect = topCell === bottomCell ? topRect : bottomCell.getBoundingClientRect();
+          const rawTop = topRect.top - wrapRect.top;
+          const rawBottom = bottomRect.bottom - wrapRect.top;
+          const left = topRect.left - wrapRect.left;
+          const width = topRect.width;
+          measured.push({
+            rawTop0: rawTop,
+            rawBottom0: rawBottom,
+            rawLeft0: left,
+            rawTop,
+            rawBottom,
+            left,
+            width,
           });
         }
+        this.plateBaseSegments = measured;
+        baseSegments = measured;
+      }
 
-        this.plateOverlayRects = rects;
+      // 统一进入 DOM 写入阶段（Write Phase）
+      if (this.plateLastClipPath !== nextClipPath) {
+        this.plateLastClipPath = nextClipPath;
+        overlayEl.style.clipPath = nextClipPath;
+      }
 
-        if (rects.length) {
-          const last = rects[rects.length - 1];
-          const x = parseFloat(last.style.left) + parseFloat(last.style.width) / 2;
-          const y = parseFloat(last.style.top) + parseFloat(last.style.height) + 6;
-          // 短时长 + 按距微调；用 transform 走合成层，才能接近显示器刷新率
-          const prev = this.plateBubblePos;
-          let duration = 0.12;
-          if (prev) {
-            const dist = Math.hypot(x - prev.x, y - prev.y);
-            duration = Math.min(0.2, Math.max(0.08, dist / 1400));
-          }
-          this.plateBubblePos = { x, y };
-          this.plateBubbleStyle = {
-            top: '0px',
-            left: '0px',
-            transform: `translate3d(${x}px, ${y}px, 0) translateX(-50%)`,
-            transitionDuration: `${duration.toFixed(3)}s`,
-          };
+      const rects = [];
+      for (const seg of baseSegments) {
+        const clampedTop = Math.max(seg.rawTop, clipTop);
+        const clampedBottom = Math.min(seg.rawBottom, clipBottom);
+        if (clampedBottom <= clampedTop) continue;
+        rects.push({
+          top: clampedTop,
+          left: seg.left,
+          width: seg.width,
+          height: clampedBottom - clampedTop,
+        });
+      }
+
+      const prevSegCount = this.plateRenderedSegmentCount || 0;
+      // 拖选拉伸过程保持 0.12s 丝滑纵向过渡；
+      // 仅在滚动跟随（fromScroll）或点中间格拆段/并段取消选中（rects.length !== prevSegCount）时瞬切
+      const enableStretchTransition =
+        !fromScroll
+        && prevSegCount > 0
+        && rects.length === prevSegCount;
+      this.plateRenderedSegmentCount = rects.length;
+
+      while (overlayEl.children.length > rects.length) {
+        overlayEl.lastElementChild?.remove();
+      }
+      for (let i = 0; i < rects.length; i += 1) {
+        let regionEl = overlayEl.children[i];
+        const isNewRegion = !regionEl;
+        if (isNewRegion) {
+          regionEl = document.createElement('div');
+          regionEl.className = 'plate-select-region';
+          overlayEl.appendChild(regionEl);
         }
-      });
+        const r = rects[i];
+        const shouldAnimate = !isNewRegion && enableStretchTransition;
+        if (!shouldAnimate) {
+          regionEl.style.transition = 'none';
+        }
+        regionEl.style.top = `${r.top}px`;
+        regionEl.style.left = `${r.left}px`;
+        regionEl.style.width = `${r.width}px`;
+        regionEl.style.height = `${r.height}px`;
+        if (!shouldAnimate) {
+          void regionEl.offsetHeight;
+          regionEl.style.transition = '';
+        }
+      }
+
+      if (!rects.length) {
+        bubbleEl.classList.remove('is-visible');
+        this.plateBubblePos = null;
+        return;
+      }
+
+      if (!fromScroll) {
+        const bubbleText = this.formatPlateBubbleText();
+        if (bubbleEl.textContent !== bubbleText) {
+          bubbleEl.textContent = bubbleText;
+          this.plateBubbleHeight = bubbleEl.offsetHeight || 28;
+          this.plateBubbleHalfWidth = (bubbleEl.offsetWidth || 120) / 2;
+        }
+      }
+      const last = rects[rects.length - 1];
+      const bubbleH = this.plateBubbleHeight || 28;
+      const bubbleHalfW = this.plateBubbleHalfWidth || 60;
+      const minX = Math.max(clipLeft + bubbleHalfW + 6, bubbleHalfW + 6);
+      const maxX = Math.max(minX, wrapWidth - clipRight - bubbleHalfW - 6);
+      const x = Math.min(Math.max(minX, last.left + last.width / 2), maxX);
+      let y = last.top + last.height + 6;
+      // 底部空间不足（如划选到最后一行被卡片底边或屏幕底边遮挡）时，优先翻转到选区上方，若上下均满则内嵌于选区底部内侧
+      if (y + bubbleH > maxVisibleBottom) {
+        if (last.top - bubbleH - 6 >= minVisibleTop) {
+          y = last.top - bubbleH - 6;
+        } else {
+          y = Math.max(minVisibleTop + 4, maxVisibleBottom - bubbleH - 6);
+        }
+      }
+      const wasVisible = bubbleEl.classList.contains('is-visible');
+      const prev = this.plateBubblePos;
+      let duration = 0;
+      if (!fromScroll && wasVisible && prev) {
+        const dist = Math.hypot(x - prev.x, y - prev.y);
+        duration = dist > 4 ? Math.min(0.2, Math.max(0.08, dist / 900)) : 0;
+      }
+      this.plateBubblePos = { x, y };
+      bubbleEl.style.transitionDuration = `${duration.toFixed(3)}s, 0.14s`;
+      bubbleEl.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0) translateX(-50%)`;
+      if (!wasVisible) {
+        bubbleEl.classList.add('is-visible');
+      }
     },
     getPlateSelectionSummary(column, includeDragPreview = false) {
       const selected = column === this.plateSelectColumn ? this.plateSelectedCounts : {};
       let sum = 0;
       let count = 0;
       const seen = new Set();
+      const rows = includeDragPreview ? this.getTableDisplayRows() : null;
+      const isSingleClickToggle =
+        includeDragPreview
+        && this.plateDragging
+        && column === this.plateSelectColumn
+        && this.plateDragStartIndex === this.plateDragEndIndex;
+      const singleToggleRow = isSingleClickToggle && rows ? rows[this.plateDragStartIndex] : null;
+      const singleToggleId =
+        singleToggleRow?.id != null
+        && Object.prototype.hasOwnProperty.call(selected, singleToggleRow.id)
+          ? String(singleToggleRow.id)
+          : null;
+
       for (const [rowId, plates] of Object.entries(selected)) {
+        if (singleToggleId && String(rowId) === singleToggleId) continue;
         seen.add(String(rowId));
         sum += plates;
         count += 1;
       }
-      if (includeDragPreview && this.plateDragging && column === this.plateSelectColumn) {
-        const rows = this.getTableDisplayRows();
+      if (includeDragPreview && this.plateDragging && column === this.plateSelectColumn && !singleToggleId) {
         const min = Math.min(this.plateDragStartIndex, this.plateDragEndIndex);
         const max = Math.max(this.plateDragStartIndex, this.plateDragEndIndex);
         for (let index = min; index <= max; index += 1) {
@@ -1524,18 +2131,22 @@ export default {
       }
       event.preventDefault();
       this.plateDragPending = null;
+      this.$refs.floatingLayerRef?.closeEditor?.();
+      this.invalidatePlateGeometryCache();
       // 换列：立刻清选区，不做淡出，避免和左右滑动叠在一起发卡
       if (this.plateSelectColumn && this.plateSelectColumn !== column) {
         this.plateSelectedCounts = {};
-        this.plateOverlayRects = [];
         this.plateDragStartIndex = -1;
         this.plateDragEndIndex = -1;
+        this.plateBubblePos = null;
+        this.plateRenderedSegmentCount = 0;
+        if (this.$refs.plateOverlayEl) this.$refs.plateOverlayEl.innerHTML = '';
       }
       this.plateSelectColumn = column;
-      this.plateDragging = true;
+      this.setPlateDraggingState(true);
       this.plateDragStartIndex = index;
       this.plateDragEndIndex = index;
-      this.updatePlateSelectionUi();
+      this.updatePlateSelectionUi(true);
     },
     onPlateCellMouseEnter(column, index) {
       const pending = this.plateDragPending;
@@ -1544,12 +2155,16 @@ export default {
           return;
         }
         this.plateDragPending = null;
+        this.$refs.floatingLayerRef?.closeEditor?.();
+        this.invalidatePlateGeometryCache();
         if (this.plateSelectColumn && this.plateSelectColumn !== column) {
           this.plateSelectedCounts = {};
-          this.plateOverlayRects = [];
+          this.plateBubblePos = null;
+          this.plateRenderedSegmentCount = 0;
+          if (this.$refs.plateOverlayEl) this.$refs.plateOverlayEl.innerHTML = '';
         }
         this.plateSelectColumn = column;
-        this.plateDragging = true;
+        this.setPlateDraggingState(true);
         this.plateDragStartIndex = pending.index;
         this.plateDragEndIndex = index;
         document.activeElement?.blur?.();
@@ -1578,7 +2193,7 @@ export default {
       const min = Math.min(this.plateDragStartIndex, this.plateDragEndIndex);
       const max = Math.max(this.plateDragStartIndex, this.plateDragEndIndex);
       const isClick = min === max;
-      let nextCounts = { ...this.plateSelectedCounts };
+      const nextCounts = { ...this.plateSelectedCounts };
 
       if (isClick) {
         const row = rows[min];
@@ -1590,6 +2205,10 @@ export default {
           }
         }
       } else {
+        this.plateSuppressInlineClick = true;
+        setTimeout(() => {
+          this.plateSuppressInlineClick = false;
+        }, 0);
         for (let index = min; index <= max; index += 1) {
           const row = rows[index];
           if (row?.id != null) {
@@ -1598,7 +2217,7 @@ export default {
         }
       }
 
-      this.plateDragging = false;
+      this.setPlateDraggingState(false);
       this.plateDragStartIndex = -1;
       this.plateDragEndIndex = -1;
 
@@ -1609,7 +2228,7 @@ export default {
 
       this.plateSelectColumn = column;
       this.plateSelectedCounts = nextCounts;
-      this.updatePlateSelectionUi();
+      this.updatePlateSelectionUi(true);
     },
     onPlateCellContextMenu(column) {
       if (this.plateSelectColumn !== column && !this.plateDragging) {
@@ -1620,12 +2239,15 @@ export default {
     clearPlateSelection() {
       this.plateSelectColumn = null;
       this.plateSelectedCounts = {};
-      this.plateDragging = false;
+      this.setPlateDraggingState(false);
       this.plateDragPending = null;
       this.plateDragStartIndex = -1;
       this.plateDragEndIndex = -1;
-      this.plateOverlayRects = [];
       this.plateBubblePos = null;
+      this.plateRenderedSegmentCount = 0;
+      this.invalidatePlateGeometryCache();
+      if (this.$refs.plateOverlayEl) this.$refs.plateOverlayEl.innerHTML = '';
+      this.$refs.plateBubbleEl?.classList.remove('is-visible');
     },
     buildQuery() {
       const { summary_status, project_code, test_dates_empty, tested_unsubmitted, ...rest } = this.listQuery;
@@ -1684,12 +2306,12 @@ export default {
       return { project_code: value };
     },
     filterMethodFor(queryKey) {
-      if (!this._filterMethodCache[queryKey]) {
-        this._filterMethodCache[queryKey] = (query) => {
+      if (!this.filterMethodCache[queryKey]) {
+        this.filterMethodCache[queryKey] = (query) => {
           this[queryKey] = query;
         };
       }
-      return this._filterMethodCache[queryKey];
+      return this.filterMethodCache[queryKey];
     },
     clearFilterQuery(queryKey) {
       this[queryKey] = '';
@@ -1713,9 +2335,6 @@ export default {
     cellOverflowKey(rowId, field) {
       return `${rowId}-${field}`;
     },
-    isOverflowTooltip(rowId, field) {
-      return !!this.overflowCellKeys[this.cellOverflowKey(rowId, field)];
-    },
     getOverflowElement(root) {
       return (
         root.querySelector('.el-input__inner')
@@ -1737,18 +2356,22 @@ export default {
       }
       const key = this.cellOverflowKey(rowId, field);
       if (!content) {
-        this.overflowCellKeys = { ...this.overflowCellKeys, [key]: false };
+        this.$refs.floatingLayerRef?.hideTip?.(key);
         return;
       }
       const target = this.getOverflowElement(event.currentTarget);
-      this.overflowCellKeys = { ...this.overflowCellKeys, [key]: this.isElementOverflow(target) };
+      if (this.isElementOverflow(target)) {
+        this.$refs.floatingLayerRef?.showTip?.(event.currentTarget, key, content);
+      } else {
+        this.$refs.floatingLayerRef?.hideTip?.(key);
+      }
     },
     handleOverflowMouseLeave(rowId, field) {
       if (this.plateDragging || this.plateDragPending) {
         return;
       }
       const key = this.cellOverflowKey(rowId, field);
-      this.overflowCellKeys = { ...this.overflowCellKeys, [key]: false };
+      this.$refs.floatingLayerRef?.hideTip?.(key);
     },
     async loadPageMeta() {
       try {
@@ -1810,6 +2433,7 @@ export default {
       });
     },
     getList() {
+      const requestToken = ++this.listRequestToken;
       this.listLoading = true;
       const focusId = pendingTiterOrderId;
       pendingTiterOrderId = '';
@@ -1817,6 +2441,7 @@ export default {
       if (focusId) payload.titer_order_id = focusId;
       fetchTiterOrderList(payload, skipGlobalErrorHandler)
         .then((response) => {
+          if (requestToken !== this.listRequestToken) return;
           this.list = Array.isArray(response.items)
             ? response.items.map((item) => ({
                 ...item,
@@ -1830,14 +2455,17 @@ export default {
           if (focusId) this.revealFocusedRow(focusId);
         })
         .catch((error) => {
+          if (requestToken !== this.listRequestToken) return;
           this.list = [];
           this.total = 0;
           notifyApiError(error, { messages: { default: '加载效价工单失败' } });
         })
         .finally(() => {
+          if (requestToken !== this.listRequestToken) return;
           this.listLoading = false;
           this.tabDataFetchedAt = Date.now();
           this.$nextTick(() => {
+            this.invalidatePlateGeometryCache();
             this.bindPlateTableScroll();
             this.updatePlateSelectionUi();
           });
@@ -2327,11 +2955,6 @@ export default {
       this.syncSelectedField(row, 'owner', '效价负责人', (target, source) => {
         target.titer_owners = [...(source.titer_owners || [])];
       });
-      this.$nextTick(() => {
-        const selectRef = this.$refs[`ownerSelect_${row.id}`];
-        const ins = Array.isArray(selectRef) ? selectRef[0] : selectRef;
-        ins?.blur?.();
-      });
     },
     onSerumStatusChange(row) {
       this.syncSelectedField(row, 'serum_status', '血清状态', (target, source) => {
@@ -2749,31 +3372,44 @@ export default {
   min-width: 0;
 }
 
-.table-plate-wrap.is-plate-dragging .plate-select-cell--field .inline-cell-control {
-  pointer-events: none;
-}
-
-.plate-select-region {
+.plate-select-overlay :deep(.plate-select-region) {
   position: absolute;
   box-sizing: border-box;
   pointer-events: none;
   background: rgba(64, 158, 255, 0.16);
   border: 1px solid rgba(64, 158, 255, 0.45);
-  /* 只过渡纵向拉伸；左右/宽度瞬切，换列不会横滑卡顿 */
-  transition: top 0.12s ease, height 0.12s ease;
+  transition:
+    top 0.12s ease,
+    height 0.12s ease;
 }
 
-.plate-region-enter-active {
-  transition: opacity 0.18s ease;
+.plate-floating-layer :deep(.plate-floating-editor) {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
 }
 
-.plate-region-leave-active {
-  transition: opacity 0.14s ease;
+.plate-floating-layer :deep(.plate-floating-editor > *) {
+  width: 100%;
 }
 
-.plate-region-enter-from,
-.plate-region-leave-to {
-  opacity: 0;
+.inline-cell-preview {
+  cursor: pointer;
+}
+
+.inline-cell-preview.is-disabled {
+  cursor: not-allowed;
+}
+
+.inline-cell-preview .el-input__inner {
+  display: inline-block;
+  width: 100%;
+  text-align: left;
+}
+
+.inline-cell-preview .el-input__inner.is-placeholder {
+  color: var(--el-text-color-placeholder);
 }
 
 .plate-select-bubble {
@@ -2792,24 +3428,17 @@ export default {
   border: 1px solid #b3d8ff;
   border-radius: var(--list-mid-radius);
   box-shadow: 0 2px 8px rgba(64, 158, 255, 0.18);
-  will-change: transform;
-  /* transform 合成层插值才跟得上刷新率；时长由 JS 写入，默认偏短 */
-  transition-property: transform;
-  transition-duration: 0.12s;
-  transition-timing-function: linear;
-}
-
-.plate-bubble-enter-active {
-  transition: opacity 0.18s ease;
-}
-
-.plate-bubble-leave-active {
-  transition: opacity 0.14s ease;
-}
-
-.plate-bubble-enter-from,
-.plate-bubble-leave-to {
   opacity: 0;
+  visibility: hidden;
+  will-change: transform, opacity;
+  transition:
+    transform 0.12s ease,
+    opacity 0.14s ease;
+}
+
+.plate-select-bubble.is-visible {
+  opacity: 1;
+  visibility: visible;
 }
 
 .table-card :deep(.el-table__header .cell) {

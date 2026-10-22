@@ -74,10 +74,16 @@
   font-weight: var(--list-table-header-weight);
 }
 
-/* 右侧固定列交界用 1px 线，去掉 EP 投影 */
+/* 右侧固定列交界用 1px 线，去掉 EP 投影（含 ::before 伪元素阴影，避免横向滚动切换状态时整表重绘阴影） */
 .el-table.list-data-table.el-table--border
   .el-table-fixed-column--right.is-first-column.el-table__cell {
   box-shadow: -1px 0 0 0 var(--el-table-border-color);
+}
+
+.el-table.list-data-table .el-table-fixed-column--left.is-last-column.el-table__cell::before,
+.el-table.list-data-table .el-table-fixed-column--right.is-first-column.el-table__cell::before {
+  display: none;
+  box-shadow: none;
 }
 
 .el-card.list-table-card {
@@ -119,9 +125,27 @@ html body .is-list-table-locked.is-list-table-locked {
 }
 
 .is-list-table-locked .list-table-body {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+}
+
+/* 切页进场动画期间：隐藏缓存大表 tbody（跳过 5 万节点排版），待整页滑入动画完成后再原位显现 */
+.is-list-table-locked
+  .list-table-body.is-list-table-defer-body
+  .el-table__body-wrapper
+  tbody {
+  display: none;
+}
+
+.is-list-table-locked
+  .list-table-body.is-list-table-defer-body
+  .plate-select-overlay,
+.is-list-table-locked
+  .list-table-body.is-list-table-defer-body
+  .plate-select-bubble {
+  opacity: 0 !important;
 }
 
 /* 操作列按钮：高度/字号与筛选条按钮同一套 token；左右 padding 更紧 */

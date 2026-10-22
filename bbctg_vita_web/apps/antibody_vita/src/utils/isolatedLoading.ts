@@ -1,14 +1,18 @@
 import type { Directive, DirectiveBinding } from 'vue';
 import { nextTick } from 'vue';
 
-const FADE_MS = 300;
+const FADE_MS = 240;
+
+type LoadState = {
+  overlay: HTMLElement;
+  box: HTMLElement;
+  gen: number;
+  addedHostClass: boolean;
+  cleanupEvents: (() => void) | null;
+};
 
 type HostEl = HTMLElement & {
-  _vitaLoad?: {
-    overlay: HTMLElement;
-    gen: number;
-    raf: number;
-  };
+  _vitaLoad?: LoadState;
 };
 
 function isOn(value: unknown) {
@@ -28,29 +32,19 @@ function waitFrames(n: number) {
   });
 }
 
-function coverBox(el: HTMLElement) {
-  const r = el.getBoundingClientRect();
-  let top = r.top;
-  const main = document.getElementById('__vben_main_content');
-  if (main?.contains(el)) {
-    const chrome = document.querySelector('._scroll__fixed_');
-    if (chrome) {
-      top = Math.max(top, chrome.getBoundingClientRect().bottom);
-    }
+function ensureHostPosition(el: HTMLElement): boolean {
+  if (el.classList.contains('vita-iso-host')) return true;
+  const pos = window.getComputedStyle(el).position;
+  if (!pos || pos === 'static') {
+    el.classList.add('vita-iso-host');
+    return true;
   }
-  const left = Math.floor(r.left);
-  top = Math.floor(top);
-  return {
-    left,
-    top,
-    width: Math.max(0, Math.ceil(r.right) - left),
-    height: Math.max(0, Math.ceil(r.bottom) - top),
-  };
+  return false;
 }
 
-function applyText(el: HTMLElement, overlay: HTMLElement) {
+function applyText(el: HTMLElement, box: HTMLElement) {
   const text = el.getAttribute('element-loading-text');
-  let label = overlay.querySelector('.vita-iso-load__text');
+  let label = box.querySelector('.vita-iso-load__text');
   if (!text) {
     label?.remove();
     return;
@@ -58,57 +52,165 @@ function applyText(el: HTMLElement, overlay: HTMLElement) {
   if (!label) {
     label = document.createElement('p');
     label.className = 'vita-iso-load__text';
-    overlay.append(label);
+    box.append(label);
   }
   label.textContent = text;
 }
 
-function syncRect(el: HTMLElement, overlay: HTMLElement) {
-  if (!el.isConnected) {
-    overlay.style.visibility = 'hidden';
-    return;
+/**
+ * 遮罩本身使用 position: absolute; inset: 0 嵌在宿主内部，由浏览器合成器原生同步滚动，0px 漂移；
+ * 此处仅通过事件驱动（捕获祖先滚动 + ResizeObserver）处理：
+ * 1. 若宿主自身是带 scrollTop 的滚动容器，对齐 scrollTop/scrollLeft；
+ * 2. 求宿主与所有裁剪/滚动祖先及视口的可见交集，将转圈图标精准居中于可见区域。
+ */
+function syncOverlayOffset(el: HTMLElement, overlay: HTMLElement) {
+  if (!el.isConnected) return;
+  const st = el.scrollTop;
+  const sl = el.scrollLeft;
+  if (st !== 0 || sl !== 0) {
+    overlay.style.transform = `translate3d(${sl}px, ${st}px, 0)`;
+  } else if (overlay.style.transform) {
+    overlay.style.transform = '';
   }
-  const box = coverBox(el);
-  if (box.width < 1 || box.height < 1) {
-    overlay.style.visibility = 'hidden';
-    return;
+
+  const r = el.getBoundingClientRect();
+  const overlayH = el.clientHeight || r.height;
+  if (overlayH <= 0) return;
+
+  let visTop = Math.max(r.top, 0);
+  let visBottom = Math.min(r.bottom, window.innerHeight);
+
+  const main = document.getElementById('__vben_main_content');
+  if (main?.contains(el)) {
+    const chrome = document.querySelector('._scroll__fixed_');
+    if (chrome) {
+      visTop = Math.max(visTop, chrome.getBoundingClientRect().bottom);
+    }
   }
-  overlay.style.visibility = 'visible';
-  overlay.style.top = `${box.top}px`;
-  overlay.style.left = `${box.left}px`;
-  overlay.style.width = `${box.width}px`;
-  overlay.style.height = `${box.height}px`;
+
+  let parent = el.parentElement;
+  while (parent && parent !== document.body && parent !== document.documentElement) {
+    const style = window.getComputedStyle(parent);
+    const overflowY = style.overflowY || style.overflow;
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'hidden' || overflowY === 'clip') {
+      const pr = parent.getBoundingClientRect();
+      visTop = Math.max(visTop, pr.top);
+      visBottom = Math.min(visBottom, pr.bottom);
+    }
+    parent = parent.parentElement;
+  }
+
+  if (visBottom > visTop) {
+    const overlayTop = r.top + (el.clientTop || 0);
+    const rawCenter = (visTop + visBottom) / 2 - overlayTop;
+    const minPad = Math.min(24, overlayH / 2);
+    const maxPad = Math.max(overlayH / 2, overlayH - 24);
+    const clampedCenter = Math.min(Math.max(minPad, rawCenter), maxPad);
+    overlay.style.setProperty('--vita-spin-y', `${Math.round(clampedCenter * 10) / 10}px`);
+  } else {
+    overlay.style.removeProperty('--vita-spin-y');
+  }
 }
 
-function startTrack(el: HostEl) {
-  const state = el._vitaLoad;
-  if (!state || state.raf) return;
-  const tick = () => {
-    const current = el._vitaLoad;
-    if (!current) return;
-    syncRect(el, current.overlay);
-    current.raf = requestAnimationFrame(tick);
+const BLOCKED_EVENTS = [
+  'pointerdown',
+  'pointerup',
+  'mousedown',
+  'mouseup',
+  'click',
+  'dblclick',
+  'contextmenu',
+  'keydown',
+  'keyup',
+  'keypress',
+] as const;
+
+function bindActiveEvents(el: HostEl, state: LoadState) {
+  state.cleanupEvents?.();
+  const onScrollOrResize = () => syncOverlayOffset(el, state.overlay);
+  const onBlock = (event: Event) => {
+    event.stopPropagation();
+    event.preventDefault();
   };
-  state.raf = requestAnimationFrame(tick);
+  const onFocusIn = (event: FocusEvent) => {
+    event.stopPropagation();
+    const target = event.target as HTMLElement | null;
+    target?.blur?.();
+  };
+
+  if (document.activeElement instanceof HTMLElement && el.contains(document.activeElement)) {
+    document.activeElement.blur();
+  }
+
+  // capture: true 可捕获任意嵌套滚动祖先的 scroll 事件，无需 rAF 轮询
+  window.addEventListener('scroll', onScrollOrResize, { capture: true, passive: true });
+  window.addEventListener('resize', onScrollOrResize, { passive: true });
+  el.addEventListener('scroll', onScrollOrResize, { passive: true });
+
+  let ro: ResizeObserver | null = null;
+  if (typeof ResizeObserver !== 'undefined') {
+    ro = new ResizeObserver(onScrollOrResize);
+    ro.observe(el);
+    let p = el.parentElement;
+    while (p && p !== document.body && p !== document.documentElement) {
+      const oy = window.getComputedStyle(p).overflowY;
+      if (oy === 'auto' || oy === 'scroll' || oy === 'hidden') {
+        ro.observe(p);
+      }
+      p = p.parentElement;
+    }
+  }
+
+  for (const type of BLOCKED_EVENTS) {
+    el.addEventListener(type, onBlock, true);
+  }
+  el.addEventListener('focusin', onFocusIn, true);
+  el.classList.add('vita-iso-busy');
+  el.setAttribute('aria-busy', 'true');
+
+  state.cleanupEvents = () => {
+    window.removeEventListener('scroll', onScrollOrResize, true);
+    window.removeEventListener('resize', onScrollOrResize);
+    el.removeEventListener('scroll', onScrollOrResize);
+    ro?.disconnect();
+    ro = null;
+    for (const type of BLOCKED_EVENTS) {
+      el.removeEventListener(type, onBlock, true);
+    }
+    el.removeEventListener('focusin', onFocusIn, true);
+    el.classList.remove('vita-iso-busy');
+    el.removeAttribute('aria-busy');
+    state.cleanupEvents = null;
+  };
 }
 
-function stopTrack(el: HostEl) {
-  const state = el._vitaLoad;
-  if (!state?.raf) return;
-  cancelAnimationFrame(state.raf);
-  state.raf = 0;
-}
-
-function ensureLayer(el: HostEl) {
-  if (el._vitaLoad) return el._vitaLoad;
+function ensureLayer(el: HostEl): LoadState {
+  const addedHostClass = ensureHostPosition(el);
+  if (el._vitaLoad) {
+    if (addedHostClass) el._vitaLoad.addedHostClass = true;
+    if (el._vitaLoad.overlay.parentElement !== el) {
+      el.append(el._vitaLoad.overlay);
+    }
+    return el._vitaLoad;
+  }
 
   const overlay = document.createElement('div');
   overlay.className = 'vita-iso-load';
   overlay.setAttribute('aria-busy', 'true');
-  overlay.innerHTML = '<div class="vita-iso-load__spin"></div>';
-  document.body.append(overlay);
 
-  const state = { overlay, gen: 0, raf: 0 };
+  const box = document.createElement('div');
+  box.className = 'vita-iso-load__box';
+  box.innerHTML = '<div class="vita-iso-load__spin"></div>';
+  overlay.append(box);
+  el.append(overlay);
+
+  const state: LoadState = {
+    overlay,
+    box,
+    gen: 0,
+    addedHostClass,
+    cleanupEvents: null,
+  };
   el._vitaLoad = state;
   return state;
 }
@@ -116,7 +218,10 @@ function ensureLayer(el: HostEl) {
 function teardown(el: HostEl) {
   const state = el._vitaLoad;
   if (!state) return;
-  stopTrack(el);
+  state.cleanupEvents?.();
+  if (state.addedHostClass) {
+    el.classList.remove('vita-iso-host');
+  }
   state.overlay.remove();
   delete el._vitaLoad;
 }
@@ -124,12 +229,11 @@ function teardown(el: HostEl) {
 function show(el: HostEl) {
   const state = ensureLayer(el);
   state.gen += 1;
-  applyText(el, state.overlay);
-  syncRect(el, state.overlay);
+  applyText(el, state.box);
+  syncOverlayOffset(el, state.overlay);
+  bindActiveEvents(el, state);
   state.overlay.classList.remove('is-leaving');
-  void state.overlay.offsetWidth;
   state.overlay.classList.add('is-on');
-  startTrack(el);
 }
 
 function hide(el: HostEl) {
@@ -138,10 +242,11 @@ function hide(el: HostEl) {
 
   const gen = state.gen;
   state.overlay.classList.add('is-leaving');
+  state.cleanupEvents?.();
 
   void (async () => {
     await nextTick();
-    await waitFrames(2);
+    await waitFrames(1);
     if (el._vitaLoad?.gen !== gen) return;
     state.overlay.classList.remove('is-on');
     window.setTimeout(() => {
@@ -158,6 +263,9 @@ export const isolatedLoadingDirective: Directive = {
   updated(el: HostEl, binding: DirectiveBinding) {
     const next = isOn(binding.value);
     const prev = isOn(binding.oldValue);
+    if (next && el._vitaLoad && el._vitaLoad.overlay.parentElement !== el) {
+      el.append(el._vitaLoad.overlay);
+    }
     if (next === prev) return;
     if (next) show(el);
     else hide(el);

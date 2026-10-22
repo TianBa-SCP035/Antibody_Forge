@@ -13,6 +13,10 @@ import { RouteCachedPage, RouteCachedView } from '../../route-cached';
 
 defineOptions({ name: 'LayoutContent' });
 
+type AnimatablePageEl = HTMLElement & {
+  _vbenEnterCleanup?: () => void;
+};
+
 const tabbarStore = useTabbarStore();
 const { keepAlive } = usePreferences();
 
@@ -38,6 +42,149 @@ function getRouteViewKey(route: RouteLocationNormalizedLoadedGeneric) {
     return rawKey;
   }
 }
+
+function pauseElTablesIn(root: Element) {
+  const tables = root.querySelectorAll('.el-table');
+  for (const tableEl of tables) {
+    const vm = (tableEl as any).__vueParentComponent;
+    if (vm && vm.$ready) {
+      vm.$ready = false;
+      vm._vbenPausedReady = true;
+    }
+  }
+  if (root.classList.contains('is-list-table-locked')) {
+    const body = root.querySelector('.list-table-body');
+    if (
+      body instanceof HTMLElement &&
+      body.querySelector('.el-table__body-wrapper')
+    ) {
+      body.classList.add('is-list-table-defer-body');
+    }
+  }
+}
+
+function resumeElTablesIn(root: Element) {
+  if (!(root instanceof HTMLElement) || !root.isConnected) return;
+  const tables = root.querySelectorAll('.el-table');
+  for (const tableEl of tables) {
+    // 处于锁高大表延迟显现阶段的表格由 listTableLock 在进场动画后统一恢复
+    if (tableEl.closest('.is-list-table-defer-body')) continue;
+    const vm = (tableEl as any).__vueParentComponent;
+    if (vm && vm._vbenPausedReady) {
+      const el = tableEl as HTMLElement;
+      const rs = vm.state?.resizeState?.value;
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      const headerEl = el.querySelector<HTMLElement>(
+        '.el-table__header-wrapper',
+      );
+      const hh = headerEl ? headerEl.offsetHeight : (rs?.headerHeight ?? 0);
+      const widthChanged = w > 0 && rs && rs.width !== w;
+      if (rs && w > 0) {
+        rs.width = w;
+        rs.height = h;
+        rs.headerHeight = hh;
+      }
+      vm.$ready = true;
+      vm._vbenPausedReady = false;
+      if (widthChanged) {
+        vm.state?.doLayout?.();
+      }
+    }
+  }
+}
+
+function cleanupEnterClasses(el: Element) {
+  if (!(el instanceof HTMLElement)) return;
+  const host = el as AnimatablePageEl;
+  host._vbenEnterCleanup?.();
+  host._vbenEnterCleanup = undefined;
+  for (const cls of [...host.classList]) {
+    if (
+      cls.endsWith('-enter-from') ||
+      cls.endsWith('-enter-active') ||
+      cls.endsWith('-enter-to')
+    ) {
+      host.classList.remove(cls);
+    }
+  }
+  resumeElTablesIn(host);
+}
+
+function onBeforeEnter(
+  el: Element,
+  route: RouteLocationNormalizedLoadedGeneric,
+) {
+  if (!(el instanceof HTMLElement)) return;
+  cleanupEnterClasses(el);
+  const name = getTransitionName(route);
+  if (!name) return;
+  el.classList.add(`${name}-enter-from`, `${name}-enter-active`);
+}
+
+function onEnter(
+  el: Element,
+  done: () => void,
+  route: RouteLocationNormalizedLoadedGeneric,
+) {
+  if (!(el instanceof HTMLElement)) {
+    done();
+    return;
+  }
+  const name = getTransitionName(route);
+  if (!name) {
+    cleanupEnterClasses(el);
+    done();
+    return;
+  }
+
+  const host = el as AnimatablePageEl;
+  let raf1 = 0;
+  let raf2 = 0;
+  let timer = 0;
+  let finished = false;
+
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    cleanupEnterClasses(host);
+    done();
+  };
+
+  const onTransitionEnd = (event: TransitionEvent) => {
+    if (event.target !== host) return;
+    finish();
+  };
+
+  host._vbenEnterCleanup = () => {
+    if (raf1) cancelAnimationFrame(raf1);
+    if (raf2) cancelAnimationFrame(raf2);
+    if (timer) window.clearTimeout(timer);
+    host.removeEventListener('transitionend', onTransitionEnd);
+  };
+
+  host.addEventListener('transitionend', onTransitionEnd);
+  timer = window.setTimeout(finish, 380);
+
+  raf1 = requestAnimationFrame(() => {
+    raf1 = 0;
+    raf2 = requestAnimationFrame(() => {
+      raf2 = 0;
+      if (finished) return;
+      host.classList.remove(`${name}-enter-from`);
+      host.classList.add(`${name}-enter-to`);
+    });
+  });
+}
+
+function onLeave(el: Element, done: () => void) {
+  // 1. 在旧页面脱离文档进入 KeepAlive 离屏容器（0x0）之前，先将内部 el-table 的 $ready 置为 false 并隐藏大表 tbody，
+  //    阻止 Element Plus 的 ResizeObserver 因尺寸变为 0x0 而在点击帧强行执行 doLayout() 重算 500 行；
+  // 2. 使用 :css="false" 跳过 Vue 内置 Transition 的 forceReflow，使旧页面 0ms 瞬时离场。
+  cleanupEnterClasses(el);
+  pauseElTablesIn(el);
+  done();
+}
 </script>
 
 <template>
@@ -52,9 +199,13 @@ function getRouteViewKey(route: RouteLocationNormalizedLoadedGeneric) {
       />
       <Transition
         v-if="getEnabledTransition"
-        :name="getTransitionName(route)"
+        :css="false"
         appear
-        mode="out-in"
+        @before-enter="(el) => onBeforeEnter(el, route)"
+        @enter="(el, done) => onEnter(el, done, route)"
+        @after-enter="cleanupEnterClasses"
+        @enter-cancelled="cleanupEnterClasses"
+        @leave="onLeave"
       >
         <KeepAlive
           v-if="keepAlive"

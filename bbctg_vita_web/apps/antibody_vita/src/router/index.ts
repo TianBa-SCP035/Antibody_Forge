@@ -96,9 +96,9 @@ function restoreRouteScroll(to: RouteLocationNormalized) {
     unbindUserScroll = null;
   };
 
-  // 已访问过的页会走 fade-slide out-in（约 300ms 离场），等新页进 DOM 再开始补还
-  const startDelay = to.meta.loaded ? 320 : 0;
-  restoreUntil = Date.now() + startDelay + 800;
+  // 离场页 0ms 瞬时卸载，新页首帧已在 DOM 中，无需延迟等待
+  const startDelay = 0;
+  restoreUntil = Date.now() + 600;
   restoreStartTimer = window.setTimeout(() => {
     restoreStartTimer = 0;
     apply();

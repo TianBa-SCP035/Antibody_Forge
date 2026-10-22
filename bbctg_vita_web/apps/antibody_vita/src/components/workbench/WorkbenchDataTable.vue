@@ -32,25 +32,17 @@
           <slot :name="col.key" v-bind="scope" />
         </template>
         <template v-else #default="{ row }">
-          <el-tooltip
+          <span
             v-if="col.keepLineBreaks"
-            :visible="tipKey === tipId(row, col)"
-            placement="top"
-            popper-class="wb-cell-tooltip"
-          >
-            <template #content>
-              <span class="wb-cell-tooltip-text">{{ formatPlain(row[col.prop || col.key]) }}</span>
-            </template>
-            <span
-              class="wb-cell-clip"
-              @mouseenter="showBreakTip($event, row, col)"
-              @mouseleave="hideBreakTip"
-            >{{ formatPlain(row[col.prop || col.key]) }}</span>
-          </el-tooltip>
+            class="wb-cell-clip"
+            @mouseenter="showBreakTip($event, row, col)"
+            @mouseleave="hideBreakTip"
+          >{{ formatPlain(row[col.prop || col.key]) }}</span>
           <template v-else>{{ formatPlain(row[col.prop || col.key]) }}</template>
         </template>
       </el-table-column>
     </el-table>
+    <WorkbenchBreakTooltip ref="breakTipRef" />
     <div ref="dropLine" class="wb-col-drop-line" aria-hidden="true" />
     <div ref="ghost" class="wb-col-ghost" aria-hidden="true" />
     <el-dialog
@@ -93,13 +85,240 @@
 </template>
 
 <script>
-import { ElButton, ElCheckbox, ElCheckboxGroup, ElDialog, ElTable, ElTableColumn, ElTooltip } from 'element-plus'
+import { defineComponent, h } from 'vue'
+import { ArrowDown, Calendar } from '@element-plus/icons-vue'
+import { ElButton, ElCheckbox, ElCheckboxGroup, ElDatePicker, ElDialog, ElIcon, ElOption, ElSelect, ElTable, ElTableColumn, ElTooltip } from 'element-plus'
 
 import { createColumnOrder } from './columnOrder'
 
+export const WorkbenchInlineSelect = defineComponent({
+  name: 'WorkbenchInlineSelect',
+  props: {
+    modelValue: { type: [String, Number], default: '' },
+    options: { type: Array, default: () => [] },
+    disabled: { type: Boolean, default: false },
+  },
+  emits: ['update:modelValue', 'change'],
+  data() {
+    return { active: false }
+  },
+  methods: {
+    open(event) {
+      event?.stopPropagation?.()
+      event?.preventDefault?.()
+      if (this.disabled) return
+      if (this.active) return
+      this.active = true
+      this.$nextTick(() => {
+        const ins = this.$refs.selectRef
+        if (!ins) return
+        ins.expanded = true
+        ins.focus?.()
+      })
+    },
+    onKeydown(event) {
+      if (this.disabled) return
+      if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+        this.open(event)
+      }
+    },
+    onVisibleChange(visible) {
+      if (!visible) {
+        this.active = false
+      }
+    },
+  },
+  render() {
+    if (this.active && !this.disabled) {
+      return h(
+        ElSelect,
+        {
+          ref: 'selectRef',
+          modelValue: this.modelValue,
+          'onUpdate:modelValue': (val) => this.$emit('update:modelValue', val),
+          size: 'small',
+          disabled: this.disabled,
+          onClick: (e) => e.stopPropagation(),
+          onChange: (val) => this.$emit('change', val),
+          onVisibleChange: this.onVisibleChange,
+        },
+        () =>
+          (this.options || []).map((item) =>
+            h(ElOption, { key: item, label: item, value: item }),
+          ),
+      )
+    }
+    return h(
+      'div',
+      {
+        class: ['el-select el-select--small inline-cell-preview', { 'is-disabled': this.disabled }],
+        style: { cursor: this.disabled ? 'not-allowed' : 'pointer' },
+        role: this.disabled ? undefined : 'button',
+        tabindex: this.disabled ? -1 : 0,
+        onClick: this.open,
+        onKeydown: this.onKeydown,
+      },
+      [
+        h(
+          'div',
+          { class: ['el-select__wrapper', { 'is-disabled': this.disabled }] },
+          [
+            h('div', { class: 'el-select__selection' }, [
+              h('div', { class: 'el-select__selected-item el-select__placeholder' }, [
+                h('span', null, String(this.modelValue ?? '')),
+              ]),
+            ]),
+            h('div', { class: 'el-select__suffix' }, [
+              h(ElIcon, { class: 'el-select__caret el-select__icon' }, () => h(ArrowDown)),
+            ]),
+          ],
+        ),
+      ],
+    )
+  },
+})
+
+export const WorkbenchInlineDatePicker = defineComponent({
+  name: 'WorkbenchInlineDatePicker',
+  props: {
+    modelValue: { type: [String, Object], default: '' },
+    placeholder: { type: String, default: '' },
+    disabled: { type: Boolean, default: false },
+    valueFormat: { type: String, default: 'YYYY-MM-DD' },
+  },
+  emits: ['update:modelValue', 'change'],
+  data() {
+    return { active: false, panelOpen: false }
+  },
+  methods: {
+    open(event) {
+      event?.stopPropagation?.()
+      event?.preventDefault?.()
+      if (this.disabled) return
+      if (!this.active) {
+        this.active = true
+        this.$nextTick(() => {
+          const ins = this.$refs.pickerRef
+          ins?.handleOpen?.()
+          ins?.focus?.()
+        })
+      }
+    },
+    onKeydown(event) {
+      if (this.disabled) return
+      if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+        this.open(event)
+      }
+    },
+    onVisibleChange(visible) {
+      this.panelOpen = Boolean(visible)
+      if (!visible) {
+        this.active = false
+      }
+    },
+  },
+  render() {
+    if (this.active && !this.disabled) {
+      return h(ElDatePicker, {
+        ref: 'pickerRef',
+        modelValue: this.modelValue,
+        'onUpdate:modelValue': (val) => this.$emit('update:modelValue', val),
+        type: 'date',
+        size: 'small',
+        valueFormat: this.valueFormat,
+        placeholder: this.placeholder,
+        disabled: this.disabled,
+        onClick: (e) => e.stopPropagation(),
+        onChange: (val) => {
+          this.$emit('change', val)
+          if (!this.panelOpen) this.active = false
+        },
+        onVisibleChange: this.onVisibleChange,
+      })
+    }
+    const text = String(this.modelValue || '')
+    return h(
+      'div',
+      {
+        class: [
+          'el-date-editor el-date-editor--date el-input el-input--small el-input--prefix el-input--suffix inline-cell-preview',
+          { 'is-disabled': this.disabled },
+        ],
+        style: { cursor: this.disabled ? 'not-allowed' : 'pointer' },
+        role: this.disabled ? undefined : 'button',
+        tabindex: this.disabled ? -1 : 0,
+        onClick: this.open,
+        onKeydown: this.onKeydown,
+      },
+      [
+        h(
+          'div',
+          { class: ['el-input__wrapper', { 'is-disabled': this.disabled }] },
+          [
+            h('span', { class: 'el-input__prefix' }, [
+              h('span', { class: 'el-input__prefix-inner' }, [
+                h(ElIcon, { class: 'el-input__icon' }, () => h(Calendar)),
+              ]),
+            ]),
+            h(
+              'span',
+              {
+                class: 'el-input__inner',
+                style: {
+                  display: 'inline-block',
+                  width: '100%',
+                  textAlign: 'left',
+                  color: text ? 'var(--el-input-text-color, var(--el-text-color-regular))' : 'var(--el-text-color-placeholder)',
+                },
+              },
+              text || this.placeholder,
+            ),
+          ],
+        ),
+      ],
+    )
+  },
+})
+
+const WorkbenchBreakTooltip = defineComponent({
+  name: 'WorkbenchBreakTooltip',
+  data() {
+    return {
+      visible: false,
+      triggerRef: null,
+      text: '',
+    }
+  },
+  methods: {
+    show(targetEl, text) {
+      this.triggerRef = targetEl
+      this.text = text
+      this.visible = true
+    },
+    hide() {
+      if (this.visible) this.visible = false
+    },
+  },
+  render() {
+    return h(
+      ElTooltip,
+      {
+        visible: this.visible,
+        virtualRef: this.triggerRef,
+        virtualTriggering: true,
+        placement: 'top',
+        popperClass: 'wb-cell-tooltip',
+      },
+      {
+        content: () => h('span', { class: 'wb-cell-tooltip-text' }, this.text),
+      },
+    )
+  },
+})
+
 export default {
   name: 'WorkbenchDataTable',
-  components: { ElButton, ElCheckbox, ElCheckboxGroup, ElDialog, ElTable, ElTableColumn, ElTooltip },
+  components: { ElButton, ElCheckbox, ElCheckboxGroup, ElDialog, ElTable, ElTableColumn, WorkbenchBreakTooltip },
   inheritAttrs: false,
   props: {
     columns: { type: Array, required: true },
@@ -117,7 +336,6 @@ export default {
       orderDraft: [],
       pickerDragFrom: '',
       drag: null,
-      tipKey: '',
     }
   },
   computed: {
@@ -160,18 +378,15 @@ export default {
       if (value == null) return ''
       return String(value)
     },
-    tipId(row, column) {
-      return `${row?.id ?? ''}:${column.key}`
-    },
     showBreakTip(event, row, column) {
       const text = this.formatPlain(row[column.prop || column.key])
       const el = event.currentTarget
       if (!text) return
       if (!text.includes('\n') && el.scrollWidth <= el.clientWidth + 1) return
-      this.tipKey = this.tipId(row, column)
+      this.$refs.breakTipRef?.show?.(el, text)
     },
     hideBreakTip() {
-      this.tipKey = ''
+      this.$refs.breakTipRef?.hide?.()
     },
     openColumnPicker() {
       this.orderDraft = [...this.orderedColumns]

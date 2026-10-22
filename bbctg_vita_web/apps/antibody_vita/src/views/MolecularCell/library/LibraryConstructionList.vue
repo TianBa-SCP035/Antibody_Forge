@@ -229,17 +229,14 @@
         <template #sample_type="{ row }">{{ sampleTypeLabel(row.sample_type) || '—' }}</template>
         <template #index_mode="{ row }">{{ indexModeLabel(row.index_mode) || '—' }}</template>
         <template #priority="{ row }">
-          <el-select
+          <WorkbenchInlineSelect
             v-if="canEdit"
             v-model="row.priority"
-            size="small"
+            :options="priorityOptions"
             class="inline-select priority-select"
             :class="'status-tone-' + priorityTone(row)"
-            @click.stop
             @change="persistRow(row, 'priority')"
-          >
-            <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
-          </el-select>
+          />
           <span v-else>{{ row.priority || '—' }}</span>
         </template>
         <template #status="{ row }">
@@ -252,14 +249,10 @@
           />
         </template>
         <template #received_on="{ row }">
-          <el-date-picker
+          <WorkbenchInlineDatePicker
             v-model="row.received_on"
             class="inline-date"
-            type="date"
-            size="small"
-            value-format="YYYY-MM-DD"
             :disabled="!canEdit"
-            @click.stop
             @change="persistRow(row, 'received_on')"
           />
         </template>
@@ -302,11 +295,13 @@
             border
             show-overflow
             size="small"
-            :row-config="{ keyField: 'id', isHover: true, height: 48 }"
-            :column-config="{ resizable: true }"
-            :mouse-config="{ selected: true }"
+            :row-config="sheetRowConfig"
+            :cell-config="sheetCellConfig"
+            :column-config="sheetColumnConfig"
+            :mouse-config="sheetMouseConfig"
             :keyboard-config="sheetKeyboardConfig"
-            :clip-config="{ isCopy: false, isCut: false, isPaste: false }"
+            :virtual-y-config="sheetVirtualYConfig"
+            :virtual-x-config="sheetVirtualXConfig"
             :edit-config="sheetEditConfig"
             :header-cell-class-name="sheetHeaderCellClassName"
             :cell-class-name="sheetCellClassName"
@@ -322,7 +317,7 @@
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
                 :min-width="column.minWidth || 120"
-                :edit-render="{ name: 'VxeInput' }"
+                :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
               >
                 <template #edit="{ row }">
@@ -335,8 +330,8 @@
                       multiple
                       remote
                       :options="sheetTargetSelectOptions"
-                      :popup-config="{ className: 'sheet-picker-popup', placement: 'bottom', width: 300 }"
-                      :remote-config="{ autoLoad: true, queryMethod: querySheetTargetOptions }"
+                      :popup-config="sheetTargetPopupConfig"
+                      :remote-config="sheetTargetRemoteConfig"
                       empty-text="未找到匹配靶点"
                       @change="onSheetTargetPickerChange(row)"
                       @visible-change="onSheetPickerVisibleChange"
@@ -355,7 +350,7 @@
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
                 :min-width="column.minWidth || 120"
-                :edit-render="{ name: 'VxeInput' }"
+                :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
               >
                 <template #edit="{ row }">
@@ -388,7 +383,7 @@
                       :filterable="isUserColumn(column)"
                       :clearable="!isRequiredChoice(column.key)"
                       :options="sheetChoiceSelectOptions(column, row)"
-                      :popup-config="{ className: 'sheet-picker-popup', placement: 'bottom', width: 220 }"
+                      :popup-config="sheetChoicePopupConfig"
                       @visible-change="onSheetPickerVisibleChange"
                     />
                   </div>
@@ -405,7 +400,7 @@
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
                 :min-width="column.minWidth || 150"
-                :edit-render="{ name: 'VxeInput' }"
+                :edit-render="sheetCustomEditRender"
               >
                 <template #edit="{ row }">
                   <div v-if="sheetEditSource === 'dblclick'" class="sheet-picker-editor">
@@ -417,8 +412,8 @@
                       remote
                       clearable
                       :options="sheetCatalogSelectOptions"
-                      :popup-config="{ className: 'sheet-picker-popup', placement: 'bottom', width: 280 }"
-                      :remote-config="{ autoLoad: false, queryMethod: querySheetCatalogOptions }"
+                      :popup-config="sheetCatalogPopupConfig"
+                      :remote-config="sheetCatalogRemoteConfig"
                       empty-text="输入名称或序列"
                       @visible-change="onSheetPickerVisibleChange"
                     />
@@ -802,6 +797,8 @@ import {
   uniqueTargetCodes,
   WORKBENCH_VIEW,
   WorkbenchDataTable,
+  WorkbenchInlineDatePicker,
+  WorkbenchInlineSelect,
   workbenchExcelMixin,
   WorkbenchStatusEditor,
   WorkbenchTargetSelect,
@@ -1001,6 +998,8 @@ export default {
     SerumUserSelect,
     Tools,
     WorkbenchDataTable,
+    WorkbenchInlineDatePicker,
+    WorkbenchInlineSelect,
     WorkbenchStatusEditor,
     WorkbenchTargetSelect,
     WorkbenchViewToggle,
@@ -1130,6 +1129,34 @@ export default {
         value: item.name,
       }))
       return options
+    },
+    sheetTargetRemoteConfig() {
+      return Object.freeze({
+        autoLoad: true,
+        queryMethod: this.querySheetTargetOptions,
+      })
+    },
+    sheetCatalogRemoteConfig() {
+      return Object.freeze({
+        autoLoad: false,
+        queryMethod: this.querySheetCatalogOptions,
+      })
+    },
+    sheetUserSelectOptions() {
+      return this.allUserOptions.map((item) => ({ label: item, value: item }))
+    },
+    sheetStaticChoiceOptionsMap() {
+      return {
+        study_type: STUDY_TYPE_OPTIONS.map((item) => ({ label: item, value: item })),
+        target_forms: TARGET_FORM_OPTIONS.map((item) => ({ label: item, value: item })),
+        priority: this.priorityOptions.map((item) => ({ label: item, value: item })),
+        status: this.statusOptions.map((item) => ({ label: item, value: item })),
+        build_type: this.typeOptions,
+        cell_type: CELL_TYPE_OPTIONS.map((item) => ({ label: item, value: item })),
+        source_experiment_type: PHAGE_EXPERIMENT_TYPE_OPTIONS.map((item) => ({ label: item, value: item })),
+        index_mode: INDEX_MODE_OPTIONS,
+        qc_result: QC_RESULT_OPTIONS.map((item) => ({ label: item, value: item })),
+      }
     },
     sampleSourceOptions() {
       return SAMPLE_SOURCE_OPTIONS.map((item) => ({
@@ -1318,7 +1345,7 @@ export default {
       if (!this.canEditField(row, key)) return true
       if (!isSheetFieldApplicable(row?.build_type, key)) return true
       if (!isIndexFieldRecorded(row?.build_type, row?.index_mode, key)) return true
-      const column = this.sheetColumns.find((item) => item.key === key)
+      const column = this.sheetColumnByKey.get(key)?.column
       return column?.edit === 'readonly'
     },
     onLockedSheetDblClick(row, key) {
@@ -1959,23 +1986,12 @@ export default {
       return column.key !== 'cell_type' || CELL_TYPE_CHOICE_BUILDS.includes(row?.build_type)
     },
     sheetChoiceSelectOptions(column, row) {
-      if (column.key === 'study_type') return STUDY_TYPE_OPTIONS.map((item) => ({ label: item, value: item }))
-      if (column.key === 'target_forms') return TARGET_FORM_OPTIONS.map((item) => ({ label: item, value: item }))
-      if (column.key === 'priority') return this.priorityOptions.map((item) => ({ label: item, value: item }))
-      if (column.key === 'status') return this.statusOptions.map((item) => ({ label: item, value: item }))
-      if (column.key === 'build_type') return this.typeOptions
       if (column.key === 'sample_source') return optionsForBuild(SAMPLE_SOURCE_OPTIONS, row?.build_type)
       if (column.key === 'sample_type') {
         return row?.build_type === BUILD_PLASMA_NGS ? PLASMA_SAMPLE_TYPE_OPTIONS : SAMPLE_TYPE_OPTIONS
       }
-      if (column.key === 'cell_type') return CELL_TYPE_OPTIONS.map((item) => ({ label: item, value: item }))
-      if (column.key === 'source_experiment_type') {
-        return PHAGE_EXPERIMENT_TYPE_OPTIONS.map((item) => ({ label: item, value: item }))
-      }
-      if (column.key === 'index_mode') return INDEX_MODE_OPTIONS
-      if (column.key === 'qc_result') return QC_RESULT_OPTIONS.map((item) => ({ label: item, value: item }))
-      if (this.isUserColumn(column)) return this.allUserOptions.map((item) => ({ label: item, value: item }))
-      return []
+      if (this.isUserColumn(column)) return this.sheetUserSelectOptions
+      return this.sheetStaticChoiceOptionsMap[column.key] || []
     },
     sheetDirectTextValue(row, key) {
       if (!row) return ''
@@ -1989,15 +2005,31 @@ export default {
       }
       return row[key] == null ? '' : String(row[key])
     },
+    formatBuildTypeCell({ cellValue }) {
+      return buildTypeLabel(cellValue) || ''
+    },
+    formatSampleSourceCell({ cellValue }) {
+      return sampleSourceLabel(cellValue) || ''
+    },
+    formatSampleTypeCell({ cellValue }) {
+      return sampleTypeLabel(cellValue) || ''
+    },
+    formatIndexModeCell({ cellValue }) {
+      return indexModeLabel(cellValue) || ''
+    },
+    formatTargetCodesCell({ row }) {
+      return uniqueTargetCodes(row.target_codes).join(',')
+    },
+    formatPlateNosCell({ cellValue }) {
+      return Array.isArray(cellValue) ? cellValue.join('、') : (cellValue || '')
+    },
     sheetFormatter(column) {
-      if (column.key === 'build_type') return ({ cellValue }) => buildTypeLabel(cellValue) || ''
-      if (column.key === 'sample_source') return ({ cellValue }) => sampleSourceLabel(cellValue) || ''
-      if (column.key === 'sample_type') return ({ cellValue }) => sampleTypeLabel(cellValue) || ''
-      if (column.key === 'index_mode') return ({ cellValue }) => indexModeLabel(cellValue) || ''
-      if (column.key === 'target_codes') return ({ row }) => uniqueTargetCodes(row.target_codes).join(',')
-      if (column.key === 'plate_nos') {
-        return ({ cellValue }) => Array.isArray(cellValue) ? cellValue.join('、') : (cellValue || '')
-      }
+      if (column.key === 'build_type') return this.formatBuildTypeCell
+      if (column.key === 'sample_source') return this.formatSampleSourceCell
+      if (column.key === 'sample_type') return this.formatSampleTypeCell
+      if (column.key === 'index_mode') return this.formatIndexModeCell
+      if (column.key === 'target_codes') return this.formatTargetCodesCell
+      if (column.key === 'plate_nos') return this.formatPlateNosCell
       return undefined
     },
     sheetTargetDirectValue(row, key) {

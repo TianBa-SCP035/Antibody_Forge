@@ -12,11 +12,17 @@ const downloadConfig = {
 } as Parameters<typeof requestClient.download>[1];
 
 export function fetchDiscoveryWorkbenchList(data: any, config?: PostConfig) {
-  return requestClient.post('/discovery/workbench/list', data, config);
+  return requestClient.post('/discovery/workbench/list', data, {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
 }
 
 export function fetchDiscoveryWorkbenchOptions(config?: RequestConfig) {
-  return requestClient.get('/discovery/workbench/options', config);
+  return requestClient.get('/discovery/workbench/options', {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
 }
 
 export function exportDiscoveryWorkbenchList(data: any) {

@@ -335,17 +335,14 @@
           </div>
         </template>
         <template #priority="{ row }">
-          <el-select
+          <WorkbenchInlineSelect
             v-if="canEdit"
             v-model="row.priority"
-            size="small"
+            :options="priorityOptions"
             class="inline-select priority-select"
             :class="'status-tone-' + priorityTone(row)"
-            @click.stop
             @change="persistRow(row, 'priority')"
-          >
-            <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
-          </el-select>
+          />
           <el-tag
             v-else
             class="list-status-tag"
@@ -392,15 +389,11 @@
           </button>
         </template>
         <template #harvest_date="{ row }">
-          <el-date-picker
+          <WorkbenchInlineDatePicker
             v-model="row.harvest_date"
             class="inline-date"
-            type="date"
-            size="small"
-            value-format="YYYY-MM-DD"
             placeholder="剖鼠/上机"
             :disabled="!canEdit"
-            @click.stop
             @change="persistRow(row, 'harvest_date')"
           />
         </template>
@@ -416,15 +409,11 @@
           </button>
         </template>
         <template #boost_date="{ row }">
-          <el-date-picker
+          <WorkbenchInlineDatePicker
             v-model="row.boost_date"
             class="inline-date"
-            type="date"
-            size="small"
-            value-format="YYYY-MM-DD"
             placeholder="冲击免疫"
             :disabled="!canEdit"
-            @click.stop
             @change="persistRow(row, 'boost_date')"
           />
         </template>
@@ -466,11 +455,13 @@
             border
             show-overflow
             size="small"
-            :row-config="{ keyField: 'id', isHover: true, height: 48 }"
-            :column-config="{ resizable: true }"
-            :mouse-config="{ selected: true }"
+            :row-config="sheetRowConfig"
+            :cell-config="sheetCellConfig"
+            :column-config="sheetColumnConfig"
+            :mouse-config="sheetMouseConfig"
             :keyboard-config="sheetKeyboardConfig"
-            :clip-config="{ isCopy: false, isCut: false, isPaste: false }"
+            :virtual-y-config="sheetVirtualYConfig"
+            :virtual-x-config="sheetVirtualXConfig"
             :edit-config="sheetEditConfig"
             :header-cell-class-name="sheetHeaderCellClassName"
             :cell-class-name="sheetCellClassName"
@@ -487,7 +478,7 @@
                 :title="sheetColumnTitle(column)"
                 :width="column.width"
                 :min-width="column.minWidth || column.width || 120"
-                :edit-render="{ name: 'VxeInput' }"
+                :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
               >
                 <template #edit="{ row }">
@@ -502,12 +493,8 @@
                       multiple
                       remote
                       :options="sheetTargetSelectOptions"
-                      :popup-config="{
-                        className: 'sheet-picker-popup',
-                        placement: 'bottom',
-                        width: 300,
-                      }"
-                      :remote-config="{ autoLoad: true, queryMethod: querySheetTargetOptions }"
+                      :popup-config="sheetTargetPopupConfig"
+                      :remote-config="sheetTargetRemoteConfig"
                       empty-text="未找到匹配靶点"
                       @change="onSheetTargetPickerChange(row)"
                       @visible-change="onSheetPickerVisibleChange"
@@ -527,7 +514,7 @@
                 :title="sheetColumnTitle(column)"
                 :width="column.width"
                 :min-width="column.minWidth || column.width || 120"
-                :edit-render="{ name: 'VxeInput' }"
+                :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
               >
                 <template #edit="{ row }">
@@ -567,11 +554,7 @@
                       :filterable="isUserColumn(column)"
                       :multiple="column.edit === 'multi'"
                       :options="sheetChoiceSelectOptions(column)"
-                      :popup-config="{
-                        className: 'sheet-picker-popup',
-                        placement: 'bottom',
-                        width: 220,
-                      }"
+                      :popup-config="sheetChoicePopupConfig"
                       @visible-change="onSheetPickerVisibleChange"
                     />
                   </div>
@@ -882,6 +865,8 @@ import {
   WORKBENCH_VIEW,
   syncDrawerControlTooltip,
   WorkbenchDataTable,
+  WorkbenchInlineDatePicker,
+  WorkbenchInlineSelect,
   workbenchExcelMixin,
 } from '#/components/workbench'
 import { listTableLockMixin } from '#/utils/listTableLock'
@@ -1255,6 +1240,8 @@ export default {
     ElSelect,
     ElTag,
     WorkbenchDataTable,
+    WorkbenchInlineDatePicker,
+    WorkbenchInlineSelect,
     Search,
     ListFilterSelect,
     SerumUserSelect,
@@ -1431,6 +1418,26 @@ export default {
         label: `${item.name}（${item.snum}）`,
         value: item.snum,
       }))
+    },
+    sheetTargetRemoteConfig() {
+      return Object.freeze({
+        autoLoad: true,
+        queryMethod: this.querySheetTargetOptions,
+      })
+    },
+    sheetChoiceOptionsMap() {
+      const map = Object.create(null)
+      map.screening_methods = this.screeningSelectOptions
+      map.priority = this.priorityOptions.map((item) => ({ label: item, value: item }))
+      map.status = this.planStatusOptions.map((item) => ({ label: item, value: item }))
+      map.study_type = this.studyTypeOptions.map((item) => ({ label: item, value: item }))
+      for (const [key, listKey] of Object.entries(USER_OPTION_LIST)) {
+        map[key] = this.uniq([
+          ...(this.optionLists[listKey] || []),
+          ...this.allUserOptions,
+        ]).map((item) => ({ label: item, value: item }))
+      }
+      return map
     },
   },
   created() {
@@ -1818,29 +1825,7 @@ export default {
       return row[column.key] ?? ''
     },
     sheetChoiceSelectOptions(column) {
-      if (column.key === 'screening_methods') return this.screeningSelectOptions
-      if (column.key === 'priority') {
-        return this.priorityOptions.map((item) => ({ label: item, value: item }))
-      }
-      if (column.key === 'status') {
-        return this.planStatusOptions.map((item) => ({ label: item, value: item }))
-      }
-      if (this.isUserColumn(column)) {
-        return this.uniq([
-          ...(this.optionLists[USER_OPTION_LIST[column.key]] || []),
-          ...this.allUserOptions,
-        ]).map((item) => ({
-          label: item,
-          value: item,
-        }))
-      }
-      if (column.key === 'study_type') {
-        return this.studyTypeOptions.map((item) => ({
-          label: item,
-          value: item,
-        }))
-      }
-      return []
+      return this.sheetChoiceOptionsMap[column?.key] || []
     },
     sheetChoiceDirectValue(row, column) {
       if (column.key === 'screening_methods') return this.sheetDirectTextValue(row, column.key)
@@ -2334,13 +2319,16 @@ export default {
       return this.formatCodesText(row.target_codes)
     },
     formatMethodsCell({ row }) {
-      return this.sheetDirectTextValue(row, 'screening_methods')
+      return this.formatMethods(row)
+    },
+    formatCsvCell({ cellValue }) {
+      return displayCsvField(cellValue)
     },
     sheetFormatter(column) {
       if (column.key === 'sort_order') return this.formatSortColumnCell
       if (column.key === 'screening_methods') return this.formatMethodsCell
       if (column.key === 'mouse_strain' || column.key === 'mouse_strain_category') {
-        return ({ cellValue }) => displayCsvField(cellValue)
+        return this.formatCsvCell
       }
       if (column.key === 'target_codes') return this.formatCodes
       return undefined

@@ -38,24 +38,32 @@
   box-sizing: border-box;
   pointer-events: none;
   border: 2px solid var(--el-color-primary);
-  transition:
-    width 80ms ease-out,
-    height 80ms ease-out,
-    transform 80ms ease-out;
   will-change: width, height, transform;
 }
-.sheet-range-overlay.is-scrolling {
-  transition: none;
+.sheet-range-overlay::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  background-color: color-mix(in srgb, var(--el-color-primary) 10%, transparent);
+  clip-path: var(--sheet-hole-clip, none);
+}
+.sheet-range-overlay.is-single-cell::before {
+  display: none;
+}
+.sheet-range-overlay.is-bottom-clipped > *,
+.sheet-range-overlay.is-right-clipped > * {
+  display: none;
+}
+.sheet-wrap :deep(.vxe-body--row.row--hover > .vxe-body--column),
+.sheet-wrap :deep(.vxe-body--row:hover > .vxe-body--column),
+.sheet-wrap :deep(.vxe-table--fixed-left-wrapper .vxe-body--row.row--hover > .vxe-body--column),
+.sheet-wrap :deep(.vxe-table--fixed-right-wrapper .vxe-body--row.row--hover > .vxe-body--column) {
+  background-color: var(--vxe-ui-table-row-hover-background-color);
 }
 .sheet-wrap :deep(.vxe-body--column.col--selected),
 .sheet-wrap :deep(.vxe-body--column.col--active) {
   box-shadow: none !important;
-}
-.sheet-wrap :deep(.is-sheet-selected) {
-  background-color: var(--el-color-primary-light-9) !important;
-}
-.sheet-wrap :deep(.is-sheet-active) {
-  background-color: var(--el-bg-color) !important;
 }
 .sheet-wrap :deep(.sheet-selectable-header) {
   cursor: pointer;

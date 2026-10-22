@@ -2,10 +2,11 @@ import type { CSSProperties } from 'vue';
 
 import type { VisibleDomRect } from '@vben-core/shared/utils';
 
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
-/** 整页罩亮起时抬到表格 v-loading（2000）之上，关掉后回到下面，避免挡住下拉 */
+/** 整页罩亮起及淡出期间抬到表格之上，淡出结束后回落；开始淡出即放开鼠标穿透 */
 export const contentOverlayActive = ref(false);
+export const contentOverlayBlocking = ref(false);
 
 import {
   CSS_VARIABLE_LAYOUT_CONTENT_HEIGHT,
@@ -26,32 +27,51 @@ export function useLayoutContentStyle() {
   const visibleDomRect = ref<null | VisibleDomRect>(null);
   const contentHeight = useCssVar(CSS_VARIABLE_LAYOUT_CONTENT_HEIGHT);
   const contentWidth = useCssVar(CSS_VARIABLE_LAYOUT_CONTENT_WIDTH);
+  const headerHeightVar = useCssVar(CSS_VARIABLE_LAYOUT_HEADER_HEIGHT);
+
+  const syncVisibleRect = () => {
+    if (!contentElement.value) return;
+    visibleDomRect.value = getElementVisibleRect(contentElement.value);
+    contentHeight.value = `${visibleDomRect.value.height}px`;
+    contentWidth.value = `${visibleDomRect.value.width}px`;
+  };
+
+  watch(contentOverlayActive, (active) => {
+    // 已有 ResizeObserver 维护的尺寸时，不在 cover() 当帧同步测量旧大表，保证遮罩在点击帧直接上屏
+    if (active && !visibleDomRect.value) {
+      syncVisibleRect();
+    }
+  });
 
   const overlayStyle = computed((): CSSProperties => {
-    const { height, left, top, width } = visibleDomRect.value ?? {};
+    const { left = 0, top: rawTop = 0, width = 0 } = visibleDomRect.value ?? {};
     const active = contentOverlayActive.value;
+    const blocking = contentOverlayBlocking.value;
+    const headerH = Number.parseInt(`${headerHeightVar.value}`, 10) || 0;
+    const top = Math.max(rawTop, headerH);
+    const viewH = typeof window !== 'undefined' ? window.innerHeight : 0;
+    const height = Math.max(0, viewH - top);
     return {
       height: `${height}px`,
       left: `${left}px`,
-      pointerEvents: active ? 'auto' : 'none',
+      pointerEvents: blocking ? 'auto' : 'none',
       position: 'fixed',
       top: `${top}px`,
       width: `${width}px`,
-      zIndex: active ? 2200 : 150,
+      zIndex: active ? 1900 : 150,
     };
   });
 
   const debouncedCalcHeight = useDebounceFn(
     (_entries: ResizeObserverEntry[]) => {
-      visibleDomRect.value = getElementVisibleRect(contentElement.value);
-      contentHeight.value = `${visibleDomRect.value.height}px`;
-      contentWidth.value = `${visibleDomRect.value.width}px`;
+      syncVisibleRect();
     },
     16,
   );
 
   onMounted(() => {
     if (contentElement.value && !resizeObserver) {
+      syncVisibleRect();
       resizeObserver = new ResizeObserver(debouncedCalcHeight);
       resizeObserver.observe(contentElement.value);
     }

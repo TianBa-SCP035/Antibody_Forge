@@ -253,6 +253,9 @@ function handleMenuItemClick(data: MenuItemClicked) {
   if (!path || !parentPaths) {
     return;
   }
+  if (!/^https?:\/\//i.test(path)) {
+    activePath.value = path;
+  }
 
   emit('select', path, parentPaths);
 }

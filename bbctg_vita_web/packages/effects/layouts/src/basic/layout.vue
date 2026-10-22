@@ -145,6 +145,13 @@ function wrapperMenus(menus: MenuRecordRaw[], deep: boolean = true) {
       });
 }
 
+const wrappedHeaderMenus = computed(() => wrapperMenus(headerMenus.value));
+const wrappedSidebarMenus = computed(() => wrapperMenus(sidebarMenus.value));
+const wrappedMixHeaderMenus = computed(() =>
+  wrapperMenus(mixHeaderMenus.value, false),
+);
+const wrappedExtraMenus = computed(() => wrapperMenus(extraMenus.value));
+
 function toggleSidebar() {
   updatePreferences({
     sidebar: {
@@ -310,7 +317,7 @@ const headerSlots = computed(() => {
         <template v-if="showHeaderNav" #menu>
           <LayoutMenu
             :default-active="headerActive"
-            :menus="wrapperMenus(headerMenus)"
+            :menus="wrappedHeaderMenus"
             :rounded="isMenuRounded"
             :theme="headerTheme"
             class="w-full"
@@ -339,7 +346,7 @@ const headerSlots = computed(() => {
         :collapse="preferences.sidebar.collapsed"
         :collapse-show-title="preferences.sidebar.collapsedShowTitle"
         :default-active="sidebarActive"
-        :menus="wrapperMenus(sidebarMenus)"
+        :menus="wrappedSidebarMenus"
         :rounded="isMenuRounded"
         :theme="sidebarTheme"
         mode="vertical"
@@ -350,7 +357,7 @@ const headerSlots = computed(() => {
     <template #mixed-menu>
       <LayoutMixedMenu
         :active-path="extraActiveMenu"
-        :menus="wrapperMenus(mixHeaderMenus, false)"
+        :menus="wrappedMixHeaderMenus"
         :rounded="isMenuRounded"
         :theme="sidebarTheme"
         @default-select="handleDefaultSelect"
@@ -363,7 +370,7 @@ const headerSlots = computed(() => {
       <LayoutExtraMenu
         :accordion="preferences.navigation.accordion"
         :collapse="preferences.sidebar.extraCollapse"
-        :menus="wrapperMenus(extraMenus)"
+        :menus="wrappedExtraMenus"
         :rounded="isMenuRounded"
         :theme="sidebarThemeSub"
       />

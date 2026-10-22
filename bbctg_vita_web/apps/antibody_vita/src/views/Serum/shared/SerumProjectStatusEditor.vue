@@ -1,5 +1,6 @@
 <template>
   <el-popover
+    v-if="activated"
     v-model:visible="visible"
     placement="right"
     trigger="click"
@@ -8,6 +9,7 @@
     :disabled="!editable"
     :teleported="true"
     popper-class="serum-status-popper"
+    @hide="scheduleDeactivate"
   >
     <div class="serum-status-option-list">
       <button
@@ -33,6 +35,16 @@
       </el-tag>
     </template>
   </el-popover>
+  <el-tag
+    v-else
+    class="list-status-tag serum-project-status-tag"
+    :class="[{ 'is-editable': editable }, tagClass]"
+    :type="tagType"
+    effect="plain"
+    @click.stop="activateAndOpen"
+  >
+    {{ displayValue }}
+  </el-tag>
 </template>
 
 <script>
@@ -56,7 +68,7 @@ export default {
   },
   emits: ['change'],
   data() {
-    return { visible: false }
+    return { activated: false, visible: false, deactivateTimer: 0 }
   },
   computed: {
     displayValue() {
@@ -70,8 +82,32 @@ export default {
     editable(value) {
       if (!value) this.visible = false
     },
+    visible(value) {
+      if (!value) this.scheduleDeactivate()
+    },
+  },
+  beforeUnmount() {
+    if (this.deactivateTimer) clearTimeout(this.deactivateTimer)
   },
   methods: {
+    activateAndOpen() {
+      if (!this.editable) return
+      if (this.deactivateTimer) {
+        clearTimeout(this.deactivateTimer)
+        this.deactivateTimer = 0
+      }
+      this.activated = true
+      this.$nextTick(() => {
+        this.visible = true
+      })
+    },
+    scheduleDeactivate() {
+      if (this.deactivateTimer) clearTimeout(this.deactivateTimer)
+      this.deactivateTimer = window.setTimeout(() => {
+        this.deactivateTimer = 0
+        if (!this.visible) this.activated = false
+      }, 220)
+    },
     choose(newStatus) {
       this.visible = false
       if (newStatus === this.value) {

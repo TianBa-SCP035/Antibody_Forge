@@ -1,5 +1,6 @@
 <template>
   <el-popover
+    v-if="activated"
     v-model:visible="visible"
     placement="right"
     trigger="click"
@@ -7,6 +8,7 @@
     :width="132"
     :disabled="!editable"
     :teleported="true"
+    @hide="scheduleDeactivate"
   >
     <div class="workbench-status-option-list">
       <button
@@ -32,6 +34,16 @@
       </el-tag>
     </template>
   </el-popover>
+  <el-tag
+    v-else
+    class="list-status-tag workbench-status-tag"
+    :class="[tagClass, { 'is-editable': editable }]"
+    :type="type"
+    effect="plain"
+    @click.stop="activateAndOpen"
+  >
+    {{ displayValue }}
+  </el-tag>
 </template>
 
 <script>
@@ -49,7 +61,7 @@ export default {
   },
   emits: ['change'],
   data() {
-    return { visible: false }
+    return { activated: false, visible: false, deactivateTimer: 0 }
   },
   computed: {
     displayValue() {
@@ -60,8 +72,33 @@ export default {
     editable(value) {
       if (!value) this.visible = false
     },
+    visible(value) {
+      if (!value) this.scheduleDeactivate()
+    },
+  },
+  beforeUnmount() {
+    if (this.deactivateTimer) clearTimeout(this.deactivateTimer)
   },
   methods: {
+    activateAndOpen() {
+      if (!this.editable) return
+      if (this.deactivateTimer) {
+        clearTimeout(this.deactivateTimer)
+        this.deactivateTimer = 0
+      }
+      this.activated = true
+      this.$nextTick(() => {
+        this.visible = true
+      })
+    },
+    scheduleDeactivate() {
+      if (this.deactivateTimer) clearTimeout(this.deactivateTimer)
+      // 等 popover 退场动画结束后再卸载，避免残留 Popper / 选项 DOM
+      this.deactivateTimer = window.setTimeout(() => {
+        this.deactivateTimer = 0
+        if (!this.visible) this.activated = false
+      }, 220)
+    },
     choose(value) {
       this.visible = false
       if (value !== this.value) this.$emit('change', value)

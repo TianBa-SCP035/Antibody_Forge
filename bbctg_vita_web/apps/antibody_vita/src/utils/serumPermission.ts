@@ -15,29 +15,41 @@ function normalizeRoles(roles: unknown): string[] {
   return normalizeStringList(roles);
 }
 
-function getAccessCodes(userInfo: any): string[] {
-  return normalizeStringList(
-    userInfo?.accessCodes || userInfo?.permissions || userInfo?.permissionCodes,
-  );
+type CachedPermMeta = {
+  rawCodes: unknown;
+  codeSet: Set<string>;
+  rawNamesKey: string;
+  aliasSet: Set<string>;
+  aliasList: string[];
+};
+
+const permCache = new WeakMap<object, CachedPermMeta>();
+
+function codesSignature(rawCodes: unknown): string {
+  if (Array.isArray(rawCodes)) return rawCodes.map(String).join('\0');
+  if (typeof rawCodes === 'string') return rawCodes;
+  return '';
 }
 
-function hasAccessCode(userInfo: any, code: string): boolean {
-  const codes = getAccessCodes(userInfo);
-  return codes.includes('*') || codes.includes(code);
-}
-
-function normalizeName(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function getUserNameAliases(userInfo: any): string[] {
+function getPermMeta(userInfo: any): CachedPermMeta | null {
+  if (!userInfo || typeof userInfo !== 'object') return null;
+  const rawCodes =
+    userInfo.accessCodes || userInfo.permissions || userInfo.permissionCodes;
+  const rawCodesSig = codesSignature(rawCodes);
+  const rawNamesKey = `${userInfo.realName ?? ''}|${userInfo.displayName ?? ''}|${userInfo.display_name ?? ''}|${userInfo.username ?? ''}`;
+  let cached = permCache.get(userInfo);
+  // 用内容签名而非引用相等：原地改权限数组时也能失效缓存
+  if (cached && cached.rawCodes === rawCodesSig && cached.rawNamesKey === rawNamesKey) {
+    return cached;
+  }
+  const codeSet = new Set(normalizeStringList(rawCodes));
   const names = [
-    normalizeName(userInfo?.realName),
-    normalizeName(userInfo?.displayName),
-    normalizeName(userInfo?.display_name),
-    normalizeName(userInfo?.username),
+    normalizeName(userInfo.realName),
+    normalizeName(userInfo.displayName),
+    normalizeName(userInfo.display_name),
+    normalizeName(userInfo.username),
   ].filter(Boolean);
-  return [
+  const aliasList = [
     ...new Set(
       names.flatMap((name) => {
         const firstPart = name.split(/\s+/)[0] || '';
@@ -45,11 +57,32 @@ function getUserNameAliases(userInfo: any): string[] {
       }),
     ),
   ];
+  cached = {
+    rawCodes: rawCodesSig,
+    codeSet,
+    rawNamesKey,
+    aliasSet: new Set(aliasList),
+    aliasList,
+  };
+  permCache.set(userInfo, cached);
+  return cached;
+}
+
+function hasAccessCode(userInfo: any, code: string): boolean {
+  const meta = getPermMeta(userInfo);
+  if (!meta) return false;
+  return meta.codeSet.has('*') || meta.codeSet.has(code);
+}
+
+function normalizeName(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 function isProjectOwner(userInfo: any, project: any): boolean {
   const owner = normalizeName(project?.owner);
-  return Boolean(owner && getUserNameAliases(userInfo).includes(owner));
+  if (!owner) return false;
+  const meta = getPermMeta(userInfo);
+  return Boolean(meta && meta.aliasSet.has(owner));
 }
 
 export function getSerumUserName(userInfo: any): string {
@@ -166,11 +199,12 @@ export function canUpdateSerumPrepStatus(userInfo: any, _project?: any): boolean
 }
 
 function isTiterOwner(userInfo: any, row: any): boolean {
-  const aliases = getUserNameAliases(userInfo);
+  const meta = getPermMeta(userInfo);
+  if (!meta || !meta.aliasSet.size) return false;
   const owners = Array.isArray(row?.titer_owners) ? row.titer_owners : [];
   return owners.some((owner: unknown) => {
     const name = normalizeName(owner);
-    return Boolean(name && aliases.includes(name));
+    return Boolean(name && meta.aliasSet.has(name));
   });
 }
 

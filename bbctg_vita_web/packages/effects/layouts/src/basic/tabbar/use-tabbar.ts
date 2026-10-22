@@ -44,11 +44,13 @@ export function useTabbar() {
     toggleTabPin,
   } = useTabs();
 
+  const pendingActiveKey = ref('');
+
   /**
    * 当前路径对应的tab的key
    */
   const currentActive = computed(() => {
-    return getTabKey(route);
+    return pendingActiveKey.value || getTabKey(route);
   });
 
   const { locale } = useI18n();
@@ -76,8 +78,13 @@ export function useTabbar() {
 
   // 点击tab,跳转路由
   const handleClick = (key: string) => {
-    const { fullPath, path } = tabbarStore.getTabByKey(key);
-    router.push(fullPath || path);
+    const tab = tabbarStore.getTabByKey(key);
+    const target = tab?.fullPath || tab?.path;
+    if (!target || key === getTabKey(route)) return;
+    pendingActiveKey.value = key;
+    router.push(target).finally(() => {
+      pendingActiveKey.value = '';
+    });
   };
 
   // 关闭tab

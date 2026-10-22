@@ -13,11 +13,16 @@ const downloadConfig = {
 } as Parameters<typeof requestClient.download>[1];
 
 export function fetchLibraryOrderList(data: any, config?: PostConfig) {
-  return requestClient.post('/molecular-cell/library-orders/list', data, config);
+  return requestClient.post('/molecular-cell/library-orders/list', data, {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
 }
 
 export function fetchLibraryFilterOptions() {
-  return requestClient.get('/molecular-cell/library-orders/filter_options');
+  return requestClient.get('/molecular-cell/library-orders/filter_options', {
+    ...skipGlobalErrorHandler,
+  });
 }
 
 export function fetchPrimerIndexOptions(params: {
@@ -25,7 +30,10 @@ export function fetchPrimerIndexOptions(params: {
   family?: string;
   limit?: number;
 } = {}) {
-  return requestClient.get('/molecular-cell/library-orders/catalog/options', { params });
+  return requestClient.get('/molecular-cell/library-orders/catalog/options', {
+    params,
+    ...skipGlobalErrorHandler,
+  });
 }
 
 export function fetchLibraryOrdersByDiscovery(params: {

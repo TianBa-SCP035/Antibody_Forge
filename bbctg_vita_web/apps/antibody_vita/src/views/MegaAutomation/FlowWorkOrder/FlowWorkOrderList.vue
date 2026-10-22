@@ -135,6 +135,7 @@
         :height="listTableHeight"
         v-loading="listLoading"
         :data="list"
+        row-key="id"
         border
         stripe
         highlight-current-row

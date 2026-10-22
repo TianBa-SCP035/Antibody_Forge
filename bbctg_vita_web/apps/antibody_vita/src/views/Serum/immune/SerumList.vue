@@ -287,7 +287,7 @@
         :height="listTableHeight"
         v-loading="listLoading"
         :data="list"
-        :row-key="row => row.id"
+        row-key="id"
         :row-class-name="tableRowClassName"
         border
         stripe
@@ -653,6 +653,7 @@ export default {
       schemePrintLoading: false,
       tableScrollAnimationFrame: 0,
       tabDataFetchedAt: 0,
+      listRequestToken: 0,
     }
   },
   created() {
@@ -830,6 +831,7 @@ export default {
       this.getStats()
     },
     getList() {
+      const requestToken = ++this.listRequestToken
       this.listLoading = true
       // Handle Date Range
       if (this.dateRange && this.dateRange.length === 2) {
@@ -842,13 +844,16 @@ export default {
 
       const payload = this.getCurrentFilterPayload()
       fetchList(payload, skipGlobalErrorHandler).then((response) => {
+        if (requestToken !== this.listRequestToken) return
         this.list = Array.isArray(response.items) ? response.items : []
         this.total = Number(response.total) || 0;
       }).catch((error) => {
+         if (requestToken !== this.listRequestToken) return
          this.list = []
          this.total = 0
          notifyApiError(error, { messages: SERUM_ERRORS.list.loadList })
       }).finally(() => {
+        if (requestToken !== this.listRequestToken) return
         this.listLoading = false
         this.tabDataFetchedAt = Date.now()
       })

@@ -1,5 +1,6 @@
 <template>
   <el-popover
+    v-if="activated"
     v-model:visible="visible"
     placement="right"
     trigger="click"
@@ -8,6 +9,7 @@
     :disabled="!editable"
     :teleported="true"
     popper-class="workbench-multi-tag-popper"
+    @hide="scheduleDeactivate"
   >
     <div class="workbench-multi-tag-options">
       <button
@@ -59,6 +61,35 @@
       </div>
     </template>
   </el-popover>
+  <div
+    v-else
+    class="workbench-multi-tags"
+    :class="{
+      'is-editable': editable,
+      'is-start': align === 'start',
+    }"
+    @click.stop="activateAndOpen"
+  >
+    <el-tag
+      v-for="item in selected"
+      :key="item"
+      class="list-status-tag workbench-status-tag"
+      :class="{ 'is-editable': editable, 'is-purple': toneOf(item) === 'purple' }"
+      :type="toneOf(item) === 'purple' ? 'info' : toneOf(item)"
+      effect="plain"
+    >
+      {{ item }}
+    </el-tag>
+    <el-tag
+      v-if="!selected.length"
+      class="list-status-tag workbench-status-tag is-empty"
+      :class="{ 'is-editable': editable }"
+      type="info"
+      effect="plain"
+    >
+      —
+    </el-tag>
+  </div>
 </template>
 
 <script>
@@ -76,7 +107,7 @@ export default {
   },
   emits: ['update:modelValue', 'change'],
   data() {
-    return { visible: false }
+    return { activated: false, visible: false, deactivateTimer: 0 }
   },
   computed: {
     selected() {
@@ -94,8 +125,32 @@ export default {
     editable(value) {
       if (!value) this.visible = false
     },
+    visible(value) {
+      if (!value) this.scheduleDeactivate()
+    },
+  },
+  beforeUnmount() {
+    if (this.deactivateTimer) clearTimeout(this.deactivateTimer)
   },
   methods: {
+    activateAndOpen() {
+      if (!this.editable) return
+      if (this.deactivateTimer) {
+        clearTimeout(this.deactivateTimer)
+        this.deactivateTimer = 0
+      }
+      this.activated = true
+      this.$nextTick(() => {
+        this.visible = true
+      })
+    },
+    scheduleDeactivate() {
+      if (this.deactivateTimer) clearTimeout(this.deactivateTimer)
+      this.deactivateTimer = window.setTimeout(() => {
+        this.deactivateTimer = 0
+        if (!this.visible) this.activated = false
+      }, 220)
+    },
     toneOf(item) {
       return this.tones[item] || 'info'
     },

@@ -183,11 +183,12 @@
             border
             show-overflow
             size="small"
-            :row-config="{ keyField: 'id', isHover: true, height: 40 }"
-            :column-config="{ resizable: true }"
-            :mouse-config="{ selected: true }"
+            :row-config="rowConfig"
+            :cell-config="cellConfig"
+            :column-config="columnConfig"
+            :mouse-config="mouseConfig"
             :keyboard-config="keyboardConfig"
-            :clip-config="{ isCopy: false, isCut: false, isPaste: false }"
+            :virtual-y-config="virtualYConfig"
             :row-class-name="rowClassName"
             empty-text="没有引物"
             @scroll="onScroll"
@@ -387,7 +388,12 @@ const columns: SheetColumn[] = [
   { key: 'active', title: '状态', width: 90, align: 'center' as const },
 ];
 
-const keyboardConfig = {
+const rowConfig = Object.freeze({ keyField: 'id', isHover: true });
+const cellConfig = Object.freeze({ height: 40 });
+const columnConfig = Object.freeze({ resizable: true });
+const mouseConfig = Object.freeze({ selected: true });
+const virtualYConfig = Object.freeze({ enabled: true, gt: 40, oSize: 10, immediate: true });
+const keyboardConfig = Object.freeze({
   isArrow: true,
   isShift: true,
   isTab: true,
@@ -395,7 +401,7 @@ const keyboardConfig = {
   isDel: false,
   isEnter: false,
   isClip: false,
-};
+});
 
 const userStore = useUserStore();
 const canEdit = computed(() => canEditPrimerLibrary(userStore.userInfo));
@@ -1077,8 +1083,11 @@ onBeforeUnmount(() => {
   box-shadow: none !important;
 }
 
-.sheet-wrap :deep(.is-sheet-selected) {
-  background: var(--el-color-primary-light-9) !important;
+.sheet-wrap :deep(.vxe-body--row.row--hover > .vxe-body--column),
+.sheet-wrap :deep(.vxe-body--row:hover > .vxe-body--column),
+.sheet-wrap :deep(.vxe-table--fixed-left-wrapper .vxe-body--row.row--hover > .vxe-body--column),
+.sheet-wrap :deep(.vxe-table--fixed-right-wrapper .vxe-body--row.row--hover > .vxe-body--column) {
+  background-color: var(--vxe-ui-table-row-hover-background-color);
 }
 
 .sheet-wrap :deep(.is-sequence) {
@@ -1103,11 +1112,9 @@ onBeforeUnmount(() => {
   display: none;
   box-sizing: border-box;
   pointer-events: none;
+  background: color-mix(in srgb, var(--el-color-primary) 10%, transparent);
   border: 2px solid var(--el-color-primary);
-}
-
-.sheet-range.is-scrolling {
-  transition: none;
+  will-change: width, height, transform;
 }
 
 @media (max-width: 760px) {

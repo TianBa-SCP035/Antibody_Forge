@@ -419,7 +419,11 @@ watch(
   const HEADER_TRIGGER_DISTANCE = 12;
 
   watch(
-    [() => props.headerMode, () => mouseY.value, () => headerIsHidden.value],
+    [
+      () => props.headerMode,
+      () => (isHeaderAutoMode.value ? mouseY.value : 0),
+      () => headerIsHidden.value,
+    ],
     () => {
       if (!isHeaderAutoMode.value || isMixedNav.value || isFullContent.value) {
         if (props.headerMode !== 'auto-scroll') {

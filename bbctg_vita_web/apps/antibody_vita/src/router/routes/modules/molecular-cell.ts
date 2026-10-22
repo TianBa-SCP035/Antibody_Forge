@@ -34,6 +34,7 @@ const routes: RouteRecordRaw[] = [
         meta: {
           authority: ['molecular.page.library'],
           featureCode: 'menu.molecular_cell.library',
+          fullPathKey: false,
           icon: 'lucide:library',
           keepAlive: true,
           order: 10,

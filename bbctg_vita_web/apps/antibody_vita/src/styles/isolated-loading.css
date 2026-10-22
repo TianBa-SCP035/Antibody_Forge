@@ -1,24 +1,40 @@
+.vita-iso-host {
+  position: relative !important;
+}
+
+.vita-iso-busy {
+  user-select: none !important;
+}
+
 .vita-iso-load {
-  position: fixed;
-  z-index: 2191;
+  position: absolute;
+  inset: 0;
+  z-index: 50;
   box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
   pointer-events: none;
   background: hsl(var(--background));
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.24s ease;
 }
 
 .vita-iso-load.is-on {
-  pointer-events: auto;
   opacity: 1;
 }
 
 .vita-iso-load.is-leaving {
   pointer-events: none;
+}
+
+.vita-iso-load__box {
+  position: absolute;
+  top: var(--vita-spin-y, 50%);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
 }
 
 .vita-iso-load__spin {
@@ -34,6 +50,7 @@
   margin: 8px 0 0;
   color: var(--el-color-primary);
   font-size: 14px;
+  white-space: nowrap;
 }
 
 @keyframes vita-iso-spin {

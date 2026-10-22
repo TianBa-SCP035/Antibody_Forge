@@ -401,17 +401,14 @@
           />
         </template>
         <template #priority="{ row }">
-          <el-select
+          <WorkbenchInlineSelect
             v-if="canEditField(row, 'priority')"
             v-model="row.priority"
-            size="small"
+            :options="optionLists.priority"
             class="inline-select priority-select"
             :class="'status-tone-' + priorityTone(row)"
-            @click.stop
             @change="persistRow(row, 'priority')"
-          >
-            <el-option v-for="item in optionLists.priority" :key="item" :label="item" :value="item" />
-          </el-select>
+          />
           <el-tag
             v-else
             class="list-status-tag"
@@ -464,11 +461,13 @@
             border
             show-overflow
             size="small"
-            :row-config="{ keyField: 'id', isHover: true, height: 48 }"
-            :column-config="{ resizable: true }"
-            :mouse-config="{ selected: true }"
+            :row-config="sheetRowConfig"
+            :cell-config="sheetCellConfig"
+            :column-config="sheetColumnConfig"
+            :mouse-config="sheetMouseConfig"
             :keyboard-config="sheetKeyboardConfig"
-            :clip-config="{ isCopy: false, isCut: false, isPaste: false }"
+            :virtual-y-config="sheetVirtualYConfig"
+            :virtual-x-config="sheetVirtualXConfig"
             :edit-config="sheetEditConfig"
             :header-cell-style="headerCellStyle"
             :header-cell-class-name="sheetHeaderCellClassName"
@@ -486,7 +485,7 @@
                 :title="sheetColumnTitle(column)"
                 :width="column.width"
                 :min-width="column.minWidth || column.width || 120"
-                :edit-render="{ name: 'VxeInput' }"
+                :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
               >
                 <template #edit="{ row }">
@@ -501,12 +500,8 @@
                       multiple
                       remote
                       :options="sheetTargetSelectOptions"
-                      :popup-config="{
-                        className: 'sheet-picker-popup',
-                        placement: 'bottom',
-                        width: 300,
-                      }"
-                      :remote-config="{ autoLoad: true, queryMethod: querySheetTargetOptions }"
+                      :popup-config="sheetTargetPopupConfig"
+                      :remote-config="sheetTargetRemoteConfig"
                       empty-text="未找到匹配靶点"
                       @change="onSheetTargetPickerChange(row)"
                       @visible-change="onSheetPickerVisibleChange"
@@ -526,8 +521,7 @@
                 :title="sheetColumnTitle(column)"
                 :width="column.width"
                 :min-width="column.minWidth || column.width || 120"
-                :show-overflow="!isTokenMultiKey(column.key)"
-                :edit-render="{ name: 'VxeInput' }"
+                :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
               >
                 <template #edit="{ row }">
@@ -541,11 +535,7 @@
                       :filterable="isUserField(column)"
                       :multiple="isMultiSelectColumn(column)"
                       :options="sheetChoiceSelectOptions(column)"
-                      :popup-config="{
-                        className: 'sheet-picker-popup',
-                        placement: 'bottom',
-                        width: 220,
-                      }"
+                      :popup-config="sheetChoicePopupConfig"
                       @visible-change="onSheetPickerVisibleChange"
                     />
                   </div>
@@ -565,7 +555,6 @@
                 :min-width="column.minWidth || column.width || 120"
                 :align="column.key === 'sort_order' ? 'center' : undefined"
                 :header-align="column.key === 'sort_order' ? 'center' : undefined"
-                :show-overflow="!isTokenMultiKey(column.key)"
                 :edit-render="sheetEditRender(column)"
                 :formatter="sheetFormatter(column)"
               />
@@ -826,6 +815,7 @@ import {
   WORKBENCH_VIEW,
   syncDrawerControlTooltip,
   WorkbenchDataTable,
+  WorkbenchInlineSelect,
   workbenchExcelMixin,
 } from '#/components/workbench'
 import { listTableLockMixin } from '#/utils/listTableLock'
@@ -1130,6 +1120,7 @@ export default {
     ElSelect,
     ElTag,
     WorkbenchDataTable,
+    WorkbenchInlineSelect,
     Search,
     ListFilterSelect,
     SerumUserSelect,
@@ -1344,6 +1335,21 @@ export default {
         label: `${item.name}（${item.snum}）`,
         value: item.snum,
       }))
+    },
+    sheetTargetRemoteConfig() {
+      return Object.freeze({
+        autoLoad: true,
+        queryMethod: this.querySheetTargetOptions,
+      })
+    },
+    sheetChoiceOptionsMap() {
+      const map = Object.create(null)
+      for (const column of SHEET_COLUMNS) {
+        if (column.edit === 'select' || this.isMultiSelectColumn(column)) {
+          map[column.key] = this.sheetSelectOptions(column).map((value) => ({ label: value, value }))
+        }
+      }
+      return map
     },
   },
   watch: {
@@ -1930,7 +1936,7 @@ export default {
       return this.mergedOptions(key)
     },
     sheetChoiceSelectOptions(column) {
-      return this.sheetSelectOptions(column).map((value) => ({ label: value, value }))
+      return this.sheetChoiceOptionsMap[column?.key] || []
     },
     sheetChoiceDirectValue(row, column) {
       if (!this.isMultiSelectColumn(column)) return row[column.key]
@@ -1954,7 +1960,7 @@ export default {
       if (key === 'sort_order' && !this.isQueueSorted) return true
       if (this.isGroupStrainLocked(row, key)) return true
       if (!this.canEditField(row, key)) return true
-      const column = this.sheetColumns.find((item) => item.key === key)
+      const column = this.sheetColumnByKey.get(key)?.column
       if (column?.edit === 'readonly') return true
       if (key === 'plan_status' && row.aligned_locked) return true
       if (key === 'project_code') return false

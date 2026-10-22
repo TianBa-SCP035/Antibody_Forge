@@ -59,7 +59,8 @@ export function extractApiError(err: unknown): ExtractedApiError {
   const isNetworkError =
     !httpStatus &&
     (e?.code === 'ERR_NETWORK' ||
-      /network error/i.test(String(e?.message ?? '')));
+      (typeof navigator !== 'undefined' && navigator.onLine === false) ||
+      /network error|failed to fetch|load failed/i.test(String(e?.message ?? '')));
 
   return {
     backendMessage,
@@ -143,12 +144,61 @@ export function resolveUserMessage(
   };
 }
 
+const handledErrorObjects = new WeakSet<object>();
+const recentToastMap = new Map<string, number>();
+const MESSAGE_DEDUP_MS = 2500;
+const NETWORK_COOLDOWN_MS = 4000;
+
+function showDedupedToast(
+  level: MessageLevel,
+  message: string,
+  extracted: ExtractedApiError,
+) {
+  const now = Date.now();
+  const isNetOrTimeout =
+    extracted.isNetworkError ||
+    extracted.isTimeout ||
+    (typeof navigator !== 'undefined' && navigator.onLine === false);
+  const cooldownKey = isNetOrTimeout ? '__NETWORK_OR_TIMEOUT__' : `${level}:${message}`;
+  const cooldownMs = isNetOrTimeout ? NETWORK_COOLDOWN_MS : MESSAGE_DEDUP_MS;
+  const lastAt = recentToastMap.get(cooldownKey) ?? 0;
+  if (now - lastAt < cooldownMs) {
+    return;
+  }
+  recentToastMap.set(cooldownKey, now);
+  if (recentToastMap.size > 50) {
+    for (const [k, t] of recentToastMap) {
+      if (now - t > NETWORK_COOLDOWN_MS) recentToastMap.delete(k);
+    }
+  }
+  const finalMessage =
+    extracted.isNetworkError || (typeof navigator !== 'undefined' && navigator.onLine === false)
+      ? '网络异常，请检查网络连接'
+      : message;
+  ElMessage({
+    type: level,
+    message: finalMessage,
+    grouping: true,
+  });
+}
+
 export function toastApiError(err: unknown, vbenFallbackMsg = '') {
   if (isUnauthorizedError(err)) {
     return;
   }
-  const { message } = resolveUserMessage(err, { fallback: vbenFallbackMsg });
-  ElMessage.error(message);
+  if (err && typeof err === 'object' && handledErrorObjects.has(err)) {
+    return;
+  }
+  // 延后一个宏任务：保证业务 catch 里的 notifyApiError 先标记 handled，再决定是否弹全局 toast
+  setTimeout(() => {
+    if (err && typeof err === 'object') {
+      if (handledErrorObjects.has(err)) return;
+      handledErrorObjects.add(err);
+    }
+    const extracted = extractApiError(err);
+    const { message } = resolveUserMessage(err, { fallback: vbenFallbackMsg });
+    showDedupedToast('error', message, extracted);
+  }, 0);
 }
 
 export function notifyApiError(
@@ -162,9 +212,13 @@ export function notifyApiError(
   if (isUnauthorizedError(err)) {
     return;
   }
+  if (err && typeof err === 'object') {
+    handledErrorObjects.add(err);
+  }
+  const extracted = extractApiError(err);
   const resolved = resolveUserMessage(err, opts);
   const level = opts?.level ?? resolved.level;
-  ElMessage[level](resolved.message);
+  showDedupedToast(level, resolved.message, extracted);
 }
 
 export class ApiFetchError extends Error {

@@ -10,11 +10,17 @@ const downloadConfig = {
 } as Parameters<typeof requestClient.download>[1];
 
 export function fetchWorkbenchList(data: any, config?: PostConfig) {
-  return requestClient.post('/serum/workbench/list', data, config);
+  return requestClient.post('/serum/workbench/list', data, {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
 }
 
 export function fetchWorkbenchOptions(config?: RequestConfig) {
-  return requestClient.get('/serum/workbench/options', config);
+  return requestClient.get('/serum/workbench/options', {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
 }
 
 export function exportWorkbenchList(data: any) {

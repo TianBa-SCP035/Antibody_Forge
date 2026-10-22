@@ -22,6 +22,7 @@ const routes: RouteRecordRaw[] = [
         meta: {
           authority: ['discovery.page.workbench'],
           featureCode: 'menu.discovery.workbench',
+          fullPathKey: false,
           icon: 'lucide:layout-dashboard',
           keepAlive: true,
           order: 5,

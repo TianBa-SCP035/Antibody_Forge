@@ -1,5 +1,48 @@
 import { clipboardCell } from './clipboardGrid'
 
+const SHEET_ROW_CONFIG = Object.freeze({ keyField: 'id', isHover: true })
+const SHEET_CELL_CONFIG = Object.freeze({ height: 48 })
+const SHEET_COLUMN_CONFIG = Object.freeze({ resizable: true })
+const SHEET_MOUSE_CONFIG = Object.freeze({ selected: true })
+const SHEET_KEYBOARD_CONFIG = Object.freeze({
+  isArrow: true,
+  isDel: true,
+  isEnter: true,
+  isTab: true,
+  isShift: true,
+  isEdit: false,
+  isClip: false,
+})
+const SHEET_VIRTUAL_Y_CONFIG = Object.freeze({
+  enabled: true,
+  gt: 40,
+  oSize: 10,
+  immediate: true,
+})
+const SHEET_VIRTUAL_X_CONFIG = Object.freeze({
+  enabled: true,
+  gt: 18,
+  oSize: 6,
+  immediate: true,
+})
+const SHEET_CUSTOM_EDIT_RENDER = Object.freeze({ name: 'VxeInput' })
+const SHEET_TARGET_POPUP_CONFIG = Object.freeze({
+  className: 'sheet-picker-popup',
+  placement: 'bottom',
+  width: 300,
+})
+const SHEET_CHOICE_POPUP_CONFIG = Object.freeze({
+  className: 'sheet-picker-popup',
+  placement: 'bottom',
+  width: 220,
+})
+const SHEET_CATALOG_POPUP_CONFIG = Object.freeze({
+  className: 'sheet-picker-popup',
+  placement: 'bottom',
+  width: 280,
+})
+const SHEET_EDIT_RENDER_CACHE = new Map()
+
 /**
  * Excel 划选 / 键入 / 列序。约定见 docs/modules/workbench.md。
  * 页面需提供：list, sheetColumns, canEdit, persistSheetColumnOrder, finishSheetEdit。
@@ -24,6 +67,16 @@ export default {
       sheetDragMode: '',
       sheetPointerDown: false,
       sheetColumnMove: null,
+      sheetRowConfig: SHEET_ROW_CONFIG,
+      sheetCellConfig: SHEET_CELL_CONFIG,
+      sheetColumnConfig: SHEET_COLUMN_CONFIG,
+      sheetMouseConfig: SHEET_MOUSE_CONFIG,
+      sheetVirtualYConfig: SHEET_VIRTUAL_Y_CONFIG,
+      sheetVirtualXConfig: SHEET_VIRTUAL_X_CONFIG,
+      sheetCustomEditRender: SHEET_CUSTOM_EDIT_RENDER,
+      sheetTargetPopupConfig: SHEET_TARGET_POPUP_CONFIG,
+      sheetChoicePopupConfig: SHEET_CHOICE_POPUP_CONFIG,
+      sheetCatalogPopupConfig: SHEET_CATALOG_POPUP_CONFIG,
     }
   },
   computed: {
@@ -32,6 +85,24 @@ export default {
     },
     sheetColumnOrderKey() {
       return this.sheetColumns.map((column) => column.key).join(',')
+    },
+    sheetRowIndexById() {
+      const map = new Map()
+      const rows = this.list || []
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i]
+        if (row?.id != null) map.set(String(row.id), i)
+      }
+      return map
+    },
+    sheetColumnByKey() {
+      const map = new Map()
+      const columns = this.sheetColumns || []
+      for (let i = 0; i < columns.length; i += 1) {
+        const column = columns[i]
+        if (column?.key) map.set(column.key, { column, index: i })
+      }
+      return map
     },
     isQueueSorted() {
       return this.listQuery?.sort_field === 'sort_order'
@@ -57,23 +128,15 @@ export default {
       )
     },
     sheetKeyboardConfig() {
-      return {
-        isArrow: true,
-        isDel: true,
-        isEnter: true,
-        isTab: true,
-        isShift: true,
-        isEdit: false,
-        isClip: false,
-      }
+      return SHEET_KEYBOARD_CONFIG
     },
     sheetEditConfig() {
-      return {
+      return Object.freeze({
         trigger: 'dblclick',
         mode: 'cell',
         showIcon: false,
         beforeEditMethod: this.sheetBeforeEdit,
-      }
+      })
     },
   },
   watch: {
@@ -86,6 +149,10 @@ export default {
     window.addEventListener('mouseup', this.onWindowMouseUp)
   },
   beforeUnmount() {
+    if (this._sheetRangeRafId) {
+      cancelAnimationFrame(this._sheetRangeRafId)
+      this._sheetRangeRafId = 0
+    }
     if (this.onWindowMouseUp) {
       window.removeEventListener('mouseup', this.onWindowMouseUp)
     }
@@ -97,6 +164,10 @@ export default {
     }
   },
   deactivated() {
+    if (this._sheetRangeRafId) {
+      cancelAnimationFrame(this._sheetRangeRafId)
+      this._sheetRangeRafId = 0
+    }
     if (this.onWindowMouseUp) {
       window.removeEventListener('mouseup', this.onWindowMouseUp)
     }
@@ -111,34 +182,35 @@ export default {
     },
     sheetEditRender(column) {
       if (column?.edit === 'readonly') return undefined
-      const cache = this._sheetEditRenderCache || (this._sheetEditRenderCache = new Map())
       const cacheKey = column?.edit === 'date' ? `date:${column.key}` : `text:${column.key}`
-      const cached = cache.get(cacheKey)
+      const cached = SHEET_EDIT_RENDER_CACHE.get(cacheKey)
       if (cached) return cached
-      const render = column?.edit === 'date'
-        ? {
-            name: 'VxeInput',
-            props: {
-              className: 'sheet-grid-editor sheet-date-editor',
-              clearable: false,
-              editable: true,
-              labelFormat: 'yyyy-MM-dd',
-              placeholder: 'YYYY-MM-DD',
-              type: 'date',
-              valueFormat: 'yyyy-MM-dd',
+      const render = Object.freeze(
+        column?.edit === 'date'
+          ? {
+              name: 'VxeInput',
+              props: {
+                className: 'sheet-grid-editor sheet-date-editor',
+                clearable: false,
+                editable: true,
+                labelFormat: 'yyyy-MM-dd',
+                placeholder: 'YYYY-MM-DD',
+                type: 'date',
+                valueFormat: 'yyyy-MM-dd',
+              },
+            }
+          : {
+              name: 'VxeInput',
+              props: {
+                align: column?.key === 'sort_order' ? 'center' : undefined,
+                className: 'sheet-grid-editor',
+                clearable: false,
+                placeholder: '',
+                type: 'text',
+              },
             },
-          }
-        : {
-            name: 'VxeInput',
-            props: {
-              align: column?.key === 'sort_order' ? 'center' : undefined,
-              className: 'sheet-grid-editor',
-              clearable: false,
-              placeholder: '',
-              type: 'text',
-            },
-          }
-      cache.set(cacheKey, render)
+      )
+      SHEET_EDIT_RENDER_CACHE.set(cacheKey, render)
       return render
     },
     isExcelRowSelectField(field) {
@@ -152,7 +224,7 @@ export default {
     isSheetCellLocked(row, key) {
       if (!this.canEdit) return true
       if (this.isExcelRowSelectField(key) && (!this.isQueueSorted || this.isQueueTerminalRow?.(row))) return true
-      const column = this.sheetColumns.find((item) => item.key === key)
+      const column = this.sheetColumnByKey.get(key)?.column
       return column?.edit === 'readonly'
     },
     canEditSortCell(row) {
@@ -160,12 +232,26 @@ export default {
       if (typeof this.canEditField === 'function') return this.canEditField(row, 'sort_order')
       return Boolean(this.canEdit)
     },
-    formatSortColumnCell({ row }) {
-      return this.formatSortColumn(row)
+    getSheetRowIndex(rowOrId) {
+      if (rowOrId == null) return -1
+      const id = typeof rowOrId === 'object' ? rowOrId.id : rowOrId
+      if (id == null) return -1
+      const idx = this.sheetRowIndexById.get(String(id))
+      return idx === undefined ? -1 : idx
+    },
+    getSheetColIndexByColId(colid) {
+      if (!colid) return undefined
+      const column = this.$refs.sheetTable?.getColumnById?.(colid)
+      const field = column?.field
+      return field ? this.sheetColumnByKey.get(field)?.index : undefined
+    },
+    formatSortColumnCell({ row, rowIndex, $rowIndex }) {
+      const idx = Number.isInteger(rowIndex) && rowIndex >= 0 ? rowIndex : $rowIndex
+      return this.formatSortColumn(row, idx)
     },
     formatSortColumn(row, index) {
       if (!this.isQueueSorted) {
-        const i = Number.isInteger(index) && index >= 0 ? index : this.list.indexOf(row)
+        const i = Number.isInteger(index) && index >= 0 ? index : this.getSheetRowIndex(row)
         return i >= 0 ? String(i + 1) : ''
       }
       const n = Number(row?.sort_order)
@@ -323,7 +409,7 @@ export default {
       for (const el of wrap.querySelectorAll('.vxe-header--column')) {
         const column = $table.getColumnById(el.getAttribute('colid'))
         const field = column?.field
-        const colIndex = this.sheetColumns.findIndex((item) => item.key === field)
+        const colIndex = field ? (this.sheetColumnByKey.get(field)?.index ?? -1) : -1
         const rect = el.getBoundingClientRect()
         if (colIndex < 0 || rect.width <= 2) continue
         const prev = byIndex.get(colIndex)
@@ -359,10 +445,12 @@ export default {
     finishSheetPointer() {
       const move = this.sheetDragMode === 'move-column' ? this.sheetColumnMove : null
       window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
-      this.sheetPointerDown = false
-      this.sheetDragMode = ''
-      this.sheetColumnMove = null
-      this.paintSheetColumnMove()
+      this._sheetPointerDown = false
+      this._sheetSelectDragMode = ''
+      if (this.sheetPointerDown) this.sheetPointerDown = false
+      if (this.sheetDragMode) this.sheetDragMode = ''
+      if (this.sheetColumnMove) this.sheetColumnMove = null
+      if (move) this.paintSheetColumnMove()
       if (!move || move.from === move.to) return
       if (this.isSheetColumnPinned(this.sheetColumns[move.from]) || this.isSheetColumnPinned(this.sheetColumns[move.to])) return
       const next = [...this.sheetColumns]
@@ -377,62 +465,49 @@ export default {
       if (!this.sheetRange) return
       const column = this.sheetColumns[this.sheetRange.c1]
       if (!column) return
+      const prev = this.pasteAnchor
+      if (prev && prev.rowIndex === this.sheetRange.r1 && prev.colKey === column.key) return
       this.pasteAnchor = { rowIndex: this.sheetRange.r1, colKey: column.key }
     },
+    scheduleSheetRangePaint() {
+      if (this._sheetRangeRafId) return
+      this._sheetRangeRafId = requestAnimationFrame(() => {
+        this._sheetRangeRafId = 0
+        this.syncSheetRangeOverlay()
+      })
+    },
     setSheetRange(next) {
+      const prev = this.sheetRange
+      if (
+        prev
+        && next
+        && prev.r1 === next.r1
+        && prev.c1 === next.c1
+        && prev.r2 === next.r2
+        && prev.c2 === next.c2
+      ) {
+        return
+      }
       this.sheetRange = next
       this.syncPasteAnchorFromRange()
-      this.$nextTick(() => this.paintSheetRange())
+      this.scheduleSheetRangePaint()
     },
     clearSheetRange() {
       window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
-      this.sheetRange = null
-      this.sheetEditOriginal = null
-      this.sheetEditSource = ''
-      this.sheetDragMode = ''
-      this.sheetPointerDown = false
-      this.sheetColumnMove = null
-      this.pasteAnchor = null
+      this._sheetPointerDown = false
+      this._sheetSelectDragMode = ''
+      if (this.sheetRange !== null) this.sheetRange = null
+      if (this.sheetEditOriginal !== null) this.sheetEditOriginal = null
+      if (this.sheetEditSource !== '') this.sheetEditSource = ''
+      if (this.sheetDragMode !== '') this.sheetDragMode = ''
+      if (this.sheetPointerDown !== false) this.sheetPointerDown = false
+      if (this.sheetColumnMove !== null) this.sheetColumnMove = null
+      if (this.pasteAnchor !== null) this.pasteAnchor = null
       this.paintSheetColumnMove()
       this.$refs.sheetTable?.clearSelected?.()
-      this.$nextTick(() => this.paintSheetRange())
+      this.scheduleSheetRangePaint()
     },
     paintSheetRange() {
-      const wrap = this.$refs.sheetWrap
-      const overlay = this.$refs.sheetRangeOverlay
-      if (!wrap?.querySelectorAll || !overlay) return
-      overlay.classList.remove('is-scrolling')
-      wrap.querySelectorAll('.is-sheet-selected, .is-sheet-active').forEach((el) => {
-        el.classList.remove('is-sheet-selected', 'is-sheet-active')
-      })
-      const range = this.normalizedSheetRange()
-      const $table = this.$refs.sheetTable
-      if (!range || !$table) {
-        overlay.style.display = 'none'
-        return
-      }
-      const rowIndexById = new Map(
-        this.list.map((row, index) => [String($table.getRowid?.(row) || row.id), index]),
-      )
-      const columnIndexById = new Map()
-      this.sheetColumns.forEach((column, index) => {
-        const id = $table.getColumnByField?.(column.key)?.id
-        if (id) columnIndexById.set(id, index)
-      })
-      const activeRow = this.pasteAnchor?.rowIndex
-      const activeColumn = this.sheetColumns.findIndex(
-        (column) => column.key === this.pasteAnchor?.colKey,
-      )
-      for (const tr of wrap.querySelectorAll('.vxe-table--body-wrapper tr[rowid]')) {
-        const r = rowIndexById.get(String(tr.getAttribute('rowid') || ''))
-        if (r == null || r < range.r1 || r > range.r2) continue
-        for (const td of tr.querySelectorAll('.vxe-body--column')) {
-          const c = columnIndexById.get(td.getAttribute('colid'))
-          if (c == null || c < range.c1 || c > range.c2) continue
-          td.classList.add('is-sheet-selected')
-          if (r === activeRow && c === activeColumn) td.classList.add('is-sheet-active')
-        }
-      }
       this.syncSheetRangeOverlay()
     },
     syncSheetRangeOverlay() {
@@ -444,65 +519,131 @@ export default {
         if (overlay) overlay.style.display = 'none'
         return
       }
-      const rowIndexById = new Map(
-        this.list.map((row, index) => [String($table.getRowid?.(row) || row.id), index]),
-      )
-      const columnIndexById = new Map()
-      this.sheetColumns.forEach((column, index) => {
-        const id = $table.getColumnByField?.(column.key)?.id
-        if (id) columnIndexById.set(id, index)
-      })
-      let firstCell = null
-      let topCell = null
-      let bottomCell = null
-      let leftCell = null
-      let rightCell = null
-      let topRow = Number.POSITIVE_INFINITY
-      let bottomRow = Number.NEGATIVE_INFINITY
-      let leftColumn = Number.POSITIVE_INFINITY
-      let rightColumn = Number.NEGATIVE_INFINITY
-      for (const tr of wrap.querySelectorAll('.vxe-table--body-wrapper tr[rowid]')) {
-        const r = rowIndexById.get(String(tr.getAttribute('rowid') || ''))
-        if (r == null || r < range.r1 || r > range.r2) continue
-        for (const td of tr.querySelectorAll('.vxe-body--column')) {
-          const c = columnIndexById.get(td.getAttribute('colid'))
-          if (c == null || c < range.c1 || c > range.c2) continue
-          firstCell ||= td
-          if (r < topRow) {
-            topRow = r
-            topCell = td
-          }
-          if (r > bottomRow) {
-            bottomRow = r
-            bottomCell = td
-          }
-          if (c < leftColumn) {
-            leftColumn = c
-            leftCell = td
-          }
-          if (c > rightColumn) {
-            rightColumn = c
-            rightCell = td
-          }
-        }
-      }
+      const bodyWrapper = wrap.querySelector('.vxe-table--main-wrapper .vxe-table--body-wrapper')
+        || wrap.querySelector('.vxe-table--body-wrapper')
+      const tbody = bodyWrapper?.querySelector('tbody')
       const stage = this.$refs.sheetTableStage
-      const stageRect = stage?.getBoundingClientRect?.()
-      const bodyRect = firstCell
-        ?.closest?.('.vxe-table--body-wrapper')
-        ?.getBoundingClientRect?.()
-      if (!stageRect || !firstCell || !topCell || !bottomCell || !leftCell || !rightCell) {
+      if (!bodyWrapper || !tbody || !stage) {
         overlay.style.display = 'none'
         return
       }
-      const clipRect = bodyRect || stageRect
-      const left = Math.max(leftCell.getBoundingClientRect().left, clipRect.left)
-      const top = Math.max(topCell.getBoundingClientRect().top, clipRect.top)
-      const right = Math.min(rightCell.getBoundingClientRect().right, clipRect.right)
-      const bottom = Math.min(bottomCell.getBoundingClientRect().bottom, clipRect.bottom)
+      const rowIndexById = this.sheetRowIndexById
+      const activeRow = this.pasteAnchor?.rowIndex
+      const activeColumn = this.sheetColumnByKey.get(this.pasteAnchor?.colKey)?.index ?? -1
+      let topTr = null
+      let bottomTr = null
+      let activeTr = null
+      let topRow = Number.POSITIVE_INFINITY
+      let bottomRow = Number.NEGATIVE_INFINITY
+      for (const tr of tbody.children) {
+        const rowid = tr.getAttribute('rowid')
+        if (!rowid) continue
+        const r = rowIndexById.get(String(rowid))
+        if (r == null) continue
+        if (r === activeRow) activeTr = tr
+        if (r < range.r1 || r > range.r2) continue
+        if (r < topRow) {
+          topRow = r
+          topTr = tr
+        }
+        if (r > bottomRow) {
+          bottomRow = r
+          bottomTr = tr
+        }
+      }
+      if (!topTr || !bottomTr) {
+        overlay.style.display = 'none'
+        return
+      }
+      let leftTd = null
+      let rightTd = null
+      let leftCol = Number.POSITIVE_INFINITY
+      let rightCol = Number.NEGATIVE_INFINITY
+      for (const td of topTr.children) {
+        const c = this.getSheetColIndexByColId(td.getAttribute('colid'))
+        if (c == null || c < range.c1 || c > range.c2) continue
+        if (c < leftCol) {
+          leftCol = c
+          leftTd = td
+        }
+        if (c > rightCol) {
+          rightCol = c
+          rightTd = td
+        }
+      }
+      if (!leftTd || !rightTd) {
+        overlay.style.display = 'none'
+        return
+      }
+      const stageRect = stage.getBoundingClientRect()
+      const bodyRect = bodyWrapper.getBoundingClientRect()
+      let clipLeft = bodyRect.left
+      let clipRight = bodyRect.right
+      const clipTop = bodyRect.top
+      const clipBottom = bodyRect.bottom
+      const fixedLeft = wrap.querySelector('.vxe-table--fixed-left-wrapper')
+      if (fixedLeft) {
+        const flRect = fixedLeft.getBoundingClientRect()
+        if (flRect.width > 1) clipLeft = Math.max(clipLeft, flRect.right)
+      }
+      const fixedRight = wrap.querySelector('.vxe-table--fixed-right-wrapper')
+      if (fixedRight) {
+        const frRect = fixedRight.getBoundingClientRect()
+        if (frRect.width > 1) clipRight = Math.min(clipRight, frRect.left)
+      }
+      const topRect = topTr.getBoundingClientRect()
+      const bottomRect = bottomTr.getBoundingClientRect()
+      const leftRect = leftTd.getBoundingClientRect()
+      const rightRect = rightTd.getBoundingClientRect()
+      const rowH = topRect.height || 48
+      const colW = leftRect.width || 120
+      const rawTop = topRow > range.r1 ? topRect.top - (topRow - range.r1) * rowH : topRect.top
+      const rawBottom = bottomRow < range.r2 ? bottomRect.bottom + (range.r2 - bottomRow) * rowH : bottomRect.bottom
+      let rawLeft = leftRect.left
+      for (let c = range.c1; c < leftCol; c += 1) {
+        const colObj = $table.getColumnByField?.(this.sheetColumns[c]?.key)
+        rawLeft -= colObj?.renderWidth || colW
+      }
+      let rawRight = rightRect.right
+      for (let c = rightCol + 1; c <= range.c2; c += 1) {
+        const colObj = $table.getColumnByField?.(this.sheetColumns[c]?.key)
+        rawRight += colObj?.renderWidth || colW
+      }
+      const left = Math.max(rawLeft, clipLeft)
+      const top = Math.max(rawTop, clipTop)
+      const right = Math.min(rawRight, clipRight)
+      const bottom = Math.min(rawBottom, clipBottom)
       if (right <= left || bottom <= top) {
         overlay.style.display = 'none'
         return
+      }
+      const isSingleCell = range.r1 === range.r2 && range.c1 === range.c2
+      overlay.classList.toggle('is-single-cell', isSingleCell)
+      overlay.classList.toggle('is-bottom-clipped', rawBottom > clipBottom + 1)
+      overlay.classList.toggle('is-right-clipped', rawRight > clipRight + 1)
+      if (!isSingleCell && activeTr && activeColumn >= range.c1 && activeColumn <= range.c2) {
+        let activeTd = null
+        for (const td of activeTr.children) {
+          if (this.getSheetColIndexByColId(td.getAttribute('colid')) === activeColumn) {
+            activeTd = td
+            break
+          }
+        }
+        const aRect = activeTd?.getBoundingClientRect()
+        if (aRect && aRect.right > left && aRect.left < right && aRect.bottom > top && aRect.top < bottom) {
+          const x1 = Math.max(0, Math.round(aRect.left - left))
+          const y1 = Math.max(0, Math.round(aRect.top - top))
+          const x2 = Math.max(x1, Math.round(aRect.right - left))
+          const y2 = Math.max(y1, Math.round(aRect.bottom - top))
+          overlay.style.setProperty(
+            '--sheet-hole-clip',
+            `polygon(0px 0px, 100% 0px, 100% 100%, 0px 100%, 0px 0px, ${x1}px ${y1}px, ${x1}px ${y2}px, ${x2}px ${y2}px, ${x2}px ${y1}px, ${x1}px ${y1}px, 0px 0px)`,
+          )
+        } else {
+          overlay.style.setProperty('--sheet-hole-clip', 'none')
+        }
+      } else {
+        overlay.style.setProperty('--sheet-hole-clip', 'none')
       }
       overlay.style.display = 'block'
       overlay.style.width = `${right - left + 2}px`
@@ -512,8 +653,8 @@ export default {
     onSheetScroll() {
       if (this.sheetDragMode === 'move-column') this.paintSheetColumnMove()
       if (!this.sheetRange) return
-      this.$refs.sheetRangeOverlay?.classList.add('is-scrolling')
       this.syncSheetRangeOverlay()
+      this.$nextTick(() => this.scheduleSheetRangePaint())
     },
     hitSheetCell(target) {
       const td = target?.closest?.('.vxe-body--column')
@@ -523,14 +664,15 @@ export default {
       const column = colid && $table?.getColumnById ? $table.getColumnById(colid) : null
       const field = column?.field
       if (!field) return null
-      const colIndex = this.sheetColumns.findIndex((item) => item.key === field)
+      const colIndex = this.sheetColumnByKey.get(field)?.index ?? -1
       if (colIndex < 0) return null
       const tr = td.closest('tr')
-      const node = tr && $table?.getRowNode ? $table.getRowNode(tr) : null
-      const row = node?.item
-      const rowIndex = row
-        ? this.list.findIndex((item) => item.id === row.id)
-        : this.list.findIndex((item) => String(item.id) === String(tr?.getAttribute('rowid')))
+      const rowid = tr?.getAttribute('rowid')
+      let rowIndex = rowid != null ? (this.sheetRowIndexById.get(String(rowid)) ?? -1) : -1
+      if (rowIndex < 0 && tr && $table?.getRowNode) {
+        const row = $table.getRowNode(tr)?.item
+        rowIndex = this.getSheetRowIndex(row)
+      }
       if (rowIndex < 0) return null
       return { rowIndex, colIndex, field }
     },
@@ -541,7 +683,7 @@ export default {
       const colid = th.getAttribute('colid')
       const column = colid && $table?.getColumnById ? $table.getColumnById(colid) : null
       const field = column?.field
-      const colIndex = this.sheetColumns.findIndex((item) => item.key === field)
+      const colIndex = field ? (this.sheetColumnByKey.get(field)?.index ?? -1) : -1
       return colIndex < 0 ? null : { colIndex, field }
     },
     onSheetSelectStart(event) {
@@ -595,7 +737,7 @@ export default {
           this.setSheetDirectValue(row, key, `${this.sheetDirectTextValue(row, key)}${character}`)
         }
         const $table = this.$refs.sheetTable
-        const edit = $table?.getEditRecord?.()
+        const edit = $table?.getEditCell?.()
         const alreadyEditing = Boolean(
           edit
           && edit.column?.field === key
@@ -671,7 +813,8 @@ export default {
         this.pasteAnchor = null
         this.paintSheetRange()
         this.sheetDragMode = 'move-column'
-        this.sheetPointerDown = true
+        this._sheetSelectDragMode = 'move-column'
+        this._sheetPointerDown = true
         this.sheetColumnMove = { from: headerHit.colIndex, to: headerHit.colIndex }
         this.paintSheetColumnMove(event)
         window.addEventListener('mousemove', this.onSheetColumnPointerMove, { passive: false })
@@ -694,8 +837,8 @@ export default {
         event.preventDefault()
         window.getSelection()?.removeAllRanges()
         this.$refs.sheetTable?.clearEdit?.()
-        this.sheetDragMode = 'columns'
-        this.sheetPointerDown = true
+        this._sheetSelectDragMode = 'columns'
+        this._sheetPointerDown = true
         this.setSheetRange({
           r1: 0,
           c1: headerHit.colIndex,
@@ -708,10 +851,11 @@ export default {
       if (!hit) return
       event.preventDefault()
       window.getSelection()?.removeAllRanges()
-      this.sheetDragMode = this.isExcelRowSelectField(hit.field) ? 'rows' : 'cells'
-      this.sheetPointerDown = true
+      const dragMode = this.isExcelRowSelectField(hit.field) ? 'rows' : 'cells'
+      this._sheetSelectDragMode = dragMode
+      this._sheetPointerDown = true
       if (event.shiftKey && this.sheetRange) {
-        this.setSheetRange(this.sheetDragMode === 'rows'
+        this.setSheetRange(dragMode === 'rows'
           ? {
               ...this.sheetRange,
               c1: 0,
@@ -721,7 +865,7 @@ export default {
           : { ...this.sheetRange, r2: hit.rowIndex, c2: hit.colIndex })
         return
       }
-      const range = this.sheetDragMode === 'rows'
+      const range = dragMode === 'rows'
         ? {
             r1: hit.rowIndex,
             c1: 0,
@@ -731,12 +875,18 @@ export default {
         : { r1: hit.rowIndex, c1: hit.colIndex, r2: hit.rowIndex, c2: hit.colIndex }
       this.setSheetRange(range)
       const row = this.list[hit.rowIndex]
-      if (row) this.$refs.sheetTable?.setSelectCell?.(row, hit.field)
+      if (row) {
+        const selected = this.$refs.sheetTable?.getSelectedCell?.()
+        if (!selected || selected.row !== row || selected.column?.field !== hit.field) {
+          this.$refs.sheetTable?.setSelectCell?.(row, hit.field)
+        }
+      }
     },
     onSheetWrapMouseOver(event) {
-      if (!this.sheetPointerDown) return
-      if (this.sheetDragMode === 'move-column') return
-      if (this.sheetDragMode === 'columns') {
+      if (!this._sheetPointerDown) return
+      const dragMode = this.sheetDragMode === 'move-column' ? 'move-column' : this._sheetSelectDragMode
+      if (dragMode === 'move-column') return
+      if (dragMode === 'columns') {
         const headerHit = this.hitSheetHeader(event.target)
         if (!headerHit || !this.sheetRange || headerHit.colIndex === this.sheetRange.c2) return
         this.setSheetRange({ ...this.sheetRange, c2: headerHit.colIndex })
@@ -744,7 +894,7 @@ export default {
       }
       const hit = this.hitSheetCell(event.target)
       if (!hit || !this.sheetRange) return
-      if (this.sheetDragMode === 'rows') {
+      if (dragMode === 'rows') {
         if (hit.rowIndex === this.sheetRange.r2) return
         this.setSheetRange({
           ...this.sheetRange,
@@ -805,21 +955,12 @@ export default {
     },
     onSheetCellSelected({ row, column, $event }) {
       if (this.sheetDragMode === 'move-column') return
+      if (this._sheetPointerDown || $event?.type !== 'keydown') return
       const key = column?.field
-      const rowIndex = this.list.findIndex((item) => item.id === row.id)
-      const colIndex = this.sheetColumns.findIndex((item) => item.key === key)
+      const rowIndex = this.getSheetRowIndex(row)
+      const colIndex = key ? (this.sheetColumnByKey.get(key)?.index ?? -1) : -1
       if (rowIndex < 0 || colIndex < 0) return
-      if (this.sheetPointerDown && this.sheetDragMode === 'rows') {
-        this.setSheetRange({
-          r1: this.sheetRange?.r1 ?? rowIndex,
-          c1: 0,
-          r2: rowIndex,
-          c2: this.sheetColumns.length - 1,
-        })
-        return
-      }
-      const extendsRange = $event?.shiftKey
-        && ($event.type !== 'keydown' || String($event.key).startsWith('Arrow'))
+      const extendsRange = $event?.shiftKey && String($event.key).startsWith('Arrow')
       if (extendsRange && this.sheetRange) {
         this.setSheetRange({ ...this.sheetRange, r2: rowIndex, c2: colIndex })
         return
@@ -879,12 +1020,15 @@ export default {
     },
     async restoreSheetSelectedCell() {
       const $table = this.$refs.sheetTable
-      if (!$table || $table.getEditRecord?.()) return
+      if (!$table || $table.getEditCell?.()) return
       const row = this.list[this.pasteAnchor?.rowIndex]
       const key = this.pasteAnchor?.colKey
       if (!row || !key) return
-      await $table.setSelectCell?.(row, key)
-      if ($table.getEditRecord?.()) return
+      const selected = $table.getSelectedCell?.()
+      if (!selected || selected.row !== row || selected.column?.field !== key) {
+        await $table.setSelectCell?.(row, key)
+      }
+      if ($table.getEditCell?.()) return
       const activeElement = document.activeElement
       const wrap = this.$refs.sheetWrap
       if (

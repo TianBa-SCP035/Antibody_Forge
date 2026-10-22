@@ -15,6 +15,7 @@ defineOptions({ name: 'LayoutContent' });
 
 type AnimatablePageEl = HTMLElement & {
   _vbenEnterCleanup?: () => void;
+  _vbenPageVm?: any;
 };
 
 const tabbarStore = useTabbarStore();
@@ -43,10 +44,59 @@ function getRouteViewKey(route: RouteLocationNormalizedLoadedGeneric) {
   }
 }
 
-function pauseElTablesIn(root: Element) {
+function bindPageVm(vnode: any) {
+  const el = vnode?.el;
+  const vm = vnode?.component;
+  if (el instanceof HTMLElement && vm) {
+    (el as AnimatablePageEl)._vbenPageVm = vm;
+  }
+}
+
+/**
+ * 递归从组件公开 subTree 中收集所有 ElTable 内部实例（包含 state.doLayout）。
+ * 不依赖仅开发模式存在的 el.__vueParentComponent，保证生产构建（PROD）同样 100% 生效。
+ */
+function collectElTableInstances(root: Element): any[] {
+  const result = new Set<any>();
+  const pageVm = (root as AnimatablePageEl)._vbenPageVm;
+
+  const visitVNode = (vnode: any) => {
+    if (!vnode || typeof vnode !== 'object') return;
+    const comp = vnode.component;
+    if (comp) {
+      if (comp.state?.doLayout && comp.layout) {
+        result.add(comp);
+      }
+      if (comp.subTree) {
+        visitVNode(comp.subTree);
+      }
+    }
+    const children = vnode.children;
+    if (Array.isArray(children)) {
+      for (const child of children) {
+        visitVNode(child);
+      }
+    }
+  };
+
+  if (pageVm?.subTree) {
+    visitVNode(pageVm.subTree);
+  }
+
+  // 开发模式或兜底补充
   const tables = root.querySelectorAll('.el-table');
   for (const tableEl of tables) {
     const vm = (tableEl as any).__vueParentComponent;
+    if (vm?.state?.doLayout) {
+      result.add(vm);
+    }
+  }
+  return [...result];
+}
+
+function pauseElTablesIn(root: Element) {
+  const tableVms = collectElTableInstances(root);
+  for (const vm of tableVms) {
     if (vm && vm.$ready) {
       vm.$ready = false;
       vm._vbenPausedReady = true;
@@ -65,17 +115,16 @@ function pauseElTablesIn(root: Element) {
 
 function resumeElTablesIn(root: Element) {
   if (!(root instanceof HTMLElement) || !root.isConnected) return;
-  const tables = root.querySelectorAll('.el-table');
-  for (const tableEl of tables) {
+  const tableVms = collectElTableInstances(root);
+  for (const vm of tableVms) {
+    const el = vm?.vnode?.el as HTMLElement | undefined;
     // 处于锁高大表延迟显现阶段的表格由 listTableLock 在进场动画后统一恢复
-    if (tableEl.closest('.is-list-table-defer-body')) continue;
-    const vm = (tableEl as any).__vueParentComponent;
+    if (el?.closest?.('.is-list-table-defer-body')) continue;
     if (vm && vm._vbenPausedReady) {
-      const el = tableEl as HTMLElement;
       const rs = vm.state?.resizeState?.value;
-      const w = el.offsetWidth;
-      const h = el.offsetHeight;
-      const headerEl = el.querySelector<HTMLElement>(
+      const w = el ? el.offsetWidth : 0;
+      const h = el ? el.offsetHeight : 0;
+      const headerEl = el?.querySelector<HTMLElement>(
         '.el-table__header-wrapper',
       );
       const hh = headerEl ? headerEl.offsetHeight : (rs?.headerHeight ?? 0);
@@ -217,12 +266,16 @@ function onLeave(el: Element, done: () => void) {
             v-if="showComponent(route)"
             v-show="!route.meta.iframeSrc"
             :key="getRouteViewKey(route)"
+            @vue:mounted="bindPageVm"
+            @vue:updated="bindPageVm"
           />
         </KeepAlive>
         <component
           :is="Component"
           v-else-if="showComponent(route)"
           :key="getRouteViewKey(route)"
+          @vue:mounted="bindPageVm"
+          @vue:updated="bindPageVm"
         />
       </Transition>
       <template v-else>
@@ -236,12 +289,16 @@ function onLeave(el: Element, done: () => void) {
             v-if="showComponent(route)"
             v-show="!route.meta.iframeSrc"
             :key="getRouteViewKey(route)"
+            @vue:mounted="bindPageVm"
+            @vue:updated="bindPageVm"
           />
         </KeepAlive>
         <component
           :is="Component"
           v-else-if="showComponent(route)"
           :key="getRouteViewKey(route)"
+          @vue:mounted="bindPageVm"
+          @vue:updated="bindPageVm"
         />
       </template>
     </RouterView>

@@ -17,10 +17,7 @@ export function fetchWorkbenchList(data: any, config?: PostConfig) {
 }
 
 export function fetchWorkbenchOptions(config?: RequestConfig) {
-  return requestClient.get('/serum/workbench/options', {
-    ...skipGlobalErrorHandler,
-    ...config,
-  });
+  return requestClient.get('/serum/workbench/options', config);
 }
 
 export function exportWorkbenchList(data: any) {

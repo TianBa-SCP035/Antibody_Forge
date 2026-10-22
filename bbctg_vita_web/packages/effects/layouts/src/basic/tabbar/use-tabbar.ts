@@ -83,7 +83,9 @@ export function useTabbar() {
     if (!target || key === getTabKey(route)) return;
     pendingActiveKey.value = key;
     router.push(target).finally(() => {
-      pendingActiveKey.value = '';
+      if (pendingActiveKey.value === key) {
+        pendingActiveKey.value = '';
+      }
     });
   };
 

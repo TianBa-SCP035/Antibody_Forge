@@ -17,7 +17,28 @@ export function shouldLockListTable(limit) {
   return Number(limit) >= LIST_TABLE_LOCK_MIN
 }
 
-function createLock(getPage, getBody, setHeight, onBodyResumed) {
+function collectElTableVmsFromVNode(rootVNode, bodyEl, out = new Set()) {
+  if (!rootVNode || typeof rootVNode !== 'object') return out
+  const comp = rootVNode.component
+  if (comp) {
+    const compEl = comp.vnode?.el
+    if (comp.state?.doLayout && comp.layout && (!bodyEl || (compEl instanceof Node && bodyEl.contains(compEl)))) {
+      out.add(comp)
+    }
+    if (comp.subTree) {
+      collectElTableVmsFromVNode(comp.subTree, bodyEl, out)
+    }
+  }
+  const children = rootVNode.children
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      collectElTableVmsFromVNode(child, bodyEl, out)
+    }
+  }
+  return out
+}
+
+function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalInstance) {
   let observer = null
   let lockGen = 0
   let deferGen = 0
@@ -179,11 +200,21 @@ function createLock(getPage, getBody, setHeight, onBodyResumed) {
     })
   }
 
-  function pauseElTables(body) {
-    if (!(body instanceof HTMLElement)) return
+  function getElTableVms(body) {
+    if (!(body instanceof HTMLElement)) return []
+    const hostVm = getHostInternalInstance?.()
+    const vms = hostVm?.subTree ? collectElTableVmsFromVNode(hostVm.subTree, body) : new Set()
     const tables = body.querySelectorAll('.el-table')
     for (const tableEl of tables) {
       const vm = tableEl.__vueParentComponent
+      if (vm?.state?.doLayout) vms.add(vm)
+    }
+    return [...vms]
+  }
+
+  function pauseElTables(body) {
+    const vms = getElTableVms(body)
+    for (const vm of vms) {
       if (vm && vm.$ready) {
         vm.$ready = false
         vm._vbenPausedReady = true
@@ -193,14 +224,14 @@ function createLock(getPage, getBody, setHeight, onBodyResumed) {
 
   function resumeElTables(body) {
     if (!(body instanceof HTMLElement)) return
-    const tables = body.querySelectorAll('.el-table')
-    for (const tableEl of tables) {
-      const vm = tableEl.__vueParentComponent
+    const vms = getElTableVms(body)
+    for (const vm of vms) {
       if (vm && vm._vbenPausedReady) {
+        const tableEl = vm.vnode?.el
         const rs = vm.state?.resizeState?.value
-        const w = tableEl.offsetWidth
-        const h = tableEl.offsetHeight
-        const headerEl = tableEl.querySelector('.el-table__header-wrapper')
+        const w = tableEl instanceof HTMLElement ? tableEl.offsetWidth : 0
+        const h = tableEl instanceof HTMLElement ? tableEl.offsetHeight : 0
+        const headerEl = tableEl instanceof HTMLElement ? tableEl.querySelector('.el-table__header-wrapper') : null
         const hh = headerEl ? headerEl.offsetHeight : (rs?.headerHeight ?? 0)
         const widthChanged = w > 0 && rs && rs.width !== w
         if (rs && w > 0) {
@@ -314,10 +345,10 @@ function createLock(getPage, getBody, setHeight, onBodyResumed) {
       page.addEventListener('transitionend', onTransitionEnd)
     }
 
-    // 兜底定时器（略长于 320ms 进场过渡时长）
-    deferTimer = window.setTimeout(finishResume, 350)
+    // 兜底定时器（略长于 2帧起播 + 320ms 进场过渡时长，确保不会早于动画结束）
+    deferTimer = window.setTimeout(finishResume, 380)
 
-    // 若用户关闭了页面过渡动画（页面无 *-enter-active class），则无需等待 350ms，在下一帧直接显现
+    // 若用户关闭了页面过渡动画（页面无 *-enter-active class），则无需等待 380ms，在下一帧直接显现
     deferRaf1 = requestAnimationFrame(() => {
       deferRaf1 = 0
       if (done || currentDeferGen !== deferGen) return
@@ -387,6 +418,7 @@ export const listTableLockMixin = {
       () => {
         this.onListTableBodyResumed?.()
       },
+      () => this.$,
     )
   },
   mounted() {
@@ -419,6 +451,8 @@ export function useListTableLock(getLimit) {
     (height) => {
       if (height !== listTableHeight.value) listTableHeight.value = height
     },
+    undefined,
+    () => instance,
   )
 
   watch(listTableLocked, (locked) => lock.apply(locked))

@@ -1499,6 +1499,7 @@ export default {
     this.plateClipBox = null;
     this.plateLastClipPath = '';
     this.listRequestToken = 0;
+    this.activeFocusId = '';
   },
   mounted() {
     this.restoreListFilters();
@@ -2435,13 +2436,17 @@ export default {
     getList() {
       const requestToken = ++this.listRequestToken;
       this.listLoading = true;
-      const focusId = pendingTiterOrderId;
-      pendingTiterOrderId = '';
+      if (pendingTiterOrderId) {
+        this.activeFocusId = pendingTiterOrderId;
+        pendingTiterOrderId = '';
+      }
+      const focusId = this.activeFocusId;
       const payload = this.buildQuery();
       if (focusId) payload.titer_order_id = focusId;
       fetchTiterOrderList(payload, skipGlobalErrorHandler)
         .then((response) => {
           if (requestToken !== this.listRequestToken) return;
+          this.activeFocusId = '';
           this.list = Array.isArray(response.items)
             ? response.items.map((item) => ({
                 ...item,
@@ -2456,6 +2461,7 @@ export default {
         })
         .catch((error) => {
           if (requestToken !== this.listRequestToken) return;
+          this.activeFocusId = '';
           this.list = [];
           this.total = 0;
           notifyApiError(error, { messages: { default: '加载效价工单失败' } });

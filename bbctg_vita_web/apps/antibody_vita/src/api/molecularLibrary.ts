@@ -20,9 +20,7 @@ export function fetchLibraryOrderList(data: any, config?: PostConfig) {
 }
 
 export function fetchLibraryFilterOptions() {
-  return requestClient.get('/molecular-cell/library-orders/filter_options', {
-    ...skipGlobalErrorHandler,
-  });
+  return requestClient.get('/molecular-cell/library-orders/filter_options');
 }
 
 export function fetchPrimerIndexOptions(params: {
@@ -32,7 +30,6 @@ export function fetchPrimerIndexOptions(params: {
 } = {}) {
   return requestClient.get('/molecular-cell/library-orders/catalog/options', {
     params,
-    ...skipGlobalErrorHandler,
   });
 }
 

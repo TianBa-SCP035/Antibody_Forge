@@ -35,6 +35,7 @@ function useContentSpinner() {
   const router = useRouter();
   const enableLoading = computed(() => preferences.transition.loading);
   let hideGen = 0;
+  let activeNavTarget = '';
   let zIndexTimer: ReturnType<typeof setTimeout> | undefined;
 
   const shouldCover = (to: { meta: { loaded?: boolean; iframeSrc?: string } }) =>
@@ -77,18 +78,25 @@ function useContentSpinner() {
     if (to.path === from.path) {
       return true;
     }
+    activeNavTarget = to.fullPath || to.path;
     if (shouldCover(to)) {
-      cover();
-      // 站内切页时先让浏览器把轻量遮罩画上屏（1帧），再挂载底层新页面
+      const gen = cover();
+      // 站内切页时先等待双 rAF 确保轻量遮罩已真实绘制上屏，再挂载底层新页面
       if (from.matched.length > 0) {
         await nextTick();
-        await waitFrames(1);
+        await waitFrames(2);
+        if (gen !== hideGen) return true;
       }
     }
     return true;
   });
 
-  router.afterEach((to) => {
+  router.afterEach((to, _from, failure) => {
+    const target = to.fullPath || to.path;
+    // 若旧导航因并发新导航被取消（aborted），且新导航已接管，则不能关掉新导航的遮罩
+    if (failure && activeNavTarget && activeNavTarget !== target) {
+      return true;
+    }
     if (spinning.value || shouldCover(to)) {
       scheduleHide(hideGen);
     }

@@ -87,7 +87,6 @@ const sidebarEnable = defineModel<boolean>('sidebarEnable', { default: true });
 // side是否处于hover状态展开菜单中
 const sidebarExpandOnHovering = ref(false);
 const headerIsHidden = ref(false);
-const contentRef = ref();
 
 const {
   arrivedState,
@@ -567,7 +566,6 @@ const idMainContent = ELEMENT_ID_MAIN_CONTENT;
     </LayoutSidebar>
 
     <div
-      ref="contentRef"
       class="flex flex-1 flex-col overflow-hidden transition-all duration-300 ease-in"
     >
       <div

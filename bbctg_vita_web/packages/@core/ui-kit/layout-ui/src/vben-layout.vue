@@ -3,7 +3,7 @@ import type { CSSProperties } from 'vue';
 
 import type { VbenLayoutProps } from './vben-layout';
 
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 import {
   SCROLL_FIXED_CLASS,
@@ -14,7 +14,7 @@ import { IconifyIcon } from '@vben-core/icons';
 import { VbenIconButton } from '@vben-core/shadcn-ui';
 import { ELEMENT_ID_MAIN_CONTENT } from '@vben-core/shared/constants';
 
-import { useMouse, useScroll, useThrottleFn } from '@vueuse/core';
+import { useScroll, useThrottleFn } from '@vueuse/core';
 
 import {
   LayoutContent,
@@ -99,7 +99,7 @@ const {
 const { setLayoutHeaderHeight } = useLayoutHeaderStyle();
 const { setLayoutFooterHeight } = useLayoutFooterStyle();
 
-const { y: mouseY } = useMouse({ target: contentRef, type: 'client' });
+const mouseY = ref(0);
 
 const {
   currentLayout,
@@ -114,6 +114,27 @@ const {
  * 顶栏是否自动隐藏
  */
 const isHeaderAutoMode = computed(() => props.headerMode === 'auto');
+
+const onAutoHeaderMouseMove = (e: MouseEvent) => {
+  mouseY.value = e.clientY;
+};
+
+watch(
+  isHeaderAutoMode,
+  (enabled) => {
+    window.removeEventListener('mousemove', onAutoHeaderMouseMove);
+    if (enabled) {
+      window.addEventListener('mousemove', onAutoHeaderMouseMove, {
+        passive: true,
+      });
+    }
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  window.removeEventListener('mousemove', onAutoHeaderMouseMove);
+});
 
 const headerWrapperHeight = computed(() => {
   let height = 0;

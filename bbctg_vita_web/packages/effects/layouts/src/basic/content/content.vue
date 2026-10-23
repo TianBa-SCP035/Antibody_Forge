@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { RouteLocationNormalizedLoadedGeneric } from 'vue-router';
 
-import { unref } from 'vue';
+import { onBeforeUnmount, ref, unref, watch } from 'vue';
 import { RouterView } from 'vue-router';
 
 import { usePreferences } from '@vben/preferences';
@@ -19,7 +19,9 @@ type AnimatablePageEl = HTMLElement & {
 };
 
 const tabbarStore = useTabbarStore();
-const { keepAlive } = usePreferences();
+const { keepAlive, sidebarCollapsed } = usePreferences();
+const contentWrapRef = ref<HTMLElement | null>(null);
+let sidebarResizeTimer = 0;
 
 const { getCachedTabs, getExcludeCachedTabs, renderRouteView } =
   storeToRefs(tabbarStore);
@@ -81,6 +83,13 @@ function collectElTableInstances(root: Element): any[] {
 
   if (pageVm?.subTree) {
     visitVNode(pageVm.subTree);
+  } else {
+    for (const child of Array.from(root.children)) {
+      const childVm = (child as AnimatablePageEl)._vbenPageVm;
+      if (childVm?.subTree) {
+        visitVNode(childVm.subTree);
+      }
+    }
   }
 
   // 开发模式或兜底补充
@@ -234,10 +243,41 @@ function onLeave(el: Element, done: () => void) {
   pauseElTablesIn(el);
   done();
 }
+
+// 侧边栏折叠/展开（150ms 宽度过渡）期间暂时冻结当前页 ElTable.$ready，
+// 避免过渡每一帧触发 ResizeObserver -> doLayout() 重算 500 行，待侧边栏定格后再一次性更新列宽。
+watch(sidebarCollapsed, () => {
+  const wrap = contentWrapRef.value;
+  if (!wrap) return;
+  if (sidebarResizeTimer) {
+    window.clearTimeout(sidebarResizeTimer);
+    sidebarResizeTimer = 0;
+  }
+  const tableVms = collectElTableInstances(wrap);
+  for (const vm of tableVms) {
+    if (vm && vm.$ready) {
+      vm.$ready = false;
+      vm._vbenPausedReady = true;
+    }
+  }
+  sidebarResizeTimer = window.setTimeout(() => {
+    sidebarResizeTimer = 0;
+    if (contentWrapRef.value) {
+      resumeElTablesIn(contentWrapRef.value);
+    }
+  }, 180);
+});
+
+onBeforeUnmount(() => {
+  if (sidebarResizeTimer) {
+    window.clearTimeout(sidebarResizeTimer);
+    sidebarResizeTimer = 0;
+  }
+});
 </script>
 
 <template>
-  <div class="relative h-full">
+  <div ref="contentWrapRef" class="relative h-full">
     <IFrameRouterView />
     <RouteCachedView />
     <RouterView v-slot="{ Component, route }">

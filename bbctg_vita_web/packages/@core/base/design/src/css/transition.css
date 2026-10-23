@@ -234,7 +234,9 @@
 .collapse-transition-leave-active,
 .collapse-transition-enter-active {
   transition:
-    0.2s max-height ease-in-out,
-    0.2s padding-top ease-in-out,
-    0.2s margin-top ease-in-out;
+    0.2s max-height cubic-bezier(0.22, 1, 0.36, 1),
+    0.2s padding-top cubic-bezier(0.22, 1, 0.36, 1),
+    0.2s padding-bottom cubic-bezier(0.22, 1, 0.36, 1),
+    0.2s margin-top cubic-bezier(0.22, 1, 0.36, 1),
+    0.2s margin-bottom cubic-bezier(0.22, 1, 0.36, 1);
 }

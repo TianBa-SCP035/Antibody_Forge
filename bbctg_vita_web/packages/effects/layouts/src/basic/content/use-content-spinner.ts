@@ -9,6 +9,7 @@ import {
 import { preferences } from '@vben/preferences';
 
 const FADE_OUT_MS = 300;
+const SHOW_DELAY_MS = 120;
 
 function waitFrames(count = 2) {
   return new Promise<void>((resolve) => {
@@ -36,6 +37,7 @@ function useContentSpinner() {
   const enableLoading = computed(() => preferences.transition.loading);
   let hideGen = 0;
   let activeNavTarget = '';
+  let showTimer: ReturnType<typeof setTimeout> | undefined;
   let zIndexTimer: ReturnType<typeof setTimeout> | undefined;
 
   const shouldCover = (to: { meta: { loaded?: boolean; iframeSrc?: string } }) =>
@@ -43,6 +45,13 @@ function useContentSpinner() {
 
   const hideOverlay = (gen: number) => {
     if (gen !== hideGen) {
+      return;
+    }
+    clearTimeout(showTimer);
+    showTimer = undefined;
+    if (!spinning.value) {
+      contentOverlayBlocking.value = false;
+      contentOverlayActive.value = false;
       return;
     }
     spinning.value = false;
@@ -56,8 +65,14 @@ function useContentSpinner() {
 
   // 新页面完成首帧排版后淡出遮罩，且淡出瞬间即释放鼠标点击/滚动
   const scheduleHide = (gen: number) => {
+    clearTimeout(showTimer);
+    showTimer = undefined;
+    if (!spinning.value) {
+      hideOverlay(gen);
+      return;
+    }
     void nextTick(async () => {
-      await waitFrames(2);
+      await waitFrames(1);
       if (gen !== hideGen) {
         return;
       }
@@ -65,28 +80,38 @@ function useContentSpinner() {
     });
   };
 
-  const cover = () => {
-    hideGen += 1;
-    clearTimeout(zIndexTimer);
+  const revealOverlay = () => {
     spinning.value = true;
     contentOverlayActive.value = true;
     contentOverlayBlocking.value = true;
-    return hideGen;
   };
 
-  router.beforeEach(async (to, from) => {
+  const cover = (delayed = false) => {
+    hideGen += 1;
+    const gen = hideGen;
+    clearTimeout(showTimer);
+    clearTimeout(zIndexTimer);
+    if (!delayed) {
+      revealOverlay();
+      return gen;
+    }
+    // 站内点击左侧菜单首次进页时：不阻塞 beforeEach，且仅当异步路由分包超过 120ms 仍未解析完时才显现全局遮罩；
+    // 正常秒开的页面直接播放 320ms fade-slide 进场动画，避免实心白底遮罩吞掉页面过渡动画。
+    showTimer = setTimeout(() => {
+      showTimer = undefined;
+      if (gen !== hideGen) return;
+      revealOverlay();
+    }, SHOW_DELAY_MS);
+    return gen;
+  };
+
+  router.beforeEach((to, from) => {
     if (to.path === from.path) {
       return true;
     }
     activeNavTarget = to.fullPath || to.path;
     if (shouldCover(to)) {
-      const gen = cover();
-      // 站内切页时先等待双 rAF 确保轻量遮罩已真实绘制上屏，再挂载底层新页面
-      if (from.matched.length > 0) {
-        await nextTick();
-        await waitFrames(2);
-        if (gen !== hideGen) return true;
-      }
+      cover(from.matched.length > 0);
     }
     return true;
   });
@@ -97,22 +122,18 @@ function useContentSpinner() {
     if (failure && activeNavTarget && activeNavTarget !== target) {
       return true;
     }
-    if (spinning.value || shouldCover(to)) {
-      scheduleHide(hideGen);
-    }
+    scheduleHide(hideGen);
     return true;
   });
 
   router.onError(() => {
-    if (spinning.value) {
-      hideOverlay(hideGen);
-    }
+    hideOverlay(hideGen);
   });
 
   onMounted(() => {
     const route = router.currentRoute.value;
     if (!spinning.value && shouldCover(route)) {
-      scheduleHide(cover());
+      scheduleHide(cover(false));
     }
   });
 

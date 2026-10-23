@@ -7,7 +7,7 @@ import { preferences, usePreferences } from '@vben/preferences';
 import { useAccessStore } from '@vben/stores';
 import { findRootMenuByPath } from '@vben/utils';
 
-import { useNavigation } from './use-navigation';
+import { pendingNavPath, useNavigation } from './use-navigation';
 
 function useMixedMenu() {
   const { navigation, willOpenedByWindow } = useNavigation();
@@ -66,7 +66,10 @@ function useMixedMenu() {
    * 侧边菜单激活路径
    */
   const sidebarActive = computed(() => {
-    return (route?.meta?.activePath as string) ?? route.path;
+    return (
+      pendingNavPath.value ||
+      ((route?.meta?.activePath as string) ?? route.path)
+    );
   });
 
   /**

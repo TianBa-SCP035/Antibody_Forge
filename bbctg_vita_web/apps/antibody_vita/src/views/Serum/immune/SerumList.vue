@@ -123,7 +123,7 @@
                       @clear="setFilterQuery('owner', '')"
                       style="width: 100%" 
                       @change="handleFilter">
-                      <el-option v-for="item in filterOptions(allOwnerOptions, ownerFilterQuery)" :key="item" :label="item" :value="item" />
+                      <el-option v-for="item in filteredOwnerOptions" :key="item" :label="item" :value="item" />
                   </ListFilterSelect>
             </el-col>
              <el-col :span="5">
@@ -146,9 +146,8 @@
                   title="看不见我"
                   @click="toggleAdvanced"
                 >
-                  <el-icon>
-                    <ArrowUp v-if="showAdvancedFilters" />
-                    <ArrowDown v-else />
+                  <el-icon class="advanced-trigger-icon" :class="{ 'is-expanded': showAdvancedFilters }">
+                    <ArrowDown />
                   </el-icon>
                 </button>
             </el-col>
@@ -168,8 +167,13 @@
                 </div>
             </el-col>
         </el-row>
-        <el-collapse-transition>
-          <div v-show="showAdvancedFilters" class="advanced-filters">
+        <div
+          class="advanced-filters-collapse"
+          :class="{ 'is-expanded': showAdvancedFilters }"
+          @transitionend="onAdvancedFiltersTransitionEnd"
+        >
+          <div class="advanced-filters-inner">
+          <div class="advanced-filters">
             <el-row :gutter="15" type="flex" align="middle" style="flex-wrap: wrap;">
               <el-col :span="4">
                  <ListFilterSelect 
@@ -181,7 +185,7 @@
                       @clear="setFilterQuery('studyType', '')"
                       style="width: 100%" 
                       @change="handleFilter">
-                      <el-option v-for="item in filterOptions(allStudyTypeOptions, studyTypeFilterQuery)" :key="item" :label="item" :value="item" />
+                      <el-option v-for="item in filteredStudyTypeOptions" :key="item" :label="item" :value="item" />
                   </ListFilterSelect>
               </el-col>
               <el-col :span="4">
@@ -194,7 +198,7 @@
                       @clear="setFilterQuery('pm', '')"
                       style="width: 100%" 
                       @change="handleFilter">
-                      <el-option v-for="item in filterOptions(allPMOptions, pmFilterQuery)" :key="item" :label="item" :value="item" />
+                      <el-option v-for="item in filteredPMOptions" :key="item" :label="item" :value="item" />
                   </ListFilterSelect>
               </el-col>
               <el-col :span="3">
@@ -207,7 +211,7 @@
                       @clear="setFilterQuery('mouseStrain', '')"
                       style="width: 100%" 
                       @change="handleFilter">
-                      <el-option v-for="item in filterOptions(allMouseStrainOptions, mouseStrainFilterQuery)" :key="item" :label="item" :value="item" />
+                      <el-option v-for="item in filteredMouseStrainOptions" :key="item" :label="item" :value="item" />
                   </ListFilterSelect>
               </el-col>
               <el-col :span="3">
@@ -222,7 +226,7 @@
                       @change="handleFilter">
                       <el-option label="进行中" value="ongoing" />
                       <el-option label="已完成" value="completed" />
-                      <el-option v-for="item in filterOptions(allStatusOptions, statusFilterQuery)" :key="item" :label="item" :value="item" />
+                      <el-option v-for="item in filteredStatusOptions" :key="item" :label="item" :value="item" />
                   </ListFilterSelect>
               </el-col>
               <el-col :span="5">
@@ -235,7 +239,7 @@
                       @clear="setFilterQuery('mouseStrainCategory', '')"
                       style="width: 100%" 
                       @change="handleFilter">
-                      <el-option v-for="item in filterOptions(allMouseStrainCategoryOptions, mouseStrainCategoryFilterQuery)" :key="item" :label="item" :value="item" />
+                      <el-option v-for="item in filteredMouseStrainCategoryOptions" :key="item" :label="item" :value="item" />
                   </ListFilterSelect>
               </el-col>
               <el-col :span="1" style="text-align: center;">
@@ -276,7 +280,8 @@
               </el-col>
             </el-row>
           </div>
-        </el-collapse-transition>
+          </div>
+        </div>
     </div>
 
     <!-- Main Table -->
@@ -464,7 +469,6 @@ import { useUserStore } from '@vben/stores'
 
 import {
   ArrowDown,
-  ArrowUp,
   CircleCheck,
   DataAnalysis,
   Download,
@@ -483,7 +487,6 @@ import {
   ElButtonGroup,
   ElCard,
   ElCol,
-  ElCollapseTransition,
   ElDatePicker,
   ElDialog,
   ElIcon,
@@ -534,7 +537,6 @@ export default {
     ElButtonGroup,
     ElCard,
     ElCol,
-    ElCollapseTransition,
     ElDatePicker,
     ElDialog,
     ElIcon,
@@ -548,7 +550,6 @@ export default {
     ListFilterSelect,
     SerumProjectStatusEditor,
     ArrowDown,
-    ArrowUp,
     CircleCheck,
     DataAnalysis,
     Timer,
@@ -584,16 +585,24 @@ export default {
     filteredTargetOptions() {
       return filterTargetOptions(this.allTargetOptions, this.targetFilterQuery)
     },
-  },
-  watch: {
-    showExtraColumns(newVal) {
-      if (!newVal) return
-      this.$nextTick(() => {
-        setTimeout(() => {
-          this.smoothScrollTableToRight()
-        }, 200)
-      })
-    }
+    filteredOwnerOptions() {
+      return this.filterOptions(this.allOwnerOptions, this.ownerFilterQuery)
+    },
+    filteredStudyTypeOptions() {
+      return this.filterOptions(this.allStudyTypeOptions, this.studyTypeFilterQuery)
+    },
+    filteredPMOptions() {
+      return this.filterOptions(this.allPMOptions, this.pmFilterQuery)
+    },
+    filteredMouseStrainOptions() {
+      return this.filterOptions(this.allMouseStrainOptions, this.mouseStrainFilterQuery)
+    },
+    filteredStatusOptions() {
+      return this.filterOptions(this.allStatusOptions, this.statusFilterQuery)
+    },
+    filteredMouseStrainCategoryOptions() {
+      return this.filterOptions(this.allMouseStrainCategoryOptions, this.mouseStrainCategoryFilterQuery)
+    },
   },
   data() {
     return {
@@ -652,6 +661,7 @@ export default {
       savingKeys: {},
       schemePrintLoading: false,
       tableScrollAnimationFrame: 0,
+      extraColumnsTimer: 0,
       tabDataFetchedAt: 0,
       listRequestToken: 0,
     }
@@ -681,6 +691,10 @@ export default {
     if (this.tableScrollAnimationFrame) {
       cancelAnimationFrame(this.tableScrollAnimationFrame)
     }
+    if (this.extraColumnsTimer) {
+      clearTimeout(this.extraColumnsTimer)
+      this.extraColumnsTimer = 0
+    }
   },
   methods: {
     persistListFilters() {
@@ -688,7 +702,7 @@ export default {
         listQuery: { ...this.listQuery, sort_field: undefined, sort_order: undefined },
         dateRange: this.dateRange,
         showAdvancedFilters: this.showAdvancedFilters,
-        showExtraColumns: this.showExtraColumns,
+        showExtraColumns: this.showAdvancedFilters,
       })
     },
     restoreListFilters() {
@@ -704,18 +718,20 @@ export default {
       }
       if (typeof state.showAdvancedFilters === 'boolean') {
         this.showAdvancedFilters = state.showAdvancedFilters
-      }
-      if (typeof state.showExtraColumns === 'boolean') {
+        this.showExtraColumns = state.showAdvancedFilters
+      } else if (typeof state.showExtraColumns === 'boolean') {
         this.showExtraColumns = state.showExtraColumns
       }
     },
-    smoothScrollTableToRight() {
+    smoothScrollTableToRight(skipLayout = false) {
       const tableRef = this.$refs.serumTable
       const tableEl = tableRef?.$el
       const body = tableEl?.querySelector('.el-table__body-wrapper .el-scrollbar__wrap')
       if (!tableRef?.setScrollLeft || !body) return
 
-      tableRef?.doLayout?.()
+      if (!skipLayout) {
+        tableRef?.doLayout?.()
+      }
 
       if (this.tableScrollAnimationFrame) {
         cancelAnimationFrame(this.tableScrollAnimationFrame)
@@ -859,9 +875,62 @@ export default {
       })
     },
     toggleAdvanced() {
-        const next = !this.showAdvancedFilters
-        this.showAdvancedFilters = next
-        this.showExtraColumns = next
+      const next = !this.showAdvancedFilters
+      this.showAdvancedFilters = next
+      if (this.extraColumnsTimer) {
+        clearTimeout(this.extraColumnsTimer)
+        this.extraColumnsTimer = 0
+      }
+      const tableVm = this.$refs.serumTable?.$
+      if (tableVm && tableVm.$ready) {
+        tableVm.$ready = false
+        tableVm._vbenFilterPaused = true
+      }
+      // 1. 点击瞬间仅播放 220ms 筛选栏展开/收起过渡动画（期间冻结 ElTable.$ready，0ms 表格重排）；
+      // 2. 待筛选栏过渡定格后（transitionend 或 250ms 兜底），再批量切换 6 个扩展列。
+      this.extraColumnsTimer = window.setTimeout(() => {
+        this.extraColumnsTimer = 0
+        this.commitExtraColumnsSync()
+      }, 250)
+    },
+    onAdvancedFiltersTransitionEnd(event) {
+      if (event.target !== event.currentTarget || event.propertyName !== 'grid-template-rows') return
+      if (this.extraColumnsTimer) {
+        clearTimeout(this.extraColumnsTimer)
+        this.extraColumnsTimer = 0
+      }
+      this.commitExtraColumnsSync()
+    },
+    commitExtraColumnsSync() {
+      const next = this.showAdvancedFilters
+      const tableRef = this.$refs.serumTable
+      const tableVm = tableRef?.$
+      if (this.showExtraColumns === next) {
+        if (tableVm?._vbenFilterPaused) {
+          tableVm.$ready = true
+          tableVm._vbenFilterPaused = false
+          tableRef?.doLayout?.()
+        }
+        return
+      }
+      if (tableVm && tableVm.$ready) {
+        tableVm.$ready = false
+        tableVm._vbenFilterPaused = true
+      }
+      this.showExtraColumns = next
+      this.$nextTick(() => {
+        if (tableVm) {
+          tableVm.$ready = true
+          tableVm._vbenFilterPaused = false
+          tableVm.store?.updateColumns?.()
+        }
+        tableRef?.doLayout?.()
+        if (next) {
+          requestAnimationFrame(() => {
+            this.smoothScrollTableToRight(true)
+          })
+        }
+      })
     },
     handleSizeChange(size) {
       this.listQuery.limit = size
@@ -1348,8 +1417,34 @@ export default {
 .filter-item {
     width: 100%;
 }
-.advanced-filters {
+.advanced-trigger-icon {
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.advanced-trigger-icon.is-expanded {
+    transform: rotate(180deg);
+}
+.advanced-filters-collapse {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    margin-top: 0;
+    pointer-events: none;
+    transition:
+        grid-template-rows 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 0.18s ease,
+        margin-top 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.advanced-filters-collapse.is-expanded {
+    grid-template-rows: 1fr;
+    opacity: 1;
     margin-top: 10px;
+    pointer-events: auto;
+}
+.advanced-filters-inner {
+    min-height: 0;
+    overflow: hidden;
+}
+.advanced-filters {
     padding-top: 10px;
     border-top: 1px dashed #e8e8e8;
 }
@@ -1379,7 +1474,9 @@ export default {
   display: flex;
   align-items: center;
   padding: 0 20px; 
-  transition: all 0.3s;
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s ease;
 }
 .card-panel:hover {
     transform: translateY(-5px);

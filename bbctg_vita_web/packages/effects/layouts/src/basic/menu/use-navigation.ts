@@ -1,8 +1,48 @@
 import type { RouteRecordNormalized } from 'vue-router';
 
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { isHttpUrl, openRouteInNewWindow, openWindow } from '@vben/utils';
+
+const pendingNavPath = ref('');
+let pendingNavRaf = 0;
+let pendingNavTimer = 0;
+
+function cancelPendingNavSchedule() {
+  if (pendingNavRaf) {
+    cancelAnimationFrame(pendingNavRaf);
+    pendingNavRaf = 0;
+  }
+  if (pendingNavTimer) {
+    window.clearTimeout(pendingNavTimer);
+    pendingNavTimer = 0;
+  }
+}
+
+function scheduleNextFrameNavigation(
+  task: () => Promise<unknown>,
+  targetPath: string,
+) {
+  cancelPendingNavSchedule();
+  pendingNavPath.value = targetPath;
+  return new Promise<void>((resolve) => {
+    let ran = false;
+    const run = () => {
+      if (ran) return;
+      ran = true;
+      cancelPendingNavSchedule();
+      void task().finally(() => {
+        if (pendingNavPath.value === targetPath) {
+          pendingNavPath.value = '';
+        }
+        resolve();
+      });
+    };
+    pendingNavRaf = requestAnimationFrame(run);
+    pendingNavTimer = window.setTimeout(run, 32);
+  });
+}
 
 function useNavigation() {
   const router = useRouter();
@@ -18,17 +58,21 @@ function useNavigation() {
 
   initRouteMetaMap();
 
-  // 监听路由变化
-  router.afterEach(() => {
-    initRouteMetaMap();
-  });
+  const getRoute = (path: string) => {
+    let route = routeMetaMap.get(path);
+    if (!route) {
+      initRouteMetaMap();
+      route = routeMetaMap.get(path);
+    }
+    return route;
+  };
 
   // 检查是否应该在新窗口打开
   const shouldOpenInNewWindow = (path: string): boolean => {
     if (isHttpUrl(path)) {
       return true;
     }
-    const route = routeMetaMap.get(path);
+    const route = getRoute(path);
     // 如果有外链或者设置了在新窗口打开，返回 true
     return !!(route?.meta?.link || route?.meta?.openInNewWindow);
   };
@@ -39,7 +83,7 @@ function useNavigation() {
 
   const navigation = async (path: string) => {
     try {
-      const route = routeMetaMap.get(path);
+      const route = getRoute(path);
       const { openInNewWindow = false, query = {}, link } = route?.meta ?? {};
 
       // 检查是否有外链
@@ -53,10 +97,15 @@ function useNavigation() {
       } else if (openInNewWindow) {
         openRouteInNewWindow(resolveHref(path));
       } else {
-        await router.push({
+        // 先让点击帧（< 0.5ms）把左侧菜单与顶部标签栏的高亮画上屏，下一帧立即执行路由跳转
+        await scheduleNextFrameNavigation(
+          () =>
+            router.push({
+              path,
+              query,
+            }),
           path,
-          query,
-        });
+        );
       }
     } catch (error) {
       console.error('Navigation failed:', error);
@@ -71,4 +120,4 @@ function useNavigation() {
   return { navigation, willOpenedByWindow };
 }
 
-export { useNavigation };
+export { pendingNavPath, scheduleNextFrameNavigation, useNavigation };

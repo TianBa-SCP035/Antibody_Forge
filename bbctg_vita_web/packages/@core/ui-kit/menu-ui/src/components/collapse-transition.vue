@@ -30,13 +30,15 @@ const on = {
 
     el.dataset.oldPaddingBottom = el.style.paddingBottom;
     el.dataset.oldMarginBottom = el.style.marginBottom;
+    el.dataset.oldOverflow = el.style.overflow;
     if (el.style.height) el.dataset.elExistsHeight = el.style.height;
 
-    el.style.maxHeight = 0;
-    el.style.paddingTop = 0;
-    el.style.marginTop = 0;
-    el.style.paddingBottom = 0;
-    el.style.marginBottom = 0;
+    el.style.maxHeight = '0px';
+    el.style.paddingTop = '0px';
+    el.style.marginTop = '0px';
+    el.style.paddingBottom = '0px';
+    el.style.marginBottom = '0px';
+    el.style.overflow = 'hidden';
   },
 
   beforeLeave(el: RendererElement) {
@@ -48,15 +50,15 @@ const on = {
     el.dataset.oldOverflow = el.style.overflow;
     el.style.maxHeight = `${el.scrollHeight}px`;
     el.style.overflow = 'hidden';
+    void el.offsetHeight;
   },
 
   enter(el: RendererElement) {
     requestAnimationFrame(() => {
-      el.dataset.oldOverflow = el.style.overflow;
       if (el.dataset.elExistsHeight) {
         el.style.maxHeight = el.dataset.elExistsHeight;
       } else if (el.scrollHeight === 0) {
-        el.style.maxHeight = 0;
+        el.style.maxHeight = '0px';
       } else {
         el.style.maxHeight = `${el.scrollHeight}px`;
       }
@@ -74,13 +76,15 @@ const on = {
   },
 
   leave(el: RendererElement) {
-    if (el.scrollHeight !== 0) {
-      el.style.maxHeight = 0;
-      el.style.paddingTop = 0;
-      el.style.paddingBottom = 0;
-      el.style.marginTop = 0;
-      el.style.marginBottom = 0;
-    }
+    requestAnimationFrame(() => {
+      if (el.scrollHeight !== 0) {
+        el.style.maxHeight = '0px';
+        el.style.paddingTop = '0px';
+        el.style.paddingBottom = '0px';
+        el.style.marginTop = '0px';
+        el.style.marginBottom = '0px';
+      }
+    });
   },
 
   leaveCancelled(el: RendererElement) {

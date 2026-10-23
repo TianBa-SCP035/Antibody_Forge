@@ -25,6 +25,11 @@ import { $t, useI18n } from '@vben/locales';
 import { getTabKey, useAccessStore, useTabbarStore } from '@vben/stores';
 import { filterTree } from '@vben/utils';
 
+import {
+  pendingNavPath,
+  scheduleNextFrameNavigation,
+} from '../menu/use-navigation';
+
 export function useTabbar() {
   const router = useRouter();
   const route = useRoute();
@@ -50,7 +55,19 @@ export function useTabbar() {
    * 当前路径对应的tab的key
    */
   const currentActive = computed(() => {
-    return pendingActiveKey.value || getTabKey(route);
+    if (pendingActiveKey.value) return pendingActiveKey.value;
+    if (pendingNavPath.value) {
+      const matchedTab = tabbarStore.getTabs.find(
+        (item) =>
+          item.path === pendingNavPath.value ||
+          item.fullPath === pendingNavPath.value,
+      );
+      if (matchedTab) {
+        return getTabKey(matchedTab);
+      }
+      return pendingNavPath.value;
+    }
+    return getTabKey(route);
   });
 
   const { locale } = useI18n();
@@ -82,7 +99,10 @@ export function useTabbar() {
     const target = tab?.fullPath || tab?.path;
     if (!target || key === getTabKey(route)) return;
     pendingActiveKey.value = key;
-    router.push(target).finally(() => {
+    void scheduleNextFrameNavigation(
+      () => router.push(target),
+      tab?.path || target,
+    ).finally(() => {
       if (pendingActiveKey.value === key) {
         pendingActiveKey.value = '';
       }

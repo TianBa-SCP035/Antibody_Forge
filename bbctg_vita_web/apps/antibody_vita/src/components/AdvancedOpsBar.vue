@@ -57,7 +57,9 @@ export default {
 
     function place() {
       if (!props.pinned) {
-        pinStyle.value = {};
+        if (Object.keys(pinStyle.value).length > 0) {
+          pinStyle.value = {};
+        }
         return;
       }
       const parent = barRef.value?.parentElement;
@@ -165,12 +167,15 @@ export default {
 
 .ops-slide-enter-active,
 .ops-slide-leave-active {
-  transition: transform 0.25s ease, opacity 0.25s ease;
+  will-change: transform, opacity;
+  transition:
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease;
 }
 
 .ops-slide-enter-from,
 .ops-slide-leave-to {
-  transform: translateY(-110%);
+  transform: translate3d(0, -108%, 0);
   opacity: 0;
 }
 </style>

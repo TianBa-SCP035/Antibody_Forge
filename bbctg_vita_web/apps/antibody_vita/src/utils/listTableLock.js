@@ -190,6 +190,23 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
       if (vm.store?.mutations && !vm.store._vbenHoverPatched) {
         vm.store._vbenHoverPatched = true
         vm.store.mutations.setHoverRow = () => {}
+        if (typeof vm.store.updateColumns === 'function') {
+          const rawUpdateColumns = vm.store.updateColumns
+          vm.store.updateColumns = function (...args) {
+            const res = rawUpdateColumns.apply(this, args)
+            if (this.states?.isComplex) {
+              this.states.isComplex.value = false
+            }
+            const wrap = vm.refs?.tableWrapper
+            if (wrap) {
+              requestAnimationFrame(() => {
+                wrap._vbenSyncShadowGeometry?.()
+                wrap._vbenRebuildHeaderSync?.()
+              })
+            }
+            return res
+          }
+        }
       }
 
       // 2. 锁定根容器为 is-scrolling-none（彻底阻断 EP 在横滑时切换根容器 class 导致 5.7 万节点样式失效 + 左固定列 border-right:none 引发 520ms 全表重排），

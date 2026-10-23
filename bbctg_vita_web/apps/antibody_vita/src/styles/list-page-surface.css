@@ -74,7 +74,7 @@
   font-weight: var(--list-table-header-weight);
 }
 
-/* 右侧固定列交界用 1px 线，去掉 EP 投影（含 ::before 伪元素阴影，避免横向滚动切换状态时整表重绘阴影） */
+/* 右侧固定列交界用 1px 线，禁用 1000 个单元格 ::before 伪元素阴影，改由表格级单层独立阴影条提供横滑提示 */
 .el-table.list-data-table.el-table--border
   .el-table-fixed-column--right.is-first-column.el-table__cell {
   box-shadow: -1px 0 0 0 var(--el-table-border-color);
@@ -82,8 +82,19 @@
 
 .el-table.list-data-table .el-table-fixed-column--left.is-last-column.el-table__cell::before,
 .el-table.list-data-table .el-table-fixed-column--right.is-first-column.el-table__cell::before {
-  display: none;
-  box-shadow: none;
+  display: none !important;
+  box-shadow: none !important;
+}
+
+/* 锁高大表（>=50行）内部滚动提速：
+   用纯 CSS :hover 替代 Element Plus 在有固定列（isComplex）时每 30ms 执行的全表行扫描 + rAF hover-row 类切换。
+   注意：不给 .el-scrollbar__wrap 单独加 will-change: scroll-position，保持表体与表头在同一主线程帧同步 scrollLeft。 */
+.is-list-table-locked
+  .el-table.list-data-table
+  .el-table__body
+  tr:hover
+  > td.el-table__cell {
+  background-color: var(--el-table-row-hover-bg-color);
 }
 
 .el-card.list-table-card {

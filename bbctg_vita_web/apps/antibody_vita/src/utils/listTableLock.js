@@ -173,12 +173,104 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
     setHeight(height > 0 ? height : undefined)
   }
 
+  function optimizeTableScroll(body) {
+    if (!(body instanceof HTMLElement)) return
+    const vms = getElTableVms(body)
+    for (const vm of vms) {
+      // 1. Element Plus 2.13 的固定列已采用原生 CSS position: sticky（同处一个 <tr> 内），
+      //    无需开启 isComplex 的 JS 跨表 hoverRow 同步（避免滚动时每 30ms Array.from 扫描 500 行并改写 class）；
+      if (vm.store?.states?.isComplex && vm.store.states.isComplex.value) {
+        vm.store.states.isComplex.value = false
+      }
+      // 2. 锁定根容器为 is-scrolling-none（彻底阻断 EP 在横滑时切换根容器 class 导致 5.7 万节点样式失效 + 左固定列 border-right:none 引发 520ms 全表重排），
+      //    同时在 .el-table__inner-wrapper 上挂载 2 个无子节点的独立叶子阴影条（左/右各 1 个 div，替代原来的 1000 个 td::before），
+      //    只切换这 2 个叶子节点的 opacity（耗时 <0.1ms），既保留横向可滚动阴影提示，又保证表头与表体 100% 同步满帧滚动。
+      const tableWrapper = vm.refs?.tableWrapper
+      if (tableWrapper && !tableWrapper._vbenScrollClassPatched) {
+        tableWrapper._vbenScrollClassPatched = true
+        const innerWrapper = tableWrapper.querySelector('.el-table__inner-wrapper')
+        let leftShadow = null
+        let rightShadow = null
+        if (innerWrapper instanceof HTMLElement) {
+          leftShadow = document.createElement('div')
+          leftShadow.className = 'vben-table-scroll-shadow-left'
+          leftShadow.style.cssText =
+            'position:absolute;top:0;bottom:0;width:10px;pointer-events:none;z-index:3;opacity:0;transition:opacity 0.15s ease;background:linear-gradient(to right, rgba(0,0,0,0.08), transparent);'
+          rightShadow = document.createElement('div')
+          rightShadow.className = 'vben-table-scroll-shadow-right'
+          rightShadow.style.cssText =
+            'position:absolute;top:0;bottom:0;width:10px;pointer-events:none;z-index:3;opacity:0;transition:opacity 0.15s ease;background:linear-gradient(to left, rgba(0,0,0,0.08), transparent);'
+          innerWrapper.append(leftShadow, rightShadow)
+        }
+
+        const syncShadowGeometry = () => {
+          if (!leftShadow || !rightShadow) return
+          const firstRow =
+            tableWrapper.querySelector('.el-table__header-wrapper tr')
+            || tableWrapper.querySelector('.el-table__body-wrapper tbody tr')
+          const leftFixed = firstRow?.querySelector('.el-table-fixed-column--left.is-last-column')
+          const rightFixed = firstRow?.querySelector('.el-table-fixed-column--right.is-first-column')
+          if (leftFixed instanceof HTMLElement) {
+            leftShadow.style.display = ''
+            leftShadow.style.left = `${leftFixed.offsetLeft + leftFixed.offsetWidth}px`
+          } else {
+            leftShadow.style.display = 'none'
+          }
+          if (rightFixed instanceof HTMLElement) {
+            rightShadow.style.display = ''
+            rightShadow.style.right = `${rightFixed.offsetWidth}px`
+          } else {
+            rightShadow.style.display = 'none'
+          }
+        }
+        syncShadowGeometry()
+        tableWrapper._vbenSyncShadowGeometry = syncShadowGeometry
+
+        const updateShadowVisibility = (cls) => {
+          if (typeof cls !== 'string') return
+          const showLeft = cls.includes('is-scrolling-middle') || cls.includes('is-scrolling-right')
+          const showRight = cls.includes('is-scrolling-middle') || cls.includes('is-scrolling-left')
+          if (leftShadow) leftShadow.style.opacity = showLeft ? '1' : '0'
+          if (rightShadow) rightShadow.style.opacity = showRight ? '1' : '0'
+        }
+        updateShadowVisibility(tableWrapper.className)
+
+        const rawClassList = tableWrapper.classList
+        const cleanClassName = Array.from(rawClassList)
+          .filter((c) => !c.startsWith('is-scrolling-'))
+          .concat('is-scrolling-none')
+          .join(' ')
+        rawClassList.value = cleanClassName
+        let lockedClassName = cleanClassName
+
+        Object.defineProperty(tableWrapper, 'className', {
+          configurable: true,
+          get() {
+            return lockedClassName
+          },
+          set(val) {
+            if (typeof val === 'string') {
+              updateShadowVisibility(val)
+              const next = val.replace(/is-scrolling-(left|middle|right)/g, 'is-scrolling-none')
+              if (next === lockedClassName) return
+              lockedClassName = next
+              rawClassList.value = next
+            }
+          },
+        })
+      } else if (tableWrapper?._vbenSyncShadowGeometry) {
+        tableWrapper._vbenSyncShadowGeometry()
+      }
+    }
+  }
+
   function bindAndMeasure(body) {
     if (!observer) observer = new ResizeObserver(measure)
     observer.disconnect()
     observer.observe(body)
     measure()
     bindScrollMemory(body)
+    optimizeTableScroll(body)
   }
 
   function watchBody(currentGen) {

@@ -12,9 +12,9 @@ defineOptions({
 });
 
 withDefaults(defineProps<Props>(), {
-  companyName: 'Vben Admin',
-  companySiteLink: '',
-  date: '2024',
+  companyName: 'Biocytogen · Tian Ba',
+  companySiteLink: 'https://www.biocytogen.com.cn',
+  date: '2026',
   icp: '',
   icpLink: '',
 });

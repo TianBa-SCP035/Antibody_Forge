@@ -6,7 +6,8 @@
     "directory": "apps/antibody_vita"
   },
   "author": {
-    "name": "bbctg"
+    "name": "Tian Ba (Biocytogen)",
+    "url": "https://www.biocytogen.com.cn"
   },
   "type": "module",
   "scripts": {

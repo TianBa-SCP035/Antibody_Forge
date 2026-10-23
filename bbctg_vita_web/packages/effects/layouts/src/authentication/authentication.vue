@@ -111,7 +111,7 @@ const logoSrc = computed(() => {
         <div class="login-background absolute top-0 left-0 size-full"></div>
         <div
           :key="authPanelLeft ? 'left' : authPanelRight ? 'right' : 'center'"
-          class="mr-20 flex-col-center h-full"
+          class="mr-12 flex-col-center h-full"
           :class="{
             'enter-x': authPanelLeft,
             '-enter-x': authPanelRight,
@@ -124,8 +124,8 @@ const logoSrc = computed(() => {
               class="h-64 w-2/5 animate-float"
             />
           </template>
-          <SloganIcon v-else :alt="appName" class="h-64 w-2/5 animate-float" />
-          <div class="text-1xl mt-6 font-sans text-foreground lg:text-2xl">
+          <SloganIcon v-else :alt="appName" class="w-[84%] max-w-[620px]" />
+          <div class="text-1xl mt-4 font-sans text-foreground lg:text-2xl">
             {{ pageTitle }}
           </div>
           <div class="mt-2 dark:text-muted-foreground">

@@ -11,6 +11,12 @@ export const overridesPreferences = defineOverridesPreferences({
     defaultHomePath: '/home',
     defaultAvatar: '/Vita256.ico',
   },
+  copyright: {
+    companyName: 'Biocytogen · Tian Ba',
+    companySiteLink: 'https://www.biocytogen.com.cn',
+    date: '2026',
+    enable: true,
+  },
   logo: {
     enable: true,
     fit: 'contain',

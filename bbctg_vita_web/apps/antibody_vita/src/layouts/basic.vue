@@ -32,6 +32,28 @@ const avatar = computed(() => {
   return userStore.userInfo?.avatar ?? preferences.app.defaultAvatar;
 });
 
+const userDisplayName = computed(() => {
+  return (
+    userStore.userInfo?.realName ||
+    userStore.userInfo?.username ||
+    'Tian Ba'
+  );
+});
+
+const userTagText = computed(() => {
+  const info = userStore.userInfo as Record<string, any> | null;
+  return info?.department || info?.groupName || 'Biocytogen';
+});
+
+const userDescription = computed(() => {
+  const info = userStore.userInfo as Record<string, any> | null;
+  return (
+    info?.profileSignature ||
+    info?.email ||
+    'Biocytogen · Tian Ba'
+  );
+});
+
 async function handleLogout() {
   await authStore.logout(false);
 }
@@ -46,7 +68,7 @@ watch(
       await updateWatermark({
         content:
           content ||
-          `${userStore.userInfo?.username} - ${userStore.userInfo?.realName}`,
+          `${userStore.userInfo?.username || 'Tian Ba'} - ${userStore.userInfo?.realName || 'Biocytogen'}`,
       });
     } else {
       destroyWatermark();
@@ -63,8 +85,10 @@ watch(
     <template #user-dropdown>
       <UserDropdown
         :avatar
+        :description="userDescription"
         :menus
-        :text="userStore.userInfo?.realName"
+        :tag-text="userTagText"
+        :text="userDisplayName"
         @logout="handleLogout"
       />
     </template>

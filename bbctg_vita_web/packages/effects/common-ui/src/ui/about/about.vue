@@ -21,8 +21,8 @@ defineOptions({
 
 withDefaults(defineProps<Props>(), {
   description:
-    '是一个现代化开箱即用的中后台解决方案，采用最新的技术栈，包括 Vue 3.0、Vite、TailwindCSS 和 TypeScript 等前沿技术，代码规范严谨，提供丰富的配置选项，旨在为中大型项目的开发提供现成的开箱即用解决方案及丰富的示例，同时，它也是学习和深入前端技术的一个极佳示例。',
-  name: 'Vben Admin',
+    '由 Biocytogen · Tian Ba 构建的抗体发现与实验研发数字化平台，覆盖靶点情报、小鼠免疫、效价检测、抗体发现、分子与细胞文库构建及镁伽自动化全流程管理。',
+  name: 'Antibody Vita',
   title: '关于项目',
 });
 

@@ -57,7 +57,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const router = useRouter();
 
-const text = ref('https://vben.vvbin.cn');
+const text = ref('https://www.biocytogen.com.cn');
 
 const qrcode = useQRCode(text, {
   errorCorrectionLevel: 'H',

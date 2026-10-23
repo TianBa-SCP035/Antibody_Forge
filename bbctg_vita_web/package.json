@@ -14,7 +14,10 @@
     "vue vben admin pro",
     "vue3"
   ],
-  "author": "bbctg",
+  "author": {
+    "name": "Tian Ba (Biocytogen)",
+    "url": "https://www.biocytogen.com.cn"
+  },
   "type": "module",
   "scripts": {
     "bootstrap": "pnpm install",

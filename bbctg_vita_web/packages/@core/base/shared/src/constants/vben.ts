@@ -1,12 +1,12 @@
 /**
  * @zh_CN GITHUB 仓库地址
  */
-export const VBEN_GITHUB_URL = 'https://github.com/vbenjs/vue-vben-admin';
+export const VBEN_GITHUB_URL = 'https://github.com/TianBa-SCP035/Antibody_Forge';
 
 /**
  * @zh_CN 文档地址
  */
-export const VBEN_DOC_URL = 'https://doc.vben.pro';
+export const VBEN_DOC_URL = 'https://www.biocytogen.com.cn';
 
 /**
  * @zh_CN 默认 Logo（与应用的 public 静态资源一致）
@@ -14,9 +14,9 @@ export const VBEN_DOC_URL = 'https://doc.vben.pro';
 export const VBEN_LOGO_URL = '/Vita.png';
 
 /**
- * @zh_CN Vben Admin 首页地址
+ * @zh_CN 平台主页地址
  */
-export const VBEN_PREVIEW_URL = 'https://www.vben.pro';
+export const VBEN_PREVIEW_URL = 'https://www.biocytogen.com.cn';
 
 export const VBEN_ANTDV_NEXT_PREVIEW_URL = 'https://antdv-next.vben.pro';
 

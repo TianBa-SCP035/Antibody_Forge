@@ -155,6 +155,17 @@ class PreferenceManager {
       enable: this.initialPreferences.transition.enable,
       name: this.initialPreferences.transition.name,
     };
+    if (
+      !mergedPreference.copyright?.companyName ||
+      mergedPreference.copyright.companyName === 'Vben' ||
+      mergedPreference.copyright.companyName === 'Vben Admin' ||
+      mergedPreference.copyright.companySiteLink?.includes('vben.pro')
+    ) {
+      mergedPreference.copyright = {
+        ...mergedPreference.copyright,
+        ...this.initialPreferences.copyright,
+      };
+    }
 
     // 更新偏好设置
     this.updatePreferences(mergedPreference);

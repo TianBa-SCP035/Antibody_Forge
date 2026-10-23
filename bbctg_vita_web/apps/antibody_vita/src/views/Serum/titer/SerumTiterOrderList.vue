@@ -1498,6 +1498,7 @@ export default {
     this.plateBaseSegments = null;
     this.plateClipBox = null;
     this.plateLastClipPath = '';
+    this.plateScrollingUntil = 0;
     this.listRequestToken = 0;
     this.activeFocusId = '';
   },
@@ -1507,8 +1508,13 @@ export default {
     this.loadForRoute();
     this.onPlateDragMouseUp = () => this.finishPlateDrag();
     this.onPlateTableScroll = () => {
-      this.$refs.floatingLayerRef?.syncPosition?.();
-      this.updatePlateSelectionUi(false, true);
+      this.plateScrollingUntil = performance.now() + 120;
+      const floatingLayer = this.$refs.floatingLayerRef;
+      floatingLayer?.hideTip?.();
+      floatingLayer?.syncPosition?.();
+      if (this.plateSelectColumn || this.plateDragging) {
+        this.updatePlateSelectionUi(false, true);
+      }
     };
     this.onPlateWindowResize = () => {
       this.invalidatePlateGeometryCache();
@@ -2352,7 +2358,7 @@ export default {
       return element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight;
     },
     handleOverflowMouseEnter(event, rowId, field, content) {
-      if (this.plateDragging || this.plateDragPending) {
+      if (this.plateDragging || this.plateDragPending || performance.now() < this.plateScrollingUntil) {
         return;
       }
       const key = this.cellOverflowKey(rowId, field);

@@ -86,11 +86,22 @@
   box-shadow: none !important;
 }
 
-/* 锁高大表（>=50行）内部滚动提速：
-   用纯 CSS :hover 替代 Element Plus 在有固定列（isComplex）时每 30ms 执行的全表行扫描 + rAF hover-row 类切换。
-   注意：不给 .el-scrollbar__wrap 单独加 will-change: scroll-position，保持表体与表头在同一主线程帧同步 scrollLeft。 */
-.is-list-table-locked
-  .el-table.list-data-table
+/* 大表与列表通用滚动提速：
+   1. 将表体滚动容器提升为独立 GPU 滚动合成层，使纵向与横向滚动均走 GPU 合成器快车道；
+   2. 横向滚动时间轴会给普通表头单元格加 transform，固定列表头抬高一层避免被滑过来的普通表头盖住；
+   3. 用纯 CSS :hover 替代 Element Plus 在有固定列（isComplex）时每 30ms 执行的全表行扫描 + rAF hover-row 类切换。 */
+.el-table.list-data-table .el-table__body-wrapper .el-scrollbar__wrap {
+  will-change: scroll-position;
+}
+
+.el-table.list-data-table .el-table__header-wrapper .el-table-fixed-column--left,
+.el-table.list-data-table .el-table__header-wrapper .el-table-fixed-column--right,
+.el-table.list-data-table .el-table__footer-wrapper .el-table-fixed-column--left,
+.el-table.list-data-table .el-table__footer-wrapper .el-table-fixed-column--right {
+  z-index: calc(var(--el-table-index) + 2);
+}
+
+.el-table.list-data-table
   .el-table__body
   tr:hover
   > td.el-table__cell {

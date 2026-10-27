@@ -1803,14 +1803,10 @@ export default {
       row.target_name = targetNameFromCodes(codes, this.targetOptions)
     },
     sheetTargetDirectValue(row, key) {
-      return key === 'target_codes' ? this.formatCodesText(row.target_codes) : row.target_name
+      return key === 'target_codes' ? this.sheetDirectTextValue(row, key) : row.target_name
     },
     setSheetTargetDirectValue(row, key, value) {
-      if (key === 'target_codes') {
-        row.target_codes = uniqueTargetCodes(value)
-        return
-      }
-      row.target_name = value
+      row[key] = value
     },
     sheetPickerDisplayValue(row, column) {
       if (column.key === 'target_codes') return this.formatCodesText(row.target_codes)
@@ -2307,7 +2303,12 @@ export default {
         }
         return this.formatMethods(row)
       }
-      if (key === 'target_codes') return this.formatCodesText(row.target_codes)
+      if (key === 'target_codes') {
+        if (typeof row.target_codes === 'string' && this.sheetEditOriginal?.rowId === row.id && this.sheetEditOriginal?.key === key) {
+          return row.target_codes
+        }
+        return this.formatCodesText(row.target_codes)
+      }
       if (row[key] === null || row[key] === undefined) return ''
       return String(row[key])
     },
@@ -2612,6 +2613,13 @@ export default {
           }
           const column = SHEET_COLUMNS.find((item) => item.key === key)
           if (!column) return
+          if (
+            key === 'sort_order'
+            && (cells.length > 1 || hasHeader)
+            && (this.isSheetCellLocked(row, key) || !String(cell ?? '').trim())
+          ) {
+            return
+          }
           const result = this.assignSheetValue(row, key, cell)
           if (result.ok) {
             touchedCells.push({ rowId: row.id, key })
@@ -2644,7 +2652,13 @@ export default {
         .map(([rowIndex, fields]) => ({ fields, row: workingRows[rowIndex] }))
       if (targetEntries.length) {
         try {
-          const codeEntries = targetEntries.filter(({ fields }) => fields.has('target_codes'))
+          const codeEntries = targetEntries.filter(
+            ({ fields, row }) =>
+              fields.has('target_codes')
+              && ((row.target_codes || []).length > 0
+                || !fields.has('target_name')
+                || !splitTargetNames(row.target_name).length),
+          )
           const resolvedCodes = await this.resolveTargetCodes(
             codeEntries.flatMap(({ row }) => row.target_codes || []),
           )
@@ -2657,16 +2671,21 @@ export default {
               .map((code) => resolvedCodes.nameByCode.get(code))
             if (fields.has('target_name')) {
               const submittedNames = splitTargetNames(row.target_name)
-              const matches = submittedNames.length === canonicalNames.length
-                && submittedNames.every(
-                  (name, index) => name.toLowerCase() === String(canonicalNames[index] || '').toLowerCase(),
-                )
-              if (!matches) throw new Error('target-mismatch')
+              if (submittedNames.length) {
+                const matches = submittedNames.length === canonicalNames.length
+                  && submittedNames.every(
+                    (name, index) => name.toLowerCase() === String(canonicalNames[index] || '').toLowerCase(),
+                  )
+                if (!matches) throw new Error('target-mismatch')
+              }
             }
             row.target_name = canonicalNames.join('&')
           })
           const nameOnlyEntries = targetEntries.filter(
-            ({ fields }) => fields.has('target_name') && !fields.has('target_codes'),
+            ({ fields, row }) =>
+              fields.has('target_name')
+              && (!fields.has('target_codes')
+                || (!(row.target_codes || []).length && splitTargetNames(row.target_name).length > 0)),
           )
           const resolvedNames = await this.resolveTargetNames(
             nameOnlyEntries.flatMap(({ row }) => splitTargetNames(row.target_name)).join('&'),

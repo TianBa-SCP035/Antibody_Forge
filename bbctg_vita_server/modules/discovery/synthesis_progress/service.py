@@ -839,6 +839,8 @@ def _apply_fields(
                 row.order_no = None
             row.source_one_type = None
             row.source_one_id = None
+            if not any((row.order_no, row.synthesis_code, row.batch_label)):
+                row.source_snapshot = None
 
     if "status" not in data:
         row.status = derive_status_for_row(row, preserve_terminal=True)

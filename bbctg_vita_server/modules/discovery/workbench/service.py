@@ -193,7 +193,7 @@ def _normalize_target_codes(value: Any) -> list[str]:
     if value is None or value == "":
         return []
     if isinstance(value, str):
-        return [part.strip() for part in value.replace("，", ",").split(",") if part.strip()]
+        return [part.strip() for part in value.replace("，", ",").replace("、", ",").split(",") if part.strip()]
     if not isinstance(value, list):
         raise ValueError("靶点编号必须是数组")
     return [str(item).strip() for item in value if str(item).strip()]

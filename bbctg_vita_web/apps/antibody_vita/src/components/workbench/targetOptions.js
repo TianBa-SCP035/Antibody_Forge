@@ -3,7 +3,7 @@ import { fetchSerumTargetOptions } from '#/api/serum'
 export function uniqueTargetCodes(values) {
   return [
     ...new Set(
-      (Array.isArray(values) ? values : String(values || '').split(/[,，]/))
+      (Array.isArray(values) ? values : String(values || '').split(/[,，、\s]+/))
         .map((item) => String(item || '').trim())
         .filter(Boolean),
     ),

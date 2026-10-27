@@ -1,5 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue';
 
+import { clipboardCell } from '#/components/workbench/clipboardGrid';
+
 export interface SheetColumn {
   key: string;
 }
@@ -352,7 +354,7 @@ export function useSheetRange<T extends { id: number | string }>(options: {
       for (let colIndex = current.c1; colIndex <= current.c2; colIndex += 1) {
         const column = options.columns[colIndex];
         if (!column) continue;
-        cells.push(options.text(row, column.key));
+        cells.push(clipboardCell(options.text(row, column.key)));
       }
       lines.push(cells.join('\t'));
     }

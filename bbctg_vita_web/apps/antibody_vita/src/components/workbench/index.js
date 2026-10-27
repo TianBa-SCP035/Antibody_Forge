@@ -16,6 +16,6 @@ export {
   targetNameFromCodes,
   uniqueTargetCodes,
 } from './targetOptions'
-export { cleanFieldText, readClipboardGrid } from './clipboardGrid'
+export { cleanFieldText, clipboardCell, readClipboardGrid } from './clipboardGrid'
 export { coerceOptionalNonnegInt, coerceRequiredPositiveInt } from './coerce'
 export { coerceWorkbenchViewMode, EXCEL_VIEW, WORKBENCH_VIEW } from './viewMode'

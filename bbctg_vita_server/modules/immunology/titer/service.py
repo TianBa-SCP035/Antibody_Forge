@@ -11,7 +11,13 @@ from sqlalchemy import JSON, String, and_, bindparam, case, cast, func, or_, sel
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
-from utils.filter_values import catalog_names_for_pairs, recorded_target_clause, restrict, target_select_options
+from utils.filter_values import (
+    catalog_names_for_pairs,
+    clean_field_text,
+    recorded_target_clause,
+    restrict,
+    target_select_options,
+)
 from integrations import drm_service
 from models.immunology import (
     SerumElisaPlate,
@@ -1220,12 +1226,12 @@ def save_titer_order(db: Session, data: dict[str, Any]) -> dict:
     if "serum_status" in data:
         order.serum_status = str(data.get("serum_status") or "").strip() or None
     if "summary" in data:
-        summary = str(data.get("summary") or "").strip()
+        summary = clean_field_text(data.get("summary"), keep_breaks=True)
         if len(summary) > 500:
             raise ValueError("效价小结不能超过 500 字")
         order.summary = summary or None
     if "remark" in data:
-        order.remark = str(data.get("remark") or "").strip() or None
+        order.remark = clean_field_text(data.get("remark"), keep_breaks=True) or None
     if "priority" in data:
         order.priority = _normalize_titer_order_priority(data.get("priority"))
 

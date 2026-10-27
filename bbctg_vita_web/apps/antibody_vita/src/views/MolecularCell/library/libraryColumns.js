@@ -205,7 +205,7 @@ export const HANDOFF_METHOD_ROWS = [
   },
 ]
 export function normalizePlateInputText(value) {
-  return cleanFieldText(value, { keepBreaks: true }).replace(/[，,、\t]+/g, '\n')
+  return cleanFieldText(String(value ?? '').replace(/[，,、\t]+/g, '\n'), { keepBreaks: true })
 }
 export function plateNumbersFromText(value) {
   return [...new Set(normalizePlateInputText(value).split('\n').map((item) => item.trim()).filter(Boolean))]

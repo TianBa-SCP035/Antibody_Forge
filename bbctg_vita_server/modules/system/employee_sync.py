@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from models.system import SysUser
 from modules.auth.security import hash_password
+from utils.filter_values import clean_field_text
 
 
 AUTO_CREATED_PASSWORD_DIGITS = 20
@@ -334,7 +335,7 @@ def _group_by(items: list[Any], key_fn) -> dict[Any, list[Any]]:
 def _clean(value: Any) -> str | None:
     if value is None:
         return None
-    text_value = str(value).strip()
+    text_value = clean_field_text(value)
     return text_value or None
 
 

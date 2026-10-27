@@ -20,6 +20,7 @@ from modules.discovery.synthesis_progress.constants import (
     SYNTHETIC_CORP_OPTIONS,
     TERMINAL_STATUSES,
 )
+from utils.filter_values import clean_field_text
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ SNAPSHOT_STORED_FIELDS = (*DRIFT_COMPARE_FIELDS, "synthesis_code", "batch_label"
 def _clean_str(value: Any, max_len: int | None = None) -> str | None:
     if value is None:
         return None
-    text_val = str(value).strip()
+    text_val = clean_field_text(value)
     if not text_val or text_val.lower() in {"none", "null", "nan", "/", "//", "--", "---", "#n/a"}:
         return None
     if max_len is not None:

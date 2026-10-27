@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from core.config import get_settings
 from utils.filter_values import (
     catalog_names_for_pairs,
+    clean_field_text,
     filter_terms,
     match_any,
     recorded_target_clause,
@@ -464,10 +465,20 @@ def _next_library_order_id(db: Session) -> str:
     raise ValueError("无法分配文库工单号")
 
 
-def _normalize_text(value: Any, max_len: int) -> str | None:
+BREAK_FIELDS = frozenset({
+    "positive_cell_count",
+    "fragment_size_bp",
+    "remark",
+    "qc_note",
+    "project_goal",
+    "library_location",
+})
+
+
+def _normalize_text(value: Any, max_len: int, *, keep_breaks: bool = False) -> str | None:
     if value is None:
         return None
-    text = str(value).strip()
+    text = clean_field_text(value, keep_breaks=keep_breaks)
     if not text:
         return None
     if len(text) > max_len:
@@ -679,7 +690,15 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
         elif field in {"i7_sequence", "i5_sequence"}:
             setattr(row, field, _normalize_sequence(data.get(field), max_len))
         else:
-            setattr(row, field, _normalize_text(data.get(field), max_len))
+            setattr(
+                row,
+                field,
+                _normalize_text(
+                    data.get(field),
+                    max_len,
+                    keep_breaks=field in BREAK_FIELDS,
+                ),
+            )
     if "sample_type" in data:
         row.sample_type = _normalize_choice(
             data.get("sample_type"),

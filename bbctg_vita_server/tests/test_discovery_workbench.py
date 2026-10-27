@@ -171,6 +171,24 @@ class DiscoveryWorkbenchIdTests(unittest.TestCase):
         self.assertEqual(result["total"], 1)
         self.assertEqual(result["items"][0]["id"], saved["id"])
 
+    def test_text_fields_strip_tabs_and_hidden_chars_while_keeping_breaks(self):
+        saved = service.save(
+            self.db,
+            {
+                "project_code": "\t26D033504\u200c\t",
+                "cage_position": "104-5E\n104-5H\t",
+                "mouse_nos": "35\t37\t39\t\t40",
+                "screening_antigen": "\nCHO-S-hGPR158-Flag\tC260829B01\r\nCHO-fasGPR158-Flag\tC260416B01\u00a0人猴细胞\n",
+            },
+        )
+        self.assertEqual(saved["project_code"], "26D033504")
+        self.assertEqual(saved["cage_position"], "104-5E 104-5H")
+        self.assertEqual(saved["mouse_nos"], "35 37 39 40")
+        self.assertEqual(
+            saved["screening_antigen"],
+            "CHO-S-hGPR158-Flag C260829B01\nCHO-fasGPR158-Flag C260416B01 人猴细胞",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from utils.filter_values import (
     catalog_names_for_pairs,
+    clean_field_text,
     recorded_target_clause,
     restrict,
     split_code_tokens,
@@ -693,11 +694,11 @@ def _apply_fields(row: SerumImmWorkbench, data: dict[str, Any], fields: list[str
         elif field == "project_code":
             value = _compact_identifier(value) or None
         elif field in WORKBENCH_REMARK_FIELDS:
-            value = str(value or "").strip() or None
+            value = clean_field_text(value, keep_breaks=True) or None
             if value and len(value) > 255:
                 raise ValueError("备注不能超过 255 个字符")
         elif isinstance(value, str):
-            value = value.strip() or None
+            value = clean_field_text(value, keep_breaks=field == "project_purpose") or None
         setattr(row, field, value)
 
 

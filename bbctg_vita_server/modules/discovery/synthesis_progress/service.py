@@ -40,6 +40,7 @@ from modules.discovery.synthesis_progress.one_sync import (
 from utils.excel import build_list_workbook
 from utils.filter_values import (
     catalog_names_for_pairs,
+    clean_field_text,
     combine_any,
     match_any,
     recorded_target_clause,
@@ -175,10 +176,19 @@ def serialize_order(row: DiscoverySynthesisOrder) -> dict[str, Any]:
     return data
 
 
-def _normalize_text(value: Any, max_len: int) -> str | None:
+BREAK_FIELDS = frozenset({
+    "assay_note",
+    "remark",
+    "eng_parent_seq",
+    "eng_requirement",
+    "eng_result",
+})
+
+
+def _normalize_text(value: Any, max_len: int, *, keep_breaks: bool = False) -> str | None:
     if value is None:
         return None
-    text = str(value).strip()
+    text = clean_field_text(value, keep_breaks=keep_breaks)
     if not text:
         return None
     if len(text) > max_len:
@@ -806,7 +816,11 @@ def _apply_fields(
         elif field in DATE_FIELDS:
             value = _normalize_date(raw)
         else:
-            value = _normalize_text(raw, STRING_FIELDS[field])
+            value = _normalize_text(
+                raw,
+                STRING_FIELDS[field],
+                keep_breaks=field in BREAK_FIELDS,
+            )
         setattr(row, field, value)
 
     if row.source_one_id is not None:

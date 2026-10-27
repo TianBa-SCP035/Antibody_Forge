@@ -8,6 +8,24 @@ from sqlalchemy import String, cast, or_, select
 
 _TARGET_NAME_SPLIT = re.compile(r"[&＆,，]")
 _CODE_TOKEN_SPLIT = re.compile(r"[,，、\s]+")
+_HIDDEN_CHARS = re.compile(r"[\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]")
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
+
+
+def clean_field_text(value: Any, *, keep_breaks: bool = False) -> str:
+    if value is None:
+        return ""
+    text = (
+        str(value)
+        .replace("\u00A0", " ")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+    )
+    text = _HIDDEN_CHARS.sub("", text)
+    text = _CONTROL_CHARS.sub("", text)
+    if keep_breaks:
+        return re.sub(r"\t+", " ", text).strip()
+    return re.sub(r"[\n\t]+", " ", text).strip()
 
 
 def split_code_tokens(value: Any) -> list[str]:

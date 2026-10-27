@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from utils.filter_values import (
     catalog_names_for_pairs,
+    clean_field_text,
     combine_any,
     match_any,
     recorded_target_clause,
@@ -68,6 +69,17 @@ STRING_FIELDS = {
     "boost_cells": 255,
     "remark": 500,
 }
+BREAK_FIELDS = frozenset({
+    "mouse_nos",
+    "plate_nos",
+    "serum_titer",
+    "positive_cell_count",
+    "immune_antigen",
+    "screening_antigen",
+    "boost_antigen",
+    "boost_cells",
+    "remark",
+})
 DATE_FIELDS = ("harvest_date", "boost_date")
 WRITABLE_FIELDS = (
     *STRING_FIELDS,
@@ -225,10 +237,10 @@ def _normalize_int(value: Any) -> int | None:
         return None
 
 
-def _normalize_text(value: Any, max_len: int) -> str | None:
+def _normalize_text(value: Any, max_len: int, *, keep_breaks: bool = False) -> str | None:
     if value is None:
         return None
-    text = str(value).strip()
+    text = clean_field_text(value, keep_breaks=keep_breaks)
     if not text:
         return None
     if len(text) > max_len:
@@ -353,7 +365,11 @@ def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> bool:
         elif field in DATE_FIELDS:
             value = _normalize_date(value)
         else:
-            value = _normalize_text(value, STRING_FIELDS[field])
+            value = _normalize_text(
+                value,
+                STRING_FIELDS[field],
+                keep_breaks=field in BREAK_FIELDS,
+            )
         setattr(row, field, value)
     harvest_changed = "harvest_date" in data and (row.harvest_date or None) != previous_harvest
     if harvest_changed:

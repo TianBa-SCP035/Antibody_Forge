@@ -6,6 +6,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from models.target import Target
+from utils.filter_values import clean_field_text
 
 
 TARGET_SOURCE_SQL = text(
@@ -229,7 +230,7 @@ def _apply_values(target: Target, values: dict[str, Any]) -> bool:
 def _clean(value: Any) -> str | None:
     if value is None:
         return None
-    cleaned = str(value).strip()
+    cleaned = clean_field_text(value, keep_breaks=True)
     return cleaned or None
 
 

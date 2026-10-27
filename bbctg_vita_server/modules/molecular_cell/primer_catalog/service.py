@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from utils.filter_values import filter_terms, match_any
+from utils.filter_values import clean_field_text, filter_terms, match_any
 
 from models.molecular_cell import (
     LIBRARY_PRIMER_ID_FIELDS,
@@ -63,7 +63,7 @@ DIRECTION_VALUES = {"F": "F", "R": "R", "正向": "F", "反向": "R"}
 
 
 def _text(value: Any, field: str, required: bool = False) -> str | None:
-    text = str(value or "").strip()
+    text = clean_field_text(value, keep_breaks=field == "note")
     if required and not text:
         raise ValueError(f"{FIELD_LABELS[field]}不能为空")
     if text and len(text) > FIELD_LIMITS[field]:

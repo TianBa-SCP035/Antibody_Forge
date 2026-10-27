@@ -929,7 +929,7 @@ const SHEET_DATE_KEYS = [
   'started_at',
   'finished_at',
 ]
-const TEXT_BREAK_KEYS = new Set(['remark', 'qc_note', 'project_goal'])
+const TEXT_BREAK_KEYS = new Set(['remark', 'qc_note', 'project_goal', 'library_location'])
 
 function keepsLineBreaks(key) {
   return key === 'plate_nos' || SYNC_TEXT_KEYS.has(key) || TEXT_BREAK_KEYS.has(key)
@@ -2104,16 +2104,16 @@ export default {
       return { ok: true, value: raw || null }
     },
     coerceSheetValue(row, key, text) {
+      if (key === 'plate_nos') {
+        return {
+          ok: true,
+          value: plateNumbersFromText(Array.isArray(text) ? text.join(',') : text),
+        }
+      }
       const keepBreaks = keepsLineBreaks(key)
       const raw = Array.isArray(text)
         ? text.join(',')
         : cleanFieldText(text, { keepBreaks })
-      if (key === 'plate_nos') {
-        return {
-          ok: true,
-          value: plateNumbersFromText(raw),
-        }
-      }
       if (key === 'target_forms') {
         if (!raw) return { ok: true, value: null }
         const value = this.sheetOptionValue(TARGET_FORM_OPTIONS.map((item) => ({ label: item, value: item })), raw)

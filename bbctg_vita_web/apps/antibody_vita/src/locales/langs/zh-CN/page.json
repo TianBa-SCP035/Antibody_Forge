@@ -37,6 +37,8 @@
     "presetTiterOrderSubtitle": "效价工单与检测安排",
     "presetDiscoveryWorkbenchTitle": "发现工作台",
     "presetDiscoveryWorkbenchSubtitle": "剖鼠与筛选安排",
+    "presetDiscoverySynthesisTitle": "合成与验证",
+    "presetDiscoverySynthesisSubtitle": "序列合成与验证进度",
     "presetLibraryConstructionTitle": "文库构建",
     "presetLibraryConstructionSubtitle": "建库工单与质检文件",
     "presetPrimerLibraryTitle": "引物库",

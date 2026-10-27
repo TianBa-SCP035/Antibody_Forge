@@ -7,6 +7,18 @@ from typing import Any, Callable
 from sqlalchemy import String, cast, or_, select
 
 _TARGET_NAME_SPLIT = re.compile(r"[&＆,，]")
+_CODE_TOKEN_SPLIT = re.compile(r"[,，、\s]+")
+
+
+def split_code_tokens(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(v).strip() for v in value if str(v or "").strip()]
+    text = str(value).strip()
+    if not text:
+        return []
+    return [p for p in _CODE_TOKEN_SPLIT.split(text) if p]
 
 
 def _like_literal(value: str) -> str:

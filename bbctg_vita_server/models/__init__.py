@@ -1,6 +1,6 @@
 from models.order_sync import OrderSync
 from models.target import Target
-from models.discovery import DiscoveryWorkbench
+from models.discovery import DiscoverySynthesisOrder, DiscoveryWorkbench
 from models.molecular_cell import (
     MolecularLibraryOrder,
     MolecularLibraryResultFile,
@@ -38,6 +38,7 @@ __all__ = [
     "OrderSync",
     "Target",
     "DiscoveryWorkbench",
+    "DiscoverySynthesisOrder",
     "MolecularLibraryOrder",
     "MolecularLibraryResultFile",
     "MolecularLibraryResultLink",

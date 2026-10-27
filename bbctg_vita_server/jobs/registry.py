@@ -6,6 +6,7 @@ from jobs.discovery_status import discovery_auto_update_status_job
 from jobs.employee_profile_sync import employee_profile_sync_job
 from jobs.labillion_status_sync import labillion_status_sync_job
 from jobs.serum_status import auto_update_status_job
+from jobs.synthesis_order_sync import synthesis_order_sync_job
 from jobs.target_master_sync import target_master_sync_job
 from modules.system.audit_context import audit_scope
 from modules.system.features import build_job_trigger, get_job_schedule
@@ -56,6 +57,15 @@ SCHEDULED_JOBS = [
         "default_hour": 2,
         "default_minute": 0,
         "func": labillion_status_sync_job,
+    },
+    {
+        "id": "discovery_synthesis_order_sync",
+        "name": "合成与验证外部订单同步",
+        "resource": "synthesis_progress",
+        "feature_code": "job.discovery_synthesis_order_sync",
+        "default_hour": 0,
+        "default_minute": 20,
+        "func": synthesis_order_sync_job,
     },
 ]
 

@@ -95,3 +95,110 @@ class DiscoveryWorkbench(Base):
             "created_at": format_time(self.created_at),
             "updated_at": format_time(self.updated_at),
         }
+
+
+class DiscoverySynthesisOrder(Base):
+    __tablename__ = "discovery_synthesis_order"
+    __table_args__ = (
+        UniqueConstraint("synthesis_order_id", name="uk_discovery_synthesis_order_id"),
+        UniqueConstraint("source_one_type", "source_one_id", name="uk_discovery_synthesis_order_source_one"),
+        {"comment": "抗体发现合成与验证单"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    synthesis_order_id: Mapped[str] = mapped_column(String(32), nullable=False, comment="系统单号")
+    source_one_type: Mapped[str | None] = mapped_column(String(16), comment="外部来源类型")
+    source_one_id: Mapped[int | None] = mapped_column(BigInteger, comment="外部来源记录ID")
+    source_snapshot: Mapped[dict | None] = mapped_column(JSON, comment="外部来源当前值快照")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, comment="状态")
+    priority: Mapped[str | None] = mapped_column(String(32), comment="优先级")
+    sort_order: Mapped[int | None] = mapped_column(Integer, comment="排序值")
+    order_kind: Mapped[str] = mapped_column(String(32), nullable=False, comment="订单性质")
+    supply_mode: Mapped[str] = mapped_column(String(32), nullable=False, comment="供应方式")
+    target_name: Mapped[str | None] = mapped_column(String(128), comment="靶点名称")
+    target_codes: Mapped[list[str] | None] = mapped_column(JSON, comment="靶点编号列表")
+    mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="小鼠品系")
+    synthesis_code: Mapped[str | None] = mapped_column(String(64), comment="送测转码")
+    order_no: Mapped[str | None] = mapped_column(String(64), comment="合成订单号")
+    synthetic_corp: Mapped[str | None] = mapped_column(String(64), comment="合成公司")
+    synthetic_count: Mapped[int | None] = mapped_column(Integer, comment="合成个数")
+    synthetic_date: Mapped[str | None] = mapped_column(String(32), comment="合成日期")
+    arrival_count: Mapped[int | None] = mapped_column(Integer, comment="到货个数")
+    arrival_date: Mapped[str | None] = mapped_column(String(32), comment="到货日期")
+    flow_count: Mapped[int | None] = mapped_column(Integer, comment="流式个数")
+    flow_date: Mapped[str | None] = mapped_column(String(32), comment="流式日期")
+    affinity_count: Mapped[int | None] = mapped_column(Integer, comment="亲和力个数")
+    affinity_date: Mapped[str | None] = mapped_column(String(32), comment="亲和力日期")
+    owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
+    batch_label: Mapped[str | None] = mapped_column(String(255), comment="工单批次")
+    assay_note: Mapped[str | None] = mapped_column(String(500), comment="检测与异常说明")
+    remark: Mapped[str | None] = mapped_column(String(1000), comment="备注")
+    eng_type: Mapped[str | None] = mapped_column(String(128), comment="改造类型")
+    eng_method: Mapped[str | None] = mapped_column(String(128), comment="改造方式")
+    eng_parent_seq: Mapped[str | None] = mapped_column(String(500), comment="改造序列或母本")
+    eng_requirement: Mapped[str | None] = mapped_column(String(1000), comment="改造要求")
+    eng_result: Mapped[str | None] = mapped_column(String(500), comment="改造结果")
+    project_code: Mapped[str | None] = mapped_column(String(64), comment="项目管理编号")
+    experiment_id: Mapped[str | None] = mapped_column(String(64), comment="实验号")
+    study_type: Mapped[str | None] = mapped_column(String(64), comment="课题类型")
+    pm: Mapped[str | None] = mapped_column(String(64), comment="PM")
+    created_by: Mapped[str | None] = mapped_column(String(64), comment="创建人")
+    created_at: Mapped[object | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")
+    updated_at: Mapped[object | None] = mapped_column(
+        DateTime,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+        comment="更新时间",
+    )
+
+    def to_dict(self) -> dict:
+        def format_time(dt):
+            if dt is None:
+                return None
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        codes = self.target_codes if isinstance(self.target_codes, list) else []
+        snapshot = self.source_snapshot if isinstance(self.source_snapshot, dict) else {}
+        return {
+            "id": self.id,
+            "synthesis_order_id": self.synthesis_order_id,
+            "source_one_type": self.source_one_type,
+            "source_one_id": self.source_one_id,
+            "source_snapshot": snapshot,
+            "status": self.status,
+            "priority": self.priority,
+            "sort_order": self.sort_order,
+            "order_kind": self.order_kind,
+            "supply_mode": self.supply_mode,
+            "target_name": self.target_name,
+            "target_codes": codes,
+            "mouse_strain": self.mouse_strain,
+            "synthesis_code": self.synthesis_code,
+            "order_no": self.order_no,
+            "synthetic_corp": self.synthetic_corp,
+            "synthetic_count": self.synthetic_count,
+            "synthetic_date": self.synthetic_date,
+            "arrival_count": self.arrival_count,
+            "arrival_date": self.arrival_date,
+            "flow_count": self.flow_count,
+            "flow_date": self.flow_date,
+            "affinity_count": self.affinity_count,
+            "affinity_date": self.affinity_date,
+            "owner": self.owner,
+            "batch_label": self.batch_label,
+            "assay_note": self.assay_note,
+            "remark": self.remark,
+            "eng_type": self.eng_type,
+            "eng_method": self.eng_method,
+            "eng_parent_seq": self.eng_parent_seq,
+            "eng_requirement": self.eng_requirement,
+            "eng_result": self.eng_result,
+            "project_code": self.project_code,
+            "experiment_id": self.experiment_id,
+            "study_type": self.study_type,
+            "pm": self.pm,
+            "created_by": self.created_by,
+            "created_at": format_time(self.created_at),
+            "updated_at": format_time(self.updated_at),
+        }
+

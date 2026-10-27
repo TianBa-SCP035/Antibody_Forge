@@ -37,7 +37,7 @@ MAX_CHANGES_PER_ENTITY = 500
 MAX_AUDIT_VALUE_BYTES = 4096
 MAX_AUDIT_DETAIL_BYTES = 512 * 1024
 
-_IGNORED_FIELDS = frozenset({"created_at", "updated_at", "last_login_at"})
+_IGNORED_FIELDS = frozenset({"created_at", "updated_at", "last_login_at", "source_snapshot"})
 
 
 @dataclass
@@ -813,6 +813,7 @@ def _entity_label(obj: Any) -> str | None:
         "experiment_id",
         "project_code",
         "project_name",
+        "synthesis_order_id",
         "library_order_id",
         "orderNum",
         "code",

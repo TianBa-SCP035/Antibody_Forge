@@ -46,6 +46,7 @@
           :class="{ 'is-editable': editable, 'is-purple': toneOf(item) === 'purple' }"
           :type="toneOf(item) === 'purple' ? 'info' : toneOf(item)"
           effect="plain"
+          disable-transitions
         >
           {{ item }}
         </el-tag>
@@ -55,6 +56,7 @@
           :class="{ 'is-editable': editable }"
           type="info"
           effect="plain"
+          disable-transitions
         >
           —
         </el-tag>
@@ -77,6 +79,7 @@
       :class="{ 'is-editable': editable, 'is-purple': toneOf(item) === 'purple' }"
       :type="toneOf(item) === 'purple' ? 'info' : toneOf(item)"
       effect="plain"
+      disable-transitions
     >
       {{ item }}
     </el-tag>
@@ -86,6 +89,7 @@
       :class="{ 'is-editable': editable }"
       type="info"
       effect="plain"
+      disable-transitions
     >
       —
     </el-tag>

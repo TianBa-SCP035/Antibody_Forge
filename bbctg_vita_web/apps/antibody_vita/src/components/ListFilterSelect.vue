@@ -14,7 +14,9 @@
     @visible-change="onVisible"
   >
     <template v-if="joined && terms.length" #tag>
-      <span class="list-filter-joined">{{ terms.join('、') }}</span>
+      <span class="list-filter-joined">
+        <slot name="tag" :values="terms">{{ terms.join('、') }}</slot>
+      </span>
     </template>
     <slot />
   </el-select>

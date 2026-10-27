@@ -169,3 +169,12 @@
 .sheet-wrap :deep(.sheet-date-editor .vxe-input--suffix) {
   display: none;
 }
+.sheet-category-select {
+  width: 100%;
+}
+.sheet-wrap :deep(.sheet-tone-info) { color: var(--el-color-info); }
+.sheet-wrap :deep(.sheet-tone-primary) { color: var(--el-color-primary); }
+.sheet-wrap :deep(.sheet-tone-warning) { color: var(--el-color-warning); }
+.sheet-wrap :deep(.sheet-tone-success) { color: var(--el-color-success); }
+.sheet-wrap :deep(.sheet-tone-danger) { color: var(--el-color-danger); }
+.sheet-wrap :deep(.sheet-tone-king) { color: #6f4d9c; }

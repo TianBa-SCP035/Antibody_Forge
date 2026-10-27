@@ -480,6 +480,7 @@ function formatLogAction(log: SystemOperationLog) {
   const name = log.operation_name || log.action || '';
   const map: Record<string, string> = {
     'POST /api/molecular-cell/library-orders/files/list': '刷新质检核对',
+    'POST /api/discovery/synthesis-progress/check_remote': '核对外部合成订单',
     'POST /api/auth/user/change_password': '修改密码',
     'PUT /api/auth/user/profile': '更新个人资料',
     'POST /api/order-experiment/sync': '回传工单数据',
@@ -488,6 +489,7 @@ function formatLogAction(log: SystemOperationLog) {
     '每天 00:45 同步外部靶点主数据': '靶点同步',
     '每天 01:15 自动更新抗体发现状态': '发现状态更新',
     '每天 02:00 同步镁伽非终态工单状态': '镁伽状态同步',
+    '每隔 1 小时同步 One 合成订单与交付进度': '合成与验证外部订单同步',
     'Labillion 状态回调': '镁伽状态回调',
     '同步镁伽工单状态': '同步镁伽状态',
   };
@@ -584,6 +586,7 @@ const LOG_TARGET_TYPE_LABELS: Record<string, string> = {
   user: '用户',
   serum_workbench: '免疫工作台',
   discovery_workbench: '发现工作台',
+  synthesis_progress: '合成与验证',
   library: '文库工单',
   library_detail: '文库工单',
   library_file: '构建文件',
@@ -598,6 +601,7 @@ const LOG_TARGET_TYPE_LABELS: Record<string, string> = {
   SerumTiterOrder: '效价工单',
   SerumFile: '文件',
   DiscoveryWorkbench: '发现工作台',
+  DiscoverySynthesisOrder: '合成与验证',
   SysUser: '用户',
   Target: '靶点',
   MegaFlowWorkOrder: '流式工单',
@@ -640,6 +644,7 @@ function formatLogTableName(name?: string) {
     serum_titer_order: '效价工单',
     serum_file: '文件',
     discovery_workbench: '发现工作台',
+    discovery_synthesis_order: '合成与验证',
     sys_user: '用户',
     target: '靶点',
     mega_flow_work_order: '流式工单',

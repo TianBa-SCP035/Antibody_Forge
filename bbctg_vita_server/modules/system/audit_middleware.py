@@ -183,12 +183,16 @@ def _build_context(method: str, path: str, headers: dict[str, str], scope: dict)
 def _fallback_name(method: str, path: str) -> str:
     if method == "POST" and path == "/api/molecular-cell/library-orders/files/list":
         return "刷新质检核对"
+    if method == "POST" and path == "/api/discovery/synthesis-progress/check_remote":
+        return "核对外部合成订单"
     return f"{method} {path}"
 
 
 def _fallback_resource(method: str, path: str) -> str | None:
     if method == "POST" and path == "/api/molecular-cell/library-orders/files/list":
         return "library_file"
+    if method == "POST" and path == "/api/discovery/synthesis-progress/check_remote":
+        return "synthesis_progress"
     return None
 
 
@@ -283,7 +287,13 @@ def _target_from_response(body: bytes) -> tuple[str | None, str | None]:
     if not isinstance(data, dict):
         return None, None
     entity_id = data.get("id")
-    label = data.get("experiment_id") or data.get("name")
+    label = (
+        data.get("experiment_id")
+        or data.get("synthesis_order_id")
+        or data.get("discovery_id")
+        or data.get("library_order_id")
+        or data.get("name")
+    )
     return (
         str(entity_id)[:64] if entity_id not in (None, "") else None,
         str(label)[:255] if label not in (None, "") else None,

@@ -524,6 +524,7 @@ import {
   getSerumUserRoles,
 } from '#/utils/serumPermission'
 import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage'
+import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS, SERUM_MOUSE_STRAIN_OPTIONS } from '#/utils/serumMouseOptions'
 import { filterTargetOptions, normalizeTargetOptions, targetOptionExtra as targetOptionHint } from '#/utils/targetFilterOptions'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
@@ -644,9 +645,9 @@ export default {
       studyTypeFilterQuery: '',
       allPMOptions: [],
       pmFilterQuery: '',
-      allMouseStrainOptions: [],
+      allMouseStrainOptions: [...SERUM_MOUSE_STRAIN_OPTIONS],
       mouseStrainFilterQuery: '',
-      allMouseStrainCategoryOptions: [],
+      allMouseStrainCategoryOptions: [...SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS],
       mouseStrainCategoryFilterQuery: '',
       allStatusOptions: [],
       statusFilterQuery: '',
@@ -824,8 +825,15 @@ export default {
           this.allOwnerOptions = filterOptions.owners || []
           this.allStudyTypeOptions = filterOptions.study_types || []
           this.allPMOptions = filterOptions.pms || []
-          this.allMouseStrainOptions = filterOptions.mouse_strains || []
-          this.allMouseStrainCategoryOptions = filterOptions.mouse_strain_categories || []
+          this.allMouseStrainOptions = [
+            ...new Set([...SERUM_MOUSE_STRAIN_OPTIONS, ...(filterOptions.mouse_strains || [])]),
+          ]
+          this.allMouseStrainCategoryOptions = [
+            ...new Set([
+              ...SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS,
+              ...(filterOptions.mouse_strain_categories || []),
+            ]),
+          ]
           this.allStatusOptions = filterOptions.statuses || []
         }
       } catch (error) {

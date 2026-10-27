@@ -32,6 +32,7 @@ router = APIRouter()
 # 与操作日志表格「操作」列的显示名一致。搜索显示名时要能命中原始动作。
 _LOG_ACTION_LABELS = {
     "POST /api/molecular-cell/library-orders/files/list": "刷新质检核对",
+    "POST /api/discovery/synthesis-progress/check_remote": "核对外部合成订单",
     "POST /api/auth/user/change_password": "修改密码",
     "PUT /api/auth/user/profile": "更新个人资料",
     "POST /api/order-experiment/sync": "回传工单数据",
@@ -40,6 +41,7 @@ _LOG_ACTION_LABELS = {
     "每天 00:45 同步外部靶点主数据": "靶点同步",
     "每天 01:15 自动更新抗体发现状态": "发现状态更新",
     "每天 02:00 同步镁伽非终态工单状态": "镁伽状态同步",
+    "每隔 1 小时同步 One 合成订单与交付进度": "合成与验证外部订单同步",
     "Labillion 状态回调": "镁伽状态回调",
     "同步镁伽工单状态": "同步镁伽状态",
 }

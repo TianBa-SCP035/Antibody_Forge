@@ -156,6 +156,20 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         },
     },
     {
+        "code": "menu.discovery.synthesis_progress",
+        "name": "合成与验证",
+        "category": "menu",
+        "description": "控制抗体发现合成与验证菜单显示",
+        "enabled": True,
+        "visible": True,
+        "sort_order": 10,
+        "config": {
+            "path": "/discovery/synthesis-progress",
+            "icon": "lucide:list-checks",
+            "parent_code": "menu.discovery",
+        },
+    },
+    {
         "code": "menu.molecular_cell",
         "name": "分子与细胞",
         "category": "menu",
@@ -282,6 +296,21 @@ DEFAULT_FEATURE_FLAGS: list[dict[str, Any]] = [
         "visible": True,
         "sort_order": 220,
         "config": _job_config(2, 0),
+    },
+    {
+        "code": "job.discovery_synthesis_order_sync",
+        "name": "合成与验证外部订单同步",
+        "category": "job",
+        "description": "同步 One 合成订单与交付进度",
+        "enabled": True,
+        "visible": True,
+        "sort_order": 225,
+        "config": {
+            **_job_config(0, 20),
+            "schedule": "interval",
+            "every": 1,
+            "unit": "hour",
+        },
     },
 ]
 

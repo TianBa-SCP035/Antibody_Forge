@@ -1088,6 +1088,13 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None
         data.get("library_batch_no"),
         label="建库批号",
     )
+    _append_code_search(
+        filters,
+        MolecularLibraryOrder.source_discovery_id,
+        data.get("source_discovery_id"),
+        upper=True,
+        label="发现编号",
+    )
     target_clause = recorded_target_clause(
         db,
         MolecularLibraryOrder.target_name,
@@ -1103,7 +1110,6 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None
         ("cell_type", MolecularLibraryOrder.cell_type),
         ("notebook_no", MolecularLibraryOrder.notebook_no),
         ("remark", MolecularLibraryOrder.remark),
-        ("source_discovery_id", MolecularLibraryOrder.source_discovery_id),
     ):
         _append_contains(filters, column, data.get(key))
     for key, column in (

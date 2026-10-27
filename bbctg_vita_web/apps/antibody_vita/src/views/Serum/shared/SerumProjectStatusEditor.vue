@@ -29,6 +29,7 @@
         :class="[{ 'is-editable': editable }, tagClass]"
         :type="tagType"
         effect="plain"
+        disable-transitions
         @click.stop
       >
         {{ displayValue }}
@@ -41,6 +42,7 @@
     :class="[{ 'is-editable': editable }, tagClass]"
     :type="tagType"
     effect="plain"
+    disable-transitions
     @click.stop="activateAndOpen"
   >
     {{ displayValue }}

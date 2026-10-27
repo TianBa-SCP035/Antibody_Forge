@@ -136,6 +136,14 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
     url: '/discovery/workbench',
   },
   {
+    id: 'discovery-synthesis',
+    titleKey: 'page.home.presetDiscoverySynthesisTitle',
+    subtitleKey: 'page.home.presetDiscoverySynthesisSubtitle',
+    icon: 'lucide:list-checks',
+    iconClass: 'bg-purple-500/15 text-purple-600',
+    url: '/discovery/synthesis-progress',
+  },
+  {
     id: 'primer-library',
     titleKey: 'page.home.presetPrimerLibraryTitle',
     subtitleKey: 'page.home.presetPrimerLibrarySubtitle',
@@ -355,6 +363,9 @@ export function canAccessStartPath(
   }
   if (path === '/discovery/workbench') {
     return hasAccessByCodes(['discovery.page.workbench']);
+  }
+  if (path === '/discovery/synthesis-progress') {
+    return hasAccessByCodes(['discovery.page.synthesis_progress']);
   }
   if (path === '/molecular-cell/library-construction') {
     return hasAccessByCodes(['molecular.page.library']);

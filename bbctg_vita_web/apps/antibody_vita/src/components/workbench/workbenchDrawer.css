@@ -45,3 +45,49 @@
 .el-overlay:has(.workbench-drawer) .el-drawer {
   pointer-events: auto;
 }
+.workbench-drawer .status-select.status-tone-info .el-select__wrapper,
+.workbench-drawer .drawer-select.status-tone-info .el-select__wrapper,
+.workbench-drawer .priority-select.status-tone-info .el-select__wrapper {
+  background-color: var(--el-color-info-light-9);
+}
+.workbench-drawer .status-select.status-tone-info .el-select__selected-item,
+.workbench-drawer .drawer-select.status-tone-info .el-select__selected-item,
+.workbench-drawer .priority-select.status-tone-info .el-select__selected-item {
+  color: var(--el-color-info);
+}
+.workbench-drawer .status-select.status-tone-primary .el-select__wrapper {
+  background-color: var(--el-color-primary-light-9);
+}
+.workbench-drawer .status-select.status-tone-primary .el-select__selected-item {
+  color: var(--el-color-primary);
+}
+.workbench-drawer .status-select.status-tone-warning .el-select__wrapper,
+.workbench-drawer .priority-select.status-tone-warning .el-select__wrapper {
+  background-color: var(--el-color-warning-light-9);
+}
+.workbench-drawer .status-select.status-tone-warning .el-select__selected-item,
+.workbench-drawer .priority-select.status-tone-warning .el-select__selected-item {
+  color: var(--el-color-warning);
+}
+.workbench-drawer .status-select.status-tone-success .el-select__wrapper,
+.workbench-drawer .drawer-select.status-tone-success .el-select__wrapper {
+  background-color: var(--el-color-success-light-9);
+}
+.workbench-drawer .status-select.status-tone-success .el-select__selected-item,
+.workbench-drawer .drawer-select.status-tone-success .el-select__selected-item {
+  color: var(--el-color-success);
+}
+.workbench-drawer .status-select.status-tone-danger .el-select__wrapper,
+.workbench-drawer .priority-select.status-tone-danger .el-select__wrapper {
+  background-color: var(--el-color-danger-light-9);
+}
+.workbench-drawer .status-select.status-tone-danger .el-select__selected-item,
+.workbench-drawer .priority-select.status-tone-danger .el-select__selected-item {
+  color: var(--el-color-danger);
+}
+.workbench-drawer .priority-select.status-tone-king .el-select__wrapper {
+  background-color: #efe8f6;
+}
+.workbench-drawer .priority-select.status-tone-king .el-select__selected-item {
+  color: #6f4d9c;
+}

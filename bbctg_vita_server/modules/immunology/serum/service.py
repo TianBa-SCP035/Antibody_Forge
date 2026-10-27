@@ -178,6 +178,28 @@ def _project_target_pairs():
     )
 
 
+def _strain_token_filter(column, value: str):
+    return or_(
+        column == value,
+        column.like(f"{value}、%"),
+        column.like(f"%、{value}"),
+        column.like(f"%、{value}、%"),
+    )
+
+
+def join_strain_parts(groups: list[dict[str, Any]], key: str) -> str | None:
+    values: list[str] = []
+    seen: set[str] = set()
+    for item in groups:
+        for part in str(item.get(key) or "").split("、"):
+            text = part.strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            values.append(text)
+    return "、".join(values) or None
+
+
 def apply_project_filters(stmt, data: dict[str, Any], *, db: Session | None = None):
     p_code = data.get("project_code")
     p_codes = data.get("project_codes")
@@ -194,9 +216,19 @@ def apply_project_filters(stmt, data: dict[str, Any], *, db: Session | None = No
 
     stmt = stmt.where(SerumImmProject.project_status != "deleted")
     if p_codes:
-        stmt = stmt.where(SerumImmProject.project_code.in_(p_codes))
+        stmt = stmt.where(
+            or_(
+                SerumImmProject.project_code.in_(p_codes),
+                SerumImmProject.experiment_id.in_(p_codes),
+            )
+        )
     elif p_code:
-        stmt = stmt.where(SerumImmProject.project_code.like(f"%{p_code}%"))
+        stmt = stmt.where(
+            or_(
+                SerumImmProject.project_code.like(f"%{p_code}%"),
+                SerumImmProject.experiment_id.like(f"%{p_code}%"),
+            )
+        )
     if p_name:
         stmt = stmt.where(SerumImmProject.project_name.like(f"%{p_name}%"))
     if lab_notebook:
@@ -241,11 +273,11 @@ def apply_project_filters(stmt, data: dict[str, Any], *, db: Session | None = No
         stmt = stmt.where(target_clause)
     stmt = restrict(stmt, study_type, lambda value: SerumImmProject.study_type == value)
     stmt = restrict(stmt, pm, lambda value: SerumImmProject.pm == value)
-    stmt = restrict(stmt, mouse_strain, lambda value: SerumImmProject.mouse_strain == value)
+    stmt = restrict(stmt, mouse_strain, lambda value: _strain_token_filter(SerumImmProject.mouse_strain, value))
     stmt = restrict(
         stmt,
         mouse_strain_category,
-        lambda value: SerumImmProject.mouse_strain_category == value,
+        lambda value: _strain_token_filter(SerumImmProject.mouse_strain_category, value),
     )
     return stmt
 
@@ -813,11 +845,47 @@ def update_project_identifiers(
     return new_eid
 
 
+def validate_scheme_graph(payload: dict[str, Any]) -> None:
+    mouse_groups = payload["mouse_groups"]
+    antigens = payload["antigens"]
+    steps = payload["steps"]
+    group_ids = [str(item.get("group_id") or "").strip() for item in mouse_groups]
+    antigen_ids = [str(item.get("antigen_id") or "").strip() for item in antigens]
+
+    if any(not item for item in group_ids):
+        raise ValueError("小鼠分组的组别不能为空")
+    if len(group_ids) != len(set(group_ids)):
+        raise ValueError("小鼠分组的组别不能重复")
+    if any(not item for item in antigen_ids):
+        raise ValueError("抗原 ID 不能为空")
+    if len(antigen_ids) != len(set(antigen_ids)):
+        raise ValueError("抗原 ID 不能重复")
+
+    group_set = set(group_ids)
+    antigen_set = set(antigen_ids)
+    for step in steps:
+        group_id = str(step.get("group_id") or "").strip()
+        if not group_id or group_id not in group_set:
+            raise ValueError("免疫步骤引用了不存在的小鼠分组")
+        raw_antigens = step.get("antigen_id")
+        if isinstance(raw_antigens, list):
+            refs = [str(item).strip() for item in raw_antigens if str(item).strip()]
+        else:
+            refs = [
+                item.strip()
+                for item in str(raw_antigens or "").replace("，", ",").split(",")
+                if item.strip()
+            ]
+        if any(item != "N/A" and item not in antigen_set for item in refs):
+            raise ValueError("免疫步骤引用了不存在的抗原")
+
+
 def save_serum(db: Session, data: dict[str, Any]) -> dict:
     data = dict(data or {})
     for field in PROJECT_CHILD_FIELDS:
         if field not in data or not isinstance(data[field], list):
             raise ValueError(f"项目数据不完整：缺少 {field}")
+    validate_scheme_graph(data)
     expected_revision = str(data.pop("project_revision", "") or "").strip()
     _normalize_project_identifiers(data)
     project_id = data.get("id")
@@ -865,8 +933,8 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
         new_pcs = bulk_insert(db, SerumTiterPc, data["titer_pcs"], new_eid)
 
     mouse_groups = data.get("mouse_groups", [])
-    project.mouse_strain = "+".join(sorted({m.get("mouse_strain", "").strip() for m in mouse_groups if m.get("mouse_strain")}))
-    project.mouse_strain_category = "+".join(sorted({m.get("mouse_strain_category", "").strip() for m in mouse_groups if m.get("mouse_strain_category")}))
+    project.mouse_strain = join_strain_parts(mouse_groups, "mouse_strain") or ""
+    project.mouse_strain_category = join_strain_parts(mouse_groups, "mouse_strain_category") or ""
     db.flush()
     if project_id:
         _sync_queue_if_terminal_status_changed(
@@ -1054,6 +1122,14 @@ def get_filter_options(db: Session) -> dict:
         rows = db.execute(select(column).distinct().where(column.is_not(None), column != "").order_by(column)).all()
         return [row[0] for row in rows if row[0]]
 
+    def token_values(column):
+        result: set[str] = set()
+        for value in distinct_values(column):
+            for part in str(value).split("、"):
+                if part.strip():
+                    result.add(part.strip())
+        return sorted(result)
+
     return {
         "targets": target_select_options(
             (pairs := db.execute(_project_target_pairs()).all()),
@@ -1062,8 +1138,8 @@ def get_filter_options(db: Session) -> dict:
         "owners": distinct_values(SerumImmProject.owner),
         "study_types": distinct_values(SerumImmProject.study_type),
         "pms": distinct_values(SerumImmProject.pm),
-        "mouse_strains": distinct_values(SerumImmProject.mouse_strain),
-        "mouse_strain_categories": distinct_values(SerumImmProject.mouse_strain_category),
+        "mouse_strains": token_values(SerumImmProject.mouse_strain),
+        "mouse_strain_categories": token_values(SerumImmProject.mouse_strain_category),
         "statuses": distinct_values(SerumImmProject.project_status),
     }
 

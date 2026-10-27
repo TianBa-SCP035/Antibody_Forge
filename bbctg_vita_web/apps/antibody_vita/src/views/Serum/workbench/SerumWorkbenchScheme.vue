@@ -497,26 +497,20 @@
                     </template>
                 </el-table-column>
                 <el-table-column label="抗原" min-width="150">
-                     <template #default="{ row, $index }">
-                        <div class="antigen-select-wrapper">
-                            <div
-                              class="antigen-display-text"
-                              :class="{ 'is-placeholder': !getAntigenDisplay(row.antigen_id) }"
-                            >{{ getAntigenDisplay(row.antigen_id) || '选择抗原' }}</div>
-                            <el-select
-                                :ref="`antigenSelect_${group.group_id}_${$index}`"
-                                v-model="row.antigen_id"
-                                size="small"
-                                placeholder="选择抗原"
-                                filterable
-                                multiple
-                                class="antigen-select-hidden"
-                                @change="handleAntigenChange(row, group.group_id, $index)"
-                            >
-                                 <el-option v-for="a in postForm.antigens" :key="a.antigen_id" :label="a.antigen_name" :value="a.antigen_id" />
-                                 <el-option label="N/A(不适用)" value="N/A" />
-                            </el-select>
-                        </div>
+                     <template #default="{ row }">
+                        <ListFilterSelect
+                            :model-value="row.antigen_id"
+                            joined
+                            clearable
+                            size="small"
+                            placeholder="选择抗原"
+                            title="左键单选，右键多选"
+                            @change="handleAntigenChange(row, $event)"
+                        >
+                            <template #tag>{{ getAntigenDisplay(row.antigen_id) }}</template>
+                            <el-option v-for="a in postForm.antigens" :key="a.antigen_id" :label="a.antigen_name || a.antigen_id" :value="a.antigen_id" />
+                            <el-option label="N/A(不适用)" value="N/A" />
+                        </ListFilterSelect>
                     </template>
                 </el-table-column>
                 <el-table-column label="剂量" min-width="90">
@@ -798,6 +792,7 @@ import {
   startWorkbench,
 } from '#/api/serumWorkbench'
 import { SERUM_ERRORS } from '../shared/errors'
+import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import MouseRegistryDialog from '../shared/MouseRegistryDialog.vue'
 import AssayMethodEditor from '../shared/AssayMethodEditor.vue'
 import SerumUserSelect from '../shared/SerumUserSelect.vue'
@@ -950,6 +945,7 @@ function resortMianStepsInGroup(steps, groupId) {
 export default {
   name: 'SerumWorkbenchScheme',
   components: {
+    ListFilterSelect,
     MouseRegistryDialog,
     SerumUserSelect,
     AssayMethodEditor,
@@ -1230,8 +1226,8 @@ export default {
         }
         if (this.postForm.steps) {
           this.postForm.steps.forEach((step) => {
-            if (step.antigen_id && typeof step.antigen_id === 'string') {
-              step.antigen_id = step.antigen_id
+            if (!Array.isArray(step.antigen_id)) {
+              step.antigen_id = String(step.antigen_id || '')
                 .split(',')
                 .map((item) => item.trim())
                 .filter(Boolean)
@@ -1340,7 +1336,7 @@ export default {
       const names = ids.map(id => {
         const trimmedId = String(id).trim()
         const antigen = this.postForm.antigens && this.postForm.antigens.find(a => String(a.antigen_id) === trimmedId)
-        return antigen ? antigen.antigen_name : trimmedId
+        return (antigen && antigen.antigen_name) || trimmedId
       })
 
       return names.join(' + ')
@@ -1471,14 +1467,19 @@ export default {
         }
         this.handleRouteChange(step)
     },
-    handleAntigenChange(row, groupId, rowIndex) {
-        let antigenIds = Array.isArray(row.antigen_id) ? [...row.antigen_id] : []
+    handleAntigenChange(row, value = row.antigen_id) {
+        const validIds = new Set((this.postForm.antigens || []).map(a => String(a.antigen_id || '').trim()).filter(Boolean))
+        let antigenIds = (Array.isArray(value) ? value : [value])
+            .map(id => String(id ?? '').trim())
+            .filter(id => id === 'N/A' || validIds.has(id))
 
         const hasNA = antigenIds.includes('N/A')
         const hasNormalAntigen = antigenIds.some(id => id !== 'N/A')
 
         if (hasNA && hasNormalAntigen) {
-            antigenIds = antigenIds.filter(id => id !== 'N/A')
+            antigenIds = antigenIds[antigenIds.length - 1] === 'N/A'
+                ? ['N/A']
+                : antigenIds.filter(id => id !== 'N/A')
         }
 
         row.antigen_id = antigenIds
@@ -1505,16 +1506,6 @@ export default {
                 this.applyAntigenRouteByType(row, antigen)
             }
         }
-
-        this.$nextTick(() => {
-            const refName = `antigenSelect_${groupId}_${rowIndex}`
-            const selectRef = this.$refs[refName]
-            const ins = Array.isArray(selectRef) ? selectRef[0] : selectRef
-
-            if (ins) {
-                ins.blur && ins.blur()
-            }
-        })
     },
     handleStageChange(row) {
         if (row.stage_name === '采血') {
@@ -1783,7 +1774,7 @@ export default {
     },
     planningStrain(value) {
         const text = String(value || '').trim()
-        return text.includes('+') ? '' : text
+        return text.includes('、') ? '' : text
     },
     createMouseGroup(groupId, seedWorkbench = false) {
         return {
@@ -2275,43 +2266,6 @@ export default {
     text-align: left;
 }
 
-/* Hide multi-select tags to show as single-select */
-.antigen-select-hidden :deep(.el-select__tags) {
-    display: none;
-}
-
-.antigen-select-hidden {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 28px;
-}
-
-.antigen-select-hidden :deep(.el-select__wrapper) {
-    height: 28px;
-    max-height: 28px;
-    min-height: 28px;
-    overflow: hidden;
-    opacity: 0;
-}
-
-.antigen-select-hidden :deep(.el-select__selection),
-.antigen-select-hidden :deep(.el-select__selected-item),
-.antigen-select-hidden :deep(.el-select__input-wrapper),
-.antigen-select-hidden :deep(.el-select__placeholder) {
-    max-height: 28px;
-    overflow: hidden;
-    opacity: 0;
-}
-
-/* Antigen select wrapper styling */
-.antigen-select-wrapper {
-    position: relative;
-    width: 100%;
-    height: 28px;
-    overflow: hidden;
-}
-
 .mouse-no-list-input :deep(.el-input__wrapper) {
     cursor: pointer;
 }
@@ -2321,35 +2275,5 @@ export default {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.antigen-display-text {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 1;
-    box-sizing: border-box;
-    width: 100%;
-    height: 28px;
-    line-height: 28px;
-    padding: 0 30px 0 15px;
-    font-size: 12px;
-    background: #fff;
-    border: 1px solid #dcdfe6;
-    border-radius: 4px;
-    cursor: pointer;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: #303133;
-    pointer-events: none;
-}
-
-.antigen-display-text.is-placeholder {
-    color: #C0C4CC;
-}
-
-.antigen-select-hidden :deep(.el-input__inner) {
-    opacity: 0;
 }
 </style>

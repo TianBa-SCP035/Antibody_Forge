@@ -15,6 +15,7 @@ from utils.filter_values import (
     catalog_names_for_pairs,
     recorded_target_clause,
     restrict,
+    split_code_tokens,
     target_select_options,
 )
 
@@ -34,8 +35,10 @@ from modules.immunology.serum.service import (
     EXPERIMENT_RELATED_MODELS,
     TERMINAL_PROJECT_STATUSES,
     generate_next_id,
+    join_strain_parts as _join_strain_parts,
     rename_experiment_related_records,
     update_project_identifiers,
+    validate_scheme_graph as _validate_scheme_graph,
 )
 from utils.workbench_queue import (
     DEFAULT_PRIORITY,
@@ -471,20 +474,6 @@ def _overlay_identity(data: dict[str, Any], project: SerumImmProject | None) -> 
     return data
 
 
-def _join_strain_parts(groups: list[dict[str, Any]], key: str, separator: str) -> str | None:
-    values: list[str] = []
-    seen: set[str] = set()
-    for item in groups:
-        text = str(item.get(key) or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        values.append(text)
-    if separator == "+":
-        values.sort()
-    return separator.join(values) or None
-
-
 def _strain_groups_by_experiment(
     db: Session,
     experiment_ids: list[str],
@@ -526,8 +515,8 @@ def _show_scheme_strains(
         item["mouse_group_count"] = len(groups)
         if not groups:
             continue
-        item["mouse_strain"] = _join_strain_parts(groups, "mouse_strain", "、")
-        item["mouse_strain_category"] = _join_strain_parts(groups, "mouse_strain_category", "、")
+        item["mouse_strain"] = _join_strain_parts(groups, "mouse_strain")
+        item["mouse_strain_category"] = _join_strain_parts(groups, "mouse_strain_category")
 
 
 def _write_strain_to_single_group(db: Session, row: SerumImmWorkbench) -> None:
@@ -919,12 +908,14 @@ def _target_pair_stmt():
 
 
 def _apply_list_filters(stmt, data: dict[str, Any], *, skip_status: bool = False, db: Session | None = None):
-    keyword = str(data.get("keyword") or "").strip()
+    kw_tokens = split_code_tokens(data.get("keyword"))
     view_group = str(data.get("view_group") or "").strip()
 
-    if keyword:
-        like = f"%{keyword}%"
+    if len(kw_tokens) == 1:
+        like = f"%{kw_tokens[0]}%"
         stmt = stmt.where(or_(*(field.like(like) for field in _keyword_field_exprs())))
+    elif len(kw_tokens) > 1:
+        stmt = stmt.where(or_(*(field.in_(kw_tokens) for field in _keyword_field_exprs())))
     pair_stmt, name_expr, codes_expr = _target_pair_stmt()
     target_clause = recorded_target_clause(db, name_expr, codes_expr, data.get("target_name"), pair_stmt)
     if target_clause is not None:
@@ -1064,9 +1055,9 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     stmt = _apply_list_filters(_base_stmt(), payload, db=db)
     total = db.scalar(_apply_list_filters(_count_stmt(), payload, db=db)) or 0
     order_by = [*_list_order(payload)]
-    keyword = str(payload.get("keyword") or "").strip()
-    if keyword:
-        order_by.insert(0, _keyword_rank_expr(keyword))
+    kw_tokens = split_code_tokens(payload.get("keyword"))
+    if len(kw_tokens) == 1:
+        order_by.insert(0, _keyword_rank_expr(kw_tokens[0]))
     rows = db.scalars(
         stmt.order_by(*order_by)
         .offset((page - 1) * limit)
@@ -1108,9 +1099,9 @@ def export_list_workbook(
     payload = data or {}
     stmt = _apply_list_filters(_base_stmt(), payload, db=db)
     order_by = [*_list_order(payload)]
-    keyword = str(payload.get("keyword") or "").strip()
-    if keyword:
-        order_by.insert(0, _keyword_rank_expr(keyword))
+    kw_tokens = split_code_tokens(payload.get("keyword"))
+    if len(kw_tokens) == 1:
+        order_by.insert(0, _keyword_rank_expr(kw_tokens[0]))
     workbench_rows = db.scalars(stmt.order_by(*order_by)).unique().all()
 
     experiment_ids = [
@@ -1207,7 +1198,7 @@ def get_options(db: Session) -> dict[str, Any]:
         result: set[str] = set()
         for column in columns:
             for value in db.scalars(select(column).where(column.is_not(None)).distinct()).all():
-                for part in str(value).replace("、", "+").split("+"):
+                for part in str(value).split("、"):
                     if part.strip():
                         result.add(part.strip())
         return sorted(result)
@@ -1562,11 +1553,10 @@ def start(db: Session, workbench_id: int) -> dict[str, Any]:
                         continue
                     setattr(project, field, getattr(row, field))
                 if mouse_group_data:
-                    project.mouse_strain = _join_strain_parts(mouse_group_data, "mouse_strain", "+")
+                    project.mouse_strain = _join_strain_parts(mouse_group_data, "mouse_strain")
                     project.mouse_strain_category = _join_strain_parts(
                         mouse_group_data,
                         "mouse_strain_category",
-                        "+",
                     )
                 else:
                     project.mouse_strain = row.mouse_strain or None
@@ -1844,41 +1834,6 @@ def _replace_owned_children(
             db.delete(obj)
     db.flush()
     return inserted
-
-
-def _validate_scheme_graph(payload: dict[str, Any]) -> None:
-    mouse_groups = payload["mouse_groups"]
-    antigens = payload["antigens"]
-    steps = payload["steps"]
-    group_ids = [str(item.get("group_id") or "").strip() for item in mouse_groups]
-    antigen_ids = [str(item.get("antigen_id") or "").strip() for item in antigens]
-
-    if any(not item for item in group_ids):
-        raise ValueError("小鼠分组的组别不能为空")
-    if len(group_ids) != len(set(group_ids)):
-        raise ValueError("小鼠分组的组别不能重复")
-    if any(not item for item in antigen_ids):
-        raise ValueError("抗原 ID 不能为空")
-    if len(antigen_ids) != len(set(antigen_ids)):
-        raise ValueError("抗原 ID 不能重复")
-
-    group_set = set(group_ids)
-    antigen_set = set(antigen_ids)
-    for step in steps:
-        group_id = str(step.get("group_id") or "").strip()
-        if not group_id or group_id not in group_set:
-            raise ValueError("免疫步骤引用了不存在的小鼠分组")
-        raw_antigens = step.get("antigen_id")
-        if isinstance(raw_antigens, list):
-            refs = [str(item).strip() for item in raw_antigens if str(item).strip()]
-        else:
-            refs = [
-                item.strip()
-                for item in str(raw_antigens or "").replace("，", ",").split(",")
-                if item.strip()
-            ]
-        if any(item != "N/A" and item not in antigen_set for item in refs):
-            raise ValueError("免疫步骤引用了不存在的抗原")
 
 
 def save_scheme(

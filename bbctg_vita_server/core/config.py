@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     equip_appsecret: str = ""
     cell_db_url: str = ""
     employee_db_url: str = ""
+    one_db_url: str = ""
     dev_user_openid: str = ""
     dev_user_name: str = "周科钢 Kegang Zhou"
     labillion_base_url: str = ""

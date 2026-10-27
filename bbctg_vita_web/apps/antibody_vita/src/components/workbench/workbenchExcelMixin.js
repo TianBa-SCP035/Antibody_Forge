@@ -67,6 +67,10 @@ export default {
       sheetDragMode: '',
       sheetPointerDown: false,
       sheetColumnMove: null,
+      sortEditingId: null,
+      sortInputRefs: {},
+      sortable: null,
+      sortableInitToken: 0,
       sheetRowConfig: SHEET_ROW_CONFIG,
       sheetCellConfig: SHEET_CELL_CONFIG,
       sheetColumnConfig: SHEET_COLUMN_CONFIG,
@@ -149,6 +153,7 @@ export default {
     window.addEventListener('mouseup', this.onWindowMouseUp)
   },
   beforeUnmount() {
+    this.destroySortable()
     if (this._sheetRangeRafId) {
       cancelAnimationFrame(this._sheetRangeRafId)
       this._sheetRangeRafId = 0
@@ -164,6 +169,7 @@ export default {
     }
   },
   deactivated() {
+    this.destroySortable()
     if (this._sheetRangeRafId) {
       cancelAnimationFrame(this._sheetRangeRafId)
       this._sheetRangeRafId = 0
@@ -258,7 +264,37 @@ export default {
       return Number.isInteger(n) && n > 0 ? String(n) : '-'
     },
     toggleQueueSort() {
+      if (this.listQuery && 'sort_dir' in this.listQuery) {
+        this.listQuery.sort_dir = ''
+      }
       this.listQuery.sort_field = this.isQueueSorted ? '' : 'sort_order'
+      this.listQuery.page = 1
+      this.getList()
+    },
+    dateSortMark(field) {
+      if (this.listQuery?.sort_field !== field) return ''
+      return this.listQuery?.sort_dir === 'desc' ? ' ↓' : ' ↑'
+    },
+    dateSortTitle(field) {
+      const col =
+        this.sheetColumnByKey?.get(field)?.column
+        || this.workbenchColumns?.find?.((c) => c.key === field)
+      const label = col?.label || '日期'
+      if (this.listQuery?.sort_field !== field) return `左键按${label}从早到晚`
+      if (this.listQuery?.sort_dir === 'asc') return '当前从早到晚。再点改为从晚到早'
+      return '当前从晚到早。再点恢复最新在前'
+    },
+    cycleDateSort(field) {
+      if (!this.listQuery) return
+      if (this.listQuery.sort_field === field && this.listQuery.sort_dir === 'asc') {
+        this.listQuery.sort_dir = 'desc'
+      } else if (this.listQuery.sort_field === field && this.listQuery.sort_dir === 'desc') {
+        this.listQuery.sort_field = ''
+        this.listQuery.sort_dir = ''
+      } else {
+        this.listQuery.sort_field = field
+        this.listQuery.sort_dir = 'asc'
+      }
       this.listQuery.page = 1
       this.getList()
     },
@@ -291,6 +327,66 @@ export default {
       if (!moved || !target || moved.id === target.id) return null
       if (this.isQueueTerminalRow?.(moved) || this.isQueueTerminalRow?.(target)) return null
       return { movedId: moved.id, targetId: target.id }
+    },
+    bindSortInput(id, el) {
+      if (el) this.sortInputRefs[id] = el
+      else delete this.sortInputRefs[id]
+    },
+    startSortEdit(row) {
+      if (!this.canEditSortCell(row) || !row?.id) return
+      this.sortEditingId = row.id
+      this.$nextTick(() => {
+        const input = this.sortInputRefs[row.id]
+        input?.focus?.()
+        const native = input?.input || input?.$el?.querySelector?.('input')
+        native?.select?.()
+      })
+    },
+    finishSortEdit(row) {
+      if (this.sortEditingId !== row.id) return
+      this.sortEditingId = null
+      this.persistRow?.(row, 'sort_order')
+    },
+    workbenchTbody() {
+      return this.$refs.workbenchTable?.$el?.querySelector('.el-table__body-wrapper tbody')
+    },
+    dataRowEls(tbody) {
+      return [...(tbody?.children || [])].filter((tr) => tr.classList?.contains('el-table__row'))
+    },
+    scheduleSortable() {
+      this.$nextTick(() => this.initSortable())
+    },
+    async initSortable() {
+      const initToken = ++this.sortableInitToken
+      if (this.viewMode !== 'workbench' || !this.canDragRows) {
+        this.destroySortable()
+        return
+      }
+      await this.$nextTick()
+      const tbody = this.workbenchTbody()
+      if (!tbody || initToken !== this.sortableInitToken || !tbody.isConnected) return
+      if (this.sortable?.el === tbody) return
+      this.destroySortable()
+      const Sortable = (await import('sortablejs')).default
+      if (initToken !== this.sortableInitToken || !tbody.isConnected) return
+      this.sortable = Sortable.create(tbody, {
+        animation: 180,
+        handle: '.sort-column-cell',
+        draggable: 'tr.el-table__row',
+        ghostClass: 'wb-sortable-ghost',
+        onEnd: (event) => this.handleDragEnd?.(event),
+      })
+    },
+    destroySortable() {
+      this.sortable?.destroy?.()
+      this.sortable = null
+    },
+    revertDrag(item, oldIndex, newIndex) {
+      const parent = item?.parentNode
+      if (!parent || oldIndex == null || newIndex == null || oldIndex === newIndex) return
+      const dataRows = this.dataRowEls(parent)
+      const anchor = newIndex > oldIndex ? dataRows[oldIndex] : dataRows[oldIndex + 1]
+      parent.insertBefore(item, anchor || null)
     },
     setSheetDirectValue(row, key, text) {
       row[key] = text

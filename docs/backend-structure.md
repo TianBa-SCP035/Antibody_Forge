@@ -44,6 +44,7 @@ DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Offi
 | `/api/user/info` | `api.py`（Vben 用户信息） |
 | `/api/atlas` | `modules/atlas` |
 | `/api/discovery/workbench` | `modules/discovery/workbench` |
+| `/api/discovery/synthesis-progress` | `modules/discovery/synthesis_progress` |
 | `/api/molecular-cell/library-orders` | `modules/molecular_cell/library_orders` |
 | `/api/molecular-cell/library-orders/catalog` | `modules/molecular_cell/primer_catalog`（引物库） |
 | `/api/serum` | `modules/immunology/serum` |

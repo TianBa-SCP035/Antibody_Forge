@@ -1266,10 +1266,6 @@ export default {
       total: 0,
       stats: { all: 0, harvest: 0, library: 0, sequencing: 0, cancelled: 0, boosting: 0, missing_date: 0 },
       viewMode: coerceWorkbenchViewMode(lastViewMode),
-      sortEditingId: null,
-      sortInputRefs: {},
-      sortable: null,
-      sortableInitToken: 0,
       showAdvancedOps: false,
       drawerVisible: false,
       editingId: null,
@@ -1456,7 +1452,6 @@ export default {
     this.scheduleSortable()
   },
   beforeUnmount() {
-    this.destroySortable()
     document.removeEventListener('mousedown', this.onDocumentPointerDown, true)
   },
   activated() {
@@ -1473,7 +1468,6 @@ export default {
   },
   deactivated() {
     this.closeEditor()
-    this.destroySortable()
     document.removeEventListener('mousedown', this.onDocumentPointerDown, true)
   },
   watch: {
@@ -2083,39 +2077,10 @@ export default {
       this.listQuery.page = 1
       this.getList()
     },
-    toggleQueueSort() {
-      this.listQuery.sort_dir = ''
-      this.listQuery.sort_field = this.isQueueSorted ? '' : 'sort_order'
-      this.listQuery.page = 1
-      this.getList()
-    },
-    dateSortMark(field) {
-      if (this.listQuery.sort_field !== field) return ''
-      return this.listQuery.sort_dir === 'desc' ? ' ↓' : ' ↑'
-    },
-    dateSortTitle(field) {
-      const label = field === 'boost_date' ? '冲击日期' : '剖鼠日期'
-      if (this.listQuery.sort_field !== field) return `左键按${label}从早到晚`
-      if (this.listQuery.sort_dir === 'asc') return '当前从早到晚。再点改为从晚到早'
-      return '当前从晚到早。再点恢复最新在前'
-    },
     excelHeaderClick(column) {
       if (column?.key !== 'harvest_date' && column?.key !== 'boost_date') return false
       this.cycleDateSort(column.key)
       return true
-    },
-    cycleDateSort(field) {
-      if (this.listQuery.sort_field === field && this.listQuery.sort_dir === 'asc') {
-        this.listQuery.sort_dir = 'desc'
-      } else if (this.listQuery.sort_field === field && this.listQuery.sort_dir === 'desc') {
-        this.listQuery.sort_field = ''
-        this.listQuery.sort_dir = ''
-      } else {
-        this.listQuery.sort_field = field
-        this.listQuery.sort_dir = 'asc'
-      }
-      this.listQuery.page = 1
-      this.getList()
     },
     resetFilters() {
       const viewGroup = this.listQuery.view_group
@@ -2762,61 +2727,6 @@ export default {
         notifyApiError(error, { messages: { default: '粘贴保存失败' } })
       }
     },
-    bindSortInput(id, el) {
-      if (el) this.sortInputRefs[id] = el
-      else delete this.sortInputRefs[id]
-    },
-    startSortEdit(row) {
-      if (!this.canEditSortCell(row) || !row?.id) return
-      this.sortEditingId = row.id
-      this.$nextTick(() => this.sortInputRefs[row.id]?.focus?.())
-    },
-    finishSortEdit(row) {
-      if (this.sortEditingId !== row.id) return
-      this.sortEditingId = null
-      this.persistRow(row, 'sort_order')
-    },
-    workbenchTbody() {
-      return this.$refs.workbenchTable?.$el?.querySelector('.el-table__body-wrapper tbody')
-    },
-    dataRowEls(tbody) {
-      return [...(tbody?.children || [])].filter((tr) => tr.classList?.contains('el-table__row'))
-    },
-    scheduleSortable() {
-      this.$nextTick(() => this.initSortable())
-    },
-    async initSortable() {
-      const initToken = ++this.sortableInitToken
-      if (this.viewMode !== 'workbench' || !this.canDragRows) {
-        this.destroySortable()
-        return
-      }
-      await this.$nextTick()
-      const tbody = this.workbenchTbody()
-      if (!tbody || initToken !== this.sortableInitToken || !tbody.isConnected) return
-      if (this.sortable?.el === tbody) return
-      this.destroySortable()
-      const Sortable = (await import('sortablejs')).default
-      if (initToken !== this.sortableInitToken || !tbody.isConnected) return
-      this.sortable = Sortable.create(tbody, {
-        animation: 180,
-        handle: '.sort-column-cell',
-        draggable: 'tr.el-table__row',
-        ghostClass: 'wb-sortable-ghost',
-        onEnd: (event) => this.handleDragEnd(event),
-      })
-    },
-    destroySortable() {
-      this.sortable?.destroy?.()
-      this.sortable = null
-    },
-    revertDrag(item, oldIndex, newIndex) {
-      const parent = item?.parentNode
-      if (!parent || oldIndex == null || newIndex == null || oldIndex === newIndex) return
-      const dataRows = this.dataRowEls(parent)
-      const anchor = newIndex > oldIndex ? dataRows[oldIndex] : dataRows[oldIndex + 1]
-      parent.insertBefore(item, anchor || null)
-    },
     async handleDragEnd(event) {
       const { oldIndex, newIndex, item } = event
       this.revertDrag(item, oldIndex, newIndex)
@@ -2858,226 +2768,21 @@ export default {
 .lifecycle-nav {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
-.filter-panel {
-  padding: var(--list-surface-padding-y) var(--list-surface-padding-x);
-  margin-bottom: var(--list-page-gap);
-  background: var(--list-surface-bg);
-  border: var(--list-surface-border);
-  border-radius: var(--list-surface-radius);
-  box-shadow: var(--list-surface-shadow);
-}
-.data-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--list-filter-action-gap);
-}
-.filter-strip {
-  display: flex;
-  flex: 1 1 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 10px;
-  min-width: 0;
-}
 .filter-keyword {
   flex: 2 1 120px;
   min-width: 100px;
 }
-.ops-user-select {
-  min-width: 0;
-}
 .filter-select {
   flex: 1 1 100px;
   min-width: 100px;
-}
-.target-option-code {
-  margin-left: 8px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
 }
 .filter-strip :deep(.harvest-range) {
   flex: 1 1 120px;
   width: auto;
   min-width: 100px;
 }
-.data-view-controls {
-  flex-shrink: 0;
-  margin-left: auto;
-}
-.table-card :deep(.is-editing > td) {
-  background: #ecf5ff !important;
-}
-.table-card :deep(.status-column-cell .cell),
-.table-card :deep(.action-column-cell .cell),
-.table-card :deep(.date-column-cell .cell) {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-.table-card :deep(.date-column-cell .cell) {
-  padding: 4px 10px;
-}
-.inline-date {
-  width: 100%;
-  --el-date-editor-width: 100%;
-}
-.inline-select {
-  width: 100%;
-}
-.inline-select :deep(.el-select__wrapper) {
-  min-height: 28px;
-  padding: 0 8px;
-  box-shadow: 0 0 0 1px #e6e8ee inset;
-  background: var(--list-mid-bg);
-}
-.table-card :deep(.priority-select.status-tone-info .el-select__wrapper) {
-  background-color: var(--el-color-info-light-9);
-}
-.table-card :deep(.priority-select.status-tone-info .el-select__selected-item) {
-  color: var(--el-color-info);
-}
-.table-card :deep(.priority-select.status-tone-warning .el-select__wrapper) {
-  background-color: var(--el-color-warning-light-9);
-}
-.table-card :deep(.priority-select.status-tone-warning .el-select__selected-item) {
-  color: var(--el-color-warning);
-}
-.table-card :deep(.priority-select.status-tone-danger .el-select__wrapper) {
-  background-color: var(--el-color-danger-light-9);
-}
-.table-card :deep(.priority-select.status-tone-danger .el-select__selected-item) {
-  color: var(--el-color-danger);
-}
-.table-card :deep(.priority-select.status-tone-king .el-select__wrapper) {
-  background-color: #efe8f6;
-}
-.table-card :deep(.priority-select.status-tone-king .el-select__selected-item) {
-  color: #6f4d9c;
-}
-.list-status-tag.status-tone-king {
-  color: #6f4d9c;
-  background: #efe8f6;
-  border-color: #d4c4ea;
-}
-.sort-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-}
-.table-card :deep(td.sort-column-cell .cell) {
-  padding-right: 6px;
-  padding-left: 6px;
-}
-.sort-header-btn {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.sort-header-btn.is-active {
-  color: var(--el-color-primary);
-  font-weight: 650;
-}
-.sort-order-value {
-  min-width: 22px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--el-text-color-regular);
-  font: inherit;
-  line-height: 1.2;
-  cursor: text;
-}
-.sort-order-value:disabled {
-  cursor: default;
-}
-.table-card :deep(.el-table.is-row-sortable td.sort-column-cell),
-.table-card :deep(.el-table.is-row-sortable td.sort-column-cell .sort-order-value) {
-  cursor: grab;
-  user-select: none;
-}
-.table-card :deep(.el-table.is-row-sortable td.sort-column-cell:active),
-.table-card :deep(.el-table.is-row-sortable td.sort-column-cell .sort-order-value:active) {
-  cursor: grabbing;
-}
-.sort-order-input {
-  width: 36px;
-}
-.sort-order-input :deep(.el-input__wrapper) {
-  padding: 0 4px;
-}
-.app-container :deep(.wb-sortable-ghost) {
-  opacity: 0.65;
-  background: #ecf5ff;
-}
-.sheet-wrap :deep(.sheet-tone-info) { color: var(--el-color-info); }
-.sheet-wrap :deep(.sheet-tone-warning) { color: var(--el-color-warning); }
-.sheet-wrap :deep(.sheet-tone-danger) { color: var(--el-color-danger); }
-.sheet-wrap :deep(.sheet-tone-king) { color: #6f4d9c; }
-.drawer-fieldset {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
-}
-.drawer-card {
-  padding: 6px 0 0;
-  margin-bottom: 6px;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid #eef0f4;
-  border-radius: 0;
-}
-.drawer-card:last-child {
-  margin-bottom: 0;
-  border-bottom: 0;
-}
-.drawer-card.is-queue {
-  padding: 8px 10px 2px;
-  margin-bottom: 8px;
-  background: var(--list-mid-bg);
-  border: var(--list-mid-border);
-  border-radius: var(--list-mid-radius);
-}
-.drawer-card-title {
-  margin: 0 0 6px;
-  color: #909399;
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-}
-.drawer-card.is-queue .drawer-card-title {
-  color: #303133;
-}
-.drawer-card-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  column-gap: 12px;
-}
-.drawer-field.is-wide {
-  grid-column: 1 / -1;
-}
 .drawer-field.is-synced :deep(.el-textarea__inner) {
   resize: none;
-}
-.drawer-form :deep(.el-form-item) {
-  margin-bottom: 8px;
-}
-.drawer-form :deep(.el-form-item__label) {
-  color: #606266;
-  font-size: 13px;
-}
-.drawer-form :deep(.el-form-item__content) {
-  min-width: 0;
-  justify-content: flex-start;
-}
-.sheet-category-select {
-  width: 100%;
 }
 @media (max-width: 1100px) {
   .lifecycle-nav {
@@ -3088,46 +2793,6 @@ export default {
 </style>
 
 <style>
-.workbench-drawer .status-select.status-tone-info .el-select__wrapper,
-.workbench-drawer .priority-select.status-tone-info .el-select__wrapper {
-  background-color: var(--el-color-info-light-9);
-}
-.workbench-drawer .status-select.status-tone-info .el-select__selected-item,
-.workbench-drawer .priority-select.status-tone-info .el-select__selected-item {
-  color: var(--el-color-info);
-}
-.workbench-drawer .status-select.status-tone-primary .el-select__wrapper {
-  background-color: var(--el-color-primary-light-9);
-}
-.workbench-drawer .status-select.status-tone-primary .el-select__selected-item {
-  color: var(--el-color-primary);
-}
-.workbench-drawer .status-select.status-tone-warning .el-select__wrapper,
-.workbench-drawer .priority-select.status-tone-warning .el-select__wrapper {
-  background-color: var(--el-color-warning-light-9);
-}
-.workbench-drawer .status-select.status-tone-warning .el-select__selected-item,
-.workbench-drawer .priority-select.status-tone-warning .el-select__selected-item {
-  color: var(--el-color-warning);
-}
-.workbench-drawer .status-select.status-tone-success .el-select__wrapper {
-  background-color: var(--el-color-success-light-9);
-}
-.workbench-drawer .status-select.status-tone-success .el-select__selected-item {
-  color: var(--el-color-success);
-}
-.workbench-drawer .priority-select.status-tone-danger .el-select__wrapper {
-  background-color: var(--el-color-danger-light-9);
-}
-.workbench-drawer .priority-select.status-tone-danger .el-select__selected-item {
-  color: var(--el-color-danger);
-}
-.workbench-drawer .priority-select.status-tone-king .el-select__wrapper {
-  background-color: #efe8f6;
-}
-.workbench-drawer .priority-select.status-tone-king .el-select__selected-item {
-  color: #6f4d9c;
-}
 .line-field {
   flex: 1;
   width: 100%;

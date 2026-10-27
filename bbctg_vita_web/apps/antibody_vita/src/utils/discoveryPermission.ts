@@ -35,3 +35,11 @@ function hasAccessCode(userInfo: any, code: string): boolean {
 export function canEditDiscoveryWorkbench(userInfo: any): boolean {
   return hasAccessCode(userInfo, 'discovery.workbench.edit');
 }
+
+export function canEditDiscoverySynthesis(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'discovery.synthesis_progress.edit');
+}
+
+export function canPmEditDiscoverySynthesis(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'discovery.synthesis_progress.pm_edit');
+}

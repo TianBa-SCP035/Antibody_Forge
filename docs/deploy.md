@@ -32,7 +32,7 @@ Windows： 无需路径约定，固定环境为 local。
 | `REPOSITORY_ROOT` | 附件/日志根目录，默认 `repository` |
 | `ENABLE_SCHEDULER` | 是否强制开定时任务；prod 环境即使为 false 也会开 |
 | `YUNZHIJIA_*` | 云之家（可选） |
-| `CELL_DB_URL` / `EMPLOYEE_DB_URL` | 外部只读库（可选）；后者提供员工与靶点主数据 |
+| `CELL_DB_URL` / `EMPLOYEE_DB_URL` / `ONE_DB_URL` | 外部只读库（可选）；分别提供细胞库存、员工与靶点主数据、One 合成订单与交付进度 |
 | `LABILLION_BASE_URL` / `LABILLION_USERNAME` / `LABILLION_PASSWORD` / `LABILLION_PLATFORM_ID` | 镁伽 Labillion（可选；URL 留空则不推送。`PLATFORM_ID` 是登录后请求头 `Platform`） |
 | `PUBLIC_API_BASE_URL` | 本系统对外 API 根，用于生成下发 Payload 的 `replyAddress` |
 | `DRM_*` | DRM（可选；另需功能开关） |
@@ -135,6 +135,7 @@ sudo apt install -y libreoffice
 | `serum_auto_update_status` | 01:00 | 自动更新免疫实验状态 |
 | `discovery_auto_update_status` | 01:15，并在服务启动时补跑 | 自动推进已过期的抗体发现冲击免状态 |
 | `labillion_status_sync` | 02:00 | 镁伽非终态流式工单状态批量同步；未配 `LABILLION_BASE_URL` 时 skip 并记日志 |
+| `discovery_synthesis_order_sync` | 每隔 1 小时 | One 合成订单与交付进度同步；未配 `ONE_DB_URL` 时 skip 并记日志 |
 
 应用日志：`repository/logs/app.log`。`start_dev.sh` 另写 `repository/logs/backend.nohup.log`。调度开关/时间见 `sys_feature_flag` 中 `job.*`（**改完即写库，重启后端生效**）。系统功能页可对任一 job **立即执行**（不依赖 scheduler 是否启动），见 [auth-permissions.md](./auth-permissions.md)。
 

@@ -1,14 +1,19 @@
 <template>
-  <div class="createPost-main-container" v-loading="loading">
+  <div
+    class="createPost-main-container"
+    :class="{ 'is-readonly': !canEdit }"
+    v-loading="loading"
+  >
     <el-card class="box-card basic-info-card" :body-style="{ padding: '18px' }">
       <template #header>
         <div class="clearfix">
           <span>1. 项目基础信息 (Project Info)</span>
           <div style="float: right;">
+              <span v-if="!canEdit" class="readonly-hint">只读</span>
               <span v-if="autoSaving" style="margin-right: 10px; color: #409EFF; font-size: 12px;">
                   <el-icon class="is-loading"><Loading /></el-icon> 自动保存中...
               </span>
-              <el-button size="small" type="primary" title="停 3 秒自动保存、右键保存并新建" @click="submitForm" @contextmenu.prevent="submitForm($event, true)" :loading="loading" :disabled="loading || autoSaving || !canSaveForm()">保存</el-button>
+              <el-button size="small" type="primary" title="停 3 秒自动保存、右键保存并新建" @click="submitForm" @contextmenu.prevent="submitForm($event, true)" :loading="loading" :disabled="loading || autoSaving || !canEdit">保存</el-button>
               <el-button size="small" @click="handleCancel">取消</el-button>
           </div>
         </div>
@@ -19,7 +24,7 @@
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="项目编号" prop="project_code">
-              <el-input v-model="postForm.project_code" placeholder="输入后自动生成实验ID" />
+              <el-input v-model="postForm.project_code" placeholder="输入后自动生成实验ID" :disabled="!canEdit" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -33,7 +38,7 @@
                 v-model="postForm.owner"
                 :options="ownerOptions"
                 placeholder="选择负责人"
-                :disabled="!canAssignProjectOwner"
+                :disabled="!canEdit || !canAssignProjectOwner"
               />
             </el-form-item>
           </el-col>
@@ -56,6 +61,7 @@
                 :placeholder="postForm.target_name ? '' : '搜索并选择靶点'"
                 title="Shift+Enter 可直接录入未入库靶点名称"
                 style="width: 100%"
+                :disabled="!canEdit"
                 @change="handleTargetChange"
                 @focus="handleTargetFocus"
                 @keydown.shift.enter.capture.prevent.stop="commitFreeTargetName"
@@ -106,7 +112,7 @@
           </el-col>
           <el-col :span="8">
             <el-form-item label="靶点类型" prop="target_type">
-              <el-select v-model="postForm.target_type" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入靶点类型">
+              <el-select v-model="postForm.target_type" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入靶点类型" :disabled="!canEdit">
                 <el-option label="I型" value="I型" />
                 <el-option label="II型" value="II型" />
                 <el-option label="III型" value="III型" />
@@ -120,7 +126,7 @@
           </el-col>
           <el-col :span="8">
             <el-form-item label="靶点大小" prop="target_size">
-              <el-select v-model="postForm.target_size" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入靶点大小">
+              <el-select v-model="postForm.target_size" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入靶点大小" :disabled="!canEdit">
                 <el-option label="大于300AA" value="大于300AA" />
                 <el-option label="小于300AA" value="小于300AA" />
               </el-select>
@@ -132,12 +138,12 @@
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="项目名称" prop="project_name">
-              <el-input v-model="postForm.project_name" />
+              <el-input v-model="postForm.project_name" :disabled="!canEdit" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="课题类型" prop="study_type">
-              <el-select v-model="postForm.study_type" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入课题类型">
+              <el-select v-model="postForm.study_type" style="width:100%" filterable allow-create default-first-option placeholder="选择或输入课题类型" :disabled="!canEdit">
                 <el-option label="数据包" value="数据包" />
                 <el-option label="客户关注" value="客户关注" />
                 <el-option label="公司内部研发" value="公司内部研发" />
@@ -156,6 +162,7 @@
                 v-model="postForm.pm"
                 :options="pmOptions"
                 placeholder="选择产品经理"
+                :disabled="!canEdit"
                 clearable
               />
             </el-form-item>
@@ -166,7 +173,7 @@
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="开始日期" prop="start_date">
-              <el-date-picker v-model="postForm.start_date" type="date" value-format="YYYY-MM-DD" style="width:100%" @change="recalculateAllStepDates" />
+              <el-date-picker v-model="postForm.start_date" type="date" value-format="YYYY-MM-DD" style="width:100%" :disabled="!canEdit" @change="recalculateAllStepDates" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -175,12 +182,13 @@
                 v-model:assay-method="postForm.assay_method"
                 v-model:facs-plate-count="postForm.facs_plate_count"
                 v-model:elisa-plate-count="postForm.elisa_plate_count"
+                :disabled="!canEdit"
               />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="项目状态" prop="project_status">
-              <el-select v-model="postForm.project_status" style="width:100%" filterable allow-create default-first-option>
+              <el-select v-model="postForm.project_status" style="width:100%" filterable allow-create default-first-option :disabled="!canEdit">
                 <el-option v-for="item in projectStatusOptions" :key="item" :label="item" :value="item" />
               </el-select>
             </el-form-item>
@@ -191,14 +199,14 @@
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="免疫间隔" prop="immunization_interval">
-              <el-input v-model="postForm.immunization_interval" placeholder="天数" @change="recalculateAllStepDates">
+              <el-input v-model="postForm.immunization_interval" placeholder="天数" :disabled="!canEdit" @change="recalculateAllStepDates">
                 <template #append>天</template>
               </el-input>
             </el-form-item>
           </el-col>
           <el-col :span="16">
             <el-form-item label="实验备注">
-              <el-input v-model="postForm.remark" />
+              <el-input v-model="postForm.remark" :disabled="!canEdit" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -207,7 +215,7 @@
         <el-row :gutter="20">
           <el-col :span="24">
             <el-form-item label="项目目的" prop="project_purpose">
-              <el-input v-model="postForm.project_purpose" type="textarea" :rows="2" placeholder="请输入项目目的" />
+              <el-input v-model="postForm.project_purpose" type="textarea" :rows="2" placeholder="请输入项目目的" :disabled="!canEdit" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -219,10 +227,10 @@
         <template #header>
           <div class="clearfix small-header">
             <span>2. 抗原信息 (Antigens)</span>
-                <el-button style="float: right; padding: 3px 0" link @click="addAntigen">添加抗原</el-button>
+                <el-button v-if="canEdit" style="float: right; padding: 3px 0" link @click="addAntigen">添加抗原</el-button>
           </div>
         </template>
-        <el-table :data="postForm.antigens" border size="small" style="width: 100%">
+        <el-table :data="postForm.antigens" border size="small" style="width: 100%" :inert="!canEdit">
             <!-- Hidden IDs -->
             <el-table-column label="抗原ID" width="60">
                 <template #default="{ row }">
@@ -304,7 +312,7 @@
                     </el-select>
                 </template>
             </el-table-column>
-                <el-table-column label="操作" width="50" align="center">
+                <el-table-column v-if="canEdit" label="操作" width="50" align="center">
                 <template #default="{ $index }">
                     <el-icon class="delete-btn" @click="removeAntigen($index)"><Delete /></el-icon>
                 </template>
@@ -317,10 +325,10 @@
         <template #header>
           <div class="clearfix small-header">
             <span>3. 小鼠分组 (Mouse Groups)</span>
-            <el-button style="float: right; padding: 3px 0" link @click="addMouseGroup">添加分组</el-button>
+            <el-button v-if="canEdit" style="float: right; padding: 3px 0" link @click="addMouseGroup">添加分组</el-button>
           </div>
         </template>
-        <el-table :data="postForm.mouse_groups" border size="small" style="width: 100%">
+        <el-table :data="postForm.mouse_groups" border size="small" style="width: 100%" :inert="!canEdit">
             <el-table-column label="组别" min-width="80">
                 <template #default="{ row }">
                     <el-select v-model="row.group_id" size="small" filterable allow-create default-first-option style="width:100%" placeholder="选择组别" @focus="cacheGroupId(row)" @change="handleGroupIdChange(row, $event)">
@@ -407,7 +415,7 @@
                     <el-input v-model="row.remark" size="small" />
                 </template>
             </el-table-column>
-                <el-table-column label="操作" width="50" align="center">
+                <el-table-column v-if="canEdit" label="操作" width="50" align="center">
                 <template #default="{ $index }">
                     <el-icon class="delete-btn" @click="removeMouseGroup($index)"><Delete /></el-icon>
                 </template>
@@ -420,7 +428,7 @@
       <template #header>
         <div class="clearfix small-header">
           <span>4. 免疫方案 (Immunization Scheme)</span>
-          <el-button v-if="postForm.mouse_groups.length > 0" style="float: right; padding: 3px 0" link @click="addStepToGroup(activeGroupTab)">添加步骤</el-button>
+          <el-button v-if="canEdit && postForm.mouse_groups.length > 0" style="float: right; padding: 3px 0" link @click="addStepToGroup(activeGroupTab)">添加步骤</el-button>
         </div>
       </template>
       
@@ -443,7 +451,7 @@
                 </span>
               </template>
               
-              <el-table :data="getStepsForGroup(group.group_id)" border size="small" style="width:100%">
+              <el-table :data="getStepsForGroup(group.group_id)" border size="small" style="width:100%" :inert="!canEdit">
                 <el-table-column label="阶段" min-width="92">
                      <template #default="{ row }">
                         <el-select v-model="row.stage_name" size="small" filterable allow-create default-first-option placeholder="" style="width:100%" @change="handleStageChange(row)">
@@ -473,26 +481,20 @@
                     </template>
                 </el-table-column>
                 <el-table-column label="抗原" min-width="150">
-                     <template #default="{ row, $index }">
-                        <div class="antigen-select-wrapper">
-                            <div 
-                              class="antigen-display-text" 
-                              :class="{ 'is-placeholder': !getAntigenDisplay(row.antigen_id) }"
-                            >{{ getAntigenDisplay(row.antigen_id) || '选择抗原' }}</div>
-                            <el-select 
-                                :ref="`antigenSelect_${group.group_id}_${$index}`"
-                                v-model="row.antigen_id" 
-                                size="small" 
-                                placeholder="选择抗原" 
-                                filterable 
-                                multiple
-                                class="antigen-select-hidden"
-                                @change="handleAntigenChange(row, group.group_id, $index)"
-                            >
-                                 <el-option v-for="a in postForm.antigens" :key="a.antigen_id" :label="a.antigen_name" :value="a.antigen_id" />
-                                 <el-option label="N/A(不适用)" value="N/A" />
-                            </el-select>
-                        </div>
+                     <template #default="{ row }">
+                        <ListFilterSelect
+                            :model-value="row.antigen_id"
+                            joined
+                            clearable
+                            size="small"
+                            placeholder="选择抗原"
+                            title="左键单选，右键多选"
+                            @change="handleAntigenChange(row, $event)"
+                        >
+                            <template #tag>{{ getAntigenDisplay(row.antigen_id) }}</template>
+                            <el-option v-for="a in postForm.antigens" :key="a.antigen_id" :label="a.antigen_name || a.antigen_id" :value="a.antigen_id" />
+                            <el-option label="N/A(不适用)" value="N/A" />
+                        </ListFilterSelect>
                     </template>
                 </el-table-column>
                 <el-table-column label="剂量" min-width="90">
@@ -544,7 +546,7 @@
                         </el-tooltip>
                     </template>
                 </el-table-column>
-                <el-table-column label="操作" min-width="50" align="center">
+                <el-table-column v-if="canEdit" label="操作" min-width="50" align="center">
                     <template #default="{ row }">
                         <el-icon class="delete-btn" @click="removeStep(row)"><Delete /></el-icon>
                     </template>
@@ -621,11 +623,11 @@
             <el-col :span="24" style="margin-bottom: 20px;">
                 <div class="sub-header">
                     <span>检测标靶</span>
-                    <el-button link @click="addTarget">
+                    <el-button v-if="canEdit" link @click="addTarget">
                       <el-icon><Plus /></el-icon>
                     </el-button>
                 </div>
-                 <el-table :data="postForm.titer_targets" border size="small">
+                 <el-table :data="postForm.titer_targets" border size="small" :inert="!canEdit">
                     <el-table-column label="名称" min-width="150">
                         <template #default="{ row }">
                             <el-input v-model="row.name" size="small" />
@@ -676,7 +678,7 @@
                             <el-input v-model="row.source" size="small" />
                         </template>
                     </el-table-column>
-                    <el-table-column width="50" align="center">
+                    <el-table-column v-if="canEdit" width="50" align="center">
                         <template #default="{ $index }">
                             <el-icon class="delete-btn" @click="removeTarget($index)"><Delete /></el-icon>
                         </template>
@@ -687,11 +689,11 @@
             <el-col :span="24">
                  <div class="sub-header">
                     <span>阳性对照</span>
-                    <el-button link @click="addPC">
+                    <el-button v-if="canEdit" link @click="addPC">
                       <el-icon><Plus /></el-icon>
                     </el-button>
                 </div>
-                 <el-table :data="postForm.titer_pcs" border size="small">
+                 <el-table :data="postForm.titer_pcs" border size="small" :inert="!canEdit">
                     <el-table-column label="PC名称">
                         <template #default="{ row }">
                             <el-input v-model="row.pc_name" size="small" />
@@ -712,7 +714,7 @@
                             <el-input v-model="row.concentration" size="small" />
                         </template>
                     </el-table-column>
-                     <el-table-column width="50" align="center">
+                     <el-table-column v-if="canEdit" width="50" align="center">
                         <template #default="{ $index }">
                             <el-icon class="delete-btn" @click="removePC($index)"><Delete /></el-icon>
                         </template>
@@ -800,6 +802,7 @@ import {
   saveSerum,
 } from '#/api/serum'
 import { SERUM_ERRORS } from '../shared/errors'
+import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import MouseRegistryDialog from '../shared/MouseRegistryDialog.vue'
 import AssayMethodEditor from '../shared/AssayMethodEditor.vue'
 import SerumUserSelect from '../shared/SerumUserSelect.vue'
@@ -923,6 +926,7 @@ function createEmptyPostForm() {
 export default {
   name: 'SerumEdit',
   components: {
+    ListFilterSelect,
     MouseRegistryDialog,
     AssayMethodEditor,
     SerumUserSelect,
@@ -1011,6 +1015,9 @@ export default {
     canAssignProjectOwner() {
       return canEditAllSerumProjects(this.currentUserInfo)
     },
+    canEdit() {
+      return this.canSaveForm()
+    },
   },
   watch: {
     postForm: {
@@ -1039,6 +1046,9 @@ export default {
         this.initPage(id)
       }
     }
+  },
+  deactivated() {
+    this.clearAutoSaveTimer()
   },
   beforeUnmount() {
     this.clearAutoSaveTimer()
@@ -1079,6 +1089,17 @@ export default {
       })
   },
   methods: {
+    resetTransientEditors() {
+      this.targetAliasEdit = null
+      this.remarkDialogVisible = false
+      this.currentRemark = ''
+      this.currentRemarkRow = null
+      this.copyDialogVisible = false
+      this.copyFromGroup = ''
+      this.copyToGroups = []
+      this.mouseRegistryDialogVisible = false
+      this.mouseRegistryEditingRow = null
+    },
     async initPage(id) {
       const requestToken = ++this.initRequestToken
       this.targetRequestToken += 1
@@ -1090,15 +1111,14 @@ export default {
       this.loadFailed = false
       this.initializing = true
       if (routeIdentity !== this.loadedRouteIdentity) {
+        this.resetTransientEditors()
         this.postForm = createEmptyPostForm()
-        this.targetAliasEdit = null
         this.targetDisplayNames = {}
         this.targetOptions = []
         this.activeGroupTab = null
-        this.mouseRegistryEditingRow = null
       }
       try {
-        const tasks = [getSerumFilterOptions()]
+        const tasks = [getSerumFilterOptions().catch(() => null)]
         if (id) {
           tasks.push(fetchDetail(id))
         }
@@ -1110,7 +1130,17 @@ export default {
         if (id) {
           const detail = results[1]
           const targetCodes = Array.isArray(detail.target_codes) ? detail.target_codes : []
-          this.postForm = { ...detail, target_codes: targetCodes }
+          this.resetTransientEditors()
+          this.postForm = {
+            ...createEmptyPostForm(),
+            ...detail,
+            target_codes: targetCodes,
+            mouse_groups: detail.mouse_groups || [],
+            antigens: detail.antigens || [],
+            steps: detail.steps || [],
+            titer_targets: detail.titer_targets || [],
+            titer_pcs: detail.titer_pcs || [],
+          }
           const targetNames = String(detail.target_name || '').split(/[&,]/)
           this.targetDisplayNames = Object.fromEntries(
             targetCodes.map((snum, index) => [snum, targetNames[index] || snum]),
@@ -1120,12 +1150,12 @@ export default {
             snum,
           }))
           if (targetCodes.length) {
-            await this.searchTargetOptions('')
+            this.searchTargetOptions('')
           }
           if (this.postForm.steps) {
             this.postForm.steps.forEach((step) => {
-              if (step.antigen_id && typeof step.antigen_id === 'string') {
-                step.antigen_id = step.antigen_id
+              if (!Array.isArray(step.antigen_id)) {
+                step.antigen_id = String(step.antigen_id || '')
                   .split(',')
                   .map((item) => item.trim())
                   .filter(Boolean)
@@ -1170,6 +1200,8 @@ export default {
         const response = await fetchSerumTargetOptions(keyword, this.postForm.target_codes)
         if (requestToken !== this.targetRequestToken) return
         this.targetOptions = response?.items || []
+      } catch {
+        // 无靶点库权限时仍可用 Shift+Enter 录入名称
       } finally {
         if (requestToken === this.targetRequestToken) this.targetLoading = false
       }
@@ -1243,19 +1275,20 @@ export default {
     getAntigenDisplay(antigenIds) {
       const ids = Array.isArray(antigenIds) ? antigenIds : []
       if (!ids.length) return ''
-      
+
       const names = ids.map(id => {
         const trimmedId = String(id).trim()
         const antigen = this.postForm.antigens && this.postForm.antigens.find(a => String(a.antigen_id) === trimmedId)
-        return antigen ? antigen.antigen_name : trimmedId
+        return (antigen && antigen.antigen_name) || trimmedId
       })
-      
+
       return names.join(' + ')
     },
     getStepsForGroup(groupId) {
         return pickStepsForGroup(this.postForm.steps, groupId)
     },
     addStepToGroup(groupId) {
+        if (!this.canEdit) return
         if (!groupId) {
             ElMessage.warning('请先选择一个分组')
             return
@@ -1308,6 +1341,7 @@ export default {
         this.currentRemark = ''
     },
     openCopyDialogFromTab(fromGroupId) {
+        if (!this.canEdit) return
         this.copyFromGroup = fromGroupId
         this.copyToGroups = []
         this.overwriteSteps = true
@@ -1376,18 +1410,23 @@ export default {
         }
         this.handleRouteChange(step)
     },
-    handleAntigenChange(row, groupId, rowIndex) {
-        let antigenIds = Array.isArray(row.antigen_id) ? [...row.antigen_id] : []
-        
+    handleAntigenChange(row, value = row.antigen_id) {
+        const validIds = new Set((this.postForm.antigens || []).map(a => String(a.antigen_id || '').trim()).filter(Boolean))
+        let antigenIds = (Array.isArray(value) ? value : [value])
+            .map(id => String(id ?? '').trim())
+            .filter(id => id === 'N/A' || validIds.has(id))
+
         const hasNA = antigenIds.includes('N/A')
         const hasNormalAntigen = antigenIds.some(id => id !== 'N/A')
-        
+
         if (hasNA && hasNormalAntigen) {
-            antigenIds = antigenIds.filter(id => id !== 'N/A')
+            antigenIds = antigenIds[antigenIds.length - 1] === 'N/A'
+                ? ['N/A']
+                : antigenIds.filter(id => id !== 'N/A')
         }
-        
+
         row.antigen_id = antigenIds
-        
+
         if (antigenIds.length === 1 && antigenIds[0] === 'N/A') {
             row.antigen_dose = '-'
             row.adjuvant_name = '-'
@@ -1402,7 +1441,7 @@ export default {
             if (row.injection_volume === '-') row.injection_volume = '100µL'
             if (row.route === '-') row.route = 's.c.'
             if (row.injection_site === '-') row.injection_site = '颈部+尾根部'
-            
+
             const firstAntigenId = antigenIds.find(id => id !== 'N/A')
             if (firstAntigenId) {
                 const antigen = this.postForm.antigens.find(a => String(a.antigen_id) === String(firstAntigenId))
@@ -1410,16 +1449,6 @@ export default {
                 this.applyAntigenRouteByType(row, antigen)
             }
         }
-        
-        this.$nextTick(() => {
-            const refName = `antigenSelect_${groupId}_${rowIndex}`
-            const selectRef = this.$refs[refName]
-            const ins = Array.isArray(selectRef) ? selectRef[0] : selectRef
-            
-            if (ins) {
-                ins.blur && ins.blur()
-            }
-        })
     },
     handleStageChange(row) {
         if (row.stage_name === '采血') {
@@ -1650,6 +1679,7 @@ export default {
         row.mouse_no_list = mouse_no_list
     },
     addMouseGroup() {
+        if (!this.canEdit) return
         // Smart auto-increment for group_id
         let nextGroupId = 'G1'
         const existingGroups = this.postForm.mouse_groups.map(g => g.group_id)
@@ -1706,6 +1736,7 @@ export default {
         }
     },
     addAntigen() {
+        if (!this.canEdit) return
         // Find smallest available ID (fill gaps first)
         let nextId = 1
         const existingIds = this.postForm.antigens.map(a => parseInt(a.antigen_id)).filter(id => !isNaN(id))
@@ -1743,15 +1774,34 @@ export default {
         ElMessage.success('已自动填充抗原信息')
     },
     removeAntigen(index) {
+        const antigenId = String(this.postForm.antigens[index]?.antigen_id || '').trim()
+        let wasReferenced = false
+        if (antigenId) {
+            this.postForm.steps.forEach((step) => {
+                const ids = Array.isArray(step.antigen_id)
+                    ? step.antigen_id
+                    : String(step.antigen_id || '').split(',')
+                const remaining = ids.filter((id) => String(id).trim() !== antigenId)
+                if (remaining.length !== ids.length) {
+                    step.antigen_id = remaining
+                    wasReferenced = true
+                }
+            })
+        }
         this.postForm.antigens.splice(index, 1)
+        if (wasReferenced) {
+            ElMessage.warning('该抗原已被引用，请记得为相关免疫步骤重新选择抗原')
+        }
     },
     addTarget() {
+        if (!this.canEdit) return
         this.postForm.titer_targets.push({ name: '', type: '', species: '', batch_no: '', passage: '', cell_count: '', catalog_no: '', source: '' })
     },
     removeTarget(index) {
         this.postForm.titer_targets.splice(index, 1)
     },
     addPC() {
+        if (!this.canEdit) return
         this.postForm.titer_pcs.push({ pc_name: '', catalog_batch: '', source: '', concentration: '' })
     },
     removePC(index) {
@@ -1968,6 +2018,21 @@ export default {
 
   margin-bottom: 20px;
 }
+.createPost-main-container.is-readonly {
+  --el-disabled-bg-color: var(--el-fill-color-blank);
+  --el-disabled-border-color: var(--el-border-color);
+  --el-disabled-text-color: var(--el-text-color-regular);
+}
+.createPost-main-container.is-readonly :deep(.el-select__wrapper.is-disabled) {
+  background-color: var(--el-fill-color-blank);
+  color: var(--el-text-color-regular);
+  cursor: default;
+}
+.readonly-hint {
+  margin-right: 10px;
+  color: #909399;
+  font-size: 12px;
+}
 .createPost-main-container :deep(.el-button--small) {
   height: 28px;
   padding: 7px 15px;
@@ -2159,43 +2224,6 @@ export default {
     text-align: left;
 }
 
-/* Hide multi-select tags to show as single-select */
-.antigen-select-hidden :deep(.el-select__tags) {
-    display: none;
-}
-
-.antigen-select-hidden {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 28px;
-}
-
-.antigen-select-hidden :deep(.el-select__wrapper) {
-    height: 28px;
-    max-height: 28px;
-    min-height: 28px;
-    overflow: hidden;
-    opacity: 0;
-}
-
-.antigen-select-hidden :deep(.el-select__selection),
-.antigen-select-hidden :deep(.el-select__selected-item),
-.antigen-select-hidden :deep(.el-select__input-wrapper),
-.antigen-select-hidden :deep(.el-select__placeholder) {
-    max-height: 28px;
-    overflow: hidden;
-    opacity: 0;
-}
-
-/* Antigen select wrapper styling */
-.antigen-select-wrapper {
-    position: relative;
-    width: 100%;
-    height: 28px;
-    overflow: hidden;
-}
-
 .mouse-no-list-input :deep(.el-input__wrapper) {
     cursor: pointer;
 }
@@ -2205,35 +2233,5 @@ export default {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.antigen-display-text {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 1;
-    box-sizing: border-box;
-    width: 100%;
-    height: 28px;
-    line-height: 28px;
-    padding: 0 30px 0 15px;
-    font-size: 12px;
-    background: #fff;
-    border: 1px solid #dcdfe6;
-    border-radius: 4px;
-    cursor: pointer;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: #303133;
-    pointer-events: none;
-}
-
-.antigen-display-text.is-placeholder {
-    color: #C0C4CC;
-}
-
-.antigen-select-hidden :deep(.el-input__inner) {
-    opacity: 0;
 }
 </style>

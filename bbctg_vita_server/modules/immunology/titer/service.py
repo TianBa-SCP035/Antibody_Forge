@@ -977,9 +977,21 @@ def _apply_titer_order_list_filters(stmt, data: dict[str, Any], *, db: Session |
     if project_codes:
         codes = [str(code).strip() for code in project_codes if str(code or "").strip()]
         if codes:
-            stmt = stmt.where(SerumImmProject.project_code.in_(codes))
+            stmt = stmt.where(
+                or_(
+                    SerumImmProject.project_code.in_(codes),
+                    SerumImmProject.experiment_id.in_(codes),
+                    SerumTiterOrder.experiment_id.in_(codes),
+                )
+            )
     elif project_code:
-        stmt = stmt.where(SerumImmProject.project_code.like(f"%{project_code}%"))
+        stmt = stmt.where(
+            or_(
+                SerumImmProject.project_code.like(f"%{project_code}%"),
+                SerumImmProject.experiment_id.like(f"%{project_code}%"),
+                SerumTiterOrder.experiment_id.like(f"%{project_code}%"),
+            )
+        )
     target_clause = recorded_target_clause(
         db,
         SerumImmProject.target_name,

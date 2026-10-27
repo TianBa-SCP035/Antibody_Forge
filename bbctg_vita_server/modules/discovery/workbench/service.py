@@ -11,6 +11,7 @@ from utils.filter_values import (
     combine_any,
     match_any,
     recorded_target_clause,
+    split_code_tokens,
     target_select_options,
 )
 
@@ -468,14 +469,22 @@ def _apply_list_filters(
     db: Session | None = None,
 ):
     filters = []
-    keyword = str(data.get("keyword") or "").strip()
-    if keyword:
-        like = f"%{keyword}%"
+    kw_tokens = split_code_tokens(data.get("keyword"))
+    if len(kw_tokens) == 1:
+        like = f"%{kw_tokens[0]}%"
         filters.append(
             or_(
                 DiscoveryWorkbench.discovery_id.like(like),
                 DiscoveryWorkbench.project_code.like(like),
                 DiscoveryWorkbench.experiment_id.like(like),
+            )
+        )
+    elif len(kw_tokens) > 1:
+        filters.append(
+            or_(
+                DiscoveryWorkbench.discovery_id.in_(kw_tokens),
+                DiscoveryWorkbench.project_code.in_(kw_tokens),
+                DiscoveryWorkbench.experiment_id.in_(kw_tokens),
             )
         )
     target_clause = recorded_target_clause(

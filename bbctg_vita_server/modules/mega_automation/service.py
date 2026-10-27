@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, defer
 
-from utils.filter_values import combine_any, filter_terms, match_any
+from utils.filter_values import combine_any, filter_terms, match_any, split_code_tokens
 
 from models.immunology import SerumImmProject, SerumTiterOrder
 from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
@@ -455,8 +455,9 @@ def get_active_dispatch_payload(db: Session, order_id: int) -> dict[str, Any]:
     }
 
 
-def _json_overlaps(column, value: str):
-    return func.json_overlaps(column, json.dumps([value]))
+def _json_overlaps(column, values: str | list[str]):
+    items = [values] if isinstance(values, str) else list(values)
+    return func.json_overlaps(column, json.dumps(items))
 
 
 def _list_status_clause(status: str):
@@ -468,13 +469,20 @@ def _list_status_clause(status: str):
 
 def _work_order_list_stmt(data: dict[str, Any]):
     stmt = select(MegaFlowWorkOrder)
-    keyword = clean_text(data.get("keyword"))
-    if keyword:
-        pattern = f"%{keyword}%"
+    kw_tokens = split_code_tokens(data.get("keyword"))
+    if len(kw_tokens) == 1:
+        pattern = f"%{kw_tokens[0]}%"
         stmt = stmt.where(
             or_(
                 MegaFlowWorkOrder.orderNum.like(pattern),
                 MegaFlowWorkOrder.orderName.like(pattern),
+            )
+        )
+    elif len(kw_tokens) > 1:
+        stmt = stmt.where(
+            or_(
+                MegaFlowWorkOrder.orderNum.in_(kw_tokens),
+                MegaFlowWorkOrder.orderName.in_(kw_tokens),
             )
         )
     status = combine_any(data.get("status"), _list_status_clause)
@@ -486,18 +494,18 @@ def _work_order_list_stmt(data: dict[str, Any]):
     )
     if order_type is not None:
         stmt = stmt.where(order_type)
-    project_no = clean_text(data.get("project_no"))
-    if project_no:
-        stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.project_nos, project_no))
+    project_tokens = split_code_tokens(data.get("project_no"))
+    if project_tokens:
+        stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.project_nos, project_tokens))
     target = clean_text(data.get("target"))
     if target:
         stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.targets, target))
-    sample_plate_barcode = clean_text(data.get("sample_plate_barcode"))
-    if sample_plate_barcode:
-        stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.sample_plate_barcodes, sample_plate_barcode))
-    cell_plate_barcode = clean_text(data.get("cell_plate_barcode"))
-    if cell_plate_barcode:
-        stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.cell_plate_barcodes, cell_plate_barcode))
+    sample_tokens = split_code_tokens(data.get("sample_plate_barcode"))
+    if sample_tokens:
+        stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.sample_plate_barcodes, sample_tokens))
+    cell_tokens = split_code_tokens(data.get("cell_plate_barcode"))
+    if cell_tokens:
+        stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.cell_plate_barcodes, cell_tokens))
     return stmt
 
 

@@ -30,6 +30,7 @@ Antibody_Forge/
 | 千鼠万抗 · 靶点库 | `/atlas/targets` | `/api/atlas/targets/list` | 本地靶点主数据分页搜索与详情浏览 |
 | 小鼠免疫 | `/serum/workbench`、`/serum/list`、`/serum/detail`、`/serum/edit` 等 | `/api/serum`、`/api/serum/workbench` | 项目工作台（开做前准备）、实验列表、笼位、方案导出 |
 | 抗体发现 · 项目工作台 | `/discovery/workbench` | `/api/discovery/workbench` | 剖鼠取细胞与筛选安排；工作台 / Excel |
+| 抗体发现 · 合成与验证 | `/discovery/synthesis-progress` | `/api/discovery/synthesis-progress` | 合成订单、到货及流式/亲和力初筛验证跟踪；One 库同步与比对 |
 | 分子与细胞 · 引物库 | `/molecular-cell/primer-library` | `/api/molecular-cell/library-orders/catalog` | 引物的查看、编辑、导入导出 |
 | 分子与细胞 · 文库构建 | `/molecular-cell/library-construction`、`/molecular-cell/library-construction/result` | `/api/molecular-cell/library-orders` | 建库工单、胶图与质检文件；发现交接 |
 | 效价数据 | `/serum/titer` | `/api/serum/titer` | 靶点、FACS、ELISA、附件（可选 DRM） |
@@ -56,5 +57,6 @@ Antibody_Forge/
 | `serum_auto_update_status` | 01:00 | 自动更新免疫实验状态 |
 | `discovery_auto_update_status` | 01:15，启动时补跑 | 自动推进已过期的抗体发现冲击免状态 |
 | `labillion_status_sync` | 02:00 | 镁伽非终态工单状态批量同步（未配 `LABILLION_BASE_URL` 时 skip） |
+| `discovery_synthesis_order_sync` | 每隔 1 小时 | 同步外部 One 库合成订单与交付进度（未配 `ONE_DB_URL` 时 skip） |
 
 启用条件与运维见 [deploy.md](./deploy.md)；系统功能页可改开关/时间（改完即写库）并立即执行。实现位于 `bbctg_vita_server/jobs/`。

@@ -33,6 +33,9 @@ INTENTIONALLY_IGNORED_ROUTES = frozenset(
         ("POST", "/api/atlas/targets/list"),
         ("POST", "/api/auth/logout"),
         ("POST", "/api/auth/refresh"),
+        ("POST", "/api/discovery/synthesis-progress/check_remote"),
+        ("POST", "/api/discovery/synthesis-progress/export_list"),
+        ("POST", "/api/discovery/synthesis-progress/list"),
         ("POST", "/api/discovery/workbench/export_list"),
         ("POST", "/api/discovery/workbench/list"),
         ("POST", "/api/mega-automation/flow-work-orders/by-source"),
@@ -111,6 +114,7 @@ SYSTEM_OR_MANUAL_AUDIT_ROUTES: dict[
 AUDIT_SET_LIKE_FIELDS: dict[str, frozenset[str]] = {
     "MolecularLibraryOrder": frozenset({"plate_nos", "target_codes"}),
     "DiscoveryWorkbench": frozenset({"target_codes"}),
+    "DiscoverySynthesisOrder": frozenset({"target_codes"}),
     "SerumImmProject": frozenset({"target_codes"}),
     "SerumImmWorkbench": frozenset({"target_codes"}),
     "SerumTiterOrder": frozenset({"test_dates", "titer_owners"}),

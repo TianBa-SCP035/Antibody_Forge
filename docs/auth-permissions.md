@@ -125,8 +125,11 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 |--------|------|------|
 | `discovery.page.workbench` | page | 抗体发现项目工作台列表 |
 | `discovery.workbench.edit` | action | 新增、保存、删除、排序安排 |
+| `discovery.page.synthesis_progress` | page | 合成与验证列表与外部订单比对 |
+| `discovery.synthesis_progress.edit` | action | 合成与验证全部编辑：新增、保存、批量粘贴、认领、删除、采用来源变更及手动同步合成订单 |
+| `discovery.synthesis_progress.pm_edit` | action | PM操作合成与验证：新建工单、认领合成结果、编辑项目与改造需求字段（项目编号、实验号、PM、课题类型、靶点、小鼠品系、订单性质、负责人、改造类型/方式/母本/要求、备注），并可删除待下单状态的工单 |
 
-写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/delete`、`/reorder` 登记 `sys_permission_api`。字段与筛选方式见 [modules/discovery/workbench.md](./modules/discovery/workbench.md)。权限码在 `sys_permission`（`discovery.page.workbench` / `discovery.workbench.edit`），菜单开关在 `sys_feature_flag`（`menu.discovery` / `menu.discovery.workbench`）。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。发现工作台选靶点 / 人名时复用 `GET /api/serum/target_options` 与 `/user_options`，这两条目录接口同时接受发现工作台权限。
+写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/delete`、`/reorder` 及 `/api/discovery/synthesis-progress/save`、`/save_batch`、`/claim`、`/reorder`、`/delete`、`/adopt_source`、`/sync_now` 登记 `sys_permission_api`。字段与规则见 [modules/discovery/workbench.md](./modules/discovery/workbench.md) 与 [modules/discovery/synthesis-progress.md](./modules/discovery/synthesis-progress.md)。权限码在 `sys_permission`，菜单开关在 `sys_feature_flag`（`menu.discovery` / `menu.discovery.workbench` / `menu.discovery.synthesis_progress`）。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。选靶点 / 人名时复用 `GET /api/serum/target_options` 与 `/user_options`，这两条目录接口同时接受发现工作台与合成进度权限。
 
 ### 2.5 分子与细胞（`molecular.*`）
 
@@ -346,7 +349,7 @@ flowchart LR
 |----------|------|------|
 | `menu` | `menu.atlas`、`menu.atlas.target_library` | 千鼠万抗侧栏 |
 | `menu` | `menu.serum`、`menu.serum.workbench`、`menu.serum.list`、`menu.serum.titer_order` | 免疫实验侧栏 |
-| `menu` | `menu.discovery`、`menu.discovery.workbench` | 抗体发现侧栏 |
+| `menu` | `menu.discovery`、`menu.discovery.workbench`、`menu.discovery.synthesis_progress` | 抗体发现侧栏 |
 | `menu` | `menu.molecular_cell`、`menu.molecular_cell.library` | 分子与细胞侧栏 |
 | `menu` | `menu.mega_automation`、`menu.mega_automation.flow_work_orders` | 镁伽自动化侧栏 |
 | `menu` | `menu.system`、`menu.system.user_permission`、`menu.system.features` | 系统管理侧栏 |
@@ -357,6 +360,7 @@ flowchart LR
 | `job` | `job.serum_auto_update_status` | 免疫状态定时更新（默认 01:00） |
 | `job` | `job.discovery_auto_update_status` | 抗体发现过期冲击免状态更新（默认 01:15，启动时补跑） |
 | `job` | `job.mega_labillion_status_sync` | 镁伽工单状态同步（默认 02:00；未配 Labillion 地址时 skip） |
+| `job` | `job.discovery_synthesis_order_sync` | 合成进度外部订单同步（默认每 1 小时；未配 `ONE_DB_URL` 时 skip） |
 
 **定时任务页（系统功能）**：启用开关与执行时间**改完即写库**；cron 变更需**重启后端**后生效（配置项 `restart_required`）。「立即执行」随时可点，直接调对应 job 函数，local 未开 scheduler 也可用。
 

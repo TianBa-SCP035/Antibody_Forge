@@ -622,6 +622,58 @@ CREATE TABLE IF NOT EXISTS discovery_workbench (
   UNIQUE KEY uk_discovery_workbench_discovery_id (discovery_id)
 ) COMMENT='抗体发现项目工作台';
 
+CREATE TABLE IF NOT EXISTS discovery_synthesis_order (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  synthesis_order_id VARCHAR(32) NOT NULL COMMENT '系统单号',
+  source_one_type VARCHAR(16) NULL COMMENT '外部来源类型',
+  source_one_id BIGINT NULL COMMENT '外部来源记录ID',
+  source_snapshot JSON NULL COMMENT '外部来源当前值快照',
+  status VARCHAR(32) NOT NULL COMMENT '状态',
+  priority VARCHAR(32) NULL COMMENT '优先级',
+  sort_order INT NULL COMMENT '排序值',
+  order_kind VARCHAR(32) NOT NULL COMMENT '订单性质',
+  supply_mode VARCHAR(32) NOT NULL COMMENT '供应方式',
+  target_name VARCHAR(128) NULL COMMENT '靶点名称',
+  target_codes JSON NULL COMMENT '靶点编号列表',
+  mouse_strain VARCHAR(128) NULL COMMENT '小鼠品系',
+  synthesis_code VARCHAR(64) NULL COMMENT '送测转码',
+  order_no VARCHAR(64) NULL COMMENT '合成订单号',
+  synthetic_corp VARCHAR(64) NULL COMMENT '合成公司',
+  synthetic_count INT NULL COMMENT '合成个数',
+  synthetic_date VARCHAR(32) NULL COMMENT '合成日期',
+  arrival_count INT NULL COMMENT '到货个数',
+  arrival_date VARCHAR(32) NULL COMMENT '到货日期',
+  flow_count INT NULL COMMENT '流式个数',
+  flow_date VARCHAR(32) NULL COMMENT '流式日期',
+  affinity_count INT NULL COMMENT '亲和力个数',
+  affinity_date VARCHAR(32) NULL COMMENT '亲和力日期',
+  owner VARCHAR(64) NULL COMMENT '负责人',
+  batch_label VARCHAR(255) NULL COMMENT '工单批次',
+  assay_note VARCHAR(500) NULL COMMENT '检测与异常说明',
+  remark VARCHAR(1000) NULL COMMENT '备注',
+  eng_type VARCHAR(128) NULL COMMENT '改造类型',
+  eng_method VARCHAR(128) NULL COMMENT '改造方式',
+  eng_parent_seq VARCHAR(500) NULL COMMENT '改造序列或母本',
+  eng_requirement VARCHAR(1000) NULL COMMENT '改造要求',
+  eng_result VARCHAR(500) NULL COMMENT '改造结果',
+  project_code VARCHAR(64) NULL COMMENT '项目管理编号',
+  experiment_id VARCHAR(64) NULL COMMENT '实验号',
+  study_type VARCHAR(64) NULL COMMENT '课题类型',
+  pm VARCHAR(64) NULL COMMENT 'PM',
+  created_by VARCHAR(64) NULL COMMENT '创建人',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_discovery_synthesis_order_id (synthesis_order_id),
+  UNIQUE KEY uk_discovery_synthesis_order_source_one (source_one_type, source_one_id),
+  KEY idx_discovery_synthesis_order_status (status),
+  KEY idx_discovery_synthesis_order_sort_order (sort_order),
+  KEY idx_discovery_synthesis_order_order_no (order_no),
+  KEY idx_discovery_synthesis_order_synthesis_code (synthesis_code),
+  KEY idx_discovery_synthesis_order_target_name (target_name),
+  KEY idx_discovery_synthesis_order_owner (owner)
+) COMMENT='抗体发现合成与验证单';
+
 CREATE TABLE IF NOT EXISTS molecular_library_order (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   library_order_id VARCHAR(32) NOT NULL COMMENT '系统工单号',
@@ -784,6 +836,9 @@ VALUES
   ('atlas.page.target_library', '靶点情报', 'page', 'atlas', 'target', 'view', '/atlas/targets', NULL, NULL, 50),
   ('discovery.page.workbench', '抗体发现工作台', 'page', 'discovery', 'discovery_workbench', 'view', '/discovery/workbench', NULL, NULL, 400),
   ('discovery.workbench.edit', '编辑抗体发现工作台', 'action', 'discovery', 'discovery_workbench', 'edit', NULL, 'discovery.workbench.edit_button', 'discovery.page.workbench', 401),
+  ('discovery.page.synthesis_progress', '合成与验证', 'page', 'discovery', 'synthesis_progress', 'view', '/discovery/synthesis-progress', NULL, NULL, 405),
+  ('discovery.synthesis_progress.edit', '编辑合成与验证', 'action', 'discovery', 'synthesis_progress', 'edit', NULL, 'discovery.synthesis_progress.edit_button', 'discovery.page.synthesis_progress', 406),
+  ('discovery.synthesis_progress.pm_edit', 'PM操作合成与验证', 'action', 'discovery', 'synthesis_progress', 'pm_edit', NULL, 'discovery.synthesis_progress.pm_edit_button', 'discovery.page.synthesis_progress', 407),
   ('molecular.page.library', '文库构建', 'page', 'molecular', 'library', 'view', '/molecular-cell/library-construction', NULL, NULL, 430),
   ('molecular.library.edit', '编辑文库构建工单', 'action', 'molecular', 'library', 'edit', NULL, 'molecular.library.edit_button', 'molecular.page.library', 431),
   ('molecular.page.library_detail', '文库构建详情', 'page', 'molecular', 'library_detail', 'view', '/molecular-cell/library-construction/result', NULL, 'molecular.page.library', 433),
@@ -871,6 +926,13 @@ VALUES
   ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/save_batch', '批量保存抗体发现工作台'),
   ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/delete', '删除抗体发现工作台'),
   ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/reorder', '调整抗体发现工作台排序'),
+  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/save', '保存合成与验证单'),
+  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/save_batch', '批量保存合成与验证单'),
+  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/claim', '认领合成与验证结果'),
+  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/reorder', '调整合成与验证排序'),
+  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/delete', '删除合成与验证单'),
+  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/adopt_source', '采用合成与验证外部来源变更'),
+  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/sync_now', '同步外部合成订单'),
   ('molecular.library.edit', 'POST', '/api/molecular-cell/library-orders/save', '保存文库构建工单'),
   ('molecular.library.edit', 'POST', '/api/molecular-cell/library-orders/batch_save', '批量保存文库构建工单'),
   ('molecular.library.edit', 'POST', '/api/molecular-cell/library-orders/delete', '删除文库构建工单'),
@@ -921,6 +983,7 @@ VALUES
   ('menu.serum.titer_order', '效价实验列表', 'menu', '控制效价实验列表菜单显示', 1, 1, 20, JSON_OBJECT('path', '/serum/titer-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.serum')),
   ('menu.discovery', '抗体发现', 'menu', '控制抗体发现模块菜单显示', 1, 1, 15, JSON_OBJECT('path', '/discovery', 'icon', 'lucide:microscope')),
   ('menu.discovery.workbench', '项目工作台', 'menu', '控制抗体发现项目工作台菜单显示', 1, 1, 5, JSON_OBJECT('path', '/discovery/workbench', 'icon', 'lucide:layout-dashboard', 'parent_code', 'menu.discovery')),
+  ('menu.discovery.synthesis_progress', '合成与验证', 'menu', '控制抗体发现合成与验证菜单显示', 1, 1, 10, JSON_OBJECT('path', '/discovery/synthesis-progress', 'icon', 'lucide:list-checks', 'parent_code', 'menu.discovery')),
   ('menu.molecular_cell', '分子与细胞', 'menu', '控制分子与细胞模块菜单显示', 1, 1, 30, JSON_OBJECT('path', '/molecular-cell', 'icon', 'lucide:dna')),
   ('menu.molecular_cell.library', '文库构建', 'menu', '控制文库构建页面显示', 1, 1, 10, JSON_OBJECT('path', '/molecular-cell/library-construction', 'icon', 'lucide:library', 'parent_code', 'menu.molecular_cell')),
   ('menu.molecular_cell.primer', '引物库', 'menu', '控制引物库页面显示', 1, 1, 5, JSON_OBJECT('path', '/molecular-cell/primer-library', 'icon', 'lucide:flask-conical', 'parent_code', 'menu.molecular_cell')),
@@ -935,7 +998,8 @@ VALUES
   ('job.target_master_sync', '靶点主数据定时同步', 'job', '每天 00:45 同步外部靶点主数据', 1, 1, 205, JSON_OBJECT('hour', 0, 'minute', 45, 'restart_required', true)),
   ('job.serum_auto_update_status', '免疫状态自动更新', 'job', '每天 01:00 自动更新免疫实验状态', 1, 1, 210, JSON_OBJECT('hour', 1, 'minute', 0, 'restart_required', true)),
   ('job.discovery_auto_update_status', '抗体发现状态自动更新', 'job', '每天 01:15 自动更新已过期的冲击免状态', 1, 1, 215, JSON_OBJECT('hour', 1, 'minute', 15, 'restart_required', true)),
-  ('job.mega_labillion_status_sync', '镁伽工单状态同步', 'job', '每天 02:00 同步镁伽非终态工单状态', 1, 1, 220, JSON_OBJECT('hour', 2, 'minute', 0, 'restart_required', true));
+  ('job.mega_labillion_status_sync', '镁伽工单状态同步', 'job', '每天 02:00 同步镁伽非终态工单状态', 1, 1, 220, JSON_OBJECT('hour', 2, 'minute', 0, 'restart_required', true)),
+  ('job.discovery_synthesis_order_sync', '合成与验证外部订单同步', 'job', '每隔 1 小时同步 One 合成订单与交付进度', 1, 1, 225, JSON_OBJECT('schedule', 'interval', 'every', 1, 'unit', 'hour', 'hour', 0, 'minute', 20, 'restart_required', true));
 
 -- =============================================================================
 -- 权限包 / 角色（仅示例三档：访客、业务员、系统管理；生产环境完全自定义）
@@ -1056,3 +1120,10 @@ SELECT r.id, r.code FROM sys_role r WHERE r.code IN ('guest', 'operator', 'syste
 -- 同一 EMPLOYEE_DB_URL 外部平台库还包含正式靶点表
 -- xdida_platform_biocytogen.target；本系统只读全量同步至主库 target，
 -- 字段选择与同步规则见 modules/system/target_sync.py，勿修改外部表。
+
+-- =============================================================================
+-- 外部 One 库 ONE_DB_URL：one_task_ngs_task / one_task_ngs_data_analyze /
+-- one_task_beacon_task / one_task_beacon_data_analyze（synthesis_progress/one_sync.py，
+-- 勿在主库执行，仅只读同步合成订单与交付进度至 discovery_synthesis_order）
+-- =============================================================================
+

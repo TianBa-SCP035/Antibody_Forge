@@ -428,7 +428,24 @@
       <template #header>
         <div class="clearfix small-header">
           <span>4. 免疫方案 (Immunization Scheme)</span>
-          <el-button v-if="canEdit && postForm.mouse_groups.length > 0" style="float: right; padding: 3px 0" link @click="addStepToGroup(activeGroupTab)">添加步骤</el-button>
+          <div v-if="canEdit" class="scheme-header-actions">
+            <el-checkbox
+              v-model="autoRecalcDates"
+              size="small"
+              class="auto-date-checkbox"
+              title="开启时修改日期/阶段会自动顺延重算后续步骤；特殊排期可关闭此项以单独调整某一步日期"
+            >
+              自动顺延日期
+            </el-checkbox>
+            <el-button
+              v-if="postForm.mouse_groups.length > 0"
+              style="padding: 3px 0"
+              link
+              @click="addStepToGroup(activeGroupTab)"
+            >
+              添加步骤
+            </el-button>
+          </div>
         </div>
       </template>
       
@@ -990,6 +1007,7 @@ export default {
           owner: [{ required: true, message: '必填', trigger: 'blur' }]
       },
       activeGroupTab: null,
+      autoRecalcDates: true,
       groupIdSnapshots: new WeakMap(),
       autoSaveTimer: null,
       autoSaving: false,
@@ -1165,9 +1183,11 @@ export default {
           if (this.postForm.mouse_groups.length > 0) {
             this.activeGroupTab = this.postForm.mouse_groups[0].group_id
           }
+          this.autoRecalcDates = this.shouldAutoRecalcDates()
         } else {
           const currentUser = this.currentUserName
           this.postForm.owner = currentUser.split(' ')[0]
+          this.autoRecalcDates = true
         }
         loadSucceeded = true
       } catch (err) {
@@ -1325,7 +1345,7 @@ export default {
 
         this.postForm.steps.push(newStep)
         reindexGroupSortOrder(this.postForm.steps, groupId)
-        this.recalculateGroupDates(groupId, groupSteps.length)
+        this.calculateStepDate(newStep)
     },
     openRemarkDialog(row) {
         this.currentRemarkRow = row
@@ -1388,7 +1408,9 @@ export default {
         if (index > -1) {
             this.postForm.steps.splice(index, 1)
             reindexGroupSortOrder(this.postForm.steps, row.group_id)
-            this.recalculateGroupDates(row.group_id, groupIndex > -1 ? groupIndex : 0)
+            if (this.autoRecalcDates) {
+                this.recalculateGroupDates(row.group_id, groupIndex > -1 ? groupIndex : 0)
+            }
         }
     },
     updateStepAdjuvant(step, antigen) {
@@ -1473,6 +1495,7 @@ export default {
         if (isMianStage(row.stage_name)) {
             resortMianStepsInGroup(this.postForm.steps, row.group_id)
         }
+        if (!this.autoRecalcDates) return
         const groupSteps = this.getStepsForGroup(row.group_id)
         const startIndex = isMianStage(row.stage_name)
             ? 0
@@ -1539,25 +1562,40 @@ export default {
     daysBetween(targetDate, startDate) {
         return Math.round((targetDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
     },
-    calculateStepDate(row) {
+    expectedStepDate(row) {
         const startDate = this.parseDateOnly(this.postForm.start_date)
-        if (!startDate) return
-        
+        if (!startDate) return null
         const groupSteps = this.getStepsForGroup(row.group_id)
-        const currentIndex = groupSteps.findIndex(s => s === row)
-        
+        const currentIndex = groupSteps.indexOf(row)
         const lastStep = currentIndex > 0 ? groupSteps[currentIndex - 1] : null
         const baseDate = lastStep?.date_actual ? this.parseDateOnly(lastStep.date_actual) : startDate
-        if (!baseDate) return
-        
-        const interval = lastStep 
+        if (!baseDate) return null
+        const interval = lastStep
             ? (row.stage_name === '采血' ? 7 : parseInt(this.postForm.immunization_interval) || 0)
             : 0
-        
-        const targetDate = this.addDays(baseDate, interval)
-        
-        row.date_actual = this.formatDate(targetDate)
-        row.day_relative = this.daysBetween(targetDate, startDate).toString()
+        return { startDate, targetDate: this.addDays(baseDate, interval) }
+    },
+    shouldAutoRecalcDates() {
+        const steps = (this.postForm.steps || []).filter(step => String(step?.date_actual || '').trim())
+        if (!steps.length) return true
+        return steps.every((step) => {
+            const actual = this.parseDateOnly(step.date_actual)
+            const expected = this.expectedStepDate(step)
+            return Boolean(actual && expected && this.formatDate(actual) === this.formatDate(expected.targetDate))
+        })
+    },
+    syncStepRelativeDay(row, startDate = this.parseDateOnly(this.postForm.start_date)) {
+        const targetDate = this.parseDateOnly(row?.date_actual)
+        if (startDate && targetDate) {
+            row.date_actual = this.formatDate(targetDate)
+            row.day_relative = this.daysBetween(targetDate, startDate).toString()
+        }
+    },
+    calculateStepDate(row) {
+        const expected = this.expectedStepDate(row)
+        if (!expected) return
+        row.date_actual = this.formatDate(expected.targetDate)
+        row.day_relative = this.daysBetween(expected.targetDate, expected.startDate).toString()
     },
     recalculateGroupDates(groupId, startIndex = 0) {
         const groupSteps = this.getStepsForGroup(groupId)
@@ -1566,19 +1604,22 @@ export default {
         }
     },
     recalculateAllStepDates() {
+        if (!this.autoRecalcDates) {
+            const startDate = this.parseDateOnly(this.postForm.start_date)
+            if (startDate) {
+                ;(this.postForm.steps || []).forEach(step => this.syncStepRelativeDay(step, startDate))
+            }
+            return
+        }
         const groupIds = new Set(this.postForm.steps.map(step => step.group_id).filter(Boolean))
         groupIds.forEach(groupId => this.recalculateGroupDates(groupId))
     },
     handleStepDateChange(row) {
-        const startDate = this.parseDateOnly(this.postForm.start_date)
-        const targetDate = this.parseDateOnly(row.date_actual)
-        if (startDate && targetDate) {
-            row.date_actual = this.formatDate(targetDate)
-            row.day_relative = this.daysBetween(targetDate, startDate).toString()
-        }
+        this.syncStepRelativeDay(row)
+        if (!this.autoRecalcDates) return
 
         const groupSteps = this.getStepsForGroup(row.group_id)
-        const currentIndex = groupSteps.findIndex(s => s === row)
+        const currentIndex = groupSteps.indexOf(row)
         if (currentIndex > -1) {
             this.recalculateGroupDates(row.group_id, currentIndex + 1)
         }
@@ -2103,6 +2144,17 @@ export default {
 .small-header {
     font-size: 15px;
     line-height: 28px;
+}
+.scheme-header-actions {
+    float: right;
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+}
+.auto-date-checkbox {
+    height: 28px;
+    margin-right: 0;
+    font-weight: normal;
 }
 .sub-header {
     display: flex;

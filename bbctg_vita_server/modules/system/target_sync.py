@@ -7,6 +7,11 @@ from sqlalchemy.orm import Session
 
 from models.target import Target
 from utils.filter_values import clean_field_text
+from utils.target_structure import (
+    enrich_missing_targets,
+    is_meaningful_structure_feature,
+    is_transmembrane_property,
+)
 
 
 TARGET_SOURCE_SQL = text(
@@ -116,7 +121,22 @@ TEXT_FIELDS = (
 )
 
 
-def sync_targets(db: Session, source_db: Session, *, dry_run: bool = False) -> dict[str, Any]:
+GENE_IDENTITY_FIELDS = (
+    "name",
+    "human_ncbi_gene_id",
+    "mouse_ncbi_gene_id",
+    "human_gene_official_name",
+    "mouse_gene_official_name",
+)
+
+
+def sync_targets(
+    db: Session,
+    source_db: Session,
+    *,
+    dry_run: bool = False,
+    enrich_uniprot: bool = False,
+) -> dict[str, Any]:
     """全量同步外部靶点主数据；外部表只读，本地缺失记录仅停用不删除。"""
     source_rows = source_db.execute(TARGET_SOURCE_SQL).mappings().all()
     if not source_rows:
@@ -126,6 +146,7 @@ def sync_targets(db: Session, source_db: Session, *, dry_run: bool = False) -> d
     targets_by_external_id = {target.external_id: target for target in existing_targets}
     targets_by_snum = {target.snum: target for target in existing_targets}
     seen_external_ids: set[int] = set()
+    enrichment_candidates: list[Target] = []
     result: dict[str, Any] = {
         "source_total": len(source_rows),
         "valid": 0,
@@ -134,6 +155,7 @@ def sync_targets(db: Session, source_db: Session, *, dry_run: bool = False) -> d
         "unchanged": 0,
         "reactivated": 0,
         "deactivated": 0,
+        "uniprot_enriched": 0,
         "skipped": {
             "missing_external_id": 0,
             "missing_snum": 0,
@@ -183,9 +205,14 @@ def sync_targets(db: Session, source_db: Session, *, dry_run: bool = False) -> d
             targets_by_external_id[external_id] = target
             targets_by_snum[snum] = target
             result["created"] += 1
+            if not target.structural_properties:
+                enrichment_candidates.append(target)
             continue
 
         old_snum = target.snum
+        gene_identity_changed = any(
+            getattr(target, f) != values.get(f) for f in GENE_IDENTITY_FIELDS
+        )
         changed = _apply_values(target, values) or rebound
         if old_snum != target.snum:
             targets_by_snum.pop(old_snum, None)
@@ -198,11 +225,23 @@ def sync_targets(db: Session, source_db: Session, *, dry_run: bool = False) -> d
             result["updated"] += 1
         else:
             result["unchanged"] += 1
+        if gene_identity_changed and not target.structural_properties:
+            enrichment_candidates.append(target)
 
     for target in existing_targets:
         if target.external_id not in seen_external_ids and target.is_active:
             target.is_active = False
             result["deactivated"] += 1
+
+    if enrichment_candidates:
+        enrich_stats = enrich_missing_targets(
+            enrichment_candidates,
+            list(targets_by_external_id.values()),
+            allow_network=enrich_uniprot,
+        )
+        result["uniprot_enriched"] = (
+            enrich_stats["reused_local"] + enrich_stats["fetched_uniprot"]
+        )
 
     if dry_run:
         db.rollback()
@@ -219,8 +258,24 @@ def _target_values(row: Any) -> dict[str, Any]:
 
 
 def _apply_values(target: Target, values: dict[str, Any]) -> bool:
+    merged = dict(values)
+
+    # 防冲突规则 1：PM 有 structural_properties 则以 PM 为准；PM 为空则保留本地已有的补齐值
+    incoming_sp = merged.get("structural_properties")
+    effective_sp = incoming_sp if incoming_sp is not None else target.structural_properties
+    merged["structural_properties"] = effective_sp
+
+    # 防冲突规则 2：PM 有有效跨膜次数则以 PM 为准；PM 为空或占位符(NA/未知)且最终类型非“非跨膜冲突”时，保留本地有效跨膜次数
+    incoming_sf = merged.get("structure_feature")
+    if (
+        not is_meaningful_structure_feature(incoming_sf)
+        and is_meaningful_structure_feature(target.structure_feature)
+        and (effective_sp is None or is_transmembrane_property(effective_sp))
+    ):
+        merged["structure_feature"] = target.structure_feature
+
     changed = False
-    for field, value in values.items():
+    for field, value in merged.items():
         if getattr(target, field) != value:
             setattr(target, field, value)
             changed = True

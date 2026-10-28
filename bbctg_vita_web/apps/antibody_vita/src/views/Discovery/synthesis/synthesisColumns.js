@@ -14,9 +14,23 @@ export const STATUS_OPTIONS = [
 export const PRIORITY_OPTIONS = [...WORKBENCH_PRIORITY_OPTIONS];
 export const ORDER_KIND_OPTIONS = ['常规合成', '改造'];
 export const SUPPLY_MODE_OPTIONS = ['合成到货', '内部转染', '改亚型'];
+export const AFFINITY_RESULT_OPTIONS = ['正常', '阳性极少', '全阴'];
 export const MOUSE_STRAIN_OPTIONS = [...SERUM_MOUSE_STRAIN_OPTIONS];
 export const STUDY_TYPE_OPTIONS = [...WORKBENCH_STUDY_TYPE_OPTIONS];
 export const DEFAULT_CORP_OPTIONS = ['君跻', '擎科', '金斯瑞', '百奥', '内部'];
+export const DEFAULT_SELECTION_METHOD_OPTIONS = [
+  '补挑',
+  'EYE',
+  'DS',
+  'AF_P',
+  'AF_C',
+  'AB_P',
+  'AB_C',
+  'D',
+  'D模型',
+  'D模型-3轮',
+  'P',
+];
 export const DEFAULT_ENG_TYPE_OPTIONS = [
   '亲和力',
   '人源化',
@@ -46,6 +60,7 @@ export const DEFAULT_ENG_METHOD_OPTIONS = [
 
 export const CSV_FIELD_OPTIONS = {
   mouse_strain: MOUSE_STRAIN_OPTIONS,
+  selection_method: DEFAULT_SELECTION_METHOD_OPTIONS,
   eng_type: DEFAULT_ENG_TYPE_OPTIONS,
   eng_method: DEFAULT_ENG_METHOD_OPTIONS,
 };
@@ -70,9 +85,11 @@ export const QUEUE_TERMINAL_STATUSES = ['已完成', '已取消'];
 export const STRING_MAX = {
   target_name: 128,
   mouse_strain: 128,
+  selection_method: 128,
   synthesis_code: 64,
   order_no: 64,
   synthetic_corp: 64,
+  affinity_result: 32,
   owner: 64,
   batch_label: 255,
   assay_note: 500,
@@ -83,7 +100,6 @@ export const STRING_MAX = {
   eng_requirement: 1000,
   eng_result: 500,
   project_code: 64,
-  experiment_id: 64,
   study_type: 64,
   pm: 64,
 };
@@ -151,12 +167,12 @@ export const PM_EDIT_FIELD_KEYS = new Set([
   'owner',
   'pm',
   'project_code',
-  'experiment_id',
   'study_type',
   'target',
   'target_name',
   'target_codes',
   'mouse_strain',
+  'selection_method',
   'eng_type',
   'eng_method',
   'eng_parent_seq',
@@ -196,7 +212,12 @@ export const BASE_EDITOR_SECTIONS = [
     title: '项目信息',
     fields: [
       { key: 'project_code', label: '项目编号', type: 'text' },
-      { key: 'experiment_id', label: '实验号', type: 'text' },
+      {
+        key: 'mouse_strain',
+        label: '小鼠品系',
+        type: 'csv',
+        options: MOUSE_STRAIN_OPTIONS,
+      },
       { key: 'pm', label: 'PM', type: 'user' },
       {
         key: 'study_type',
@@ -218,10 +239,10 @@ export const BASE_EDITOR_SECTIONS = [
     title: '合成订单',
     fields: [
       {
-        key: 'mouse_strain',
-        label: '小鼠品系',
+        key: 'selection_method',
+        label: '挑选方式',
         type: 'csv',
-        options: MOUSE_STRAIN_OPTIONS,
+        options: DEFAULT_SELECTION_METHOD_OPTIONS,
       },
       { key: 'synthesis_code', label: '送测转码', type: 'text' },
       { key: 'order_no', label: '订单号', type: 'text' },
@@ -240,6 +261,12 @@ export const BASE_EDITOR_SECTIONS = [
       { key: 'flow_date', label: '流式日期', type: 'date' },
       { key: 'affinity_count', label: '亲和力个数', type: 'number' },
       { key: 'affinity_date', label: '亲和力日期', type: 'date' },
+      {
+        key: 'affinity_result',
+        label: '亲和力结果',
+        type: 'select',
+        options: AFFINITY_RESULT_OPTIONS,
+      },
       {
         key: 'assay_note',
         label: '检测说明',
@@ -393,6 +420,13 @@ export const WORKBENCH_COLUMNS = [
     showOverflowTooltip: true,
   },
   {
+    key: 'selection_method',
+    label: '挑选方式',
+    prop: 'selection_method',
+    minWidth: 100,
+    showOverflowTooltip: true,
+  },
+  {
     key: 'synthetic_corp',
     label: '合成公司',
     prop: 'synthetic_corp',
@@ -410,6 +444,13 @@ export const WORKBENCH_COLUMNS = [
     key: 'affinity_count',
     label: '亲和力个数',
     prop: 'affinity_count',
+    minWidth: 96,
+    showOverflowTooltip: true,
+  },
+  {
+    key: 'affinity_result',
+    label: '亲和力结果',
+    prop: 'affinity_result',
     minWidth: 96,
     showOverflowTooltip: true,
   },
@@ -503,13 +544,6 @@ export const WORKBENCH_COLUMNS = [
     showOverflowTooltip: true,
   },
   {
-    key: 'experiment_id',
-    label: '实验号',
-    prop: 'experiment_id',
-    minWidth: 120,
-    showOverflowTooltip: true,
-  },
-  {
     key: 'study_type',
     label: '课题类型',
     prop: 'study_type',
@@ -539,6 +573,7 @@ export const SHEET_COLUMNS = [
   { key: 'status', label: '状态', edit: 'select', width: 100 },
   { key: 'target_name', label: '靶点名称', edit: 'target', minWidth: 120 },
   { key: 'mouse_strain', label: '小鼠品系', edit: 'multi', minWidth: 115 },
+  { key: 'selection_method', label: '挑选方式', edit: 'multi', minWidth: 115 },
   { key: 'synthesis_code', label: '送测转码', edit: 'text', minWidth: 150 },
   { key: 'order_no', label: '订单号', edit: 'text', minWidth: 150 },
   { key: 'synthetic_corp', label: '合成公司', edit: 'select', width: 100 },
@@ -550,6 +585,7 @@ export const SHEET_COLUMNS = [
   { key: 'flow_date', label: '流式日期', edit: 'date', width: 120 },
   { key: 'affinity_count', label: '亲和力个数', edit: 'text', width: 98 },
   { key: 'affinity_date', label: '亲和力日期', edit: 'date', width: 120 },
+  { key: 'affinity_result', label: '亲和力结果', edit: 'select', width: 100 },
   { key: 'owner', label: '负责人', edit: 'select', width: 100 },
   { key: 'order_kind', label: '订单性质', edit: 'select', width: 100 },
   { key: 'supply_mode', label: '供应方式', edit: 'select', width: 100 },
@@ -563,13 +599,12 @@ export const SHEET_COLUMNS = [
   { key: 'eng_result', label: '改造结果', edit: 'text', minWidth: 160 },
   { key: 'target_codes', label: '靶点编号', edit: 'target', minWidth: 115 },
   { key: 'project_code', label: '项目编号', edit: 'text', minWidth: 120 },
-  { key: 'experiment_id', label: '实验号', edit: 'text', minWidth: 120 },
   { key: 'study_type', label: '课题类型', edit: 'select', width: 110 },
   { key: 'pm', label: 'PM', edit: 'select', width: 95 },
 ];
 
 export const SHEET_COLUMN_ORDER = createColumnOrder(
-  'discoverySynthesisSheetColumnOrder.v4',
+  'discoverySynthesisSheetColumnOrder.v5',
   SHEET_COLUMNS,
   { pinFirstKey: 'sort_order' },
 );
@@ -586,6 +621,7 @@ export const SHEET_HEADER_ALIASES = Object.freeze({
   靶点编号: 'target_codes',
   鼠型: 'mouse_strain',
   小鼠品系: 'mouse_strain',
+  挑选方式: 'selection_method',
   送测转码: 'synthesis_code',
   送合成转码: 'synthesis_code',
   合成批号: 'synthesis_code',
@@ -607,6 +643,8 @@ export const SHEET_HEADER_ALIASES = Object.freeze({
   流式日期: 'flow_date',
   亲和力个数: 'affinity_count',
   亲和力日期: 'affinity_date',
+  亲和力结果: 'affinity_result',
+  亲和力是否全阴: 'affinity_result',
   负责人: 'owner',
   项目负责人: 'owner',
   检测说明: 'assay_note',
@@ -617,7 +655,6 @@ export const SHEET_HEADER_ALIASES = Object.freeze({
   工单批次: 'batch_label',
   工单批次说明: 'batch_label',
   项目编号: 'project_code',
-  实验号: 'experiment_id',
   课题类型: 'study_type',
   PM: 'pm',
   改造类型: 'eng_type',
@@ -641,6 +678,7 @@ export const EDITABLE_FIELDS = [
   'target_name',
   'target_codes',
   'mouse_strain',
+  'selection_method',
   'synthesis_code',
   'order_no',
   'synthetic_corp',
@@ -652,6 +690,7 @@ export const EDITABLE_FIELDS = [
   'flow_date',
   'affinity_count',
   'affinity_date',
+  'affinity_result',
   'owner',
   'batch_label',
   'assay_note',
@@ -662,7 +701,6 @@ export const EDITABLE_FIELDS = [
   'eng_requirement',
   'eng_result',
   'project_code',
-  'experiment_id',
   'study_type',
   'pm',
 ];

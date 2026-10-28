@@ -10,7 +10,10 @@
           <small>最近同步 {{ stats.synced_at || '等待首次同步' }}</small>
         </div>
         <form class="search-control" @submit.prevent="search">
-          <input v-model="query.keyword" placeholder="搜索靶点、基因、别名或 NCBI Gene ID" />
+          <input
+            v-model="query.keyword"
+            placeholder="搜索靶点、基因、别名、NCBI ID 或靶点类型（如 I型、分泌、多穿）"
+          />
           <button
             v-if="query.keyword"
             class="clear-search"
@@ -139,7 +142,18 @@
 
             <div class="spotlight-identity">
               <div class="target-name-line">
-                <h2>{{ selectedTarget.name }}</h2>
+                <h2>
+                  <a
+                    v-if="uniprotUrl(selectedTarget)"
+                    class="ncbi-link"
+                    :href="uniprotUrl(selectedTarget)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {{ selectedTarget.name }}
+                  </a>
+                  <span v-else>{{ selectedTarget.name }}</span>
+                </h2>
                 <span class="selected-code">{{ selectedTarget.snum }}</span>
               </div>
               <p>{{ selectedTarget.official_full_name || '暂无官方全名' }}</p>
@@ -196,6 +210,15 @@
             </div>
 
             <div class="fact-tags">
+              <span>
+                靶点类型 ·
+                {{
+                  formatTargetStructureLabel(
+                    selectedTarget.structural_properties,
+                    selectedTarget.structure_feature,
+                  )
+                }}
+              </span>
               <span>KO致死 · {{ koLethalLabel(selectedTarget.ko_lethal_info) }}</span>
               <span>同源基因 · {{ booleanLabel(selectedTarget.is_homologous_gene) }}</span>
               <span>人鼠同源性 · {{ selectedTarget.human_mouse_homology || '未标注' }}</span>
@@ -312,6 +335,7 @@ import {
   type TargetStats,
 } from '#/api/atlas';
 import { useStaleTabRefresh } from '#/utils/staleTabRefresh';
+import { formatTargetStructureLabel } from '#/utils/targetStructure';
 
 interface DetailField {
   label: string;
@@ -368,7 +392,7 @@ const detailGroups = computed(() => {
       field('靶点名称', target.name),
       field('官方全名', target.official_full_name, true),
       field('靶点分类', target.category),
-      field('靶点类型', targetTypeLabel(target.type)),
+      field('靶点来源', targetSourceLabel(target.type)),
       field('开发状态', statusMeta(target.status).label),
     ]),
     group('human', '人源基因', [
@@ -512,14 +536,14 @@ function statusMeta(status?: null | number) {
   return { label: '未标注' };
 }
 
-function targetTypeLabel(value?: null | number) {
+function targetSourceLabel(value?: null | number) {
   const labels: Record<number, string> = {
     1: '内部-千鼠万抗',
     2: '内部-其他',
     3: '外部',
     4: 'NA',
   };
-  return value == null ? '未标注' : labels[value] || '未知类型';
+  return value == null ? '未标注' : labels[value] || '未知来源';
 }
 
 function koLethalLabel(value?: null | number) {
@@ -555,6 +579,28 @@ function structureFeatureLabel(value?: null | string) {
 function ncbiGeneUrl(value?: null | string) {
   const geneId = String(value || '').trim();
   return /^\d+$/.test(geneId) ? `https://www.ncbi.nlm.nih.gov/gene/${geneId}` : undefined;
+}
+
+function uniprotUrl(target?: null | TargetItem) {
+  if (!target) return undefined;
+  const humanGeneId = String(target.human_ncbi_gene_id || '').trim();
+  if (/^\d+$/.test(humanGeneId)) {
+    return `https://www.uniprot.org/uniprotkb?query=(xref:geneid-${humanGeneId})`;
+  }
+  const mouseGeneId = String(target.mouse_ncbi_gene_id || '').trim();
+  if (/^\d+$/.test(mouseGeneId)) {
+    return `https://www.uniprot.org/uniprotkb?query=(xref:geneid-${mouseGeneId})`;
+  }
+  const rawName = String(
+    target.human_gene_official_name ||
+      target.mouse_gene_official_name ||
+      target.name ||
+      '',
+  )
+    .trim()
+    .replace(/^(?:dog|canine|cat|feline|monkey|cyno)[\s\-_]*/i, '');
+  if (!rawName || rawName.toUpperCase() === 'NA') return undefined;
+  return `https://www.uniprot.org/uniprotkb?query=${encodeURIComponent(rawName)}`;
 }
 
 function targetProjectUrl(externalId: number) {

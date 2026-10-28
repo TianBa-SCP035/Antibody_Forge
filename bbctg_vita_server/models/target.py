@@ -26,7 +26,7 @@ class Target(Base):
     )
     snum: Mapped[str] = mapped_column(String(100), nullable=False, comment="靶点编号")
     name: Mapped[str] = mapped_column(String(100), nullable=False, comment="靶点名称")
-    type: Mapped[int | None] = mapped_column(comment="靶点类型")
+    type: Mapped[int | None] = mapped_column(comment="靶点来源")
     status: Mapped[int | None] = mapped_column(comment="开发状态")
     category: Mapped[str | None] = mapped_column(String(200), comment="靶点分类")
 

@@ -19,7 +19,7 @@ def target_master_sync_job() -> None:
     try:
         source_db_generator = get_employee_db()
         source_db = next(source_db_generator)
-        result = sync_targets(db, source_db)
+        result = sync_targets(db, source_db, enrich_uniprot=True)
         logging.info("target_master_sync result=%s", result)
         skipped = sum(result["skipped"].values())
         summary = (
@@ -27,6 +27,8 @@ def target_master_sync_job() -> None:
             f"更新 {result['updated']} 条，"
             f"下架 {result['deactivated']} 条"
         )
+        if result.get("uniprot_enriched"):
+            summary += f"，UniProt补齐 {result['uniprot_enriched']} 条"
         if skipped:
             summary += f"，跳过 {skipped} 条"
         record_job_run(

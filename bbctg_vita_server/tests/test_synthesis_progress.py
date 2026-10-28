@@ -33,7 +33,7 @@ class SynthesisProgressServiceTests(unittest.TestCase):
 
     def test_status_machine_and_save_workflow(self):
         with self.Session() as db:
-            # 1. Create without order_no -> status is 待下单
+            # 1. Create without order_no -> status is 待下单, owner is None before affinity
             row1 = service.save(
                 db,
                 {
@@ -43,7 +43,6 @@ class SynthesisProgressServiceTests(unittest.TestCase):
                     "synthesis_code": "20R015_RNBK01",
                     "synthetic_count": "118",
                     "synthetic_date": "2026-02-12",
-                    "owner": "无人问津",
                 },
                 created_by="测试员",
             )
@@ -51,7 +50,7 @@ class SynthesisProgressServiceTests(unittest.TestCase):
             self.assertEqual(row1["target_name"], "B7-H4")
             self.assertEqual(row1["target_codes"], ["20R015"])
             self.assertEqual(row1["mouse_strain"], "RN、RNKO")
-            self.assertEqual(row1["owner"], "无人问津")
+            self.assertIsNone(row1["owner"])
             self.assertEqual(row1["synthetic_count"], 118)
             self.assertEqual(row1["synthetic_date"], "2026-02-12")
 
@@ -66,13 +65,21 @@ class SynthesisProgressServiceTests(unittest.TestCase):
             )
             self.assertEqual(row1["status"], "待检测")
 
-            # 4. Fill flow_date / flow_count -> auto advances to 检测中
+            # 4. Fill flow_date / affinity_date -> auto advances to 检测中, sets affinity_result='正常' and owner='无人问津'
             row1 = service.save(
                 db,
-                {"id": row1["id"], "flow_count": 113, "flow_date": "2026-03-20", "owner": "李卓琳"},
+                {
+                    "id": row1["id"],
+                    "flow_count": 113,
+                    "flow_date": "2026-03-20",
+                    "affinity_date": "2026-03-25",
+                    "selection_method": ["AF_P", "补挑"],
+                },
             )
             self.assertEqual(row1["status"], "检测中")
-            self.assertEqual(row1["owner"], "李卓琳")
+            self.assertEqual(row1["owner"], "无人问津")
+            self.assertEqual(row1["selection_method"], "补挑、AF_P")
+            self.assertEqual(row1["affinity_result"], "正常")
 
             # 5. Engineering order with multi-value eng_type & eng_method joined with '、',
             #    and auto-fills owner and pm from created_by

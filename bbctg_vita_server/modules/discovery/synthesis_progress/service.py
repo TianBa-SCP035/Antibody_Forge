@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from models.discovery import DiscoverySynthesisOrder
 from modules.discovery.synthesis_progress.constants import (
     ACTIVE_STATUSES,
+    AFFINITY_RESULT_NORMAL,
+    AFFINITY_RESULT_OPTIONS,
     DRIFT_COMPARE_FIELDS,
     ENG_METHOD_OPTIONS,
     ENG_TYPE_OPTIONS,
@@ -20,6 +22,7 @@ from modules.discovery.synthesis_progress.constants import (
     ORDER_KIND_ENGINEERING,
     ORDER_KIND_NORMAL,
     ORDER_KIND_OPTIONS,
+    SELECTION_METHOD_OPTIONS,
     STATUS_ASSAYING,
     STATUS_CANCELLED,
     STATUS_COMPLETED,
@@ -86,6 +89,7 @@ STRING_FIELDS: dict[str, int] = {
 
 CSV_JOINED_FIELDS: dict[str, tuple[tuple[str, ...], int, str]] = {
     "mouse_strain": (MOUSE_STRAIN_OPTIONS, 128, "小鼠品系"),
+    "selection_method": (SELECTION_METHOD_OPTIONS, 128, "挑选方式"),
     "eng_type": (ENG_TYPE_OPTIONS, 128, "改造类型"),
     "eng_method": (ENG_METHOD_OPTIONS, 128, "改造方式"),
 }
@@ -114,6 +118,7 @@ WRITABLE_FIELDS = (
     "sort_order",
     "order_kind",
     "supply_mode",
+    "affinity_result",
     "target_codes",
 )
 
@@ -130,6 +135,7 @@ PM_EDIT_FIELDS = frozenset(
         "target_name",
         "target_codes",
         "mouse_strain",
+        "selection_method",
         "eng_type",
         "eng_method",
         "eng_parent_seq",
@@ -296,6 +302,15 @@ def _normalize_supply_mode(value: Any) -> str:
     return text
 
 
+def _normalize_affinity_result(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text not in AFFINITY_RESULT_OPTIONS:
+        raise ValueError("亲和力结果不在允许的选项中")
+    return text
+
+
 def _normalize_date(value: Any) -> str | None:
     if value in (None, ""):
         return None
@@ -359,12 +374,8 @@ def _csv_token_filter(column, value: str, separators: tuple[str, ...] = (",", "�
 
 def _unassigned_clause():
     return and_(
-        DiscoverySynthesisOrder.status.in_(tuple(ACTIVE_STATUSES)),
-        or_(
-            DiscoverySynthesisOrder.owner.is_(None),
-            DiscoverySynthesisOrder.owner == "",
-            DiscoverySynthesisOrder.owner == UNCLAIMED_OWNER,
-        ),
+        DiscoverySynthesisOrder.status != STATUS_CANCELLED,
+        DiscoverySynthesisOrder.owner == UNCLAIMED_OWNER,
     )
 
 
@@ -473,7 +484,14 @@ def _apply_list_filters(
     if study_clause is not None:
         filters.append(study_clause)
 
-    for csv_key in ("mouse_strain", "eng_type", "eng_method"):
+    aff_res_clause = combine_any(
+        data.get("affinity_result"),
+        lambda val: DiscoverySynthesisOrder.affinity_result == _normalize_affinity_result(val),
+    )
+    if aff_res_clause is not None:
+        filters.append(aff_res_clause)
+
+    for csv_key in ("mouse_strain", "selection_method", "eng_type", "eng_method"):
         tokens = split_code_tokens(data.get(csv_key))
         if tokens:
             col = getattr(DiscoverySynthesisOrder, csv_key)
@@ -497,7 +515,6 @@ def _apply_list_filters(
         )
 
     for text_field in (
-        "experiment_id",
         "assay_note",
         "remark",
     ):
@@ -774,7 +791,11 @@ def get_options(db: Session) -> dict[str, Any]:
         "priorities": list(PRIORITY_ORDER),
         "order_kinds": list(ORDER_KIND_OPTIONS),
         "supply_modes": list(SUPPLY_MODE_OPTIONS),
+        "affinity_results": list(AFFINITY_RESULT_OPTIONS),
         "mouse_strains": list(MOUSE_STRAIN_OPTIONS),
+        "selection_methods": distinct_csv_tokens(
+            DiscoverySynthesisOrder.selection_method, SELECTION_METHOD_OPTIONS
+        ),
         "synthetic_corps": distinct_values(
             DiscoverySynthesisOrder.synthetic_corp, SYNTHETIC_CORP_OPTIONS
         ),
@@ -808,6 +829,8 @@ def _apply_fields(
             value = _normalize_order_kind(raw)
         elif field == "supply_mode":
             value = _normalize_supply_mode(raw)
+        elif field == "affinity_result":
+            value = _normalize_affinity_result(raw)
         elif field == "target_codes":
             value = _normalize_target_codes(raw)
         elif field in CSV_JOINED_FIELDS:
@@ -824,6 +847,18 @@ def _apply_fields(
                 keep_breaks=field in BREAK_FIELDS,
             )
         setattr(row, field, value)
+
+    if "affinity_date" in data:
+        if row.affinity_date:
+            if not row.affinity_result:
+                row.affinity_result = AFFINITY_RESULT_NORMAL
+            if not row.owner:
+                row.owner = UNCLAIMED_OWNER
+        else:
+            if "affinity_result" not in data:
+                row.affinity_result = None
+            if "owner" not in data and row.owner == UNCLAIMED_OWNER:
+                row.owner = None
 
     if row.source_one_id is not None:
         old_snap = row.source_snapshot if isinstance(row.source_snapshot, dict) else {}
@@ -1132,6 +1167,7 @@ EXPORT_COLUMNS = (
     ("状态", "status"),
     ("靶点名称", "target_name"),
     ("小鼠品系", "mouse_strain"),
+    ("挑选方式", "selection_method"),
     ("送测转码", "synthesis_code"),
     ("订单号", "order_no"),
     ("合成公司", "synthetic_corp"),
@@ -1143,6 +1179,7 @@ EXPORT_COLUMNS = (
     ("流式日期", "flow_date"),
     ("亲和力个数", "affinity_count"),
     ("亲和力日期", "affinity_date"),
+    ("亲和力结果", "affinity_result"),
     ("负责人", "owner"),
     ("订单性质", "order_kind"),
     ("供应方式", "supply_mode"),
@@ -1156,7 +1193,6 @@ EXPORT_COLUMNS = (
     ("改造结果", "eng_result"),
     ("靶点编号", "target_codes"),
     ("项目编号", "project_code"),
-    ("实验号", "experiment_id"),
     ("课题类型", "study_type"),
     ("PM", "pm"),
 )

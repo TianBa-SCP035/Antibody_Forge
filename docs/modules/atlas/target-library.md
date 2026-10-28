@@ -9,11 +9,17 @@
 - 同步任务：`job.target_master_sync`，默认每天 00:45 全量同步。
 - 页面只查询本地主库；外部记录消失时本地仅将 `is_active` 标为 `false`。
 
-源系统枚举已与项目管理页面核对：`status` 为 1 已开发、2 未开发；`type` 为 1 内部-千鼠万抗、2 内部-其他、3 外部、4 NA；`ko_lethal_info` 为 1 致死、2 存活、3 致死数据冲突、4 NA。页面显示对应含义，数据库保留源代码；`is_active` 表示源记录是否仍存在。
+源系统枚举已与项目管理页面核对：`status`（开发状态）为 1 已开发、2 未开发；`type`（靶点来源）为 1 内部-千鼠万抗、2 内部-其他、3 外部、4 NA；`ko_lethal_info` 为 1 致死、2 存活、3 致死数据冲突、4 NA。页面显示对应含义，数据库保留源代码；`is_active` 表示源记录是否仍存在。
 
 人源和鼠源染色体位置不是枚举代码。纯数字代表染色体编号，页面显示为“1号染色体”等易读形式；`X`、`7q34` 等性染色体或具体位点信息按其生物学含义保留。
 
 靶点分类和结构特性类别分别通过源表 `target.sort`、`target.structural_properties` 关联 `org_tag` 获取；治疗领域通过 `target_tag` 关联 `org_tag` 获取。同步任务将关联后的名称写入本地 `target`，页面不直接联查外部数据库。
+
+针对外部库缺失 `structural_properties`（结构特性类别）或 `structure_feature`（跨膜次数）的记录，同步任务采用**“PM 权威值优先 + 本地保留 + 同库/UniProt 容错补齐”**策略：
+- 当源表 `structural_properties` 非空时，无条件采用源表值；当源表为空而本地已有补齐值时，保留本地值不清空。
+- 当源表 `structure_feature` 有有效值（非空且非 `NA`/`未知`）时采用源表值；当源表为空或 `NA` 时，若最终生效的 `structural_properties` 仍为跨膜蛋白则保留本地有效跨膜次数。
+- 对新增或基因信息变更且缺失结构特性的记录，在完成主数据提交后，自动尝试剥离种属前缀（如 `dog`、`cat`）复用同库靶点或根据人/鼠 NCBI Gene ID 与官方基因名调用 UniProt REST API 补齐。
+- 前后端分别通过公共纯函数 `utils/target_structure.py` 与 `src/utils/targetStructure.ts` 将英文结构特性枚举统一映射为中文靶点类型（如 `I型跨膜（1次跨膜）`、`多次穿膜（7次跨膜）`、`分泌型`、`胞内蛋白`、`GPI锚定`），并支持二次映射为免疫模块的 `target_type`（`I型 / II型 / III型 / 分泌 / 多穿 / 胞内 / GPI`）。
 
 工作台顶部的“最近同步”读取 `job.target_master_sync` 最近一次成功任务的完成时间；单条档案中的“最近变更”读取 `target.synced_at`。该字段由数据库在记录更新时自动刷新；同步任务不会更新内容未变化的记录，因此其时间保持不变。
 

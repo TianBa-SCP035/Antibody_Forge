@@ -118,6 +118,7 @@ class DiscoverySynthesisOrder(Base):
     target_name: Mapped[str | None] = mapped_column(String(128), comment="靶点名称")
     target_codes: Mapped[list[str] | None] = mapped_column(JSON, comment="靶点编号列表")
     mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="小鼠品系")
+    selection_method: Mapped[str | None] = mapped_column(String(128), comment="挑选方式")
     synthesis_code: Mapped[str | None] = mapped_column(String(64), comment="送测转码")
     order_no: Mapped[str | None] = mapped_column(String(64), comment="合成订单号")
     synthetic_corp: Mapped[str | None] = mapped_column(String(64), comment="合成公司")
@@ -129,6 +130,7 @@ class DiscoverySynthesisOrder(Base):
     flow_date: Mapped[str | None] = mapped_column(String(32), comment="流式日期")
     affinity_count: Mapped[int | None] = mapped_column(Integer, comment="亲和力个数")
     affinity_date: Mapped[str | None] = mapped_column(String(32), comment="亲和力日期")
+    affinity_result: Mapped[str | None] = mapped_column(String(32), comment="亲和力结果")
     owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
     batch_label: Mapped[str | None] = mapped_column(String(255), comment="工单批次")
     assay_note: Mapped[str | None] = mapped_column(String(500), comment="检测与异常说明")
@@ -173,6 +175,7 @@ class DiscoverySynthesisOrder(Base):
             "target_name": self.target_name,
             "target_codes": codes,
             "mouse_strain": self.mouse_strain,
+            "selection_method": self.selection_method,
             "synthesis_code": self.synthesis_code,
             "order_no": self.order_no,
             "synthetic_corp": self.synthetic_corp,
@@ -184,6 +187,7 @@ class DiscoverySynthesisOrder(Base):
             "flow_date": self.flow_date,
             "affinity_count": self.affinity_count,
             "affinity_date": self.affinity_date,
+            "affinity_result": self.affinity_result,
             "owner": self.owner,
             "batch_label": self.batch_label,
             "assay_note": self.assay_note,

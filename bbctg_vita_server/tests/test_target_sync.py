@@ -3,6 +3,11 @@ from unittest import TestCase
 
 from models.target import Target
 from modules.system import target_sync
+from utils.target_structure import (
+    match_structural_properties_by_keyword,
+    parse_target_structure,
+    to_serum_target_type,
+)
 
 
 class _ScalarResult:
@@ -175,3 +180,96 @@ class TargetSyncTest(TestCase):
 
         self.assertTrue(existing.is_active)
         self.assertFalse(db.committed)
+
+    def test_preserves_local_enriched_structure_when_pm_source_is_empty(self):
+        existing = _target(
+            type=1,
+            status=2,
+            official_full_name="CD3 epsilon subunit",
+            human_gene_official_name="CD3E",
+            human_ncbi_gene_id="916",
+            mouse_gene_official_name="Cd3e",
+            mouse_ncbi_gene_id="12501",
+            structural_properties="Single-pass transmembrane protein Type I",
+            structure_feature="1",
+        )
+        db = _FakeDb([existing])
+        source_db = _FakeSourceDb([_row(structural_properties=None, structure_feature="NA")])
+
+        result = target_sync.sync_targets(db, source_db)
+
+        self.assertEqual(result["unchanged"], 1)
+        self.assertEqual(result["updated"], 0)
+        self.assertEqual(
+            existing.structural_properties,
+            "Single-pass transmembrane protein Type I",
+        )
+        self.assertEqual(existing.structure_feature, "1")
+
+    def test_pm_non_empty_structure_overrides_local_value_and_clears_conflicting_tm_count(self):
+        existing = _target(
+            structural_properties="Single-pass transmembrane protein Type I",
+            structure_feature="1",
+        )
+        db = _FakeDb([existing])
+        source_db = _FakeSourceDb([_row(structural_properties="Secreted", structure_feature=None)])
+
+        result = target_sync.sync_targets(db, source_db)
+
+        self.assertEqual(result["updated"], 1)
+        self.assertEqual(existing.structural_properties, "Secreted")
+        self.assertIsNone(existing.structure_feature)
+
+    def test_new_dog_prefix_target_reuses_same_library_target_structure(self):
+        pd1 = _target(
+            external_id=10,
+            snum="20R007",
+            name="PD-1",
+            structural_properties="Single-pass transmembrane protein Type I",
+            structure_feature="1",
+        )
+        db = _FakeDb([pd1])
+        source_db = _FakeSourceDb(
+            [
+                _row(
+                    external_id=10,
+                    snum="20R007",
+                    name="PD-1",
+                    structural_properties="Single-pass transmembrane protein Type I",
+                    structure_feature="1",
+                ),
+                _row(
+                    external_id=20,
+                    snum="26R184",
+                    name="dogPD-1",
+                    human_gene_official_name=None,
+                    human_ncbi_gene_id=None,
+                    mouse_gene_official_name=None,
+                    mouse_ncbi_gene_id=None,
+                    structural_properties=None,
+                    structure_feature=None,
+                ),
+            ]
+        )
+
+        result = target_sync.sync_targets(db, source_db)
+
+        self.assertEqual(result["created"], 1)
+        self.assertEqual(result["uniprot_enriched"], 1)
+        self.assertEqual(
+            db.created[0].structural_properties,
+            "Single-pass transmembrane protein Type I",
+        )
+        self.assertEqual(db.created[0].structure_feature, "1")
+
+    def test_shared_structure_mapping_and_keyword_lookup(self):
+        parsed = parse_target_structure("Multi-pass transmembrane protein", "7")
+        self.assertEqual(parsed["label"], "多次穿膜")
+        self.assertEqual(parsed["full_label"], "多次穿膜（7次跨膜）")
+        self.assertEqual(parsed["serum_type"], "多穿")
+        self.assertEqual(to_serum_target_type("Single-pass transmembrane protein Type II", "1"), "II型")
+        self.assertEqual(
+            match_structural_properties_by_keyword("I型"),
+            ["Single-pass transmembrane protein Type I"],
+        )
+        self.assertIn("Secreted", match_structural_properties_by_keyword("分泌"))

@@ -561,6 +561,15 @@ def get_detail(
                     SerumImmProject.project_status != "deleted",
                 )
             )
+        if project is None:
+            project = db.scalar(
+                select(SerumImmProject)
+                .where(
+                    SerumImmProject.project_code == compacted,
+                    SerumImmProject.project_status != "deleted",
+                )
+                .order_by(SerumImmProject.id.desc())
+            )
     if not project:
         return None
     exp_id = project.experiment_id
@@ -691,12 +700,26 @@ def bulk_insert(db: Session, model_class, items: list[dict], experiment_id: str,
     return inserted
 
 
+def _target_option_dict(
+    snum: str,
+    name: str,
+    structural_properties: str | None = None,
+    structure_feature: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "snum": snum,
+        "name": name,
+        "structural_properties": structural_properties,
+        "structure_feature": structure_feature,
+    }
+
+
 def get_target_options(
     db: Session,
     keyword: str,
     limit: int = 20,
     codes: list[str] | None = None,
-) -> dict[str, list[dict[str, str]]]:
+) -> dict[str, list[dict[str, Any]]]:
     selected_codes = list(
         dict.fromkeys(
             str(code).strip()
@@ -706,14 +729,19 @@ def get_target_options(
     )
     selected_items = []
     if selected_codes:
-        names = {
-            target.snum: target.name
+        targets_by_code = {
+            target.snum: target
             for target in db.scalars(select(Target).where(Target.snum.in_(selected_codes)))
         }
         selected_items = [
-            {"snum": code, "name": names[code]}
+            _target_option_dict(
+                code,
+                targets_by_code[code].name,
+                targets_by_code[code].structural_properties,
+                targets_by_code[code].structure_feature,
+            )
             for code in selected_codes
-            if code in names
+            if code in targets_by_code
         ]
 
     result = atlas_service.get_target_list(
@@ -726,7 +754,12 @@ def get_target_options(
     )
     seen_codes = set(selected_codes)
     search_items = [
-        {"snum": item["snum"], "name": item["name"]}
+        _target_option_dict(
+            item["snum"],
+            item["name"],
+            item.get("structural_properties"),
+            item.get("structure_feature"),
+        )
         for item in result["items"]
         if item["snum"] not in seen_codes
     ]

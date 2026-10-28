@@ -1,5 +1,9 @@
 from modules.discovery.synthesis_progress.constants import (
     ACTIVE_STATUSES,
+    AFFINITY_RESULT_ALL_NEG,
+    AFFINITY_RESULT_FEW,
+    AFFINITY_RESULT_NORMAL,
+    AFFINITY_RESULT_OPTIONS,
     DRIFT_COMPARE_FIELDS,
     DRIFT_FIELD_LABELS,
     ENG_METHOD_OPTIONS,
@@ -8,6 +12,7 @@ from modules.discovery.synthesis_progress.constants import (
     ORDER_KIND_ENGINEERING,
     ORDER_KIND_NORMAL,
     ORDER_KIND_OPTIONS,
+    SELECTION_METHOD_OPTIONS,
     SOURCE_ONE_TYPES,
     STATUS_ASSAYING,
     STATUS_CANCELLED,
@@ -27,6 +32,10 @@ from modules.discovery.synthesis_progress.constants import (
 
 __all__ = [
     "ACTIVE_STATUSES",
+    "AFFINITY_RESULT_ALL_NEG",
+    "AFFINITY_RESULT_FEW",
+    "AFFINITY_RESULT_NORMAL",
+    "AFFINITY_RESULT_OPTIONS",
     "DRIFT_COMPARE_FIELDS",
     "DRIFT_FIELD_LABELS",
     "ENG_METHOD_OPTIONS",
@@ -35,6 +44,7 @@ __all__ = [
     "ORDER_KIND_ENGINEERING",
     "ORDER_KIND_NORMAL",
     "ORDER_KIND_OPTIONS",
+    "SELECTION_METHOD_OPTIONS",
     "SOURCE_ONE_TYPES",
     "STATUS_ASSAYING",
     "STATUS_CANCELLED",

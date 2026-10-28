@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from models.system import SysJobRunLog
 from models.target import Target
+from utils.target_structure import match_structural_properties_by_keyword
 
 
 TARGET_SYNC_JOB_CODE = "job.target_master_sync"
@@ -61,9 +62,19 @@ def get_target_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
         exact_pattern = escaped_keyword
         prefix_pattern = f"{escaped_keyword}%"
         contains_pattern = f"%{escaped_keyword}%"
-        conditions.append(
-            or_(*(_matches(field, contains_pattern) for field in SEARCH_FIELDS))
+        matched_props = match_structural_properties_by_keyword(keyword)
+        prop_condition = (
+            Target.structural_properties.in_(matched_props) if matched_props else None
         )
+        search_clauses = [_matches(field, contains_pattern) for field in SEARCH_FIELDS]
+        if prop_condition is not None:
+            search_clauses.append(prop_condition)
+        conditions.append(or_(*search_clauses))
+        descriptive_clauses = [
+            _matches(field, contains_pattern) for field in DESCRIPTIVE_FIELDS
+        ]
+        if prop_condition is not None:
+            descriptive_clauses.append(prop_condition)
         relevance = case(
             (_matches(Target.snum, exact_pattern), 0),
             (_matches(Target.name, exact_pattern), 1),
@@ -89,7 +100,7 @@ def get_target_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
             (_matches(Target.snum, contains_pattern), 22),
             (or_(*(_matches(field, contains_pattern) for field in ALIAS_FIELDS)), 30),
             (_matches(Target.official_full_name, contains_pattern), 40),
-            (or_(*(_matches(field, contains_pattern) for field in DESCRIPTIVE_FIELDS)), 45),
+            (or_(*descriptive_clauses), 45),
             (or_(*(_matches(field, contains_pattern) for field in NCBI_ID_FIELDS)), 50),
             else_=60,
         )

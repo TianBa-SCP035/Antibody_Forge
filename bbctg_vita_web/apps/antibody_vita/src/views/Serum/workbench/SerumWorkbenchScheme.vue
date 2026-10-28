@@ -71,11 +71,12 @@
                 :remote-method="searchTargetOptions"
                 :loading="targetLoading"
                 :placeholder="postForm.target_name ? '' : '搜索并选择靶点'"
-                title="Shift+Enter 可直接录入未入库靶点名称"
+                title="左键单选，右键多选；Shift+Enter 可直接录入未入库靶点名称"
                 style="width: 100%"
                 :disabled="!canEdit"
                 @change="handleTargetChange"
                 @focus="handleTargetFocus"
+                @visible-change="onTargetDropdownVisible"
                 @keydown.shift.enter.capture.prevent.stop="commitFreeTargetName"
               >
                 <template #tag>
@@ -107,8 +108,7 @@
                   <div
                     v-else
                     class="target-option"
-                    title="右键可自定义项目中的显示名称"
-                    @contextmenu.prevent.stop="startTargetAliasEdit(item)"
+                    title="左键单选，右键多选，Shift+右键自定义项目中的显示名称"
                   >
                     <span class="target-option__name">{{ item.name }}</span>
                     <span
@@ -826,6 +826,7 @@ import {
   isWorkbenchPlanClosed,
   SERUM_PROJECT_STATUS_DEFAULT,
 } from '#/utils/serumProjectStatus'
+import { inferSerumTargetTypeFromOptions } from '#/utils/targetStructure'
 
 const MIAN_NUMERALS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
 const SCHEME_PROJECT_STATUS_OPTIONS = [SERUM_PROJECT_STATUS_DEFAULT]
@@ -1084,9 +1085,11 @@ export default {
     }
   },
   deactivated() {
+    this.onTargetDropdownVisible(false)
     this.clearAutoSaveTimer()
   },
   beforeUnmount() {
+    this.onTargetDropdownVisible(false)
     this.clearAutoSaveTimer()
     this.initRequestToken += 1
     this.targetRequestToken += 1
@@ -1287,6 +1290,57 @@ export default {
         this.searchTargetOptions('')
       }
     },
+    onTargetDropdownVisible(open) {
+      if (this.targetSelectMenu) {
+        this.targetSelectMenu.removeEventListener('click', this.onTargetMenuClick, true)
+        this.targetSelectMenu.removeEventListener('contextmenu', this.onTargetMenuClick, true)
+        this.targetSelectMenu = null
+      }
+      if (!open) {
+        this.targetAliasEdit = null
+        return
+      }
+      this.$nextTick(() => {
+        const root = this.$refs.targetSelect?.tooltipRef?.popperRef?.contentRef
+        if (!(root instanceof HTMLElement)) return
+        this.targetSelectMenu = root
+        root.addEventListener('click', this.onTargetMenuClick, true)
+        root.addEventListener('contextmenu', this.onTargetMenuClick, true)
+      })
+    },
+    onTargetMenuClick(event) {
+      const targetEl = event.target instanceof Element ? event.target : null
+      if (!targetEl || targetEl.closest('.target-option--editing')) return
+      const itemEl = targetEl.closest('.el-select-dropdown__item')
+      const option =
+        itemEl &&
+        this.$refs.targetSelect?.optionsArray?.find((entry) => entry?.$el === itemEl)
+      if (!option || itemEl.classList.contains('is-disabled')) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.type !== 'contextmenu') {
+        this.targetAliasEdit = null
+        this.postForm.target_codes = [option.value]
+        this.handleTargetChange([option.value], false)
+        if (this.$refs.targetSelect) this.$refs.targetSelect.expanded = false
+        return
+      }
+      if (event.shiftKey) {
+        const item = this.targetOptions.find((t) => t.snum === option.value) || {
+          snum: option.value,
+          name: option.currentLabel || option.value,
+        }
+        this.startTargetAliasEdit(item)
+        return
+      }
+      this.targetAliasEdit = null
+      const next = this.uniq(this.postForm.target_codes)
+      const index = next.indexOf(option.value)
+      if (index >= 0) next.splice(index, 1)
+      else next.push(option.value)
+      this.postForm.target_codes = next
+      this.handleTargetChange(next, true)
+    },
     commitFreeTargetName(event) {
       const input = event.target
       const customName = (input?.value || '').trim()
@@ -1298,7 +1352,7 @@ export default {
       this.updateProjectName()
       this.$nextTick(() => this.$refs.targetSelect?.blur())
     },
-    handleTargetChange(codes) {
+    handleTargetChange(codes, keepOpen = false) {
       const selected = codes || []
       const namesByCode = new Map(this.targetOptions.map((item) => [item.snum, item.name]))
       this.targetDisplayNames = Object.fromEntries(
@@ -1310,8 +1364,14 @@ export default {
       this.postForm.target_name = selected
         .map((code) => this.targetDisplayNames[code] || code)
         .join('&')
+      const inferredType = inferSerumTargetTypeFromOptions(selected, this.targetOptions)
+      if (inferredType) {
+        this.postForm.target_type = inferredType
+      }
       this.updateProjectName()
-      this.$nextTick(() => this.$refs.targetSelect?.blur())
+      if (!keepOpen) {
+        this.$nextTick(() => this.$refs.targetSelect?.blur())
+      }
     },
     startTargetAliasEdit(item) {
       this.targetAliasEdit = {
@@ -1346,7 +1406,7 @@ export default {
         this.postForm.target_codes = [...this.postForm.target_codes, code]
       }
       this.targetAliasEdit = null
-      this.handleTargetChange(this.postForm.target_codes)
+      this.handleTargetChange(this.postForm.target_codes, true)
     },
     getAntigenDisplay(antigenIds) {
       const ids = Array.isArray(antigenIds) ? antigenIds : []

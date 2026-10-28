@@ -26,6 +26,22 @@
         <el-option v-for="item in supplyModeOptions" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
       <ListFilterSelect
+        v-model="listQuery.selection_method"
+        clearable
+        placeholder="挑选方式"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in optionLists.selection_methods" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.affinity_result"
+        clearable
+        placeholder="亲和力结果"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in affinityResultOptions" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <ListFilterSelect
         v-model="listQuery.eng_type"
         clearable
         placeholder="改造类型"
@@ -412,6 +428,9 @@
           <template #mouse_strain="{ row }">
             {{ displayCsvField(row.mouse_strain) }}
           </template>
+          <template #selection_method="{ row }">
+            {{ displayCsvField(row.selection_method) }}
+          </template>
           <template #eng_type="{ row }">
             {{ displayCsvField(row.eng_type) }}
           </template>
@@ -745,7 +764,7 @@
                     placeholder="选择日期"
                     style="width: 100%;"
                     :disabled="!canEditField(editingRow, field.key)"
-                    @change="persistRow(editingRow, field.key)"
+                    @change="onDrawerDateChange(editingRow, field.key)"
                   />
                   <WorkbenchTargetSelect
                     v-else-if="field.type === 'target'"
@@ -986,6 +1005,7 @@ import {
 import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
 import SynthesisRowActions from './SynthesisRowActions.vue'
 import {
+  AFFINITY_RESULT_OPTIONS,
   BASE_EDITOR_SECTIONS,
   BREAK_FIELDS,
   CSV_FIELD_OPTIONS,
@@ -993,6 +1013,7 @@ import {
   DEFAULT_CORP_OPTIONS,
   DEFAULT_ENG_METHOD_OPTIONS,
   DEFAULT_ENG_TYPE_OPTIONS,
+  DEFAULT_SELECTION_METHOD_OPTIONS,
   EDITABLE_FIELDS,
   ENGINEERING_EDITOR_SECTION,
   INT_COUNT_KEYS,
@@ -1015,14 +1036,6 @@ import {
 } from './synthesisColumns'
 
 let lastViewMode = WORKBENCH_VIEW
-
-function splitCsv(value) {
-  return String(value || '')
-    .replace(/，/g, ',')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
 
 function splitCategories(value) {
   const tokens = Array.isArray(value) ? value : String(value || '').split(/[,，、+]/)
@@ -1052,6 +1065,8 @@ function emptyQuery() {
     synthesis_code: '',
     target_name: '',
     mouse_strain: '',
+    selection_method: '',
+    affinity_result: '',
     owner: '',
     pm: '',
     status: '',
@@ -1142,6 +1157,7 @@ export default {
         owners: [],
         pms: [],
         synthetic_corps: [...DEFAULT_CORP_OPTIONS],
+        selection_methods: [...DEFAULT_SELECTION_METHOD_OPTIONS],
         eng_types: [...DEFAULT_ENG_TYPE_OPTIONS],
         eng_methods: [...DEFAULT_ENG_METHOD_OPTIONS],
       },
@@ -1149,6 +1165,7 @@ export default {
       priorityOptions: [...PRIORITY_OPTIONS],
       orderKindOptions: [...ORDER_KIND_OPTIONS],
       supplyModeOptions: [...SUPPLY_MODE_OPTIONS],
+      affinityResultOptions: [...AFFINITY_RESULT_OPTIONS],
       mouseStrainOptions: [...MOUSE_STRAIN_OPTIONS],
       studyTypeOptions: [...STUDY_TYPE_OPTIONS],
       statusViews: STATUS_VIEWS,
@@ -1194,7 +1211,7 @@ export default {
         return '当前只看填写了检测说明或异常的批次。右键取消；左键改看无人问津待认领。'
       }
       if (this.listQuery.quick_filter === 'unassigned') {
-        return '当前只看未完成且负责人为空或无人问津的批次。再点取消；右键改看有检测说明或异常的批次。'
+        return '当前只看负责人为无人问津的待认领批次。再点取消；右键改看有检测说明或异常的批次。'
       }
       return '左键只看无人问津待认领；右键只看有检测说明或异常的批次。'
     },
@@ -1252,6 +1269,8 @@ export default {
           this.listQuery.priority ||
           this.listQuery.order_kind ||
           this.listQuery.supply_mode ||
+          this.listQuery.selection_method ||
+          this.listQuery.affinity_result ||
           this.listQuery.synthetic_corp ||
           this.listQuery.eng_type ||
           this.listQuery.eng_method ||
@@ -1294,6 +1313,7 @@ export default {
       map.status = this.statusOptions.map((item) => ({ label: item, value: item }))
       map.order_kind = this.orderKindOptions.map((item) => ({ label: item, value: item }))
       map.supply_mode = this.supplyModeOptions.map((item) => ({ label: item, value: item }))
+      map.affinity_result = this.affinityResultOptions.map((item) => ({ label: item, value: item }))
       map.study_type = this.studyTypeOptions.map((item) => ({ label: item, value: item }))
       map.synthetic_corp = (this.optionLists.synthetic_corps || []).map((item) => ({
         label: item,
@@ -1425,6 +1445,10 @@ export default {
         keys.add('owner')
         keys.add('pm')
       }
+      if (keys.has('affinity_date')) {
+        keys.add('affinity_result')
+        keys.add('owner')
+      }
       if (keys.has('order_no') || keys.has('synthesis_code') || keys.has('batch_label')) {
         keys.add('source_one_id')
         keys.add('source_one_type')
@@ -1469,18 +1493,18 @@ export default {
       return this.canPmEdit && String(row?.status || '').trim() === '待下单'
     },
     async openSerumProject(row) {
-      const experimentId = String(row?.experiment_id || '').trim()
+      const lookupCode = String(row?.experiment_id || row?.project_code || '').trim()
       if (!this.canViewSerumProject) {
         ElMessage.warning('您没有免疫实验详情权限')
         return
       }
-      if (!experimentId) {
-        ElMessage.warning('请先填写实验号')
+      if (!lookupCode) {
+        ElMessage.warning('请先填写项目编号')
         return
       }
       if (!(await this.flushEditorForAction(row))) return
       try {
-        const detail = await fetchSerumDetailByExperimentId(experimentId)
+        const detail = await fetchSerumDetailByExperimentId(lookupCode)
         const projectId = Number(detail?.id)
         if (!Number.isSafeInteger(projectId) || projectId <= 0) {
           ElMessage.warning('未找到对应的免疫项目')
@@ -1556,6 +1580,18 @@ export default {
       row.status = value
       return this.persistRow(row, 'status')
     },
+    onDrawerDateChange(row, key) {
+      if (key === 'affinity_date') {
+        if (row.affinity_date) {
+          if (!row.affinity_result) row.affinity_result = '正常'
+          if (!row.owner) row.owner = '无人问津'
+        } else {
+          row.affinity_result = null
+          if (row.owner === '无人问津') row.owner = null
+        }
+      }
+      return this.persistRow(row, key)
+    },
     rowPriority(row) {
       return canonicalizeWorkbenchPriority(row?.priority)
     },
@@ -1580,6 +1616,7 @@ export default {
       return ''
     },
     fieldOptions(field) {
+      if (field?.key === 'selection_method') return this.optionLists.selection_methods
       if (field?.key === 'eng_type') return this.optionLists.eng_types
       if (field?.key === 'eng_method') return this.optionLists.eng_methods
       if (field?.options) return field.options
@@ -1588,6 +1625,7 @@ export default {
       if (field?.key === 'priority') return this.priorityOptions
       if (field?.key === 'order_kind') return this.orderKindOptions
       if (field?.key === 'supply_mode') return this.supplyModeOptions
+      if (field?.key === 'affinity_result') return this.affinityResultOptions
       return []
     },
     usedUserOptions(field) {
@@ -1807,6 +1845,9 @@ export default {
         this.optionLists.pms = this.uniq(data?.pms || [])
         if (Array.isArray(data?.synthetic_corps) && data.synthetic_corps.length) {
           this.optionLists.synthetic_corps = data.synthetic_corps
+        }
+        if (Array.isArray(data?.selection_methods) && data.selection_methods.length) {
+          this.optionLists.selection_methods = data.selection_methods
         }
         if (Array.isArray(data?.eng_types) && data.eng_types.length) {
           this.optionLists.eng_types = data.eng_types
@@ -2089,6 +2130,7 @@ export default {
         'target_name',
         'target_codes',
         'mouse_strain',
+        'selection_method',
         'eng_type',
         'eng_method',
         'eng_parent_seq',
@@ -2101,6 +2143,7 @@ export default {
       const payload = {}
       baseKeys.forEach((key) => {
         const val = source[key]
+        if (key === 'owner' && val === '无人问津') return
         if (Array.isArray(val)) {
           if (val.length) payload[key] = [...val]
         } else if (val !== null && val !== undefined && String(val).trim() !== '') {
@@ -2183,6 +2226,9 @@ export default {
       return Object.prototype.hasOwnProperty.call(CSV_FIELD_OPTIONS, key)
     },
     csvFieldOptions(key) {
+      if (key === 'selection_method') {
+        return this.optionLists.selection_methods || DEFAULT_SELECTION_METHOD_OPTIONS
+      }
       if (key === 'eng_type') return this.optionLists.eng_types || DEFAULT_ENG_TYPE_OPTIONS
       if (key === 'eng_method') return this.optionLists.eng_methods || DEFAULT_ENG_METHOD_OPTIONS
       return CSV_FIELD_OPTIONS[key] || []
@@ -2447,6 +2493,11 @@ export default {
         const val = String(raw || '').trim()
         if (!val) return { ok: false, reason: 'option' }
         return this.matchSheetOption(this.supplyModeOptions, val)
+      }
+      if (key === 'affinity_result') {
+        const val = String(raw || '').trim()
+        if (!val) return { ok: true, value: null }
+        return this.matchSheetOption(this.affinityResultOptions, val)
       }
       if (key === 'study_type') {
         const val = String(raw || '').trim()

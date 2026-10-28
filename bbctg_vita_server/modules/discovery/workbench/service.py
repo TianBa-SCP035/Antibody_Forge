@@ -528,6 +528,12 @@ def _apply_list_filters(
     owner = match_any(DiscoveryWorkbench.owner, data.get("owner"))
     if owner is not None:
         filters.append(owner)
+    immune_owner = match_any(DiscoveryWorkbench.immune_owner, data.get("immune_owner"))
+    if immune_owner is not None:
+        filters.append(immune_owner)
+    cell_collector = match_any(DiscoveryWorkbench.cell_collector, data.get("cell_collector"))
+    if cell_collector is not None:
+        filters.append(cell_collector)
     study_type = match_any(DiscoveryWorkbench.study_type, data.get("study_type"))
     if study_type is not None:
         filters.append(study_type)

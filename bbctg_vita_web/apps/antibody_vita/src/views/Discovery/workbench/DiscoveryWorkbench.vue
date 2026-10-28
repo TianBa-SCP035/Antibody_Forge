@@ -19,6 +19,26 @@
           @change="handleFilter"
         />
       </div>
+      <div class="ops-user-select">
+        <SerumUserSelect
+          v-model="listQuery.immune_owner"
+          multi-gesture
+          :options="optionLists.immune_owners"
+          placeholder="免疫负责人"
+          clearable
+          @change="handleFilter"
+        />
+      </div>
+      <div class="ops-user-select">
+        <SerumUserSelect
+          v-model="listQuery.cell_collector"
+          multi-gesture
+          :options="optionLists.cell_collectors"
+          placeholder="细胞收集人"
+          clearable
+          @change="handleFilter"
+        />
+      </div>
       <el-input
         v-model="listQuery.cage_position"
         clearable
@@ -1197,6 +1217,8 @@ function emptyQuery() {
     screening_methods: [],
     pm: '',
     owner: '',
+    immune_owner: '',
+    cell_collector: '',
     study_type: '',
     mouse_strain_category: '',
     status: '',
@@ -1372,6 +1394,8 @@ export default {
       return Boolean(
         this.listQuery.study_type
         || this.listQuery.owner
+        || this.listQuery.immune_owner
+        || this.listQuery.cell_collector
         || this.listQuery.cage_position
         || this.listQuery.mouse_strain
         || this.listQuery.mouse_nos
@@ -1390,6 +1414,8 @@ export default {
         || this.listQuery.screening_methods?.length
         || this.listQuery.pm
         || this.listQuery.owner
+        || this.listQuery.immune_owner
+        || this.listQuery.cell_collector
         || this.listQuery.study_type
         || this.listQuery.mouse_strain_category
         || this.listQuery.status

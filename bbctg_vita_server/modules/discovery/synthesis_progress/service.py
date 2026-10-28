@@ -508,6 +508,8 @@ def _apply_list_filters(
     for date_col, start_key, end_key in (
         (DiscoverySynthesisOrder.synthetic_date, "synthetic_date_start", "synthetic_date_end"),
         (DiscoverySynthesisOrder.arrival_date, "arrival_date_start", "arrival_date_end"),
+        (DiscoverySynthesisOrder.flow_date, "flow_date_start", "flow_date_end"),
+        (DiscoverySynthesisOrder.affinity_date, "affinity_date_start", "affinity_date_end"),
     ):
         s_raw = data.get(start_key)
         e_raw = data.get(end_key)

@@ -72,6 +72,24 @@
         value-format="YYYY-MM-DD"
         @change="handleFilter"
       />
+      <el-date-picker
+        v-model="flowDateRange"
+        type="daterange"
+        range-separator="至"
+        start-placeholder="流式起始"
+        end-placeholder="流式截止"
+        value-format="YYYY-MM-DD"
+        @change="handleFilter"
+      />
+      <el-date-picker
+        v-model="affinityDateRange"
+        type="daterange"
+        range-separator="至"
+        start-placeholder="亲和力起始"
+        end-placeholder="亲和力截止"
+        value-format="YYYY-MM-DD"
+        @change="handleFilter"
+      />
       <el-input
         v-model="listQuery.project_code"
         clearable
@@ -1116,6 +1134,8 @@ export default {
       editingRowData: null,
       syntheticDateRange: [],
       arrivalDateRange: [],
+      flowDateRange: [],
+      affinityDateRange: [],
       listQuery: emptyQuery(),
       optionLists: {
         targets: [],
@@ -1237,7 +1257,9 @@ export default {
           this.listQuery.eng_method ||
           this.listQuery.assay_note ||
           this.listQuery.remark ||
-          this.arrivalDateRange?.length,
+          this.arrivalDateRange?.length ||
+          this.flowDateRange?.length ||
+          this.affinityDateRange?.length,
       )
     },
     hasSecondaryFilters() {
@@ -1767,6 +1789,14 @@ export default {
         payload.arrival_date_start = this.arrivalDateRange[0]
         payload.arrival_date_end = this.arrivalDateRange[1]
       }
+      if (Array.isArray(this.flowDateRange) && this.flowDateRange.length === 2) {
+        payload.flow_date_start = this.flowDateRange[0]
+        payload.flow_date_end = this.flowDateRange[1]
+      }
+      if (Array.isArray(this.affinityDateRange) && this.affinityDateRange.length === 2) {
+        payload.affinity_date_start = this.affinityDateRange[0]
+        payload.affinity_date_end = this.affinityDateRange[1]
+      }
       return payload
     },
     async loadOptions() {
@@ -1860,6 +1890,8 @@ export default {
       }
       this.syntheticDateRange = []
       this.arrivalDateRange = []
+      this.flowDateRange = []
+      this.affinityDateRange = []
       this.getList()
     },
     excelHeaderClick(column) {

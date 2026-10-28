@@ -300,7 +300,7 @@
         ref="workbenchTable"
         :height="listTableHeight"
         v-loading="loading"
-        storage-key="discoveryWorkbenchViewPrefs.v2"
+        storage-key="discoveryWorkbenchViewPrefs.v4"
         :columns="workbenchColumns"
         :data="list"
         border
@@ -1061,8 +1061,8 @@ const SHEET_COLUMNS = [
   { key: 'screening_methods', label: '筛选方式', edit: 'multi', minWidth: 160 },
   { key: 'harvest_date', label: '剖鼠日期', edit: 'date', width: 120 },
   { key: 'mouse_count', label: '只数', edit: 'text', width: 80 },
-  { key: 'mouse_nos', label: '鼠号', edit: 'text', minWidth: 140 },
-  { key: 'serum_titer', label: '血清效价', edit: 'text' },
+  { key: 'mouse_nos', label: '鼠号', edit: 'text', minWidth: 180 },
+  { key: 'serum_titer', label: '血清效价', edit: 'text' , minWidth: 180},
   { key: 'immune_antigen', label: '免疫抗原', edit: 'text', minWidth: 140 },
   { key: 'boost_date', label: '冲击日期', edit: 'date', width: 120 },
   { key: 'boost_antigen', label: '冲击免抗原', edit: 'text', minWidth: 140 },
@@ -1091,13 +1091,14 @@ const WORKBENCH_COLUMNS = [
   { key: 'pm', label: 'PM', defaultVisible: true, prop: 'pm', minWidth: 90, showOverflowTooltip: true },
   { key: 'project_code', label: '项目编号', defaultVisible: true, prop: 'project_code', minWidth: 120, showOverflowTooltip: true },
   { key: 'target_name', label: '靶点名称', defaultVisible: true, prop: 'target_name', minWidth: 100, showOverflowTooltip: true },
-  { key: 'mouse_strain', label: '小鼠品系', defaultVisible: true, prop: 'mouse_strain', minWidth: 110, showOverflowTooltip: true },
-  { key: 'screening_methods', label: '筛选方式', defaultVisible: true, minWidth: 145 },
+  { key: 'mouse_strain', label: '小鼠品系', defaultVisible: true, prop: 'mouse_strain', minWidth: 120, showOverflowTooltip: true },
+  { key: 'mouse_count', label: '只数', defaultVisible: true, prop: 'mouse_count', minWidth: 80, showOverflowTooltip: true },
+  { key: 'screening_methods', label: '筛选方式', defaultVisible: true, minWidth: 150 },
   { key: 'screening_antigen', label: '筛选抗原', defaultVisible: true, prop: 'screening_antigen', minWidth: 120, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'boost_antigen', label: '冲击抗原', defaultVisible: true, prop: 'boost_antigen', minWidth: 120, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'harvest_date', label: '剖鼠日期', defaultVisible: true, minWidth: 135, className: 'date-column-cell' },
   { key: 'boost_date', label: '冲击日期', defaultVisible: true, minWidth: 135, className: 'date-column-cell' },
-  { key: 'remark', label: '备注', defaultVisible: true, prop: 'remark', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
+  { key: 'remark', label: '备注', prop: 'remark', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'owner', label: '负责人', prop: 'owner', minWidth: 90, showOverflowTooltip: true },
   { key: 'immune_owner', label: '免疫负责人', prop: 'immune_owner', minWidth: 110, showOverflowTooltip: true },
   { key: 'cell_collector', label: '细胞收集人', prop: 'cell_collector', minWidth: 110, showOverflowTooltip: true },
@@ -1106,7 +1107,6 @@ const WORKBENCH_COLUMNS = [
   { key: 'study_type', label: '课题类型', prop: 'study_type', minWidth: 110, showOverflowTooltip: true },
   { key: 'mouse_strain_category', label: '归类鼠型', prop: 'mouse_strain_category', minWidth: 100, showOverflowTooltip: true },
   { key: 'cage_position', label: '笼位', prop: 'cage_position', minWidth: 100, showOverflowTooltip: true },
-  { key: 'mouse_count', label: '只数', prop: 'mouse_count', minWidth: 80, showOverflowTooltip: true },
   { key: 'mouse_nos', label: '鼠号', prop: 'mouse_nos', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'serum_titer', label: '血清效价', prop: 'serum_titer', minWidth: 110, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'immune_antigen', label: '免疫抗原', prop: 'immune_antigen', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },

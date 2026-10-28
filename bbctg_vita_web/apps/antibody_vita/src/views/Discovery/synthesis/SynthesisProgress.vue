@@ -1037,6 +1037,14 @@ import {
 
 let lastViewMode = WORKBENCH_VIEW
 
+function splitCsv(value) {
+  return String(value || '')
+    .replace(/，/g, ',')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
 function splitCategories(value) {
   const tokens = Array.isArray(value) ? value : String(value || '').split(/[,，、+]/)
   return tokens.map((item) => String(item || '').trim()).filter(Boolean)

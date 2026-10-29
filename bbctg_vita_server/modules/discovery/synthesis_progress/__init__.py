@@ -26,6 +26,7 @@ from modules.discovery.synthesis_progress.constants import (
     SUPPLY_MODE_ISOTYPE,
     SUPPLY_MODE_OPTIONS,
     SYNTHETIC_CORP_OPTIONS,
+    TARGET_TYPE_OPTIONS,
     TERMINAL_STATUSES,
     UNCLAIMED_OWNER,
 )
@@ -58,6 +59,7 @@ __all__ = [
     "SUPPLY_MODE_ISOTYPE",
     "SUPPLY_MODE_OPTIONS",
     "SYNTHETIC_CORP_OPTIONS",
+    "TARGET_TYPE_OPTIONS",
     "TERMINAL_STATUSES",
     "UNCLAIMED_OWNER",
 ]

@@ -32,6 +32,7 @@ from models.immunology import (
     SerumTiterPc,
     SerumTiterTarget,
 )
+from models.target import Target
 from modules.immunology.serum.service import (
     EXPERIMENT_RELATED_MODELS,
     TERMINAL_PROJECT_STATUSES,
@@ -41,6 +42,7 @@ from modules.immunology.serum.service import (
     update_project_identifiers,
     validate_scheme_graph as _validate_scheme_graph,
 )
+from utils.target_structure import to_serum_target_type
 from utils.workbench_queue import (
     DEFAULT_PRIORITY,
     PRIORITY_ORDER,
@@ -591,6 +593,20 @@ def _project_name_strains(db: Session, row: SerumImmWorkbench) -> list[str]:
 def _auto_project_name(target_name: Any, strains: list[str]) -> str:
     # 与方案页、正式编辑页的 updateProjectName 同一句。
     return f"{str(target_name or '')}基于{','.join(strains)}的抗体发现"[:255]
+
+
+def _infer_target_type(db: Session, target_codes: Any) -> str | None:
+    codes = _normalize_target_codes(target_codes) if isinstance(target_codes, list) else []
+    if not codes:
+        return None
+    row = db.execute(
+        select(Target.structural_properties, Target.structure_feature).where(
+            Target.snum == codes[0]
+        )
+    ).first()
+    if not row:
+        return None
+    return to_serum_target_type(row[0], row[1])
 
 
 def serialize_row(
@@ -1386,6 +1402,12 @@ def save(
         if wrote_strain:
             _write_strain_to_single_group(db, row)
             db.flush()
+        if "target_codes" in payload and "target_type" not in payload:
+            inferred_type = _infer_target_type(db, row.target_codes)
+            if inferred_type:
+                row.target_type = inferred_type
+            elif not row.target_codes:
+                row.target_type = None
         if refresh_project_name:
             current_name = str(row.project_name or "").strip()
             if not current_name or current_name == previous_auto_name:

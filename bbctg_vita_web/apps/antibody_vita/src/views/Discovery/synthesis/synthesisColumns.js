@@ -18,6 +18,21 @@ export const AFFINITY_RESULT_OPTIONS = ['正常', '阳性极少', '全阴'];
 export const MOUSE_STRAIN_OPTIONS = [...SERUM_MOUSE_STRAIN_OPTIONS];
 export const STUDY_TYPE_OPTIONS = [...WORKBENCH_STUDY_TYPE_OPTIONS];
 export const DEFAULT_CORP_OPTIONS = ['君跻', '擎科', '金斯瑞', '百奥', '内部'];
+export const DEFAULT_TARGET_TYPE_OPTIONS = [
+  '分泌型',
+  'I型跨膜',
+  'II型跨膜',
+  'III型跨膜',
+  'IV型跨膜',
+  '单次跨膜',
+  '多次穿膜',
+  'GPI锚定',
+  '细胞膜蛋白',
+  '外周膜蛋白',
+  '脂锚定蛋白',
+  '胞内蛋白',
+  '其他',
+];
 export const DEFAULT_SELECTION_METHOD_OPTIONS = [
   '补挑',
   'EYE',
@@ -84,6 +99,7 @@ export const QUEUE_TERMINAL_STATUSES = ['已完成', '已取消'];
 
 export const STRING_MAX = {
   target_name: 128,
+  target_type: 64,
   mouse_strain: 128,
   selection_method: 128,
   synthesis_code: 64,
@@ -171,6 +187,7 @@ export const PM_EDIT_FIELD_KEYS = new Set([
   'target',
   'target_name',
   'target_codes',
+  'target_type',
   'mouse_strain',
   'selection_method',
   'eng_type',
@@ -340,6 +357,14 @@ export const WORKBENCH_COLUMNS = [
     className: 'target-column-cell',
   },
   {
+    key: 'target_type',
+    label: '靶点类型',
+    defaultVisible: true,
+    prop: 'target_type',
+    minWidth: 105,
+    className: 'status-column-cell',
+  },
+  {
     key: 'mouse_strain',
     label: '小鼠品系',
     defaultVisible: true,
@@ -358,7 +383,6 @@ export const WORKBENCH_COLUMNS = [
   {
     key: 'order_no',
     label: '订单号',
-    defaultVisible: true,
     prop: 'order_no',
     minWidth: 150,
     showOverflowTooltip: true,
@@ -572,6 +596,7 @@ export const SHEET_COLUMNS = [
   { key: 'priority', label: '优先级', edit: 'select', width: 100 },
   { key: 'status', label: '状态', edit: 'select', width: 100 },
   { key: 'target_name', label: '靶点名称', edit: 'target', minWidth: 120 },
+  { key: 'target_type', label: '靶点类型', edit: 'select', width: 108 },
   { key: 'mouse_strain', label: '小鼠品系', edit: 'multi', minWidth: 115 },
   { key: 'selection_method', label: '挑选方式', edit: 'multi', minWidth: 115 },
   { key: 'synthesis_code', label: '送测转码', edit: 'text', minWidth: 150 },
@@ -604,7 +629,7 @@ export const SHEET_COLUMNS = [
 ];
 
 export const SHEET_COLUMN_ORDER = createColumnOrder(
-  'discoverySynthesisSheetColumnOrder.v5',
+  'discoverySynthesisSheetColumnOrder.v6',
   SHEET_COLUMNS,
   { pinFirstKey: 'sort_order' },
 );
@@ -618,6 +643,7 @@ export const SHEET_HEADER_ALIASES = Object.freeze({
   供应方式: 'supply_mode',
   靶点: 'target_name',
   靶点名称: 'target_name',
+  靶点类型: 'target_type',
   靶点编号: 'target_codes',
   鼠型: 'mouse_strain',
   小鼠品系: 'mouse_strain',
@@ -677,6 +703,7 @@ export const EDITABLE_FIELDS = [
   'supply_mode',
   'target_name',
   'target_codes',
+  'target_type',
   'mouse_strain',
   'selection_method',
   'synthesis_code',

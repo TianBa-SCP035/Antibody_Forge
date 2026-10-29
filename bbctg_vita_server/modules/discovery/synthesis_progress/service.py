@@ -11,6 +11,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from models.discovery import DiscoverySynthesisOrder
+from models.target import Target
 from modules.discovery.synthesis_progress.constants import (
     ACTIVE_STATUSES,
     AFFINITY_RESULT_NORMAL,
@@ -33,6 +34,7 @@ from modules.discovery.synthesis_progress.constants import (
     SUPPLY_MODE_ARRIVAL,
     SUPPLY_MODE_OPTIONS,
     SYNTHETIC_CORP_OPTIONS,
+    TARGET_TYPE_OPTIONS,
     UNCLAIMED_OWNER,
 )
 from modules.discovery.synthesis_progress.one_sync import (
@@ -50,6 +52,7 @@ from utils.filter_values import (
     split_code_tokens,
     target_select_options,
 )
+from utils.target_structure import parse_target_structure
 from utils.workbench_queue import (
     DEFAULT_PRIORITY,
     PRIORITY_ORDER,
@@ -71,6 +74,7 @@ SYNTHESIS_ID_ALPHABET = string.ascii_uppercase + string.digits
 
 STRING_FIELDS: dict[str, int] = {
     "target_name": 128,
+    "target_type": 64,
     "synthesis_code": 64,
     "order_no": 64,
     "synthetic_corp": 64,
@@ -134,6 +138,7 @@ PM_EDIT_FIELDS = frozenset(
         "study_type",
         "target_name",
         "target_codes",
+        "target_type",
         "mouse_strain",
         "selection_method",
         "eng_type",
@@ -468,6 +473,21 @@ def _apply_list_filters(
     if supply_clause is not None:
         filters.append(supply_clause)
 
+    target_type_clause = combine_any(
+        data.get("target_type"),
+        lambda val: (
+            and_(
+                DiscoverySynthesisOrder.target_type.is_not(None),
+                DiscoverySynthesisOrder.target_type != "",
+                ~DiscoverySynthesisOrder.target_type.like("%分泌%"),
+            )
+            if str(val).strip() == "非分泌型"
+            else DiscoverySynthesisOrder.target_type == str(val).strip()
+        ),
+    )
+    if target_type_clause is not None:
+        filters.append(target_type_clause)
+
     corp_clause = match_any(DiscoverySynthesisOrder.synthetic_corp, data.get("synthetic_corp"))
     if corp_clause is not None:
         filters.append(corp_clause)
@@ -792,6 +812,9 @@ def get_options(db: Session) -> dict[str, Any]:
         "order_kinds": list(ORDER_KIND_OPTIONS),
         "supply_modes": list(SUPPLY_MODE_OPTIONS),
         "affinity_results": list(AFFINITY_RESULT_OPTIONS),
+        "target_types": distinct_values(
+            DiscoverySynthesisOrder.target_type, TARGET_TYPE_OPTIONS
+        ),
         "mouse_strains": list(MOUSE_STRAIN_OPTIONS),
         "selection_methods": distinct_csv_tokens(
             DiscoverySynthesisOrder.selection_method, SELECTION_METHOD_OPTIONS
@@ -805,6 +828,18 @@ def get_options(db: Session) -> dict[str, Any]:
         "owners": distinct_values(DiscoverySynthesisOrder.owner, (UNCLAIMED_OWNER,)),
         "pms": distinct_values(DiscoverySynthesisOrder.pm),
     }
+
+
+def _infer_target_type(db: Session, target_codes: Any) -> str | None:
+    codes = _normalize_target_codes(target_codes)
+    if not codes:
+        return None
+    row = db.execute(
+        select(Target.structural_properties, Target.structure_feature).where(
+            Target.snum == codes[0]
+        )
+    ).first()
+    return parse_target_structure(row[0], row[1])["label"] if row else None
 
 
 def _apply_fields(
@@ -940,6 +975,8 @@ def save(
         previous_priority = row.priority or DEFAULT_PRIORITY
 
     _apply_fields(row, payload)
+    if "target_codes" in payload and "target_type" not in payload:
+        row.target_type = _infer_target_type(db, row.target_codes)
 
     if actor_person and (
         (is_new and (row.order_kind == ORDER_KIND_ENGINEERING or "full" not in scopes))
@@ -1166,6 +1203,7 @@ EXPORT_COLUMNS = (
     ("系统单号", "synthesis_order_id"),
     ("状态", "status"),
     ("靶点名称", "target_name"),
+    ("靶点类型", "target_type"),
     ("小鼠品系", "mouse_strain"),
     ("挑选方式", "selection_method"),
     ("送测转码", "synthesis_code"),

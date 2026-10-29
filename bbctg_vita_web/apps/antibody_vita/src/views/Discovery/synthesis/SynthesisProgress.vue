@@ -2,12 +2,12 @@
   <div class="app-container" :class="{ 'is-list-table-locked': listTableLocked }">
     <AdvancedOpsBar v-model="showAdvancedOps">
       <ListFilterSelect
-        v-model="listQuery.synthetic_corp"
+        v-model="listQuery.priority"
         clearable
-        placeholder="合成公司"
+        placeholder="优先级"
         @change="handleFilter"
       >
-        <el-option v-for="item in optionLists.synthetic_corps" :key="item" :label="item" :value="item" />
+        <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
       <ListFilterSelect
         v-model="listQuery.order_kind"
@@ -33,6 +33,22 @@
       >
         <el-option v-for="item in optionLists.selection_methods" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
+      <el-input
+        v-model="listQuery.order_no"
+        clearable
+        placeholder="订单号"
+        title="多个订单号用逗号、空格或换行分隔，按完整单号查找；只填一个时按包含查找"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <ListFilterSelect
+        v-model="listQuery.synthetic_corp"
+        clearable
+        placeholder="合成公司"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in optionLists.synthetic_corps" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
       <ListFilterSelect
         v-model="listQuery.affinity_result"
         clearable
@@ -40,6 +56,39 @@
         @change="handleFilter"
       >
         <el-option v-for="item in affinityResultOptions" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <el-input
+        v-model="listQuery.assay_note"
+        clearable
+        placeholder="检测说明"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <el-input
+        v-model="listQuery.project_code"
+        clearable
+        placeholder="项目编号"
+        title="多个项目编号或实验号用逗号、空格或换行分隔，按完整编号查找；只填一个时按包含查找"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <div class="ops-user-select">
+        <SerumUserSelect
+          v-model="listQuery.pm"
+          multi-gesture
+          :options="optionLists.pms"
+          placeholder="PM"
+          clearable
+          @change="handleFilter"
+        />
+      </div>
+      <ListFilterSelect
+        v-model="listQuery.study_type"
+        clearable
+        placeholder="课题类型"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
       <ListFilterSelect
         v-model="listQuery.eng_type"
@@ -57,21 +106,6 @@
       >
         <el-option v-for="item in optionLists.eng_methods" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
-      <ListFilterSelect
-        v-model="listQuery.priority"
-        clearable
-        placeholder="优先级"
-        @change="handleFilter"
-      >
-        <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
-      </ListFilterSelect>
-      <el-input
-        v-model="listQuery.assay_note"
-        clearable
-        placeholder="检测说明"
-        @keyup.enter="handleFilter"
-        @clear="handleFilter"
-      />
       <el-input
         v-model="listQuery.remark"
         clearable
@@ -106,32 +140,6 @@
         value-format="YYYY-MM-DD"
         @change="handleFilter"
       />
-      <el-input
-        v-model="listQuery.project_code"
-        clearable
-        placeholder="项目编号"
-        title="多个项目编号或实验号用逗号、空格或换行分隔，按完整编号查找；只填一个时按包含查找"
-        @keyup.enter="handleFilter"
-        @clear="handleFilter"
-      />
-      <div class="ops-user-select">
-        <SerumUserSelect
-          v-model="listQuery.pm"
-          multi-gesture
-          :options="optionLists.pms"
-          placeholder="PM"
-          clearable
-          @change="handleFilter"
-        />
-      </div>
-      <ListFilterSelect
-        v-model="listQuery.study_type"
-        clearable
-        placeholder="课题类型"
-        @change="handleFilter"
-      >
-        <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
-      </ListFilterSelect>
       <template #actions>
         <el-button v-if="hasSecondaryFilters" @click="resetFilters">重置全部筛选</el-button>
         <el-button v-if="!isExcelMode" @click="openColumnPicker">显示字段</el-button>
@@ -224,15 +232,6 @@
             @keyup.enter="handleFilter"
             @clear="handleFilter"
           />
-          <el-input
-            v-model="listQuery.order_no"
-            class="filter-select"
-            placeholder="订单号"
-            title="多个订单号用逗号、空格或换行分隔，按完整单号查找；只填一个时按包含查找"
-            clearable
-            @keyup.enter="handleFilter"
-            @clear="handleFilter"
-          />
           <ListFilterSelect
             v-model="listQuery.target_name"
             class="filter-select"
@@ -254,6 +253,16 @@
                 {{ targetOptionExtra(item) }}
               </span>
             </el-option>
+          </ListFilterSelect>
+          <ListFilterSelect
+            v-model="listQuery.target_type"
+            placeholder="靶点类型"
+            clearable
+            class="filter-select"
+            @change="handleFilter"
+          >
+            <el-option label="非分泌型" value="非分泌型" />
+            <el-option v-for="item in optionLists.target_types" :key="item" :label="item" :value="item" />
           </ListFilterSelect>
           <ListFilterSelect
             v-model="listQuery.mouse_strain"
@@ -331,7 +340,7 @@
           ref="workbenchTable"
           :height="listTableHeight"
           v-loading="loading"
-          storage-key="discoverySynthesisViewPrefs.v3"
+          storage-key="discoverySynthesisViewPrefs.v5"
           :columns="workbenchColumns"
           :data="list"
           border
@@ -424,6 +433,26 @@
                 :title="badge.title"
               >{{ badge.text }}</i>
             </span>
+          </template>
+          <template #header-target_type>
+            <button
+              type="button"
+              class="sort-header-btn"
+              :class="{ 'is-active': Boolean(listQuery.target_type) }"
+              :title="targetTypeHeaderTitle()"
+              @click.stop="cycleTargetTypeFilter"
+            >
+              靶点类型
+            </button>
+          </template>
+          <template #target_type="{ row }">
+            <WorkbenchStatusEditor
+              :value="row.target_type"
+              :options="optionLists.target_types"
+              :tag-class="targetTypeTone(row.target_type) ? `target-tone-${targetTypeTone(row.target_type)}` : ''"
+              :editable="canEditField(row, 'target_type')"
+              @change="(val) => { row.target_type = val; persistRow(row, 'target_type') }"
+            />
           </template>
           <template #mouse_strain="{ row }">
             {{ displayCsvField(row.mouse_strain) }}
@@ -1014,6 +1043,7 @@ import {
   DEFAULT_ENG_METHOD_OPTIONS,
   DEFAULT_ENG_TYPE_OPTIONS,
   DEFAULT_SELECTION_METHOD_OPTIONS,
+  DEFAULT_TARGET_TYPE_OPTIONS,
   EDITABLE_FIELDS,
   ENGINEERING_EDITOR_SECTION,
   INT_COUNT_KEYS,
@@ -1072,6 +1102,7 @@ function emptyQuery() {
     order_no: '',
     synthesis_code: '',
     target_name: '',
+    target_type: '',
     mouse_strain: '',
     selection_method: '',
     affinity_result: '',
@@ -1165,6 +1196,7 @@ export default {
         owners: [],
         pms: [],
         synthetic_corps: [...DEFAULT_CORP_OPTIONS],
+        target_types: [...DEFAULT_TARGET_TYPE_OPTIONS],
         selection_methods: [...DEFAULT_SELECTION_METHOD_OPTIONS],
         eng_types: [...DEFAULT_ENG_TYPE_OPTIONS],
         eng_methods: [...DEFAULT_ENG_METHOD_OPTIONS],
@@ -1271,7 +1303,8 @@ export default {
     },
     hasAdvancedFilters() {
       return Boolean(
-        this.listQuery.project_code ||
+        this.listQuery.order_no ||
+          this.listQuery.project_code ||
           this.listQuery.pm ||
           this.listQuery.study_type ||
           this.listQuery.priority ||
@@ -1293,9 +1326,9 @@ export default {
       return Boolean(
         this.listQuery.keyword ||
           this.listQuery.batch_label ||
-          this.listQuery.order_no ||
           this.listQuery.synthesis_code ||
           this.listQuery.target_name ||
+          this.listQuery.target_type ||
           this.listQuery.mouse_strain ||
           this.listQuery.owner ||
           this.listQuery.status ||
@@ -1323,6 +1356,10 @@ export default {
       map.supply_mode = this.supplyModeOptions.map((item) => ({ label: item, value: item }))
       map.affinity_result = this.affinityResultOptions.map((item) => ({ label: item, value: item }))
       map.study_type = this.studyTypeOptions.map((item) => ({ label: item, value: item }))
+      map.target_type = (this.optionLists.target_types || []).map((item) => ({
+        label: item,
+        value: item,
+      }))
       map.synthetic_corp = (this.optionLists.synthetic_corps || []).map((item) => ({
         label: item,
         value: item,
@@ -1448,6 +1485,7 @@ export default {
       if (keys.has('target_codes') || keys.has('target_name')) {
         keys.add('target_codes')
         keys.add('target_name')
+        keys.add('target_type')
       }
       if (keys.has('order_kind')) {
         keys.add('owner')
@@ -1613,6 +1651,21 @@ export default {
       if (value === '待检测' || value === '检测中') return 'warning'
       if (value === '合成中') return 'primary'
       return 'info'
+    },
+    targetTypeTone(value) {
+      const text = String(value || '').trim()
+      return text ? (text.includes('分泌') ? 'secreted' : 'cell') : ''
+    },
+    targetTypeHeaderTitle() {
+      const v = this.listQuery.target_type
+      if (v === '分泌型') return '当前只看分泌型。再点切换为非分泌型'
+      if (v === '非分泌型') return '当前只看非分泌型。再点恢复全部'
+      return '点击快速切换：分泌型 / 非分泌型 / 全部'
+    },
+    cycleTargetTypeFilter() {
+      const v = this.listQuery.target_type
+      this.listQuery.target_type = v === '分泌型' ? '非分泌型' : v === '非分泌型' ? '' : '分泌型'
+      this.handleFilter()
     },
     drawerSelectClass(field) {
       if (field?.key === 'status') {
@@ -1854,6 +1907,9 @@ export default {
         if (Array.isArray(data?.synthetic_corps) && data.synthetic_corps.length) {
           this.optionLists.synthetic_corps = data.synthetic_corps
         }
+        if (Array.isArray(data?.target_types) && data.target_types.length) {
+          this.optionLists.target_types = data.target_types
+        }
         if (Array.isArray(data?.selection_methods) && data.selection_methods.length) {
           this.optionLists.selection_methods = data.selection_methods
         }
@@ -1943,7 +1999,15 @@ export default {
       this.affinityDateRange = []
       this.getList()
     },
+    sheetHeaderCellClassName({ column }) {
+      const cls = workbenchExcelMixin.methods.sheetHeaderCellClassName.call(this, { column })
+      return column.field === 'target_type' && this.listQuery.target_type ? `${cls} is-date-sorted` : cls
+    },
     excelHeaderClick(column) {
+      if (column?.key === 'target_type') {
+        this.cycleTargetTypeFilter()
+        return true
+      }
       if (!DATE_KEYS.includes(column?.key)) return false
       this.cycleDateSort(column.key)
       return true
@@ -2137,6 +2201,7 @@ export default {
         'study_type',
         'target_name',
         'target_codes',
+        'target_type',
         'mouse_strain',
         'selection_method',
         'eng_type',
@@ -2418,6 +2483,9 @@ export default {
       }
       if (column?.field === 'status') {
         classes.push(`sheet-tone-${this.statusTone(row?.status)}`)
+      }
+      if (column?.field === 'target_type' && row?.target_type) {
+        classes.push(`sheet-tone-${this.targetTypeTone(row.target_type)}`)
       }
       return classes.join(' ')
     },
@@ -2926,6 +2994,10 @@ export default {
 .table-card :deep(td.target-column-cell .cell) {
   position: static;
 }
+.table-card :deep(.el-tag.target-tone-secreted) { color: #be185d; background: #fdf2f8; border-color: #f9a8d4; }
+.table-card :deep(.el-tag.target-tone-cell) { color: #0f766e; background: #f0fdfa; border-color: #99f6e4; }
+.sheet-wrap :deep(.sheet-tone-secreted) { color: #be185d; }
+.sheet-wrap :deep(.sheet-tone-cell) { color: #0f766e; }
 .target-corner-badges {
   position: absolute;
   top: 2px;

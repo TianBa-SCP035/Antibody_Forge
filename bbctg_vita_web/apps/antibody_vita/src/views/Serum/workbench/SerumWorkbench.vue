@@ -1753,7 +1753,6 @@ export default {
       this.editingRowData = this.normalizeRow(JSON.parse(JSON.stringify(row)))
       if (!this.rowBaselines.has(row.id)) this.updateRowBaseline(this.editingRowData)
       this.drawerVisible = true
-      this.searchTargetOptions('')
     },
     closeEditor() {
       this.rememberDrawerSave(this.flushDirtyEditor())
@@ -2364,7 +2363,6 @@ export default {
         }
         this.tabDataFetchedAt = Date.now()
         this.clearSheetRange()
-        this.searchTargetOptions('')
         this.scheduleSortable()
       } catch (err) {
         if (requestToken === this.listRequestToken) {
@@ -2397,6 +2395,26 @@ export default {
     updateRowBaseline(row) {
       if (!row?.id) return
       this.rowBaselines.set(row.id, JSON.parse(JSON.stringify(row)))
+    },
+    savedFieldKeys(fields) {
+      const keys = new Set(fields)
+      if (keys.has('target_codes') || keys.has('target_name')) {
+        keys.add('target_codes')
+        keys.add('target_name')
+        keys.add('target_type')
+        keys.add('project_name')
+      }
+      if (keys.has('mouse_strain') || keys.has('mouse_strain_category')) {
+        keys.add('mouse_strain')
+        keys.add('mouse_strain_category')
+        keys.add('mouse_group_count')
+        keys.add('project_name')
+      }
+      if (keys.has('project_code')) {
+        keys.add('experiment_id')
+      }
+      keys.add('display_status')
+      return keys
     },
     payloadRow(row, fields = []) {
       const payload = { id: row.id }
@@ -2431,7 +2449,7 @@ export default {
             )
           }
           const saved = await saveWorkbench(payload)
-          const normalized = this.normalizeRow(saved)
+          const { normalized } = this.patchExistingListRow(saved, fields)
           this.updateRowBaseline(normalized)
           if (resort) {
             await this.getList({ flushEditor: false })
@@ -2442,23 +2460,10 @@ export default {
             return saved
           }
 
-          const current = this.list.find((item) => item.id === rowId)
-          const editor = this.editingId === rowId ? this.editingRowData : null
-          if (current || editor) {
-            fields.forEach((field) => {
-              if (current) current[field] = normalized[field]
-              if (editor) editor[field] = normalized[field]
+          if (this.editingId === rowId && this.editingRowData) {
+            this.savedFieldKeys(fields).forEach((key) => {
+              if (key in normalized) this.editingRowData[key] = normalized[key]
             })
-            if (Object.prototype.hasOwnProperty.call(normalized, 'project_name')) {
-              if (current) current.project_name = normalized.project_name
-              if (editor) editor.project_name = normalized.project_name
-            }
-            if (fields.includes('project_code')) {
-              if (current) current.experiment_id = normalized.experiment_id
-              if (editor) editor.experiment_id = normalized.experiment_id
-            }
-            if (current) current.display_status = normalized.display_status
-            if (editor) editor.display_status = normalized.display_status
           }
           return saved
         })

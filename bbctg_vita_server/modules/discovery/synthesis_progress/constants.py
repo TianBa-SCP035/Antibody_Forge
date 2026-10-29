@@ -65,6 +65,22 @@ SELECTION_METHOD_OPTIONS = (
     "P",
 )
 
+TARGET_TYPE_OPTIONS = (
+    "分泌型",
+    "I型跨膜",
+    "II型跨膜",
+    "III型跨膜",
+    "IV型跨膜",
+    "单次跨膜",
+    "多次穿膜",
+    "GPI锚定",
+    "细胞膜蛋白",
+    "外周膜蛋白",
+    "脂锚定蛋白",
+    "胞内蛋白",
+    "其他",
+)
+
 SOURCE_ONE_TYPES = ("ngs", "beacon")
 
 ENG_TYPE_OPTIONS = (
@@ -149,6 +165,7 @@ __all__ = [
     "SUPPLY_MODE_ISOTYPE",
     "SUPPLY_MODE_OPTIONS",
     "SYNTHETIC_CORP_OPTIONS",
+    "TARGET_TYPE_OPTIONS",
     "TERMINAL_STATUSES",
     "UNCLAIMED_OWNER",
 ]

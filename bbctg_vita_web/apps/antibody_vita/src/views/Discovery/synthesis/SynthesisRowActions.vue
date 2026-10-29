@@ -16,7 +16,7 @@
         plain
         :icon="User"
         :class="{ 'no-permission-btn': !canClaim }"
-        :title="!canClaim ? '您没有权限认领合成结果' : '认领该批次合成结果'"
+        :title="claimTitle || (!canClaim ? '您没有权限认领合成结果' : '认领该批次合成结果')"
         @click="$emit('claim', row)"
       >
         认领
@@ -46,6 +46,7 @@ export default {
   props: {
     row: { type: Object, required: true },
     canClaim: { type: Boolean, default: false },
+    claimTitle: { type: String, default: '' },
     canDelete: { type: Boolean, default: false },
   },
   emits: ['detail', 'claim', 'delete'],

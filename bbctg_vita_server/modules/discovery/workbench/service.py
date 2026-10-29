@@ -59,15 +59,15 @@ STRING_FIELDS = {
     "mouse_strain_category": 128,
     "mouse_strain": 128,
     "cage_position": 64,
-    "mouse_nos": 512,
-    "serum_titer": 255,
-    "immune_antigen": 255,
-    "screening_antigen": 255,
+    "mouse_nos": 1000,
+    "serum_titer": 1000,
+    "immune_antigen": 1000,
+    "screening_antigen": 1000,
     "positive_cell_count": 64,
-    "plate_nos": 512,
-    "boost_antigen": 255,
-    "boost_cells": 255,
-    "remark": 500,
+    "plate_nos": 1000,
+    "boost_antigen": 1000,
+    "boost_cells": 1000,
+    "remark": 1000,
 }
 BREAK_FIELDS = frozenset({
     "mouse_nos",
@@ -599,6 +599,10 @@ def _apply_list_filters(
         "boost_date_start",
         "boost_date_end",
     )
+    for empty_col in split_code_tokens(data.get("empty_date")):
+        if empty_col in DATE_FIELDS:
+            col = getattr(DiscoveryWorkbench, empty_col)
+            filters.append(or_(col.is_(None), col == ""))
     if apply_view:
         view_filter = _view_group_filter(str(data.get("view_group") or "").strip())
         if view_filter is not None:
@@ -681,7 +685,7 @@ def _apply_queue(
         leaving = queued_sort(previous_sort) is not None or queued_sort(row.sort_order) is not None
         row.sort_order = None
         if leaving:
-            renumber_queue(_queue_rows(db))
+            renumber_queue([item for item in _queue_rows(db) if int(item.id) != int(row.id or 0)])
         return
     if is_new or queued_sort(previous_sort) is None:
         target = queued_sort(payload.get("sort_order"))

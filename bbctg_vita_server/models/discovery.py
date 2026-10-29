@@ -23,24 +23,24 @@ class DiscoveryWorkbench(Base):
     mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="小鼠品系")
     cage_position: Mapped[str | None] = mapped_column(String(64), comment="笼位")
     mouse_count: Mapped[int | None] = mapped_column(Integer, comment="小鼠只数")
-    mouse_nos: Mapped[str | None] = mapped_column(String(512), comment="鼠号")
-    serum_titer: Mapped[str | None] = mapped_column(String(255), comment="血清效价")
-    immune_antigen: Mapped[str | None] = mapped_column(String(255), comment="免疫用抗原")
+    mouse_nos: Mapped[str | None] = mapped_column(String(1000), comment="鼠号")
+    serum_titer: Mapped[str | None] = mapped_column(String(1000), comment="血清效价")
+    immune_antigen: Mapped[str | None] = mapped_column(String(1000), comment="免疫用抗原")
     screening_methods: Mapped[str | None] = mapped_column(String(64), comment="筛选方式")
-    screening_antigen: Mapped[str | None] = mapped_column(String(255), comment="筛选抗原")
+    screening_antigen: Mapped[str | None] = mapped_column(String(1000), comment="筛选抗原")
     positive_cell_count: Mapped[str | None] = mapped_column(String(64), comment="阳性细胞数")
-    plate_nos: Mapped[str | None] = mapped_column(String(512), comment="板号")
+    plate_nos: Mapped[str | None] = mapped_column(String(1000), comment="板号")
     harvest_date: Mapped[str | None] = mapped_column(String(32), comment="剖鼠取细胞日")
     boost_date: Mapped[str | None] = mapped_column(String(32), comment="冲击免日期")
-    boost_antigen: Mapped[str | None] = mapped_column(String(255), comment="冲击免抗原")
-    boost_cells: Mapped[str | None] = mapped_column(String(255), comment="冲击免细胞")
+    boost_antigen: Mapped[str | None] = mapped_column(String(1000), comment="冲击免抗原")
+    boost_cells: Mapped[str | None] = mapped_column(String(1000), comment="冲击免细胞")
     owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
     immune_owner: Mapped[str | None] = mapped_column(String(64), comment="免疫负责人")
     cell_collector: Mapped[str | None] = mapped_column(String(64), comment="细胞收集人")
     status: Mapped[str | None] = mapped_column(String(32), comment="状态")
     priority: Mapped[str | None] = mapped_column(String(32), comment="优先级")
     sort_order: Mapped[int | None] = mapped_column(Integer, comment="排序值")
-    remark: Mapped[str | None] = mapped_column(String(500), comment="备注")
+    remark: Mapped[str | None] = mapped_column(String(1000), comment="备注")
     created_by: Mapped[str | None] = mapped_column(String(64), comment="创建人")
     created_at: Mapped[object | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")
     updated_at: Mapped[object | None] = mapped_column(
@@ -128,14 +128,13 @@ class DiscoverySynthesisOrder(Base):
     synthetic_date: Mapped[str | None] = mapped_column(String(32), comment="合成日期")
     arrival_count: Mapped[int | None] = mapped_column(Integer, comment="到货个数")
     arrival_date: Mapped[str | None] = mapped_column(String(32), comment="到货日期")
-    flow_count: Mapped[int | None] = mapped_column(Integer, comment="流式个数")
     flow_date: Mapped[str | None] = mapped_column(String(32), comment="流式日期")
-    affinity_count: Mapped[int | None] = mapped_column(Integer, comment="亲和力个数")
     affinity_date: Mapped[str | None] = mapped_column(String(32), comment="亲和力日期")
     affinity_result: Mapped[str | None] = mapped_column(String(32), comment="亲和力结果")
     owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
     batch_label: Mapped[str | None] = mapped_column(String(255), comment="工单批次")
-    assay_note: Mapped[str | None] = mapped_column(String(500), comment="检测与异常说明")
+    flow_note: Mapped[str | None] = mapped_column(String(500), comment="流式说明")
+    report_reason: Mapped[str | None] = mapped_column(String(500), comment="未出原因")
     remark: Mapped[str | None] = mapped_column(String(1000), comment="备注")
     eng_type: Mapped[str | None] = mapped_column(String(128), comment="改造类型")
     eng_method: Mapped[str | None] = mapped_column(String(128), comment="改造方式")
@@ -187,14 +186,13 @@ class DiscoverySynthesisOrder(Base):
             "synthetic_date": self.synthetic_date,
             "arrival_count": self.arrival_count,
             "arrival_date": self.arrival_date,
-            "flow_count": self.flow_count,
             "flow_date": self.flow_date,
-            "affinity_count": self.affinity_count,
             "affinity_date": self.affinity_date,
             "affinity_result": self.affinity_result,
             "owner": self.owner,
             "batch_label": self.batch_label,
-            "assay_note": self.assay_note,
+            "flow_note": self.flow_note,
+            "report_reason": self.report_reason,
             "remark": self.remark,
             "eng_type": self.eng_type,
             "eng_method": self.eng_method,

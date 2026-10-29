@@ -2,6 +2,7 @@ export { default as workbenchExcelMixin } from './workbenchExcelMixin'
 export { default as WorkbenchViewToggle } from './WorkbenchViewToggle.vue'
 export {
   default as WorkbenchDataTable,
+  WorkbenchDateHeader,
   WorkbenchInlineDatePicker,
   WorkbenchInlineSelect,
 } from './WorkbenchDataTable.vue'

@@ -398,15 +398,15 @@
           />
         </template>
         <template #header-harvest_date>
-          <button
-            type="button"
-            class="sort-header-btn"
-            :class="{ 'is-active': listQuery.sort_field === 'harvest_date' }"
+          <WorkbenchDateHeader
+            label="剖鼠日期"
+            :mark="dateSortMark('harvest_date')"
+            :sorted="listQuery.sort_field === 'harvest_date'"
+            :empty-filtered="isDateEmptyFiltered('harvest_date')"
             :title="dateSortTitle('harvest_date')"
-            @click.stop="cycleDateSort('harvest_date')"
-          >
-            剖鼠日期{{ dateSortMark('harvest_date') }}
-          </button>
+            @sort="cycleDateSort('harvest_date')"
+            @toggle-empty="toggleEmptyDate('harvest_date')"
+          />
         </template>
         <template #harvest_date="{ row }">
           <WorkbenchInlineDatePicker
@@ -418,15 +418,15 @@
           />
         </template>
         <template #header-boost_date>
-          <button
-            type="button"
-            class="sort-header-btn"
-            :class="{ 'is-active': listQuery.sort_field === 'boost_date' }"
+          <WorkbenchDateHeader
+            label="冲击日期"
+            :mark="dateSortMark('boost_date')"
+            :sorted="listQuery.sort_field === 'boost_date'"
+            :empty-filtered="isDateEmptyFiltered('boost_date')"
             :title="dateSortTitle('boost_date')"
-            @click.stop="cycleDateSort('boost_date')"
-          >
-            冲击日期{{ dateSortMark('boost_date') }}
-          </button>
+            @sort="cycleDateSort('boost_date')"
+            @toggle-empty="toggleEmptyDate('boost_date')"
+          />
         </template>
         <template #boost_date="{ row }">
           <WorkbenchInlineDatePicker
@@ -885,6 +885,7 @@ import {
   WORKBENCH_VIEW,
   syncDrawerControlTooltip,
   WorkbenchDataTable,
+  WorkbenchDateHeader,
   WorkbenchInlineDatePicker,
   WorkbenchInlineSelect,
   workbenchExcelMixin,
@@ -957,17 +958,17 @@ const STRING_MAX = {
   mouse_strain_category: 128,
   mouse_strain: 128,
   cage_position: 64,
-  mouse_nos: 512,
-  serum_titer: 255,
-  immune_antigen: 255,
-  screening_antigen: 255,
+  mouse_nos: 1000,
+  serum_titer: 1000,
+  immune_antigen: 1000,
+  screening_antigen: 1000,
   positive_cell_count: 64,
-  plate_nos: 512,
-  boost_antigen: 255,
-  boost_cells: 255,
+  plate_nos: 1000,
+  boost_antigen: 1000,
+  boost_cells: 1000,
   immune_owner: 64,
   cell_collector: 64,
-  remark: 500,
+  remark: 1000,
 }
 const BREAK_FIELDS = new Set([
   'mouse_nos',
@@ -1233,6 +1234,7 @@ function emptyQuery() {
     screening_antigen: '',
     boost_antigen: '',
     boost_filter: '',
+    empty_date: '',
   }
 }
 
@@ -1262,6 +1264,7 @@ export default {
     ElSelect,
     ElTag,
     WorkbenchDataTable,
+    WorkbenchDateHeader,
     WorkbenchInlineDatePicker,
     WorkbenchInlineSelect,
     Search,
@@ -1428,6 +1431,7 @@ export default {
         || this.listQuery.screening_antigen
         || this.listQuery.boost_antigen
         || this.listQuery.remark
+        || this.listQuery.empty_date
         || this.harvestRange?.length
         || this.boostRange?.length,
       )
@@ -1648,13 +1652,29 @@ export default {
       if (baseline && this.fieldComparable(row, field) === this.fieldComparable(baseline, field)) {
         return
       }
+      if (this.editingId === row.id && this.editingRowData && row !== this.editingRowData) {
+        if (field === 'target_codes' || field === 'target_name') {
+          this.editingRowData.target_codes = this.cloneSheetValue(row.target_codes)
+          this.editingRowData.target_name = row.target_name
+        } else {
+          this.editingRowData[field] = this.cloneSheetValue(row[field])
+        }
+      }
+      if (baseline) {
+        if (field === 'target_codes' || field === 'target_name') {
+          baseline.target_codes = this.cloneSheetValue(row.target_codes)
+          baseline.target_name = row.target_name
+        } else {
+          baseline[field] = this.cloneSheetValue(row[field])
+        }
+      }
       try {
         const saved = await saveDiscoveryWorkbench(this.payloadRow(row, [field]))
+        this.applySavedFields(saved, [field])
         if (QUEUE_KEYS.includes(field)) {
           await this.getList({ flushEditor: false })
           return saved
         }
-        this.applySavedFields(saved, [field])
         return saved
       } catch (error) {
         notifyApiError(error, { messages: { default: '保存失败' } })
@@ -2020,6 +2040,7 @@ export default {
       const payload = { ...this.listQuery }
       if (!payload.view_group) delete payload.view_group
       if (!payload.boost_filter) delete payload.boost_filter
+      if (!payload.empty_date) delete payload.empty_date
       if (!payload.status) delete payload.status
       if (!payload.priority) delete payload.priority
       if (!payload.sort_field) delete payload.sort_field
@@ -2066,6 +2087,7 @@ export default {
         if (requestToken !== this.listRequestToken) return
         const data = await fetchDiscoveryWorkbenchList(this.buildQuery(), skipGlobalErrorHandler)
         if (requestToken !== this.listRequestToken) return
+        const editorIsDirty = this.drawerDirtyFields(this.editingRowData).length > 0
         this.list = (data?.items || []).map((row) => this.normalizeRow(row))
         this.list.forEach((row) => this.updateRowBaseline(row))
         this.total = data?.total || 0
@@ -2081,7 +2103,7 @@ export default {
         this.listQuery.page = data?.page || this.listQuery.page
         this.listQuery.limit = data?.limit || this.listQuery.limit
         const selected = this.list.find((row) => row.id === this.editingId)
-        if (selected && !this.drawerDirtyFields(this.editingRowData).length) {
+        if (selected && !editorIsDirty) {
           this.editingRowData = this.normalizeRow(JSON.parse(JSON.stringify(selected)))
         }
         this.tabDataFetchedAt = Date.now()
@@ -2102,6 +2124,11 @@ export default {
     excelHeaderClick(column) {
       if (column?.key !== 'harvest_date' && column?.key !== 'boost_date') return false
       this.cycleDateSort(column.key)
+      return true
+    },
+    excelHeaderContextMenu(column) {
+      if (column?.key !== 'harvest_date' && column?.key !== 'boost_date') return false
+      this.toggleEmptyDate(column.key)
       return true
     },
     resetFilters() {
@@ -2136,7 +2163,7 @@ export default {
       this.handleFilter()
     },
     handleViewGroup(key) {
-      if (key === 'harvest' && this.listQuery.status === '待剖鼠') {
+      if (!key || this.listQuery.status === '待剖鼠') {
         this.listQuery.status = ''
       }
       this.listQuery.view_group = key || ''

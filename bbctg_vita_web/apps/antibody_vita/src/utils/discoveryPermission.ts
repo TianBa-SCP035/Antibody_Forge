@@ -43,3 +43,7 @@ export function canEditDiscoverySynthesis(userInfo: any): boolean {
 export function canPmEditDiscoverySynthesis(userInfo: any): boolean {
   return hasAccessCode(userInfo, 'discovery.synthesis_progress.pm_edit');
 }
+
+export function canAssayEditDiscoverySynthesis(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'discovery.synthesis_progress.assay_edit');
+}

@@ -11,7 +11,9 @@
   - `source_one_type`（`ngs` / `beacon`）与 `source_one_id`：对应外部 One 库 `one_task_ngs_data_analyze.id` 或 `one_task_beacon_data_analyze.id`，组合唯一。手填记录为空。
   - `source_snapshot`：外部 One 库最近一次同步或核对的字段快照（JSON），用于比对来源变更。
 - **状态、优先级队列与分类**：
-  - `status`：6 档阶段状态——`待下单`（防备特殊未下单情况，不在顶部单设统计块）、`合成中`、`待检测`、`检测中`、`已完成`、`已取消`。未处于 `已完成` / `已取消` 终态时，保存记录且未显式指定状态会根据已填字段自动推进：填流式或亲和力日期/个数 → `检测中`；填到货日期/个数 → `待检测`；填订单号或非外送供应方式 → `合成中`；其余 → `待下单`。
+  - `status`：7 档阶段状态——`待下单`（防备特殊未下单情况，不在顶部单设统计块）、`合成中`、`待检测`、`检测中`、`亲和力完成`、`已完成`、`已取消`。
+    - 自动同步与前半段规则：填订单号或非外送供应方式 → `合成中`；填到货日期（`arrival_date`） → `待检测`；`检测中` 由用户按需手动切换。自动任务仅推进到 `待检测`，不判断亲和力或流式时间。
+    - 用户手填验证日期规则：手填 `affinity_date`（亲和力日期）时，若靶点类型为 `分泌型`（无需做细胞流式检测）或已有 `flow_date`，直接变为 `已完成`，否则变为 `亲和力完成`；手填 `flow_date`（流式日期）时直接变为 `已完成`。
   - `priority` / `sort_order`：与免疫工作台、发现工作台同一套四档优先级（`吉吉国王` > `非常紧急` > `加急` > `正常`）与未完成队列编号（`1..N`，终态为 `NULL`）。列表默认按 `id` 倒序（新建工单排在第 1 页首行）；点击首列「序号」表头切换为「排序」队列模式，支持行内改号与拖拽排序。
   - `order_kind`：`常规合成`、`改造`。
   - `supply_mode`：`合成到货`、`内部转染`、`改亚型`。
@@ -24,10 +26,10 @@
 - **送测、合成与验证里程碑（高频核心列，排在前面；默认工作台视图下日期为只读纯文本，通过抽屉或 Excel 视图手改）**：
   - `synthesis_code`（送测转码）、`order_no`（合成订单号）、`synthetic_corp`（合成公司）、`synthetic_count`（合成个数，非负整数）、`synthetic_date`（合成日期，`YYYY-MM-DD`）。
   - `arrival_count`（到货个数，非负整数）、`arrival_date`（到货日期，`YYYY-MM-DD`，单次到货）。
-  - `flow_count`（流式个数，非负整数）、`flow_date`（流式日期，`YYYY-MM-DD`）。
-  - `affinity_count`（亲和力个数，非负整数）、`affinity_date`（亲和力日期，`YYYY-MM-DD`）、`affinity_result`（亲和力结果，固定下拉选项：`正常`、`阳性极少`、`全阴`；填写亲和力日期时，若亲和力结果为空自动默认设为 `正常`，若负责人为空自动设为 `无人问津` 供 PM 认领；若清空亲和力日期则同步回退）。
-  - `owner`（负责人 / PM 认领人；亲和力检测完成前保持为空，亲和力完成后未认领记为 `无人问津`）。
-  - `batch_label`（工单批次）、`assay_note`（分批/重测与异常说明，承接一次工单分多次做流式/亲和力、复测原因与异常）、`remark`（备注）。
+  - `flow_date`（流式日期，`YYYY-MM-DD`）、`flow_note`（流式说明）。
+  - `affinity_date`（亲和力日期，`YYYY-MM-DD`）、`affinity_result`（亲和力结果，固定下拉选项：`正常`、`阳性极少`、`全阴`；填写亲和力日期时，若亲和力结果为空自动默认设为 `正常`，若清空亲和力日期则同步回退）、`report_reason`（未出原因）。
+  - `owner`（负责人 / PM 认领人；未认领批次可记为 `无人问津`）。
+  - `batch_label`（工单批次）、`remark`（备注）。
 - **序列改造附加字段（`order_kind = 改造` 时抽屉展开）**：
   - `eng_type`（改造类型，可多选或自创，按固定选项顺序用顿号拼接，同小鼠品系）、`eng_method`（改造方式，可多选或自创，顿号拼接）、`eng_parent_seq`（改造序列或母本）、`eng_requirement`（改造要求）、`eng_result`（改造结果）。
 - **系统内流程串联字段（排在工作台「显示字段」、抽屉与 Excel 视图末尾）**：
@@ -46,26 +48,31 @@
 
 ## 页面与抽屉排版
 
-- **筛选**：常驻条含合成日起止。齿轮高级区含到货、流式、亲和力三个日起止，按对应日期闭区间过滤，列表导出沿用同一条件。
-- **操作列三个按钮**：**详情**（primary，按实验号跳转免疫项目查看页）、**认领**（success，将当前操作人姓名写入 `owner` 负责人，与 `pm` 字段相互独立）、**删除**（warning）。
+- **筛选与快捷交互**：常驻条含合成日起止；齿轮高级区含到货、流式、亲和力三个日起止，按对应日期闭区间过滤，列表导出沿用同一条件。「待测 / 检测中」统计块支持右键单独筛选 `亲和力完成` 状态，点击「全部批次」时同步清空状态筛选。工作台与 Excel 双视图下的四个日期表头（合成日期、到货日期、亲和力日期、流式日期）复用公共组件 `WorkbenchDateHeader` 与 `workbenchExcelMixin`，支持左键按日期排序（蓝色文字 + `↑ / ↓`）、右键筛选未填写该日期的批次（绿色文字 + `∅`）。
+- **操作列三个按钮**：**详情**（primary，按实验号或项目编号跳转免疫项目查看页）、**认领**（success，仅 `owner = 无人问津` 的批次可认领为当前操作人，或将本人已认领批次改回 `无人问津`；已被他人认领或未标无人问津的不可认领）、**删除**（warning）。
 - **右上角「新建工单」与抽屉「加单」**：新建改造工单（或由仅具 `pm_edit` 权限的 PM 新建工单，或在抽屉中将订单性质切为 `改造`）时，若 `owner`（负责人）或 `pm`（PM）为空，默认自动填充当前下单人的姓名。抽屉顶部「加单」可一键复制当前工单的项目、靶点及改造需求等基础信息生成新行（若同转码在 One 库有未关联新单则自动关联并拉取）。
 - **抽屉分区顺序**：
   1. `状态 / 归属`：状态、优先级、负责人、排序、订单性质、供应方式
   2. `改造信息`（仅 `订单性质 = 改造` 时展开）：改造类型、改造方式、母本序列、改造要求、改造结果
   3. `项目信息`：项目编号、小鼠品系、PM、课题类型、靶点、靶点编号、备注
   4. `合成订单`：挑选方式、送测转码、订单号、合成公司、合成个数、合成日期、工单批次
-  5. `到货与验证`：到货个数、到货日期、流式个数、流式日期、亲和力个数、亲和力日期、亲和力结果、检测说明
+  5. `到货与验证`：到货个数、到货日期；亲和力结果、亲和力日期；未出原因（整行）；流式日期（半行）；流式说明（整行）
 
-## 接口
+## 接口与权限
+
+查看页面与只读接口使用 `discovery.page.synthesis_progress`。编辑权限分三档（多项同时具备时取并集）：
+- `discovery.synthesis_progress.edit`（全部编辑）：可修改所有字段及靶点底色标记、采用来源变更、手动同步 One 数据、删除任意工单。
+- `discovery.synthesis_progress.pm_edit`（PM 操作）：可新建/加单、删除 `待下单` 工单、认领 `无人问津` 批次（或将本人已认领批次改回 `无人问津`），可编辑 `项目信息`、`改造信息`（除改造结果）以及 `状态 / 归属` 中的优先级、排序、订单性质、供应方式；不可修改状态、合成订单与到货验证字段。
+- `discovery.synthesis_progress.assay_edit`（实验员操作）：仅可编辑已有工单「到货与验证」中除到货个数、到货日期外的 5 个验证字段（`affinity_result`、`affinity_date`、`report_reason`、`flow_date`、`flow_note`）。
 
 - `POST /list`：分页查询与顶部视图/胶囊统计（`discovery.page.synthesis_progress`）。
 - `GET /options`：下拉选项与靶点/人员筛选项（`discovery.page.synthesis_progress`）。
 - `POST /check_remote`：按当前页行 ID 点查核对 One 库最新快照（`discovery.page.synthesis_progress`）。
 - `POST /export_list`：按当前筛选条件导出 Excel（`discovery.page.synthesis_progress`）。
-- `POST /save`：单条新增或修改（`discovery.synthesis_progress.edit` 或 `discovery.synthesis_progress.pm_edit`）。
-- `POST /save_batch`：Excel 视图批量粘贴保存（`discovery.synthesis_progress.edit` 或 `discovery.synthesis_progress.pm_edit`）。
-- `POST /claim`：PM 认领该批次合成结果（`discovery.synthesis_progress.edit` 或 `discovery.synthesis_progress.pm_edit`）。
-- `POST /reorder`：按优先级队列调整排序（`discovery.synthesis_progress.edit` 或 `discovery.synthesis_progress.pm_edit`）。
-- `POST /delete`：删除记录（`discovery.synthesis_progress.edit`；`pm_edit` 仅可删除 `待下单` 状态工单）。
-- `POST /adopt_source`：采用外部来源最新值覆盖本地单字段或整行差异字段（`discovery.synthesis_progress.edit`）。
-- `POST /sync_now`：手动立即对本地未完结工单向 One 库拉取更新合成与到货信息（`discovery.synthesis_progress.edit`）。
+- `POST /save`：单条新增或修改（`edit` / `pm_edit` / `assay_edit`）。
+- `POST /save_batch`：Excel 视图批量粘贴保存（`edit` / `pm_edit` / `assay_edit`）。
+- `POST /claim`：PM 认领或退回 `无人问津` 合成结果（`edit` 或 `pm_edit`）。
+- `POST /reorder`：按优先级队列调整排序（`edit` 或 `pm_edit`）。
+- `POST /delete`：删除记录（`edit`；`pm_edit` 仅可删除 `待下单` 状态工单）。
+- `POST /adopt_source`：采用外部来源最新值覆盖本地单字段或整行差异字段（`edit`）。
+- `POST /sync_now`：手动立即对本地未完结工单向 One 库拉取更新合成与到货信息（`edit`）。

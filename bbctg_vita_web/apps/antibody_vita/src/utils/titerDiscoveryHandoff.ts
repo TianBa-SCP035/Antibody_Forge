@@ -16,8 +16,8 @@ const LIMIT = {
   mouse_strain_category: 128,
   mouse_strain: 128,
   cage_position: 64,
-  mouse_nos: 512,
-  immune_antigen: 255,
+  mouse_nos: 1000,
+  immune_antigen: 1000,
   immune_owner: 64,
 } as const;
 

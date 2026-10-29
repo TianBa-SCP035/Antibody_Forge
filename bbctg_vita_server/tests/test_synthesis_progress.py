@@ -26,7 +26,7 @@ class SynthesisProgressServiceTests(unittest.TestCase):
                 DiscoverySynthesisOrder.__table__,
             ],
         )
-        self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
+        self.Session = sessionmaker(bind=self.engine, autoflush=False, expire_on_commit=False)
 
     def tearDown(self):
         self.engine.dispose()
@@ -65,19 +65,17 @@ class SynthesisProgressServiceTests(unittest.TestCase):
             )
             self.assertEqual(row1["status"], "待检测")
 
-            # 4. Fill flow_date / affinity_date -> auto advances to 检测中, sets affinity_result='正常' and owner='无人问津'
+            # 4. Fill affinity_date -> auto advances to 亲和力完成, sets affinity_result='正常'
             row1 = service.save(
                 db,
                 {
                     "id": row1["id"],
-                    "flow_count": 113,
-                    "flow_date": "2026-03-20",
                     "affinity_date": "2026-03-25",
                     "selection_method": ["JX_P", "补挑"],
                 },
             )
-            self.assertEqual(row1["status"], "检测中")
-            self.assertEqual(row1["owner"], "无人问津")
+            self.assertEqual(row1["status"], "亲和力完成")
+            self.assertIsNone(row1["owner"])
             self.assertEqual(row1["selection_method"], "补挑、JX_P")
             self.assertEqual(row1["affinity_result"], "正常")
 
@@ -95,7 +93,7 @@ class SynthesisProgressServiceTests(unittest.TestCase):
                     "eng_method": "NGS姐妹克隆 + AI",
                     "eng_parent_seq": "Vh1$0-20R389_RNBK01AACCHS",
                     "eng_requirement": "改造提高亲和力",
-                    "assay_note": "缺孔还未补",
+                    "flow_note": "缺孔还未补",
                 },
                 created_by="王子豪 Zihao Wang",
             )
@@ -116,11 +114,18 @@ class SynthesisProgressServiceTests(unittest.TestCase):
             self.assertEqual(queue_list[0]["sort_order"], 1)
             self.assertEqual(queue_list[1]["sort_order"], 2)
 
-            # 7. Claim order updates owner independently of pm
+            # 7. Claim order requires owner='无人问津', and re-claiming by same user reverts to '无人问津'
+            with self.assertRaises(ValueError):
+                service.claim_order(db, row1["id"], "张赞 Zan Zhang")
+            service.save(db, {"id": row1["id"], "owner": "无人问津"})
             claimed = service.claim_order(db, row1["id"], "张赞 Zan Zhang")
             self.assertEqual(claimed["owner"], "张赞")
+            with self.assertRaises(ValueError):
+                service.claim_order(db, row1["id"], "兰维秋")
+            reverted = service.claim_order(db, row1["id"], "张赞 Zan Zhang")
+            self.assertEqual(reverted["owner"], "无人问津")
 
-            # 8. PM scope can edit PM fields & create order, but cannot edit arrival_count
+            # 8. PM scope can edit PM fields & create order, Assay scope can edit validation fields
             pm_created = service.save(
                 db,
                 {"target_name": "CD6", "eng_requirement": "提高Tm"},
@@ -135,13 +140,38 @@ class SynthesisProgressServiceTests(unittest.TestCase):
                     {"id": pm_created["id"], "arrival_count": 50},
                     scopes=frozenset({"pm"}),
                 )
+            assay_updated = service.save(
+                db,
+                {"id": row1["id"], "report_reason": "抗原重检", "flow_date": "2026-03-28"},
+                scopes=frozenset({"assay"}),
+            )
+            self.assertEqual(assay_updated["report_reason"], "抗原重检")
+            self.assertEqual(assay_updated["status"], "已完成")
+            self.assertIsNone(assay_updated["sort_order"])
+            with self.assertRaises(PermissionError):
+                service.save(
+                    db,
+                    {"id": row1["id"], "status": "待检测"},
+                    scopes=frozenset({"assay"}),
+                )
+
+            # 9. Rolling back status from 已完成 to 待检测 and editing notes keeps 待检测
+            rolled_back = service.save(db, {"id": row1["id"], "status": "待检测"})
+            self.assertEqual(rolled_back["status"], "待检测")
+            self.assertIsNotNone(rolled_back["sort_order"])
+            after_note = service.save(
+                db,
+                {"id": row1["id"], "flow_note": "退回重测流式"},
+                scopes=frozenset({"assay"}),
+            )
+            self.assertEqual(after_note["status"], "待检测")
 
             res = service.get_list(db, {})
             self.assertEqual(res["total"], 3)
             self.assertEqual(res["stats"]["assay"], 1)
             self.assertEqual(res["stats"]["synthesizing"], 1)
             self.assertEqual(res["stats"]["engineering"], 1)
-            self.assertEqual(res["stats"]["has_issue"], 1)
+            self.assertEqual(res["stats"]["has_issue"], 2)
 
     def test_sync_from_one_and_drift_adoption(self):
         fake_snap = {

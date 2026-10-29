@@ -271,18 +271,31 @@ export default {
       this.listQuery.page = 1
       this.getList()
     },
+    isDateEmptyFiltered(field) {
+      return Boolean(field && this.listQuery?.empty_date === field)
+    },
     dateSortMark(field) {
-      if (this.listQuery?.sort_field !== field) return ''
-      return this.listQuery?.sort_dir === 'desc' ? ' ↓' : ' ↑'
+      const sortMark = this.listQuery?.sort_field === field
+        ? (this.listQuery?.sort_dir === 'desc' ? ' ↓' : ' ↑')
+        : ''
+      const emptyMark = this.isDateEmptyFiltered(field) ? ' ∅' : ''
+      return `${sortMark}${emptyMark}`
     },
     dateSortTitle(field) {
       const col =
         this.sheetColumnByKey?.get(field)?.column
         || this.workbenchColumns?.find?.((c) => c.key === field)
       const label = col?.label || '日期'
-      if (this.listQuery?.sort_field !== field) return `左键按${label}从早到晚`
-      if (this.listQuery?.sort_dir === 'asc') return '当前从早到晚。再点改为从晚到早'
-      return '当前从晚到早。再点恢复最新在前'
+      let sortHint = `左键按${label}从早到晚`
+      if (this.listQuery?.sort_field === field) {
+        sortHint = this.listQuery?.sort_dir === 'asc'
+          ? '当前从早到晚，左键改为从晚到早'
+          : '当前从晚到早，左键恢复最新在前'
+      }
+      const emptyHint = this.isDateEmptyFiltered(field)
+        ? `当前只看未填${label}，右键取消`
+        : `右键只看未填${label}`
+      return `${sortHint}；${emptyHint}`
     },
     cycleDateSort(field) {
       if (!this.listQuery) return
@@ -295,6 +308,12 @@ export default {
         this.listQuery.sort_field = field
         this.listQuery.sort_dir = 'asc'
       }
+      this.listQuery.page = 1
+      this.getList()
+    },
+    toggleEmptyDate(field) {
+      if (!this.listQuery || !field) return
+      this.listQuery.empty_date = this.listQuery.empty_date === field ? '' : field
       this.listQuery.page = 1
       this.getList()
     },
@@ -454,8 +473,9 @@ export default {
     },
     sheetHeaderCellClassName({ column }) {
       if (!column.field) return ''
-      const sorted = this.dateSortMark?.(column.field) ? ' is-date-sorted' : ''
-      return `sheet-selectable-header${sorted}`
+      const empty = this.isDateEmptyFiltered?.(column.field) ? ' is-empty-date-filtered' : ''
+      const sorted = !empty && this.dateSortMark?.(column.field) ? ' is-date-sorted' : ''
+      return `sheet-selectable-header${empty}${sorted}`
     },
     sheetCellClassName() {
       return ''
@@ -1021,6 +1041,12 @@ export default {
     },
     onSheetWrapContextMenu(event) {
       if (event.target?.closest?.('input, textarea')) return
+      const headerHit = this.hitSheetHeader(event.target)
+      if (headerHit && this.excelHeaderContextMenu?.(this.sheetColumns[headerHit.colIndex], event)) {
+        event.preventDefault()
+        this.$refs.sheetTable?.clearEdit?.()
+        return
+      }
       event.preventDefault()
       this.clearSheetRange()
     },

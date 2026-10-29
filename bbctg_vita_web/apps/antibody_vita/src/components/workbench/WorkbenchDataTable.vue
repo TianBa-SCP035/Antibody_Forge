@@ -178,6 +178,44 @@ export const WorkbenchInlineSelect = defineComponent({
   },
 })
 
+export const WorkbenchDateHeader = defineComponent({
+  name: 'WorkbenchDateHeader',
+  props: {
+    label: { type: String, required: true },
+    mark: { type: String, default: '' },
+    sorted: { type: Boolean, default: false },
+    emptyFiltered: { type: Boolean, default: false },
+    title: { type: String, default: '' },
+  },
+  emits: ['sort', 'toggle-empty'],
+  render() {
+    return h(
+      'button',
+      {
+        type: 'button',
+        class: [
+          'sort-header-btn',
+          {
+            'is-active': this.sorted && !this.emptyFiltered,
+            'is-empty-filter': this.emptyFiltered,
+          },
+        ],
+        title: this.title,
+        onClick: (e) => {
+          e.stopPropagation()
+          this.$emit('sort')
+        },
+        onContextmenu: (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          this.$emit('toggle-empty')
+        },
+      },
+      `${this.label}${this.mark}`,
+    )
+  },
+})
+
 export const WorkbenchInlineDatePicker = defineComponent({
   name: 'WorkbenchInlineDatePicker',
   props: {

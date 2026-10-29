@@ -189,6 +189,37 @@ class DiscoveryWorkbenchIdTests(unittest.TestCase):
             "CHO-S-hGPR158-Flag C260829B01\nCHO-fasGPR158-Flag C260416B01 人猴细胞",
         )
 
+    def test_multiline_fields_accept_up_to_1000_chars(self):
+        long_text = "\n".join(f"Human-Antigen-Line-{idx}——CAT-{idx:04d}" for idx in range(25))
+        self.assertGreater(len(long_text), 512)
+        self.assertLessEqual(len(long_text), 1000)
+        saved = service.save(
+            self.db,
+            {
+                "mouse_nos": long_text,
+                "serum_titer": long_text,
+                "immune_antigen": long_text,
+                "screening_antigen": long_text,
+                "plate_nos": long_text,
+                "boost_antigen": long_text,
+                "boost_cells": long_text,
+                "remark": long_text,
+            },
+        )
+        for field in (
+            "mouse_nos",
+            "serum_titer",
+            "immune_antigen",
+            "screening_antigen",
+            "plate_nos",
+            "boost_antigen",
+            "boost_cells",
+            "remark",
+        ):
+            self.assertEqual(saved[field], long_text)
+        with self.assertRaisesRegex(ValueError, "字段长度不能超过 1000"):
+            service.save(self.db, {"immune_antigen": "A" * 1001})
+
 
 if __name__ == "__main__":
     unittest.main()

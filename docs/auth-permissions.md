@@ -127,7 +127,8 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `discovery.workbench.edit` | action | 新增、保存、删除、排序安排 |
 | `discovery.page.synthesis_progress` | page | 合成与验证列表与外部订单比对 |
 | `discovery.synthesis_progress.edit` | action | 合成与验证全部编辑：新增、保存、批量粘贴、认领、删除、采用来源变更及手动同步合成订单 |
-| `discovery.synthesis_progress.pm_edit` | action | PM操作合成与验证：新建工单、认领合成结果、编辑项目与改造需求字段（项目编号、实验号、PM、课题类型、靶点、小鼠品系、订单性质、负责人、改造类型/方式/母本/要求、备注），并可删除待下单状态的工单 |
+| `discovery.synthesis_progress.pm_edit` | action | PM操作合成与验证：新建工单、认领「无人问津」合成结果（或将本人认领批次改回「无人问津」）、编辑项目与改造需求字段（项目编号、实验号、PM、课题类型、靶点、靶点类型、小鼠品系、优先级、排序、订单性质、供应方式、改造类型/方式/母本/要求、备注），并可删除待下单状态的工单 |
+| `discovery.synthesis_progress.assay_edit` | action | 实验操作合成与验证：编辑「到货与验证」分区中除到货个数、到货日期外的验证字段（亲和力结果、亲和力日期、未出原因、流式日期、流式说明） |
 
 写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/delete`、`/reorder` 及 `/api/discovery/synthesis-progress/save`、`/save_batch`、`/claim`、`/reorder`、`/delete`、`/adopt_source`、`/sync_now` 登记 `sys_permission_api`。字段与规则见 [modules/discovery/workbench.md](./modules/discovery/workbench.md) 与 [modules/discovery/synthesis-progress.md](./modules/discovery/synthesis-progress.md)。权限码在 `sys_permission`，菜单开关在 `sys_feature_flag`（`menu.discovery` / `menu.discovery.workbench` / `menu.discovery.synthesis_progress`）。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。选靶点 / 人名时复用 `GET /api/serum/target_options` 与 `/user_options`，这两条目录接口同时接受发现工作台与合成进度权限。
 

@@ -2345,6 +2345,7 @@ export default {
         if (requestToken !== this.listRequestToken) return
         const data = await fetchWorkbenchList({ ...this.listQuery })
         if (requestToken !== this.listRequestToken) return
+        const editorIsDirty = this.drawerDirtyFields(this.editingRowData).length > 0
         this.list = (data?.items || []).map((row) => this.normalizeRow(row))
         this.list.forEach((row) => this.updateRowBaseline(row))
         this.total = data?.total || 0
@@ -2357,7 +2358,6 @@ export default {
           can_start: data?.stats?.can_start || 0,
         }
         const selected = this.list.find((row) => row.id === this.editingId)
-        const editorIsDirty = this.drawerDirtyFields(this.editingRowData).length > 0
         if (selected && !editorIsDirty && !this.rowSaveChains.has(this.editingId)) {
           this.editingRowData = this.normalizeRow(JSON.parse(JSON.stringify(selected)))
         }

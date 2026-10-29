@@ -29,6 +29,7 @@ OPTION_ACCESS_PERMISSIONS = {
     "discovery.page.synthesis_progress",
     "discovery.synthesis_progress.edit",
     "discovery.synthesis_progress.pm_edit",
+    "discovery.synthesis_progress.assay_edit",
     "molecular.page.library",
     "molecular.library.edit",
     "molecular.page.library_detail",

@@ -12,6 +12,7 @@ from models.discovery import DiscoverySynthesisOrder
 from modules.discovery.synthesis_progress.constants import (
     DRIFT_COMPARE_FIELDS,
     DRIFT_FIELD_LABELS,
+    STATUS_AFFINITY_DONE,
     STATUS_ASSAYING,
     STATUS_SYNTHESIZING,
     STATUS_WAIT_ASSAY,
@@ -105,11 +106,13 @@ def normalize_synthetic_corp(raw_corp: Any, refstr: Any = None, order_no: Any = 
 
 def derive_status_for_row(row: DiscoverySynthesisOrder, *, preserve_terminal: bool = True) -> str:
     cur = (row.status or "").strip()
-    if preserve_terminal and cur in TERMINAL_STATUSES:
+    if preserve_terminal and cur in (
+        STATUS_ASSAYING,
+        STATUS_AFFINITY_DONE,
+        *TERMINAL_STATUSES,
+    ):
         return cur
-    if row.flow_date or row.flow_count is not None or row.affinity_date or row.affinity_count is not None:
-        return STATUS_ASSAYING
-    if row.arrival_date or row.arrival_count is not None:
+    if row.arrival_date:
         return STATUS_WAIT_ASSAY
     if row.order_no or (row.supply_mode and row.supply_mode != SUPPLY_MODE_ARRIVAL):
         return STATUS_SYNTHESIZING

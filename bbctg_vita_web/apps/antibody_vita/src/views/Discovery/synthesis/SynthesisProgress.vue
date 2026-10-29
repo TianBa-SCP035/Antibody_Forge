@@ -1,38 +1,7 @@
 <template>
   <div class="app-container" :class="{ 'is-list-table-locked': listTableLocked }">
     <AdvancedOpsBar v-model="showAdvancedOps">
-      <ListFilterSelect
-        v-model="listQuery.priority"
-        clearable
-        placeholder="优先级"
-        @change="handleFilter"
-      >
-        <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
-      </ListFilterSelect>
-      <ListFilterSelect
-        v-model="listQuery.order_kind"
-        clearable
-        placeholder="订单性质"
-        @change="handleFilter"
-      >
-        <el-option v-for="item in orderKindOptions" :key="item" :label="item" :value="item" />
-      </ListFilterSelect>
-      <ListFilterSelect
-        v-model="listQuery.supply_mode"
-        clearable
-        placeholder="供应方式"
-        @change="handleFilter"
-      >
-        <el-option v-for="item in supplyModeOptions" :key="item" :label="item" :value="item" />
-      </ListFilterSelect>
-      <ListFilterSelect
-        v-model="listQuery.selection_method"
-        clearable
-        placeholder="挑选方式"
-        @change="handleFilter"
-      >
-        <el-option v-for="item in optionLists.selection_methods" :key="item" :label="item" :value="item" />
-      </ListFilterSelect>
+      <!-- 第 1 行（8 格）：合成订单 4 项 + 实验验证结果与说明 4 项 -->
       <el-input
         v-model="listQuery.order_no"
         clearable
@@ -50,20 +19,52 @@
         <el-option v-for="item in optionLists.synthetic_corps" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
       <ListFilterSelect
-        v-model="listQuery.affinity_result"
+        v-model="listQuery.selection_method"
         clearable
-        placeholder="亲和力结果"
+        placeholder="挑选方式"
         @change="handleFilter"
       >
-        <el-option v-for="item in affinityResultOptions" :key="item" :label="item" :value="item" />
+        <el-option v-for="item in optionLists.selection_methods" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.supply_mode"
+        clearable
+        placeholder="供应方式"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in supplyModeOptions" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.status"
+        clearable
+        placeholder="状态"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in statusOptions" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
       <el-input
-        v-model="listQuery.assay_note"
+        v-model="listQuery.remark"
         clearable
-        placeholder="检测说明"
+        placeholder="备注"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
+      <el-input
+        v-model="listQuery.report_reason"
+        clearable
+        placeholder="未出原因"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <el-input
+        v-model="listQuery.flow_note"
+        clearable
+        placeholder="流式说明"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+
+      <!-- 第 2 行（8 格）：项目与队列属性 5 项 + 3 个验证日期区间（与上方备注/未出原因/流式说明纵向一一对应） -->
       <el-input
         v-model="listQuery.project_code"
         clearable
@@ -91,6 +92,51 @@
         <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
       <ListFilterSelect
+        v-model="listQuery.order_kind"
+        clearable
+        placeholder="订单性质"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in orderKindOptions" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.priority"
+        clearable
+        placeholder="优先级"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <el-date-picker
+        v-model="arrivalDateRange"
+        type="daterange"
+        range-separator="至"
+        start-placeholder="到货起始"
+        end-placeholder="到货截止"
+        value-format="YYYY-MM-DD"
+        @change="handleFilter"
+      />
+      <el-date-picker
+        v-model="affinityDateRange"
+        type="daterange"
+        range-separator="至"
+        start-placeholder="亲和力起始"
+        end-placeholder="亲和力截止"
+        value-format="YYYY-MM-DD"
+        @change="handleFilter"
+      />
+      <el-date-picker
+        v-model="flowDateRange"
+        type="daterange"
+        range-separator="至"
+        start-placeholder="流式起始"
+        end-placeholder="流式截止"
+        value-format="YYYY-MM-DD"
+        @change="handleFilter"
+      />
+
+      <!-- 第 3 行（2 格 + 操作按钮）：序列改造专属筛选项 -->
+      <ListFilterSelect
         v-model="listQuery.eng_type"
         clearable
         placeholder="改造类型"
@@ -106,40 +152,6 @@
       >
         <el-option v-for="item in optionLists.eng_methods" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
-      <el-input
-        v-model="listQuery.remark"
-        clearable
-        placeholder="备注"
-        @keyup.enter="handleFilter"
-        @clear="handleFilter"
-      />
-      <el-date-picker
-        v-model="arrivalDateRange"
-        type="daterange"
-        range-separator="至"
-        start-placeholder="到货起始"
-        end-placeholder="到货截止"
-        value-format="YYYY-MM-DD"
-        @change="handleFilter"
-      />
-      <el-date-picker
-        v-model="flowDateRange"
-        type="daterange"
-        range-separator="至"
-        start-placeholder="流式起始"
-        end-placeholder="流式截止"
-        value-format="YYYY-MM-DD"
-        @change="handleFilter"
-      />
-      <el-date-picker
-        v-model="affinityDateRange"
-        type="daterange"
-        range-separator="至"
-        start-placeholder="亲和力起始"
-        end-placeholder="亲和力截止"
-        value-format="YYYY-MM-DD"
-        @change="handleFilter"
-      />
       <template #actions>
         <el-button v-if="hasSecondaryFilters" @click="resetFilters">重置全部筛选</el-button>
         <el-button v-if="!isExcelMode" @click="openColumnPicker">显示字段</el-button>
@@ -198,13 +210,14 @@
           class="lifecycle-item"
           :class="[`stage-${item.tone}`, { 'is-active': activeViewGroup === item.key }]"
           :aria-pressed="activeViewGroup === item.key"
-          :title="item.hint"
+          :title="lifecycleTitle(item)"
           @click="handleViewGroup(item.key)"
+          @contextmenu="onLifecycleContextMenu(item, $event)"
         >
           <span class="stage-marker">{{ item.step }}</span>
           <span class="stage-copy">
             <strong>{{ item.label }}</strong>
-            <small>{{ item.hint }}</small>
+            <small>{{ lifecycleHint(item) }}</small>
           </span>
           <span class="stage-count">{{ stats[item.valueKey] || 0 }}</span>
         </button>
@@ -285,13 +298,13 @@
             />
           </div>
           <ListFilterSelect
-            v-model="listQuery.status"
-            placeholder="状态"
+            v-model="listQuery.affinity_result"
+            placeholder="亲和力结果"
             clearable
             class="filter-select"
             @change="handleFilter"
           >
-            <el-option v-for="item in statusOptions" :key="item" :label="item" :value="item" />
+            <el-option v-for="item in affinityResultOptions" :key="item" :label="item" :value="item" />
           </ListFilterSelect>
           <el-date-picker
             v-model="syntheticDateRange"
@@ -340,7 +353,7 @@
           ref="workbenchTable"
           :height="listTableHeight"
           v-loading="loading"
-          storage-key="discoverySynthesisViewPrefs.v5"
+          storage-key="discoverySynthesisViewPrefs.v7"
           :columns="workbenchColumns"
           :data="list"
           border
@@ -483,53 +496,54 @@
             {{ formatCodesText(row.target_codes) }}
           </template>
           <template #header-synthetic_date>
-            <button
-              type="button"
-              class="sort-header-btn"
-              :class="{ 'is-active': listQuery.sort_field === 'synthetic_date' }"
+            <WorkbenchDateHeader
+              label="合成日期"
+              :mark="dateSortMark('synthetic_date')"
+              :sorted="listQuery.sort_field === 'synthetic_date'"
+              :empty-filtered="isDateEmptyFiltered('synthetic_date')"
               :title="dateSortTitle('synthetic_date')"
-              @click.stop="cycleDateSort('synthetic_date')"
-            >
-              合成日期{{ dateSortMark('synthetic_date') }}
-            </button>
+              @sort="cycleDateSort('synthetic_date')"
+              @toggle-empty="toggleEmptyDate('synthetic_date')"
+            />
           </template>
           <template #header-arrival_date>
-            <button
-              type="button"
-              class="sort-header-btn"
-              :class="{ 'is-active': listQuery.sort_field === 'arrival_date' }"
+            <WorkbenchDateHeader
+              label="到货日期"
+              :mark="dateSortMark('arrival_date')"
+              :sorted="listQuery.sort_field === 'arrival_date'"
+              :empty-filtered="isDateEmptyFiltered('arrival_date')"
               :title="dateSortTitle('arrival_date')"
-              @click.stop="cycleDateSort('arrival_date')"
-            >
-              到货日期{{ dateSortMark('arrival_date') }}
-            </button>
+              @sort="cycleDateSort('arrival_date')"
+              @toggle-empty="toggleEmptyDate('arrival_date')"
+            />
           </template>
           <template #header-flow_date>
-            <button
-              type="button"
-              class="sort-header-btn"
-              :class="{ 'is-active': listQuery.sort_field === 'flow_date' }"
+            <WorkbenchDateHeader
+              label="流式日期"
+              :mark="dateSortMark('flow_date')"
+              :sorted="listQuery.sort_field === 'flow_date'"
+              :empty-filtered="isDateEmptyFiltered('flow_date')"
               :title="dateSortTitle('flow_date')"
-              @click.stop="cycleDateSort('flow_date')"
-            >
-              流式日期{{ dateSortMark('flow_date') }}
-            </button>
+              @sort="cycleDateSort('flow_date')"
+              @toggle-empty="toggleEmptyDate('flow_date')"
+            />
           </template>
           <template #header-affinity_date>
-            <button
-              type="button"
-              class="sort-header-btn"
-              :class="{ 'is-active': listQuery.sort_field === 'affinity_date' }"
+            <WorkbenchDateHeader
+              label="亲和力日期"
+              :mark="dateSortMark('affinity_date')"
+              :sorted="listQuery.sort_field === 'affinity_date'"
+              :empty-filtered="isDateEmptyFiltered('affinity_date')"
               :title="dateSortTitle('affinity_date')"
-              @click.stop="cycleDateSort('affinity_date')"
-            >
-              亲和力日期{{ dateSortMark('affinity_date') }}
-            </button>
+              @sort="cycleDateSort('affinity_date')"
+              @toggle-empty="toggleEmptyDate('affinity_date')"
+            />
           </template>
           <template #actions="{ row }">
             <SynthesisRowActions
               :row="row"
-              :can-claim="canClaim"
+              :can-claim="canClaimRow(row)"
+              :claim-title="claimButtonTitle(row)"
               :can-delete="canDeleteRow(row)"
               @detail="openSerumProject"
               @claim="handleClaim"
@@ -705,7 +719,8 @@
                 <template #default="{ row }">
                   <SynthesisRowActions
                     :row="row"
-                    :can-claim="canClaim"
+                    :can-claim="canClaimRow(row)"
+                    :claim-title="claimButtonTitle(row)"
                     :can-delete="canDeleteRow(row)"
                     @detail="openSerumProject"
                     @claim="handleClaim"
@@ -759,7 +774,8 @@
         <div class="drawer-toolbar-actions">
           <SynthesisRowActions
             :row="editingRow"
-            :can-claim="canClaim"
+            :can-claim="canClaimRow(editingRow)"
+            :claim-title="claimButtonTitle(editingRow)"
             :can-delete="canDeleteRow(editingRow)"
             @detail="openSerumProject"
             @claim="handleClaim"
@@ -845,7 +861,7 @@
                     :options="usedUserOptions(field)"
                     :placeholder="`选择${field.label}`"
                     :disabled="!canEditField(editingRow, field.key)"
-                    clearable
+                    :clearable="field.key !== 'owner' || canFullEdit"
                     @change="persistRow(editingRow, field.key)"
                   />
                   <ListFilterSelect
@@ -1024,6 +1040,7 @@ import {
   WorkbenchColorFilterHeader,
   WorkbenchColorMark,
   WorkbenchDataTable,
+  WorkbenchDateHeader,
   WorkbenchInlineSelect,
   workbenchExcelMixin,
 } from '#/components/workbench'
@@ -1047,6 +1064,7 @@ import { notifyApiError } from '#/api/errors'
 import { skipGlobalErrorHandler } from '#/api/request'
 import { fetchSerumDetailByExperimentId } from '#/api/serum'
 import {
+  canAssayEditDiscoverySynthesis,
   canEditDiscoverySynthesis,
   canPmEditDiscoverySynthesis,
 } from '#/utils/discoveryPermission'
@@ -1068,6 +1086,7 @@ import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
 import SynthesisRowActions from './SynthesisRowActions.vue'
 import {
   AFFINITY_RESULT_OPTIONS,
+  ASSAY_EDIT_FIELD_KEYS,
   BASE_EDITOR_SECTIONS,
   BREAK_FIELDS,
   CSV_FIELD_OPTIONS,
@@ -1152,10 +1171,12 @@ function emptyQuery() {
     eng_type: '',
     eng_method: '',
     batch_label: '',
-    assay_note: '',
+    flow_note: '',
+    report_reason: '',
     remark: '',
     view_group: '',
     quick_filter: '',
+    empty_date: '',
     sort_field: '',
     sort_dir: '',
   }
@@ -1191,6 +1212,7 @@ export default {
     WorkbenchColorFilterHeader,
     WorkbenchColorMark,
     WorkbenchDataTable,
+    WorkbenchDateHeader,
     WorkbenchInlineSelect,
     WorkbenchStatusEditor,
     WorkbenchTargetSelect,
@@ -1267,8 +1289,11 @@ export default {
     canPmEdit() {
       return canPmEditDiscoverySynthesis(this.userStore.userInfo || {})
     },
+    canAssayEdit() {
+      return canAssayEditDiscoverySynthesis(this.userStore.userInfo || {})
+    },
     canEdit() {
-      return this.canFullEdit || this.canPmEdit
+      return this.canFullEdit || this.canPmEdit || this.canAssayEdit
     },
     canCreate() {
       return this.canFullEdit || this.canPmEdit
@@ -1276,11 +1301,19 @@ export default {
     canClaim() {
       return this.canFullEdit || this.canPmEdit
     },
+    currentPersonName() {
+      const info = this.userStore.userInfo || {}
+      const raw = String(info.realName || info.display_name || info.username || '').trim()
+      return raw ? raw.split(/\s+/)[0] : ''
+    },
     canViewSerumProject() {
       return canAccessSerumDetail(this.userStore.userInfo || {})
     },
     activeViewGroup() {
       return this.listQuery.view_group || ''
+    },
+    assayStatusExact() {
+      return this.listQuery.view_group === 'assay' && this.listQuery.status === '亲和力完成'
     },
     quickFilterTitle() {
       if (this.listQuery.quick_filter === 'has_issue') {
@@ -1347,11 +1380,12 @@ export default {
           this.listQuery.order_kind ||
           this.listQuery.supply_mode ||
           this.listQuery.selection_method ||
-          this.listQuery.affinity_result ||
+          this.listQuery.status ||
           this.listQuery.synthetic_corp ||
           this.listQuery.eng_type ||
           this.listQuery.eng_method ||
-          this.listQuery.assay_note ||
+          this.listQuery.flow_note ||
+          this.listQuery.report_reason ||
           this.listQuery.remark ||
           this.arrivalDateRange?.length ||
           this.flowDateRange?.length ||
@@ -1368,7 +1402,8 @@ export default {
           this.listQuery.target_color ||
           this.listQuery.mouse_strain ||
           this.listQuery.owner ||
-          this.listQuery.status ||
+          this.listQuery.affinity_result ||
+          this.listQuery.empty_date ||
           this.syntheticDateRange?.length ||
           this.hasAdvancedFilters,
       )
@@ -1402,6 +1437,13 @@ export default {
         value: item,
       }))
       for (const [key, listKey] of Object.entries(USER_OPTION_LIST)) {
+        if (key === 'owner' && !this.canFullEdit && this.canPmEdit) {
+          map[key] = this.uniq([this.currentPersonName, '无人问津']).map((item) => ({
+            label: item,
+            value: item,
+          }))
+          continue
+        }
         map[key] = this.uniq([
           ...(this.optionLists[listKey] || []),
           ...this.allUserOptions,
@@ -1530,7 +1572,6 @@ export default {
       }
       if (keys.has('affinity_date')) {
         keys.add('affinity_result')
-        keys.add('owner')
       }
       if (keys.has('order_no') || keys.has('synthesis_code') || keys.has('batch_label')) {
         keys.add('source_one_id')
@@ -1561,6 +1602,24 @@ export default {
       this.syncDrawerFromSaved(normalized, fields)
       this.updateRowBaseline(normalized)
     },
+    canClaimRow(row) {
+      if (!this.canClaim || !row?.id) return false
+      const owner = String(row.owner || '').trim()
+      return (
+        owner === '无人问津' ||
+        (Boolean(this.currentPersonName) && owner === this.currentPersonName)
+      )
+    },
+    claimButtonTitle(row) {
+      if (!this.canClaim) return '您没有权限认领合成结果'
+      const owner = String(row?.owner || '').trim()
+      if (owner === '无人问津') return '认领该批次合成结果'
+      if (this.currentPersonName && owner === this.currentPersonName) {
+        return '将该批次改回无人问津'
+      }
+      if (!owner) return '仅无人问津的批次可认领'
+      return `该批次已被 ${owner} 认领，不可重复认领`
+    },
     canEditField(row, fieldKey) {
       if (fieldKey === 'synthesis_order_id') {
         return false
@@ -1569,7 +1628,16 @@ export default {
         return false
       }
       if (this.canFullEdit) return true
-      return this.canPmEdit && PM_EDIT_FIELD_KEYS.has(fieldKey)
+      if (this.canPmEdit && PM_EDIT_FIELD_KEYS.has(fieldKey)) {
+        if (fieldKey === 'owner') {
+          return this.canClaimRow(row)
+        }
+        return true
+      }
+      if (this.canAssayEdit && ASSAY_EDIT_FIELD_KEYS.has(fieldKey)) {
+        return true
+      }
+      return false
     },
     canDeleteRow(row) {
       if (this.canFullEdit) return true
@@ -1599,16 +1667,18 @@ export default {
       }
     },
     async handleClaim(row) {
-      if (!this.canClaim) {
-        ElMessage.warning('您没有权限认领合成结果')
+      if (!row?.id) return
+      if (!this.canClaimRow(row)) {
+        ElMessage.warning(this.claimButtonTitle(row))
         return
       }
-      if (!row?.id) return
       if (!(await this.flushEditorForAction(row))) return
       try {
         const saved = await claimDiscoverySynthesis(row.id)
         this.applySavedFields(saved, ['owner'])
-        ElMessage.success(`已认领：${saved?.owner || ''}`)
+        ElMessage.success(
+          saved?.owner === '无人问津' ? '已改回无人问津' : `已认领：${saved?.owner || ''}`,
+        )
       } catch (error) {
         notifyApiError(error, { messages: { default: '认领失败' } })
       }
@@ -1634,6 +1704,14 @@ export default {
       if (baseline && this.fieldComparable(row, field) === this.fieldComparable(baseline, field)) {
         return
       }
+      if (this.editingId === row.id && this.editingRowData && row !== this.editingRowData) {
+        if (field === 'target_codes' || field === 'target_name') {
+          this.editingRowData.target_codes = this.cloneSheetValue(row.target_codes)
+          this.editingRowData.target_name = row.target_name
+        } else {
+          this.editingRowData[field] = this.cloneSheetValue(row[field])
+        }
+      }
       if (baseline) {
         if (field === 'target_codes' || field === 'target_name') {
           baseline.target_codes = this.cloneSheetValue(row.target_codes)
@@ -1644,11 +1722,11 @@ export default {
       }
       try {
         const saved = await saveDiscoverySynthesis(this.payloadRow(row, [field]))
+        this.applySavedFields(saved, [field])
         if (QUEUE_KEYS.includes(field)) {
           await this.getList({ flushEditor: false })
           return saved
         }
-        this.applySavedFields(saved, [field])
         if (field === 'order_no' || field === 'synthesis_code' || field === 'batch_label') {
           this.scheduleRemoteCheck([saved], { triggerFields: [field] })
         }
@@ -1667,11 +1745,11 @@ export default {
       if (key === 'affinity_date') {
         if (row.affinity_date) {
           if (!row.affinity_result) row.affinity_result = '正常'
-          if (!row.owner) row.owner = '无人问津'
         } else {
           row.affinity_result = null
-          if (row.owner === '无人问津') row.owner = null
         }
+        const baseline = this.rowBaselines.get(row?.id)
+        if (baseline) baseline.affinity_result = row.affinity_result
       }
       return this.persistRow(row, key)
     },
@@ -1685,7 +1763,7 @@ export default {
       const value = String(status || '').trim() || '待下单'
       if (value === '已取消') return 'info'
       if (value === '已完成') return 'success'
-      if (value === '待检测' || value === '检测中') return 'warning'
+      if (value === '待检测' || value === '检测中' || value === '亲和力完成') return 'warning'
       if (value === '合成中') return 'primary'
       return 'info'
     },
@@ -1727,6 +1805,9 @@ export default {
       return []
     },
     usedUserOptions(field) {
+      if (field?.key === 'owner' && !this.canFullEdit && this.canPmEdit) {
+        return this.uniq([this.currentPersonName, '无人问津', this.editingRow?.owner])
+      }
       return this.uniq([
         ...(this.optionLists[USER_OPTION_LIST[field?.key]] || []),
         this.editingRow?.[field?.key],
@@ -1916,6 +1997,7 @@ export default {
       if (!payload.order_kind) delete payload.order_kind
       if (!payload.supply_mode) delete payload.supply_mode
       if (!payload.target_color) delete payload.target_color
+      if (!payload.empty_date) delete payload.empty_date
       if (!payload.sort_field) delete payload.sort_field
       if (!payload.sort_dir) delete payload.sort_dir
       if (Array.isArray(this.syntheticDateRange) && this.syntheticDateRange.length === 2) {
@@ -1975,6 +2057,7 @@ export default {
         if (requestToken !== this.listRequestToken) return
         const data = await fetchDiscoverySynthesisList(this.buildQuery(), skipGlobalErrorHandler)
         if (requestToken !== this.listRequestToken) return
+        const editorIsDirty = this.drawerDirtyFields(this.editingRowData).length > 0
         this.list = (data?.items || []).map((row) => this.normalizeRow(row))
         this.list.forEach((row) => this.updateRowBaseline(row))
         this.total = data?.total || 0
@@ -1992,7 +2075,7 @@ export default {
         this.listQuery.page = data?.page || this.listQuery.page
         this.listQuery.limit = data?.limit || this.listQuery.limit
         const selected = this.list.find((row) => row.id === this.editingId)
-        if (selected && !this.drawerDirtyFields(this.editingRowData).length) {
+        if (selected && !editorIsDirty) {
           this.editingRowData = this.normalizeRow(JSON.parse(JSON.stringify(selected)))
         }
         this.tabDataFetchedAt = Date.now()
@@ -2013,13 +2096,41 @@ export default {
       this.listQuery.page = 1
       this.getList()
     },
+    lifecycleHint(item) {
+      if (item.key === 'assay' && this.assayStatusExact) return '只看状态为亲和力完成'
+      return item.hint
+    },
+    lifecycleTitle(item) {
+      if (item.key !== 'assay') return item.hint
+      if (this.assayStatusExact) {
+        return '当前只看状态为亲和力完成。右键回到待检测、检测中与亲和力完成。'
+      }
+      return '左键看待检测、检测中与亲和力完成；右键只看状态为亲和力完成。'
+    },
+    onLifecycleContextMenu(item, event) {
+      if (item.key !== 'assay') return
+      event.preventDefault()
+      if (this.assayStatusExact) {
+        this.listQuery.status = ''
+      } else {
+        this.listQuery.view_group = 'assay'
+        this.listQuery.status = '亲和力完成'
+      }
+      this.handleFilter()
+    },
     handleViewGroup(key) {
+      this.listQuery.status = ''
       this.listQuery.view_group = key || ''
       this.handleFilter()
     },
     toggleQuickFilter(value) {
       this.listQuery.quick_filter = this.listQuery.quick_filter === value ? '' : value
       this.handleFilter()
+    },
+    excelHeaderContextMenu(column) {
+      if (!DATE_KEYS.includes(column?.key)) return false
+      this.toggleEmptyDate(column.key)
+      return true
     },
     resetFilters() {
       const viewGroup = this.listQuery.view_group
@@ -2264,6 +2375,7 @@ export default {
       const baseKeys = [
         'priority',
         'order_kind',
+        'supply_mode',
         'owner',
         'pm',
         'project_code',
@@ -2273,7 +2385,6 @@ export default {
         'target_codes',
         'target_type',
         'mouse_strain',
-        'selection_method',
         'eng_type',
         'eng_method',
         'eng_parent_seq',
@@ -2281,12 +2392,14 @@ export default {
         'remark',
       ]
       if (this.canFullEdit) {
-        baseKeys.push('supply_mode', 'synthesis_code', 'batch_label')
+        baseKeys.push('selection_method', 'synthesis_code', 'batch_label')
       }
       const payload = {}
       baseKeys.forEach((key) => {
         const val = source[key]
-        if (key === 'owner' && val === '无人问津') return
+        if (key === 'owner' && (val === '无人问津' || (!this.canFullEdit && val !== this.currentPersonName))) {
+          return
+        }
         if (Array.isArray(val)) {
           if (val.length) payload[key] = [...val]
         } else if (val !== null && val !== undefined && String(val).trim() !== '') {
@@ -2655,6 +2768,10 @@ export default {
       }
       if (this.isUserColumn({ key })) {
         const val = String(raw || '').trim()
+        if (key === 'owner' && !this.canFullEdit && this.canPmEdit) {
+          if (!val) return { ok: false, reason: 'option' }
+          return this.matchSheetOption(this.uniq([this.currentPersonName, '无人问津']), val)
+        }
         if (!val) return { ok: true, value: null }
         return this.matchSheetOption(
           this.uniq([...(this.optionLists[USER_OPTION_LIST[key]] || []), ...this.allUserOptions]),

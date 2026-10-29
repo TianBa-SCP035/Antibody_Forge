@@ -696,7 +696,7 @@ export function buildFacsConclusion(input: BuildFacsConclusionInput): FacsConclu
   return { stages, warnings: [...new Set(warnings)] }
 }
 
-const SERUM_TITER_BRIEF_MAX = 255
+const SERUM_TITER_BRIEF_MAX = 1000
 
 function isNumericConclusionCell(value: ConclusionCellValue | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0

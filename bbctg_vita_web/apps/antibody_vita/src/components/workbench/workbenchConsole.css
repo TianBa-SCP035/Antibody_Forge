@@ -276,6 +276,10 @@
   color: var(--el-color-primary);
   font-weight: 650;
 }
+.sort-header-btn.is-empty-filter {
+  color: var(--el-color-success);
+  font-weight: 650;
+}
 .sort-order-value {
   min-width: 22px;
   padding: 0;

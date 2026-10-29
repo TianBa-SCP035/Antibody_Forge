@@ -16,6 +16,7 @@ router = APIRouter()
 SYNTHESIS_VIEW_PERMISSION = "discovery.page.synthesis_progress"
 SYNTHESIS_EDIT_PERMISSION = "discovery.synthesis_progress.edit"
 SYNTHESIS_PM_EDIT_PERMISSION = "discovery.synthesis_progress.pm_edit"
+SYNTHESIS_ASSAY_EDIT_PERMISSION = "discovery.synthesis_progress.assay_edit"
 
 
 class SynthesisSaveRequest(BaseModel):
@@ -65,11 +66,12 @@ def _require_edit_scopes(
     user: SysUser,
     allowed_scopes: set[str] | None = None,
 ) -> frozenset[str]:
-    allowed = allowed_scopes or {"full", "pm"}
+    allowed = allowed_scopes or {"full", "pm", "assay"}
     context = build_user_context(db, user)
     permission_scopes = {
         SYNTHESIS_EDIT_PERMISSION: "full",
         SYNTHESIS_PM_EDIT_PERMISSION: "pm",
+        SYNTHESIS_ASSAY_EDIT_PERMISSION: "assay",
     }
     scopes = frozenset(
         scope
@@ -138,7 +140,7 @@ def save_synthesis_order(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    scopes = _require_edit_scopes(db, current_user, {"full", "pm"})
+    scopes = _require_edit_scopes(db, current_user, {"full", "pm", "assay"})
     payload = data.model_dump(exclude_unset=True)
     return _run_write(
         db,
@@ -157,7 +159,7 @@ def save_synthesis_order_batch(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    scopes = _require_edit_scopes(db, current_user, {"full", "pm"})
+    scopes = _require_edit_scopes(db, current_user, {"full", "pm", "assay"})
     payload = data.model_dump()
     return _run_write(
         db,

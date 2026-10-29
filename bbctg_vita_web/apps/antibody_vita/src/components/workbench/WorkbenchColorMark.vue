@@ -1,16 +1,29 @@
 <template>
+  <button
+    v-if="editable"
+    ref="btnRef"
+    type="button"
+    class="wb-color-mark-btn"
+    :class="{ 'has-color': Boolean(currentOption), 'is-open': visible }"
+    :style="currentOption ? { '--dot-color': currentOption.swatch } : undefined"
+    title="标记格子底色"
+    @dblclick.stop
+    @click.stop="activateAndOpen"
+  />
   <el-popover
-    v-if="activated"
+    v-if="activated && editable"
     v-model:visible="visible"
+    :virtual-ref="$refs.btnRef"
+    virtual-triggering
     placement="bottom"
     trigger="click"
-    transition="el-zoom-in-top"
+    transition="el-fade-in-linear"
+    :show-after="0"
+    :hide-after="0"
     :width="'auto'"
     :offset="6"
-    :disabled="!editable"
     :teleported="true"
     popper-class="wb-color-mark-popper vxe-table--ignore-clear"
-    @hide="scheduleDeactivate"
   >
     <div class="wb-color-swatch-bar" @click.stop>
       <button
@@ -33,29 +46,7 @@
         ×
       </button>
     </div>
-    <template #reference>
-      <button
-        v-if="editable"
-        type="button"
-        class="wb-color-mark-btn"
-        :class="{ 'has-color': Boolean(currentOption), 'is-open': visible }"
-        :style="currentOption ? { '--dot-color': currentOption.swatch } : undefined"
-        title="标记格子底色"
-        @dblclick.stop
-        @click.stop
-      />
-    </template>
   </el-popover>
-  <button
-    v-else-if="editable"
-    type="button"
-    class="wb-color-mark-btn"
-    :class="{ 'has-color': Boolean(currentOption) }"
-    :style="currentOption ? { '--dot-color': currentOption.swatch } : undefined"
-    title="标记格子底色"
-    @dblclick.stop
-    @click.stop="activateAndOpen"
-  />
 </template>
 
 <script>
@@ -155,6 +146,9 @@ export const WorkbenchColorFilterHeader = defineComponent({
             },
             placement: 'bottom',
             trigger: 'click',
+            transition: 'el-fade-in-linear',
+            showAfter: 0,
+            hideAfter: 0,
             width: 196,
             offset: 6,
             teleported: true,
@@ -255,6 +249,8 @@ export const WorkbenchColorFilterHeader = defineComponent({
   },
 })
 
+let activeMark = null
+
 export default {
   name: 'WorkbenchColorMark',
   components: { ElPopover },
@@ -273,14 +269,23 @@ export default {
   },
   watch: {
     editable(val) {
-      if (!val) this.visible = false
+      if (!val) this.closeNow()
     },
     visible(val) {
-      if (!val) this.scheduleDeactivate()
+      if (val) {
+        if (activeMark && activeMark !== this) activeMark.closeNow()
+        activeMark = this
+      } else {
+        if (activeMark === this) activeMark = null
+        this.scheduleDeactivate()
+      }
     },
   },
+  deactivated() {
+    this.closeNow()
+  },
   beforeUnmount() {
-    if (this.deactivateTimer) clearTimeout(this.deactivateTimer)
+    this.closeNow()
   },
   methods: {
     activateAndOpen() {
@@ -289,17 +294,28 @@ export default {
         clearTimeout(this.deactivateTimer)
         this.deactivateTimer = 0
       }
+      if (this.activated) return
+      if (activeMark && activeMark !== this) activeMark.closeNow()
       this.activated = true
       this.$nextTick(() => {
         this.visible = true
       })
+    },
+    closeNow() {
+      if (this.deactivateTimer) {
+        clearTimeout(this.deactivateTimer)
+        this.deactivateTimer = 0
+      }
+      this.visible = false
+      this.activated = false
+      if (activeMark === this) activeMark = null
     },
     scheduleDeactivate() {
       if (this.deactivateTimer) clearTimeout(this.deactivateTimer)
       this.deactivateTimer = window.setTimeout(() => {
         this.deactivateTimer = 0
         if (!this.visible) this.activated = false
-      }, 220)
+      }, 160)
     },
     choose(nextVal) {
       this.visible = false
@@ -320,9 +336,6 @@ td.wb-color-cell,
 td.wb-color-cell > .cell,
 .vxe-body--column.wb-color-cell > .vxe-cell {
   position: static;
-}
-.vxe-body--column.wb-color-cell:has(.wb-color-mark-btn):hover > .vxe-cell {
-  padding-right: 22px;
 }
 
 td.wb-cell-color-yellow, .vxe-body--column.wb-cell-color-yellow { --wb-cell-bg: #fef3c7; --wb-cell-bg-hover: #fde68a; --wb-cell-fg: #78350f; }
@@ -406,6 +419,9 @@ th:hover .wb-color-mark-btn.is-header,
 .wb-color-mark-btn:hover::after,
 .wb-color-mark-btn.is-open::after {
   transform: scale(1.16);
+}
+.wb-color-mark-btn:active::after {
+  transform: scale(0.9);
 }
 
 .wb-color-header-wrap {

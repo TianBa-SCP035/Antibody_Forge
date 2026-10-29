@@ -432,7 +432,7 @@ def _apply_queue(
         leaving = queued_sort(previous_sort) is not None or queued_sort(row.sort_order) is not None
         row.sort_order = None
         if leaving:
-            renumber_queue(_queue_rows(db))
+            renumber_queue([item for item in _queue_rows(db) if int(item.id) != int(row.id or 0)])
         return
     if is_new or queued_sort(previous_sort) is None:
         target = queued_sort(payload.get("sort_order"))

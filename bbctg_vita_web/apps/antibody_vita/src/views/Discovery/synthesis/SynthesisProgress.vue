@@ -353,6 +353,7 @@
           style="width: 100%;"
           row-key="id"
           :row-class-name="workbenchRowClassName"
+          :cell-class-name="workbenchCellClassName"
           @row-click="onWorkbenchRowClick"
           @row-contextmenu="onWorkbenchRowContextMenu"
           @reorder="scheduleSortable"
@@ -422,7 +423,19 @@
               @change="(val) => updateOrderStatus(row, val)"
             />
           </template>
+          <template #header-target_name>
+            <WorkbenchColorFilterHeader
+              v-model="listQuery.target_color"
+              label="靶点"
+              @change="handleFilter"
+            />
+          </template>
           <template #target_name="{ row }">
+            <WorkbenchColorMark
+              :value="row.target_color"
+              :editable="canFullEdit"
+              @change="(val) => onTargetColorChange(row, val)"
+            />
             <span>{{ row.target_name || '' }}</span>
             <span v-if="targetCornerBadges(row).length" class="target-corner-badges">
               <i
@@ -577,6 +590,23 @@
                   :edit-render="sheetCustomEditRender"
                   :formatter="sheetFormatter(column)"
                 >
+                  <template v-if="column.key === 'target_name'" #header>
+                    <WorkbenchColorFilterHeader
+                      v-model="listQuery.target_color"
+                      :label="column.label"
+                      :batch-count="selectedSheetRowsForColor().length"
+                      @change="handleFilter"
+                      @batch-mark="applyBatchTargetColor"
+                    />
+                  </template>
+                  <template v-if="column.key === 'target_name'" #default="{ row }">
+                    <WorkbenchColorMark
+                      :value="row.target_color"
+                      :editable="canFullEdit"
+                      @change="(val) => onTargetColorChange(row, val)"
+                    />
+                    <span>{{ row.target_name || '' }}</span>
+                  </template>
                   <template #edit="{ row }">
                     <div v-if="sheetEditSource === 'dblclick'" class="sheet-picker-editor">
                       <span class="sheet-picker-editor__value">
@@ -978,6 +1008,7 @@ import 'vxe-table/styles/cssvar.scss'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import {
+  cellColorClass,
   cleanFieldText,
   coerceOptionalNonnegInt,
   coerceRequiredPositiveInt,
@@ -990,6 +1021,8 @@ import {
   targetNameFromCodes,
   uniqueTargetCodes,
   WORKBENCH_VIEW,
+  WorkbenchColorFilterHeader,
+  WorkbenchColorMark,
   WorkbenchDataTable,
   WorkbenchInlineSelect,
   workbenchExcelMixin,
@@ -1103,6 +1136,7 @@ function emptyQuery() {
     synthesis_code: '',
     target_name: '',
     target_type: '',
+    target_color: '',
     mouse_strain: '',
     selection_method: '',
     affinity_result: '',
@@ -1154,6 +1188,8 @@ export default {
     VxeInput,
     VxeSelect,
     VxeTable,
+    WorkbenchColorFilterHeader,
+    WorkbenchColorMark,
     WorkbenchDataTable,
     WorkbenchInlineSelect,
     WorkbenchStatusEditor,
@@ -1329,6 +1365,7 @@ export default {
           this.listQuery.synthesis_code ||
           this.listQuery.target_name ||
           this.listQuery.target_type ||
+          this.listQuery.target_color ||
           this.listQuery.mouse_strain ||
           this.listQuery.owner ||
           this.listQuery.status ||
@@ -1878,6 +1915,7 @@ export default {
       if (!payload.priority) delete payload.priority
       if (!payload.order_kind) delete payload.order_kind
       if (!payload.supply_mode) delete payload.supply_mode
+      if (!payload.target_color) delete payload.target_color
       if (!payload.sort_field) delete payload.sort_field
       if (!payload.sort_dir) delete payload.sort_dir
       if (Array.isArray(this.syntheticDateRange) && this.syntheticDateRange.length === 2) {
@@ -2139,10 +2177,42 @@ export default {
     workbenchRowClassName({ row }) {
       return row.id === this.editingId ? 'is-editing' : ''
     },
+    workbenchCellClassName({ row, column }) {
+      return column?.property === 'target_name' ? cellColorClass(row?.target_color) : ''
+    },
+    selectedSheetRowsForColor(clickedRow = null) {
+      if (!this.canFullEdit || !this.isExcelMode || !this.sheetRange) return []
+      const range = this.normalizedSheetRange()
+      if (!range || range.r2 <= range.r1) return []
+      const rows = this.list.slice(range.r1, range.r2 + 1).filter((r) => r?.id)
+      if (clickedRow && !rows.some((r) => r.id === clickedRow.id)) return []
+      return rows
+    },
+    async applyBatchTargetColor(color, rows = this.selectedSheetRowsForColor()) {
+      const nextColor = color || null
+      const changed = rows.filter((r) => (r.target_color || null) !== nextColor)
+      if (!changed.length) return
+      const items = changed.map((r) => ({ id: r.id, target_color: nextColor }))
+      try {
+        const res = await saveDiscoverySynthesisBatch({ items })
+        ;(res?.items || []).forEach((saved) => this.applySavedFields(saved, ['target_color']))
+        ElMessage.success(`已批量更新 ${changed.length} 行靶点颜色`)
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '批量更新颜色失败' } })
+      }
+    },
+    onTargetColorChange(row, color) {
+      const batchRows = this.selectedSheetRowsForColor(row)
+      if (batchRows.length > 1) {
+        return this.applyBatchTargetColor(color, batchRows)
+      }
+      row.target_color = color
+      return this.persistRow(row, 'target_color')
+    },
     onWorkbenchRowClick(row, _column, event) {
       if (
         event?.target?.closest?.(
-          '.el-button, .el-input, .el-select, .el-date-editor, .action-cell, .sort-column-cell, .workbench-status-tag',
+          '.el-button, .el-input, .el-select, .el-date-editor, .action-cell, .sort-column-cell, .workbench-status-tag, .wb-color-mark-btn',
         )
       ) {
         return
@@ -2478,6 +2548,9 @@ export default {
     },
     sheetCellClassName({ row, column }) {
       const classes = []
+      if (column?.field === 'target_name') {
+        classes.push(cellColorClass(row?.target_color))
+      }
       if (column?.field === 'priority') {
         classes.push(`sheet-tone-${this.priorityTone(row)}`)
       }
@@ -2987,12 +3060,6 @@ export default {
   flex: 1 1 140px;
   width: auto;
   min-width: 100px;
-}
-.table-card :deep(td.target-column-cell) {
-  position: relative;
-}
-.table-card :deep(td.target-column-cell .cell) {
-  position: static;
 }
 .table-card :deep(.el-tag.target-tone-secreted) { color: #be185d; background: #fdf2f8; border-color: #f9a8d4; }
 .table-card :deep(.el-tag.target-tone-cell) { color: #0f766e; background: #f0fdfa; border-color: #99f6e4; }

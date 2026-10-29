@@ -23,6 +23,7 @@
 | `drawerOverflowTooltip.js` | 抽屉定高控件超长时悬停出全文；备注 / 鼠号等自动高度框不弹 |
 | `WorkbenchViewToggle.vue` | 「视图」按钮与提示 |
 | `WorkbenchStatusEditor.vue` | 状态标签点选 |
+| `WorkbenchColorMark.vue` | 单元格底色标记（悬停色点选色）与表头单选/多选颜色筛选及批量标记 |
 | `WorkbenchMultiTagEditor.vue` | 多选标签（筛选方式） |
 | `WorkbenchTargetSelect.vue` | 抽屉靶点远程搜索；检索逻辑在 `targetOptions.js` |
 | `columnOrder.js` | 列序 `localStorage`；可钉首列 / 末列；工作台另记隐藏列 `{ order, hidden }` |

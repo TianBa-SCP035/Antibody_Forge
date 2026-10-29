@@ -55,10 +55,10 @@ SELECTION_METHOD_OPTIONS = (
     "补挑",
     "EYE",
     "DS",
-    "AF_P",
-    "AF_C",
-    "AB_P",
-    "AB_C",
+    "JX_P",
+    "JX_C",
+    "RH_P",
+    "RH_C",
     "D",
     "D模型",
     "D模型-3轮",
@@ -79,6 +79,15 @@ TARGET_TYPE_OPTIONS = (
     "脂锚定蛋白",
     "胞内蛋白",
     "其他",
+)
+
+TARGET_COLOR_OPTIONS = (
+    "yellow",
+    "orange",
+    "red",
+    "green",
+    "blue",
+    "purple",
 )
 
 SOURCE_ONE_TYPES = ("ngs", "beacon")
@@ -165,6 +174,7 @@ __all__ = [
     "SUPPLY_MODE_ISOTYPE",
     "SUPPLY_MODE_OPTIONS",
     "SYNTHETIC_CORP_OPTIONS",
+    "TARGET_COLOR_OPTIONS",
     "TARGET_TYPE_OPTIONS",
     "TERMINAL_STATUSES",
     "UNCLAIMED_OWNER",

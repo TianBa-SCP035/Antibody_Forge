@@ -636,6 +636,7 @@ CREATE TABLE IF NOT EXISTS discovery_synthesis_order (
   target_name VARCHAR(128) NULL COMMENT '靶点名称',
   target_codes JSON NULL COMMENT '靶点编号列表',
   target_type VARCHAR(64) NULL COMMENT '靶点类型',
+  target_color VARCHAR(16) NULL COMMENT '靶点颜色标记',
   mouse_strain VARCHAR(128) NULL COMMENT '小鼠品系',
   selection_method VARCHAR(128) NULL COMMENT '挑选方式',
   synthesis_code VARCHAR(64) NULL COMMENT '送测转码',

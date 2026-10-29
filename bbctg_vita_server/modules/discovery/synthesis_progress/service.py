@@ -34,6 +34,7 @@ from modules.discovery.synthesis_progress.constants import (
     SUPPLY_MODE_ARRIVAL,
     SUPPLY_MODE_OPTIONS,
     SYNTHETIC_CORP_OPTIONS,
+    TARGET_COLOR_OPTIONS,
     TARGET_TYPE_OPTIONS,
     UNCLAIMED_OWNER,
 )
@@ -124,6 +125,7 @@ WRITABLE_FIELDS = (
     "supply_mode",
     "affinity_result",
     "target_codes",
+    "target_color",
 )
 
 PM_EDIT_FIELDS = frozenset(
@@ -316,6 +318,15 @@ def _normalize_affinity_result(value: Any) -> str | None:
     return text
 
 
+def _normalize_target_color(value: Any) -> str | None:
+    text = str(value or "").strip().lower()
+    if not text or text == "none":
+        return None
+    if text not in TARGET_COLOR_OPTIONS:
+        raise ValueError("靶点颜色标记不在允许的选项中")
+    return text
+
+
 def _normalize_date(value: Any) -> str | None:
     if value in (None, ""):
         return None
@@ -487,6 +498,22 @@ def _apply_list_filters(
     )
     if target_type_clause is not None:
         filters.append(target_type_clause)
+
+    color_tokens = [t.lower() for t in split_code_tokens(data.get("target_color"))]
+    if color_tokens:
+        color_clauses = []
+        valid_colors = [c for c in color_tokens if c in TARGET_COLOR_OPTIONS]
+        if valid_colors:
+            color_clauses.append(DiscoverySynthesisOrder.target_color.in_(valid_colors))
+        if "none" in color_tokens:
+            color_clauses.append(
+                or_(
+                    DiscoverySynthesisOrder.target_color.is_(None),
+                    DiscoverySynthesisOrder.target_color == "",
+                )
+            )
+        if color_clauses:
+            filters.append(or_(*color_clauses))
 
     corp_clause = match_any(DiscoverySynthesisOrder.synthetic_corp, data.get("synthetic_corp"))
     if corp_clause is not None:
@@ -866,6 +893,8 @@ def _apply_fields(
             value = _normalize_supply_mode(raw)
         elif field == "affinity_result":
             value = _normalize_affinity_result(raw)
+        elif field == "target_color":
+            value = _normalize_target_color(raw)
         elif field == "target_codes":
             value = _normalize_target_codes(raw)
         elif field in CSV_JOINED_FIELDS:

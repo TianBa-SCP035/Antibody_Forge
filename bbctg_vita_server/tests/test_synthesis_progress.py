@@ -73,12 +73,12 @@ class SynthesisProgressServiceTests(unittest.TestCase):
                     "flow_count": 113,
                     "flow_date": "2026-03-20",
                     "affinity_date": "2026-03-25",
-                    "selection_method": ["AF_P", "补挑"],
+                    "selection_method": ["JX_P", "补挑"],
                 },
             )
             self.assertEqual(row1["status"], "检测中")
             self.assertEqual(row1["owner"], "无人问津")
-            self.assertEqual(row1["selection_method"], "补挑、AF_P")
+            self.assertEqual(row1["selection_method"], "补挑、JX_P")
             self.assertEqual(row1["affinity_result"], "正常")
 
             # 5. Engineering order with multi-value eng_type & eng_method joined with '、',

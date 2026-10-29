@@ -6,6 +6,12 @@ export {
   WorkbenchInlineSelect,
 } from './WorkbenchDataTable.vue'
 export { default as WorkbenchStatusEditor } from './WorkbenchStatusEditor.vue'
+export {
+  CELL_COLOR_OPTIONS,
+  cellColorClass,
+  default as WorkbenchColorMark,
+  WorkbenchColorFilterHeader,
+} from './WorkbenchColorMark.vue'
 export { default as WorkbenchMultiTagEditor } from './WorkbenchMultiTagEditor.vue'
 export { default as WorkbenchTargetSelect } from './WorkbenchTargetSelect.vue'
 export { syncDrawerControlTooltip } from './drawerOverflowTooltip'

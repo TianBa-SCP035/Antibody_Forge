@@ -433,7 +433,7 @@
               v-model="autoRecalcDates"
               size="small"
               class="auto-date-checkbox"
-              title="开启时修改日期/阶段会自动顺延重算后续步骤；特殊排期可关闭此项以单独调整某一步日期"
+              title="开启时修改日期或阶段会顺延后续步骤；关闭后只改当前步。打开开关本身不会重算已有日期"
             >
               自动顺延日期
             </el-checkbox>
@@ -1406,7 +1406,9 @@ export default {
 
         this.postForm.steps.push(newStep)
         reindexGroupSortOrder(this.postForm.steps, groupId)
-        this.calculateStepDate(newStep)
+        if (this.autoRecalcDates) {
+            this.recalculateGroupDates(groupId, groupSteps.length)
+        }
     },
     openRemarkDialog(row) {
         this.currentRemarkRow = row

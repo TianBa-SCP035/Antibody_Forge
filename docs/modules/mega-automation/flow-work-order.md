@@ -133,6 +133,7 @@ execution_failed / execution_error / manual_failed
 - `deleted` 作废工单并作废下发，备注「操作台已删除工单」。`finished` 与 `deleted` 之后不再接受回调。作废、已完成之后也不再接受回调。
 - Running 时的执行进度仅由主动查询返回给前端展示，**不入库**。
 - 列表「已暂停」统计含暂停中、已暂停、已撤回、恢复中。「执行失败」统计含执行中止、执行错误、手动失败，行上仍分开显示。
+- 状态统计跟随列表的其余筛选（关键字、检测类型、项目号、靶点、板条码、表头筛选等），只是不受当前选中的状态影响（顶部和表头的状态条件都不算）。
 
 只有已撤回可以编辑和校验。已暂停、暂停中、恢复中、执行中止、执行错误、手动失败都不能改内容。
 
@@ -166,6 +167,7 @@ orderDetail
 GET  /api/mega-automation/flow-work-orders/meta
 GET  /api/mega-automation/flow-work-orders/cell-plate-usage
 POST /api/mega-automation/flow-work-orders/list
+POST /api/mega-automation/flow-work-orders/column_values   # 表头筛选取值列表
 POST /api/mega-automation/flow-work-orders/by-source
 GET  /api/mega-automation/flow-work-orders/{order_id}
 GET  /api/mega-automation/flow-work-orders/{order_id}/active-payload
@@ -183,7 +185,7 @@ POST /api/mega-automation/flow-work-orders/{order_id}/fail
 POST /api/mega-automation/flow-work-orders/{order_id}/delete
 POST /api/mega-automation/flow-work-orders/{order_id}/cancel
 POST /api/mega-automation/flow-work-orders/{order_id}/sync-labillion-status
-POST /api/mega-automation/labillion/callback          # 镁伽推送，无需登录，恒 200
+POST /api/mega-automation/labillion/callback          # 镁伽推送，无需登录，恒 200（配置了来源校验时，不通过返回 401/403）
 ```
 
 `sync-labillion-status`：详情页进入时对 `sent/running/paused/execution_failed/execution_error/manual_failed` 工单异步调用；单工单 10 分钟节流；返回 `execution_progress`（仅 Running 且有值时，供页面展示）。审计操作名为「同步镁伽工单状态」。
@@ -223,6 +225,7 @@ POST /api/mega-automation/labillion/callback          # 镁伽推送，无需登
 - 已有工单加载失败禁止保存，避免误建新单。
 - 详情三个页签：工单编辑、铺板（默认锁定，可解锁改孔与条码）、Payload。
 - 列表支持关键字、类型、状态、项目号、靶点、样本板/细胞板条码筛选；返回列表时刷新，筛选条件和页码保留，浏览器刷新后清空。
+- 列表接入公共表头筛选（见 [../workbench.md](../workbench.md)「表头筛选」）：订单编号、名称、类型、优先级、状态、项目号、靶点、两种板条码、创建人、下发时间、更新时间、备注可排序和筛选。项目号、靶点、板条码按数组里「含有该值」，空数组算空白；状态和统计块同一口径，三种执行问题合成「执行失败」；时间按天筛、按完整时间排。`/list`、`/export` 另收 `field_filters`、`sort_field`、`sort_dir`，不排序时仍按更新时间倒序。
 - 列表不展示下发次数与失败摘要。
 - 详情加载后对 `sent/running/paused` 异步 sync 镁伽状态；Running 时在状态标签旁显示查询到的进度百分比（无则不显示）。
 - `sent + pending` 显示「撤回」；`running` 显示「停止」；`withdrawn` 显示「已撤回」。
@@ -516,7 +519,8 @@ FastAPI 入口、`require_permission`、统一响应；业务规则不放路由�
 
 ## 15. 结果回传
 
-实验结果 JSON 走 `POST /api/order-experiment/sync`（与 Labillion **状态**回调分离）。回传以 `dispatchId` 匹配下发快照；业务解析入库与效价联动见 [titer-upstream-flow.md §8](./titer-upstream-flow.md#8-下游效价数据回传接收已实现业务处理待开发)。回传 JSON 样例见 [order-experiment-sync-api.md](../../temp_text/order-experiment-sync-api.md)。
+实验结果 JSON 走 `POST /api/order-experiment/sync`（与 Labillion **状态**回调分离）。回传以 `dispatchId` 匹配下发快照；业务解析入库与效价联动见 [titer-upstream-flow.md §8](./titer-upstream-flow.md#8-下游效价数据回传接收已实现业务处理待开发)。回传 JSON 样例见 [order-experiment-sync-api.md](../../temp_text/order-experiment-sync-api.md)。`order_json` 文件上限由 `ORDER_SYNC_MAX_MB` 控制（默认 20MB）；来源校验见 [deploy.md](../../deploy.md)。
+
 ## 16. 后续待办
 
 1. 检测结果业务解析入库与效价/免疫联动；

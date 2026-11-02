@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from apscheduler.triggers.cron import CronTrigger
@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from db.session import SessionLocal
 from models.system import SysFeatureFlag, SysJobRunLog
+from utils.clock import now_local
 
 
 JOB_SCHEDULES = ("daily", "weekly", "monthly", "interval")
@@ -457,6 +458,48 @@ def record_job_run(
     except SQLAlchemyError:
         db.rollback()
         logging.exception("record job run failed, job_code=%s", job_code)
+    finally:
+        db.close()
+
+
+def run_recorded_job(
+    job_code: str,
+    job_name: str,
+    work: Callable[[Session], Any],
+    *,
+    summarize: Callable[[Any], str] | None = None,
+    skip_summary: str = "已跳过",
+) -> None:
+    """定时任务统一外壳：开会话执行 work，结果（成功/跳过/失败）写入任务运行记录。
+
+    work 返回 {"skipped": True, ...} 视为跳过；异常只记录不外抛，调度器照常跑下一次。
+    """
+    started_at = now_local()
+    db = SessionLocal()
+
+    def record(result: str, summary: str, detail: Any, error_message: str | None = None) -> None:
+        record_job_run(
+            job_code=job_code,
+            job_name=job_name,
+            started_at=started_at,
+            finished_at=now_local(),
+            result=result,
+            summary=summary,
+            detail=detail if isinstance(detail, dict) else {"result": detail},
+            error_message=error_message,
+        )
+
+    try:
+        result = work(db)
+        logging.info("%s result=%s", job_code, result)
+        if isinstance(result, dict) and result.get("skipped") is True:
+            record("skipped", str(result.get("message") or skip_summary), result)
+        else:
+            record("success", (summarize or summarize_job_result)(result), result)
+    except Exception as error:
+        db.rollback()
+        logging.exception("%s failed", job_code)
+        record("failed", "执行失败", {}, str(error))
     finally:
         db.close()
 

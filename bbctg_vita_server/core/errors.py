@@ -1,7 +1,14 @@
+import logging
+from typing import Any
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import StatementError
 
 from core.response import error
+
+logger = logging.getLogger("app.errors")
+UNEXPECTED_MESSAGE = "服务器异常，请联系管理员"
 
 
 class BusinessError(Exception):
@@ -10,6 +17,26 @@ class BusinessError(Exception):
         self.code = code
         self.error_code = error_code
         super().__init__(message)
+
+
+def _validation_error(exc: Exception) -> ValueError | None:
+    """字段类型在写库时抛出的校验错误会被 SQLAlchemy 包一层，取出原始消息。"""
+    if isinstance(exc, StatementError) and isinstance(exc.orig, ValueError):
+        return exc.orig
+    return None
+
+
+def route_error(exc: Exception, db: Any = None) -> dict:
+    """路由兜底：业务校验消息原样返回，其余异常只记日志，不把内部信息交给前端。"""
+    if db is not None:
+        db.rollback()
+    exc = _validation_error(exc) or exc
+    if isinstance(exc, BusinessError):
+        return error(exc.message, exc.code, exc.error_code)
+    if isinstance(exc, ValueError):
+        return error(str(exc))
+    logger.error("request failed", exc_info=exc)
+    return error(UNEXPECTED_MESSAGE)
 
 
 def _detail_to_message(detail: object) -> str:
@@ -36,6 +63,14 @@ def setup_exception_handlers(app: FastAPI) -> None:
     async def handle_value_error(_request: Request, exc: ValueError) -> JSONResponse:
         return JSONResponse(status_code=200, content=error(str(exc)))
 
+    @app.exception_handler(StatementError)
+    async def handle_statement_error(request: Request, exc: StatementError) -> JSONResponse:
+        inner = _validation_error(exc)
+        if inner is not None:
+            return JSONResponse(status_code=200, content=error(str(inner)))
+        logger.error("unhandled error %s %s", request.method, request.url.path, exc_info=exc)
+        return JSONResponse(status_code=500, content=error(UNEXPECTED_MESSAGE))
+
     @app.exception_handler(HTTPException)
     async def handle_http_exception(_request: Request, exc: HTTPException) -> JSONResponse:
         return JSONResponse(
@@ -44,5 +79,6 @@ def setup_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def handle_unexpected_error(_request: Request, _exc: Exception) -> JSONResponse:
-        return JSONResponse(status_code=500, content=error("服务器异常，请联系管理员"))
+    async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+        logger.error("unhandled error %s %s", request.method, request.url.path, exc_info=exc)
+        return JSONResponse(status_code=500, content=error(UNEXPECTED_MESSAGE))

@@ -5,7 +5,7 @@
         <el-input
           v-model="listQuery.source_project_code"
           clearable
-          placeholder="项目编号"
+          v-bind="headerTop('source_project_code', '项目编号')"
           title="多个编号用逗号、空格或换行分隔，按完整编号查找；只填一个时按包含查找"
           @keyup.enter="handleFilter"
           @clear="handleFilter"
@@ -13,7 +13,7 @@
         <el-input
           v-model="listQuery.library_batch_no"
           clearable
-          placeholder="建库批号"
+          v-bind="headerTop('library_batch_no', '建库批号')"
           title="多个批号用逗号、空格或换行分隔，按完整批号查找；只填一个时按包含查找"
           @keyup.enter="handleFilter"
           @clear="handleFilter"
@@ -26,14 +26,14 @@
         >
           <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
         </ListFilterSelect>
-        <SerumUserSelect v-model="listQuery.pm" multi-gesture :options="selectedUserOptions(listQuery.pm)" placeholder="PM" clearable @change="handleFilter" />
+        <UserSelect v-model="listQuery.pm" multi-gesture :options="enumLists.people" placeholder="PM" clearable @change="handleFilter" />
         <ListFilterSelect v-model="listQuery.study_type" clearable filterable placeholder="课题类型" @change="handleFilter">
           <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
         </ListFilterSelect>
         <ListFilterSelect v-model="listQuery.sample_type" clearable placeholder="样品类型" @change="handleFilter">
           <el-option v-for="item in sampleTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
         </ListFilterSelect>
-        <ListFilterSelect v-model="listQuery.mouse_strain" clearable placeholder="小鼠品系" @change="handleFilter">
+        <ListFilterSelect v-model="listQuery.mouse_strain" clearable v-bind="headerTop('mouse_strain', '小鼠品系')" @change="handleFilter">
           <el-option v-for="item in mouseStrainOptions" :key="item" :label="item" :value="item" />
         </ListFilterSelect>
         <ListFilterSelect
@@ -47,14 +47,14 @@
         >
           <el-option v-for="item in cellTypeOptions" :key="item" :label="item" :value="item" />
         </ListFilterSelect>
-        <el-input v-model="listQuery.source_discovery_id" clearable placeholder="来源发现 ID" @keyup.enter="handleFilter" @clear="handleFilter" />
-        <el-input v-model="listQuery.notebook_no" clearable placeholder="实验记录本号" @keyup.enter="handleFilter" @clear="handleFilter" />
-        <el-input v-model="listQuery.remark" clearable placeholder="备注" @keyup.enter="handleFilter" @clear="handleFilter" />
+        <el-input v-model="listQuery.source_discovery_id" clearable v-bind="headerTop('source_discovery_id', '来源发现 ID')" @keyup.enter="handleFilter" @clear="handleFilter" />
+        <el-input v-model="listQuery.notebook_no" clearable v-bind="headerTop('notebook_no', '实验记录本号')" @keyup.enter="handleFilter" @clear="handleFilter" />
+        <el-input v-model="listQuery.remark" clearable v-bind="headerTop('remark', '备注')" @keyup.enter="handleFilter" @clear="handleFilter" />
         <el-date-picker
           v-model="startedRange"
           type="daterange"
           value-format="YYYY-MM-DD"
-          start-placeholder="开始日起"
+          v-bind="headerTop('started_at', '开始日起', 'startPlaceholder')"
           end-placeholder="开始日止"
           @change="handleFilter"
         />
@@ -62,7 +62,7 @@
           v-model="finishedRange"
           type="daterange"
           value-format="YYYY-MM-DD"
-          start-placeholder="完成日起"
+          v-bind="headerTop('finished_at', '完成日起', 'startPlaceholder')"
           end-placeholder="完成日止"
           @change="handleFilter"
         />
@@ -121,55 +121,43 @@
           @keyup.enter="handleFilter"
           @clear="handleFilter"
         />
-        <ListFilterSelect v-model="listQuery.status" class="filter-item" clearable placeholder="状态" @change="handleFilter">
+        <ListFilterSelect v-model="listQuery.status" class="filter-item" clearable v-bind="headerTop('status', '状态')" @change="handleFilter">
           <el-option v-for="item in statusOptions" :key="item" :label="item" :value="item" />
         </ListFilterSelect>
-        <ListFilterSelect v-model="listQuery.priority" class="filter-item" clearable placeholder="优先级" @change="handleFilter">
+        <ListFilterSelect v-model="listQuery.priority" class="filter-item" clearable v-bind="headerTop('priority', '优先级')" @change="handleFilter">
           <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
         </ListFilterSelect>
-        <SerumUserSelect
+        <UserSelect
           v-model="listQuery.owner"
           class="filter-item"
           multi-gesture
-          :options="selectedUserOptions(listQuery.owner)"
-          placeholder="负责人"
+          :options="enumLists.people"
+          v-bind="headerTop('owner', '负责人')"
           clearable
           @change="handleFilter"
         />
         <ListFilterSelect v-model="listQuery.sample_source" class="filter-item" clearable placeholder="样品来源" @change="handleFilter">
           <el-option v-for="item in sampleSourceOptions" :key="item.value" :label="item.label" :value="item.value" />
         </ListFilterSelect>
-        <ListFilterSelect
+        <WorkbenchTargetFilter
           v-model="listQuery.target_name"
           class="filter-item"
-          clearable
-          filterable
-          :filter-method="setTargetFilterQuery"
           placeholder="靶点"
-          @clear="setTargetFilterQuery('')"
+          scope="library"
           @change="handleFilter"
-        >
-          <el-option
-            v-for="item in filteredTargetOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          >
-            <span>{{ item.label }}</span>
-            <span v-if="targetOptionExtra(item)" class="target-option-code">{{ targetOptionExtra(item) }}</span>
-          </el-option>
-        </ListFilterSelect>
+        />
         <el-date-picker
           v-model="instrumentRange"
           class="filter-range"
           type="daterange"
           value-format="YYYY-MM-DD"
           range-separator="至"
-          start-placeholder="上机日起"
+          v-bind="headerTop('instrument_on', '上机日起', 'startPlaceholder')"
           end-placeholder="上机日止"
           @change="handleFilter"
         />
         <div class="filter-actions list-filter-actions">
+          <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
           <button
             type="button"
             class="list-advanced-trigger"
@@ -203,7 +191,7 @@
         ref="workbenchTable"
         :height="listTableHeight"
         v-loading="loading"
-        storage-key="libraryConstructionWorkbench.v4"
+        :storage-key="viewPrefsStorageKey"
         pin-first="source_project_code"
         :columns="workbenchColumns"
         :data="list"
@@ -215,7 +203,9 @@
         class="list-data-table"
         style="width: 100%"
         row-key="id"
+        :header-menu-states="headerMenuStates"
         :row-class-name="workbenchRowClassName"
+        @header-menu="openHeaderMenu"
         @row-click="onWorkbenchRowClick"
         @row-contextmenu="onWorkbenchRowContextMenu"
         @header-contextmenu="onWorkbenchHeaderContextMenu"
@@ -281,6 +271,7 @@
         @keydown.capture="onSheetKeydownCapture"
         @compositionend.capture="onSheetCompositionEnd"
         @mousedown="onSheetWrapMouseDown"
+        @click="onSheetHeaderMenuClick"
         @mouseover="onSheetWrapMouseOver"
         @contextmenu="onSheetContextMenu"
         @selectstart="onSheetSelectStart"
@@ -353,6 +344,9 @@
                 :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
               >
+                <template v-if="headerMenuStates[column.key]" #header>
+                  <WorkbenchHeaderLabel :label="column.label" v-bind="headerMenuStates[column.key]" />
+                </template>
                 <template #edit="{ row }">
                   <ListFilterSelect
                     v-if="column.key === 'mouse_strain' && sheetEditSource === 'dblclick'"
@@ -361,11 +355,12 @@
                     filterable
                     allow-create
                     default-first-option
+                    ref="sheetSelectEditor"
                     class="sheet-strain-select"
                     popper-class="vxe-table--ignore-clear"
                     clearable
                     @change="onMouseStrainChange(row, $event, false)"
-                    @visible-change="onMouseStrainSheetVisible"
+                    @visible-change="onSheetSelectVisible"
                   >
                     <el-option v-for="item in mouseStrainOptions" :key="item" :label="item" :value="item" />
                     <el-option
@@ -436,6 +431,9 @@
               >
                 <template v-if="column.key === 'library_code'" #header>
                   <span class="library-code-head" :class="{ 'is-asc': libraryCodeOldestFirst }" :title="libraryCodeHeadTitle">建库编号</span>
+                </template>
+                <template v-else-if="headerMenuStates[column.key]" #header>
+                  <WorkbenchHeaderLabel :label="column.label" v-bind="headerMenuStates[column.key]" />
                 </template>
               </vxe-column>
             </template>
@@ -604,10 +602,10 @@
                   :disabled="!canEdit"
                   @change="(payload) => onDrawerTargetChange(editingRow, payload)"
                 />
-                <SerumUserSelect
+                <UserSelect
                   v-else-if="field.type === 'user'"
                   v-model="editingRow[field.key]"
-                  :options="selectedUserOptions(editingRow[field.key])"
+                  :options="enumLists.people"
                   :placeholder="`选择${field.label}`"
                   :disabled="!canEdit"
                   clearable
@@ -698,7 +696,7 @@
                   :disabled="!canEditField(editingRow, field.key)"
                   @change="persistRow(editingRow, field.key)"
                 >
-                  <el-option v-for="item in field.options" :key="item.value || item" :label="item.label || item" :value="item.value || item" />
+                  <el-option v-for="item in drawerSelectOptions(field)" :key="item.value || item" :label="item.label || item" :value="item.value || item" />
                 </el-select>
                 <el-input
                   v-else
@@ -743,6 +741,7 @@
       </template>
     </el-dialog>
     <LibraryResultUploadDialog v-model="resultUploadVisible" @uploaded="getList" />
+    <WorkbenchHeaderMenu v-bind="headerMenuBind" />
   </div>
 </template>
 
@@ -776,9 +775,9 @@ import {
   batchSaveLibraryOrders,
   deleteLibraryOrder,
   exportLibraryOrderList,
-  fetchLibraryFilterOptions,
+  fetchLibraryOrderColumnValues,
   fetchLibraryOrderList,
-  LIBRARY_CREATED_KEY,
+  fetchLibraryOrderOptions,
   saveLibraryOrder,
 } from '#/api/molecularLibrary'
 import { skipGlobalErrorHandler } from '#/api/request'
@@ -789,22 +788,25 @@ import {
   cleanFieldText,
   coerceWorkbenchViewMode,
   createColumnOrder,
-  readClipboardGrid,
   EXCEL_VIEW,
-  searchWorkbenchTargets,
   splitTargetNames,
-  targetNameFromCodes,
   uniqueTargetCodes,
   WORKBENCH_VIEW,
   WorkbenchDataTable,
+  WorkbenchHeaderFilterChip,
+  WorkbenchHeaderLabel,
+  WorkbenchHeaderMenu,
   WorkbenchInlineDatePicker,
   WorkbenchInlineSelect,
   workbenchExcelMixin,
+  workbenchHeaderMenuMixin,
+  workbenchTargetMixin,
   WorkbenchStatusEditor,
   WorkbenchTargetSelect,
   WorkbenchViewToggle,
+  WorkbenchTargetFilter,
 } from '#/components/workbench'
-import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
+import UserSelect from '#/components/UserSelect.vue'
 import LibraryResultUploadDialog from './LibraryResultUploadDialog.vue'
 import LibraryRowActions from './LibraryRowActions.vue'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
@@ -812,9 +814,10 @@ import { listTableLockMixin } from '#/utils/listTableLock'
 import { canEditLibrary, canManageLibraryFiles, canViewLibraryDetail } from '#/utils/molecularPermission'
 import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/DiscoveryWorkbench.vue'
 import { getSerumUserName } from '#/utils/serumPermission'
-import { loadSerumUserOptions } from '#/utils/serumUserOptions'
+import { applyOptionLists } from '#/utils/optionLists'
 import { getTiterPriorityTone } from '#/utils/serumProjectStatus'
 import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage'
+import { LIBRARY_CREATED_KEY, WORKBENCH_VIEW_PREFS_KEYS } from '#/constants/storageKeys'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import {
   allSheetColumns,
@@ -861,7 +864,6 @@ import {
   WORKBENCH_COLUMNS,
 } from './libraryColumns'
 import { filterPrimerCatalog, loadPrimerCatalog } from './primerCatalogOptions'
-import { filterTargetOptions, normalizeTargetOptions, targetOptionExtra as targetOptionHint } from '#/utils/targetFilterOptions'
 
 const LIBRARY_LIST_FILTER_KEY = 'libraryConstructionList'
 
@@ -893,8 +895,41 @@ function emptyQuery() {
     finished_at_start: '',
     finished_at_end: '',
     order: '',
+    sort_field: '',
+    sort_dir: '',
   }
 }
+
+/**
+ * 表头菜单登记，字段含义见 synthesisColumns.js 的 HEADER_MENU_COLUMNS。
+ * 存代码的列（建库类型、样品来源/类型、Barcode 方式）和靶点沿用顶部筛选；
+ * PM、课题类型、细胞类型的顶部筛选是包含匹配，和表头的精确取值不同，不互相回写。
+ */
+const HEADER_MENU_COLUMNS = Object.freeze({
+  source_project_code: { type: 'text', values: 'recent', top: { query: 'source_project_code', kind: 'codes' } },
+  library_order_id: { type: 'text', values: 'recent' },
+  source_discovery_id: { type: 'text', values: 'recent', top: { query: 'source_discovery_id', kind: 'codes' } },
+  library_batch_no: { type: 'text', values: 'recent', top: { query: 'library_batch_no', kind: 'codes' } },
+  owner: { type: 'enum', values: 'all', top: { query: 'owner' } },
+  pm: { type: 'enum', values: 'all' },
+  study_type: { type: 'enum', values: 'all' },
+  status: { type: 'enum', values: 'all', top: { query: 'status' } },
+  priority: { type: 'enum', values: 'all', top: { query: 'priority' } },
+  mouse_strain: { type: 'csv', values: 'all', top: { query: 'mouse_strain' } },
+  cell_type: { type: 'enum', values: 'all' },
+  immunization_stage: { type: 'enum', values: 'all' },
+  notebook_no: { type: 'text', values: 'recent', top: { query: 'notebook_no', kind: 'contains' } },
+  positive_cell_count: { type: 'text', values: 'recent' },
+  received_on: { type: 'date', values: 'all' },
+  instrument_on: { type: 'date', values: 'all', top: { range: 'instrumentRange' } },
+  blood_collected_on: { type: 'date', values: 'all' },
+  started_at: { type: 'date', values: 'all', top: { range: 'startedRange' } },
+  finished_at: { type: 'date', values: 'all', top: { range: 'finishedRange' } },
+  qc_result: { type: 'enum', values: 'all' },
+  qc_owner: { type: 'enum', values: 'all' },
+  qc_on: { type: 'date', values: 'all' },
+  remark: { type: 'text', values: 'search', top: { query: 'remark', kind: 'contains' } },
+})
 
 function libraryCodeSeries(seed, count) {
   const text = String(seed || '').trim().toUpperCase()
@@ -977,10 +1012,14 @@ const SHEET_STRING_MAX = {
 
 export default {
   name: 'LibraryConstructionList',
-  mixins: [workbenchExcelMixin, listTableLockMixin],
+  mixins: [workbenchExcelMixin, workbenchTargetMixin, workbenchHeaderMenuMixin, listTableLockMixin],
   components: {
     AdvancedOpsBar,
     ListFilterSelect,
+    WorkbenchHeaderFilterChip,
+    WorkbenchHeaderLabel,
+    WorkbenchHeaderMenu,
+    WorkbenchTargetFilter,
     ElButton,
     ElCard,
     ElDatePicker,
@@ -995,7 +1034,7 @@ export default {
     ElSelect,
     LibraryResultUploadDialog,
     LibraryRowActions,
-    SerumUserSelect,
+    UserSelect,
     Tools,
     WorkbenchDataTable,
     WorkbenchInlineDatePicker,
@@ -1013,6 +1052,15 @@ export default {
   },
   data() {
     return {
+      viewPrefsStorageKey: WORKBENCH_VIEW_PREFS_KEYS.library,
+      enumLists: {
+        cell_types: CELL_TYPE_OPTIONS,
+        mouse_strains: MOUSE_STRAIN_OPTIONS,
+        people: [],
+        priorities: PRIORITY_OPTIONS,
+        qc_results: QC_RESULT_OPTIONS,
+        statuses: STATUS_OPTIONS,
+      },
       excelRowSelectKey: 'id',
       showAdvancedOps: false,
       loading: false,
@@ -1021,6 +1069,7 @@ export default {
       total: 0,
       stats: {},
       listQuery: emptyQuery(),
+      headerMenuColumns: HEADER_MENU_COLUMNS,
       instrumentRange: [],
       startedRange: [],
       finishedRange: [],
@@ -1031,13 +1080,9 @@ export default {
       plateDraft: '',
       rowBaselines: new Map(),
       allUserOptions: [],
-      targetOptions: [],
-      targetRequestToken: 0,
       catalogQuery: '',
       primerCatalog: [],
       catalogLoading: false,
-      recordedTargetOptions: [],
-      targetFilterQuery: '',
       consumingCreated: false,
       createVisible: false,
       resultUploadVisible: false,
@@ -1057,7 +1102,7 @@ export default {
       return canEditLibrary(useUserStore().userInfo)
     },
     libraryCodeOldestFirst() {
-      return this.listQuery.order === 'id_asc'
+      return this.listQuery.order === 'id_asc' && !this.headerSortActive
     },
     libraryCodeHeadTitle() {
       return this.libraryCodeOldestFirst
@@ -1112,16 +1157,13 @@ export default {
       }))
     },
     statusOptions() {
-      return STATUS_OPTIONS
+      return this.enumLists.statuses
     },
     priorityOptions() {
-      return PRIORITY_OPTIONS
+      return this.enumLists.priorities
     },
-    sheetTargetSelectOptions() {
-      return this.targetOptions.map((item) => ({
-        label: `${item.name}（${item.snum}）`,
-        value: item.snum,
-      }))
+    qcResultOptions() {
+      return this.enumLists.qc_results
     },
     sheetCatalogSelectOptions() {
       const options = this.catalogOptions.map((item) => ({
@@ -1129,12 +1171,6 @@ export default {
         value: item.name,
       }))
       return options
-    },
-    sheetTargetRemoteConfig() {
-      return Object.freeze({
-        autoLoad: true,
-        queryMethod: this.querySheetTargetOptions,
-      })
     },
     sheetCatalogRemoteConfig() {
       return Object.freeze({
@@ -1152,10 +1188,10 @@ export default {
         priority: this.priorityOptions.map((item) => ({ label: item, value: item })),
         status: this.statusOptions.map((item) => ({ label: item, value: item })),
         build_type: this.typeOptions,
-        cell_type: CELL_TYPE_OPTIONS.map((item) => ({ label: item, value: item })),
+        cell_type: this.cellTypeOptions.map((item) => ({ label: item, value: item })),
         source_experiment_type: PHAGE_EXPERIMENT_TYPE_OPTIONS.map((item) => ({ label: item, value: item })),
         index_mode: INDEX_MODE_OPTIONS,
-        qc_result: QC_RESULT_OPTIONS.map((item) => ({ label: item, value: item })),
+        qc_result: this.qcResultOptions.map((item) => ({ label: item, value: item })),
       }
     },
     sampleSourceOptions() {
@@ -1171,7 +1207,7 @@ export default {
       }))
     },
     mouseStrainOptions() {
-      return MOUSE_STRAIN_OPTIONS
+      return this.enumLists.mouse_strains
     },
     workbenchColumns() {
       return WORKBENCH_COLUMNS
@@ -1183,7 +1219,7 @@ export default {
       return STUDY_TYPE_OPTIONS
     },
     cellTypeOptions() {
-      return CELL_TYPE_OPTIONS
+      return this.enumLists.cell_types
     },
     createRows() {
       return HANDOFF_METHOD_ROWS
@@ -1221,16 +1257,13 @@ export default {
     sourceOptionsForType() {
       return optionsForBuild(SAMPLE_SOURCE_OPTIONS, this.editingRow?.build_type)
     },
-    filteredTargetOptions() {
-      return filterTargetOptions(this.recordedTargetOptions, this.targetFilterQuery)
-    },
   },
   created() {
     this.restoreListFilters()
     this.viewMode = coerceWorkbenchViewMode(this.viewMode)
     this.rebuildSheetColumns()
     this.loadAllUserOptions()
-    this.loadTargetFilterOptions()
+    this.loadEnumOptions()
     this.getList({ flushEditor: false }).finally(() => {
       this.listLoaded = true
       this.consumeCreatedQuery()
@@ -1310,8 +1343,9 @@ export default {
       this.catalogLoading = true
       try {
         this.primerCatalog = await loadPrimerCatalog()
-      } catch {
+      } catch (error) {
         this.primerCatalog = []
+        notifyApiError(error, { messages: { default: '加载引物与 Index 字典失败，请稍后重试' } })
       } finally {
         this.catalogLoading = false
       }
@@ -1412,6 +1446,8 @@ export default {
       this.clearSheetRange?.()
       const oldestFirst = !this.libraryCodeOldestFirst
       this.listQuery.order = oldestFirst ? 'id_asc' : ''
+      this.listQuery.sort_field = ''
+      this.listQuery.sort_dir = ''
       this.listQuery.page = oldestFirst ? 1_000_000 : 1
       if (await this.getList()) {
         ElMessage.success(oldestFirst ? '已改为创建时间正序' : '已恢复创建时间倒序')
@@ -1512,14 +1548,22 @@ export default {
       this.instrumentRange = []
       this.startedRange = []
       this.finishedRange = []
-      this.targetFilterQuery = ''
+      this.clearHeaderFilters()
       this.persistListFilters()
       this.getList()
     },
     persistListFilters() {
+      const sorted = this.listQuery.order || this.headerSortActive
       saveListFilters(LIBRARY_LIST_FILTER_KEY, {
-        // 排序不存，正序下的页码换到默认倒序里是另一批行
-        listQuery: { ...this.listQuery, order: undefined, page: this.listQuery.order ? 1 : this.listQuery.page },
+        // 排序不存，换了排序后原页码对应的是另一批行
+        listQuery: {
+          ...this.listQuery,
+          order: undefined,
+          sort_field: undefined,
+          sort_dir: undefined,
+          page: sorted ? 1 : this.listQuery.page,
+        },
+        headerFilters: this.headerFilters,
         instrumentRange: this.instrumentRange,
         startedRange: this.startedRange,
         finishedRange: this.finishedRange,
@@ -1539,20 +1583,7 @@ export default {
       if (Array.isArray(state.instrumentRange)) this.instrumentRange = state.instrumentRange
       if (Array.isArray(state.startedRange)) this.startedRange = state.startedRange
       if (Array.isArray(state.finishedRange)) this.finishedRange = state.finishedRange
-    },
-    setTargetFilterQuery(query) {
-      this.targetFilterQuery = query || ''
-    },
-    targetOptionExtra(item) {
-      return targetOptionHint(item, this.targetFilterQuery)
-    },
-    async loadTargetFilterOptions() {
-      try {
-        const data = await fetchLibraryFilterOptions()
-        this.recordedTargetOptions = normalizeTargetOptions(data?.targets)
-      } catch {
-        this.recordedTargetOptions = []
-      }
+      this.restoreHeaderFilters(state.headerFilters)
     },
     openColumnPicker() {
       this.$refs.workbenchTable?.openColumnPicker()
@@ -1561,7 +1592,7 @@ export default {
       const [instrumentStart, instrumentEnd] = this.instrumentRange || []
       const [startedStart, startedEnd] = this.startedRange || []
       const [finishedStart, finishedEnd] = this.finishedRange || []
-      return {
+      const payload = {
         ...this.listQuery,
         instrument_on_start: instrumentStart || '',
         instrument_on_end: instrumentEnd || '',
@@ -1570,6 +1601,12 @@ export default {
         finished_at_start: finishedStart || '',
         finished_at_end: finishedEnd || '',
       }
+      const fieldFilters = this.headerFilterPayload()
+      if (fieldFilters.length) payload.field_filters = fieldFilters
+      return payload
+    },
+    fetchHeaderValues(query) {
+      return fetchLibraryOrderColumnValues(query)
     },
     normalizeRow(row) {
       return {
@@ -1582,17 +1619,22 @@ export default {
       if (!row?.id) return
       this.rowBaselines.set(row.id, JSON.parse(JSON.stringify(row)))
     },
-    async loadAllUserOptions() {
+    async loadEnumOptions() {
       try {
-        this.allUserOptions = await loadSerumUserOptions()
-      } catch {
-        this.allUserOptions = []
+        const data = await fetchLibraryOrderOptions()
+        applyOptionLists(this.enumLists, data, Object.keys(this.enumLists))
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '加载文库选项失败，暂用本地默认选项' } })
       }
     },
-    selectedUserOptions(value) {
-      if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean)
-      const text = String(value || '').trim()
-      return text ? [text] : []
+    drawerSelectOptions(field) {
+      const lists = {
+        cell_type: this.cellTypeOptions,
+        priority: this.priorityOptions,
+        qc_result: this.qcResultOptions,
+        status: this.statusOptions,
+      }
+      return lists[field.key] || field.options || []
     },
     async getList({ flushEditor = true } = {}) {
       const requestId = ++this.listRequestId
@@ -1950,37 +1992,12 @@ export default {
       return column?.edit === 'select'
     },
     extraMouseStrains(value) {
-      const known = new Set(MOUSE_STRAIN_OPTIONS)
+      const known = new Set(this.mouseStrainOptions)
       return splitMouseStrain(value).filter((item) => !known.has(item))
     },
     onMouseStrainChange(row, values, persist = true) {
       row.mouse_strain = joinMouseStrain(values) || null
       if (persist && this.sheetEditSource !== 'dblclick') this.persistRow(row, 'mouse_strain')
-    },
-    mouseStrainSheetSelect() {
-      return document.querySelector('.sheet-strain-select')?.__vueParentComponent?.proxy
-    },
-    onMouseStrainSheetVisible(visible) {
-      if (visible) return
-      this.$nextTick(() => {
-        if (this.mouseStrainSheetSelect()?.expanded) return
-        this.$refs.sheetTable?.clearEdit?.()
-      })
-    },
-    openSheetEditorPanel(row, key) {
-      if (key !== 'mouse_strain') {
-        workbenchExcelMixin.methods.openSheetEditorPanel.call(this, row, key)
-        return
-      }
-      const open = () => {
-        const select = this.mouseStrainSheetSelect()
-        if (!select) return false
-        select.expanded = true
-        return true
-      }
-      this.$nextTick(() => {
-        if (!open()) this.$nextTick(open)
-      })
     },
     isSheetChoiceForRow(column, row) {
       return column.key !== 'cell_type' || CELL_TYPE_CHOICE_BUILDS.includes(row?.build_type)
@@ -2046,24 +2063,6 @@ export default {
       return column.edit === 'target'
         ? this.sheetTargetDirectValue(row, column.key)
         : this.sheetDirectTextValue(row, column.key)
-    },
-    async searchTargetOptions(keyword, selectedCodes) {
-      const requestToken = ++this.targetRequestToken
-      try {
-        const items = await searchWorkbenchTargets(keyword, selectedCodes)
-        if (requestToken === this.targetRequestToken) this.targetOptions = items
-      } catch {
-        if (requestToken === this.targetRequestToken) this.targetOptions = this.targetOptions || []
-      }
-    },
-    querySheetTargetOptions({ searchValue }) {
-      const row = this.list[this.pasteAnchor?.rowIndex]
-      return this.searchTargetOptions(searchValue, row?.target_codes)
-    },
-    onSheetTargetPickerChange(row) {
-      const codes = uniqueTargetCodes(row.target_codes)
-      row.target_codes = codes
-      row.target_name = targetNameFromCodes(codes, this.targetOptions)
     },
     querySheetCatalogOptions({ searchValue }) {
       return this.filterCatalog(searchValue)
@@ -2150,7 +2149,7 @@ export default {
         const known = this.sheetOptionValue(SAMPLE_TYPE_OPTIONS, raw)
         return { ok: false, reason: plasma && known ? 'plasma' : 'option' }
       }
-      if (key === 'cell_type' && CELL_TYPE_CHOICE_BUILDS.includes(row?.build_type) && raw && !CELL_TYPE_OPTIONS.includes(raw)) {
+      if (key === 'cell_type' && CELL_TYPE_CHOICE_BUILDS.includes(row?.build_type) && raw && !this.cellTypeOptions.includes(raw)) {
         return { ok: false, reason: 'cell' }
       }
       if (key === 'source_experiment_type') {
@@ -2164,12 +2163,12 @@ export default {
         return value ? { ok: true, value } : { ok: false, reason: 'option' }
       }
       if (key === 'qc_result') {
-        return !raw || QC_RESULT_OPTIONS.includes(raw)
+        return !raw || this.qcResultOptions.includes(raw)
           ? { ok: true, value: raw || null }
           : { ok: false, reason: 'option' }
       }
-      if (key === 'status') return STATUS_OPTIONS.includes(raw) ? { ok: true, value: raw } : { ok: false, reason: 'option' }
-      if (key === 'priority') return PRIORITY_OPTIONS.includes(raw) ? { ok: true, value: raw } : { ok: false, reason: 'option' }
+      if (key === 'status') return this.statusOptions.includes(raw) ? { ok: true, value: raw } : { ok: false, reason: 'option' }
+      if (key === 'priority') return this.priorityOptions.includes(raw) ? { ok: true, value: raw } : { ok: false, reason: 'option' }
       if (this.isUserColumn({ key })) {
         if (!raw) return { ok: true, value: null }
         const hit = this.allUserOptions.find((item) => item === raw || item.toLowerCase() === raw.toLowerCase())
@@ -2231,14 +2230,14 @@ export default {
       if (!key || !row?.id) return
       const originalValue = this.takeSheetEditOriginal(row, key)
       if (this.isSheetCellLocked(row, key)) {
-        if (pickingTarget) this.restoreSheetTarget(row, key, originalValue)
+        if (pickingTarget) this.restoreSheetTargetEdit(row, key, originalValue)
         else this.restoreSheetEditValue(row, key, originalValue)
         return
       }
       const source = key === 'target_codes' ? row.target_codes : row[key]
       const result = this.coerceSheetValue(row, key, source)
       if (!result.ok) {
-        if (pickingTarget) this.restoreSheetTarget(row, key, originalValue)
+        if (pickingTarget) this.restoreSheetTargetEdit(row, key, originalValue)
         else this.restoreSheetEditValue(row, key, originalValue)
         ElMessage.warning(this.sheetValidationMessage(key, result.reason))
         return
@@ -2258,7 +2257,7 @@ export default {
         }
       }
       if (key === 'target_codes' || key === 'target_name') {
-        if (!await this.applySheetTarget(row, pickingTarget ? 'target_codes' : key, originalValue)) return
+        if (!await this.applySheetTargetText(row, pickingTarget ? 'target_codes' : key, originalValue)) return
       }
       const baseline = this.rowBaselines.get(row.id)
       const unchanged = key === 'target_codes' || key === 'target_name'
@@ -2275,72 +2274,7 @@ export default {
       }
       await this.persistRow(row, key, { linkCatalog: pickingCatalog })
     },
-    async resolveTargetCodes(codes) {
-      const normalized = uniqueTargetCodes(codes)
-      if (!normalized.length) return { missing: [], nameByCode: new Map(), names: [] }
-      const items = await searchWorkbenchTargets('', normalized)
-      const nameByCode = new Map(items.map((item) => [item.snum, item.name]))
-      return {
-        missing: normalized.filter((code) => !nameByCode.has(code)),
-        nameByCode,
-        names: normalized.map((code) => nameByCode.get(code)),
-      }
-    },
-    async resolveTargetNames(value) {
-      const names = splitTargetNames(value)
-      if (!names.length) return { ambiguous: [], items: [], missing: [] }
-      const results = await Promise.all(names.map(async (name) => {
-        const items = await searchWorkbenchTargets(name)
-        const exact = items.filter((item) => String(item.name || '').trim().toLowerCase() === name.toLowerCase())
-        return { exact, name }
-      }))
-      const missing = results.filter((item) => item.exact.length === 0).map((item) => item.name)
-      const ambiguous = results.filter((item) => item.exact.length > 1).map((item) => item.name)
-      const matched = results.filter((item) => item.exact.length === 1)
-      return {
-        ambiguous,
-        items: matched.map((item) => item.exact[0]),
-        missing,
-      }
-    },
-    async applySheetTarget(row, key, originalValue) {
-      const submittedCodes = uniqueTargetCodes(row.target_codes)
-      const submittedName = String(row.target_name || '')
-      try {
-        if (key === 'target_codes') {
-          const resolved = await this.resolveTargetCodes(submittedCodes)
-          if (!this.sameSheetValue('target_codes', row.target_codes, submittedCodes)) return false
-          if (resolved.missing.length) {
-            this.restoreSheetTarget(row, key, originalValue)
-            ElMessage.warning(`未找到靶点编号：${resolved.missing.join('、')}`)
-            return false
-          }
-          row.target_codes = submittedCodes
-          row.target_name = resolved.names.join('&')
-          return true
-        }
-        const resolved = await this.resolveTargetNames(submittedName)
-        if (!this.sameSheetValue('target_name', row.target_name, submittedName)) return false
-        if (resolved.missing.length) {
-          this.restoreSheetTarget(row, key, originalValue)
-          ElMessage.warning(`未找到靶点名称：${resolved.missing.join('、')}`)
-          return false
-        }
-        if (resolved.ambiguous.length) {
-          this.restoreSheetTarget(row, key, originalValue)
-          ElMessage.warning(`靶点名称不唯一，请改用靶点编号：${resolved.ambiguous.join('、')}`)
-          return false
-        }
-        row.target_codes = resolved.items.map((item) => item.snum)
-        row.target_name = resolved.items.map((item) => item.name).join('&')
-        return true
-      } catch {
-        this.restoreSheetTarget(row, key, originalValue)
-        ElMessage.warning('靶点校验失败，本次修改未保存')
-        return false
-      }
-    },
-    restoreSheetTarget(row, key, originalValue) {
+    restoreSheetTargetEdit(row, key, originalValue) {
       const baseline = this.rowBaselines.get(row.id)
       if (!baseline) {
         this.restoreSheetEditValue(row, key, originalValue)
@@ -2350,54 +2284,15 @@ export default {
       row.target_name = baseline.target_name
     },
     async onSheetPaste(event) {
-      if (!this.canEdit) return
-      if (event.target?.closest?.('input, textarea')) return
-      const plain = event.clipboardData?.getData('text/plain') || ''
-      const grid = readClipboardGrid(event.clipboardData)
-      if (!grid.length) return
-      const singleValue = grid.length === 1
-        && grid[0].length === 1
-        && !String(grid[0][0]).includes('\n')
-      if (!plain.includes('\t') && !plain.includes('\n') && singleValue && !this.sheetRange) return
-      event.preventDefault()
-      if (!await this.flushPendingSheetEdits()) return
       const columns = allSheetColumns()
       const labelToKey = new Map(columns.map((column) => [column.label, column.key]))
-      const headerKeys = grid[0].map((cell) => labelToKey.get(String(cell || '').trim()) || null)
-      const nonEmptyHeaderCount = grid[0].filter((cell) => String(cell || '').trim()).length
-      const matchedHeaderCount = headerKeys.filter(Boolean).length
-      const hasHeader = matchedHeaderCount >= 2 && matchedHeaderCount === nonEmptyHeaderCount
+      const paste = await this.prepareSheetPaste(event, labelToKey, {
+        limitRows: (keys, header) => !(header && keys.includes('library_order_id')),
+      })
+      if (!paste) return
+      const { dataRows, hasHeader, headerKeys, skippedRowCount, startColIndex, startIndex } = paste
       const orderIdHeaderIndex = hasHeader ? headerKeys.indexOf('library_order_id') : -1
       const matchRowsByOrderId = orderIdHeaderIndex >= 0
-      let dataRows = hasHeader ? grid.slice(1) : grid
-      let startIndex = this.pasteAnchor?.rowIndex ?? 0
-      const startColKey = this.pasteAnchor?.colKey || this.sheetColumns[0]?.key
-      let startColIndex = this.sheetColumns.findIndex((column) => column.key === startColKey)
-      if (startColIndex < 0) return
-      const selectedRange = this.normalizedSheetRange()
-      const fillSelectedRange = !hasHeader
-        && dataRows.length === 1
-        && dataRows[0]?.length === 1
-        && selectedRange
-        && (selectedRange.r1 !== selectedRange.r2 || selectedRange.c1 !== selectedRange.c2)
-      if (fillSelectedRange) {
-        const value = dataRows[0][0]
-        const rowCount = selectedRange.r2 - selectedRange.r1 + 1
-        const columnCount = selectedRange.c2 - selectedRange.c1 + 1
-        dataRows = Array.from({ length: rowCount }, () => Array(columnCount).fill(value))
-        startIndex = selectedRange.r1
-        startColIndex = selectedRange.c1
-      }
-      let skippedRowCount = 0
-      if (!matchRowsByOrderId) {
-        const availableRowCount = Math.max(this.list.length - startIndex, 0)
-        skippedRowCount = Math.max(dataRows.length - availableRowCount, 0)
-        dataRows.splice(availableRowCount)
-      }
-      if (!dataRows.length) {
-        ElMessage.warning('粘贴区域超出当前列表，本次未保存')
-        return
-      }
       const workingRows = this.list.map((row) => this.normalizeRow(JSON.parse(JSON.stringify(row))))
       const rowIndexByOrderId = new Map(
         workingRows.map((row, index) => [String(row.library_order_id || '').trim(), index]),
@@ -2820,13 +2715,6 @@ export default {
 .filter-keyword {
   flex: 2 1 150px;
   min-width: 100px;
-}
-
-.target-option-code {
-  float: right;
-  margin-left: 12px;
-  color: #909399;
-  font-size: 12px;
 }
 
 .catalog-sequence {

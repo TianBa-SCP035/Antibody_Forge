@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from core.response import error, success
+from core.errors import route_error
+from core.response import success
 from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
@@ -22,4 +23,4 @@ def cell_inventory_data(
     except HTTPException:
         raise
     except Exception as exc:
-        return error(str(exc))
+        return route_error(exc)

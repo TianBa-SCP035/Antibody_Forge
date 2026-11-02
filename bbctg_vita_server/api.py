@@ -17,6 +17,7 @@ from modules.immunology.workbench.routes import router as workbench_router
 from modules.mega_automation.routes import router as mega_automation_router
 from modules.molecular_cell.library_orders.routes import router as molecular_library_router
 from modules.molecular_cell.primer_catalog.routes import router as primer_catalog_router
+from modules.options.routes import router as options_router
 from modules.order_sync.routes import router as order_sync_router
 from modules.system.routes import router as system_router
 
@@ -49,6 +50,7 @@ api_router.include_router(
     tags=["分子与细胞-引物库"],
 )
 api_router.include_router(order_sync_router, prefix="/order-experiment", tags=["工单数据回传"])
+api_router.include_router(options_router, prefix="/options", tags=["公共选项"])
 api_router.include_router(system_router, prefix="/system", tags=["系统管理"])
 
 

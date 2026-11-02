@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import date
 from typing import Any
 
 from sqlalchemy import bindparam, or_, select, text
@@ -10,16 +11,23 @@ from sqlalchemy.orm import Session
 from db.external import open_one_db
 from models.discovery import DiscoverySynthesisOrder
 from modules.discovery.synthesis_progress.constants import (
+    AFFINITY_STATUS_ASSAYING,
+    AFFINITY_STATUS_COMPLETED,
+    AFFINITY_STATUS_OPTIONS,
+    AFFINITY_STATUS_WAIT,
     DRIFT_COMPARE_FIELDS,
     DRIFT_FIELD_LABELS,
-    STATUS_AFFINITY_DONE,
+    FLOW_STATUS_COMPLETED,
+    FLOW_STATUS_NOT_REQUIRED,
+    FLOW_STATUS_WAIT,
     STATUS_ASSAYING,
+    STATUS_CANCELLED,
+    STATUS_COMPLETED,
     STATUS_SYNTHESIZING,
     STATUS_WAIT_ASSAY,
     STATUS_WAIT_ORDER,
     SUPPLY_MODE_ARRIVAL,
     SYNTHETIC_CORP_OPTIONS,
-    TERMINAL_STATUSES,
 )
 from utils.filter_values import clean_field_text
 
@@ -76,11 +84,10 @@ def normalize_date_text(value: Any) -> str | None:
     for regex in (_DATE_FULL_RE, _DATE_COMPACT8_RE):
         m = regex.search(raw)
         if m:
-            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            if y > 2026:
-                y = 2026
-            if 1 <= mo <= 12 and 1 <= d <= 31:
-                return f"{y:04d}-{mo:02d}-{d:02d}"
+            try:
+                return date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
+            except ValueError:
+                continue
     return None
 
 
@@ -104,19 +111,90 @@ def normalize_synthetic_corp(raw_corp: Any, refstr: Any = None, order_no: Any = 
     return None
 
 
-def derive_status_for_row(row: DiscoverySynthesisOrder, *, preserve_terminal: bool = True) -> str:
-    cur = (row.status or "").strip()
-    if preserve_terminal and cur in (
-        STATUS_ASSAYING,
-        STATUS_AFFINITY_DONE,
-        *TERMINAL_STATUSES,
+# 已完成的工单只有这些字段变动时才重新推导总状态；靶点类型决定要不要做流式。
+ASSAY_EVIDENCE_FIELDS = frozenset(
+    {
+        "affinity_status",
+        "flow_status",
+        "affinity_date",
+        "flow_date",
+        "report_reason",
+        "arrival_date",
+        "target_type",
+    }
+)
+
+
+def _default_affinity_status(row: DiscoverySynthesisOrder) -> str:
+    if str(row.report_reason or "").strip():
+        return AFFINITY_STATUS_WAIT
+    if row.affinity_date:
+        return AFFINITY_STATUS_COMPLETED
+    if str(row.affinity_owner or "").strip():
+        return AFFINITY_STATUS_ASSAYING
+    return AFFINITY_STATUS_WAIT
+
+
+def sync_derived_statuses(row: DiscoverySynthesisOrder, *, changed_fields: Any = ()) -> str:
+    """Derive the two assay states and the aggregate workflow state; cancelled rows keep their status."""
+    changed = set(changed_fields)
+    current_status = (row.status or "").strip()
+    has_reason = bool(str(row.report_reason or "").strip())
+    has_assay_data = bool(
+        row.arrival_date or row.affinity_owner or row.affinity_date or has_reason or row.flow_date
+    )
+    if (
+        "arrival_date" in changed
+        and not has_assay_data
+        and row.affinity_status not in {AFFINITY_STATUS_ASSAYING, AFFINITY_STATUS_COMPLETED}
+        and row.flow_status != FLOW_STATUS_COMPLETED
     ):
-        return cur
-    if row.arrival_date:
-        return STATUS_WAIT_ASSAY
-    if row.order_no or (row.supply_mode and row.supply_mode != SUPPLY_MODE_ARRIVAL):
-        return STATUS_SYNTHESIZING
-    return STATUS_WAIT_ORDER
+        row.affinity_status = None
+        row.flow_status = None
+
+    if has_assay_data or row.affinity_status or row.flow_status:
+        if (
+            has_reason
+            or row.affinity_status not in AFFINITY_STATUS_OPTIONS
+            or ("affinity_status" not in changed and {"affinity_date", "report_reason"} & changed)
+        ):
+            row.affinity_status = _default_affinity_status(row)
+
+        target_is_secreted = str(row.target_type or "").strip() == "分泌型"
+        if target_is_secreted:
+            row.flow_status = FLOW_STATUS_NOT_REQUIRED
+        elif row.flow_status not in {FLOW_STATUS_WAIT, FLOW_STATUS_COMPLETED} or (
+            "flow_status" not in changed and "flow_date" in changed
+        ):
+            row.flow_status = FLOW_STATUS_COMPLETED if row.flow_date else FLOW_STATUS_WAIT
+
+        # 有未出原因时上面已回到待检测，这里不必再判断原因。
+        affinity_completed = row.affinity_status == AFFINITY_STATUS_COMPLETED and bool(row.affinity_date)
+        flow_completed = target_is_secreted or (
+            row.flow_status == FLOW_STATUS_COMPLETED and bool(row.flow_date)
+        )
+        if affinity_completed and flow_completed:
+            derived = STATUS_COMPLETED
+        elif (
+            row.affinity_status in {AFFINITY_STATUS_ASSAYING, AFFINITY_STATUS_COMPLETED}
+            or row.flow_status == FLOW_STATUS_COMPLETED
+        ):
+            derived = STATUS_ASSAYING
+        else:
+            derived = STATUS_WAIT_ASSAY
+    else:
+        row.affinity_status = None
+        row.flow_status = None
+        if row.order_no or (row.supply_mode and row.supply_mode != SUPPLY_MODE_ARRIVAL):
+            derived = STATUS_SYNTHESIZING
+        else:
+            derived = STATUS_WAIT_ORDER
+
+    keep_current = current_status == STATUS_CANCELLED or (
+        current_status == STATUS_COMPLETED and not ASSAY_EVIDENCE_FIELDS & changed
+    )
+    row.status = current_status if keep_current else derived
+    return row.status
 
 
 def build_remote_snapshot(
@@ -227,6 +305,7 @@ def apply_remote_snapshot_to_row(
 ) -> bool:
     """Backfills empty execution fields (or replaces fields auto-filled by a previous snapshot) without overwriting user edits."""
     changed = False
+    status_input_changed = False
     old_snapshot = row.source_snapshot if isinstance(row.source_snapshot, dict) else {}
     new_stored = {f: snapshot.get(f) for f in SNAPSHOT_STORED_FIELDS}
     old_stored = {f: old_snapshot.get(f) for f in SNAPSHOT_STORED_FIELDS}
@@ -247,11 +326,14 @@ def apply_remote_snapshot_to_row(
         if should_fill and current_val != remote_val:
             setattr(row, field, remote_val)
             changed = True
+            if field in {"order_no", "arrival_date"}:
+                status_input_changed = True
 
-    new_status = derive_status_for_row(row, preserve_terminal=True)
-    if row.status != new_status and row.status not in TERMINAL_STATUSES:
-        row.status = new_status
-        changed = True
+    if status_input_changed:
+        old_states = (row.status, row.affinity_status, row.flow_status)
+        sync_derived_statuses(row)
+        if old_states != (row.status, row.affinity_status, row.flow_status):
+            changed = True
 
     return changed
 
@@ -313,25 +395,17 @@ _BEACON_QUERY_BASE = """
 
 def _load_orderhis_map(
     one_db: Session,
-    filenames: list[str] | None = None,
+    filenames: list[str],
 ) -> dict[str, tuple[str, str]]:
-    if filenames is not None and not filenames:
+    if not filenames:
         return {}
     result: dict[str, tuple[str, str]] = {}
     try:
-        if filenames:
-            stmt = text(
-                "SELECT filename, orderNo, sendcorpname FROM orderhis "
-                "WHERE orderNo IS NOT NULL AND orderNo != '' AND filename IN :fns"
-            ).bindparams(bindparam("fns", expanding=True))
-            rows = one_db.execute(stmt, {"fns": list(set(filenames))}).all()
-        else:
-            rows = one_db.execute(
-                text(
-                    "SELECT filename, orderNo, sendcorpname FROM orderhis "
-                    "WHERE orderNo IS NOT NULL AND orderNo != ''"
-                )
-            ).all()
+        stmt = text(
+            "SELECT filename, orderNo, sendcorpname FROM orderhis "
+            "WHERE orderNo IS NOT NULL AND orderNo != '' AND filename IN :fns"
+        ).bindparams(bindparam("fns", expanding=True))
+        rows = one_db.execute(stmt, {"fns": list(set(filenames))}).all()
         for fn, ord_no, corp in rows:
             if fn and ord_no:
                 stem = re.sub(r"\.(xlsx|xls|csv|tsv)$", "", str(fn).strip(), flags=re.IGNORECASE)
@@ -771,6 +845,7 @@ def check_remote_for_local_rows(
     linked_count = 0
     updated_count = 0
     db_dirty = False
+    status_changed = False
     for row in rows:
         newly_linked = False
         replace_snap: dict[str, Any] | None = None
@@ -812,16 +887,21 @@ def check_remote_for_local_rows(
         drifts = compute_drift_fields(row)
         if row_changed:
             db_dirty = True
+        if before_vals[0] != after_vals[0]:
+            status_changed = True
         if before_vals != after_vals or drifts != prev_drifts or newly_linked:
             if before_vals != after_vals and not newly_linked:
                 updated_count += 1
             changed_rows.append(row)
 
-    from modules.discovery.synthesis_progress.service import serialize_order
+    from modules.discovery.synthesis_progress.service import serialize_order, settle_queue_after_sync
 
-    updated_items = [serialize_order(row) for row in changed_rows] if serialize_changed else []
     if db_dirty:
+        # 只有状态变了才可能有行进出终态，才需要锁队列重编
+        if status_changed:
+            settle_queue_after_sync(db)
         db.commit()
+    updated_items = [serialize_order(row) for row in changed_rows] if serialize_changed else []
 
     candidates_map: dict[str, list[dict[str, Any]]] = {}
     if is_single_row and single_row_snaps:

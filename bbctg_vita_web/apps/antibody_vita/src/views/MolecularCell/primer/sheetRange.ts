@@ -19,22 +19,30 @@ interface CellHit {
   field: string;
 }
 
+// 与 workbenchExcelMixin 的 SHEET_HEADER_HOLD_MS 保持一致
+const HEADER_HOLD_MS = 350;
+
 /**
  * 表格划选复制。只负责选区和 Ctrl+C，不处理单元格编辑。
+ * menuKeys 里的列单击表头留给表头菜单，按住或拖到别的列才选整列。
  */
 export function useSheetRange<T extends { id: number | string }>(options: {
   rows: Ref<T[]>;
   columns: SheetColumn[];
   text: (row: T, key: string) => string;
+  menuKeys?: string[];
 }) {
   const wrapRef = ref<HTMLElement | null>(null);
   const stageRef = ref<HTMLElement | null>(null);
   const overlayRef = ref<HTMLElement | null>(null);
   const tableRef = ref<any>(null);
   const range = ref<SheetRange | null>(null);
+  const menuKeys = new Set(options.menuKeys || []);
   let pointerDown = false;
   let dragMode: '' | 'cells' | 'columns' = '';
   let rafId = 0;
+  let headerPress: { colIndex: number; timer: number } | null = null;
+  let headerSelected = false;
 
   const colIndexByKey = new Map<string, number>();
   options.columns.forEach((col, index) => {
@@ -198,7 +206,22 @@ export function useSheetRange<T extends { id: number | string }>(options: {
     schedulePaint();
   }
 
+  function cancelHeaderPress() {
+    if (!headerPress) return;
+    clearTimeout(headerPress.timer);
+    headerPress = null;
+  }
+
+  function selectPressedColumns(toIndex?: number) {
+    const press = headerPress;
+    if (!press) return;
+    cancelHeaderPress();
+    headerSelected = true;
+    setRange({ r1: 0, c1: press.colIndex, r2: options.rows.value.length - 1, c2: toIndex ?? press.colIndex });
+  }
+
   function clearRange() {
+    cancelHeaderPress();
     range.value = null;
     pointerDown = false;
     dragMode = '';
@@ -249,12 +272,18 @@ export function useSheetRange<T extends { id: number | string }>(options: {
     if (target?.closest('.vxe-cell--col-resizable')) return;
     focusWrap();
     if (event.button !== 0) return;
+    headerSelected = false;
     const headerIndex = hitHeader(event.target);
     if (headerIndex != null && options.rows.value.length) {
       event.preventDefault();
       window.getSelection()?.removeAllRanges();
       dragMode = 'columns';
       pointerDown = true;
+      if (!event.shiftKey && menuKeys.has(options.columns[headerIndex]?.key ?? '')) {
+        cancelHeaderPress();
+        headerPress = { colIndex: headerIndex, timer: window.setTimeout(() => selectPressedColumns(), HEADER_HOLD_MS) };
+        return;
+      }
       const start = event.shiftKey && range.value ? range.value.c1 : headerIndex;
       setRange({ r1: 0, c1: start, r2: options.rows.value.length - 1, c2: headerIndex });
       return;
@@ -280,7 +309,13 @@ export function useSheetRange<T extends { id: number | string }>(options: {
   }
 
   function onMouseOver(event: MouseEvent) {
-    if (!pointerDown || !range.value) return;
+    if (!pointerDown) return;
+    if (headerPress) {
+      const headerIndex = hitHeader(event.target);
+      if (headerIndex != null && headerIndex !== headerPress.colIndex) selectPressedColumns(headerIndex);
+      return;
+    }
+    if (!range.value) return;
     if (dragMode === 'columns') {
       const headerIndex = hitHeader(event.target);
       if (headerIndex == null || headerIndex === range.value.c2) return;
@@ -370,8 +405,19 @@ export function useSheetRange<T extends { id: number | string }>(options: {
   }
 
   function finishPointer() {
+    cancelHeaderPress();
     pointerDown = false;
     dragMode = '';
+  }
+
+  /** 这次点击该开哪一列的表头菜单；按住或拖动选了整列、按着 Shift 或没登记菜单时返回 ''。 */
+  function headerMenuField(event: MouseEvent) {
+    if (event.shiftKey || event.button !== 0 || headerSelected) return '';
+    const headerIndex = hitHeader(event.target);
+    const field = headerIndex == null ? '' : (options.columns[headerIndex]?.key ?? '');
+    if (!menuKeys.has(field)) return '';
+    clearRange();
+    return field;
   }
 
   watch(options.rows, () => clearRange());
@@ -381,6 +427,7 @@ export function useSheetRange<T extends { id: number | string }>(options: {
     window.addEventListener('resize', schedulePaint);
   });
   onBeforeUnmount(() => {
+    cancelHeaderPress();
     if (rafId) {
       cancelAnimationFrame(rafId);
       rafId = 0;
@@ -402,5 +449,6 @@ export function useSheetRange<T extends { id: number | string }>(options: {
     onCellSelected,
     onKeydown,
     onCopy,
+    headerMenuField,
   };
 }

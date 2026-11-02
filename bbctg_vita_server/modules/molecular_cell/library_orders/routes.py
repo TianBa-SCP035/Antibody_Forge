@@ -1,10 +1,13 @@
+from typing import Literal
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 from urllib.parse import quote
 
-from core.response import error, success
+from core.errors import route_error
+from core.response import success
 from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
@@ -17,6 +20,7 @@ from modules.system.permissions import (
     require_permission,
 )
 from integrations.drm_service import prepare_office_download_file, remove_temp_file
+from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
 
 router = APIRouter()
 PAGE_PERMISSION = "molecular.page.library"
@@ -45,6 +49,13 @@ class OrderBatchSaveRequest(BaseModel):
 
 class OrderListRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
+
+
+class OrderColumnValuesRequest(OrderListRequest):
+    field: str = Field(min_length=1, max_length=64)
+    value_keyword: str = Field(default="", max_length=128)
+    value_limit: int = Field(default=200, ge=1, le=1000)
+    value_order: Literal["value", "value_desc", "recent"] = "value"
 
 
 class OrderIdRequest(BaseModel):
@@ -119,17 +130,27 @@ def _run_write(db: Session, fn):
             raise HTTPException(status_code=404, detail=message) from exc
         raise HTTPException(status_code=422, detail=message) from exc
     except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+        return route_error(exc, db)
 
 
-@router.get("/filter_options")
-def filter_options(
+@router.get("/options")
+def order_options(
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    _require_any(db, current_user, (PAGE_PERMISSION, DETAIL_PERMISSION))
+    return success(service.get_options(db))
+
+
+@router.get("/recorded_targets")
+def recorded_targets(
+    keyword: str = Query(default="", max_length=128),
+    limit: int = Query(default=DEFAULT_RECORDED_TARGET_LIMIT, ge=1, le=MAX_RECORDED_TARGET_LIMIT),
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, PAGE_PERMISSION)
-    return success(service.get_filter_options(db))
+    return success({"items": service.search_recorded_targets(db, keyword, limit)})
 
 
 @router.post("/list")
@@ -141,6 +162,19 @@ def list_orders(
     require_permission(db, current_user, PAGE_PERMISSION)
     try:
         return success(service.get_list(db, data.model_dump() if data else {}))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/column_values")
+def order_column_values(
+    data: OrderColumnValuesRequest,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, PAGE_PERMISSION)
+    try:
+        return success(service.get_column_values(db, data.model_dump()))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

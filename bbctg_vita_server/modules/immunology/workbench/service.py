@@ -3,7 +3,6 @@ import json
 import secrets
 import string
 from copy import deepcopy
-from datetime import datetime
 from io import BytesIO
 from typing import Any
 
@@ -12,12 +11,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from utils.filter_values import (
-    catalog_names_for_pairs,
+    DEFAULT_RECORDED_TARGET_LIMIT,
     clean_field_text,
     recorded_target_clause,
+    recorded_target_search,
     restrict,
     split_code_tokens,
-    target_select_options,
 )
 
 from models.immunology import (
@@ -43,16 +42,27 @@ from modules.immunology.serum.service import (
     validate_scheme_graph as _validate_scheme_graph,
 )
 from utils.target_structure import to_serum_target_type
+from utils.header_filters import (
+    HeaderColumn,
+    column_values,
+    csv_column,
+    csv_token_clause,
+    header_filter_clauses,
+    header_sort_clauses,
+)
+from utils.normalize import join_known_options, normalize_target_codes, optional_int
 from utils.workbench_queue import (
     DEFAULT_PRIORITY,
     PRIORITY_ORDER,
     apply_priority_constraints,
     canonicalize_priority,
     list_order_clauses,
+    lock_queue,
     place_row_among,
     queued_sort,
     renumber_queue,
 )
+from utils.clock import now_local
 
 PLAN_STATUS_DRAFT = "草稿"
 PLAN_STATUS_PREP = "筹备中"
@@ -236,25 +246,8 @@ def _normalize_yes_no(value: Any) -> str | None:
     return text
 
 
-def _normalize_target_codes(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if not isinstance(value, list):
-        raise ValueError("靶点编号必须是数组")
-    return [str(item).strip() for item in value if str(item).strip()]
-
-
-def _normalize_int(value: Any) -> int | None:
-    if value in (None, ""):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _new_temp_experiment_id() -> str:
-    now = datetime.now()
+    now = now_local()
     rand = "".join(secrets.choice(TEMP_ID_ALPHABET) for _ in range(TEMP_ID_RANDOM_LEN))
     return f"SCP-{now:%Y%m%d}-{now:%H%M%S}-{rand}"
 
@@ -286,37 +279,22 @@ def _is_closed_plan(status: str | None) -> bool:
 _priority_value = canonicalize_priority
 
 
-def _normalize_csv_options(value: Any, options: tuple[str, ...], error: str) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, (list, tuple)):
-        tokens = [str(item).strip() for item in value if str(item).strip()]
-    else:
-        text = str(value).strip()
-        if not text:
-            return None
-        tokens = [part.strip() for part in text.replace("，", ",").split(",") if part.strip()]
-    allowed = set(options)
-    if any(token not in allowed for token in tokens):
-        raise ValueError(error)
-    ordered = [option for option in options if option in tokens]
-    return ",".join(ordered) or None
-
-
 def _normalize_species_cross(value: Any) -> str | None:
-    return _normalize_csv_options(value, SPECIES_CROSS_OPTIONS, "种属交叉包含不允许的选项")
+    return join_known_options(value, SPECIES_CROSS_OPTIONS, "种属交叉包含不允许的选项")
 
 
 def _normalize_immuno_method(value: Any) -> str | None:
-    return _normalize_csv_options(value, IMMUNO_METHOD_OPTIONS, "免疫方式包含不允许的选项")
+    return join_known_options(value, IMMUNO_METHOD_OPTIONS, "免疫方式包含不允许的选项")
 
 
 def _list_order(data: dict[str, Any] | None = None):
-    return list_order_clauses(
-        (data or {}).get("sort_field"),
-        SerumImmWorkbench.sort_order,
-        SerumImmWorkbench.id,
-    )
+    payload = data or {}
+    field = str(payload.get("sort_field") or "").strip()
+    spec = HEADER_COLUMNS.get(field)
+    direction = str(payload.get("sort_dir") or "").strip()
+    if spec is not None and direction in {"asc", "desc"}:
+        return header_sort_clauses(spec, direction, SerumImmWorkbench.id)
+    return list_order_clauses(field, SerumImmWorkbench.sort_order, SerumImmWorkbench.id)
 
 
 def _row_is_terminal(row: SerumImmWorkbench, project: SerumImmProject | None = None) -> bool:
@@ -373,12 +351,7 @@ def _projects_for_rows(
 
 
 def _lock_queue(db: Session) -> None:
-    """Serialize queue mutations so concurrent writers cannot allocate the same slot."""
-    db.scalars(
-        select(SerumImmWorkbench.id)
-        .order_by(SerumImmWorkbench.id.asc())
-        .with_for_update()
-    ).all()
+    lock_queue(db, SerumImmWorkbench)
 
 
 def sync_project_queue_status(
@@ -596,7 +569,7 @@ def _auto_project_name(target_name: Any, strains: list[str]) -> str:
 
 
 def _infer_target_type(db: Session, target_codes: Any) -> str | None:
-    codes = _normalize_target_codes(target_codes) if isinstance(target_codes, list) else []
+    codes = normalize_target_codes(target_codes) if isinstance(target_codes, list) else []
     if not codes:
         return None
     row = db.execute(
@@ -634,7 +607,7 @@ def _scheme_revision(db: Session, row: SerumImmWorkbench) -> str:
 
 def _comparison_value(field: str, value: Any) -> Any:
     if field == "target_codes":
-        return _normalize_target_codes(value)
+        return normalize_target_codes(value)
     if field == "species_cross":
         return _normalize_species_cross(value)
     if field == "immuno_method":
@@ -647,7 +620,7 @@ def _comparison_value(field: str, value: Any) -> Any:
     if field in YES_NO_FIELDS:
         return _normalize_yes_no(value)
     if field in INT_FIELDS:
-        return _normalize_int(value)
+        return optional_int(value)
     if field == "plan_status":
         return str(value or "").strip() or PLAN_STATUS_DRAFT
     if isinstance(value, str):
@@ -673,7 +646,7 @@ def _apply_fields(row: SerumImmWorkbench, data: dict[str, Any], fields: list[str
             continue
         value = data.get(field)
         if field == "target_codes":
-            value = _normalize_target_codes(value)
+            value = normalize_target_codes(value)
         elif field in YES_NO_FIELDS:
             value = _normalize_yes_no(value)
             if value is None and field in REQUIRED_YES_NO_DEFAULTS:
@@ -681,7 +654,7 @@ def _apply_fields(row: SerumImmWorkbench, data: dict[str, Any], fields: list[str
             if value not in (None, "是", "否"):
                 raise ValueError(f"{field} 只能填写“是”或“否”")
         elif field in INT_FIELDS:
-            value = _normalize_int(value)
+            value = optional_int(value)
             if field == "sort_order" and (value is None or value <= 0):
                 continue
         elif field == "plan_status":
@@ -837,13 +810,13 @@ def _scheme_strain_filter(field_name: str, value: str):
     in_scheme = exists(
         select(1).where(
             SerumImmMouse.experiment_id == SerumImmWorkbench.experiment_id,
-            group_column == value,
+            csv_token_clause(group_column, value),
         )
     ).correlate(SerumImmWorkbench)
     no_scheme = ~exists(
         select(1).where(SerumImmMouse.experiment_id == SerumImmWorkbench.experiment_id)
     ).correlate(SerumImmWorkbench)
-    return or_(in_scheme, and_(no_scheme, header_column == value))
+    return or_(in_scheme, and_(no_scheme, csv_token_clause(header_column, value)))
 
 
 def _display_status_expr():
@@ -885,21 +858,12 @@ def _keyword_rank_expr(keyword: str):
     )
 
 
-def _csv_token_filter(column, value: str):
-    return or_(
-        column == value,
-        column.like(f"{value},%"),
-        column.like(f"%,{value}"),
-        column.like(f"%,{value},%"),
-    )
-
-
 def _species_cross_filter(value: str):
-    return _csv_token_filter(SerumImmWorkbench.species_cross, value)
+    return csv_token_clause(SerumImmWorkbench.species_cross, value)
 
 
 def _immuno_method_filter(value: str):
-    return _csv_token_filter(SerumImmWorkbench.immuno_method, value)
+    return csv_token_clause(SerumImmWorkbench.immuno_method, value)
 
 
 def _has_scheme_data_expr():
@@ -924,7 +888,51 @@ def _target_pair_stmt():
     ), name_expr, codes_expr
 
 
-def _apply_list_filters(stmt, data: dict[str, Any], *, skip_status: bool = False, db: Session | None = None):
+_W = SerumImmWorkbench
+_YES_NO = ("是", "否")
+HEADER_COLUMNS: dict[str, HeaderColumn] = {
+    "priority": HeaderColumn(_W.priority, "enum", order=tuple(PRIORITY_ORDER)),
+    # 表格视图的 plan_status 列在前端是 status 的别名；显示的是开展后跟随项目的状态
+    "status": HeaderColumn(_display_status_expr(), "enum"),
+    "pm": HeaderColumn(_aligned_value_expr(_W.pm, SerumImmProject.pm), "enum"),
+    "owner": HeaderColumn(_aligned_value_expr(_W.owner, SerumImmProject.owner), "enum"),
+    "project_code": HeaderColumn(_aligned_value_expr(_W.project_code, SerumImmProject.project_code)),
+    "experiment_id": HeaderColumn(_aligned_value_expr(_W.experiment_id, SerumImmProject.experiment_id)),
+    "study_type": HeaderColumn(_aligned_value_expr(_W.study_type, SerumImmProject.study_type), "enum"),
+    "remark": HeaderColumn(_aligned_value_expr(_W.remark, SerumImmProject.remark)),
+    "project_set_code": HeaderColumn(_W.project_set_code),
+    "species_cross": csv_column(_W.species_cross, SPECIES_CROSS_OPTIONS),
+    "immuno_method": csv_column(_W.immuno_method, IMMUNO_METHOD_OPTIONS),
+    "reviewer": HeaderColumn(_W.reviewer, "enum"),
+    "review_status": HeaderColumn(_W.review_status, "enum", order=REVIEW_STATUS_OPTIONS),
+    "mouse_scheme_no": HeaderColumn(_W.mouse_scheme_no),
+    "mouse_count": HeaderColumn(_W.mouse_count),
+    "mouse_zygosity": HeaderColumn(_W.mouse_zygosity, "enum"),
+    "mouse_birth_date": HeaderColumn(_W.mouse_birth_date, "date"),
+    "mouse_region": HeaderColumn(_W.mouse_region, "enum", order=MOUSE_REGION_OPTIONS),
+    "mouse_room": HeaderColumn(_W.mouse_room),
+    "mouse_status": HeaderColumn(_W.mouse_status, "enum", order=MOUSE_STATUS_OPTIONS),
+    "mouse_arrive_date": HeaderColumn(_W.mouse_arrive_date, "date"),
+    "mouse_remark": HeaderColumn(_W.mouse_remark),
+    "mouse_expand_requested": HeaderColumn(_W.mouse_expand_requested, "enum", order=_YES_NO),
+    "antigen_source": HeaderColumn(_W.antigen_source, "enum"),
+    "antigen_ready": HeaderColumn(_W.antigen_ready, "enum", order=_YES_NO),
+    "antigen_eta": HeaderColumn(_W.antigen_eta),
+    "lnp_ordered": HeaderColumn(_W.lnp_ordered, "enum", order=_YES_NO),
+    "cell_prep_status": HeaderColumn(_W.cell_prep_status, "enum"),
+    "antigen_remark": HeaderColumn(_W.antigen_remark),
+    "can_start": HeaderColumn(_W.can_start, "enum", order=_YES_NO),
+}
+
+
+def _apply_list_filters(
+    stmt,
+    data: dict[str, Any],
+    *,
+    skip_status: bool = False,
+    db: Session | None = None,
+    header_except: str | None = None,
+):
     kw_tokens = split_code_tokens(data.get("keyword"))
     view_group = str(data.get("view_group") or "").strip()
 
@@ -993,7 +1001,8 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, skip_status: bool = False
         data.get("cell_prep_status"),
         lambda value: SerumImmWorkbench.cell_prep_status == value,
     )
-    return stmt
+    header = header_filter_clauses(db, HEADER_COLUMNS, data.get("field_filters"), except_field=header_except)
+    return stmt.where(*header) if header else stmt
 
 
 def _has_scheme_data_clause(value: str):
@@ -1107,6 +1116,32 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    """表头筛选的取值列表：套用除本列表头条件以外的全部筛选。顶部筛选里的本列条件由前端去掉。"""
+    payload = data or {}
+    field = str(payload.get("field") or "").strip()
+    spec = HEADER_COLUMNS.get(field)
+    if spec is None:
+        raise ValueError(f"不支持按「{field}」表头筛选")
+
+    def scoped(stmt):
+        joined = stmt.select_from(SerumImmWorkbench).outerjoin(
+            SerumImmProject,
+            SerumImmWorkbench.experiment_id == SerumImmProject.experiment_id,
+        )
+        return _apply_list_filters(joined, payload, db=db, header_except=field)
+
+    return column_values(
+        db,
+        spec,
+        scoped,
+        id_column=SerumImmWorkbench.id,
+        keyword=str(payload.get("value_keyword") or ""),
+        limit=payload.get("value_limit"),
+        order=str(payload.get("value_order") or "value"),
+    )
+
+
 def export_list_workbook(
     db: Session,
     data: dict[str, Any],
@@ -1201,6 +1236,11 @@ def export_list_workbook(
     )
 
 
+def search_recorded_targets(db: Session, keyword: str = "", limit: int = DEFAULT_RECORDED_TARGET_LIMIT) -> list[dict]:
+    pair_stmt, _name_expr, _codes_expr = _target_pair_stmt()
+    return recorded_target_search(db, pair_stmt, keyword, limit)
+
+
 def get_options(db: Session) -> dict[str, Any]:
     def values(*columns) -> list[str]:
         result: set[str] = set()
@@ -1222,12 +1262,7 @@ def get_options(db: Session) -> dict[str, Any]:
 
     owners = values(SerumImmProject.owner, SerumImmWorkbench.owner)
     pms = values(SerumImmProject.pm, SerumImmWorkbench.pm)
-    pair_stmt, _name_expr, _codes_expr = _target_pair_stmt()
     return {
-        "targets": target_select_options(
-            (pairs := db.execute(pair_stmt).all()),
-            catalog_names_for_pairs(db, pairs),
-        ),
         "owners": owners,
         "pms": pms,
         "reviewers": values(SerumImmWorkbench.reviewer),
@@ -1558,8 +1593,8 @@ def start(db: Session, workbench_id: int) -> dict[str, Any]:
     last_error: Exception | None = None
     project: SerumImmProject | None = None
 
-    for _ in range(TEMP_ID_MAX_ATTEMPTS):
-        new_eid = generate_next_id(db, project_code)
+    for attempt in range(TEMP_ID_MAX_ATTEMPTS):
+        new_eid = generate_next_id(db, project_code, skip=attempt)
         if not new_eid:
             raise ValueError("无法生成实验号")
         try:

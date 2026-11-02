@@ -8,6 +8,7 @@ import { useAccess } from '@vben/access';
 import { IconifyIcon as Icon } from '@vben/icons';
 import { ElButton, ElDialog, ElMessage } from 'element-plus';
 
+import { HOME_QUICK_NAV_STORAGE_KEY } from '#/constants/storageKeys';
 import { $t } from '#/locales';
 
 import {
@@ -17,7 +18,6 @@ import {
   getLocalizedQuickNavPresets,
   getQuickNavPresetDef,
   HOME_QUICK_NAV_SLOTS,
-  HOME_QUICK_NAV_STORAGE_KEY,
   homeQuickNavPresetDefs,
   loadUserStartPagePath,
   presetToSlot,

@@ -4,10 +4,11 @@ from io import BytesIO
 import re
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
-from utils.filter_values import clean_field_text, filter_terms, match_any
+from utils.filter_values import clean_field_text, filter_terms, like_contains, match_any
+from utils.header_filters import HeaderColumn, column_values, header_filter_clauses, header_sort_clauses
 
 from models.molecular_cell import (
     LIBRARY_PRIMER_ID_FIELDS,
@@ -137,21 +138,45 @@ def _new(data: dict[str, Any]) -> Primer:
     return row
 
 
-def _filters(data: dict[str, Any], *, include_family: bool = True) -> list:
+# 核对序列由显示序列算出，库里没有这一列，靠顶部筛选
+HEADER_COLUMNS: dict[str, HeaderColumn] = {
+    "name": HeaderColumn(Primer.name),
+    "family": HeaderColumn(Primer.family, "enum", order=PRESET_LIBRARIES),
+    "direction": HeaderColumn(Primer.direction, "enum", order=tuple(DIRECTION_LABELS)),
+    "short_sequence": HeaderColumn(Primer.short_sequence),
+    "note": HeaderColumn(Primer.note),
+    "active": HeaderColumn(case((Primer.active.is_(True), "active"), else_="inactive"), "enum", order=("active", "inactive")),
+}
+_VALUE_LABELS = {
+    "direction": DIRECTION_LABELS,
+    "active": {"active": "启用", "inactive": "停用"},
+}
+DEFAULT_ORDER = (Primer.family, Primer.direction, Primer.name)
+
+
+def _list_order(data: dict[str, Any]):
+    spec = HEADER_COLUMNS.get(str(data.get("sort_field") or "").strip())
+    direction = str(data.get("sort_dir") or "").strip()
+    if spec is not None and direction in {"asc", "desc"}:
+        return header_sort_clauses(spec, direction, Primer.id)
+    return DEFAULT_ORDER
+
+
+def _filters(data: dict[str, Any], *, include_family: bool = True, header_except: str | None = None) -> list:
     filters = []
     name = str(data.get("name") or "").strip()
     if name:
-        filters.append(Primer.name.like(f"%{name}%"))
+        filters.append(like_contains(Primer.name, name))
     sequence = re.sub(r"\s+", "", str(data.get("sequence") or "")).upper()
     if sequence:
-        filters.append(Primer.short_sequence.like(f"%{sequence}%"))
+        filters.append(like_contains(Primer.short_sequence, sequence))
     note = str(data.get("note") or "").strip()
     if note:
-        filters.append(Primer.note.like(f"%{note}%"))
+        filters.append(like_contains(Primer.note, note))
     check_keyword = re.sub(r"\s+", "", str(data.get("check_keyword") or "")).upper()
     if check_keyword:
         if DNA_PATTERN.fullmatch(check_keyword):
-            filters.append(Primer.short_sequence.like(f"%{check_sequence(check_keyword)}%"))
+            filters.append(like_contains(Primer.short_sequence, check_sequence(check_keyword)))
         else:
             filters.append(Primer.id < 0)
     if include_family:
@@ -164,16 +189,17 @@ def _filters(data: dict[str, Any], *, include_family: bool = True) -> list:
         filters.append(direction)
     if isinstance(data.get("active"), bool):
         filters.append(Primer.active == data["active"])
+    filters.extend(header_filter_clauses(None, HEADER_COLUMNS, data.get("field_filters"), except_field=header_except))
     return filters
 
 
 def _stats(db: Session, data: dict[str, Any]) -> dict[str, Any]:
-    """系列统计不随当前选中的系列收缩。两个预置系列始终占位，自建系列有数据才出现。"""
+    """系列统计不随当前选中的系列（顶部和表头）收缩。两个预置系列始终占位，自建系列有数据才出现。"""
     grouped = {
         name: int(count or 0)
         for name, count in db.execute(
             select(Primer.family, func.count())
-            .where(*_filters(data, include_family=False))
+            .where(*_filters(data, include_family=False, header_except="family"))
             .group_by(Primer.family)
         ).all()
     }
@@ -197,7 +223,7 @@ def list_catalog(db: Session, data: dict[str, Any] | None = None) -> dict[str, A
     rows = db.scalars(
         select(Primer)
         .where(*filters)
-        .order_by(Primer.family, Primer.direction, Primer.name)
+        .order_by(*_list_order(payload))
         .offset((page - 1) * limit)
         .limit(limit)
     ).all()
@@ -211,6 +237,30 @@ def list_catalog(db: Session, data: dict[str, Any] | None = None) -> dict[str, A
     }
 
 
+def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    """表头筛选的取值列表：套用除本列表头条件以外的全部筛选。顶部筛选里的本列条件由前端去掉。"""
+    payload = data or {}
+    field = str(payload.get("field") or "").strip()
+    spec = HEADER_COLUMNS.get(field)
+    if spec is None:
+        raise ValueError(f"不支持按「{field}」表头筛选")
+    result = column_values(
+        db,
+        spec,
+        lambda stmt: stmt.where(*_filters(payload, header_except=field)),
+        id_column=Primer.id,
+        keyword=str(payload.get("value_keyword") or ""),
+        limit=payload.get("value_limit"),
+        order=str(payload.get("value_order") or "value"),
+    )
+    labels = _VALUE_LABELS.get(field)
+    if labels:
+        for item in result["items"]:
+            if item["value"] in labels:
+                item["label"] = labels[item["value"]]
+    return result
+
+
 def list_options(
     db: Session,
     query: str | None = None,
@@ -221,14 +271,14 @@ def list_options(
     keyword = str(query or "").strip()
     if keyword:
         sequence = re.sub(r"\s+", "", keyword).upper()
-        clauses = [Primer.name.like(f"%{keyword}%")]
+        clauses = [like_contains(Primer.name, keyword)]
         if DNA_PATTERN.fullmatch(sequence):
-            clauses.append(Primer.short_sequence.like(f"%{sequence}%"))
+            clauses.append(like_contains(Primer.short_sequence, sequence))
             flipped = check_sequence(sequence)
             if flipped != sequence:
-                clauses.append(Primer.short_sequence.like(f"%{flipped}%"))
+                clauses.append(like_contains(Primer.short_sequence, flipped))
         else:
-            clauses.append(Primer.short_sequence.like(f"%{keyword.upper()}%"))
+            clauses.append(like_contains(Primer.short_sequence, keyword.upper()))
         stmt = stmt.where(or_(*clauses))
     if family:
         stmt = stmt.where(Primer.family == family.strip())
@@ -263,11 +313,8 @@ def save(db: Session, data: dict[str, Any]) -> dict[str, Any]:
 
 
 def list_ids(db: Session, data: dict[str, Any] | None = None) -> list[int]:
-    rows = db.scalars(
-        select(Primer.id)
-        .where(*_filters(data or {}))
-        .order_by(Primer.family, Primer.direction, Primer.name)
-    ).all()
+    payload = data or {}
+    rows = db.scalars(select(Primer.id).where(*_filters(payload)).order_by(*_list_order(payload))).all()
     return [int(row_id) for row_id in rows]
 
 
@@ -396,9 +443,8 @@ def batch_save(db: Session, items: list[dict[str, Any]]) -> dict[str, int]:
 def export_workbook(db: Session, data: dict[str, Any] | None = None) -> tuple[BytesIO, str]:
     from utils.excel import build_list_workbook
 
-    rows = db.scalars(
-        select(Primer).where(*_filters(data or {})).order_by(Primer.family, Primer.direction, Primer.name)
-    ).all()
+    payload = data or {}
+    rows = db.scalars(select(Primer).where(*_filters(payload)).order_by(*_list_order(payload))).all()
     return build_list_workbook(
         sheet_title="引物库",
         filename_prefix="引物库",

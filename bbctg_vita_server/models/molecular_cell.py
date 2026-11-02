@@ -32,14 +32,16 @@ class MolecularLibraryOrder(Base):
     __tablename__ = "molecular_library_order"
     __table_args__ = (
         UniqueConstraint("library_order_id", name="uk_molecular_library_order_id"),
+        Index("idx_molecular_library_order_library_code", "library_code"),
+        Index("idx_molecular_library_order_source_discovery_id", "source_discovery_id"),
         {"comment": "文库构建工单"},
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
     library_order_id: Mapped[str] = mapped_column(String(32), nullable=False, comment="系统工单号")
-    library_code: Mapped[str | None] = mapped_column(String(64), index=True, comment="建库编号")
-    source_discovery_id: Mapped[str | None] = mapped_column(String(32), index=True, comment="来源发现ID")
-    source_project_code: Mapped[str | None] = mapped_column(String(64), index=True, comment="来源项目编号")
+    library_code: Mapped[str | None] = mapped_column(String(64), comment="建库编号")
+    source_discovery_id: Mapped[str | None] = mapped_column(String(32), comment="来源发现ID")
+    source_project_code: Mapped[str | None] = mapped_column(String(64), comment="来源项目编号")
     study_type: Mapped[str | None] = mapped_column(String(64), comment="课题类型")
     source_experiment_type: Mapped[str | None] = mapped_column(String(64), comment="噬菌体实验类型")
     project_goal: Mapped[str | None] = mapped_column(String(1000), comment="噬菌体实验目标")
@@ -47,10 +49,10 @@ class MolecularLibraryOrder(Base):
     target_codes: Mapped[list[str] | None] = mapped_column(JSON, comment="靶点编号列表")
     pm: Mapped[str | None] = mapped_column(String(64), comment="PM")
     mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="小鼠品系")
-    sample_type: Mapped[str | None] = mapped_column(String(32), index=True, comment="样品类型")
+    sample_type: Mapped[str | None] = mapped_column(String(32), comment="样品类型")
 
-    build_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True, comment="建库类型")
-    sample_source: Mapped[str | None] = mapped_column(String(32), index=True, comment="样品来源")
+    build_type: Mapped[str] = mapped_column(String(32), nullable=False, comment="建库类型")
+    sample_source: Mapped[str | None] = mapped_column(String(32), comment="样品来源")
     received_on: Mapped[date | None] = mapped_column(Date, comment="样品交接日期")
     instrument_on: Mapped[date | None] = mapped_column(Date, comment="上机日期")
     blood_collected_on: Mapped[date | None] = mapped_column(Date, comment="采血日期")
@@ -60,9 +62,9 @@ class MolecularLibraryOrder(Base):
     target_forms: Mapped[str | None] = mapped_column(String(16), comment="靶点形式")
     notebook_no: Mapped[str | None] = mapped_column(String(64), comment="实验记录本号")
     immunization_stage: Mapped[str | None] = mapped_column(String(64), comment="免疫阶段")
-    library_batch_no: Mapped[str | None] = mapped_column(String(64), index=True, comment="建库批号")
+    library_batch_no: Mapped[str | None] = mapped_column(String(64), comment="建库批号")
 
-    status: Mapped[str] = mapped_column(String(24), nullable=False, index=True, comment="状态")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, comment="状态")
     priority: Mapped[str] = mapped_column(String(24), nullable=False, comment="优先级")
     owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
     started_at: Mapped[date | None] = mapped_column(Date, comment="工单开始日期")
@@ -136,7 +138,7 @@ class MolecularPrimerIndexCatalog(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
     name: Mapped[str] = mapped_column(String(128), nullable=False, comment="名称")
-    family: Mapped[str] = mapped_column(String(32), nullable=False, index=True, comment="系列")
+    family: Mapped[str] = mapped_column(String(32), nullable=False, comment="系列")
     direction: Mapped[str | None] = mapped_column(String(8), comment="原始方向")
     version: Mapped[str | None] = mapped_column(String(16), comment="版本")
     short_sequence: Mapped[str] = mapped_column(String(64), nullable=False, comment="显示序列")
@@ -173,6 +175,7 @@ class MolecularLibraryResultPackage(Base):
     __tablename__ = "molecular_library_result_package"
     __table_args__ = (
         UniqueConstraint("signature", name="uk_molecular_library_result_package_signature"),
+        Index("idx_molecular_library_result_package_owner_order_id", "owner_order_id"),
         {"comment": "文库测序结果包"},
     )
 
@@ -183,7 +186,6 @@ class MolecularLibraryResultPackage(Base):
     owner_order_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("molecular_library_order.id"),
-        index=True,
         comment="质检页上传所属工单",
     )
     uploaded_by: Mapped[str | None] = mapped_column(String(64), comment="上传人")
@@ -202,6 +204,7 @@ class MolecularLibraryResultFile(Base):
     __tablename__ = "molecular_library_result_file"
     __table_args__ = (
         Index("idx_molecular_library_result_sha256", "sha256"),
+        Index("idx_molecular_library_result_file_package_id", "package_id"),
         UniqueConstraint("dedupe_key", name="uk_molecular_library_result_dedupe_key"),
         {"comment": "文库结果文件"},
     )
@@ -210,7 +213,6 @@ class MolecularLibraryResultFile(Base):
     package_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("molecular_library_result_package.id"),
-        index=True,
         comment="所属测序包",
     )
     relative_path: Mapped[str | None] = mapped_column(
@@ -240,6 +242,7 @@ class MolecularLibraryResultLink(Base):
     __tablename__ = "molecular_library_result_link"
     __table_args__ = (
         UniqueConstraint("file_id", "order_id", name="uk_molecular_library_result_link"),
+        Index("idx_molecular_library_result_link_order_id", "order_id"),
         {"comment": "文库结果关联"},
     )
 
@@ -248,14 +251,12 @@ class MolecularLibraryResultLink(Base):
         BigInteger,
         ForeignKey("molecular_library_result_file.id"),
         nullable=False,
-        index=True,
         comment="物理文件ID",
     )
     order_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("molecular_library_order.id"),
         nullable=False,
-        index=True,
         comment="文库工单ID",
     )
     original_name: Mapped[str] = mapped_column(String(255), nullable=False, comment="显示文件名")

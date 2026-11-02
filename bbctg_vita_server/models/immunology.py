@@ -1,19 +1,21 @@
-from sqlalchemy import BigInteger, DateTime, Integer, JSON, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, DateTime, Index, Integer, JSON, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
+from models.types import DateString
 
 
 class SerumImmProject(Base):
     __tablename__ = "serum_imm_project"
+    __table_args__ = (UniqueConstraint("experiment_id", name="uk_serum_imm_project_experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    experiment_id: Mapped[str | None] = mapped_column(String(64), unique=True)
+    experiment_id: Mapped[str | None] = mapped_column(String(64))
     project_code: Mapped[str | None] = mapped_column(String(64))
     project_name: Mapped[str | None] = mapped_column(String(255))
     lab_notebook: Mapped[str | None] = mapped_column(String(64))
     project_purpose: Mapped[str | None] = mapped_column(String(255))
-    start_date: Mapped[str | None] = mapped_column(String(32))
+    start_date: Mapped[str | None] = mapped_column(DateString)
     immunization_interval: Mapped[str | None] = mapped_column(String(32))
     target_codes: Mapped[list[str] | None] = mapped_column(JSON)
     target_name: Mapped[str | None] = mapped_column(String(128))
@@ -61,6 +63,7 @@ class SerumImmProject(Base):
 
 class SerumImmMouse(Base):
     __tablename__ = "serum_imm_mouse"
+    __table_args__ = (Index("idx_serum_imm_mouse_experiment_id", "experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     experiment_id: Mapped[str | None] = mapped_column(String(64))
@@ -96,6 +99,7 @@ class SerumImmMouse(Base):
 
 class SerumFile(Base):
     __tablename__ = "serum_file"
+    __table_args__ = (Index("idx_serum_file_experiment_id", "experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     experiment_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -168,6 +172,7 @@ class SerumImmAntigen(Base):
 
 class SerumImmStep(Base):
     __tablename__ = "serum_imm_step"
+    __table_args__ = (Index("idx_serum_imm_step_experiment_id", "experiment_id"),)
 
     step_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     experiment_id: Mapped[str | None] = mapped_column(String(64))
@@ -182,7 +187,7 @@ class SerumImmStep(Base):
     route: Mapped[str | None] = mapped_column(String(32))
     injection_site: Mapped[str | None] = mapped_column(String(64))
     day_relative: Mapped[str | None] = mapped_column(String(16))
-    date_actual: Mapped[str | None] = mapped_column(String(32))
+    date_actual: Mapped[str | None] = mapped_column(DateString)
     remark: Mapped[str | None] = mapped_column(String(255))
 
     def to_dict(self) -> dict:
@@ -207,6 +212,7 @@ class SerumImmStep(Base):
 
 class SerumTiterPc(Base):
     __tablename__ = "serum_titer_pc"
+    __table_args__ = (Index("idx_serum_titer_pc_experiment_id", "experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     experiment_id: Mapped[str | None] = mapped_column(String(64))
@@ -228,6 +234,7 @@ class SerumTiterPc(Base):
 
 class SerumTiterTarget(Base):
     __tablename__ = "serum_titer_target"
+    __table_args__ = (Index("idx_serum_titer_target_experiment_id", "experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     experiment_id: Mapped[str | None] = mapped_column(String(64))
@@ -257,6 +264,7 @@ class SerumTiterTarget(Base):
 
 class SerumElisaPlate(Base):
     __tablename__ = "serum_elisa_plate"
+    __table_args__ = (Index("idx_serum_elisa_plate_experiment_id", "experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     experiment_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -295,6 +303,7 @@ class SerumElisaPlate(Base):
 
 class SerumFacsPlate(Base):
     __tablename__ = "serum_facs_plate"
+    __table_args__ = (Index("idx_serum_facs_plate_experiment_id", "experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     experiment_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -343,13 +352,16 @@ class SerumFacsPlate(Base):
 
 class SerumTiterOrder(Base):
     __tablename__ = "serum_titer_order"
-    __table_args__ = (UniqueConstraint("titer_order_id", name="uk_serum_titer_order_id"),)
+    __table_args__ = (
+        UniqueConstraint("titer_order_id", name="uk_serum_titer_order_id"),
+        Index("idx_serum_titer_order_experiment_id", "experiment_id"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     experiment_id: Mapped[str] = mapped_column(String(64), nullable=False)
     titer_order_id: Mapped[str] = mapped_column(String(128), nullable=False)
     cage_position: Mapped[str | None] = mapped_column(String(64))
-    blood_collection_date: Mapped[str | None] = mapped_column(String(32))
+    blood_collection_date: Mapped[str | None] = mapped_column(DateString)
     blood_collection_seq: Mapped[int | None] = mapped_column(Integer)
     mouse_count: Mapped[int | None] = mapped_column(Integer)
     assay_method: Mapped[str | None] = mapped_column(String(128))
@@ -388,13 +400,14 @@ class SerumTiterOrder(Base):
 
 class SerumImmWorkbench(Base):
     __tablename__ = "serum_imm_workbench"
+    __table_args__ = (UniqueConstraint("experiment_id", name="uk_serum_imm_workbench_experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    experiment_id: Mapped[str | None] = mapped_column(String(64), unique=True)
+    experiment_id: Mapped[str | None] = mapped_column(String(64))
     project_code: Mapped[str | None] = mapped_column(String(64))
     project_name: Mapped[str | None] = mapped_column(String(255))
     project_purpose: Mapped[str | None] = mapped_column(String(255))
-    start_date: Mapped[str | None] = mapped_column(String(32))
+    start_date: Mapped[str | None] = mapped_column(DateString)
     immunization_interval: Mapped[str | None] = mapped_column(String(32))
     target_codes: Mapped[list[str] | None] = mapped_column(JSON)
     target_name: Mapped[str | None] = mapped_column(String(128))
@@ -420,13 +433,13 @@ class SerumImmWorkbench(Base):
     mouse_scheme_no: Mapped[str | None] = mapped_column(String(64))
     mouse_count: Mapped[str | None] = mapped_column(String(32))
     mouse_zygosity: Mapped[str | None] = mapped_column(String(32))
-    mouse_birth_date: Mapped[str | None] = mapped_column(String(32))
+    mouse_birth_date: Mapped[str | None] = mapped_column(DateString)
     mouse_age_weeks: Mapped[str | None] = mapped_column(String(32))
     mouse_expand_requested: Mapped[str | None] = mapped_column(String(16))
     mouse_region: Mapped[str | None] = mapped_column(String(64))
     mouse_room: Mapped[str | None] = mapped_column(String(64))
     mouse_status: Mapped[str | None] = mapped_column(String(32))
-    mouse_arrive_date: Mapped[str | None] = mapped_column(String(32))
+    mouse_arrive_date: Mapped[str | None] = mapped_column(DateString)
     mouse_remark: Mapped[str | None] = mapped_column(String(255))
     antigen_source: Mapped[str | None] = mapped_column(String(128))
     antigen_ready: Mapped[str | None] = mapped_column(String(16))

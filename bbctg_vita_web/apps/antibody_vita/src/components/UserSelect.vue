@@ -3,7 +3,8 @@
     :is="multiGesture ? ListFilterSelect : ElSelect"
     :model-value="modelValue"
     filterable
-    :filter-method="handleFilter"
+    remote
+    :remote-method="handleFilter"
     :loading="loading"
     :placeholder="placeholder"
     :disabled="disabled"
@@ -28,11 +29,8 @@ import { ElOption, ElSelect } from 'element-plus';
 
 import ListFilterSelect from '#/components/ListFilterSelect.vue';
 
-import {
-  getCachedSerumUserOptions,
-  loadSerumUserOptions,
-  uniqueNames,
-} from '#/utils/serumUserOptions';
+import { createLatestRequest } from '#/utils/latestRequest';
+import { searchUserNames, uniqueNames } from '#/utils/userOptions';
 
 const props = withDefaults(
   defineProps<{
@@ -59,8 +57,9 @@ const emit = defineEmits<{
 }>();
 
 const query = ref('');
-const allUserNames = ref<string[]>(getCachedSerumUserOptions());
+const remoteNames = ref<string[]>([]);
 const loading = ref(false);
+const remoteRequest = createLatestRequest();
 
 function currentNames() {
   if (Array.isArray(props.modelValue)) {
@@ -79,30 +78,37 @@ function emitValue(value: unknown, notify = false) {
   if (notify) emit('change', stored);
 }
 
+/** 没输关键字只列页面给的常用人员；输了再并上服务端按关键字查到的在职人员。 */
 const displayedOptions = computed(() => {
   const keyword = query.value.trim().toLocaleLowerCase();
-  const selected = currentNames();
-  if (!keyword) return uniqueNames([...selected, ...props.options]);
+  if (!keyword) return uniqueNames([...currentNames(), ...props.options]);
   return uniqueNames([
-    ...selected,
-    ...allUserNames.value.filter((item) => item.toLocaleLowerCase().includes(keyword)),
+    ...currentNames(),
+    ...props.options.filter((item) => item.toLocaleLowerCase().includes(keyword)),
+    ...remoteNames.value,
   ]);
 });
 
 async function handleFilter(value: string) {
   query.value = value;
-  if (!value.trim() || allUserNames.value.length) return;
+  const isLatest = remoteRequest.begin();
+  if (!value.trim()) {
+    remoteNames.value = [];
+    loading.value = false;
+    return;
+  }
   loading.value = true;
   try {
-    allUserNames.value = await loadSerumUserOptions();
+    const items = await searchUserNames(value, 30);
+    if (isLatest()) remoteNames.value = items;
   } catch {
-    allUserNames.value = [];
+    if (isLatest()) remoteNames.value = [];
   } finally {
-    loading.value = false;
+    if (isLatest()) loading.value = false;
   }
 }
 
 function handleVisibleChange(visible: boolean) {
-  if (!visible) query.value = '';
+  if (!visible) handleFilter('');
 }
 </script>

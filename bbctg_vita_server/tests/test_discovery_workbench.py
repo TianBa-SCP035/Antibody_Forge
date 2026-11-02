@@ -3,37 +3,17 @@ import unittest
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
-from sqlalchemy import BigInteger, create_engine
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.orm import sessionmaker
-
-from db.session import Base
 from models.discovery import DiscoveryWorkbench
 from models.target import Target
 from modules.discovery.workbench import service
-
-
-@compiles(BigInteger, "sqlite")
-def _compile_big_integer_for_sqlite(_type, _compiler, **_kwargs):
-    return "INTEGER"
+from support import DbTestCase
 
 
 DISCOVERY_ID_RE = re.compile(r"^DSC-\d{6}-[A-Z0-9]{6}$")
 
 
-class DiscoveryWorkbenchIdTests(unittest.TestCase):
-    def setUp(self):
-        self.engine = create_engine("sqlite+pysqlite:///:memory:")
-        Base.metadata.create_all(
-            self.engine,
-            tables=[DiscoveryWorkbench.__table__, Target.__table__],
-        )
-        self.Session = sessionmaker(bind=self.engine, autoflush=False, expire_on_commit=False)
-        self.db = self.Session()
-
-    def tearDown(self):
-        self.db.close()
-        self.engine.dispose()
+class DiscoveryWorkbenchIdTests(DbTestCase):
+    tables = (DiscoveryWorkbench, Target)
 
     def test_generate_discovery_id_format(self):
         value = service.generate_discovery_id(datetime(2026, 9, 17, 10, 26, 0))
@@ -100,6 +80,9 @@ class DiscoveryWorkbenchIdTests(unittest.TestCase):
         self.assertEqual(options["screening_antigens"], ["筛A", "筛B"])
         self.assertEqual(options["immune_owners"], ["张三"])
         self.assertEqual(options["cell_collectors"], ["李四"])
+        self.assertEqual(options["priorities"], ["正常", "加急", "非常紧急", "吉吉国王"])
+        self.assertIn("RNVM", options["mouse_strains"])
+        self.assertIn("RN-VM", options["mouse_strain_categories"])
 
     def test_mouse_category_is_joined_text_and_harvest_shifts_boost(self):
         harvest = date.today() + timedelta(days=30)
@@ -219,6 +202,77 @@ class DiscoveryWorkbenchIdTests(unittest.TestCase):
             self.assertEqual(saved[field], long_text)
         with self.assertRaisesRegex(ValueError, "字段长度不能超过 1000"):
             service.save(self.db, {"immune_antigen": "A" * 1001})
+
+
+class DiscoveryHeaderFilterTests(DbTestCase):
+    tables = (DiscoveryWorkbench, Target)
+    ROWS = [
+        dict(project_code="P1", status=None, owner="甲", target_name="PD-L1", target_codes=["20R001"],
+             mouse_strain="RN、自定义", screening_methods="达普,NGS", harvest_date="2026-01-05",
+             mouse_count=5, remark="首批"),
+        dict(project_code="P2", status="待剖鼠", owner="乙", target_name="HER2", target_codes=["20R002"],
+             mouse_strain="RN", screening_methods="噬菌体", harvest_date=None, mouse_count=None),
+        dict(project_code="P3", status="已取消", owner=None, target_name="PD-L1", target_codes=["20R001"],
+             mouse_strain=None, screening_methods=None, harvest_date="2026-03-01", mouse_count=8),
+    ]
+
+    def setUp(self):
+        super().setUp()
+        with self.Session() as db:
+            for index, row in enumerate(self.ROWS, start=1):
+                db.add(DiscoveryWorkbench(discovery_id=f"DSC-260101-{index:06d}", **row))
+            db.commit()
+
+    def codes(self, *field_filters, **extra):
+        with self.Session() as db:
+            data = {"limit": 50, "field_filters": list(field_filters), **extra}
+            return [item["project_code"] for item in service.get_list(db, data)["items"]]
+
+    def values(self, field, **extra):
+        with self.Session() as db:
+            items = service.get_column_values(db, {"field": field, **extra})["items"]
+            return {item["value"]: item["count"] for item in items}
+
+    def test_filters_and_conditions(self):
+        self.assertEqual(sorted(self.codes({"field": "owner", "exclude": ["甲"]})), ["P2", "P3"])
+        self.assertEqual(self.codes({"field": "status", "values": ["规划中"]}), ["P1"])
+        self.assertEqual(self.codes({"field": "mouse_strain", "values": ["自定义"]}), ["P1"])
+        self.assertEqual(self.codes({"field": "harvest_date", "condition": {"op": "blank"}}), ["P2"])
+        self.assertEqual(self.codes({"field": "mouse_count", "condition": {"op": "gte", "value": "6"}}), ["P3"])
+        self.assertEqual(sorted(self.codes({"field": "target_name", "values": ["PD-L1"]})), ["P1", "P3"])
+
+    def test_top_csv_filter_accepts_custom_values(self):
+        self.assertEqual(self.codes(mouse_strain="自定义"), ["P1"])
+        self.assertEqual(self.codes(screening_methods=["NGS", "噬菌体"]), ["P2", "P1"])
+
+    def test_header_sort_uses_business_order_and_blanks_last(self):
+        self.assertEqual(self.codes(sort_field="status", sort_dir="asc"), ["P1", "P2", "P3"])
+        self.assertEqual(self.codes(sort_field="harvest_date", sort_dir="asc"), ["P1", "P3", "P2"])
+        self.assertEqual(self.codes(sort_field="harvest_date", sort_dir="desc"), ["P3", "P1", "P2"])
+
+    def test_value_lists(self):
+        self.assertEqual(self.values("screening_methods"), {"达普": 1, "NGS": 1, "噬菌体": 1, "": 1})
+        self.assertEqual(self.values("status"), {"规划中": 1, "待剖鼠": 1, "已取消": 1})
+        own = {"field": "owner", "values": ["甲"]}
+        self.assertEqual(self.values("owner", keyword="P", field_filters=[own]), {"甲": 1, "乙": 1, "": 1})
+        other = {"field": "status", "values": ["待剖鼠"]}
+        self.assertEqual(self.values("owner", field_filters=[other]), {"乙": 1})
+        self.assertEqual(self.values("owner", keyword="P1", value_keyword="甲"), {"甲": 1})
+
+    def test_stats_and_export_follow_header_filters(self):
+        header = [{"field": "status", "exclude": ["已取消"]}]
+        with self.Session() as db:
+            data = service.get_list(db, {"limit": 50, "field_filters": header})
+            self.assertEqual(data["total"], 2)
+            self.assertEqual(data["stats"]["all"], 2)
+            self.assertEqual(data["stats"]["cancelled"], 0)
+            with patch("utils.excel.build_list_workbook", side_effect=lambda **kw: kw) as built:
+                service.export_list_workbook(db, {
+                    "field_filters": header, "sort_field": "project_code", "sort_dir": "desc",
+                })
+            rows = built.call_args.kwargs["rows"]
+            code_at = [h for h, _ in service.EXPORT_COLUMNS].index("项目编号")
+            self.assertEqual([row[code_at] for row in rows], ["P2", "P1"])
 
 
 if __name__ == "__main__":

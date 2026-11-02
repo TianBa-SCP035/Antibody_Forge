@@ -16,6 +16,13 @@ export function fetchWorkbenchList(data: any, config?: PostConfig) {
   });
 }
 
+export function fetchWorkbenchColumnValues(data: any, config?: PostConfig) {
+  return requestClient.post('/serum/workbench/column_values', data, {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
 export function fetchWorkbenchOptions(config?: RequestConfig) {
   return requestClient.get('/serum/workbench/options', config);
 }

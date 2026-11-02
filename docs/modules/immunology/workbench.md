@@ -85,6 +85,7 @@
 | POST | `/list` | 分页；可传 `view_group`，返回状态视图 `stats` |
 | POST | `/export_list` | 按当前筛选导出；鼠型两列与列表相同，其余为工作台主表字段 |
 | GET | `/options` | 工作台自有筛选 / 编辑选项 |
+| GET | `/recorded_targets` | 顶部靶点筛选的远程搜索（`keyword`、`limit`，默认 50、最多 200），只返回本表已录入的靶点 |
 | GET | `/detail` | 含子表 |
 | POST | `/save` | 无 id 新增；有 id 时只更新传入字段，不存在返回 404 |
 | POST | `/save_batch` | 表格脏行单事务保存；任一行失败则全部回滚 |

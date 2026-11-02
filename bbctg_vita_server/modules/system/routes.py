@@ -25,7 +25,8 @@ from modules.auth.security import hash_password
 from modules.system.features import list_feature_flags, list_job_run_logs, save_feature_flag
 from modules.system.permissions import build_user_context, require_permission
 from jobs.registry import apply_job_schedule, run_scheduled_job_now, scheduler_is_running
-from utils.filter_values import filter_terms, restrict
+from utils.filter_values import filter_terms, like_contains, like_literal, restrict
+from utils.clock import now_local
 
 router = APIRouter()
 
@@ -59,7 +60,7 @@ def _compact_like(column, value: str):
     text = _compact_text(value)
     if not text:
         return None
-    return _compact_column(column).like(f"%{text}%")
+    return like_contains(_compact_column(column), text)
 
 
 def _apply_user_role_filter(stmt, role_id):
@@ -113,11 +114,11 @@ def list_users(
     stmt = select(SysUser).order_by(SysUser.id.desc())
     compact_keyword = _compact_text(keyword)
     if compact_keyword:
-        pattern = f"%{compact_keyword}%"
+        pattern = f"%{like_literal(compact_keyword)}%"
         stmt = stmt.where(
-            (_compact_column(SysUser.username).like(pattern))
-            | (_compact_column(SysUser.display_name).like(pattern))
-            | (_compact_column(SysUser.job_no).like(pattern))
+            (_compact_column(SysUser.username).like(pattern, escape="\\"))
+            | (_compact_column(SysUser.display_name).like(pattern, escape="\\"))
+            | (_compact_column(SysUser.job_no).like(pattern, escape="\\"))
         )
     stmt = restrict(stmt, department, lambda value: _compact_like(SysUser.department, value))
     stmt = restrict(stmt, group_name, lambda value: _compact_like(SysUser.group_name, value))
@@ -177,20 +178,20 @@ def user_suggestions(
 ) -> dict:
     require_permission(db, current_user, "system.user.manage")
     compact_keyword = _compact_text(keyword)
-    pattern = f"%{compact_keyword}%"
+    pattern = f"%{like_literal(compact_keyword)}%"
     limit = min(max(limit, 1), 200)
 
     if field == "department":
         stmt = select(SysUser.department).where(SysUser.department.is_not(None))
         if compact_keyword:
-            stmt = stmt.where(_compact_column(SysUser.department).like(pattern))
+            stmt = stmt.where(_compact_column(SysUser.department).like(pattern, escape="\\"))
         items = db.scalars(stmt.distinct().order_by(SysUser.department).limit(limit)).all()
         return success({"items": [item for item in items if item]})
 
     if field == "group_name":
         stmt = select(SysUser.group_name).where(SysUser.group_name.is_not(None))
         if compact_keyword:
-            stmt = stmt.where(_compact_column(SysUser.group_name).like(pattern))
+            stmt = stmt.where(_compact_column(SysUser.group_name).like(pattern, escape="\\"))
         items = db.scalars(stmt.distinct().order_by(SysUser.group_name).limit(limit)).all()
         return success({"items": [item for item in items if item]})
 
@@ -198,9 +199,9 @@ def user_suggestions(
         stmt = select(SysUser).order_by(SysUser.id.desc())
         if compact_keyword:
             stmt = stmt.where(
-                (_compact_column(SysUser.username).like(pattern))
-                | (_compact_column(SysUser.display_name).like(pattern))
-                | (_compact_column(SysUser.job_no).like(pattern))
+                (_compact_column(SysUser.username).like(pattern, escape="\\"))
+                | (_compact_column(SysUser.display_name).like(pattern, escape="\\"))
+                | (_compact_column(SysUser.job_no).like(pattern, escape="\\"))
             )
         users = db.scalars(stmt.limit(limit)).all()
         values: list[str] = []
@@ -314,11 +315,13 @@ def feature_job_logs(
 
 @router.get("/features/system_status")
 def feature_system_status(
+    db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    require_permission(db, current_user, "system.page.feature")
     return success(
         {
-            "server_time": datetime.now().isoformat(timespec="seconds"),
+            "server_time": now_local().isoformat(timespec="seconds"),
             "timezone": "Asia/Shanghai",
             "user_id": current_user.id,
             "app_env": get_settings().app_env,
@@ -356,6 +359,7 @@ def effective_features(
                     "visible": item["visible"],
                 }
                 for item in list_feature_flags(db)
+                if item["category"] != "job"
             ]
         }
     )
@@ -692,19 +696,19 @@ def list_operation_logs(
     stmt = select(SysOperationLog)
     operator = operator.strip()
     if operator:
-        pattern = f"%{operator}%"
+        pattern = f"%{like_literal(operator)}%"
         stmt = stmt.where(
             or_(
-                SysOperationLog.username.like(pattern),
-                SysOperationLog.operator_name.like(pattern),
+                SysOperationLog.username.like(pattern, escape="\\"),
+                SysOperationLog.operator_name.like(pattern, escape="\\"),
             )
         )
     action = action.strip()
     if action:
-        pattern = f"%{action}%"
+        pattern = f"%{like_literal(action)}%"
         action_match = [
-            SysOperationLog.operation_name.like(pattern),
-            SysOperationLog.action.like(pattern),
+            SysOperationLog.operation_name.like(pattern, escape="\\"),
+            SysOperationLog.action.like(pattern, escape="\\"),
         ]
         for raw, label in _LOG_ACTION_LABELS.items():
             if action in label:
@@ -714,26 +718,26 @@ def list_operation_logs(
     stmt = restrict(stmt, target_type, lambda value: SysOperationLog.target_type == value)
     target = target.strip()
     if target:
-        pattern = f"%{target}%"
+        pattern = f"%{like_literal(target)}%"
         stmt = stmt.where(
             or_(
-                SysOperationLog.target_label.like(pattern),
-                SysOperationLog.target_id.like(pattern),
+                SysOperationLog.target_label.like(pattern, escape="\\"),
+                SysOperationLog.target_id.like(pattern, escape="\\"),
             )
         )
     stmt = restrict(stmt, source, lambda value: SysOperationLog.source == value)
     change = change.strip()
     if change:
-        pattern = f"%{change}%"
+        pattern = f"%{like_literal(change)}%"
         stmt = stmt.where(
             func.json_unquote(
                 func.json_extract(SysOperationLog.detail, "$.change_summary")
-            ).like(pattern)
+            ).like(pattern, escape="\\")
         )
     stmt = restrict(stmt, result, lambda value: SysOperationLog.result == value)
     error_message = error_message.strip()
     if error_message:
-        stmt = stmt.where(SysOperationLog.error_message.like(f"%{error_message}%"))
+        stmt = stmt.where(like_contains(SysOperationLog.error_message, error_message))
     stmt = restrict(stmt, operation_type, lambda value: SysOperationLog.operation_type == value)
     if request_id:
         stmt = stmt.where(SysOperationLog.request_id == request_id)

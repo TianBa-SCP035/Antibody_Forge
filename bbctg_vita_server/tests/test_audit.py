@@ -5,9 +5,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import MagicMock, patch
 
-from sqlalchemy import BigInteger, Integer, JSON, String, create_engine, event, select
+from sqlalchemy import Integer, JSON, String, event, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped, mapped_column, sessionmaker
 from sqlalchemy.orm.attributes import flag_modified
 import modules.mega_automation.routes as mega_routes
@@ -35,11 +34,7 @@ from modules.system.audit_coverage import unclassified_write_routes
 from modules.system.audit_middleware import _parse_result
 from modules.system.audit_session import setup_session_audit
 from server import app
-
-
-@compiles(BigInteger, "sqlite")
-def _compile_big_integer_for_sqlite(_type, _compiler, **_kwargs):
-    return "INTEGER"
+from support import DbTestCase
 
 
 class AuditExample(Base):
@@ -52,29 +47,13 @@ class AuditExample(Base):
     payload: Mapped[object | None] = mapped_column(JSON, comment="数据")
 
 
-class AuditSessionTests(unittest.TestCase):
+class AuditSessionTests(DbTestCase):
+    tables = (AuditExample, SysOperationLog, SysOperationLogItem)
+    session_options = {"class_": AuditedSession, "expire_on_commit": False}
+
     @classmethod
     def setUpClass(cls):
         setup_session_audit()
-
-    def setUp(self):
-        self.engine = create_engine("sqlite+pysqlite:///:memory:")
-        Base.metadata.create_all(
-            self.engine,
-            tables=[
-                AuditExample.__table__,
-                SysOperationLog.__table__,
-                SysOperationLogItem.__table__,
-            ],
-        )
-        self.Session = sessionmaker(
-            bind=self.engine,
-            class_=AuditedSession,
-            expire_on_commit=False,
-        )
-
-    def tearDown(self):
-        self.engine.dispose()
 
     def test_create_update_delete_are_captured_without_model_configuration(self):
         with self.Session() as db:

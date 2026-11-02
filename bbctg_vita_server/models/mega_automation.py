@@ -9,7 +9,6 @@ from db.session import Base
 class MegaFlowWorkOrder(Base):
     __tablename__ = "mega_flow_work_order"
     __table_args__ = (
-        Index("idx_mega_flow_work_order_status", "status"),
         Index("idx_mega_flow_work_order_project_nos", text("(CAST(project_nos AS CHAR(128) ARRAY))")),
         Index("idx_mega_flow_work_order_targets", text("(CAST(targets AS CHAR(128) ARRAY))")),
         Index(

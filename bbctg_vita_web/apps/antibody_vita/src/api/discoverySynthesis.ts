@@ -18,6 +18,13 @@ export function fetchDiscoverySynthesisList(data: any, config?: PostConfig) {
   });
 }
 
+export function fetchDiscoverySynthesisColumnValues(data: any, config?: PostConfig) {
+  return requestClient.post('/discovery/synthesis-progress/column_values', data, {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
 export function fetchDiscoverySynthesisOptions(config?: RequestConfig) {
   return requestClient.get('/discovery/synthesis-progress/options', {
     ...skipGlobalErrorHandler,

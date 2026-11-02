@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime
 import json
+from collections import defaultdict
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import String, case, cast, func, or_, select
 from sqlalchemy.orm import Session, defer
 
-from utils.filter_values import combine_any, filter_terms, match_any, split_code_tokens
+from utils.filter_values import combine_any, filter_terms, like_literal, match_any, split_code_tokens
+from utils.header_filters import HeaderColumn, column_values, header_filter_clauses, header_sort_clauses
 
 from models.immunology import SerumImmProject, SerumTiterOrder
 from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
@@ -52,6 +53,7 @@ from modules.mega_automation.dispatch import (
     void_open_dispatches,
 )
 from modules.mega_automation.payload import build_dispatch_payload
+from utils.clock import now_local
 
 
 WORK_ORDER_STATUSES = [
@@ -60,7 +62,8 @@ WORK_ORDER_STATUSES = [
     {"value": "sent", "label": "已发送"},
     {"value": "running", "label": "执行中"},
     {"value": "paused", "label": "已暂停"},
-    {"value": "execution_failed", "label": "执行失败"},
+    # 筛选/统计里 execution_failed 代表三种执行异常的合计，单条工单仍显示具体状态
+    {"value": "execution_failed", "label": "执行异常"},
     {"value": "completed", "label": "已完成"},
     {"value": "failed", "label": "校验失败"},
     {"value": "cancelled", "label": "已作废"},
@@ -467,15 +470,83 @@ def _list_status_clause(status: str):
     return MegaFlowWorkOrder.status == text
 
 
-def _work_order_list_stmt(data: dict[str, Any]):
-    stmt = select(MegaFlowWorkOrder)
+def _json_array_column(column) -> HeaderColumn:
+    """JSON 数组列：按「含有任一值」匹配，NULL 和空数组都算空白。"""
+
+    def match(_db, tokens: list[str]):
+        return _json_overlaps(column, tokens)
+
+    def values(db: Session, scoped, keyword: str) -> list[dict[str, Any]]:
+        counts: dict[str, int] = defaultdict(int)
+        for items in db.scalars(scoped(select(column).where(column.is_not(None)))):
+            if not isinstance(items, list):
+                continue
+            for token in {clean_text(item) for item in items} - {""}:
+                counts[token] += 1
+        text = keyword.lower()
+        found = sorted(token for token in counts if not text or text in token.lower())
+        return [{"value": token, "count": counts[token]} for token in found]
+
+    return HeaderColumn(
+        cast(column, String),
+        "multi",
+        match=match,
+        values=values,
+        blank=or_(column.is_(None), func.json_length(column) == 0),
+    )
+
+
+_W = MegaFlowWorkOrder
+# 状态与统计块同口径：三种执行异常合为 execution_failed
+_STATUS_GROUP = case((_W.status.in_(sorted(EXECUTION_ISSUE_STATUSES)), "execution_failed"), else_=_W.status)
+HEADER_COLUMNS: dict[str, HeaderColumn] = {
+    "orderNum": HeaderColumn(_W.orderNum),
+    "orderName": HeaderColumn(_W.orderName),
+    "orderType": HeaderColumn(_W.orderType, "enum", order=tuple(ORDER_TYPE_LABELS)),
+    "priority": HeaderColumn(_W.priority, "enum", order=tuple(PRIORITY_LABELS)),
+    "project_nos": _json_array_column(_W.project_nos),
+    "targets": _json_array_column(_W.targets),
+    "sample_plate_barcodes": _json_array_column(_W.sample_plate_barcodes),
+    "cell_plate_barcodes": _json_array_column(_W.cell_plate_barcodes),
+    "remark": HeaderColumn(_W.remark),
+    "status": HeaderColumn(_STATUS_GROUP, "enum", order=tuple(item["value"] for item in WORK_ORDER_STATUSES)),
+    "created_by": HeaderColumn(_W.created_by, "enum"),
+    "sent_at": HeaderColumn(func.date(_W.sent_at), "date"),
+    "updated_at": HeaderColumn(func.date(_W.updated_at), "date"),
+}
+# 时间列按日筛选，排序仍按完整时间
+_SORT_COLUMNS = {
+    "sent_at": HeaderColumn(_W.sent_at, "date"),
+    "updated_at": HeaderColumn(_W.updated_at, "date"),
+}
+_VALUE_LABELS = {
+    "orderType": ORDER_TYPE_LABELS,
+    "priority": PRIORITY_LABELS,
+    "status": {item["value"]: item["label"] for item in WORK_ORDER_STATUSES},
+}
+
+
+def _list_order(data: dict[str, Any]):
+    field = str(data.get("sort_field") or "").strip()
+    spec = _SORT_COLUMNS.get(field) or HEADER_COLUMNS.get(field)
+    direction = str(data.get("sort_dir") or "").strip()
+    if spec is not None and direction in {"asc", "desc"}:
+        return header_sort_clauses(spec, direction, _W.id)
+    return (_W.updated_at.desc(), _W.id.desc())
+
+
+def _work_order_list_stmt(data: dict[str, Any], *, db: Session | None = None, header_except: str | None = None):
+    return _apply_list_filters(select(MegaFlowWorkOrder), data, db=db, header_except=header_except)
+
+
+def _apply_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None, header_except: str | None = None):
     kw_tokens = split_code_tokens(data.get("keyword"))
     if len(kw_tokens) == 1:
-        pattern = f"%{kw_tokens[0]}%"
+        pattern = f"%{like_literal(kw_tokens[0])}%"
         stmt = stmt.where(
             or_(
-                MegaFlowWorkOrder.orderNum.like(pattern),
-                MegaFlowWorkOrder.orderName.like(pattern),
+                MegaFlowWorkOrder.orderNum.like(pattern, escape="\\"),
+                MegaFlowWorkOrder.orderName.like(pattern, escape="\\"),
             )
         )
     elif len(kw_tokens) > 1:
@@ -506,20 +577,21 @@ def _work_order_list_stmt(data: dict[str, Any]):
     cell_tokens = split_code_tokens(data.get("cell_plate_barcode"))
     if cell_tokens:
         stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.cell_plate_barcodes, cell_tokens))
-    return stmt
+    header = header_filter_clauses(db, HEADER_COLUMNS, data.get("field_filters"), except_field=header_except)
+    return stmt.where(*header) if header else stmt
 
 
 def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     page = max(int(data.get("page", 1) or 1), 1)
     limit = min(max(int(data.get("limit", 20) or 20), 1), 500)
-    stmt = _work_order_list_stmt(data)
+    stmt = _work_order_list_stmt(data, db=db)
 
     total = db.scalar(
         stmt.with_only_columns(func.count(), maintain_column_froms=True).order_by(None)
     ) or 0
     rows = db.scalars(
         stmt.options(defer(MegaFlowWorkOrder.content))
-        .order_by(MegaFlowWorkOrder.updated_at.desc(), MegaFlowWorkOrder.id.desc())
+        .order_by(*_list_order(data))
         .offset((page - 1) * limit)
         .limit(limit)
     ).all()
@@ -538,8 +610,32 @@ def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     return {
         "items": items,
         "total": total,
-        "stats": get_work_order_stats(db),
+        "stats": get_work_order_stats(db, data),
     }
+
+
+def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    """表头筛选的取值列表：套用除本列表头条件以外的全部筛选。顶部筛选里的本列条件由前端去掉。"""
+    payload = data or {}
+    field = str(payload.get("field") or "").strip()
+    spec = HEADER_COLUMNS.get(field)
+    if spec is None:
+        raise ValueError(f"不支持按「{field}」表头筛选")
+    result = column_values(
+        db,
+        spec,
+        lambda stmt: _apply_list_filters(stmt, payload, db=db, header_except=field),
+        id_column=MegaFlowWorkOrder.id,
+        keyword=str(payload.get("value_keyword") or ""),
+        limit=payload.get("value_limit"),
+        order=str(payload.get("value_order") or "value"),
+    )
+    labels = _VALUE_LABELS.get(field)
+    if labels:
+        for item in result["items"]:
+            if item["value"] in labels:
+                item["label"] = labels[item["value"]]
+    return result
 
 
 def _attach_serum_project_ids(db: Session, items: list[dict[str, Any]]) -> None:
@@ -568,13 +664,9 @@ def _attach_serum_project_ids(db: Session, items: list[dict[str, Any]]) -> None:
 def export_work_order_list_workbook(db: Session, data: dict[str, Any]):
     from utils.excel import build_list_workbook, cell_text
 
-    stmt = _work_order_list_stmt(data or {})
-    rows = db.scalars(
-        stmt.options(defer(MegaFlowWorkOrder.content)).order_by(
-            MegaFlowWorkOrder.updated_at.desc(),
-            MegaFlowWorkOrder.id.desc(),
-        )
-    ).all()
+    data = data or {}
+    stmt = _work_order_list_stmt(data, db=db)
+    rows = db.scalars(stmt.options(defer(MegaFlowWorkOrder.content)).order_by(*_list_order(data))).all()
     current_dispatches = batch_current_dispatches(db, [row.id for row in rows])
     headers = [
         "订单编号",
@@ -661,10 +753,10 @@ def get_work_orders_by_source(db: Session, data: dict[str, Any]) -> dict[str, An
     return {"items": items}
 
 
-def get_work_order_stats(db: Session) -> dict[str, int]:
-    rows = db.execute(
-        select(MegaFlowWorkOrder.status, func.count(MegaFlowWorkOrder.id)).group_by(MegaFlowWorkOrder.status)
-    ).all()
+def get_work_order_stats(db: Session, data: dict[str, Any] | None = None) -> dict[str, int]:
+    """状态页签计数跟随其余筛选，不受当前选中的状态（顶部和表头）影响。"""
+    scoped = _work_order_list_stmt({**(data or {}), "status": None}, db=db, header_except="status").subquery()
+    rows = db.execute(select(scoped.c.status, func.count()).group_by(scoped.c.status)).all()
     stats = {status["value"]: 0 for status in WORK_ORDER_STATUSES}
     for status, count in rows:
         key = str(status or "draft")
@@ -826,7 +918,7 @@ def dispatch_work_order(
             raise ValueError(f"Labillion 订单导入失败：{exc}") from exc
 
     order.status = "sent"
-    order.sent_at = datetime.now()
+    order.sent_at = now_local()
     order.error_message = None
     db.commit()
     return get_work_order_detail(db, order.id)

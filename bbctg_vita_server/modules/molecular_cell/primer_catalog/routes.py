@@ -1,11 +1,13 @@
 from collections.abc import Callable
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from core.response import error, success
+from core.errors import route_error
+from core.response import success
 from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
@@ -37,8 +39,18 @@ class PrimerListRequest(BaseModel):
     family: str | list[str] | None = None
     direction: str | list[str] | None = None
     active: bool | None = None
+    field_filters: list[dict] | None = None
+    sort_field: str | None = Field(default=None, max_length=64)
+    sort_dir: Literal["", "asc", "desc"] | None = None
     page: int = Field(default=1, ge=1)
     limit: int = Field(default=service.DEFAULT_PAGE_LIMIT, ge=1, le=service.MAX_PAGE_LIMIT)
+
+
+class PrimerColumnValuesRequest(PrimerListRequest):
+    field: str = Field(min_length=1, max_length=64)
+    value_keyword: str = Field(default="", max_length=128)
+    value_limit: int = Field(default=200, ge=1, le=1000)
+    value_order: Literal["value", "value_desc", "recent"] = "value"
 
 
 class PrimerSaveRequest(BaseModel):
@@ -87,8 +99,7 @@ def _write(db: Session, action: Callable[[], dict]) -> dict:
         status = 404 if str(exc) == service.MISSING_PRIMER else 422
         raise HTTPException(status_code=status, detail=str(exc)) from exc
     except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+        return route_error(exc, db)
 
 
 @router.get("/options")
@@ -115,6 +126,16 @@ def primer_list(
 ) -> dict:
     require_permission(db, current_user, PAGE_PERMISSION)
     return success(service.list_catalog(db, data.model_dump() if data else {}))
+
+
+@router.post("/column_values")
+def primer_column_values(
+    data: PrimerColumnValuesRequest,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, PAGE_PERMISSION)
+    return _write(db, lambda: service.get_column_values(db, data.model_dump()))
 
 
 @router.post("/save")

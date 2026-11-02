@@ -102,10 +102,8 @@ import {
   resolveOrderDisplayStatus,
 } from '#/utils/megaFlowWorkOrderStatus';
 
-import {
-  TITER_INSTRUMENT_WIZARD_DRAFT_KEY,
-  TITER_UPSTREAM_PREFILL_QUERY,
-} from '#/views/MegaAutomation/FlowWorkOrder/flowWorkOrderTiterUpstream';
+import { TITER_INSTRUMENT_WIZARD_DRAFT_KEY } from '#/constants/storageKeys';
+import { TITER_UPSTREAM_PREFILL_QUERY } from '#/views/MegaAutomation/FlowWorkOrder/flowWorkOrderTiterUpstream';
 
 import TiterMouseSelectWizard from './TiterMouseSelectWizard.vue';
 import { titerOrderIdentityFields } from './titerMouseSelect';

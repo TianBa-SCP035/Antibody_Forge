@@ -13,9 +13,10 @@ bbctg_vita_server/
   api.py               # 汇总各模块 router（含 /health、/user/info）
   core/                # 配置、统一响应、异常、请求日志
   db/                  # 主库 + 外部只读库 session
-  models/              # ORM
+  models/              # ORM（types.py：DateString）
   modules/
-    auth/              # 登录、JWT、当前用户
+    auth/              # 登录、JWT、当前用户；external.py 外部回调来源校验
+    options/           # 跨模块下拉：靶点库搜索、在职人员搜索
     immunology/        # serum / workbench / titer / cell
     atlas/             # 千鼠万抗
     discovery/         # 抗体发现（工作台）
@@ -24,10 +25,25 @@ bbctg_vita_server/
     order_sync/        # 工单数据回传
     system/            # 用户角色权限、审计、功能开关
   integrations/        # 云之家、Labillion、drm_service（SDK 在 drm/，gitignore）
-  jobs/                # 定时任务实现与 registry（含手动触发入口）
+  jobs/                # 定时任务实现与 registry（含手动触发入口）；lock.py 用 MySQL GET_LOCK 防多进程重复执行
   utils/               # 通用工具（Excel 导入导出等）
   tests/
 ```
+
+## 公共工具（新代码先找这里，不要在模块里再写一份）
+
+| 位置 | 用途 |
+|------|------|
+| `utils/normalize.py` | 文本、日期、非负整数、靶点编号、多值拼接、状态、优先级的清洗 |
+| `utils/workbench_queue.py` | 优先级常量（`PRIORITY_ORDER` 队列顺序从高到低；`PRIORITY_OPTIONS` 下拉顺序从低到高）、队列锁与重编号 |
+| `utils/header_filters.py` | 表头筛选；多值字段匹配统一用 `csv_token_clause`（已转义 `%` `_`） |
+| `utils/filter_values.py` | `like_literal`、`recorded_target_search`（各模块 `GET /recorded_targets` 共用，关键字与上限都进 SQL） |
+| `utils/codes.py` | 编号生成；唯一键冲突时重试 |
+| `utils/clock.py` | `now_local()`，固定 Asia/Shanghai，不要再用裸 `datetime.now()` |
+| `utils/uploads.py` | 上传文件名清洗、落盘路径必须在上传根目录内、`read_limited` 读取限长 |
+| `models/types.py` | `DateString`：Python 侧是 `YYYY-MM-DD` 字符串，库里 `VARCHAR` 或 `DATE` 都能读写；写入非法日期直接报错 |
+
+未知异常不要把 `str(exc)` 返回前端：记日志，返回通用提示；业务校验用 `ValueError` / `BusinessError` 照常返回消息。
 
 DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Office 附件下载加密，失败不阻断传输。Linux 需配置 `LD_LIBRARY_PATH`（见 deploy.md）。
 
@@ -43,6 +59,7 @@ DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Offi
 | `/api/auth` | `modules/auth` |
 | `/api/user/info` | `api.py`（Vben 用户信息） |
 | `/api/atlas` | `modules/atlas` |
+| `/api/options` | `modules/options`（`/targets`、`/users`） |
 | `/api/discovery/workbench` | `modules/discovery/workbench` |
 | `/api/discovery/synthesis-progress` | `modules/discovery/synthesis_progress` |
 | `/api/molecular-cell/library-orders` | `modules/molecular_cell/library_orders` |

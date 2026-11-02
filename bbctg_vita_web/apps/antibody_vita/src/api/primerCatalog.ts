@@ -27,8 +27,18 @@ export interface PrimerListQuery {
   family?: string | string[];
   direction?: string | string[];
   active?: boolean;
+  field_filters?: Array<Record<string, unknown>>;
+  sort_field?: string;
+  sort_dir?: string;
   page?: number;
   limit?: number;
+}
+
+export interface PrimerColumnValuesQuery extends PrimerListQuery {
+  field: string;
+  value_keyword?: string;
+  value_limit?: number;
+  value_order?: string;
 }
 
 export type PrimerSavePayload = Omit<
@@ -56,6 +66,14 @@ export function savePrimer(data: PrimerSavePayload) {
     timeout: 5000,
     ...skipGlobalErrorHandler,
   });
+}
+
+export function fetchPrimerColumnValues(data: PrimerColumnValuesQuery) {
+  return requestClient.post<{ items: Array<{ count: number; label?: string; value: string }>; truncated: boolean }>(
+    `${BASE}/column_values`,
+    data,
+    skipGlobalErrorHandler,
+  );
 }
 
 export function fetchPrimerIds(data: PrimerListQuery = {}) {

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -24,6 +23,7 @@ from sqlalchemy.orm import Session
 from models.immunology import SerumImmAntigen, SerumImmMouse, SerumImmProject, SerumImmStep
 
 from core.config import get_settings
+from utils.clock import now_local
 
 # A1 留边距（仅屏幕阅读）；正文 B2:P*。B=侧栏，C~P=数据区，宽列 D:H。
 MARGIN_ROW = 1
@@ -148,7 +148,7 @@ def export_scheme_response(db: Session, project_ids: list[int]) -> tuple[BytesIO
     if not schemes:
         raise ValueError("未找到可导出的项目")
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = now_local().strftime("%Y%m%d_%H%M%S")
     if len(schemes) == 1:
         project = schemes[0]
         return _build_project_workbook(project), _scheme_filename(project, "xlsx", timestamp), "xlsx"
@@ -620,7 +620,7 @@ def export_scheme_pdf_response(db: Session, project_ids: list[int]) -> tuple[Byt
     project = load_scheme_data(db, unique_ids[0])
     if not project:
         raise ValueError(_SCHEME_PDF_NOT_FOUND)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = now_local().strftime("%Y%m%d_%H%M%S")
     pdf_bytes = _xlsx_to_pdf(_build_project_workbook(project).getvalue())
     return BytesIO(pdf_bytes), _scheme_filename(project, "pdf", timestamp)
 

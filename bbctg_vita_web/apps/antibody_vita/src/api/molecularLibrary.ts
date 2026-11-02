@@ -1,7 +1,5 @@
 import { requestClient, skipGlobalErrorHandler } from '#/api/request';
 
-export const LIBRARY_CREATED_KEY = 'molecular.library.created';
-
 const SAVE_TIMEOUT = 5000;
 const DOWNLOAD_TIMEOUT = 360_000;
 const LONG_TIMEOUT = 120_000;
@@ -19,8 +17,18 @@ export function fetchLibraryOrderList(data: any, config?: PostConfig) {
   });
 }
 
-export function fetchLibraryFilterOptions() {
-  return requestClient.get('/molecular-cell/library-orders/filter_options');
+export function fetchLibraryOrderColumnValues(data: any, config?: PostConfig) {
+  return requestClient.post('/molecular-cell/library-orders/column_values', data, {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
+export function fetchLibraryOrderOptions(config?: Parameters<typeof requestClient.get>[1]) {
+  return requestClient.get('/molecular-cell/library-orders/options', {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
 }
 
 export function fetchPrimerIndexOptions(params: {

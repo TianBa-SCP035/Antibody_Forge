@@ -113,27 +113,14 @@
           :prefix-icon="Search"
           @keyup.enter="handleFilter"
         />
-        <ListFilterSelect
+        <WorkbenchTargetFilter
           v-model="listQuery.target_name"
           class="filter-item"
-          clearable
-          filterable
           popper-class="titer-select-dropdown"
-          :filter-method="filterMethodFor('targetFilterQuery')"
           placeholder="靶点"
-          @clear="clearFilterQuery('targetFilterQuery')"
+          scope="titerOrder"
           @change="handleFilter"
-        >
-          <el-option
-            v-for="item in filteredTargetOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          >
-            <span>{{ item.label }}</span>
-            <span v-if="targetOptionExtra(item)" class="target-option-code">{{ targetOptionExtra(item) }}</span>
-          </el-option>
-        </ListFilterSelect>
+        />
         <ListFilterSelect
           v-model="listQuery.assay_method"
           class="filter-item"
@@ -871,9 +858,9 @@ import {
 import { useUserStore } from '@vben/stores';
 
 import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage';
-import { filterTargetOptions, normalizeTargetOptions, targetOptionExtra as targetOptionHint } from '#/utils/targetFilterOptions';
+import WorkbenchTargetFilter from '#/components/workbench/WorkbenchTargetFilter.vue';
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
-import { DISCOVERY_WORKBENCH_CREATED_KEY } from '#/api/discoveryWorkbench';
+import { DISCOVERY_WORKBENCH_CREATED_KEY } from '#/constants/storageKeys';
 import { canEditDiscoveryWorkbench } from '#/utils/discoveryPermission';
 import { handoffTiterToDiscovery } from '#/utils/titerDiscoveryHandoff';
 import TiterInstrumentOrderDialogs from './TiterInstrumentOrderDialogs.vue';
@@ -1316,6 +1303,7 @@ export default {
   name: 'SerumTiterOrderList',
   mixins: [listTableLockMixin],
   components: {
+    WorkbenchTargetFilter,
     ElButton,
     ElButtonGroup,
     ElCard,
@@ -1380,9 +1368,6 @@ export default {
       };
       return [...rows, totalRow];
     },
-    filteredTargetOptions() {
-      return filterTargetOptions(this.allTargetOptions, this.targetFilterQuery);
-    },
     displayRowIndexMap() {
       const map = new Map();
       const rows = this.list || [];
@@ -1442,7 +1427,6 @@ export default {
         sort_order: undefined,
       },
       allOwnerOptions: [],
-      allTargetOptions: [],
       allAssayMethodOptions: [],
       allImmuneOwnerOptions: [],
       allImmuneStatusOptions: [],
@@ -1451,7 +1435,6 @@ export default {
       titerPriorityOptions: [...TITER_PRIORITY_OPTIONS],
       flowOrderStatusOptions: FLOW_WORK_ORDER_STATUS_OPTIONS,
       ownerFilterQuery: '',
-      targetFilterQuery: '',
       assayMethodFilterQuery: '',
       immuneOwnerFilterQuery: '',
       immuneStatusFilterQuery: '',
@@ -1500,6 +1483,8 @@ export default {
     this.plateLastClipPath = '';
     this.plateScrollingUntil = 0;
     this.listRequestToken = 0;
+    this.statsRequestToken = 0;
+    this.statsKey = '';
     this.activeFocusId = '';
   },
   mounted() {
@@ -2323,9 +2308,6 @@ export default {
     clearFilterQuery(queryKey) {
       this[queryKey] = '';
     },
-    targetOptionExtra(item) {
-      return targetOptionHint(item, this.targetFilterQuery);
-    },
     filterOptions(dataArray, query) {
       const queryLower = (query || '').toLowerCase();
       if (!queryLower) {
@@ -2383,9 +2365,7 @@ export default {
     async loadPageMeta() {
       try {
         const meta = await fetchTiterOrderMeta(skipGlobalErrorHandler);
-        this.stats = { ...DEFAULT_STATS, ...meta.stats };
         this.allOwnerOptions = meta.owners || [];
-        this.allTargetOptions = normalizeTargetOptions(meta.targets);
         this.allAssayMethodOptions = meta.assay_methods || [];
         this.allImmuneOwnerOptions = meta.immune_owners || [];
         this.allImmuneStatusOptions = meta.immune_statuses || [];
@@ -2394,11 +2374,26 @@ export default {
         notifyApiError(error, { messages: { default: '加载效价列表信息失败' } });
       }
     },
+    /** 统计块跟随列表筛选；统计块自己切换的负责人、血清状态、小结、检测日期不传。 */
+    statsPayload() {
+      const {
+        page, limit, sort_field, sort_order, titer_order_id,
+        titer_owner, titer_owner_unassigned, serum_status, summary_empty, summary_filled,
+        test_dates_empty, tested_unsubmitted, test_dates_start, test_dates_end,
+        ...scope
+      } = this.buildQuery();
+      return scope;
+    },
     async refreshStats() {
+      const payload = this.statsPayload();
+      this.statsKey = JSON.stringify(payload);
+      const statsToken = ++this.statsRequestToken;
       try {
-        const stats = await fetchTiterOrderStats(skipGlobalErrorHandler);
+        const stats = await fetchTiterOrderStats(payload, skipGlobalErrorHandler);
+        if (statsToken !== this.statsRequestToken) return;
         this.stats = { ...DEFAULT_STATS, ...stats };
       } catch (error) {
+        if (statsToken !== this.statsRequestToken) return;
         notifyApiError(error, { messages: { default: '刷新统计失败' } });
       }
     },
@@ -2449,6 +2444,7 @@ export default {
       const focusId = this.activeFocusId;
       const payload = this.buildQuery();
       if (focusId) payload.titer_order_id = focusId;
+      if (JSON.stringify(this.statsPayload()) !== this.statsKey) this.refreshStats();
       fetchTiterOrderList(payload, skipGlobalErrorHandler)
         .then((response) => {
           if (requestToken !== this.listRequestToken) return;
@@ -2880,7 +2876,6 @@ export default {
       this.$refs.orderTable?.clearSort?.();
       this.testDatesRange = [];
       this.bloodCollectionRange = [];
-      this.targetFilterQuery = '';
       this.ownerFilterQuery = '';
       this.assayMethodFilterQuery = '';
       this.immuneOwnerFilterQuery = '';
@@ -3043,11 +3038,6 @@ export default {
 </script>
 
 <style scoped>
-.target-option-code {
-  margin-left: 8px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
 /*
  * 尺寸维护约定（L1 页面壳子 / L2 数据区）：
  * 1. 表格卡片 → 使用 list-data-table / list-table-card 共享类

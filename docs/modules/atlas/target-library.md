@@ -43,7 +43,9 @@
 POST /api/atlas/targets/list
 ```
 
-请求体包含 `page`、`limit`、`keyword`、`status` 和 `include_inactive`。`status` 可为 `1`、`2`、`unknown` 或空。接口需要 `atlas.page.target_library` 权限。
+请求体包含 `page`、`limit`、`keyword`、`status` 和 `include_inactive`。`status` 可为 `1`、`2`、`unknown` 或空。返回的 `stats`（全部 / 已开发 / 未开发 / 未标记）跟随关键字和「含停用」筛选，不受当前选中的状态影响。接口需要 `atlas.page.target_library` 权限。
+
+其他页面选靶点不走这个接口，而是公共选项接口 `GET /api/options/targets?keyword&limit&codes`（默认 20 条、最多 50；`codes` 传已选编号，保证已选项总在结果里），任一业务页权限即可访问，见 [auth-permissions.md](../../auth-permissions.md)。
 
 ## 实现位置
 

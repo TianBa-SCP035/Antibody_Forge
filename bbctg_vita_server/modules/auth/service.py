@@ -1,4 +1,3 @@
-from datetime import datetime
 import re
 
 from fastapi import HTTPException
@@ -12,6 +11,7 @@ from modules.auth.security import create_access_token, hash_password, verify_pas
 from modules.system.audit import write_operation_log
 from modules.system.features import is_feature_enabled
 from modules.system.permissions import build_user_context
+from utils.clock import now_local
 
 YUNZHIJIA_AUTO_PROVISION_FEATURE = "feature.yunzhijia_auto_provision"
 
@@ -195,7 +195,7 @@ def change_user_password(db: Session, user: SysUser, new_password: str) -> None:
 
 
 def _mark_login(db: Session, user: SysUser) -> None:
-    user.last_login_at = datetime.now()
+    user.last_login_at = now_local()
     db.commit()
 
 

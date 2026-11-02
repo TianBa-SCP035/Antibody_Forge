@@ -103,7 +103,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `mega.flow_work_order.edit` | action | 保存、校验、删除、作废工单 |
 | `mega.flow_work_order.dispatch` | action | 发送、撤回/停止/继续、确认执行、完成/失败及设备暂停确认等调度操作 |
 
-**Labillion 回调** `POST /api/mega-automation/labillion/callback` **无需登录**（镁伽服务器推送）；路由层不调用 `require_permission`，响应恒为 HTTP 200。
+**Labillion 回调** `POST /api/mega-automation/labillion/callback` **无需登录**（镁伽服务器推送）；路由层不调用 `require_permission`，响应恒为 HTTP 200。来源校验可选：配置 `LABILLION_CALLBACK_TOKEN`（请求头 `X-Callback-Token`）或 `LABILLION_CALLBACK_IPS` 后，不满足的请求返回 401 / 403，不进业务处理；设备回传 `POST /api/order-experiment/sync` 同理，对应 `ORDER_SYNC_TOKEN` / `ORDER_SYNC_IPS`。实现见 `modules/auth/external.py`，配置说明见 [deploy.md](./deploy.md)。
 
 **主动状态同步** `POST .../sync-labillion-status` 使用 `mega.page.flow_work_order`（与详情只读同级），供详情页进入时拉取镁伽最新状态；不登记人员权限动作映射，审计操作名为「同步镁伽工单状态」，实际数据变化仍由通用审计自动记录。
 
@@ -128,9 +128,9 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `discovery.page.synthesis_progress` | page | 合成与验证列表与外部订单比对 |
 | `discovery.synthesis_progress.edit` | action | 合成与验证全部编辑：新增、保存、批量粘贴、认领、删除、采用来源变更及手动同步合成订单 |
 | `discovery.synthesis_progress.pm_edit` | action | PM操作合成与验证：新建工单、认领「无人问津」合成结果（或将本人认领批次改回「无人问津」）、编辑项目与改造需求字段（项目编号、实验号、PM、课题类型、靶点、靶点类型、小鼠品系、优先级、排序、订单性质、供应方式、改造类型/方式/母本/要求、备注），并可删除待下单状态的工单 |
-| `discovery.synthesis_progress.assay_edit` | action | 实验操作合成与验证：编辑「到货与验证」分区中除到货个数、到货日期外的验证字段（亲和力结果、亲和力日期、未出原因、流式日期、流式说明） |
+| `discovery.synthesis_progress.assay_edit` | action | 实验操作合成与验证：在状态列往返修改亲和力（待检测/检测中/已完成）与流式（待检测/已完成）实验状态，并编辑验证字段（亲和力人员、亲和力结果、亲和力日期、未出原因、流式日期、流式说明） |
 
-写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/delete`、`/reorder` 及 `/api/discovery/synthesis-progress/save`、`/save_batch`、`/claim`、`/reorder`、`/delete`、`/adopt_source`、`/sync_now` 登记 `sys_permission_api`。字段与规则见 [modules/discovery/workbench.md](./modules/discovery/workbench.md) 与 [modules/discovery/synthesis-progress.md](./modules/discovery/synthesis-progress.md)。权限码在 `sys_permission`，菜单开关在 `sys_feature_flag`（`menu.discovery` / `menu.discovery.workbench` / `menu.discovery.synthesis_progress`）。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。选靶点 / 人名时复用 `GET /api/serum/target_options` 与 `/user_options`，这两条目录接口同时接受发现工作台与合成进度权限。
+写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/delete`、`/reorder` 及 `/api/discovery/synthesis-progress/save`、`/save_batch`、`/claim`、`/reorder`、`/delete`、`/adopt_source`、`/sync_now` 登记 `sys_permission_api`。字段与规则见 [modules/discovery/workbench.md](./modules/discovery/workbench.md) 与 [modules/discovery/synthesis-progress.md](./modules/discovery/synthesis-progress.md)。权限码在 `sys_permission`，菜单开关在 `sys_feature_flag`（`menu.discovery` / `menu.discovery.workbench` / `menu.discovery.synthesis_progress`）。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。选靶点 / 人名时复用公共选项接口 `GET /api/options/targets` 与 `/api/options/users`（见 `modules/options/routes.py` 的 `OPTION_ACCESS_PERMISSIONS`），任一业务页权限即可访问。
 
 ### 2.5 分子与细胞（`molecular.*`）
 
@@ -365,7 +365,7 @@ flowchart LR
 
 **定时任务页（系统功能）**：启用开关与执行时间**改完即写库**；cron 变更需**重启后端**后生效（配置项 `restart_required`）。「立即执行」随时可点，直接调对应 job 函数，local 未开 scheduler 也可用。
 
-有效配置接口：`GET /api/system/features/effective`（前端 `getSystemEffectiveFeaturesApi`）。
+有效配置接口：`GET /api/system/features/effective`（前端 `getSystemEffectiveFeaturesApi`），登录即可读，只返回菜单与功能开关（不含定时任务和 cron 细节）。系统状态 `GET /api/system/features/system_status`（服务器时间、环境、调度是否在跑）需要 `system.page.feature`。定时任务执行前取 MySQL `GET_LOCK`，多进程同时触发时只有一个真正执行，其余只在应用日志里记一条跳过。
 
 ## 8. 端到端流程（登录后访问血清列表）
 

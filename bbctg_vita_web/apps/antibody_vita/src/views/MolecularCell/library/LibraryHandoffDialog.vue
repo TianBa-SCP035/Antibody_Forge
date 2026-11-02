@@ -81,7 +81,8 @@ import { ElButton, ElDialog, ElMessage } from 'element-plus'
 import { useUserStore } from '@vben/stores'
 
 import { notifyApiError } from '#/api/errors'
-import { fetchLibraryOrdersByDiscovery, handoffLibraryOrders, LIBRARY_CREATED_KEY } from '#/api/molecularLibrary'
+import { fetchLibraryOrdersByDiscovery, handoffLibraryOrders } from '#/api/molecularLibrary'
+import { LIBRARY_CREATED_KEY } from '#/constants/storageKeys'
 import { canViewLibrary } from '#/utils/molecularPermission'
 
 import {

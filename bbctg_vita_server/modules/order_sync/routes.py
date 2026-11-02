@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from db.session import get_db
+from modules.auth.external import require_order_sync_caller
 from modules.order_sync import service
 from modules.order_sync.service import OrderSyncError
 
@@ -27,7 +28,7 @@ def device_error(code: int, message: str, trace_id: str) -> JSONResponse:
     )
 
 
-@router.post("/sync")
+@router.post("/sync", dependencies=[Depends(require_order_sync_caller)])
 def sync_order_experiment(
     trace_id: str = Form(...),
     order_json: UploadFile = File(...),

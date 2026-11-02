@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 import json
 from pathlib import Path
 import re
@@ -13,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from core.config import get_settings
 from models.order_sync import OrderSync
+from utils.clock import now_local
+from utils.uploads import read_limited
 
 
 class OrderSyncError(Exception):
@@ -75,7 +76,10 @@ def receive_sync(db: Session, trace_id: str, order_json: UploadFile) -> dict[str
     if not normalized_trace_id:
         raise OrderSyncError(400, "trace_id 不能为空")
 
-    raw_bytes = order_json.file.read()
+    try:
+        raw_bytes = read_limited(order_json, get_settings().order_sync_max_mb * 1024 * 1024, "order_json 文件")
+    except ValueError as exc:
+        raise OrderSyncError(413, str(exc)) from exc
     if not raw_bytes:
         raise OrderSyncError(400, "order_json 文件不能为空")
 
@@ -98,7 +102,7 @@ def receive_sync(db: Session, trace_id: str, order_json: UploadFile) -> dict[str
     if exists:
         raise OrderSyncError(422, f"trace_id 已存在：{normalized_trace_id}")
 
-    now = datetime.now()
+    now = now_local()
     date_part = now.strftime("%Y%m%d")
     time_part = now.strftime("%H%M%S%f")
     file_name = f"{_safe_filename_part(normalized_trace_id)}_{time_part}.json"

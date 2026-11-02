@@ -3,11 +3,11 @@ import { onMounted, reactive, ref, watch } from 'vue';
 
 import { preferences } from '@vben/preferences';
 
+import { WEATHER_CACHE_KEY } from '#/constants/storageKeys';
 import { $t } from '#/locales';
 
 const BEIJING_LAT = 39.9042;
 const BEIJING_LON = 116.4074;
-const WEATHER_CACHE_KEY = 'home-weather-beijing-v3';
 const WEATHER_CACHE_TTL_MS = 30 * 60 * 1000;
 
 const WMO_CODES = [

@@ -14,17 +14,19 @@ from models.discovery import DiscoverySynthesisOrder
 from models.target import Target
 from modules.discovery.synthesis_progress.constants import (
     ACTIVE_STATUSES,
-    AFFINITY_RESULT_NORMAL,
+    AFFINITY_STATUS_ASSAYING,
+    AFFINITY_STATUS_OPTIONS,
+    AFFINITY_STATUS_WAIT,
     AFFINITY_RESULT_OPTIONS,
     DRIFT_COMPARE_FIELDS,
     ENG_METHOD_OPTIONS,
     ENG_TYPE_OPTIONS,
+    FLOW_STATUS_OPTIONS,
     MOUSE_STRAIN_OPTIONS,
     ORDER_KIND_ENGINEERING,
     ORDER_KIND_NORMAL,
     ORDER_KIND_OPTIONS,
     SELECTION_METHOD_OPTIONS,
-    STATUS_AFFINITY_DONE,
     STATUS_ASSAYING,
     STATUS_CANCELLED,
     STATUS_COMPLETED,
@@ -42,29 +44,52 @@ from modules.discovery.synthesis_progress.constants import (
 from modules.discovery.synthesis_progress.one_sync import (
     check_remote_for_local_rows,
     compute_drift_fields,
-    derive_status_for_row,
+    sync_derived_statuses,
 )
 from utils.excel import build_list_workbook
+from utils.header_filters import (
+    HeaderColumn,
+    column_values,
+    csv_column,
+    csv_token_clause,
+    header_filter_clauses,
+    header_sort_clauses,
+    target_column,
+)
+from utils.normalize import (
+    join_tokens,
+    normalize_choice,
+    normalize_date,
+    normalize_nonneg_int,
+    normalize_positive_int,
+    normalize_priority,
+    normalize_target_codes,
+    normalize_text,
+    split_tokens,
+)
 from utils.filter_values import (
-    catalog_names_for_pairs,
-    clean_field_text,
+    DEFAULT_RECORDED_TARGET_LIMIT,
     combine_any,
+    filter_terms,
+    like_contains,
     match_any,
     recorded_target_clause,
+    recorded_target_search,
     split_code_tokens,
-    target_select_options,
 )
 from utils.target_structure import parse_target_structure
 from utils.workbench_queue import (
     DEFAULT_PRIORITY,
+    PRIORITY_OPTIONS,
     PRIORITY_ORDER,
     apply_priority_constraints,
-    canonicalize_priority,
     list_order_clauses,
+    lock_queue,
     place_row_among,
     queued_sort,
     renumber_queue,
 )
+from utils.clock import now_local
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +99,24 @@ SYNTHESIS_ID_RANDOM_LEN = 6
 SYNTHESIS_ID_MAX_ATTEMPTS = 25
 SYNTHESIS_ID_ALPHABET = string.ascii_uppercase + string.digits
 
+AUTO_STATUS_FIELDS = frozenset(
+    {
+        "order_no",
+        "supply_mode",
+        "arrival_date",
+        "affinity_owner",
+        "affinity_date",
+        "report_reason",
+        "flow_date",
+        "target_type",
+        "target_codes",
+        "affinity_status",
+        "flow_status",
+    }
+)
+
+QUEUE_LOCK_FIELDS = frozenset({"sort_order", "priority", "status", *AUTO_STATUS_FIELDS})
+
 STRING_FIELDS: dict[str, int] = {
     "target_name": 128,
     "target_type": 64,
@@ -81,6 +124,7 @@ STRING_FIELDS: dict[str, int] = {
     "order_no": 64,
     "synthetic_corp": 64,
     "owner": 64,
+    "affinity_owner": 64,
     "batch_label": 255,
     "project_code": 64,
     "experiment_id": 64,
@@ -124,6 +168,8 @@ WRITABLE_FIELDS = (
     "order_kind",
     "supply_mode",
     "affinity_result",
+    "affinity_status",
+    "flow_status",
     "target_codes",
     "target_color",
 )
@@ -153,9 +199,12 @@ PM_EDIT_FIELDS = frozenset(
 
 ASSAY_EDIT_FIELDS = frozenset(
     {
+        "affinity_owner",
         "affinity_result",
+        "affinity_status",
         "affinity_date",
         "report_reason",
+        "flow_status",
         "flow_date",
         "flow_note",
     }
@@ -171,7 +220,7 @@ def clean_actor_person_name(name: str | None) -> str | None:
 
 
 def generate_synthesis_order_id(now: datetime | None = None) -> str:
-    stamp = (now or datetime.now()).strftime("%y%m%d")
+    stamp = (now or now_local()).strftime("%y%m%d")
     suffix = "".join(
         secrets.choice(SYNTHESIS_ID_ALPHABET) for _ in range(SYNTHESIS_ID_RANDOM_LEN)
     )
@@ -209,124 +258,65 @@ BREAK_FIELDS = frozenset({
 })
 
 
-def _normalize_text(value: Any, max_len: int, *, keep_breaks: bool = False) -> str | None:
-    if value is None:
-        return None
-    text = clean_field_text(value, keep_breaks=keep_breaks)
-    if not text:
-        return None
-    if len(text) > max_len:
-        raise ValueError(f"字段长度不能超过 {max_len}")
-    return text
-
-
-def _normalize_nonneg_int(value: Any, label: str) -> int | None:
-    if value in (None, ""):
-        return None
-    try:
-        number = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{label}必须是整数") from exc
-    if number < 0:
-        raise ValueError(f"{label}不能为负数")
-    return number
-
-
-def _normalize_target_codes(value: Any) -> list[str]:
-    if value is None or value == "":
-        return []
-    if isinstance(value, str):
-        return [
-            part.strip().upper()
-            for part in value.replace("，", ",").replace("、", ",").split(",")
-            if part.strip()
-        ]
-    if not isinstance(value, list):
-        raise ValueError("靶点编号必须是数组")
-    return [str(item).strip().upper() for item in value if str(item).strip()]
-
-
 def _normalize_csv_joined(
     value: Any,
     options: tuple[str, ...],
     max_len: int,
     label: str,
 ) -> str | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, (list, tuple)):
-        raw_items = [str(item).strip() for item in value if str(item).strip()]
-    else:
-        text = str(value).strip()
-        if not text:
-            return None
-        raw_items = [
-            p.strip()
-            for p in text.replace("，", ",").replace("、", ",").replace("+", ",").split(",")
-            if p.strip()
-        ]
-    tokens: list[str] = []
-    seen: set[str] = set()
-    for tok in raw_items:
-        if tok and tok not in seen:
-            seen.add(tok)
-            tokens.append(tok)
-    if not tokens:
-        return None
-    known = set(options)
-    ordered = [opt for opt in options if opt in tokens]
-    extras = [tok for tok in tokens if tok not in known]
-    joined = "、".join([*ordered, *extras])
-    if len(joined) > max_len:
+    joined = join_tokens(value, options)
+    if joined and len(joined) > max_len:
         raise ValueError(f"{label}长度不能超过 {max_len}")
     return joined
 
 
-def _normalize_priority(value: Any) -> str:
-    text = canonicalize_priority(value)
-    if text not in PRIORITY_ORDER:
-        raise ValueError("优先级不在允许的选项中")
-    return text
-
-
-def _normalize_sort_order(value: Any) -> int:
-    try:
-        number = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("排序必须是正整数") from exc
-    if number <= 0:
-        raise ValueError("排序必须是正整数")
-    return number
-
-
 def _normalize_status(value: Any) -> str:
-    text = str(value or "").strip() or STATUS_WAIT_ORDER
-    if text not in STATUS_OPTIONS:
-        raise ValueError("状态不在允许的选项中")
-    return text
+    return normalize_choice(value, STATUS_OPTIONS, "状态", default=STATUS_WAIT_ORDER)
+
+
+def _normalize_affinity_status(value: Any) -> str:
+    return normalize_choice(value, AFFINITY_STATUS_OPTIONS, "亲和力状态")
+
+
+def _normalize_flow_status(value: Any) -> str:
+    return normalize_choice(value, FLOW_STATUS_OPTIONS, "流式状态")
+
+
+def _prepare_assay_status_edits(
+    row: DiscoverySynthesisOrder,
+    payload: dict[str, Any],
+    actor_person: str | None,
+) -> None:
+    """Validate manual assay transitions; completion remains evidence-derived."""
+    reason = payload["report_reason"] if "report_reason" in payload else row.report_reason
+    target_type = payload["target_type"] if "target_type" in payload else row.target_type
+    if "affinity_status" in payload:
+        next_status = _normalize_affinity_status(payload["affinity_status"])
+        if next_status != AFFINITY_STATUS_WAIT and str(reason or "").strip():
+            raise ValueError("请先清除未出报告原因，再修改亲和力状态")
+        if next_status == AFFINITY_STATUS_ASSAYING:
+            if not actor_person:
+                raise ValueError("无法识别当前亲和力人员姓名")
+            row.affinity_owner = actor_person
+        elif next_status == AFFINITY_STATUS_WAIT:
+            row.affinity_owner = None
+
+    if "flow_status" in payload:
+        _normalize_flow_status(payload["flow_status"])
+        if str(target_type or "").strip() == "分泌型":
+            raise ValueError("分泌型靶点不需要流式实验")
 
 
 def _normalize_order_kind(value: Any) -> str:
-    text = str(value or "").strip() or ORDER_KIND_NORMAL
-    if text not in ORDER_KIND_OPTIONS:
-        raise ValueError("订单性质不在允许的选项中")
-    return text
+    return normalize_choice(value, ORDER_KIND_OPTIONS, "订单性质", default=ORDER_KIND_NORMAL)
 
 
 def _normalize_supply_mode(value: Any) -> str:
-    text = str(value or "").strip() or SUPPLY_MODE_ARRIVAL
-    if text not in SUPPLY_MODE_OPTIONS:
-        raise ValueError("供应方式不在允许的选项中")
-    return text
+    return normalize_choice(value, SUPPLY_MODE_OPTIONS, "供应方式", default=SUPPLY_MODE_ARRIVAL)
 
 
 def _normalize_affinity_result(value: Any) -> str | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    if text not in AFFINITY_RESULT_OPTIONS:
-        raise ValueError("亲和力结果不在允许的选项中")
-    return text
+    return normalize_choice(value, AFFINITY_RESULT_OPTIONS, "亲和力结果", nullable=True)
 
 
 def _normalize_target_color(value: Any) -> str | None:
@@ -335,19 +325,6 @@ def _normalize_target_color(value: Any) -> str | None:
         return None
     if text not in TARGET_COLOR_OPTIONS:
         raise ValueError("靶点颜色标记不在允许的选项中")
-    return text
-
-
-def _normalize_date(value: Any) -> str | None:
-    if value in (None, ""):
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        datetime.strptime(text, "%Y-%m-%d")
-    except ValueError as exc:
-        raise ValueError("日期必须是 YYYY-MM-DD") from exc
     return text
 
 
@@ -378,25 +355,50 @@ def _code_search_clause(column, value: Any):
     if not tokens:
         return None
     if len(tokens) == 1:
-        return column.like(f"%{tokens[0]}%")
+        return like_contains(column, tokens[0])
     return column.in_(tokens)
 
 
-def _contains_filter(column, value: Any):
-    return combine_any(value, lambda text: column.like(f"%{text}%"))
+def _status_filter_clause(data: dict[str, Any]):
+    raw_terms = [
+        *filter_terms(data.get("status")),
+        *filter_terms(data.get("affinity_status")),
+        *filter_terms(data.get("flow_status")),
+    ]
+    if not raw_terms:
+        return None
+    main_vals: list[str] = []
+    aff_vals: list[str] = []
+    flow_vals: list[str] = []
+    for val in raw_terms:
+        if val in STATUS_OPTIONS:
+            main_vals.append(val)
+        elif val in AFFINITY_STATUS_OPTIONS:
+            aff_vals.append(val)
+        elif val in FLOW_STATUS_OPTIONS:
+            flow_vals.append(val)
+        else:
+            raise ValueError("状态不在允许的选项中")
 
-
-def _csv_token_filter(column, value: str, separators: tuple[str, ...] = (",", "、", "+")):
-    clauses = [column == value]
-    for sep in separators:
-        clauses.extend(
-            (
-                column.like(f"{value}{sep}%"),
-                column.like(f"%{sep}{value}"),
-                column.like(f"%{sep}{value}{sep}%"),
+    branches = []
+    if main_vals:
+        branches.append(DiscoverySynthesisOrder.status.in_(tuple(main_vals)))
+    if aff_vals or flow_vals:
+        assay_parts = [
+            DiscoverySynthesisOrder.status.in_((STATUS_WAIT_ASSAY, STATUS_ASSAYING))
+        ]
+        if aff_vals:
+            assay_parts.append(
+                DiscoverySynthesisOrder.affinity_status.in_(tuple(aff_vals))
             )
-        )
-    return or_(*clauses)
+        if flow_vals:
+            assay_parts.append(DiscoverySynthesisOrder.flow_status.in_(tuple(flow_vals)))
+        branches.append(and_(*assay_parts))
+    return branches[0] if len(branches) == 1 else or_(*branches)
+
+
+def _contains_filter(column, value: Any):
+    return combine_any(value, lambda text: like_contains(column, text))
 
 
 def _unassigned_clause():
@@ -419,6 +421,70 @@ def _has_issue_clause():
     )
 
 
+def _target_color_clause(tokens: list[str]):
+    clauses = []
+    valid = [c for c in tokens if c in TARGET_COLOR_OPTIONS]
+    if valid:
+        clauses.append(DiscoverySynthesisOrder.target_color.in_(valid))
+    if "none" in tokens:
+        clauses.append(
+            or_(
+                DiscoverySynthesisOrder.target_color.is_(None),
+                DiscoverySynthesisOrder.target_color == "",
+            )
+        )
+    if not clauses:
+        return None
+    return clauses[0] if len(clauses) == 1 else or_(*clauses)
+
+
+def _target_clause(db: Session | None, names: Any):
+    return recorded_target_clause(
+        db,
+        DiscoverySynthesisOrder.target_name,
+        DiscoverySynthesisOrder.target_codes,
+        names,
+        select(DiscoverySynthesisOrder.target_name, DiscoverySynthesisOrder.target_codes),
+    )
+
+
+_O = DiscoverySynthesisOrder
+HEADER_COLUMNS: dict[str, HeaderColumn] = {
+    "priority": HeaderColumn(_O.priority, "enum", order=tuple(PRIORITY_ORDER)),
+    "status": HeaderColumn(_O.status, "enum", order=tuple(STATUS_OPTIONS)),
+    "target_name": target_column(_O.target_name, _O.target_codes, colors=_target_color_clause),
+    "target_type": HeaderColumn(_O.target_type, "enum", order=tuple(TARGET_TYPE_OPTIONS)),
+    "mouse_strain": csv_column(_O.mouse_strain, tuple(MOUSE_STRAIN_OPTIONS)),
+    "selection_method": csv_column(_O.selection_method, tuple(SELECTION_METHOD_OPTIONS)),
+    "synthesis_code": HeaderColumn(_O.synthesis_code),
+    "order_no": HeaderColumn(_O.order_no),
+    "batch_label": HeaderColumn(_O.batch_label),
+    "synthetic_count": HeaderColumn(_O.synthetic_count, "number"),
+    "synthetic_date": HeaderColumn(_O.synthetic_date, "date"),
+    "arrival_count": HeaderColumn(_O.arrival_count, "number"),
+    "arrival_date": HeaderColumn(_O.arrival_date, "date"),
+    "affinity_date": HeaderColumn(_O.affinity_date, "date"),
+    "flow_date": HeaderColumn(_O.flow_date, "date"),
+    "affinity_owner": HeaderColumn(_O.affinity_owner, "enum"),
+    "affinity_result": HeaderColumn(_O.affinity_result, "enum", order=tuple(AFFINITY_RESULT_OPTIONS)),
+    "owner": HeaderColumn(_O.owner, "enum", order=(UNCLAIMED_OWNER,)),
+    "remark": HeaderColumn(_O.remark),
+    "report_reason": HeaderColumn(_O.report_reason),
+    "flow_note": HeaderColumn(_O.flow_note),
+    "synthetic_corp": HeaderColumn(_O.synthetic_corp, "enum", order=tuple(SYNTHETIC_CORP_OPTIONS)),
+    "order_kind": HeaderColumn(_O.order_kind, "enum", order=tuple(ORDER_KIND_OPTIONS)),
+    "supply_mode": HeaderColumn(_O.supply_mode, "enum", order=tuple(SUPPLY_MODE_OPTIONS)),
+    "project_code": HeaderColumn(_O.project_code),
+    "pm": HeaderColumn(_O.pm, "enum"),
+    "study_type": HeaderColumn(_O.study_type, "enum"),
+    "eng_type": csv_column(_O.eng_type, tuple(ENG_TYPE_OPTIONS)),
+    "eng_method": csv_column(_O.eng_method, tuple(ENG_METHOD_OPTIONS)),
+    "eng_parent_seq": HeaderColumn(_O.eng_parent_seq),
+    "eng_requirement": HeaderColumn(_O.eng_requirement),
+    "eng_result": HeaderColumn(_O.eng_result),
+}
+
+
 def _apply_list_filters(
     stmt,
     data: dict[str, Any],
@@ -426,6 +492,7 @@ def _apply_list_filters(
     apply_view: bool = True,
     apply_quick: bool = True,
     db: Session | None = None,
+    header_except: str | None = None,
 ):
     filters = []
     keyword = str(data.get("keyword") or "").strip()
@@ -448,13 +515,7 @@ def _apply_list_filters(
             )
         )
 
-    target_clause = recorded_target_clause(
-        db,
-        DiscoverySynthesisOrder.target_name,
-        DiscoverySynthesisOrder.target_codes,
-        data.get("target_name"),
-        select(DiscoverySynthesisOrder.target_name, DiscoverySynthesisOrder.target_codes),
-    )
+    target_clause = _target_clause(db, data.get("target_name"))
     if target_clause is not None:
         filters.append(target_clause)
 
@@ -474,16 +535,13 @@ def _apply_list_filters(
     if batch_label_clause is not None:
         filters.append(batch_label_clause)
 
-    status_clause = combine_any(
-        data.get("status"),
-        lambda val: DiscoverySynthesisOrder.status == _normalize_status(val),
-    )
+    status_clause = _status_filter_clause(data)
     if status_clause is not None:
         filters.append(status_clause)
 
     priority_clause = combine_any(
         data.get("priority"),
-        lambda val: DiscoverySynthesisOrder.priority == _normalize_priority(val),
+        lambda val: DiscoverySynthesisOrder.priority == normalize_priority(val),
     )
     if priority_clause is not None:
         filters.append(priority_clause)
@@ -517,22 +575,6 @@ def _apply_list_filters(
     if target_type_clause is not None:
         filters.append(target_type_clause)
 
-    color_tokens = [t.lower() for t in split_code_tokens(data.get("target_color"))]
-    if color_tokens:
-        color_clauses = []
-        valid_colors = [c for c in color_tokens if c in TARGET_COLOR_OPTIONS]
-        if valid_colors:
-            color_clauses.append(DiscoverySynthesisOrder.target_color.in_(valid_colors))
-        if "none" in color_tokens:
-            color_clauses.append(
-                or_(
-                    DiscoverySynthesisOrder.target_color.is_(None),
-                    DiscoverySynthesisOrder.target_color == "",
-                )
-            )
-        if color_clauses:
-            filters.append(or_(*color_clauses))
-
     corp_clause = match_any(DiscoverySynthesisOrder.synthetic_corp, data.get("synthetic_corp"))
     if corp_clause is not None:
         filters.append(corp_clause)
@@ -560,7 +602,7 @@ def _apply_list_filters(
         tokens = split_code_tokens(data.get(csv_key))
         if tokens:
             col = getattr(DiscoverySynthesisOrder, csv_key)
-            filters.append(or_(*[_csv_token_filter(col, item) for item in tokens]))
+            filters.append(or_(*[csv_token_clause(col, item) for item in tokens]))
 
     p_tokens = split_code_tokens(data.get("project_code"))
     if len(p_tokens) == 1:
@@ -597,14 +639,18 @@ def _apply_list_filters(
         s_raw = data.get(start_key)
         e_raw = data.get(end_key)
         if s_raw not in (None, ""):
-            filters.append(date_col >= _normalize_date(s_raw))
+            filters.append(date_col >= normalize_date(s_raw))
         if e_raw not in (None, ""):
-            filters.append(date_col <= _normalize_date(e_raw))
+            filters.append(date_col <= normalize_date(e_raw))
 
-    for empty_col in split_code_tokens(data.get("empty_date")):
-        if empty_col in DATE_FIELDS:
-            col = getattr(DiscoverySynthesisOrder, empty_col)
-            filters.append(or_(col.is_(None), col == ""))
+    filters.extend(
+        header_filter_clauses(
+            db,
+            HEADER_COLUMNS,
+            data.get("field_filters"),
+            except_field=header_except,
+        )
+    )
 
     if apply_view:
         view_group = str(data.get("view_group") or "").strip()
@@ -615,7 +661,7 @@ def _apply_list_filters(
         elif view_group == "assay":
             filters.append(
                 DiscoverySynthesisOrder.status.in_(
-                    (STATUS_WAIT_ASSAY, STATUS_ASSAYING, STATUS_AFFINITY_DONE)
+                    (STATUS_WAIT_ASSAY, STATUS_ASSAYING)
                 )
             )
         elif view_group == "completed":
@@ -637,30 +683,13 @@ def _apply_list_filters(
     return stmt
 
 
-_SORT_COLUMNS = {
-    "synthetic_date": DiscoverySynthesisOrder.synthetic_date,
-    "arrival_date": DiscoverySynthesisOrder.arrival_date,
-    "flow_date": DiscoverySynthesisOrder.flow_date,
-    "affinity_date": DiscoverySynthesisOrder.affinity_date,
-    "order_no": DiscoverySynthesisOrder.order_no,
-    "synthesis_code": DiscoverySynthesisOrder.synthesis_code,
-    "target_name": DiscoverySynthesisOrder.target_name,
-}
-
-
 def _list_order(data: dict[str, Any] | None = None):
     payload = data or {}
     field = str(payload.get("sort_field") or "").strip()
     direction = str(payload.get("sort_dir") or "desc").strip().lower()
-    column = _SORT_COLUMNS.get(field)
-    if column is not None and direction in {"asc", "desc"}:
-        blank = or_(column.is_(None), column == "")
-        ordered = column.asc() if direction == "asc" else column.desc()
-        return (
-            case((blank, 1), else_=0),
-            ordered,
-            DiscoverySynthesisOrder.id.desc(),
-        )
+    spec = HEADER_COLUMNS.get(field)
+    if spec is not None and direction in {"asc", "desc"}:
+        return header_sort_clauses(spec, direction, DiscoverySynthesisOrder.id)
     return list_order_clauses(
         field,
         DiscoverySynthesisOrder.sort_order,
@@ -684,11 +713,21 @@ def _queue_rows(db: Session) -> list[DiscoverySynthesisOrder]:
 
 
 def _lock_queue(db: Session) -> None:
-    db.scalars(
-        select(DiscoverySynthesisOrder.id)
-        .order_by(DiscoverySynthesisOrder.id.asc())
-        .with_for_update()
-    ).all()
+    lock_queue(db, DiscoverySynthesisOrder)
+
+
+def settle_queue_after_sync(db: Session) -> None:
+    """外部同步可能把行改成终态：在队列锁内让终态出队并重编，与同步改动同一次提交。"""
+    _lock_queue(db)
+    db.flush()
+    for row in db.scalars(
+        select(DiscoverySynthesisOrder).where(
+            DiscoverySynthesisOrder.status.in_((STATUS_COMPLETED, STATUS_CANCELLED)),
+            DiscoverySynthesisOrder.sort_order.is_not(None),
+        )
+    ).all():
+        row.sort_order = None
+    renumber_queue(_queue_rows(db))
 
 
 def _place_row(
@@ -756,7 +795,7 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
                     case(
                         (
                             DiscoverySynthesisOrder.status.in_(
-                                (STATUS_WAIT_ASSAY, STATUS_ASSAYING, STATUS_AFFINITY_DONE)
+                                (STATUS_WAIT_ASSAY, STATUS_ASSAYING)
                             ),
                             1,
                         ),
@@ -836,6 +875,33 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    """表头筛选的取值列表：套用除本列表头条件以外的全部筛选。顶部筛选里的本列条件由前端去掉。"""
+    payload = data or {}
+    field = str(payload.get("field") or "").strip()
+    spec = HEADER_COLUMNS.get(field)
+    if spec is None:
+        raise ValueError(f"不支持按「{field}」表头筛选")
+    return column_values(
+        db,
+        spec,
+        lambda stmt: _apply_list_filters(stmt, payload, db=db, header_except=field),
+        id_column=DiscoverySynthesisOrder.id,
+        keyword=str(payload.get("value_keyword") or ""),
+        limit=payload.get("value_limit"),
+        order=str(payload.get("value_order") or "value"),
+    )
+
+
+def search_recorded_targets(db: Session, keyword: str = "", limit: int = DEFAULT_RECORDED_TARGET_LIMIT) -> list[dict]:
+    return recorded_target_search(
+        db,
+        select(DiscoverySynthesisOrder.target_name, DiscoverySynthesisOrder.target_codes),
+        keyword,
+        limit,
+    )
+
+
 def get_options(db: Session) -> dict[str, Any]:
     def distinct_values(column, presets: tuple[str, ...] = ()) -> list[str]:
         found: set[str] = set()
@@ -850,20 +916,16 @@ def get_options(db: Session) -> dict[str, Any]:
     def distinct_csv_tokens(column, presets: tuple[str, ...] = ()) -> list[str]:
         found: set[str] = set()
         for val in db.scalars(select(column).where(column.is_not(None)).distinct()).all():
-            for part in str(val or "").replace("，", ",").replace("、", ",").replace("+", ",").split(","):
-                tok = part.strip()
-                if tok:
-                    found.add(tok)
+            found.update(split_tokens(val))
         ordered = list(presets)
         extras = sorted(item for item in found if item not in set(presets))
         return [*ordered, *extras]
 
-    pairs = db.execute(
-        select(DiscoverySynthesisOrder.target_name, DiscoverySynthesisOrder.target_codes)
-    ).all()
     return {
         "statuses": list(STATUS_OPTIONS),
-        "priorities": list(PRIORITY_ORDER),
+        "affinity_statuses": list(AFFINITY_STATUS_OPTIONS),
+        "flow_statuses": list(FLOW_STATUS_OPTIONS),
+        "priorities": list(PRIORITY_OPTIONS),
         "order_kinds": list(ORDER_KIND_OPTIONS),
         "supply_modes": list(SUPPLY_MODE_OPTIONS),
         "affinity_results": list(AFFINITY_RESULT_OPTIONS),
@@ -879,14 +941,13 @@ def get_options(db: Session) -> dict[str, Any]:
         ),
         "eng_types": distinct_csv_tokens(DiscoverySynthesisOrder.eng_type, ENG_TYPE_OPTIONS),
         "eng_methods": distinct_csv_tokens(DiscoverySynthesisOrder.eng_method, ENG_METHOD_OPTIONS),
-        "targets": target_select_options(pairs, catalog_names_for_pairs(db, pairs)),
         "owners": distinct_values(DiscoverySynthesisOrder.owner, (UNCLAIMED_OWNER,)),
         "pms": distinct_values(DiscoverySynthesisOrder.pm),
     }
 
 
 def _infer_target_type(db: Session, target_codes: Any) -> str | None:
-    codes = _normalize_target_codes(target_codes)
+    codes = normalize_target_codes(target_codes, upper=True)
     if not codes:
         return None
     row = db.execute(
@@ -909,12 +970,16 @@ def _apply_fields(
         raw = data.get(field)
         if field == "status":
             value: Any = _normalize_status(raw)
+        elif field == "affinity_status":
+            value = _normalize_affinity_status(raw)
+        elif field == "flow_status":
+            value = _normalize_flow_status(raw)
         elif field == "priority":
-            value = _normalize_priority(raw)
+            value = normalize_priority(raw)
         elif field == "sort_order":
             if raw in (None, "", "-"):
                 continue
-            value = _normalize_sort_order(raw)
+            value = normalize_positive_int(raw, "排序必须是正整数")
         elif field == "order_kind":
             value = _normalize_order_kind(raw)
         elif field == "supply_mode":
@@ -924,29 +989,24 @@ def _apply_fields(
         elif field == "target_color":
             value = _normalize_target_color(raw)
         elif field == "target_codes":
-            value = _normalize_target_codes(raw)
+            value = normalize_target_codes(raw, upper=True)
         elif field in CSV_JOINED_FIELDS:
             opts, max_len, label = CSV_JOINED_FIELDS[field]
             value = _normalize_csv_joined(raw, opts, max_len, label)
         elif field in INT_COUNT_FIELDS:
-            value = _normalize_nonneg_int(raw, INT_COUNT_FIELDS[field])
+            value = normalize_nonneg_int(raw, INT_COUNT_FIELDS[field])
         elif field in DATE_FIELDS:
-            value = _normalize_date(raw)
+            value = normalize_date(raw)
         else:
-            value = _normalize_text(
+            value = normalize_text(
                 raw,
                 STRING_FIELDS[field],
                 keep_breaks=field in BREAK_FIELDS,
             )
         setattr(row, field, value)
 
-    if "affinity_date" in data:
-        if row.affinity_date:
-            if not row.affinity_result:
-                row.affinity_result = AFFINITY_RESULT_NORMAL
-        else:
-            if "affinity_result" not in data:
-                row.affinity_result = None
+    if "affinity_date" in data and not row.affinity_date and "affinity_result" not in data:
+        row.affinity_result = None
 
     if row.source_one_id is not None:
         old_snap = row.source_snapshot if isinstance(row.source_snapshot, dict) else {}
@@ -966,47 +1026,6 @@ def _apply_fields(
             row.source_one_id = None
             if not any((row.order_no, row.synthesis_code, row.batch_label)):
                 row.source_snapshot = None
-
-
-def _apply_manual_status(
-    row: DiscoverySynthesisOrder,
-    payload: dict[str, Any],
-    *,
-    is_new: bool = False,
-    prev_state: tuple[Any, ...] = (None, None, None, None, None),
-) -> None:
-    if "status" in payload or (not is_new and (row.status or "").strip() == STATUS_CANCELLED):
-        return
-    prev_order_no, prev_supply_mode, prev_arrival_date, prev_affinity_date, prev_flow_date = (
-        prev_state
-    )
-    flow_changed = "flow_date" in payload and (is_new or row.flow_date != prev_flow_date)
-    affinity_changed = "affinity_date" in payload and (
-        is_new or row.affinity_date != prev_affinity_date
-    )
-    if flow_changed:
-        if row.flow_date:
-            row.status = STATUS_COMPLETED
-        elif row.affinity_date:
-            is_secreted = "分泌" in str(row.target_type or "").strip()
-            row.status = STATUS_COMPLETED if is_secreted else STATUS_AFFINITY_DONE
-        else:
-            row.status = derive_status_for_row(row, preserve_terminal=False)
-        return
-    if affinity_changed:
-        if row.affinity_date:
-            is_secreted = "分泌" in str(row.target_type or "").strip()
-            row.status = STATUS_COMPLETED if is_secreted else STATUS_AFFINITY_DONE
-        else:
-            row.status = derive_status_for_row(row, preserve_terminal=False)
-        return
-
-    arrival_changed = "arrival_date" in payload and row.arrival_date != prev_arrival_date
-    order_changed = "order_no" in payload and row.order_no != prev_order_no
-    supply_changed = "supply_mode" in payload and row.supply_mode != prev_supply_mode
-    if is_new or arrival_changed or order_changed or supply_changed:
-        preserve_term = not (arrival_changed and not row.arrival_date)
-        row.status = derive_status_for_row(row, preserve_terminal=preserve_term)
 
 
 def save(
@@ -1044,15 +1063,7 @@ def save(
         if disallowed:
             raise PermissionError("当前权限不可修改该字段")
 
-    if lock_queue and (
-        is_new
-        or "sort_order" in payload
-        or "priority" in payload
-        or "status" in payload
-        or "flow_date" in payload
-        or "affinity_date" in payload
-        or "arrival_date" in payload
-    ):
+    if lock_queue and (is_new or QUEUE_LOCK_FIELDS.intersection(payload)):
         _lock_queue(db)
 
     if is_new:
@@ -1074,36 +1085,38 @@ def save(
             raise ValueError(MISSING_ROW)
         if "full" not in scopes and "owner" in payload:
             cur_owner = str(row.owner or "").strip()
-            next_owner = _normalize_text(payload.get("owner"), STRING_FIELDS["owner"]) or ""
+            next_owner = normalize_text(payload.get("owner"), STRING_FIELDS["owner"]) or ""
             if next_owner != cur_owner:
-                can_claim = (
-                    cur_owner == UNCLAIMED_OWNER
-                    and bool(actor_person)
-                    and next_owner == actor_person
+                allowed_owners = {"", UNCLAIMED_OWNER}
+                if actor_person:
+                    allowed_owners.add(actor_person)
+                can_update_owner = (
+                    cur_owner in allowed_owners
+                    and next_owner in allowed_owners
                 )
-                can_unclaim = (
-                    bool(actor_person)
-                    and cur_owner == actor_person
-                    and next_owner == UNCLAIMED_OWNER
-                )
-                if not (can_claim or can_unclaim):
+                if not can_update_owner:
                     raise PermissionError(
-                        "仅可认领「无人问津」的批次，或将本人认领的批次改回「无人问津」"
+                        "仅可认领空白或「无人问津」的批次，并修改本人负责的批次"
                     )
         previous_sort = queued_sort(row.sort_order)
         previous_priority = row.priority or DEFAULT_PRIORITY
 
-    prev_state = (
-        row.order_no,
-        row.supply_mode,
-        row.arrival_date,
-        row.affinity_date,
-        row.flow_date,
-    )
+    if "affinity_status" in payload or "flow_status" in payload:
+        if is_new:
+            raise ValueError("请先创建工单，再修改实验状态")
+        if (row.status or "").strip() == STATUS_CANCELLED:
+            raise ValueError("已取消工单不可修改实验状态")
+        _prepare_assay_status_edits(row, payload, actor_person)
+
+    previous_target_type = (row.target_type or "").strip()
     _apply_fields(row, payload)
     if "target_codes" in payload and "target_type" not in payload:
         row.target_type = _infer_target_type(db, row.target_codes)
-    _apply_manual_status(row, payload, is_new=is_new, prev_state=prev_state)
+    if "status" not in payload and (is_new or AUTO_STATUS_FIELDS.intersection(payload)):
+        changed = set(payload) - {"target_type"}
+        if (row.target_type or "").strip() != previous_target_type:
+            changed.add("target_type")
+        sync_derived_statuses(row, changed_fields=changed)
 
     if actor_person and (
         (is_new and (row.order_kind == ORDER_KIND_ENGINEERING or "full" not in scopes))
@@ -1154,14 +1167,7 @@ def save_batch(
             raise ValueError("合成与验证记录 ID 不正确")
         if row_id is not None:
             row_ids.append(row_id)
-        if (
-            row_id is None
-            or "sort_order" in item
-            or "priority" in item
-            or "status" in item
-            or "flow_date" in item
-            or "affinity_date" in item
-        ):
+        if row_id is None or QUEUE_LOCK_FIELDS.intersection(item):
             needs_lock = True
     if len(row_ids) != len(set(row_ids)):
         raise ValueError("批量保存包含重复的记录")
@@ -1195,19 +1201,17 @@ def claim_order(
     row_id: int,
     actor_name: str | None,
 ) -> dict[str, Any]:
-    row = db.get(DiscoverySynthesisOrder, int(row_id))
+    row = db.get(DiscoverySynthesisOrder, int(row_id), with_for_update=True)
     if not row:
         raise ValueError(MISSING_ROW)
     person = clean_actor_person_name(actor_name)
     if not person:
         raise ValueError("无法识别当前认领人姓名")
     cur_owner = str(row.owner or "").strip()
-    if cur_owner == UNCLAIMED_OWNER:
+    if cur_owner in {"", UNCLAIMED_OWNER}:
         row.owner = person
     elif cur_owner == person:
         row.owner = UNCLAIMED_OWNER
-    elif not cur_owner:
-        raise ValueError("仅「无人问津」的批次可认领")
     else:
         raise ValueError(f"该批次已被 {cur_owner} 认领，不可重复认领")
     db.commit()
@@ -1280,7 +1284,8 @@ def adopt_source(
             continue
         setattr(row, field, remote_val)
 
-    row.status = derive_status_for_row(row, preserve_terminal=True)
+    if {"order_no", "arrival_date"}.intersection(target_fields):
+        sync_derived_statuses(row)
     db.commit()
     db.refresh(row)
     return serialize_order(row)
@@ -1318,18 +1323,6 @@ def sync_from_one(
 
     total_linked = int(res.get("linked") or 0)
     total_updated = int(res.get("updated") or 0)
-
-    if total_linked or total_updated:
-        for r in db.scalars(
-            select(DiscoverySynthesisOrder).where(
-                DiscoverySynthesisOrder.status.in_((STATUS_COMPLETED, STATUS_CANCELLED)),
-                DiscoverySynthesisOrder.sort_order.is_not(None),
-            )
-        ).all():
-            r.sort_order = None
-        renumber_queue(_queue_rows(db))
-        db.commit()
-
     total_checked = len(candidate_rows)
     return {
         "linked": total_linked,
@@ -1355,10 +1348,13 @@ EXPORT_COLUMNS = (
     ("合成日期", "synthetic_date"),
     ("到货个数", "arrival_count"),
     ("到货日期", "arrival_date"),
-    ("备注", "remark"),
+    ("检测备注", "remark"),
+    ("亲和力状态", "affinity_status"),
+    ("亲和力人员", "affinity_owner"),
     ("亲和力日期", "affinity_date"),
     ("亲和力结果", "affinity_result"),
     ("未出原因", "report_reason"),
+    ("流式状态", "flow_status"),
     ("流式日期", "flow_date"),
     ("流式说明", "flow_note"),
     ("负责人", "owner"),

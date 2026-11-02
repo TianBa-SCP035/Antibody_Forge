@@ -68,17 +68,21 @@
 
 | 方法 | 路径 | 权限 |
 |------|------|------|
-| `POST /list` | 分页列表；默认 `id` 倒序；`sort_field=sort_order` 按队列；`view_group` / `boost_filter` 与统计 | `discovery.page.workbench` |
-| `GET /options` | 状态、优先级、筛选方式、已有 PM / 负责人 / 免疫负责人 / 细胞收集人、免疫抗原 / 筛选抗原 / 冲击免抗原（本表按行） | `discovery.page.workbench` |
+| `POST /list` | 分页列表；默认 `id` 倒序；`sort_field=sort_order` 按队列，其他登记列按表头排序；`view_group` / `boost_filter` / `field_filters` 与统计 | `discovery.page.workbench` |
+| `POST /column_values` | 表头筛选的取值列表，见 [../workbench.md](../workbench.md)「表头筛选」 | `discovery.page.workbench` |
+| `GET /options` | 状态、优先级（按 正常 → 吉吉国王 从低到高，下拉直接用）、筛选方式、归类鼠型、小鼠品系、已有 PM / 负责人 / 免疫负责人 / 细胞收集人、免疫抗原 / 筛选抗原 / 冲击免抗原（本表按行）。前端下拉与粘贴校验读这里，接口失败时退回前端预设 | `discovery.page.workbench` |
+| `GET /recorded_targets?keyword&limit` | 顶部靶点筛选的远程搜索：本表已录入的靶点，关键字匹配记录名称、编号或靶点库正式名；默认 50 条，最多 200 | `discovery.page.workbench` |
 | `POST /export_list` | 按当前筛选导出 | `discovery.page.workbench` |
 | `POST /save` | 无 `id` 新增并生成 `discovery_id`；有 `id` 只更新请求中出现的字段，忽略 `discovery_id` | `discovery.workbench.edit` |
 | `POST /save_batch` | Excel 粘贴批量保存 | `discovery.workbench.edit` |
 | `POST /delete` | 按主键删除并重编号。若该 `discovery_id` 已有关联建库工单则拒绝 | `discovery.workbench.edit` |
 | `POST /reorder` | `moved_id` 放到 `target_id` 当前队列位，再重编号未完成行；终态不参与 | `discovery.workbench.edit` |
 
-`POST /list` 接受 `view_group=harvest|library|sequencing|cancelled`，以及 `boost_filter=boosting|need_boost`。返回统计 `all / harvest / library / sequencing / cancelled / boosting / need_boost`。阶段统计忽略当前标签和胶囊筛选，但保留关键字和其余筛选项。胶囊两项统计同样忽略标签和胶囊筛选。统计用一次 `GROUP BY status`，条件汇总冲击免中 / 未排冲击免，不再按标签拆成多次 `COUNT`。
+`POST /list` 接受 `view_group=harvest|library|sequencing|cancelled`，以及 `boost_filter=boosting|missing_date`。返回统计 `all / harvest / library / sequencing / cancelled / boosting / missing_date`。阶段统计忽略当前标签和胶囊筛选，但保留关键字、表头筛选和其余筛选项。胶囊两项统计同样忽略标签和胶囊筛选。统计用一次 `GROUP BY status`，条件汇总冲击免中 / 日期未填，不再按标签拆成多次 `COUNT`。
 
-关键字只搜靶点名称 / 编号、项目编号、实验号、PM、负责人、免疫负责人、细胞收集人、备注。笼位、鼠号、板号、免疫抗原、筛选抗原、冲击免抗原走各自筛选项，按包含匹配。归类鼠型和小鼠品系可多选，按顿号拆开后命中对应项，以前的 `+` 和英文逗号也同样认。另有筛选方式、状态、优先级、课题类型、PM、负责人、剖鼠日起止、冲击免日起止。
+关键字搜发现编号、项目编号、实验号（一个词按包含，多个词按完整匹配）。笼位、鼠号、板号、免疫抗原、筛选抗原、冲击免抗原走各自筛选项，按包含匹配。归类鼠型和小鼠品系可多选，按顿号拆开后命中对应项，以前的 `+` 和英文逗号也同样认，自己填的值也能筛。另有筛选方式、状态、优先级、课题类型、PM、负责人、剖鼠日起止、冲击免日起止。
+
+表头筛选登记了除序号、靶点编号、操作以外的业务列，规则见 [../workbench.md](../workbench.md)。状态按 `规划中` → `已取消` 的业务顺序排，空状态算 `规划中`。剖鼠日期、冲击日期的排序和「只看空白」都在表头菜单里，原来的「点日期表头排序、右键只看未填」已去掉。切到「全部安排」或从「只看待剖鼠」退出时，状态列的表头条件随顶部状态一起清掉。
 
 写操作登记 `sys_permission_api`。页面权限与菜单开关在 `sys_permission`、`sys_feature_flag`。不写入示例角色/权限包。超级管理员走 `is_superuser`；其他人在系统管理里按需授权。
 

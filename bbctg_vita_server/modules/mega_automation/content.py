@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 import hashlib
 import json
 import random
@@ -8,6 +7,7 @@ import re
 from typing import Any
 
 from models.mega_automation import MegaFlowWorkOrder
+from utils.clock import now_local
 
 WELL_RE = re.compile(r"^[A-H](0[1-9]|1[0-2])$")
 WELL_TYPES = frozenset({"SAMPLE", "PC", "NC", "ISO", "TAG", "BLANK"})
@@ -121,7 +121,7 @@ def generate_pc_id(existing_ids: set[str]) -> str:
         candidate = str(random.randint(100000, 999999999))
         if candidate not in existing_ids:
             return candidate
-    return f"{int(datetime.now().timestamp() * 1000)}{random.randint(100, 999)}"
+    return f"{int(now_local().timestamp() * 1000)}{random.randint(100, 999)}"
 
 
 def normalize_pc_infos(pc_infos: list[Any]) -> tuple[list[dict[str, Any]], dict[str, str]]:

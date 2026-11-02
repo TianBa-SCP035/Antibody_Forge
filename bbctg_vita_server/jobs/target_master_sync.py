@@ -1,59 +1,30 @@
-import logging
-from datetime import datetime
+from sqlalchemy.orm import Session
 
 from db.external import get_employee_db
-from db.session import SessionLocal
-from modules.system.features import record_job_run
+from modules.system.features import run_recorded_job
 from modules.system.target_sync import sync_targets
-
 
 JOB_CODE = "job.target_master_sync"
 JOB_NAME = "靶点主数据定时同步"
 
 
-def target_master_sync_job() -> None:
-    started_at = datetime.now()
-    db = SessionLocal()
-    source_db_generator = None
-    result = None
+def _sync(db: Session) -> dict:
+    source_db_generator = get_employee_db()
     try:
-        source_db_generator = get_employee_db()
-        source_db = next(source_db_generator)
-        result = sync_targets(db, source_db, enrich_uniprot=True)
-        logging.info("target_master_sync result=%s", result)
-        skipped = sum(result["skipped"].values())
-        summary = (
-            f"新增 {result['created']} 条，"
-            f"更新 {result['updated']} 条，"
-            f"下架 {result['deactivated']} 条"
-        )
-        if result.get("uniprot_enriched"):
-            summary += f"，UniProt补齐 {result['uniprot_enriched']} 条"
-        if skipped:
-            summary += f"，跳过 {skipped} 条"
-        record_job_run(
-            job_code=JOB_CODE,
-            job_name=JOB_NAME,
-            started_at=started_at,
-            finished_at=datetime.now(),
-            result="success",
-            summary=summary,
-            detail=result,
-        )
-    except Exception as error:
-        db.rollback()
-        logging.exception("target_master_sync failed")
-        record_job_run(
-            job_code=JOB_CODE,
-            job_name=JOB_NAME,
-            started_at=started_at,
-            finished_at=datetime.now(),
-            result="failed",
-            summary="执行失败",
-            detail=result or {},
-            error_message=str(error),
-        )
+        return sync_targets(db, next(source_db_generator), enrich_uniprot=True)
     finally:
-        db.close()
-        if source_db_generator is not None:
-            source_db_generator.close()
+        source_db_generator.close()
+
+
+def _summary(result: dict) -> str:
+    summary = f"新增 {result['created']} 条，更新 {result['updated']} 条，下架 {result['deactivated']} 条"
+    if result.get("uniprot_enriched"):
+        summary += f"，UniProt补齐 {result['uniprot_enriched']} 条"
+    skipped = sum(result["skipped"].values())
+    if skipped:
+        summary += f"，跳过 {skipped} 条"
+    return summary
+
+
+def target_master_sync_job() -> None:
+    run_recorded_job(JOB_CODE, JOB_NAME, _sync, summarize=_summary)

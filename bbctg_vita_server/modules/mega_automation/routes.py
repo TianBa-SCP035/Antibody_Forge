@@ -1,15 +1,18 @@
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from core.response import error, success
+from core.errors import route_error
+from core.response import success
 from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
+from modules.auth.external import require_labillion_caller
 from modules.mega_automation import callback, service
 from modules.system.audit import write_operation_log
 from modules.system.audit_config import LABILLION_CALLBACK_AUDIT_ACTION
@@ -26,21 +29,16 @@ def labillion_callback_success(data: dict[str, Any] | None = None) -> JSONRespon
 def _run(db: Session, operation: Callable[[], Any]) -> dict:
     try:
         return success(operation())
-    except ValueError as exc:
-        db.rollback()
-        return error(str(exc))
-    except Exception:
-        db.rollback()
-        logger.exception("mega automation request failed")
-        return error("服务端异常，请稍后重试")
+    except Exception as exc:
+        return route_error(exc, db)
 
 
-@router.post("/labillion/callback")
+@router.post("/labillion/callback", dependencies=[Depends(require_labillion_caller)])
 def labillion_status_callback(
     data: Any = Body(default=None),
     db: Session = Depends(get_db),
 ) -> JSONResponse:
-    """Labillion 订单状态推送；无需登录，响应须在 5 秒内返回 2xx。"""
+    """Labillion 订单状态推送；无需登录（来源按配置校验），响应须在 5 秒内返回 2xx。"""
     payload = data if isinstance(data, dict) else {}
     try:
         if data is not None and not isinstance(data, dict):
@@ -128,6 +126,25 @@ def flow_work_order_list(
     return _run(db, lambda: service.get_work_order_list(db, data or {}))
 
 
+class ColumnValuesRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    field: str = Field(min_length=1, max_length=64)
+    value_keyword: str = Field(default="", max_length=128)
+    value_limit: int = Field(default=200, ge=1, le=1000)
+    value_order: Literal["value", "value_desc", "recent"] = "value"
+
+
+@router.post("/flow-work-orders/column_values")
+def flow_work_order_column_values(
+    data: ColumnValuesRequest,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "mega.page.flow_work_order")
+    return _run(db, lambda: service.get_column_values(db, data.model_dump()))
+
+
 @router.post("/flow-work-orders/export")
 def flow_work_order_export(
     data: dict,
@@ -139,13 +156,8 @@ def flow_work_order_export(
 
     try:
         output, filename = service.export_work_order_list_workbook(db, data or {})
-    except ValueError as exc:
-        db.rollback()
-        return error(str(exc))
-    except Exception:
-        db.rollback()
-        logger.exception("mega automation export failed")
-        return error("服务端异常，请稍后重试")
+    except Exception as exc:
+        return route_error(exc, db)
     return xlsx_response(output, filename)
 
 

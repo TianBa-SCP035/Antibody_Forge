@@ -1,6 +1,5 @@
 """列表类 Excel 导出：表头样式、冻结首行、自动列宽。"""
 
-from datetime import datetime
 from io import BytesIO
 from typing import Any, Sequence
 from urllib.parse import quote
@@ -9,6 +8,7 @@ from fastapi.responses import Response
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from utils.clock import now_local
 
 FONT_NAME = "微软雅黑"
 HEADER_FONT = Font(name=FONT_NAME, size=11, bold=True, color="303133")
@@ -121,7 +121,7 @@ def build_list_workbook(
     output = BytesIO()
     wb.save(output)
     output.seek(0)
-    filename = f"{filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    filename = f"{filename_prefix}_{now_local().strftime('%Y%m%d_%H%M%S')}.xlsx"
     return output, filename
 
 

@@ -172,6 +172,11 @@ function onVisible(visible: boolean) {
 }
 
 onBeforeUnmount(unbindPopper)
+
+defineExpose({
+  open: () => setExpanded(true),
+  isOpen: () => Boolean(selectRef.value?.expanded),
+})
 </script>
 
 <style scoped>

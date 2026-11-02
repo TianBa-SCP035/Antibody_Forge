@@ -1,7 +1,5 @@
 import { requestClient, skipGlobalErrorHandler } from '#/api/request';
 
-export const DISCOVERY_WORKBENCH_CREATED_KEY = 'discovery.workbench.created';
-
 const SAVE_TIMEOUT = 5000;
 const DOWNLOAD_TIMEOUT = 360_000;
 
@@ -13,6 +11,13 @@ const downloadConfig = {
 
 export function fetchDiscoveryWorkbenchList(data: any, config?: PostConfig) {
   return requestClient.post('/discovery/workbench/list', data, {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
+export function fetchDiscoveryWorkbenchColumnValues(data: any, config?: PostConfig) {
+  return requestClient.post('/discovery/workbench/column_values', data, {
     ...skipGlobalErrorHandler,
     ...config,
   });

@@ -98,20 +98,12 @@
                 <el-input v-model="listQuery.project_name" placeholder="项目名称" class="filter-item" @keyup.enter="handleFilter" clearable :prefix-icon="Search" />
             </el-col>
             <el-col :span="3">
-                 <ListFilterSelect 
-                      v-model="listQuery.target_name" 
-                      placeholder="靶点" 
-                      clearable 
-                      filterable 
-                      :filter-method="q => setFilterQuery('target', q)"
-                      @clear="setFilterQuery('target', '')"
-                      style="width: 100%" 
-                      @change="handleFilter">
-                      <el-option v-for="item in filteredTargetOptions" :key="item.value" :label="item.label" :value="item.value">
-                        <span>{{ item.label }}</span>
-                        <span v-if="targetOptionExtra(item)" class="target-option-code">{{ targetOptionExtra(item) }}</span>
-                      </el-option>
-                  </ListFilterSelect>
+                 <WorkbenchTargetFilter
+                      v-model="listQuery.target_name"
+                      placeholder="靶点"
+                      scope="serumList"
+                      style="width: 100%"
+                      @change="handleFilter" />
             </el-col>
             <el-col :span="3">
                  <ListFilterSelect 
@@ -525,7 +517,7 @@ import {
 } from '#/utils/serumPermission'
 import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage'
 import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS, SERUM_MOUSE_STRAIN_OPTIONS } from '#/utils/serumMouseOptions'
-import { filterTargetOptions, normalizeTargetOptions, targetOptionExtra as targetOptionHint } from '#/utils/targetFilterOptions'
+import WorkbenchTargetFilter from '#/components/workbench/WorkbenchTargetFilter.vue'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
 const SERUM_LIST_FILTER_KEY = 'serumList'
@@ -550,6 +542,7 @@ export default {
     AdvancedOpsBar,
     ListFilterSelect,
     SerumProjectStatusEditor,
+    WorkbenchTargetFilter,
     ArrowDown,
     CircleCheck,
     DataAnalysis,
@@ -582,9 +575,6 @@ export default {
     },
     currentRoles() {
       return getSerumUserRoles(this.currentUserInfo)
-    },
-    filteredTargetOptions() {
-      return filterTargetOptions(this.allTargetOptions, this.targetFilterQuery)
     },
     filteredOwnerOptions() {
       return this.filterOptions(this.allOwnerOptions, this.ownerFilterQuery)
@@ -638,8 +628,6 @@ export default {
       dateRange: [],
       ownerFilterQuery: '',
       chartVisible: false,
-      allTargetOptions: [],
-      targetFilterQuery: '',
       allOwnerOptions: [],
       allStudyTypeOptions: [],
       studyTypeFilterQuery: '',
@@ -665,6 +653,8 @@ export default {
       extraColumnsTimer: 0,
       tabDataFetchedAt: 0,
       listRequestToken: 0,
+      statsRequestToken: 0,
+      statsKey: '',
     }
   },
   created() {
@@ -810,18 +800,8 @@ export default {
     },
     async initListMeta() {
       try {
-        const [stats, filterOptions] = await Promise.all([
-          fetchStats(skipGlobalErrorHandler),
-          getSerumFilterOptions(skipGlobalErrorHandler),
-        ])
-        if (stats) {
-          this.stats = stats
-          if (this.stats.owner_counts && Array.isArray(this.stats.owner_counts)) {
-            this.stats.owner_counts.sort((a, b) => b.value - a.value)
-          }
-        }
+        const filterOptions = await getSerumFilterOptions(skipGlobalErrorHandler)
         if (filterOptions) {
-          this.allTargetOptions = normalizeTargetOptions(filterOptions.targets)
           this.allOwnerOptions = filterOptions.owners || []
           this.allStudyTypeOptions = filterOptions.study_types || []
           this.allPMOptions = filterOptions.pms || []
@@ -840,14 +820,24 @@ export default {
         notifyApiError(error, { messages: SERUM_ERRORS.list.initMeta })
       }
     },
+    /** 统计块跟随列表筛选；状态和负责人由统计块自己切换，不传。 */
+    statsPayload() {
+      const { page, limit, sort_field, sort_order, project_status, owner, ...scope } = this.getCurrentFilterPayload()
+      return scope
+    },
     getStats() {
-        fetchStats().then((response) => {
-            if (response) {
-                this.stats = response
-                if (this.stats.owner_counts && Array.isArray(this.stats.owner_counts)) {
-                    this.stats.owner_counts.sort((a, b) => b.value - a.value)
-                }
+        const payload = this.statsPayload()
+        this.statsKey = JSON.stringify(payload)
+        const statsToken = ++this.statsRequestToken
+        fetchStats(payload, skipGlobalErrorHandler).then((response) => {
+            if (statsToken !== this.statsRequestToken || !response) return
+            this.stats = response
+            if (this.stats.owner_counts && Array.isArray(this.stats.owner_counts)) {
+                this.stats.owner_counts.sort((a, b) => b.value - a.value)
             }
+        }).catch((error) => {
+            if (statsToken !== this.statsRequestToken) return
+            notifyApiError(error, { messages: SERUM_ERRORS.list.initMeta })
         })
     },
     refreshTabData() {
@@ -867,6 +857,7 @@ export default {
       }
 
       const payload = this.getCurrentFilterPayload()
+      if (JSON.stringify(this.statsPayload()) !== this.statsKey) this.getStats()
       fetchList(payload, skipGlobalErrorHandler).then((response) => {
         if (requestToken !== this.listRequestToken) return
         this.list = Array.isArray(response.items) ? response.items : []
@@ -972,7 +963,6 @@ export default {
       }
       this.dateRange = []
       this.ownerFilterQuery = ''
-      this.targetFilterQuery = ''
       this.studyTypeFilterQuery = ''
       this.pmFilterQuery = ''
       this.mouseStrainFilterQuery = ''
@@ -1099,9 +1089,6 @@ export default {
     },
     setFilterQuery(key, query) {
         this[`${key}FilterQuery`] = query;
-    },
-    targetOptionExtra(item) {
-        return targetOptionHint(item, this.targetFilterQuery)
     },
     filterOptions(dataArray, query) {
         const queryLower = (query || '').toLowerCase();
@@ -1364,11 +1351,6 @@ export default {
 </script>
 
 <style scoped>
-.target-option-code {
-  margin-left: 8px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
 .app-container {
     position: relative;
     padding: var(--list-page-padding);

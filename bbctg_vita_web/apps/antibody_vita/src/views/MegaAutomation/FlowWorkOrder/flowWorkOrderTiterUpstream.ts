@@ -6,9 +6,10 @@
  */
 import type { FlowWorkOrder, FlowWorkOrderSamplePlate, FlowWorkOrderWell } from '#/api/megaAutomation';
 
+import { TITER_INSTRUMENT_WIZARD_DRAFT_KEY } from '#/constants/storageKeys';
+
 import { createDefaultFlowWorkOrder, createDefaultSamplePlate, PLATE_ROWS } from './flowWorkOrderModel';
 
-export const TITER_INSTRUMENT_WIZARD_DRAFT_KEY = 'titer-instrument-wizard-draft';
 export const TITER_UPSTREAM_PREFILL_QUERY = 'titer-wizard';
 
 export interface TiterInstrumentWizardDraft {

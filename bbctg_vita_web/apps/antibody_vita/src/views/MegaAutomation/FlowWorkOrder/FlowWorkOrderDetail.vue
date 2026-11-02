@@ -365,6 +365,7 @@ import {
   saveFlowWorkOrder,
   validateFlowWorkOrder,
 } from '#/api/megaAutomation';
+import { createLatestRequest } from '#/utils/latestRequest';
 import {
   canDispatchMegaFlowWorkOrder,
   canEditMegaFlowWorkOrder,
@@ -431,7 +432,7 @@ export default {
     return {
       loading: true,
       loadError: false,
-      loadedRouteIdentity: '',
+      requestedRouteIdentity: '',
       saving: false,
       actionLoading: false,
       activeTab: 'editor',
@@ -656,8 +657,11 @@ export default {
     },
   },
   async created() {
+    this.detailRequest = createLatestRequest();
+    this.payloadRequest = createLatestRequest();
     await this.loadMeta();
-    await this.loadDetail();
+    this.metaReady = true;
+    this.reloadIfRouteIdentityChanged();
   },
   activated() {
     if (this.reloadIfRouteIdentityChanged()) return;
@@ -697,16 +701,19 @@ export default {
         this.clearActivePayload();
         return;
       }
+      const isLatest = this.payloadRequest.begin();
       this.activePayloadLoading = true;
       try {
         const data = await fetchActiveFlowWorkOrderPayload(this.order.id);
+        if (!isLatest()) return;
         this.activePayload = data?.payload || null;
         this.activePayloadDispatch = data?.dispatch || null;
       } catch (error) {
+        if (!isLatest()) return;
         this.clearActivePayload();
         ElMessage.warning(error?.message || '加载生效下发失败');
       } finally {
-        this.activePayloadLoading = false;
+        if (isLatest()) this.activePayloadLoading = false;
       }
     },
     async copyActivePayload() {
@@ -795,9 +802,10 @@ export default {
         if (data?.priorities?.length) {
           this.priorityOptions = data.priorities;
         }
-      } catch {
+      } catch (error) {
         this.defaultSampleWells = [];
         this.defaultCellColumns = [];
+        ElMessage.warning(error?.message || '加载工单默认孔位配置失败，请刷新页面重试');
       }
     },
     resetPausedTracking() {
@@ -833,17 +841,22 @@ export default {
     reloadIfRouteIdentityChanged() {
       // 返回列表时路由已切走，详情组件可能仍处在离开动画中；勿按「无 id」当成新建草稿重载
       if (this.$route.name !== 'MegaFlowWorkOrderDetail') return true;
-      if (this.loading) return true;
-      if (this.loadedRouteIdentity === this.detailRouteIdentity()) return false;
+      // created 拿到默认孔位后会补一次加载；activated 早于它触发时不能先读掉效价预填草稿
+      if (!this.metaReady) return true;
+      if (this.requestedRouteIdentity === this.detailRouteIdentity()) return false;
       this.loadDetail();
       return true;
     },
     async loadDetail() {
+      const isLatest = this.detailRequest.begin();
+      this.payloadRequest.cancel();
+      this.activePayloadLoading = false;
       this.clearValidationIssues();
       this.clearActivePayload();
       this.labillionExecutionProgress = '';
       this.loading = true;
       const routeIdentity = this.detailRouteIdentity();
+      this.requestedRouteIdentity = routeIdentity;
       const id = this.$route.query.id;
       const copyFrom = this.$route.query.copyFrom;
       const prefill = this.$route.query.prefill;
@@ -862,7 +875,6 @@ export default {
           this.order = this.normalizeOrder(createDefaultFlowWorkOrder());
         }
         this.resetPausedTracking();
-        this.loadedRouteIdentity = routeIdentity;
         this.loading = false;
         this.$nextTick(() => {
           this.$refs.editorTab?.scheduleSamplePlateSortableInit();
@@ -872,6 +884,7 @@ export default {
       this.pausedDirtyInit = true;
       try {
         const data = await fetchFlowWorkOrderDetail(id || copyFrom);
+        if (!isLatest()) return;
         if (copyFrom && !id) {
           this.order = this.normalizeOrder({
             ...data,
@@ -892,22 +905,25 @@ export default {
           this.order = this.normalizeOrder(data);
         }
         this.loadError = false;
-        this.loadedRouteIdentity = routeIdentity;
         this.resetPausedTracking();
         if (id && this.order?.id) {
           this.triggerLabillionSync();
         }
       } catch (error) {
+        if (!isLatest()) return;
+        this.requestedRouteIdentity = '';
         this.loadError = true;
         this.order = this.normalizeOrder(createDefaultFlowWorkOrder());
         this.resetPausedTracking();
         ElMessage.error(error?.message || '工单加载失败，请返回列表后重试');
       } finally {
-        this.loading = false;
-        this.$nextTick(() => {
-          this.pausedDirtyInit = false;
-          this.$refs.editorTab?.scheduleSamplePlateSortableInit();
-        });
+        if (isLatest()) {
+          this.loading = false;
+          this.$nextTick(() => {
+            this.pausedDirtyInit = false;
+            this.$refs.editorTab?.scheduleSamplePlateSortableInit();
+          });
+        }
       }
     },
     normalizeOrder(data) {
@@ -1072,7 +1088,7 @@ export default {
         this.order = this.normalizeOrder(data);
         if (!this.$route.query.id && data?.id) {
           // 先对齐 identity，避免 replace 触发 query watch 后又去全屏重载
-          this.loadedRouteIdentity = `id:${data.id}`;
+          this.requestedRouteIdentity = `id:${data.id}`;
           await this.$router.replace({
             name: 'MegaFlowWorkOrderDetail',
             query: { id: data.id, mode: this.$route.query.mode || 'edit' },

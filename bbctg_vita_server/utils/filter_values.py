@@ -39,8 +39,13 @@ def split_code_tokens(value: Any) -> list[str]:
     return [p for p in _CODE_TOKEN_SPLIT.split(text) if p]
 
 
-def _like_literal(value: str) -> str:
+def like_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def like_contains(column, text: str):
+    """包含匹配，用户输入里的 % 和 _ 按字面处理。"""
+    return column.like(f"%{like_literal(text)}%", escape="\\")
 
 
 def filter_terms(value: Any) -> list[str]:
@@ -109,7 +114,7 @@ def coerce_target_codes(value: Any) -> list[str]:
 
 
 def _one_target_name_clause(column, name: str):
-    literal = _like_literal(name)
+    literal = like_literal(name)
     clauses = [column == name]
     for sep in ("&", "＆", ",", "，"):
         clauses.append(column.like(f"{literal}{sep}%", escape="\\"))
@@ -146,7 +151,7 @@ def json_codes_clause(column, codes):
     for code in codes:
         if not code:
             continue
-        literal = _like_literal(code)
+        literal = like_literal(code)
         clauses.append(cast(column, String).like(f'%"{literal}"%', escape="\\"))
     if not clauses:
         return None
@@ -203,6 +208,60 @@ def _target_option(value: str, label: str, aliases: list[str], codes: set[str]) 
         "aliases": sorted({name for name in aliases if name and name != shown}),
         "codes": sorted(code for code in codes if code),
     }
+
+
+DEFAULT_RECORDED_TARGET_LIMIT = 50
+MAX_RECORDED_TARGET_LIMIT = 200
+CATALOG_KEYWORD_CODE_LIMIT = 50
+
+
+def recorded_target_search(
+    db,
+    pair_stmt,
+    keyword: str = "",
+    limit: int = DEFAULT_RECORDED_TARGET_LIMIT,
+) -> list[dict[str, Any]]:
+    """本表已录入靶点的关键字搜索。关键字和上限都进 SQL，避免把整表靶点推到浏览器。
+
+    pair_stmt 约定选 (name, codes)。关键字命中记录名称、记录编号，或靶点库正式名称对应的编号。
+    """
+    from models.target import Target
+
+    text = str(keyword or "").strip()
+    cap = min(max(int(limit or DEFAULT_RECORDED_TARGET_LIMIT), 1), MAX_RECORDED_TARGET_LIMIT)
+    name_expr, codes_expr = list(pair_stmt.selected_columns)[:2]
+    stmt = pair_stmt
+    if text:
+        pattern = f"%{like_literal(text)}%"
+        clauses = [
+            name_expr.like(pattern, escape="\\"),
+            cast(codes_expr, String).like(pattern, escape="\\"),
+        ]
+        catalog_codes = db.scalars(
+            select(Target.snum)
+            .where(Target.name.like(pattern, escape="\\"))
+            .limit(CATALOG_KEYWORD_CODE_LIMIT)
+        ).all()
+        catalog_clause = json_codes_clause(codes_expr, catalog_codes)
+        if catalog_clause is not None:
+            clauses.append(catalog_clause)
+        stmt = stmt.where(or_(*clauses))
+    distinct_pairs = stmt.distinct().subquery()
+    name_col, codes_col = list(distinct_pairs.c)[:2]
+    pairs = db.execute(
+        select(name_col, codes_col).order_by(name_col).limit(cap * 4)
+    ).all()
+    options = target_select_options(pairs, catalog_names_for_pairs(db, pairs))
+    if text:
+        lowered = text.lower()
+        options = [
+            item
+            for item in options
+            if lowered in str(item.get("label") or "").lower()
+            or any(lowered in str(a).lower() for a in item.get("aliases") or [])
+            or any(lowered in str(c).lower() for c in item.get("codes") or [])
+        ]
+    return options[:cap]
 
 
 def target_select_options(pairs, official_by_code: dict[str, str] | None = None) -> list[dict[str, Any]]:

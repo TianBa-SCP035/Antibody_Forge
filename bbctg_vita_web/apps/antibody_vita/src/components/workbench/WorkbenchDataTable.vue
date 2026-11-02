@@ -4,10 +4,15 @@
     class="workbench-data-table"
     :class="{ 'is-column-moving': Boolean(drag) }"
   >
-    <el-table v-bind="$attrs">
+    <el-table
+      v-bind="$attrs"
+      :header-cell-class-name="headerCellClassName"
+      @header-click="onHeaderClick"
+    >
       <el-table-column
         v-for="col in displayColumns"
         :key="col.key"
+        :column-key="col.key"
         :prop="col.prop"
         :label="col.label"
         :width="col.width"
@@ -25,7 +30,12 @@
             @mousedown="onHeaderMouseDown($event, col)"
             @contextmenu="onHeaderContextMenu($event, col)"
           >
-            <slot :name="'header-' + col.key" :column="col">{{ col.label }}</slot>
+            <WorkbenchHeaderLabel
+              v-if="headerMenuStates?.[col.key]"
+              :label="col.label"
+              v-bind="headerMenuStates[col.key]"
+            />
+            <slot v-else :name="'header-' + col.key" :column="col">{{ col.label }}</slot>
           </div>
         </template>
         <template v-if="$slots[col.key]" #default="scope">
@@ -90,6 +100,7 @@ import { ArrowDown, Calendar } from '@element-plus/icons-vue'
 import { ElButton, ElCheckbox, ElCheckboxGroup, ElDatePicker, ElDialog, ElIcon, ElOption, ElSelect, ElTable, ElTableColumn, ElTooltip } from 'element-plus'
 
 import { createColumnOrder } from './columnOrder'
+import { WorkbenchHeaderLabel } from './workbenchHeaderMenu'
 
 export const WorkbenchInlineSelect = defineComponent({
   name: 'WorkbenchInlineSelect',
@@ -174,44 +185,6 @@ export const WorkbenchInlineSelect = defineComponent({
           ],
         ),
       ],
-    )
-  },
-})
-
-export const WorkbenchDateHeader = defineComponent({
-  name: 'WorkbenchDateHeader',
-  props: {
-    label: { type: String, required: true },
-    mark: { type: String, default: '' },
-    sorted: { type: Boolean, default: false },
-    emptyFiltered: { type: Boolean, default: false },
-    title: { type: String, default: '' },
-  },
-  emits: ['sort', 'toggle-empty'],
-  render() {
-    return h(
-      'button',
-      {
-        type: 'button',
-        class: [
-          'sort-header-btn',
-          {
-            'is-active': this.sorted && !this.emptyFiltered,
-            'is-empty-filter': this.emptyFiltered,
-          },
-        ],
-        title: this.title,
-        onClick: (e) => {
-          e.stopPropagation()
-          this.$emit('sort')
-        },
-        onContextmenu: (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          this.$emit('toggle-empty')
-        },
-      },
-      `${this.label}${this.mark}`,
     )
   },
 })
@@ -356,15 +329,16 @@ const WorkbenchBreakTooltip = defineComponent({
 
 export default {
   name: 'WorkbenchDataTable',
-  components: { ElButton, ElCheckbox, ElCheckboxGroup, ElDialog, ElTable, ElTableColumn, WorkbenchBreakTooltip },
+  components: { ElButton, ElCheckbox, ElCheckboxGroup, ElDialog, ElTable, ElTableColumn, WorkbenchBreakTooltip, WorkbenchHeaderLabel },
   inheritAttrs: false,
   props: {
     columns: { type: Array, required: true },
     storageKey: { type: String, required: true },
     pinFirst: { type: String, default: 'sort_order' },
     pinLast: { type: String, default: 'actions' },
+    headerMenuStates: { type: Object, default: null },
   },
-  emits: ['reorder', 'header-contextmenu'],
+  emits: ['reorder', 'header-contextmenu', 'header-menu'],
   data() {
     return {
       orderedColumns: [],
@@ -463,6 +437,13 @@ export default {
     },
     isPinned(key) {
       return key === this.pinFirst || key === this.pinLast
+    },
+    headerCellClassName({ column }) {
+      return this.headerMenuStates?.[column.columnKey] ? 'wb-hf-cell' : ''
+    },
+    onHeaderClick(column, event) {
+      if (event.shiftKey || this.drag || !this.headerMenuStates?.[column.columnKey]) return
+      this.$emit('header-menu', column.columnKey, event.target.closest('th'))
     },
     onHeaderContextMenu(event, column) {
       this.$emit('header-contextmenu', column, event)

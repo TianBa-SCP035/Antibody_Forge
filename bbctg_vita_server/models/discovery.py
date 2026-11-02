@@ -2,6 +2,7 @@ from sqlalchemy import BigInteger, DateTime, Integer, JSON, String, UniqueConstr
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
+from models.types import DateString
 
 
 class DiscoveryWorkbench(Base):
@@ -30,8 +31,8 @@ class DiscoveryWorkbench(Base):
     screening_antigen: Mapped[str | None] = mapped_column(String(1000), comment="筛选抗原")
     positive_cell_count: Mapped[str | None] = mapped_column(String(64), comment="阳性细胞数")
     plate_nos: Mapped[str | None] = mapped_column(String(1000), comment="板号")
-    harvest_date: Mapped[str | None] = mapped_column(String(32), comment="剖鼠取细胞日")
-    boost_date: Mapped[str | None] = mapped_column(String(32), comment="冲击免日期")
+    harvest_date: Mapped[str | None] = mapped_column(DateString, comment="剖鼠取细胞日")
+    boost_date: Mapped[str | None] = mapped_column(DateString, comment="冲击免日期")
     boost_antigen: Mapped[str | None] = mapped_column(String(1000), comment="冲击免抗原")
     boost_cells: Mapped[str | None] = mapped_column(String(1000), comment="冲击免细胞")
     owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
@@ -125,11 +126,14 @@ class DiscoverySynthesisOrder(Base):
     order_no: Mapped[str | None] = mapped_column(String(64), comment="合成订单号")
     synthetic_corp: Mapped[str | None] = mapped_column(String(64), comment="合成公司")
     synthetic_count: Mapped[int | None] = mapped_column(Integer, comment="合成个数")
-    synthetic_date: Mapped[str | None] = mapped_column(String(32), comment="合成日期")
+    synthetic_date: Mapped[str | None] = mapped_column(DateString, comment="合成日期")
     arrival_count: Mapped[int | None] = mapped_column(Integer, comment="到货个数")
-    arrival_date: Mapped[str | None] = mapped_column(String(32), comment="到货日期")
-    flow_date: Mapped[str | None] = mapped_column(String(32), comment="流式日期")
-    affinity_date: Mapped[str | None] = mapped_column(String(32), comment="亲和力日期")
+    arrival_date: Mapped[str | None] = mapped_column(DateString, comment="到货日期")
+    affinity_status: Mapped[str | None] = mapped_column(String(32), comment="亲和力检测状态")
+    affinity_owner: Mapped[str | None] = mapped_column(String(64), comment="亲和力人员")
+    flow_date: Mapped[str | None] = mapped_column(DateString, comment="流式日期")
+    flow_status: Mapped[str | None] = mapped_column(String(32), comment="流式检测状态")
+    affinity_date: Mapped[str | None] = mapped_column(DateString, comment="亲和力日期")
     affinity_result: Mapped[str | None] = mapped_column(String(32), comment="亲和力结果")
     owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
     batch_label: Mapped[str | None] = mapped_column(String(255), comment="工单批次")
@@ -186,7 +190,10 @@ class DiscoverySynthesisOrder(Base):
             "synthetic_date": self.synthetic_date,
             "arrival_count": self.arrival_count,
             "arrival_date": self.arrival_date,
+            "affinity_status": self.affinity_status,
+            "affinity_owner": self.affinity_owner,
             "flow_date": self.flow_date,
+            "flow_status": self.flow_status,
             "affinity_date": self.affinity_date,
             "affinity_result": self.affinity_result,
             "owner": self.owner,

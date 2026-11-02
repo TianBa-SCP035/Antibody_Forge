@@ -1,5 +1,4 @@
 from collections import defaultdict
-from datetime import datetime
 import hashlib
 from io import BytesIO
 import json
@@ -15,7 +14,14 @@ from sqlalchemy.orm import Session
 
 from core.config import get_settings
 from core.errors import BusinessError
-from utils.filter_values import catalog_names_for_pairs, recorded_target_clause, restrict, target_select_options
+from utils.filter_values import (
+    DEFAULT_RECORDED_TARGET_LIMIT,
+    clean_field_text,
+    like_contains,
+    recorded_target_clause,
+    recorded_target_search,
+    restrict,
+)
 
 from models.immunology import (
     SerumElisaPlate,
@@ -30,19 +36,30 @@ from models.immunology import (
     SerumTiterPc,
     SerumTiterTarget,
 )
-from models.system import SysUser
-from models.target import Target
-from modules.atlas import service as atlas_service
+from models.types import date_present
 from modules.immunology.project_lock import lock_experiment_owner, lock_project_by_id
 from modules.immunology.titer.service import (
     PENDING_BLOOD_COLLECTION_STATUS,
     _normalize_owner_names,
     create_titer_order_for_blood_collection_if_absent,
 )
+from utils.clock import now_local
+from utils.header_filters import csv_token_clause
+from utils.codes import insert_with_retry
 
 SERUM_CAGE_NO_MOUSE = "SERUM_CAGE_NO_MOUSE"
 TERMINAL_PROJECT_STATUSES = frozenset({"结题", "无效价处死"})
 STATUS_AUTO_UPDATE_SKIP_STATUSES = TERMINAL_PROJECT_STATUSES | {"加免中"}
+# 进行中：自动推导的「待X / 已X」阶段状态，加上手动的「加免中」
+ONGOING_STATUS_MARKS = ("待", "已")
+ONGOING_FIXED_STATUSES = frozenset({"加免中"})
+
+
+def is_ongoing_status(status: Any) -> bool:
+    text = str(status or "")
+    return text in ONGOING_FIXED_STATUSES or any(mark in text for mark in ONGOING_STATUS_MARKS)
+
+
 EXPERIMENT_CHILD_MODELS = (
     SerumImmMouse,
     SerumImmAntigen,
@@ -178,15 +195,6 @@ def _project_target_pairs():
     )
 
 
-def _strain_token_filter(column, value: str):
-    return or_(
-        column == value,
-        column.like(f"{value}、%"),
-        column.like(f"%、{value}"),
-        column.like(f"%、{value}、%"),
-    )
-
-
 def join_strain_parts(groups: list[dict[str, Any]], key: str) -> str | None:
     values: list[str] = []
     seen: set[str] = set()
@@ -225,12 +233,12 @@ def apply_project_filters(stmt, data: dict[str, Any], *, db: Session | None = No
     elif p_code:
         stmt = stmt.where(
             or_(
-                SerumImmProject.project_code.like(f"%{p_code}%"),
-                SerumImmProject.experiment_id.like(f"%{p_code}%"),
+                like_contains(SerumImmProject.project_code, p_code),
+                like_contains(SerumImmProject.experiment_id, p_code),
             )
         )
     if p_name:
-        stmt = stmt.where(SerumImmProject.project_name.like(f"%{p_name}%"))
+        stmt = stmt.where(like_contains(SerumImmProject.project_name, p_name))
     if lab_notebook:
         if _is_blank_search(lab_notebook):
             stmt = stmt.where(
@@ -240,7 +248,7 @@ def apply_project_filters(stmt, data: dict[str, Any], *, db: Session | None = No
                 )
             )
         else:
-            stmt = stmt.where(SerumImmProject.lab_notebook.like(f"%{lab_notebook}%"))
+            stmt = stmt.where(like_contains(SerumImmProject.lab_notebook, lab_notebook))
     if cage_position:
         if _is_blank_search(cage_position):
             stmt = stmt.where(
@@ -256,7 +264,7 @@ def apply_project_filters(stmt, data: dict[str, Any], *, db: Session | None = No
             stmt = stmt.where(
                 SerumImmProject.experiment_id.in_(
                     select(SerumImmMouse.experiment_id).where(
-                        SerumImmMouse.cage_position.like(f"%{cage_position}%")
+                        like_contains(SerumImmMouse.cage_position, cage_position)
                     )
                 )
             )
@@ -273,11 +281,11 @@ def apply_project_filters(stmt, data: dict[str, Any], *, db: Session | None = No
         stmt = stmt.where(target_clause)
     stmt = restrict(stmt, study_type, lambda value: SerumImmProject.study_type == value)
     stmt = restrict(stmt, pm, lambda value: SerumImmProject.pm == value)
-    stmt = restrict(stmt, mouse_strain, lambda value: _strain_token_filter(SerumImmProject.mouse_strain, value))
+    stmt = restrict(stmt, mouse_strain, lambda value: csv_token_clause(SerumImmProject.mouse_strain, value))
     stmt = restrict(
         stmt,
         mouse_strain_category,
-        lambda value: _strain_token_filter(SerumImmProject.mouse_strain_category, value),
+        lambda value: csv_token_clause(SerumImmProject.mouse_strain_category, value),
     )
     return stmt
 
@@ -285,36 +293,26 @@ def apply_project_filters(stmt, data: dict[str, Any], *, db: Session | None = No
 def _project_status_clause(status: str):
     if status == "ongoing":
         return or_(
-            SerumImmProject.project_status.like("%待%"),
-            SerumImmProject.project_status.like("%已%"),
-            SerumImmProject.project_status == "加免中",
+            *(SerumImmProject.project_status.contains(mark) for mark in ONGOING_STATUS_MARKS),
+            SerumImmProject.project_status.in_(tuple(ONGOING_FIXED_STATUSES)),
         )
     if status == "completed":
-        return SerumImmProject.project_status.in_(("无效价处死", "结题"))
+        return SerumImmProject.project_status.in_(tuple(TERMINAL_PROJECT_STATUSES))
     return SerumImmProject.project_status == status
 
 
-def get_stats(db: Session) -> dict:
-    total = db.scalar(select(func.count(SerumImmProject.id)).where(SerumImmProject.project_status != "deleted")) or 0
+def get_stats(db: Session, data: dict[str, Any] | None = None) -> dict:
+    """统计块跟随列表筛选；状态和负责人是统计块自己切换的维度，不参与。"""
+    scope = {key: value for key, value in (data or {}).items() if key not in {"project_status", "owner"}}
+    scoped = _project_list_stmt(db, scope).subquery()
     status_counts = db.execute(
-        select(SerumImmProject.project_status, func.count(SerumImmProject.id))
-        .where(SerumImmProject.project_status != "deleted")
-        .group_by(SerumImmProject.project_status)
+        select(scoped.c.project_status, func.count()).group_by(scoped.c.project_status)
     ).all()
     status_dict = {status: count for status, count in status_counts}
-    ongoing_count = sum(
-        count
-        for status, count in status_dict.items()
-        if status and ("待" in status or "已" in status or status == "加免中")
-    )
-    completed_count = sum(
-        count for status, count in status_dict.items() if status in {"无效价处死", "结题"}
-    )
-    owner_counts = db.execute(
-        select(SerumImmProject.owner, func.count(SerumImmProject.id))
-        .where(SerumImmProject.project_status != "deleted")
-        .group_by(SerumImmProject.owner)
-    ).all()
+    total = sum(status_dict.values())
+    ongoing_count = sum(count for status, count in status_dict.items() if is_ongoing_status(status))
+    completed_count = sum(count for status, count in status_dict.items() if status in TERMINAL_PROJECT_STATUSES)
+    owner_counts = db.execute(select(scoped.c.owner, func.count()).group_by(scoped.c.owner)).all()
     return {
         "total": total,
         "status_counts": {**status_dict, "ongoing": ongoing_count, "completed": completed_count},
@@ -322,7 +320,11 @@ def get_stats(db: Session) -> dict:
     }
 
 
-def generate_next_id(db: Session, project_code: str) -> str | None:
+def generate_next_id(db: Session, project_code: str, skip: int = 0) -> str | None:
+    """项目编号 + 第 skip+1 个空闲两位序号。
+
+    撞号重试时同一事务的快照看不到别人刚提交的号，所以靠 skip 往后让，而不是重新查。
+    """
     project_code = _compact_identifier(project_code)
     if not project_code:
         return None
@@ -341,9 +343,11 @@ def generate_next_id(db: Session, project_code: str) -> str | None:
         suffix = (experiment_id or "")[len(project_code) :]
         if suffix.isdigit():
             existing_suffixes.add(int(suffix))
-    next_suffix = 1
-    while next_suffix in existing_suffixes:
+    next_suffix = 0
+    for _ in range(max(skip, 0) + 1):
         next_suffix += 1
+        while next_suffix in existing_suffixes:
+            next_suffix += 1
     return f"{project_code}{next_suffix:02d}"
 
 
@@ -374,9 +378,12 @@ def _cages_by_experiment(db: Session, experiment_ids: list[str]) -> dict[str, st
     return {key: "、".join(sorted(cages)) for key, cages in grouped.items()}
 
 
+MAX_LIST_LIMIT = 500
+
+
 def get_list(db: Session, data: dict[str, Any]) -> dict:
-    page = int(data.get("page", 1) or 1)
-    limit = int(data.get("limit", 20) or 20)
+    page = max(int(data.get("page", 1) or 1), 1)
+    limit = min(max(int(data.get("limit", 20) or 20), 1), MAX_LIST_LIMIT)
     stmt = _project_list_stmt(db, data)
 
     total_stmt = select(func.count()).select_from(stmt.subquery())
@@ -700,72 +707,6 @@ def bulk_insert(db: Session, model_class, items: list[dict], experiment_id: str,
     return inserted
 
 
-def _target_option_dict(
-    snum: str,
-    name: str,
-    structural_properties: str | None = None,
-    structure_feature: str | None = None,
-) -> dict[str, Any]:
-    return {
-        "snum": snum,
-        "name": name,
-        "structural_properties": structural_properties,
-        "structure_feature": structure_feature,
-    }
-
-
-def get_target_options(
-    db: Session,
-    keyword: str,
-    limit: int = 20,
-    codes: list[str] | None = None,
-) -> dict[str, list[dict[str, Any]]]:
-    selected_codes = list(
-        dict.fromkeys(
-            str(code).strip()
-            for code in (codes or [])
-            if str(code).strip()
-        )
-    )
-    selected_items = []
-    if selected_codes:
-        targets_by_code = {
-            target.snum: target
-            for target in db.scalars(select(Target).where(Target.snum.in_(selected_codes)))
-        }
-        selected_items = [
-            _target_option_dict(
-                code,
-                targets_by_code[code].name,
-                targets_by_code[code].structural_properties,
-                targets_by_code[code].structure_feature,
-            )
-            for code in selected_codes
-            if code in targets_by_code
-        ]
-
-    result = atlas_service.get_target_list(
-        db,
-        {
-            "page": 1,
-            "limit": min(max(limit, 1), 50),
-            "keyword": str(keyword or "").strip(),
-        },
-    )
-    seen_codes = set(selected_codes)
-    search_items = [
-        _target_option_dict(
-            item["snum"],
-            item["name"],
-            item.get("structural_properties"),
-            item.get("structure_feature"),
-        )
-        for item in result["items"]
-        if item["snum"] not in seen_codes
-    ]
-    return {"items": [*selected_items, *search_items]}
-
-
 def _titer_upload_root() -> Path:
     return Path(get_settings().repository_root) / "uploads" / "titer_files"
 
@@ -773,7 +714,7 @@ def _titer_upload_root() -> Path:
 def _next_available_path(path: Path) -> Path:
     if not path.exists():
         return path
-    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    stamp = now_local().strftime("%Y%m%d%H%M%S")
     candidate = path.with_name(f"{path.stem}_{stamp}{path.suffix}")
     index = 1
     while candidate.exists():
@@ -952,13 +893,15 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
         new_targets = incremental_update(db, SerumTiterTarget, data["titer_targets"], new_eid)
         new_pcs = incremental_update(db, SerumTiterPc, data["titer_pcs"], new_eid)
     else:
-        new_eid = generate_next_id(db, data.get("project_code"))
-        if not new_eid:
+        if not _compact_identifier(data.get("project_code")):
             raise ValueError("项目编号不能为空，无法生成实验 ID")
         project = SerumImmProject(**{field: data.get(field) for field in PROJECT_FIELDS})
-        project.experiment_id = new_eid
-        db.add(project)
-        db.flush()
+
+        def assign_experiment_id(attempt: int) -> None:
+            project.experiment_id = generate_next_id(db, data.get("project_code"), skip=attempt)
+
+        insert_with_retry(db, project, assign_experiment_id, conflict_message="实验 ID 分配冲突，请重试")
+        new_eid = project.experiment_id
         new_mice = bulk_insert(db, SerumImmMouse, data["mouse_groups"], new_eid)
         new_antigens = bulk_insert(db, SerumImmAntigen, data["antigens"], new_eid)
         new_steps = bulk_insert(db, SerumImmStep, data["steps"], new_eid, id_field="step_id")
@@ -1011,6 +954,13 @@ def delete_serum(db: Session, project_id: int) -> None:
 
 
 def update_status(db: Session, project_id: int, project_status: str) -> None:
+    project_status = clean_field_text(project_status)
+    if not project_status:
+        raise ValueError("状态不能为空")
+    if project_status == "deleted":
+        raise ValueError("删除请使用删除操作")
+    if len(project_status) > 64:
+        raise ValueError("状态不能超过 64 个字符")
     project = db.get(SerumImmProject, project_id)
     if not project:
         raise ValueError("项目不存在")
@@ -1073,8 +1023,7 @@ def _build_immunization_schedule(db: Session, experiment_ids: list[str], today: 
     steps = db.execute(
         select(SerumImmStep.experiment_id, SerumImmStep.date_actual, SerumImmStep.stage_name).where(
             SerumImmStep.experiment_id.in_(experiment_ids),
-            SerumImmStep.date_actual.is_not(None),
-            SerumImmStep.date_actual != "",
+            date_present(SerumImmStep.date_actual),
             SerumImmStep.stage_name.is_not(None),
             SerumImmStep.stage_name != "",
         )
@@ -1107,7 +1056,7 @@ def auto_update_status(db: Session, filters: dict[str, Any] | None = None) -> di
     if not projects:
         return {"message": "未找到符合条件的项目", "updated_count": 0, "titer_order_created_count": 0}
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = now_local().strftime("%Y-%m-%d")
     schedule_exp_ids = [
         project.experiment_id
         for project in projects
@@ -1150,6 +1099,10 @@ def auto_update_status(db: Session, filters: dict[str, Any] | None = None) -> di
     }
 
 
+def search_recorded_targets(db: Session, keyword: str = "", limit: int = DEFAULT_RECORDED_TARGET_LIMIT) -> list[dict]:
+    return recorded_target_search(db, _project_target_pairs(), keyword, limit)
+
+
 def get_filter_options(db: Session) -> dict:
     def distinct_values(column):
         rows = db.execute(select(column).distinct().where(column.is_not(None), column != "").order_by(column)).all()
@@ -1164,10 +1117,6 @@ def get_filter_options(db: Session) -> dict:
         return sorted(result)
 
     return {
-        "targets": target_select_options(
-            (pairs := db.execute(_project_target_pairs()).all()),
-            catalog_names_for_pairs(db, pairs),
-        ),
         "owners": distinct_values(SerumImmProject.owner),
         "study_types": distinct_values(SerumImmProject.study_type),
         "pms": distinct_values(SerumImmProject.pm),
@@ -1176,21 +1125,6 @@ def get_filter_options(db: Session) -> dict:
         "statuses": distinct_values(SerumImmProject.project_status),
     }
 
-
-def get_user_options(db: Session) -> list[str]:
-    return [
-        value
-        for value in db.scalars(
-            select(SysUser.display_name)
-            .where(
-                SysUser.display_name.is_not(None),
-                SysUser.display_name != "",
-            )
-            .distinct()
-            .order_by(SysUser.display_name)
-        ).all()
-        if value
-    ]
 
 
 def _cell_display_width(value: Any) -> float:
@@ -1223,7 +1157,7 @@ def _auto_fit_worksheet_columns(
 def export_mouse_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, str]:
     stmt = apply_project_filters(select(SerumImmProject), data, db=db)
     projects = db.scalars(stmt.order_by(SerumImmProject.id.desc())).all()
-    filename = f"小鼠免疫导出_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    filename = f"小鼠免疫导出_{now_local().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
     wb = Workbook()
     ws = wb.active

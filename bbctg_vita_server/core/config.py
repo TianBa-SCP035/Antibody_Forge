@@ -29,6 +29,9 @@ def _resolve_env_file() -> Path:
 
 DETECTED_APP_ENV = _detect_app_env()
 DEFAULT_ENV_FILE = _resolve_env_file()
+DEFAULT_DATABASE_URL = "mysql+pymysql://root:@localhost:3306/bbctg_vita"
+DEFAULT_SECRET_KEY = "please-change-me"
+MIN_PROD_SECRET_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -39,11 +42,12 @@ class Settings(BaseSettings):
     debug: bool = False
     enable_scheduler: bool = False
 
-    database_url: str = "mysql+pymysql://root:@localhost:3306/bbctg_vita"
-    secret_key: str = "please-change-me"
+    database_url: str = DEFAULT_DATABASE_URL
+    secret_key: str = DEFAULT_SECRET_KEY
 
     repository_root: Path = Field(default=PROJECT_ROOT / "repository")
     cors_origins: str = "http://localhost:5555,http://127.0.0.1:5555"
+    upload_max_mb: int = 50
 
     yunzhijia_appid: str = ""
     yunzhijia_appsecret: str = ""
@@ -62,12 +66,16 @@ class Settings(BaseSettings):
     cell_db_url: str = ""
     employee_db_url: str = ""
     one_db_url: str = ""
-    dev_user_openid: str = ""
-    dev_user_name: str = "周科钢 Kegang Zhou"
     labillion_base_url: str = ""
     labillion_username: str = ""
     labillion_password: str = ""
     labillion_platform_id: str = ""
+    # 外部系统回调校验：留空不校验；令牌走请求头 X-Callback-Token，IP 用英文逗号分隔
+    labillion_callback_token: str = ""
+    labillion_callback_ips: str = ""
+    order_sync_token: str = ""
+    order_sync_ips: str = ""
+    order_sync_max_mb: int = 20
     public_api_base_url: str = ""
 
     model_config = SettingsConfigDict(
@@ -86,6 +94,26 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+
+    @property
+    def upload_max_bytes(self) -> int:
+        return max(self.upload_max_mb, 1) * 1024 * 1024
+
+    def runtime_problems(self) -> list[str]:
+        """生产环境不能带着开发默认值启动。"""
+        if self.app_env != "prod":
+            return []
+        problems = []
+        if self.database_url == DEFAULT_DATABASE_URL:
+            problems.append("DATABASE_URL 未配置")
+        if self.secret_key == DEFAULT_SECRET_KEY or len(self.secret_key) < MIN_PROD_SECRET_LENGTH:
+            problems.append(f"SECRET_KEY 未配置或短于 {MIN_PROD_SECRET_LENGTH} 位")
+        origins = self.cors_origin_list
+        if "*" in origins or any("example" in item for item in origins):
+            problems.append("CORS_ORIGINS 只能填实际前端域名（同域部署可留空），不能是 * 或示例域名")
+        if self.debug:
+            problems.append("DEBUG 不能开启")
+        return problems
 
     @property
     def should_start_scheduler(self) -> bool:

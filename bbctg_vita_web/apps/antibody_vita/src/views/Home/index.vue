@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { IconifyIcon as Icon } from '@vben/icons';
 import { ElMessage } from 'element-plus';
 
+import { HOME_WARM_NOTE_STORAGE_KEY } from '#/constants/storageKeys';
 import { $t } from '#/locales';
 
 import HomeCalendarPanel from './components/HomeCalendarPanel.vue';
@@ -13,7 +14,6 @@ import HomeQuickNav from './components/HomeQuickNav.vue';
 import {
   HOME_FEATURED_READ_URL,
   HOME_SHOWCASE_SITE_URL,
-  HOME_WARM_NOTE_STORAGE_KEY,
   homePlatformTips,
   useHomeLocalizedMocks,
 } from './home-data';

@@ -65,6 +65,7 @@ import {
 import { notifyApiError, resolveUserMessage } from '#/api/errors';
 import { skipGlobalErrorHandler } from '#/api/request';
 import ListFilterSelect from '#/components/ListFilterSelect.vue';
+import { createLatestRequest } from '#/utils/latestRequest';
 import { useStaleTabRefresh } from '#/utils/staleTabRefresh';
 import { SYSTEM_ERRORS } from './errors';
 
@@ -75,6 +76,7 @@ const userStore = useUserStore();
 
 const activeTab = ref('users');
 const loading = ref(false);
+const logLoading = ref(false);
 const saving = ref(false);
 const errorMessage = ref('');
 const userKeyword = ref('');
@@ -719,7 +721,11 @@ function openBundleDialog(bundle?: SystemPermissionBundle) {
   bundleDialogVisible.value = true;
 }
 
+const dataRequest = createLatestRequest();
+const logRequest = createLatestRequest();
+
 async function loadData() {
+  const isLatest = dataRequest.begin();
   loading.value = true;
   errorMessage.value = '';
   try {
@@ -738,6 +744,7 @@ async function loadData() {
         getSystemUserSuggestionsApi({ field: 'department', limit: 200 }),
         getSystemUserSuggestionsApi({ field: 'group_name', limit: 200 }),
       ]);
+      if (!isLatest()) return;
       users.value = userResult?.items || [];
       userTotal.value = userResult?.total || users.value.length;
       activeUserTotal.value = userResult?.active_total || 0;
@@ -752,6 +759,7 @@ async function loadData() {
 
     if (canManageRoles.value) {
       const roleResult = await getSystemRolesApi(skipGlobalErrorHandler);
+      if (!isLatest()) return;
       roles.value = roleResult?.items || [];
     } else {
       roles.value = [];
@@ -762,6 +770,7 @@ async function loadData() {
         getSystemPermissionsApi(skipGlobalErrorHandler),
         getSystemPermissionBundlesApi(skipGlobalErrorHandler),
       ]);
+      if (!isLatest()) return;
       permissions.value = permissionResult?.items || [];
       permissionBundles.value = bundleResult?.items || [];
     } else {
@@ -770,9 +779,14 @@ async function loadData() {
     }
 
     if (canViewLogs.value) {
+      const isLatestLogs = logRequest.begin();
+      logLoading.value = false;
       const logResult = await getSystemOperationLogsByQueryApi(operationLogParams(), skipGlobalErrorHandler);
-      logs.value = logResult?.items || [];
-      logTotal.value = logResult?.total || logs.value.length;
+      if (!isLatest()) return;
+      if (isLatestLogs()) {
+        logs.value = logResult?.items || [];
+        logTotal.value = logResult?.total || logs.value.length;
+      }
     } else {
       logs.value = [];
       logTotal.value = 0;
@@ -782,12 +796,15 @@ async function loadData() {
       errorMessage.value = '当前账号没有用户权限管理明细权限';
     }
   } catch (error: unknown) {
+    if (!isLatest()) return;
     errorMessage.value = resolveUserMessage(error, {
       messages: SYSTEM_ERRORS.loadData,
     }).message;
   } finally {
-    loading.value = false;
-    markTabDataFetched();
+    if (isLatest()) {
+      loading.value = false;
+      markTabDataFetched();
+    }
   }
 }
 
@@ -797,13 +814,15 @@ async function loadLogs() {
   if (!canViewLogs.value) return;
   logQuery.date_start = logDateRange.value?.[0] || '';
   logQuery.date_end = logDateRange.value?.[1] || '';
-  loading.value = true;
+  const isLatest = logRequest.begin();
+  logLoading.value = true;
   try {
     const result = await getSystemOperationLogsByQueryApi(operationLogParams());
+    if (!isLatest()) return;
     logs.value = result?.items || [];
     logTotal.value = result?.total || logs.value.length;
   } finally {
-    loading.value = false;
+    if (isLatest()) logLoading.value = false;
   }
 }
 
@@ -1607,11 +1626,11 @@ onMounted(loadData);
                 type="daterange"
                 value-format="YYYY-MM-DD"
               />
-              <el-button class="filter-line-keep" :loading="loading" title="右键清空筛选" @click="loadLogs" @contextmenu.prevent="resetLogFilters">查询</el-button>
+              <el-button class="filter-line-keep" :loading="loading || logLoading" title="右键清空筛选" @click="loadLogs" @contextmenu.prevent="resetLogFilters">查询</el-button>
             </div>
           </div>
 
-          <el-table v-loading="loading" :data="logs" border stripe>
+          <el-table v-loading="loading || logLoading" :data="logs" border stripe>
             <el-table-column label="操作人" min-width="190" show-overflow-tooltip>
               <template #default="{ row }">
                 {{ formatLogOperator(row) }}

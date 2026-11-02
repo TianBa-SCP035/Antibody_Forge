@@ -15,10 +15,10 @@
 
 CREATE TABLE IF NOT EXISTS sys_user (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-  username VARCHAR(64) NOT NULL UNIQUE COMMENT '账号',
+  username VARCHAR(64) NOT NULL COMMENT '账号',
   display_name VARCHAR(128) NULL COMMENT '姓名',
   password_hash VARCHAR(255) NULL COMMENT '密码哈希',
-  openid VARCHAR(100) NULL UNIQUE COMMENT '云之家OpenID',
+  openid VARCHAR(100) NULL COMMENT '云之家OpenID',
   job_no VARCHAR(32) NULL COMMENT '工号',
   department VARCHAR(128) NULL COMMENT '部门',
   group_name VARCHAR(128) NULL COMMENT '组别',
@@ -33,29 +33,25 @@ CREATE TABLE IF NOT EXISTS sys_user (
   last_login_at DATETIME NULL COMMENT '最后登录时间',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  KEY idx_sys_user_openid (openid),
-  KEY idx_sys_user_department (department),
-  KEY idx_sys_user_group_name (group_name),
-  KEY idx_sys_user_gender (gender),
-  KEY idx_sys_user_employment_status (employment_status),
-  KEY idx_sys_user_status (status)
+  UNIQUE KEY uk_sys_user_username (username),
+  UNIQUE KEY uk_sys_user_openid (openid)
 ) COMMENT='系统用户表';
 
 CREATE TABLE IF NOT EXISTS sys_role (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-  code VARCHAR(64) NOT NULL UNIQUE COMMENT '角色编码',
+  code VARCHAR(64) NOT NULL COMMENT '角色编码',
   name VARCHAR(128) NOT NULL COMMENT '角色名称',
   description VARCHAR(255) NULL COMMENT '角色描述',
   status VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT '角色状态',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  KEY idx_sys_role_status (status)
+  UNIQUE KEY uk_sys_role_code (code)
 ) COMMENT='系统角色表';
 
 CREATE TABLE IF NOT EXISTS sys_permission (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-  code VARCHAR(128) NOT NULL UNIQUE COMMENT '权限编码',
+  code VARCHAR(128) NOT NULL COMMENT '权限编码',
   name VARCHAR(128) NOT NULL COMMENT '权限名称',
   type VARCHAR(16) NOT NULL COMMENT '权限类型',
   module VARCHAR(64) NULL COMMENT '所属模块编码',
@@ -67,16 +63,12 @@ CREATE TABLE IF NOT EXISTS sys_permission (
   description VARCHAR(255) NULL COMMENT '权限描述',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
   status VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT '权限状态',
-  KEY idx_sys_permission_module (module),
-  KEY idx_sys_permission_type (type),
-  KEY idx_sys_permission_resource_action (resource, action),
-  KEY idx_sys_permission_parent (parent_code),
-  KEY idx_sys_permission_status (status)
+  UNIQUE KEY uk_sys_permission_code (code)
 ) COMMENT='系统权限点表';
 
 CREATE TABLE IF NOT EXISTS sys_permission_bundle (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-  code VARCHAR(64) NOT NULL UNIQUE COMMENT '权限包编码',
+  code VARCHAR(64) NOT NULL COMMENT '权限包编码',
   name VARCHAR(128) NOT NULL COMMENT '权限包名称',
   module VARCHAR(64) NOT NULL COMMENT '所属模块',
   description VARCHAR(255) NULL COMMENT '权限包描述',
@@ -84,35 +76,28 @@ CREATE TABLE IF NOT EXISTS sys_permission_bundle (
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  KEY idx_sys_permission_bundle_module (module),
-  KEY idx_sys_permission_bundle_status (status)
+  UNIQUE KEY uk_sys_permission_bundle_code (code)
 ) COMMENT='权限包表';
 
 CREATE TABLE IF NOT EXISTS sys_permission_bundle_item (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
   bundle_code VARCHAR(64) NOT NULL COMMENT '权限包编码',
   permission_code VARCHAR(128) NOT NULL COMMENT '权限编码',
-  UNIQUE KEY uq_sys_permission_bundle_item (bundle_code, permission_code),
-  KEY idx_sys_permission_bundle_item_bundle (bundle_code),
-  KEY idx_sys_permission_bundle_item_permission (permission_code)
+  UNIQUE KEY uq_sys_permission_bundle_item (bundle_code, permission_code)
 ) COMMENT='权限包权限点关系表';
 
 CREATE TABLE IF NOT EXISTS sys_user_role (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
   user_id BIGINT NOT NULL COMMENT '用户ID',
   role_id BIGINT NOT NULL COMMENT '角色ID',
-  UNIQUE KEY uq_sys_user_role (user_id, role_id),
-  KEY idx_sys_user_role_user (user_id),
-  KEY idx_sys_user_role_role (role_id)
+  UNIQUE KEY uq_sys_user_role (user_id, role_id)
 ) COMMENT='用户角色关系表';
 
 CREATE TABLE IF NOT EXISTS sys_role_permission_bundle (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
   role_id BIGINT NOT NULL COMMENT '角色ID',
   bundle_code VARCHAR(64) NOT NULL COMMENT '权限包编码',
-  UNIQUE KEY uq_sys_role_permission_bundle (role_id, bundle_code),
-  KEY idx_sys_role_permission_bundle_role (role_id),
-  KEY idx_sys_role_permission_bundle_bundle (bundle_code)
+  UNIQUE KEY uq_sys_role_permission_bundle (role_id, bundle_code)
 ) COMMENT='角色权限包关系表';
 
 CREATE TABLE IF NOT EXISTS sys_user_permission_override (
@@ -121,8 +106,7 @@ CREATE TABLE IF NOT EXISTS sys_user_permission_override (
   permission_code VARCHAR(128) NOT NULL COMMENT '权限编码',
   effect VARCHAR(8) NOT NULL COMMENT '覆盖效果',
   reason VARCHAR(255) NULL COMMENT '覆盖原因',
-  UNIQUE KEY uq_sys_user_permission_override (user_id, permission_code),
-  KEY idx_sys_user_permission_override_user (user_id)
+  UNIQUE KEY uq_sys_user_permission_override (user_id, permission_code)
 ) COMMENT='用户权限覆盖表';
 
 CREATE TABLE IF NOT EXISTS sys_operation_log (
@@ -146,9 +130,6 @@ CREATE TABLE IF NOT EXISTS sys_operation_log (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
   KEY idx_sys_operation_log_created_at (created_at),
   KEY idx_sys_operation_log_request (request_id),
-  KEY idx_sys_operation_log_source_time (source, created_at),
-  KEY idx_sys_operation_log_target_time (target_type, target_id, created_at),
-  KEY idx_sys_operation_log_user_time (username, created_at),
   KEY idx_sys_operation_log_result_time (result, created_at)
 ) COMMENT='系统操作日志表';
 
@@ -164,8 +145,7 @@ CREATE TABLE IF NOT EXISTS sys_operation_log_item (
   changes JSON NULL COMMENT '字段前后值差异',
   CONSTRAINT fk_sys_operation_log_item_log
     FOREIGN KEY (log_id) REFERENCES sys_operation_log(id) ON DELETE CASCADE,
-  KEY idx_sys_operation_log_item_log (log_id),
-  KEY idx_sys_operation_log_item_entity (entity_type, entity_id)
+  KEY idx_sys_operation_log_item_log (log_id)
 ) COMMENT='操作日志实体变更明细';
 
 CREATE TABLE IF NOT EXISTS sys_permission_api (
@@ -176,14 +156,12 @@ CREATE TABLE IF NOT EXISTS sys_permission_api (
   description VARCHAR(255) NULL COMMENT '接口说明',
   status VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT '状态',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  UNIQUE KEY uq_sys_permission_api (permission_code, method, path_pattern),
-  KEY idx_sys_permission_api_permission (permission_code),
-  KEY idx_sys_permission_api_path (path_pattern)
+  UNIQUE KEY uq_sys_permission_api (permission_code, method, path_pattern)
 ) COMMENT='权限点接口映射表';
 
 CREATE TABLE IF NOT EXISTS sys_feature_flag (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-  code VARCHAR(128) NOT NULL UNIQUE COMMENT '功能编码',
+  code VARCHAR(128) NOT NULL COMMENT '功能编码',
   name VARCHAR(128) NOT NULL COMMENT '功能名称',
   category VARCHAR(32) NOT NULL COMMENT '功能分类',
   description VARCHAR(255) NULL COMMENT '功能说明',
@@ -192,7 +170,8 @@ CREATE TABLE IF NOT EXISTS sys_feature_flag (
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
   config JSON NULL COMMENT '扩展配置',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE KEY uk_sys_feature_flag_code (code)
 ) COMMENT='运行时功能配置表';
 
 CREATE TABLE IF NOT EXISTS sys_job_run_log (
@@ -224,9 +203,7 @@ CREATE TABLE IF NOT EXISTS order_sync (
   status VARCHAR(64) NOT NULL COMMENT '处理状态',
   error_message TEXT NULL COMMENT '错误信息',
   received_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '接收时间',
-  UNIQUE KEY uk_order_sync_trace_id (trace_id),
-  KEY idx_order_sync_received_at (received_at),
-  KEY idx_order_sync_status (status)
+  UNIQUE KEY uk_order_sync_trace_id (trace_id)
 ) COMMENT='效价数据回传记录';
 
 -- ---------------------------------------------------------------------------
@@ -279,11 +256,7 @@ CREATE TABLE IF NOT EXISTS target (
   synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近变更时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_target_external_id (external_id),
-  UNIQUE KEY uk_target_snum (snum),
-  KEY idx_target_name (name),
-  KEY idx_target_human_gene_name (human_gene_official_name),
-  KEY idx_target_mouse_gene_name (mouse_gene_official_name),
-  KEY idx_target_status_type (status, type)
+  UNIQUE KEY uk_target_snum (snum)
 ) COMMENT='靶点同步表';
 
 -- ---------------------------------------------------------------------------
@@ -311,7 +284,6 @@ CREATE TABLE IF NOT EXISTS mega_flow_work_order (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  KEY idx_mega_flow_work_order_status (status),
   KEY idx_mega_flow_work_order_source (orderType, source_id),
   KEY idx_mega_flow_work_order_project_nos ((CAST(project_nos AS CHAR(128) ARRAY))),
   KEY idx_mega_flow_work_order_targets ((CAST(targets AS CHAR(128) ARRAY))),
@@ -347,7 +319,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_project (
   project_name VARCHAR(255) NULL COMMENT '项目名称',
   lab_notebook VARCHAR(64) NULL COMMENT '实验记录本号',
   project_purpose VARCHAR(255) NULL COMMENT '项目目的',
-  start_date VARCHAR(32) NULL COMMENT '项目开始日期',
+  start_date DATE NULL COMMENT '项目开始日期',
   immunization_interval VARCHAR(32) NULL COMMENT '免疫间隔',
   target_codes JSON NULL COMMENT '靶点编号列表',
   target_name VARCHAR(128) NULL COMMENT '靶点名称',
@@ -374,7 +346,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_workbench (
   project_code VARCHAR(64) NULL COMMENT '项目管理编号',
   project_name VARCHAR(255) NULL COMMENT '项目名称',
   project_purpose VARCHAR(255) NULL COMMENT '项目目的',
-  start_date VARCHAR(32) NULL COMMENT '项目开始日期',
+  start_date DATE NULL COMMENT '项目开始日期',
   immunization_interval VARCHAR(32) NULL COMMENT '免疫间隔',
   target_codes JSON NULL COMMENT '靶点编号列表',
   target_name VARCHAR(128) NULL COMMENT '靶点名称',
@@ -400,13 +372,13 @@ CREATE TABLE IF NOT EXISTS serum_imm_workbench (
   mouse_scheme_no VARCHAR(64) NULL COMMENT '小鼠方案号',
   mouse_count VARCHAR(32) NULL COMMENT '小鼠数量',
   mouse_zygosity VARCHAR(32) NULL COMMENT '小鼠合子状态',
-  mouse_birth_date VARCHAR(32) NULL COMMENT '出生日期',
+  mouse_birth_date DATE NULL COMMENT '出生日期',
   mouse_age_weeks VARCHAR(32) NULL COMMENT '周龄',
   mouse_expand_requested VARCHAR(16) NULL COMMENT '是否代下扩繁',
   mouse_region VARCHAR(64) NULL COMMENT '提供地区',
   mouse_room VARCHAR(64) NULL COMMENT '房间号',
   mouse_status VARCHAR(32) NULL COMMENT '运输状态',
-  mouse_arrive_date VARCHAR(32) NULL COMMENT '到鼠时间',
+  mouse_arrive_date DATE NULL COMMENT '到鼠时间',
   mouse_remark VARCHAR(255) NULL COMMENT '小鼠备注',
   antigen_source VARCHAR(128) NULL COMMENT '抗原来源',
   antigen_ready VARCHAR(16) NULL COMMENT '抗原到货情况',
@@ -419,13 +391,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_workbench (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_serum_imm_workbench_experiment_id (experiment_id),
-  KEY idx_serum_imm_workbench_sort_order (sort_order),
-  KEY idx_serum_imm_workbench_plan_status (plan_status),
-  KEY idx_serum_imm_workbench_pm (pm),
-  KEY idx_serum_imm_workbench_owner (owner),
-  KEY idx_serum_imm_workbench_project_code (project_code),
-  KEY idx_serum_imm_workbench_target_name (target_name)
+  UNIQUE KEY uk_serum_imm_workbench_experiment_id (experiment_id)
 ) COMMENT='免疫项目工作台';
 
 CREATE TABLE IF NOT EXISTS serum_imm_mouse (
@@ -455,7 +421,7 @@ CREATE TABLE IF NOT EXISTS serum_file (
   created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
   updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间',
   PRIMARY KEY (id),
-  KEY idx_experiment (experiment_id)
+  KEY idx_serum_file_experiment_id (experiment_id)
 ) COMMENT='效价实验文件表';
 
 CREATE TABLE IF NOT EXISTS serum_imm_antigen (
@@ -489,7 +455,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_step (
   route VARCHAR(32) NULL COMMENT '给药途径',
   injection_site VARCHAR(64) NULL COMMENT '给药部位',
   day_relative VARCHAR(16) NULL COMMENT '相对天数',
-  date_actual VARCHAR(32) NULL COMMENT '实际日期',
+  date_actual DATE NULL COMMENT '实际日期',
   remark VARCHAR(255) NULL COMMENT '备注',
   PRIMARY KEY (step_id),
   KEY idx_serum_imm_step_experiment_id (experiment_id)
@@ -502,7 +468,8 @@ CREATE TABLE IF NOT EXISTS serum_titer_pc (
   catalog_batch VARCHAR(128) NULL COMMENT '货号批次',
   source VARCHAR(128) NULL COMMENT '来源',
   concentration VARCHAR(64) NULL COMMENT '浓度',
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  KEY idx_serum_titer_pc_experiment_id (experiment_id)
 ) COMMENT='效价阳性对照表';
 
 CREATE TABLE IF NOT EXISTS serum_titer_target (
@@ -516,7 +483,8 @@ CREATE TABLE IF NOT EXISTS serum_titer_target (
   cell_count VARCHAR(64) NULL COMMENT '细胞量',
   catalog_no VARCHAR(64) NULL COMMENT '货号',
   source VARCHAR(128) NULL COMMENT '来源',
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  KEY idx_serum_titer_target_experiment_id (experiment_id)
 ) COMMENT='效价检测目标表';
 
 CREATE TABLE IF NOT EXISTS serum_facs_plate (
@@ -540,7 +508,7 @@ CREATE TABLE IF NOT EXISTS serum_facs_plate (
   lower_slot_groups JSON NULL COMMENT '下半板孔位分组标题',
   positive_well_list JSON NULL COMMENT '阳性孔位列表',
   PRIMARY KEY (id),
-  KEY idx_experiment (experiment_id)
+  KEY idx_serum_facs_plate_experiment_id (experiment_id)
 ) COMMENT='FACS效价板信息表';
 
 CREATE TABLE IF NOT EXISTS serum_elisa_plate (
@@ -559,7 +527,7 @@ CREATE TABLE IF NOT EXISTS serum_elisa_plate (
   positive_well_list JSON NULL COMMENT '阳性孔列表',
   absorbance_1 JSON NULL COMMENT '吸光度数据',
   PRIMARY KEY (id),
-  KEY idx_experiment (experiment_id)
+  KEY idx_serum_elisa_plate_experiment_id (experiment_id)
 ) COMMENT='ELISA效价板信息表';
 
 CREATE TABLE IF NOT EXISTS serum_titer_order (
@@ -567,7 +535,7 @@ CREATE TABLE IF NOT EXISTS serum_titer_order (
   experiment_id VARCHAR(64) NOT NULL COMMENT '免疫实验ID',
   titer_order_id VARCHAR(128) NOT NULL COMMENT '效价工单ID',
   cage_position VARCHAR(64) NULL COMMENT '笼位',
-  blood_collection_date VARCHAR(32) NULL COMMENT '采血日期',
+  blood_collection_date DATE NULL COMMENT '采血日期',
   blood_collection_seq INT NULL COMMENT '第N次采血',
   mouse_count INT NULL COMMENT '只数',
   assay_method VARCHAR(128) NULL COMMENT '检测方法',
@@ -604,8 +572,8 @@ CREATE TABLE IF NOT EXISTS discovery_workbench (
   screening_antigen VARCHAR(1000) NULL COMMENT '筛选抗原',
   positive_cell_count VARCHAR(64) NULL COMMENT '阳性细胞数',
   plate_nos VARCHAR(1000) NULL COMMENT '板号',
-  harvest_date VARCHAR(32) NULL COMMENT '剖鼠取细胞日',
-  boost_date VARCHAR(32) NULL COMMENT '冲击免日期',
+  harvest_date DATE NULL COMMENT '剖鼠取细胞日',
+  boost_date DATE NULL COMMENT '冲击免日期',
   boost_antigen VARCHAR(1000) NULL COMMENT '冲击免抗原',
   boost_cells VARCHAR(1000) NULL COMMENT '冲击免细胞',
   owner VARCHAR(64) NULL COMMENT '负责人',
@@ -643,11 +611,14 @@ CREATE TABLE IF NOT EXISTS discovery_synthesis_order (
   order_no VARCHAR(64) NULL COMMENT '合成订单号',
   synthetic_corp VARCHAR(64) NULL COMMENT '合成公司',
   synthetic_count INT NULL COMMENT '合成个数',
-  synthetic_date VARCHAR(32) NULL COMMENT '合成日期',
+  synthetic_date DATE NULL COMMENT '合成日期',
   arrival_count INT NULL COMMENT '到货个数',
-  arrival_date VARCHAR(32) NULL COMMENT '到货日期',
-  flow_date VARCHAR(32) NULL COMMENT '流式日期',
-  affinity_date VARCHAR(32) NULL COMMENT '亲和力日期',
+  arrival_date DATE NULL COMMENT '到货日期',
+  affinity_status VARCHAR(32) NULL COMMENT '亲和力检测状态',
+  affinity_owner VARCHAR(64) NULL COMMENT '亲和力人员',
+  flow_date DATE NULL COMMENT '流式日期',
+  flow_status VARCHAR(32) NULL COMMENT '流式检测状态',
+  affinity_date DATE NULL COMMENT '亲和力日期',
   affinity_result VARCHAR(32) NULL COMMENT '亲和力结果',
   owner VARCHAR(64) NULL COMMENT '负责人',
   batch_label VARCHAR(255) NULL COMMENT '工单批次',
@@ -668,13 +639,7 @@ CREATE TABLE IF NOT EXISTS discovery_synthesis_order (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_discovery_synthesis_order_id (synthesis_order_id),
-  UNIQUE KEY uk_discovery_synthesis_order_source_one (source_one_type, source_one_id),
-  KEY idx_discovery_synthesis_order_status (status),
-  KEY idx_discovery_synthesis_order_sort_order (sort_order),
-  KEY idx_discovery_synthesis_order_order_no (order_no),
-  KEY idx_discovery_synthesis_order_synthesis_code (synthesis_code),
-  KEY idx_discovery_synthesis_order_target_name (target_name),
-  KEY idx_discovery_synthesis_order_owner (owner)
+  UNIQUE KEY uk_discovery_synthesis_order_source_one (source_one_type, source_one_id)
 ) COMMENT='抗体发现合成与验证单';
 
 CREATE TABLE IF NOT EXISTS molecular_library_order (
@@ -748,14 +713,8 @@ CREATE TABLE IF NOT EXISTS molecular_library_order (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_molecular_library_order_id (library_order_id),
-  KEY idx_molecular_library_code (library_code),
-  KEY idx_molecular_library_source_discovery (source_discovery_id),
-  KEY idx_molecular_library_source_project (source_project_code),
-  KEY idx_molecular_library_batch_no (library_batch_no),
-  KEY idx_molecular_library_build_type (build_type),
-  KEY idx_molecular_library_sample_type (sample_type),
-  KEY idx_molecular_library_sample_source (sample_source),
-  KEY idx_molecular_library_status (status)
+  KEY idx_molecular_library_order_library_code (library_code),
+  KEY idx_molecular_library_order_source_discovery_id (source_discovery_id)
 ) COMMENT='文库构建工单';
 
 CREATE TABLE IF NOT EXISTS molecular_primer_index_catalog (
@@ -774,8 +733,7 @@ CREATE TABLE IF NOT EXISTS molecular_primer_index_catalog (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_molecular_primer_index_name (name),
-  KEY idx_molecular_primer_index_family (family)
+  UNIQUE KEY uk_molecular_primer_index_name (name)
 ) COMMENT='引物与Barcode字典';
 
 CREATE TABLE IF NOT EXISTS molecular_library_result_package (
@@ -788,7 +746,7 @@ CREATE TABLE IF NOT EXISTS molecular_library_result_package (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_molecular_library_result_package_signature (signature),
-  KEY idx_molecular_library_result_package_owner_order (owner_order_id),
+  KEY idx_molecular_library_result_package_owner_order_id (owner_order_id),
   CONSTRAINT fk_molecular_library_result_package_owner_order
     FOREIGN KEY (owner_order_id) REFERENCES molecular_library_order (id)
 ) COMMENT='文库测序结果包';
@@ -806,7 +764,7 @@ CREATE TABLE IF NOT EXISTS molecular_library_result_file (
   PRIMARY KEY (id),
   UNIQUE KEY uk_molecular_library_result_dedupe_key (dedupe_key),
   KEY idx_molecular_library_result_sha256 (sha256),
-  KEY idx_molecular_library_result_package (package_id),
+  KEY idx_molecular_library_result_file_package_id (package_id),
   CONSTRAINT fk_molecular_library_result_file_package
     FOREIGN KEY (package_id) REFERENCES molecular_library_result_package (id)
 ) COMMENT='文库结果文件';
@@ -824,8 +782,7 @@ CREATE TABLE IF NOT EXISTS molecular_library_result_link (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_molecular_library_result_link (file_id, order_id),
-  KEY idx_molecular_library_result_link_file (file_id),
-  KEY idx_molecular_library_result_link_order (order_id),
+  KEY idx_molecular_library_result_link_order_id (order_id),
   CONSTRAINT fk_molecular_library_result_link_file
     FOREIGN KEY (file_id) REFERENCES molecular_library_result_file (id),
   CONSTRAINT fk_molecular_library_result_link_order

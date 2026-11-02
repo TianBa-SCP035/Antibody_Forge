@@ -23,7 +23,7 @@ export const FLOW_WORK_ORDER_STATUS_OPTIONS = [
   { value: 'sent', label: '已发送' },
   { value: 'running', label: '执行中' },
   { value: 'paused', label: '已暂停' },
-  { value: 'execution_failed', label: '执行失败' },
+  { value: 'execution_failed', label: '执行异常' },
   { value: 'completed', label: '已完成' },
   { value: 'failed', label: '校验失败' },
   { value: 'cancelled', label: '已作废' },

@@ -4,37 +4,37 @@
       <ListFilterSelect
         v-model="listQuery.study_type"
         clearable
-        placeholder="课题类型"
+        v-bind="headerTop('study_type', '课题类型')"
         @change="handleFilter"
       >
         <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
       <div class="ops-user-select">
-        <SerumUserSelect
+        <UserSelect
           v-model="listQuery.owner"
           multi-gesture
           :options="optionLists.owners"
-          placeholder="负责人"
+          v-bind="headerTop('owner', '负责人')"
           clearable
           @change="handleFilter"
         />
       </div>
       <div class="ops-user-select">
-        <SerumUserSelect
+        <UserSelect
           v-model="listQuery.immune_owner"
           multi-gesture
           :options="optionLists.immune_owners"
-          placeholder="免疫负责人"
+          v-bind="headerTop('immune_owner', '免疫负责人')"
           clearable
           @change="handleFilter"
         />
       </div>
       <div class="ops-user-select">
-        <SerumUserSelect
+        <UserSelect
           v-model="listQuery.cell_collector"
           multi-gesture
           :options="optionLists.cell_collectors"
-          placeholder="细胞收集人"
+          v-bind="headerTop('cell_collector', '细胞收集人')"
           clearable
           @change="handleFilter"
         />
@@ -42,14 +42,14 @@
       <el-input
         v-model="listQuery.cage_position"
         clearable
-        placeholder="笼位"
+        v-bind="headerTop('cage_position', '笼位')"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
       <ListFilterSelect
         v-model="listQuery.mouse_strain"
         clearable
-        placeholder="小鼠品系"
+        v-bind="headerTop('mouse_strain', '小鼠品系')"
         @change="handleFilter"
       >
         <el-option v-for="item in mouseStrainOptions" :key="item" :label="item" :value="item" />
@@ -57,14 +57,14 @@
       <el-input
         v-model="listQuery.mouse_nos"
         clearable
-        placeholder="鼠号"
+        v-bind="headerTop('mouse_nos', '鼠号')"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
       <el-input
         v-model="listQuery.plate_nos"
         clearable
-        placeholder="板号"
+        v-bind="headerTop('plate_nos', '板号')"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
@@ -74,7 +74,7 @@
         filterable
         allow-create
         default-first-option
-        placeholder="免疫抗原"
+        v-bind="headerTop('immune_antigen', '免疫抗原')"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.immune_antigens" :key="item" :label="item" :value="item" />
@@ -85,7 +85,7 @@
         filterable
         allow-create
         default-first-option
-        placeholder="筛选抗原"
+        v-bind="headerTop('screening_antigen', '筛选抗原')"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.screening_antigens" :key="item" :label="item" :value="item" />
@@ -96,7 +96,7 @@
         filterable
         allow-create
         default-first-option
-        placeholder="冲击免抗原"
+        v-bind="headerTop('boost_antigen', '冲击免抗原')"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.boost_antigens" :key="item" :label="item" :value="item" />
@@ -104,7 +104,7 @@
       <el-input
         v-model="listQuery.remark"
         clearable
-        placeholder="备注"
+        v-bind="headerTop('remark', '备注')"
         title="备注包含这段文字"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
@@ -113,7 +113,7 @@
         v-model="boostRange"
         type="daterange"
         range-separator="至"
-        start-placeholder="冲击免起始"
+        v-bind="headerTop('boost_date', '冲击免起始', 'startPlaceholder')"
         end-placeholder="冲击免截止"
         value-format="YYYY-MM-DD"
         @change="handleFilter"
@@ -187,32 +187,19 @@
             @keyup.enter="handleFilter"
             @clear="handleFilter"
           />
-          <ListFilterSelect
+          <WorkbenchTargetFilter
             v-model="listQuery.target_name"
             class="filter-select"
-            clearable
-            filterable
-            placeholder="靶点"
-            :filter-method="setTargetFilterQuery"
-            @clear="setTargetFilterQuery('')"
+            v-bind="headerTop('target_name', '靶点')"
+            scope="discoveryWorkbench"
             @change="handleFilter"
-          >
-            <el-option
-              v-for="item in filteredTargetOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            >
-              <span>{{ item.label }}</span>
-              <span v-if="targetOptionExtra(item)" class="target-option-code">{{ targetOptionExtra(item) }}</span>
-            </el-option>
-          </ListFilterSelect>
+          />
           <div class="filter-select">
-            <SerumUserSelect
+            <UserSelect
               v-model="listQuery.pm"
               multi-gesture
               :options="optionLists.pms"
-              placeholder="PM"
+              v-bind="headerTop('pm', 'PM')"
               title="左键单选，右键追加"
               clearable
               @change="handleFilter"
@@ -220,7 +207,7 @@
           </div>
           <ListFilterSelect
             v-model="listQuery.screening_methods"
-            placeholder="筛选方式"
+            v-bind="headerTop('screening_methods', '筛选方式')"
             clearable
             class="filter-select"
             @change="handleFilter"
@@ -234,7 +221,7 @@
           </ListFilterSelect>
           <ListFilterSelect
             v-model="listQuery.status"
-            placeholder="状态"
+            v-bind="headerTop('status', '状态')"
             clearable
             class="filter-select"
             @change="handleFilter"
@@ -243,7 +230,7 @@
           </ListFilterSelect>
           <ListFilterSelect
             v-model="listQuery.priority"
-            placeholder="优先级"
+            v-bind="headerTop('priority', '优先级')"
             clearable
             class="filter-select"
             @change="handleFilter"
@@ -252,7 +239,7 @@
           </ListFilterSelect>
           <ListFilterSelect
             v-model="listQuery.mouse_strain_category"
-            placeholder="归类鼠型"
+            v-bind="headerTop('mouse_strain_category', '归类鼠型')"
             clearable
             class="filter-select"
             @change="handleFilter"
@@ -264,13 +251,14 @@
             class="harvest-range"
             type="daterange"
             range-separator="至"
-            start-placeholder="剖鼠起始"
+            v-bind="headerTop('harvest_date', '剖鼠起始', 'startPlaceholder')"
             end-placeholder="剖鼠截止"
             value-format="YYYY-MM-DD"
             @change="handleFilter"
           />
         </div>
         <div class="data-view-controls list-filter-actions">
+          <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
           <button
             type="button"
             class="list-advanced-trigger"
@@ -280,7 +268,7 @@
           >
             <el-icon><Tools /></el-icon>
           </button>
-          <el-button class="list-filter-action-button" type="primary" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilters">
+          <el-button class="list-filter-action-button" type="primary" title="右键清空筛选与表头排序" @click="handleFilter" @contextmenu.prevent="resetFilters">
             <el-icon><Search /></el-icon>
             <span>查询</span>
           </el-button>
@@ -300,7 +288,7 @@
         ref="workbenchTable"
         :height="listTableHeight"
         v-loading="loading"
-        storage-key="discoveryWorkbenchViewPrefs.v4"
+        :storage-key="viewPrefsStorageKey"
         :columns="workbenchColumns"
         :data="list"
         border
@@ -313,6 +301,8 @@
         style="width: 100%;"
         row-key="id"
         :row-class-name="workbenchRowClassName"
+        :header-menu-states="headerMenuStates"
+        @header-menu="openHeaderMenu"
         @row-click="onWorkbenchRowClick"
         @row-contextmenu="onWorkbenchRowContextMenu"
         @reorder="scheduleSortable"
@@ -397,17 +387,6 @@
             @change="persistRow(row, 'screening_methods')"
           />
         </template>
-        <template #header-harvest_date>
-          <WorkbenchDateHeader
-            label="剖鼠日期"
-            :mark="dateSortMark('harvest_date')"
-            :sorted="listQuery.sort_field === 'harvest_date'"
-            :empty-filtered="isDateEmptyFiltered('harvest_date')"
-            :title="dateSortTitle('harvest_date')"
-            @sort="cycleDateSort('harvest_date')"
-            @toggle-empty="toggleEmptyDate('harvest_date')"
-          />
-        </template>
         <template #harvest_date="{ row }">
           <WorkbenchInlineDatePicker
             v-model="row.harvest_date"
@@ -415,17 +394,6 @@
             placeholder="剖鼠/上机"
             :disabled="!canEdit"
             @change="persistRow(row, 'harvest_date')"
-          />
-        </template>
-        <template #header-boost_date>
-          <WorkbenchDateHeader
-            label="冲击日期"
-            :mark="dateSortMark('boost_date')"
-            :sorted="listQuery.sort_field === 'boost_date'"
-            :empty-filtered="isDateEmptyFiltered('boost_date')"
-            :title="dateSortTitle('boost_date')"
-            @sort="cycleDateSort('boost_date')"
-            @toggle-empty="toggleEmptyDate('boost_date')"
           />
         </template>
         <template #boost_date="{ row }">
@@ -461,6 +429,7 @@
         @keydown.capture="onSheetKeydownCapture"
         @compositionend.capture="onSheetCompositionEnd"
         @mousedown="onSheetWrapMouseDown"
+        @click="onSheetHeaderMenuClick"
         @mouseover="onSheetWrapMouseOver"
         @contextmenu="onSheetWrapContextMenu"
         @selectstart="onSheetSelectStart"
@@ -501,6 +470,9 @@
                 :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
               >
+                <template v-if="headerMenuStates[column.key]" #header>
+                  <WorkbenchHeaderLabel :label="column.label" v-bind="headerMenuStates[column.key]" />
+                </template>
                 <template #edit="{ row }">
                   <div v-if="sheetEditSource === 'dblclick'" class="sheet-picker-editor">
                     <span class="sheet-picker-editor__value">
@@ -537,6 +509,9 @@
                 :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
               >
+                <template v-if="headerMenuStates[column.key]" #header>
+                  <WorkbenchHeaderLabel :label="column.label" v-bind="headerMenuStates[column.key]" />
+                </template>
                 <template #edit="{ row }">
                   <ListFilterSelect
                     v-if="isCsvField(column.key) && sheetEditSource === 'dblclick'"
@@ -545,11 +520,12 @@
                     filterable
                     allow-create
                     default-first-option
+                    ref="sheetSelectEditor"
                     class="sheet-category-select"
                     popper-class="vxe-table--ignore-clear"
                     clearable
                     @change="onCsvFieldChange(row, column.key, $event)"
-                    @visible-change="onCategorySheetVisible"
+                    @visible-change="onSheetSelectVisible"
                   >
                     <el-option
                       v-for="item in csvFieldOptions(column.key)"
@@ -594,7 +570,11 @@
                 :min-width="column.minWidth || column.width || 120"
                 :edit-render="sheetEditRender(column)"
                 :formatter="sheetFormatter(column)"
-              />
+              >
+                <template v-if="headerMenuStates[column.key]" #header>
+                  <WorkbenchHeaderLabel :label="column.label" v-bind="headerMenuStates[column.key]" />
+                </template>
+              </vxe-column>
             </template>
             <vxe-column title="操作" width="240" fixed="right" align="center">
               <template #default="{ row }">
@@ -711,7 +691,7 @@
                   disabled
                   placeholder="自动带出"
                 />
-                <SerumUserSelect
+                <UserSelect
                   v-else-if="field.type === 'user'"
                   v-model="editingRow[field.key]"
                   :options="usedUserOptions(field)"
@@ -830,6 +810,7 @@
         </el-form>
       </fieldset>
     </el-drawer>
+    <WorkbenchHeaderMenu v-bind="headerMenuBind" />
     <LibraryHandoffDialog
       v-model="handoffVisible"
       :discovery-row="handoffRow"
@@ -876,31 +857,33 @@ import {
   cleanFieldText,
   coerceWorkbenchViewMode,
   createColumnOrder,
-  readClipboardGrid,
   EXCEL_VIEW,
-  searchWorkbenchTargets,
   splitTargetNames,
-  targetNameFromCodes,
   uniqueTargetCodes,
   WORKBENCH_VIEW,
   syncDrawerControlTooltip,
   WorkbenchDataTable,
-  WorkbenchDateHeader,
+  WorkbenchHeaderFilterChip,
+  WorkbenchHeaderLabel,
+  WorkbenchHeaderMenu,
   WorkbenchInlineDatePicker,
   WorkbenchInlineSelect,
   workbenchExcelMixin,
+  workbenchTargetMixin,
+  workbenchHeaderMenuMixin,
+  WorkbenchMultiTagEditor,
+  WorkbenchStatusEditor,
+  WorkbenchTargetFilter,
+  WorkbenchTargetSelect,
+  WorkbenchViewToggle,
 } from '#/components/workbench'
 import { listTableLockMixin } from '#/utils/listTableLock'
-import WorkbenchMultiTagEditor from '#/components/workbench/WorkbenchMultiTagEditor.vue'
-import WorkbenchStatusEditor from '#/components/workbench/WorkbenchStatusEditor.vue'
-import WorkbenchTargetSelect from '#/components/workbench/WorkbenchTargetSelect.vue'
-import WorkbenchViewToggle from '#/components/workbench/WorkbenchViewToggle.vue'
 import { notifyApiError } from '#/api/errors'
 import { skipGlobalErrorHandler } from '#/api/request'
 import {
-  DISCOVERY_WORKBENCH_CREATED_KEY,
   deleteDiscoveryWorkbench,
   exportDiscoveryWorkbenchList,
+  fetchDiscoveryWorkbenchColumnValues,
   fetchDiscoveryWorkbenchList,
   fetchDiscoveryWorkbenchOptions,
   reorderDiscoveryWorkbench,
@@ -918,15 +901,13 @@ import {
   canonicalizeWorkbenchPriority,
   getTiterPriorityTone,
 } from '#/utils/serumProjectStatus'
-import {
-  loadSerumUserOptions,
-  uniqueNames,
-} from '#/utils/serumUserOptions'
+import { applyOptionLists } from '#/utils/optionLists'
+import { uniqueNames } from '#/utils/userOptions'
 import { WORKBENCH_STUDY_TYPE_OPTIONS } from '#/utils/workbenchStudyTypes'
+import { DISCOVERY_WORKBENCH_CREATED_KEY, WORKBENCH_VIEW_PREFS_KEYS } from '#/constants/storageKeys'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
-import { filterTargetOptions, normalizeTargetOptions, targetOptionExtra as targetOptionHint } from '#/utils/targetFilterOptions'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
-import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
+import UserSelect from '#/components/UserSelect.vue'
 import DiscoveryRowActions from './DiscoveryRowActions.vue'
 
 const SCREENING_METHOD_OPTIONS = ['达普', '噬菌体', 'Beacon', 'NGS']
@@ -946,7 +927,6 @@ const CSV_FIELD_OPTIONS = {
   mouse_strain: MOUSE_STRAIN_OPTIONS,
 }
 const DATE_KEYS = ['harvest_date', 'boost_date']
-const QUEUE_KEYS = ['status', 'priority', 'sort_order']
 const QUEUE_TERMINAL_STATUSES = ['已完成', '已取消']
 const STRING_MAX = {
   project_code: 64,
@@ -1116,6 +1096,35 @@ const WORKBENCH_COLUMNS = [
   { key: 'plate_nos', label: '板号', prop: 'plate_nos', minWidth: 140, showOverflowTooltip: true, keepLineBreaks: true },
   { key: 'actions', label: '操作', defaultVisible: true, width: 240, className: 'action-column-cell', fixed: 'right' },
 ]
+/** 表头菜单登记，字段含义见 synthesisColumns.js 的 HEADER_MENU_COLUMNS。 */
+const HEADER_MENU_COLUMNS = Object.freeze({
+  priority: { type: 'enum', values: 'all', top: { query: 'priority' } },
+  status: { type: 'enum', values: 'all', top: { query: 'status' } },
+  pm: { type: 'enum', values: 'all', top: { query: 'pm' } },
+  project_code: { type: 'text', values: 'recent' },
+  experiment_id: { type: 'text', values: 'recent' },
+  target_name: { type: 'text', values: 'all', search: 'target', top: { query: 'target_name' } },
+  study_type: { type: 'enum', values: 'all', top: { query: 'study_type' } },
+  mouse_strain_category: { type: 'csv', values: 'all', top: { query: 'mouse_strain_category' } },
+  mouse_strain: { type: 'csv', values: 'all', top: { query: 'mouse_strain' } },
+  screening_methods: { type: 'csv', values: 'all', top: { query: 'screening_methods' } },
+  mouse_count: { type: 'number', values: 'all' },
+  harvest_date: { type: 'date', values: 'all', top: { range: 'harvestRange' } },
+  boost_date: { type: 'date', values: 'all', top: { range: 'boostRange' } },
+  owner: { type: 'enum', values: 'all', top: { query: 'owner' } },
+  immune_owner: { type: 'enum', values: 'all', top: { query: 'immune_owner' } },
+  cell_collector: { type: 'enum', values: 'all', top: { query: 'cell_collector' } },
+  cage_position: { type: 'text', values: 'recent', top: { query: 'cage_position', kind: 'contains' } },
+  mouse_nos: { type: 'text', values: 'search', top: { query: 'mouse_nos', kind: 'contains' } },
+  serum_titer: { type: 'text', values: 'search' },
+  immune_antigen: { type: 'text', values: 'search', top: { query: 'immune_antigen', kind: 'contains' } },
+  screening_antigen: { type: 'text', values: 'search', top: { query: 'screening_antigen', kind: 'contains' } },
+  positive_cell_count: { type: 'text', values: 'recent' },
+  plate_nos: { type: 'text', values: 'search', top: { query: 'plate_nos', kind: 'contains' } },
+  boost_antigen: { type: 'text', values: 'search', top: { query: 'boost_antigen', kind: 'contains' } },
+  boost_cells: { type: 'text', values: 'search' },
+  remark: { type: 'text', values: 'search', top: { query: 'remark', kind: 'contains' } },
+})
 const SHEET_HEADER_ALIASES = Object.freeze({
   排序: 'sort_order',
   序号: 'sort_order',
@@ -1234,7 +1243,6 @@ function emptyQuery() {
     screening_antigen: '',
     boost_antigen: '',
     boost_filter: '',
-    empty_date: '',
   }
 }
 
@@ -1246,7 +1254,7 @@ export function rememberDiscoveryFocus(discoveryId) {
 
 export default {
   name: 'DiscoveryWorkbench',
-  mixins: [workbenchExcelMixin, listTableLockMixin],
+  mixins: [workbenchExcelMixin, workbenchTargetMixin, workbenchHeaderMenuMixin, listTableLockMixin],
   components: {
     AdvancedOpsBar,
     DiscoveryRowActions,
@@ -1264,15 +1272,18 @@ export default {
     ElSelect,
     ElTag,
     WorkbenchDataTable,
-    WorkbenchDateHeader,
+    WorkbenchHeaderFilterChip,
+    WorkbenchHeaderLabel,
+    WorkbenchHeaderMenu,
     WorkbenchInlineDatePicker,
     WorkbenchInlineSelect,
     Search,
     ListFilterSelect,
-    SerumUserSelect,
+    UserSelect,
     Tools,
     WorkbenchMultiTagEditor,
     WorkbenchStatusEditor,
+    WorkbenchTargetFilter,
     WorkbenchTargetSelect,
     WorkbenchViewToggle,
     VxeColumn,
@@ -1286,6 +1297,7 @@ export default {
   },
   data() {
     return {
+      viewPrefsStorageKey: WORKBENCH_VIEW_PREFS_KEYS.discovery,
       loading: false,
       list: [],
       total: 0,
@@ -1299,7 +1311,6 @@ export default {
       boostRange: [],
       listQuery: emptyQuery(),
       optionLists: {
-        targets: [],
         pms: [],
         owners: [],
         immune_owners: [],
@@ -1321,6 +1332,7 @@ export default {
       statusViews: STATUS_VIEWS,
       sheetColumns: SHEET_COLUMN_ORDER.load(),
       workbenchColumns: WORKBENCH_COLUMNS,
+      headerMenuColumns: HEADER_MENU_COLUMNS,
       pendingDrawerSaves: new Set(),
       rowBaselines: new Map(),
       listRequestToken: 0,
@@ -1328,9 +1340,6 @@ export default {
       consumingCreated: false,
       tabDataFetchedAt: 0,
       allUserOptions: [],
-      targetOptions: [],
-      targetRequestToken: 0,
-      targetFilterQuery: '',
       handoffVisible: false,
       handoffRow: null,
     }
@@ -1359,9 +1368,6 @@ export default {
     },
     activeViewGroup() {
       return this.listQuery.view_group || ''
-    },
-    filteredTargetOptions() {
-      return filterTargetOptions(this.optionLists.targets, this.targetFilterQuery)
     },
     editingRow() {
       return this.editingRowData
@@ -1431,25 +1437,13 @@ export default {
         || this.listQuery.screening_antigen
         || this.listQuery.boost_antigen
         || this.listQuery.remark
-        || this.listQuery.empty_date
         || this.harvestRange?.length
-        || this.boostRange?.length,
+        || this.boostRange?.length
+        || this.headerFiltering,
       )
     },
     screeningSelectOptions() {
       return this.screeningMethodOptions.map((item) => ({ label: item, value: item }))
-    },
-    sheetTargetSelectOptions() {
-      return this.targetOptions.map((item) => ({
-        label: `${item.name}（${item.snum}）`,
-        value: item.snum,
-      }))
-    },
-    sheetTargetRemoteConfig() {
-      return Object.freeze({
-        autoLoad: true,
-        queryMethod: this.querySheetTargetOptions,
-      })
     },
     sheetChoiceOptionsMap() {
       const map = Object.create(null)
@@ -1671,10 +1665,6 @@ export default {
       try {
         const saved = await saveDiscoveryWorkbench(this.payloadRow(row, [field]))
         this.applySavedFields(saved, [field])
-        if (QUEUE_KEYS.includes(field)) {
-          await this.getList({ flushEditor: false })
-          return saved
-        }
         return saved
       } catch (error) {
         notifyApiError(error, { messages: { default: '保存失败' } })
@@ -1700,10 +1690,10 @@ export default {
       return ''
     },
     fieldOptions(field) {
-      if (field?.options) return field.options
       if (field?.key === 'status') return this.planStatusOptions
       if (field?.key === 'priority') return this.priorityOptions
-      return []
+      if (field?.key === 'study_type') return this.studyTypeOptions
+      return field?.options || []
     },
     usedUserOptions(field) {
       return this.uniq([
@@ -1757,13 +1747,12 @@ export default {
     },
     splitCategories,
     displayCsvField,
-    categorySheetSelect() {
-      return document.querySelector('.sheet-category-select')?.__vueParentComponent?.proxy
-    },
     isCsvField(key) {
       return Object.prototype.hasOwnProperty.call(CSV_FIELD_OPTIONS, key)
     },
     csvFieldOptions(key) {
+      if (key === 'mouse_strain_category') return this.mouseStrainCategoryOptions
+      if (key === 'mouse_strain') return this.mouseStrainOptions
       return CSV_FIELD_OPTIONS[key] || []
     },
     extraCsvOptions(key, value) {
@@ -1775,78 +1764,14 @@ export default {
       if (this.sheetEditSource === 'dblclick') return
       this.persistRow(row, key)
     },
-    onCategorySheetVisible(visible) {
-      if (visible) return
-      this.$nextTick(() => {
-        if (this.categorySheetSelect()?.expanded) return
-        this.$refs.sheetTable?.clearEdit?.()
-      })
-    },
-    openSheetEditorPanel(row, key) {
-      if (!this.isCsvField(key)) {
-        workbenchExcelMixin.methods.openSheetEditorPanel.call(this, row, key)
-        return
-      }
-      const open = () => {
-        const select = this.categorySheetSelect()
-        if (!select) return false
-        select.expanded = true
-        return true
-      }
-      this.$nextTick(() => {
-        if (!open()) this.$nextTick(open)
-      })
-    },
     formatCodesText(value) {
       return uniqueTargetCodes(value).join(',')
-    },
-    async loadAllUserOptions() {
-      try {
-        this.allUserOptions = await loadSerumUserOptions()
-      } catch {
-        this.allUserOptions = []
-      }
-    },
-    mergeTargetOptions(items) {
-      const map = new Map((this.targetOptions || []).map((item) => [item.snum, item]))
-      ;(items || []).forEach((item) => {
-        if (item?.snum) map.set(item.snum, item)
-      })
-      this.targetOptions = [...map.values()]
     },
     onDrawerTargetChange(row, payload) {
       row.target_codes = payload.codes
       row.target_name = payload.name
       this.mergeTargetOptions(payload.items)
       this.persistRow(row, 'target_codes')
-    },
-    setTargetFilterQuery(query) {
-      this.targetFilterQuery = query || ''
-    },
-    targetOptionExtra(item) {
-      return targetOptionHint(item, this.targetFilterQuery)
-    },
-    async searchTargetOptions(keyword, selectedCodes) {
-      const requestToken = ++this.targetRequestToken
-      try {
-        const items = await searchWorkbenchTargets(keyword, selectedCodes)
-        if (requestToken !== this.targetRequestToken) return
-        this.mergeTargetOptions(items)
-        this.targetOptions = items
-      } catch {
-        if (requestToken === this.targetRequestToken) {
-          this.targetOptions = this.targetOptions || []
-        }
-      }
-    },
-    querySheetTargetOptions({ searchValue }) {
-      const row = this.list[this.pasteAnchor?.rowIndex]
-      return this.searchTargetOptions(searchValue, row?.target_codes)
-    },
-    onSheetTargetPickerChange(row) {
-      const codes = uniqueTargetCodes(row.target_codes)
-      row.target_codes = codes
-      row.target_name = targetNameFromCodes(codes, this.targetOptions)
     },
     sheetTargetDirectValue(row, key) {
       return key === 'target_codes' ? this.sheetDirectTextValue(row, key) : row.target_name
@@ -1869,61 +1794,6 @@ export default {
     },
     setSheetChoiceDirectValue(row, column, value) {
       this.setSheetDirectValue(row, column.key, value)
-    },
-    createSheetEditOriginal(row, key) {
-      return {
-        key,
-        rowId: row.id,
-        targetCodes: this.cloneSheetValue(row.target_codes),
-        targetName: row.target_name,
-        value: this.cloneSheetValue(this.sheetValueSnapshot(row, key)),
-      }
-    },
-    async flushExcelKeyboardSwitch(previousKey, nextKey) {
-      if (
-        ['target_codes', 'target_name'].includes(previousKey)
-        && ['target_codes', 'target_name'].includes(nextKey)
-        && this.pendingSheetOps.size
-      ) {
-        await Promise.allSettled([...this.pendingSheetOps])
-      }
-    },
-    async resolveTargetCodes(codes) {
-      const normalized = uniqueTargetCodes(codes)
-      if (!normalized.length) return { missing: [], nameByCode: new Map(), names: [] }
-      const items = await searchWorkbenchTargets('', normalized)
-      this.mergeTargetOptions(items)
-      const nameByCode = new Map(items.map((item) => [item.snum, item.name]))
-      return {
-        missing: normalized.filter((code) => !nameByCode.has(code)),
-        nameByCode,
-        names: normalized.map((code) => nameByCode.get(code)).filter(Boolean),
-      }
-    },
-    async resolveTargetNames(value) {
-      const names = splitTargetNames(value)
-      if (!names.length) {
-        return { ambiguous: [], itemByName: new Map(), items: [], missing: [] }
-      }
-      const results = await Promise.all(
-        names.map(async (name) => {
-          const items = await searchWorkbenchTargets(name)
-          const exact = items.filter(
-            (item) => String(item.name || '').trim().toLowerCase() === name.toLowerCase(),
-          )
-          this.mergeTargetOptions(exact)
-          return { exact, name }
-        }),
-      )
-      const missing = results.filter((item) => item.exact.length === 0).map((item) => item.name)
-      const ambiguous = results.filter((item) => item.exact.length > 1).map((item) => item.name)
-      const matched = results.filter((item) => item.exact.length === 1)
-      return {
-        ambiguous,
-        itemByName: new Map(matched.map((item) => [item.name.toLowerCase(), item.exact[0]])),
-        items: matched.map((item) => item.exact[0]),
-        missing,
-      }
     },
     rowPriority(row) {
       return canonicalizeWorkbenchPriority(row?.priority)
@@ -2040,7 +1910,6 @@ export default {
       const payload = { ...this.listQuery }
       if (!payload.view_group) delete payload.view_group
       if (!payload.boost_filter) delete payload.boost_filter
-      if (!payload.empty_date) delete payload.empty_date
       if (!payload.status) delete payload.status
       if (!payload.priority) delete payload.priority
       if (!payload.sort_field) delete payload.sort_field
@@ -2053,15 +1922,23 @@ export default {
         payload.boost_date_start = this.boostRange[0]
         payload.boost_date_end = this.boostRange[1]
       }
+      const fieldFilters = this.headerFilterPayload()
+      if (fieldFilters.length) payload.field_filters = fieldFilters
       return payload
+    },
+    fetchHeaderValues(query) {
+      return fetchDiscoveryWorkbenchColumnValues(query)
     },
     async loadOptions() {
       try {
         const data = await fetchDiscoveryWorkbenchOptions(skipGlobalErrorHandler)
-        if (Array.isArray(data?.screening_methods) && data.screening_methods.length) {
-          this.screeningMethodOptions = data.screening_methods
-        }
-        this.optionLists.targets = normalizeTargetOptions(data?.targets)
+        applyOptionLists(this, data, {
+          screening_methods: 'screeningMethodOptions',
+          statuses: 'planStatusOptions',
+          priorities: 'priorityOptions',
+          mouse_strain_categories: 'mouseStrainCategoryOptions',
+          mouse_strains: 'mouseStrainOptions',
+        })
         this.optionLists.pms = this.uniq(data?.pms || [])
         this.optionLists.owners = this.uniq(data?.owners || [])
         this.optionLists.immune_owners = this.uniq(data?.immune_owners || [])
@@ -2121,23 +1998,16 @@ export default {
       this.listQuery.page = 1
       this.getList()
     },
-    excelHeaderClick(column) {
-      if (column?.key !== 'harvest_date' && column?.key !== 'boost_date') return false
-      this.cycleDateSort(column.key)
-      return true
-    },
-    excelHeaderContextMenu(column) {
-      if (column?.key !== 'harvest_date' && column?.key !== 'boost_date') return false
-      this.toggleEmptyDate(column.key)
-      return true
-    },
+    /** 清空全部筛选和表头排序；视图分组和队列排序是视图模式，保留。 */
     resetFilters() {
-      const viewGroup = this.listQuery.view_group
-      const sortField = this.listQuery.sort_field
-      const sortDir = this.listQuery.sort_dir
-      this.listQuery = { ...emptyQuery(), view_group: viewGroup, sort_field: sortField, sort_dir: sortDir }
+      this.listQuery = {
+        ...emptyQuery(),
+        view_group: this.listQuery.view_group,
+        sort_field: this.isQueueSorted ? 'sort_order' : '',
+      }
       this.harvestRange = []
       this.boostRange = []
+      this.clearHeaderFilters()
       this.getList()
     },
     lifecycleHint(item) {
@@ -2165,6 +2035,7 @@ export default {
     handleViewGroup(key) {
       if (!key || this.listQuery.status === '待剖鼠') {
         this.listQuery.status = ''
+        this.dropHeaderFilter('status')
       }
       this.listQuery.view_group = key || ''
       this.handleFilter()
@@ -2255,6 +2126,7 @@ export default {
       this.listQuery = { ...emptyQuery(), keyword: discoveryId }
       this.harvestRange = []
       this.boostRange = []
+      this.clearHeaderFilters()
       await this.getList()
       const row = this.list.find((item) => item.discovery_id === discoveryId)
       if (!row) {
@@ -2411,7 +2283,7 @@ export default {
       if (key === 'sort_order') return coerceRequiredPositiveInt(raw)
       if (key === 'priority') {
         const canon = canonicalizeWorkbenchPriority(raw)
-        return PRIORITY_OPTIONS.includes(canon) ? { ok: true, value: canon } : { ok: false, reason: 'option' }
+        return this.priorityOptions.includes(canon) ? { ok: true, value: canon } : { ok: false, reason: 'option' }
       }
       if (key === 'status') {
         const text = String(raw || '').trim()
@@ -2485,38 +2357,10 @@ export default {
       }
       const columnConfig = this.sheetColumns.find((item) => item.key === key)
       if (editSource === 'dblclick' && columnConfig?.edit === 'target') {
-        const codes = uniqueTargetCodes(row.target_codes)
-        const submittedName = String(row.target_name || '')
         const originalCodes = originalRecord?.targetCodes ?? originalValue
         const originalName = originalRecord?.targetName ?? this.rowBaselines.get(row.id)?.target_name ?? ''
-        if (
-          this.sameSheetValue('target_codes', codes, originalCodes)
-          && this.sameSheetValue('target_name', submittedName, originalName)
-        ) {
-          return
-        }
-        try {
-          const resolved = await this.resolveTargetCodes(codes)
-          if (
-            !this.sameSheetValue('target_codes', row.target_codes, codes)
-            || !this.sameSheetValue('target_name', row.target_name, submittedName)
-          ) {
-            return
-          }
-          if (resolved.missing.length) throw new Error('target-missing')
-          row.target_codes = codes
-          row.target_name = resolved.names.join('&')
+        if (await this.applySheetTargetPick(row, originalCodes, originalName)) {
           return this.persistRow(row, 'target_codes')
-        } catch {
-          if (
-            !this.sameSheetValue('target_codes', row.target_codes, codes)
-            || !this.sameSheetValue('target_name', row.target_name, submittedName)
-          ) {
-            return
-          }
-          row.target_codes = this.cloneSheetValue(originalCodes)
-          row.target_name = originalName
-          ElMessage.warning('靶点校验失败，本次修改未保存')
         }
         return
       }
@@ -2534,119 +2378,17 @@ export default {
         return
       }
       this.restoreSheetEditValue(row, key, result.value)
-      if (key === 'target_codes') {
-        const submittedCodes = [...row.target_codes]
-        const submittedName = String(row.target_name || '')
-        try {
-          const resolved = await this.resolveTargetCodes(submittedCodes)
-          if (
-            !this.sameSheetValue('target_codes', row.target_codes, submittedCodes)
-            || !this.sameSheetValue('target_name', row.target_name, submittedName)
-          ) {
-            return
-          }
-          if (resolved.missing.length) {
-            this.restoreSheetEditValue(row, key, originalValue)
-            ElMessage.warning(`未找到靶点编号：${resolved.missing.join('、')}`)
-            return
-          }
-          row.target_name = resolved.names.join('&')
-        } catch {
-          if (
-            !this.sameSheetValue('target_codes', row.target_codes, submittedCodes)
-            || !this.sameSheetValue('target_name', row.target_name, submittedName)
-          ) {
-            return
-          }
-          this.restoreSheetEditValue(row, key, originalValue)
-          ElMessage.warning('靶点校验失败，本次修改未保存')
-          return
-        }
-      }
-      if (key === 'target_name') {
-        const submittedName = String(row.target_name || '').trim()
-        const submittedCodes = this.cloneSheetValue(row.target_codes)
-        try {
-          const resolved = await this.resolveTargetNames(row.target_name)
-          if (
-            !this.sameSheetValue('target_name', row.target_name, submittedName)
-            || !this.sameSheetValue('target_codes', row.target_codes, submittedCodes)
-          ) {
-            return
-          }
-          if (resolved.missing.length) {
-            this.restoreSheetEditValue(row, key, originalValue)
-            ElMessage.warning(`未找到靶点名称：${resolved.missing.join('、')}`)
-            return
-          }
-          if (resolved.ambiguous.length) {
-            this.restoreSheetEditValue(row, key, originalValue)
-            ElMessage.warning(`靶点名称不唯一，请双击选择：${resolved.ambiguous.join('、')}`)
-            return
-          }
-          row.target_codes = resolved.items.map((item) => item.snum)
-          row.target_name = resolved.items.map((item) => item.name).join('&')
-        } catch {
-          if (
-            !this.sameSheetValue('target_name', row.target_name, submittedName)
-            || !this.sameSheetValue('target_codes', row.target_codes, submittedCodes)
-          ) {
-            return
-          }
-          this.restoreSheetEditValue(row, key, originalValue)
-          ElMessage.warning('靶点校验失败，本次修改未保存')
-          return
-        }
-      }
+      if ((key === 'target_codes' || key === 'target_name') && !await this.applySheetTargetText(row, key, originalValue)) return
       return this.persistRow(row, key)
     },
     async onSheetPaste(event) {
-      if (!this.canEdit) return
-      if (event.target?.closest?.('input, textarea')) return
-      const plain = event.clipboardData?.getData('text/plain') || ''
-      const grid = readClipboardGrid(event.clipboardData)
-      if (!grid.length) return
-      const singleValue = grid.length === 1
-        && grid[0].length === 1
-        && !String(grid[0][0]).includes('\n')
-      if (!plain.includes('\t') && !plain.includes('\n') && singleValue && !this.sheetRange) return
-      event.preventDefault()
-      if (!await this.flushPendingSheetEdits()) return
-
       const labelToKey = new Map([
         ...Object.entries(SHEET_HEADER_ALIASES),
         ...SHEET_COLUMNS.map((column) => [column.label, column.key]),
       ])
-      const headerKeys = grid[0].map((cell) => labelToKey.get(String(cell || '').trim()) || null)
-      const nonEmptyHeaderCount = grid[0].filter((cell) => String(cell || '').trim()).length
-      const matchedHeaderCount = headerKeys.filter(Boolean).length
-      const hasHeader = matchedHeaderCount >= 2 && matchedHeaderCount === nonEmptyHeaderCount
-      let dataRows = hasHeader ? grid.slice(1) : grid
-      let startIndex = this.pasteAnchor?.rowIndex ?? 0
-      const startColKey = this.pasteAnchor?.colKey || this.sheetColumns[0]?.key
-      let startColIndex = this.sheetColumns.findIndex((column) => column.key === startColKey)
-      if (startColIndex < 0) return
-      const selectedRange = this.normalizedSheetRange()
-      const fillSelectedRange = !hasHeader
-        && dataRows.length === 1
-        && dataRows[0]?.length === 1
-        && selectedRange
-        && (selectedRange.r1 !== selectedRange.r2 || selectedRange.c1 !== selectedRange.c2)
-      if (fillSelectedRange) {
-        const value = dataRows[0][0]
-        const rowCount = selectedRange.r2 - selectedRange.r1 + 1
-        const columnCount = selectedRange.c2 - selectedRange.c1 + 1
-        dataRows = Array.from({ length: rowCount }, () => Array(columnCount).fill(value))
-        startIndex = selectedRange.r1
-        startColIndex = selectedRange.c1
-      }
-      const availableRowCount = Math.max(this.list.length - startIndex, 0)
-      const skippedRowCount = Math.max(dataRows.length - availableRowCount, 0)
-      dataRows.splice(availableRowCount)
-      if (!dataRows.length) {
-        ElMessage.warning('粘贴区域超出当前列表，本次未保存')
-        return
-      }
+      const paste = await this.prepareSheetPaste(event, labelToKey)
+      if (!paste) return
+      const { dataRows, hasHeader, headerKeys, skippedRowCount, startColIndex, startIndex } = paste
 
       const workingRows = this.list.map((row) => this.normalizeRow(JSON.parse(JSON.stringify(row))))
       const dirtyByIndex = new Map()

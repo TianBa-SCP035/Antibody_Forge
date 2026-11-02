@@ -47,7 +47,7 @@ DESCRIPTIVE_FIELDS = (
 TARGET_FIELDS = tuple(column.key for column in Target.__table__.columns)
 
 
-def get_target_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+def get_target_list(db: Session, data: dict[str, Any], *, include_stats: bool = True) -> dict[str, Any]:
     page = max(_to_int(data.get("page"), 1), 1)
     limit = min(max(_to_int(data.get("limit"), 20), 1), 500)
     conditions = []
@@ -110,6 +110,7 @@ def get_target_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
         )
         order_by = [relevance.asc(), name_match_length.asc(), *order_by]
 
+    stat_conditions = list(conditions)
     status = data.get("status")
     if status == "unknown":
         conditions.append(Target.status.is_(None))
@@ -128,16 +129,19 @@ def get_target_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
         .limit(limit)
     ).all()
 
-    return {
+    result = {
         "items": [_target_to_dict(target) for target in targets],
         "total": total,
         "page": page,
         "limit": limit,
-        "stats": _get_target_stats(db),
     }
+    if include_stats:
+        result["stats"] = _get_target_stats(db, stat_conditions)
+    return result
 
 
-def _get_target_stats(db: Session) -> dict[str, Any]:
+def _get_target_stats(db: Session, conditions: list) -> dict[str, Any]:
+    """状态计数跟随关键字等筛选，不受当前选中的状态影响。"""
     row = db.execute(
         select(
             func.count(Target.id),
@@ -145,7 +149,7 @@ def _get_target_stats(db: Session) -> dict[str, Any]:
             func.count(case((Target.status == 2, 1))),
             func.count(case((Target.status.is_(None), 1))),
             func.max(Target.synced_at),
-        ).where(Target.is_active.is_(True))
+        ).where(*conditions)
     ).one()
     latest_successful_sync = db.scalar(
         select(SysJobRunLog.finished_at)

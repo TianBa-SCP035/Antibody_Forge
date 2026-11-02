@@ -340,6 +340,7 @@ import { notifyApiError } from '#/api/errors'
 import { fetchCellInventoryData, updateProjectPrepStatus } from '#/api/serum'
 import { SERUM_ERRORS } from './shared/errors'
 import { canUpdateSerumPrepStatus } from '#/utils/serumPermission'
+import { createLatestRequest } from '#/utils/latestRequest'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
 export default {
@@ -630,6 +631,9 @@ export default {
       return result
     }
   },
+  created() {
+    this.dataRequest = createLatestRequest()
+  },
   mounted() {
     this.fetchData()
   },
@@ -657,10 +661,12 @@ export default {
       return projects.length
     },
     async fetchData(showMessage = true) {
+      const isLatest = this.dataRequest.begin()
       this.loading = true
       this.error = null
       try {
         const data = await fetchCellInventoryData()
+        if (!isLatest()) return
         this.targets = data.targets || []
         this.projects = data.projects || {}
         this.cells = data.cells || {}
@@ -683,11 +689,14 @@ export default {
           ElMessage.success('数据加载成功')
         }
       } catch (error) {
+        if (!isLatest()) return
         this.error = error instanceof Error ? error.message : '网络请求失败'
         notifyApiError(error, { messages: SERUM_ERRORS.cell.load })
       } finally {
-        this.loading = false
-        this.tabDataFetchedAt = Date.now()
+        if (isLatest()) {
+          this.loading = false
+          this.tabDataFetchedAt = Date.now()
+        }
       }
     },
     selectTarget(targetName) {

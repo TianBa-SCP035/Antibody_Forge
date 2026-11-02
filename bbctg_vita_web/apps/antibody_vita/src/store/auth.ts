@@ -16,6 +16,7 @@ import {
   logoutApi,
   yunzhijiaLoginApi,
 } from '#/api';
+import { RECENT_LOGIN_ACCOUNTS_KEY } from '#/constants/storageKeys';
 import { $t } from '#/locales';
 import {
   createAccessChecker,
@@ -28,8 +29,6 @@ export const useAuthStore = defineStore('auth', () => {
   const router = useRouter();
 
   const loginLoading = ref(false);
-  const RECENT_LOGIN_ACCOUNTS_KEY = `ANTIBODY_RECENT_LOGIN_ACCOUNTS_${location.hostname}`;
-
   /**
    * 异步处理登录操作
    * Asynchronously handle the login process

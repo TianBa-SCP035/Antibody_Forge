@@ -11,12 +11,17 @@ from sqlalchemy import JSON, String, and_, bindparam, case, cast, func, or_, sel
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
+from utils.clock import now_local
+from utils.normalize import normalize_date
+from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_ORDER
+from utils.uploads import contained_path, read_limited, safe_path_part, upload_filename
 from utils.filter_values import (
-    catalog_names_for_pairs,
+    DEFAULT_RECORDED_TARGET_LIMIT,
     clean_field_text,
+    like_literal,
     recorded_target_clause,
+    recorded_target_search,
     restrict,
-    target_select_options,
 )
 from integrations import drm_service
 from models.immunology import (
@@ -42,9 +47,7 @@ def _upload_root() -> Path:
 
 
 def get_full_path(relative_path: str) -> Path:
-    path_parts = relative_path.lstrip("/")
-    settings = get_settings()
-    return Path(settings.repository_root) / "uploads" / path_parts
+    return contained_path(Path(get_settings().repository_root) / "uploads", relative_path)
 
 
 def get_file_list(db: Session, experiment_id: str) -> list[dict]:
@@ -54,18 +57,24 @@ def get_file_list(db: Session, experiment_id: str) -> list[dict]:
 
 
 def _save_upload_content(db: Session, file_obj: UploadFile, file_path: Path) -> None:
+    content = read_limited(file_obj)
     with file_path.open("wb") as target:
-        target.write(file_obj.file.read())
+        target.write(content)
     drm_service.decrypt_upload_file_if_available(db, file_path)
+
+
+def _upload_save_name(filename: str | None) -> str:
+    return f"{now_local().strftime('%Y%m%d%H%M%S')}_{upload_filename(filename)}"
 
 
 def save_file(db: Session, file_obj: UploadFile, experiment_id: str, user_name: str = "unknown") -> dict:
     if not file_obj.filename or not experiment_id:
         raise ValueError("缺少文件或实验 ID")
+    experiment_id = safe_path_part(experiment_id, "实验 ID")
 
-    exp_dir = _upload_root() / experiment_id
+    exp_dir = contained_path(_upload_root(), experiment_id)
     exp_dir.mkdir(parents=True, exist_ok=True)
-    save_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{Path(file_obj.filename).name}"
+    save_name = _upload_save_name(file_obj.filename)
     file_path = exp_dir / save_name
 
     _save_upload_content(db, file_obj, file_path)
@@ -109,7 +118,7 @@ def replace_file(db: Session, file_id: int, file_obj: UploadFile, user_name: str
     old_path = get_full_path(record.file_path)
     exp_dir = old_path.parent
     exp_dir.mkdir(parents=True, exist_ok=True)
-    save_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{Path(file_obj.filename or '').name}"
+    save_name = _upload_save_name(file_obj.filename)
     new_path = exp_dir / save_name
 
     _save_upload_content(db, file_obj, new_path)
@@ -322,7 +331,7 @@ def _project_code_part(project_code: str | None, experiment_id: str) -> str:
 
 
 def generate_titer_order_id(db: Session, project_code: str | None, experiment_id: str) -> str:
-    prefix = datetime.now().strftime("%Y%m%d%H%M%S")
+    prefix = now_local().strftime("%Y%m%d%H%M%S")
     project_part = _project_code_part(project_code, experiment_id)
     for _ in range(20):
         candidate = f"{prefix}-{project_part}-{random.randint(0, 9999):04d}"
@@ -380,11 +389,13 @@ def _derived_cage_position(
 BLOOD_COLLECTION_STAGE_NAME = "采血"
 PENDING_BLOOD_COLLECTION_STATUS = "待采血"
 PENDING_BLOOD_COLLECTION_BOOST_STATUS = "待采血-加免"
-TITER_ORDER_PRIORITY_DEFAULT = "正常"
-TITER_ORDER_PRIORITIES = ("正常", "加急", "非常紧急", "吉吉国王")
+TITER_ORDER_PRIORITY_DEFAULT = DEFAULT_PRIORITY
+# 检测单列表按优先级升序时「正常」在前，所以与队列顺序相反
+TITER_ORDER_PRIORITIES = tuple(reversed(PRIORITY_ORDER))
 TITER_SERUM_STATUS_ORDER = ("待采血", "待采血-加免", "已采血", "已检测", "已交接", "已销毁")
 TITER_SERUM_STATUS_POST_TEST = ("已检测", "已交接", "已销毁")
 TITER_FLOW_ORDER_TYPE = "TITER"
+MAX_LIST_LIMIT = 500
 
 # NULL=跟随免疫方案；非 NULL=用户覆盖（字段互相独立）
 FOLLOWABLE_BATCH_KEYS = (
@@ -398,8 +409,11 @@ FOLLOWABLE_BATCH_KEYS = (
 
 
 def _normalize_blood_collection_date(raw: Any) -> str | None:
-    value = str(raw or "").strip()[:10]
-    return value if len(value) == 10 else None
+    """读侧比对用：格式不对按没有采血日处理，写入校验走 normalize_date。"""
+    try:
+        return normalize_date(raw)
+    except ValueError:
+        return None
 
 
 def _all_blood_collection_dates(steps: list[SerumImmStep]) -> list[str]:
@@ -639,8 +653,7 @@ def _normalize_batch_fields_payload(data: dict[str, Any]) -> dict[str, Any]:
     if "cage_position" in data:
         result["cage_position"] = str(data.get("cage_position") or "").strip() or None
     if "blood_collection_date" in data:
-        value = str(data.get("blood_collection_date") or "").strip()[:10]
-        result["blood_collection_date"] = value if len(value) == 10 else None
+        result["blood_collection_date"] = normalize_date(data.get("blood_collection_date"))
     if "mouse_count" in data:
         raw = data.get("mouse_count")
         if raw is None or raw == "":
@@ -738,7 +751,7 @@ def _parse_blood_collection_seq(raw: Any) -> int | None:
 def _normalize_titer_order_priority(raw: Any) -> str:
     value = str(raw or "").strip() or TITER_ORDER_PRIORITY_DEFAULT
     if value not in TITER_ORDER_PRIORITIES:
-        raise ValueError("检测优先级须为：正常、加急、非常紧急、吉吉国王")
+        raise ValueError(f"检测优先级须为：{'、'.join(TITER_ORDER_PRIORITIES)}")
     return value
 
 
@@ -991,11 +1004,12 @@ def _apply_titer_order_list_filters(stmt, data: dict[str, Any], *, db: Session |
                 )
             )
     elif project_code:
+        pattern = f"%{like_literal(project_code)}%"
         stmt = stmt.where(
             or_(
-                SerumImmProject.project_code.like(f"%{project_code}%"),
-                SerumImmProject.experiment_id.like(f"%{project_code}%"),
-                SerumTiterOrder.experiment_id.like(f"%{project_code}%"),
+                SerumImmProject.project_code.like(pattern, escape="\\"),
+                SerumImmProject.experiment_id.like(pattern, escape="\\"),
+                SerumTiterOrder.experiment_id.like(pattern, escape="\\"),
             )
         )
     target_clause = recorded_target_clause(
@@ -1013,7 +1027,7 @@ def _apply_titer_order_list_filters(stmt, data: dict[str, Any], *, db: Session |
         stmt = restrict(
             stmt,
             data.get("titer_owner"),
-            lambda owner: cast(SerumTiterOrder.titer_owners, String).like(f"%{owner}%"),
+            lambda owner: func.json_overlaps(SerumTiterOrder.titer_owners, json.dumps([owner])),
         )
     stmt = restrict(stmt, data.get("immune_owner"), lambda value: SerumImmProject.owner == value)
     stmt = restrict(
@@ -1052,19 +1066,43 @@ def _titer_order_list_items(db: Session, data: dict[str, Any]) -> list[dict]:
     stmt = _apply_titer_order_list_filters(_titer_order_query(), data, db=db)
     blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
     rows = db.execute(stmt.order_by(*_titer_order_sql_order_by(data))).all()
-    items = _enrich_order_rows(db, rows)
     if blood_start or blood_end:
-        items = [
-            item
-            for item in items
-            if _blood_date_in_range(item.get("blood_collection_date") or "", blood_start, blood_end)
-        ]
-    return _sort_titer_order_items(items, data)
+        rows = [(order, project) for order, project, _ in _with_blood_dates(db, rows, blood_start, blood_end, True)]
+    return _sort_titer_order_items(_enrich_order_rows(db, rows), data)
+
+
+def _with_blood_dates(
+    db: Session,
+    rows: list,
+    blood_start: str | None,
+    blood_end: str | None,
+    need_blood_date: bool,
+) -> list[tuple[SerumTiterOrder, SerumImmProject, str]]:
+    """补上实际采血日期（单上没有就按免疫步骤推），并按采血日期区间过滤；该条件无法在 SQL 里表达。"""
+    blood_dates_map = (
+        _build_blood_dates_by_experiment(
+            db,
+            [project.experiment_id for order, project in rows if order.blood_collection_date is None and project.experiment_id],
+        )
+        if need_blood_date
+        else {}
+    )
+    candidates: list[tuple[SerumTiterOrder, SerumImmProject, str]] = []
+    for order, project in rows:
+        blood_date = (
+            _effective_blood_collection_date(order, blood_dates_map.get(order.experiment_id, []))
+            if need_blood_date
+            else ""
+        )
+        if (blood_start or blood_end) and not _blood_date_in_range(blood_date, blood_start, blood_end):
+            continue
+        candidates.append((order, project, blood_date))
+    return candidates
 
 
 def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
-    page = int(data.get("page", 1) or 1)
-    limit = int(data.get("limit", 20) or 20)
+    page = max(int(data.get("page", 1) or 1), 1)
+    limit = min(max(int(data.get("limit", 20) or 20), 1), MAX_LIST_LIMIT)
     stmt = _apply_titer_order_list_filters(_titer_order_query(), data, db=db)
 
     blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
@@ -1072,24 +1110,7 @@ def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
     if _titer_order_needs_full_scan(data, blood_start, blood_end):
         rows = db.execute(stmt.order_by(*_titer_order_sql_order_by(data))).all()
         need_blood_date = bool(blood_start or blood_end or str(data.get("sort_field") or "") == "blood_collection_date")
-        blood_dates_map = (
-            _build_blood_dates_by_experiment(
-                db,
-                [project.experiment_id for order, project in rows if order.blood_collection_date is None and project.experiment_id],
-            )
-            if need_blood_date
-            else {}
-        )
-        candidates: list[tuple[SerumTiterOrder, SerumImmProject, str]] = []
-        for order, project in rows:
-            blood_date = (
-                _effective_blood_collection_date(order, blood_dates_map.get(order.experiment_id, []))
-                if need_blood_date
-                else ""
-            )
-            if (blood_start or blood_end) and not _blood_date_in_range(blood_date, blood_start, blood_end):
-                continue
-            candidates.append((order, project, blood_date))
+        candidates = _with_blood_dates(db, rows, blood_start, blood_end, need_blood_date)
 
         field = str(data.get("sort_field") or "")
         if field in TITER_ORDER_ITEM_SORT_FIELDS:
@@ -1180,7 +1201,7 @@ def save_titer_order(db: Session, data: dict[str, Any]) -> dict:
     project: SerumImmProject | None = None
     is_create = not order_id
     if order_id:
-        order = db.get(SerumTiterOrder, int(order_id))
+        order = db.get(SerumTiterOrder, int(order_id), with_for_update=True)
         if not order:
             raise ValueError("效价工单不存在")
         project = db.scalar(
@@ -1255,7 +1276,7 @@ def delete_titer_order(db: Session, order_id: int) -> None:
 
 
 def _current_week_range() -> tuple[datetime, datetime]:
-    now = datetime.now()
+    now = now_local()
     start = datetime.combine((now - timedelta(days=now.weekday())).date(), time.min)
     end = datetime.combine((start + timedelta(days=6)).date(), time.max)
     return start, end
@@ -1337,22 +1358,37 @@ def _collect_titer_serum_status_names(db: Session) -> list[str]:
     return [row[0] for row in rows if row[0]]
 
 
+def search_titer_order_targets(db: Session, keyword: str = "", limit: int = DEFAULT_RECORDED_TARGET_LIMIT) -> list[dict]:
+    return recorded_target_search(db, _titer_target_pairs(), keyword, limit)
+
+
 def get_titer_order_page_meta(db: Session) -> dict:
     return {
         "owners": _collect_titer_owner_names(db),
-        "targets": target_select_options(
-            (pairs := db.execute(_titer_target_pairs()).all()),
-            catalog_names_for_pairs(db, pairs),
-        ),
         "assay_methods": _collect_titer_assay_method_names(db),
         "immune_owners": _collect_titer_immune_owner_names(db),
         "immune_statuses": _collect_titer_immune_status_names(db),
         "serum_statuses": _collect_titer_serum_status_names(db),
-        "stats": get_titer_order_stats(db),
     }
 
 
-def get_titer_order_stats(db: Session) -> dict[str, int]:
+# 统计块自己切换的维度（负责人、血清状态、小结、检测日期）不参与统计范围
+_TITER_STAT_OWN_KEYS = frozenset({
+    "titer_order_id",
+    "titer_owner",
+    "titer_owner_unassigned",
+    "serum_status",
+    "summary_empty",
+    "summary_filled",
+    "test_dates_empty",
+    "tested_unsubmitted",
+    "test_dates_start",
+    "test_dates_end",
+})
+
+
+def get_titer_order_stats(db: Session, data: dict[str, Any] | None = None) -> dict[str, int]:
+    scope = {key: value for key, value in (data or {}).items() if key not in _TITER_STAT_OWN_KEYS}
     join_on = SerumImmProject.experiment_id == SerumTiterOrder.experiment_id
     deleted_filter = or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted")
     pending_cond = and_(
@@ -1371,7 +1407,7 @@ def get_titer_order_stats(db: Session) -> dict[str, int]:
     facs_expr = func.coalesce(SerumTiterOrder.facs_plate_count, SerumImmProject.facs_plate_count, 0)
     elisa_expr = func.coalesce(SerumTiterOrder.elisa_plate_count, SerumImmProject.elisa_plate_count, 0)
 
-    row = db.execute(
+    stmt = (
         select(
             func.coalesce(func.sum(case((_empty_titer_owners_condition(), 1), else_=0)), 0),
             func.coalesce(func.sum(case((pending_cond, 1), else_=0)), 0),
@@ -1383,7 +1419,13 @@ def get_titer_order_stats(db: Session) -> dict[str, int]:
         .select_from(SerumTiterOrder)
         .join(SerumImmProject, join_on)
         .where(deleted_filter)
-    ).one()
+    )
+    blood_start, blood_end = _filter_date_bounds(scope, "blood_collection_start", "blood_collection_end")
+    if blood_start or blood_end:
+        rows = db.execute(_apply_titer_order_list_filters(_titer_order_query(), scope, db=db)).all()
+        matched_ids = [order.id for order, _, _ in _with_blood_dates(db, rows, blood_start, blood_end, True)]
+        stmt = stmt.where(SerumTiterOrder.id.in_(matched_ids))
+    row = db.execute(_apply_titer_order_list_filters(stmt, scope, db=db)).one()
 
     return {
         "unassigned": int(row[0] or 0),
@@ -1494,12 +1536,12 @@ def get_project_options(db: Session, keyword: str = "", limit: int = 20) -> list
         .order_by(SerumImmProject.id.desc())
     )
     if keyword:
-        pattern = f"%{keyword}%"
+        pattern = f"%{like_literal(keyword)}%"
         stmt = stmt.where(
             or_(
-                SerumImmProject.project_code.like(pattern),
-                SerumImmProject.experiment_id.like(pattern),
-                SerumImmProject.target_name.like(pattern),
+                SerumImmProject.project_code.like(pattern, escape="\\"),
+                SerumImmProject.experiment_id.like(pattern, escape="\\"),
+                SerumImmProject.target_name.like(pattern, escape="\\"),
             )
         )
     projects = db.scalars(stmt.limit(limit)).all()

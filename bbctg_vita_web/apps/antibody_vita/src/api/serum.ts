@@ -13,8 +13,8 @@ const downloadConfig = {
   skipErrorHandler: true,
 } as Parameters<typeof requestClient.download>[1];
 
-export function fetchStats(config?: RequestConfig) {
-  return requestClient.get('/serum/stats', config);
+export function fetchStats(data: Record<string, unknown> = {}, config?: PostConfig) {
+  return requestClient.post('/serum/stats', data, config);
 }
 
 export function fetchList(data: any, config?: PostConfig) {
@@ -34,24 +34,6 @@ export function fetchSerumDetailByExperimentId(experimentId: string, config?: Re
     params: { experiment_id: experimentId },
     ...skipGlobalErrorHandler,
     ...config,
-  });
-}
-
-export interface SerumTargetOption {
-  name: string;
-  snum: string;
-}
-
-export function fetchSerumTargetOptions(keyword = '', codes: string[] = []) {
-  return requestClient.get<{ items: SerumTargetOption[] }>('/serum/target_options', {
-    params: { keyword, codes: codes.join(',') },
-    ...skipGlobalErrorHandler,
-  });
-}
-
-export function fetchSerumUserOptions() {
-  return requestClient.get<{ items: string[] }>('/serum/user_options', {
-    ...skipGlobalErrorHandler,
   });
 }
 
@@ -211,8 +193,8 @@ export function fetchTiterOrderMeta(config?: RequestConfig) {
   });
 }
 
-export function fetchTiterOrderStats(config?: RequestConfig) {
-  return requestClient.get('/serum/titer/order/stats', {
+export function fetchTiterOrderStats(data: Record<string, unknown> = {}, config?: PostConfig) {
+  return requestClient.post('/serum/titer/order/stats', data, {
     ...skipGlobalErrorHandler,
     ...config,
   });

@@ -3,16 +3,13 @@ import hashlib
 import re
 import tempfile
 import unittest
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import UploadFile
-from sqlalchemy import BigInteger, create_engine, select
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select
 
-from db.session import Base
 from models.discovery import DiscoveryWorkbench
 from models.molecular_cell import (
     MolecularLibraryOrder,
@@ -31,6 +28,8 @@ from modules.molecular_cell.library_orders.result_upload import (
     preview_extension,
     primer_check_sequence,
 )
+from support import DbTestCase
+from utils.clock import today_local
 
 
 def _long_enough(sequence: str) -> bytes:
@@ -43,32 +42,19 @@ def _read(primer, direction="F"):
     return _long_enough(f"NN{assembled_primer(primer, direction)}NN")
 
 
-@compiles(BigInteger, "sqlite")
-def _compile_big_integer_for_sqlite(_type, _compiler, **_kwargs):
-    return "INTEGER"
-
-
 LIBRARY_ID_RE = re.compile(r"^LIB-\d{6}-[A-Z0-9]{6}$")
-TABLES = [
-    DiscoveryWorkbench.__table__,
-    MolecularLibraryOrder.__table__,
-    MolecularPrimerIndexCatalog.__table__,
-    MolecularLibraryResultPackage.__table__,
-    MolecularLibraryResultFile.__table__,
-    MolecularLibraryResultLink.__table__,
-]
+TABLES = (
+    DiscoveryWorkbench,
+    MolecularLibraryOrder,
+    MolecularPrimerIndexCatalog,
+    MolecularLibraryResultPackage,
+    MolecularLibraryResultFile,
+    MolecularLibraryResultLink,
+)
 
 
-class LibraryOrderTests(unittest.TestCase):
-    def setUp(self):
-        self.engine = create_engine("sqlite+pysqlite:///:memory:")
-        Base.metadata.create_all(self.engine, tables=TABLES)
-        self.Session = sessionmaker(bind=self.engine, autoflush=False, expire_on_commit=False)
-        self.db = self.Session()
-
-    def tearDown(self):
-        self.db.close()
-        self.engine.dispose()
+class LibraryOrderTests(DbTestCase):
+    tables = TABLES
 
     def _discovery(self, **overrides):
         payload = {
@@ -94,6 +80,17 @@ class LibraryOrderTests(unittest.TestCase):
         value = service.generate_library_order_id(datetime(2026, 9, 21, 10, 0, 0))
         self.assertEqual(value[:11], "LIB-260921-")
         self.assertRegex(value, LIBRARY_ID_RE)
+
+    def test_options_match_save_validation(self):
+        service.save(self.db, {"build_type": service.BUILD_POOLED_BCR, "owner": " 王五 ", "pm": "张三"})
+        service.save(self.db, {"build_type": service.BUILD_POOLED_BCR, "owner": "张三", "qc_owner": "李四"})
+        options = service.get_options(self.db)
+        self.assertEqual(options["statuses"], list(service.STATUS_OPTIONS))
+        self.assertEqual(options["priorities"][0], "正常")
+        self.assertEqual(options["qc_results"], list(service.QC_RESULT_OPTIONS))
+        self.assertEqual(options["cell_types"], list(service.CELL_TYPE_OPTIONS))
+        self.assertIn("RNVM", options["mouse_strains"])
+        self.assertEqual(options["people"], sorted(["王五", "张三", "李四"]))
 
     def test_save_assigns_id_and_defaults(self):
         saved = service.save(
@@ -267,7 +264,7 @@ class LibraryOrderTests(unittest.TestCase):
             {"build_type": service.BUILD_PLATE, "cdna_location": "C-01"},
         )
         self.assertEqual(started["status"], service.STATUS_IN_PROGRESS)
-        self.assertEqual(started["started_at"], date.today().isoformat())
+        self.assertEqual(started["started_at"], today_local().isoformat())
         self.assertIsNone(started["finished_at"])
         dated = service.save(self.db, {"id": started["id"], "started_at": "2020-01-01"})
         self.assertEqual(dated["started_at"], "2020-01-01")
@@ -285,14 +282,14 @@ class LibraryOrderTests(unittest.TestCase):
         finished = service.save(self.db, {"id": judged["id"], "library_location": "盒 A1"})
         self.assertEqual(finished["status"], service.STATUS_DONE)
         self.assertIsNone(finished["started_at"])
-        self.assertEqual(finished["finished_at"], date.today().isoformat())
+        self.assertEqual(finished["finished_at"], today_local().isoformat())
         parked = service.save(
             self.db,
             {"build_type": service.BUILD_PHAGE_NGS, "library_location": "盒 B1"},
         )
         self.assertEqual(parked["status"], service.STATUS_PENDING)
         self.assertIsNone(parked["started_at"])
-        self.assertEqual(parked["finished_at"], date.today().isoformat())
+        self.assertEqual(parked["finished_at"], today_local().isoformat())
 
     def test_date_filters_include_exact_start_and_finish_days(self):
         matched = service.save(
@@ -974,6 +971,21 @@ class LibraryOrderTests(unittest.TestCase):
         self.assertEqual(result["stats"][service.BUILD_POOLED_BCR], 2)
         self.assertNotIn("all", result["stats"])
 
+    def test_header_filter_values_and_sort(self):
+        for code, owner in (("C1", "张三"), ("C2", "李四"), ("C3", None)):
+            service.save(self.db, {"build_type": service.BUILD_POOLED_BCR, "library_code": code, "owner": owner})
+
+        values = service.get_column_values(self.db, {"field": "owner"})["items"]
+        self.assertEqual(sorted((item["value"], item["count"]) for item in values), [("", 1), ("张三", 1), ("李四", 1)])
+
+        excluded = service.get_list(self.db, {"field_filters": [{"field": "owner", "exclude": [""]}]})
+        self.assertEqual({item["library_code"] for item in excluded["items"]}, {"C1", "C2"})
+
+        by_owner = service.get_list(self.db, {"order": "id_asc", "sort_field": "owner", "sort_dir": "desc"})
+        self.assertEqual([item["library_code"] for item in by_owner["items"]][-1], "C3")
+        with self.assertRaisesRegex(ValueError, "不支持"):
+            service.get_column_values(self.db, {"field": "build_type"})
+
     def test_discovery_delete_protection(self):
         row = self._discovery()
         created = service.handoff(
@@ -1004,12 +1016,11 @@ class LibraryOrderTests(unittest.TestCase):
         self.assertIsNone(self.db.get(DiscoveryWorkbench, row["id"]))
 
 
-class LibraryFileTests(unittest.TestCase):
+class LibraryFileTests(DbTestCase):
+    tables = TABLES
+
     def setUp(self):
-        self.engine = create_engine("sqlite+pysqlite:///:memory:")
-        Base.metadata.create_all(self.engine, tables=TABLES)
-        self.Session = sessionmaker(bind=self.engine, autoflush=False, expire_on_commit=False)
-        self.db = self.Session()
+        super().setUp()
         self.tmpdir = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmpdir.name)
         self.settings_patch = patch(
@@ -1029,8 +1040,6 @@ class LibraryFileTests(unittest.TestCase):
     def tearDown(self):
         self.settings_patch.stop()
         self.drm_patch.stop()
-        self.db.close()
-        self.engine.dispose()
         self.tmpdir.cleanup()
 
     def test_gel_and_sequencing_advance_status(self):

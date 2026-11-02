@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 import hashlib
@@ -16,13 +16,30 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
+from utils.header_filters import (
+    HeaderColumn,
+    column_values,
+    csv_column,
+    csv_token_clause,
+    header_filter_clauses,
+    header_sort_clauses,
+)
+from utils.normalize import (
+    normalize_choice,
+    normalize_priority,
+    normalize_text,
+    order_tokens,
+    parse_date,
+    split_tokens,
+)
 from utils.filter_values import (
-    catalog_names_for_pairs,
-    clean_field_text,
+    DEFAULT_RECORDED_TARGET_LIMIT,
     filter_terms,
+    like_contains,
     match_any,
     recorded_target_clause,
-    target_select_options,
+    recorded_target_search,
+    split_code_tokens,
 )
 from integrations import drm_service
 from models.discovery import DiscoveryWorkbench
@@ -75,7 +92,9 @@ from modules.molecular_cell.library_orders.result_upload import (
     TRACE_EXTENSIONS,
     loose_file_role,
 )
-from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_ORDER
+from utils.uploads import read_limited, upload_filename
+from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_OPTIONS
+from utils.clock import now_local, today_local
 
 MISSING_ROW = "文库构建工单不存在"
 MISSING_FILE = "结果文件不存在"
@@ -182,30 +201,9 @@ AUTO_SAMPLE_TYPES = {
 }
 
 
-def _mouse_strain_tokens(value: Any) -> list[str]:
-    if value is None:
-        return []
-    raw = value if isinstance(value, (list, tuple)) else re.split(r"[,，、+]", str(value))
-    tokens: list[str] = []
-    seen: set[str] = set()
-    for item in raw:
-        token = str(item or "").strip()
-        if not token or token in seen:
-            continue
-        seen.add(token)
-        tokens.append(token)
-    return tokens
-
-
 def _normalize_mouse_strain(value: Any) -> str | None:
-    tokens = _mouse_strain_tokens(value)
-    if not tokens:
-        return None
-    known = set(MOUSE_STRAIN_OPTIONS)
-    ordered = [item for item in MOUSE_STRAIN_OPTIONS if item in tokens]
-    extras = [item for item in tokens if item not in known]
     kept: list[str] = []
-    for item in [*ordered, *extras]:
+    for item in order_tokens(split_tokens(value), MOUSE_STRAIN_OPTIONS):
         nxt = "、".join([*kept, item])
         if len(nxt) > 128:
             break
@@ -444,7 +442,7 @@ SEQUENCE_PATTERN = re.compile(r"^[ACGTRYSWKMBDHVN]+$", re.IGNORECASE)
 
 
 def _today_stamp(now: datetime | None = None) -> str:
-    return (now or datetime.now()).strftime("%y%m%d")
+    return (now or now_local()).strftime("%y%m%d")
 
 
 def generate_library_order_id(now: datetime | None = None) -> str:
@@ -475,37 +473,9 @@ BREAK_FIELDS = frozenset({
 })
 
 
-def _normalize_text(value: Any, max_len: int, *, keep_breaks: bool = False) -> str | None:
-    if value is None:
-        return None
-    text = clean_field_text(value, keep_breaks=keep_breaks)
-    if not text:
-        return None
-    if len(text) > max_len:
-        raise ValueError(f"字段长度不能超过 {max_len}")
-    return text
-
-
 def _normalize_library_code(value: Any) -> str | None:
-    text = _normalize_text(value, STRING_FIELDS["library_code"])
+    text = normalize_text(value, STRING_FIELDS["library_code"])
     return text.upper() if text else None
-
-
-def _normalize_date(value: Any) -> date | None:
-    if value in (None, ""):
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    text = str(value).strip().replace("T", " ")
-    matched = re.fullmatch(r"(\d{4}-\d{2}-\d{2})(?: \d{2}:\d{2}(?::\d{2})?)?", text)
-    if not matched:
-        raise ValueError("日期必须是 YYYY-MM-DD")
-    try:
-        return datetime.strptime(matched.group(1), "%Y-%m-%d").date()
-    except ValueError as exc:
-        raise ValueError("日期必须是 YYYY-MM-DD") from exc
 
 
 def _normalize_string_list(value: Any, label: str) -> list[str]:
@@ -526,7 +496,7 @@ def _normalize_string_list(value: Any, label: str) -> list[str]:
 
 
 def _normalize_sequence(value: Any, max_len: int = 64) -> str | None:
-    text = _normalize_text(value, max_len)
+    text = normalize_text(value, max_len)
     if not text:
         return None
     text = re.sub(r"\s+", "", text).upper()
@@ -541,33 +511,17 @@ def _normalize_target_form(value: Any) -> str | None:
         if len(items) > 1:
             raise ValueError("靶点形式只能选一个")
         value = items[0] if items else None
-    return _normalize_choice(value, TARGET_FORM_OPTIONS, "靶点形式", nullable=True)
-
-
-def _normalize_choice(value: Any, options, label: str, *, nullable: bool = False) -> str | None:
-    text = str(value or "").strip()
-    if nullable and not text:
-        return None
-    if text not in options:
-        raise ValueError(f"{label}不在允许的选项中")
-    return text
+    return normalize_choice(value, TARGET_FORM_OPTIONS, "靶点形式", nullable=True)
 
 
 def _normalize_build_type(value: Any) -> str:
-    result = _normalize_choice(value, BUILD_TYPE_ORDER, "建库类型")
+    result = normalize_choice(value, BUILD_TYPE_ORDER, "建库类型")
     return str(result)
 
 
 def _normalize_status(value: Any) -> str:
-    result = _normalize_choice(value, STATUS_OPTIONS, "状态")
+    result = normalize_choice(value, STATUS_OPTIONS, "状态")
     return str(result)
-
-
-def _normalize_priority(value: Any) -> str:
-    text = str(value or "").strip()
-    if text not in PRIORITY_ORDER:
-        raise ValueError("优先级不在允许的选项中")
-    return text
 
 
 def _parse_row_id(value: Any) -> int | None:
@@ -672,7 +626,7 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
         row.status = _normalize_status(data.get("status"))
 
     if "priority" in data:
-        row.priority = _normalize_priority(data.get("priority"))
+        row.priority = normalize_priority(data.get("priority"))
     if "library_code" in data:
         row.library_code = _normalize_library_code(data.get("library_code"))
     if "target_codes" in data:
@@ -693,14 +647,14 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
             setattr(
                 row,
                 field,
-                _normalize_text(
+                normalize_text(
                     data.get(field),
                     max_len,
                     keep_breaks=field in BREAK_FIELDS,
                 ),
             )
     if "sample_type" in data:
-        row.sample_type = _normalize_choice(
+        row.sample_type = normalize_choice(
             data.get("sample_type"),
             SAMPLE_TYPE_LABELS,
             "样品类型",
@@ -712,30 +666,30 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
             row.sample_type = auto_type
     for field in DATE_FIELDS:
         if field in data:
-            setattr(row, field, _normalize_date(data.get(field)))
+            setattr(row, field, parse_date(data.get(field)))
     if "sample_source" in data:
-        row.sample_source = _normalize_choice(
+        row.sample_source = normalize_choice(
             data.get("sample_source"),
             SAMPLE_SOURCE_LABELS,
             "样品来源",
             nullable=True,
         )
     if "source_experiment_type" in data:
-        row.source_experiment_type = _normalize_choice(
+        row.source_experiment_type = normalize_choice(
             data.get("source_experiment_type"),
             PHAGE_EXPERIMENT_TYPES,
             "实验类型",
             nullable=True,
         )
     if "index_mode" in data:
-        row.index_mode = _normalize_choice(
+        row.index_mode = normalize_choice(
             data.get("index_mode"),
             INDEX_MODE_LABELS,
             "Barcode方式",
             nullable=True,
         )
     if "qc_result" in data:
-        row.qc_result = _normalize_choice(
+        row.qc_result = normalize_choice(
             data.get("qc_result"), QC_RESULT_OPTIONS, "质检结论", nullable=True
         )
     for id_field, name_field, sequence_field in LIBRARY_PRIMER_REFERENCE_FIELDS:
@@ -759,7 +713,7 @@ def _validate_profile(row: MolecularLibraryOrder) -> None:
     if build_type == BUILD_PLASMA_NGS and not str(row.cell_type or "").strip():
         row.cell_type = DEFAULT_PLASMA_CELL_TYPE
     if build_type in CELL_TYPE_CHOICE_BUILDS and row.cell_type:
-        _normalize_choice(row.cell_type, CELL_TYPE_OPTIONS, "细胞类型")
+        normalize_choice(row.cell_type, CELL_TYPE_OPTIONS, "细胞类型")
     if build_type == BUILD_PLASMA_NGS and row.sample_type not in (None, *PLASMA_SAMPLE_TYPES):
         raise ValueError("浆细胞 NGS 的样品类型只能是 Nano 或 Lite")
     mode = row.index_mode
@@ -926,7 +880,7 @@ def _advance_order_status(
 
 def _stamp_work_dates(row: MolecularLibraryOrder) -> None:
     """位置填上才记日期，已有日期不改，清空位置也不收回。"""
-    today = date.today()
+    today = today_local()
     if row.started_at is None and (
         _text_filled(row.rna_location) or _text_filled(row.cdna_location)
     ):
@@ -1016,19 +970,10 @@ def _contains(column, value: Any, *, upper: bool = False):
     terms = [term.upper() if upper else term for term in filter_terms(value)]
     if not terms:
         return None
-    clauses = [column.like(f"%{term}%") for term in terms]
+    clauses = [like_contains(column, term) for term in terms]
     if len(clauses) == 1:
         return clauses[0]
     return or_(*clauses)
-
-
-def _strain_token_filter(column, value: str):
-    return or_(
-        column == value,
-        column.like(f"{value}、%"),
-        column.like(f"%、{value}"),
-        column.like(f"%、{value}、%"),
-    )
 
 
 def _append_contains(filters: list, column, value: Any, *, upper: bool = False) -> None:
@@ -1038,8 +983,8 @@ def _append_contains(filters: list, column, value: Any, *, upper: bool = False) 
 
 
 def _append_date_range(filters: list, column, data: dict[str, Any], start_key: str, end_key: str) -> None:
-    start = _normalize_date(data.get(start_key)) if data.get(start_key) else None
-    end = _normalize_date(data.get(end_key)) if data.get(end_key) else None
+    start = parse_date(data.get(start_key)) if data.get(start_key) else None
+    end = parse_date(data.get(end_key)) if data.get(end_key) else None
     if start:
         filters.append(column >= start)
     if end:
@@ -1047,7 +992,6 @@ def _append_date_range(filters: list, column, data: dict[str, Any], start_key: s
 
 
 _CODE_SEARCH_SEPARATORS = (",", "\t", "\n", "\r", "，", "、", " ")
-_CODE_SEARCH_SPLIT = re.compile(r"[,，、\s]+")
 _MAX_CODE_SEARCH = 500
 
 
@@ -1062,7 +1006,7 @@ def _append_code_search(
     text = str(value or "").strip()
     if not text:
         return
-    parts = [part for part in _CODE_SEARCH_SPLIT.split(text) if part]
+    parts = split_code_tokens(text)
     if not parts:
         return
     if upper:
@@ -1072,21 +1016,57 @@ def _append_code_search(
             raise ValueError(f"{label}一次最多搜索 {_MAX_CODE_SEARCH} 个")
         filters.append(column.in_(parts))
         return
-    filters.append(column.like(f"%{parts[0]}%"))
+    filters.append(like_contains(column, parts[0]))
 
 
 def _library_target_pairs():
     return select(MolecularLibraryOrder.target_name, MolecularLibraryOrder.target_codes)
 
 
-def get_filter_options(db: Session) -> dict[str, Any]:
-    pairs = db.execute(_library_target_pairs()).all()
-    return {
-        "targets": target_select_options(pairs, catalog_names_for_pairs(db, pairs)),
-    }
+def search_recorded_targets(db: Session, keyword: str = "", limit: int = DEFAULT_RECORDED_TARGET_LIMIT) -> list[dict]:
+    return recorded_target_search(db, _library_target_pairs(), keyword, limit)
 
 
-def _apply_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None):
+_L = MolecularLibraryOrder
+# 建库类型、样品来源/类型、Barcode 方式存的是代码，靠统计卡片和顶部筛选；靶点沿用顶部筛选。
+HEADER_COLUMNS: dict[str, HeaderColumn] = {
+    "source_project_code": HeaderColumn(_L.source_project_code),
+    "library_order_id": HeaderColumn(_L.library_order_id),
+    "source_discovery_id": HeaderColumn(_L.source_discovery_id),
+    "library_batch_no": HeaderColumn(_L.library_batch_no),
+    "owner": HeaderColumn(_L.owner, "enum"),
+    "pm": HeaderColumn(_L.pm, "enum"),
+    "study_type": HeaderColumn(_L.study_type, "enum"),
+    "status": HeaderColumn(_L.status, "enum", order=STATUS_OPTIONS),
+    "priority": HeaderColumn(_L.priority, "enum", order=tuple(PRIORITY_OPTIONS)),
+    "mouse_strain": csv_column(_L.mouse_strain, tuple(MOUSE_STRAIN_OPTIONS)),
+    "cell_type": HeaderColumn(_L.cell_type, "enum", order=CELL_TYPE_OPTIONS),
+    "immunization_stage": HeaderColumn(_L.immunization_stage, "enum"),
+    "notebook_no": HeaderColumn(_L.notebook_no),
+    "positive_cell_count": HeaderColumn(_L.positive_cell_count),
+    "received_on": HeaderColumn(_L.received_on, "date"),
+    "instrument_on": HeaderColumn(_L.instrument_on, "date"),
+    "blood_collected_on": HeaderColumn(_L.blood_collected_on, "date"),
+    "started_at": HeaderColumn(_L.started_at, "date"),
+    "finished_at": HeaderColumn(_L.finished_at, "date"),
+    "qc_result": HeaderColumn(_L.qc_result, "enum", order=QC_RESULT_OPTIONS),
+    "qc_owner": HeaderColumn(_L.qc_owner, "enum"),
+    "qc_on": HeaderColumn(_L.qc_on, "date"),
+    "remark": HeaderColumn(_L.remark),
+}
+
+
+def _list_order(data: dict[str, Any]):
+    spec = HEADER_COLUMNS.get(str(data.get("sort_field") or "").strip())
+    direction = str(data.get("sort_dir") or "").strip()
+    if spec is not None and direction in {"asc", "desc"}:
+        return header_sort_clauses(spec, direction, MolecularLibraryOrder.id)
+    if str(data.get("order") or "").strip() == "id_asc":
+        return (MolecularLibraryOrder.id.asc(),)
+    return (MolecularLibraryOrder.id.desc(),)
+
+
+def _apply_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None, header_except: str | None = None):
     filters = []
     _append_code_search(
         filters,
@@ -1144,8 +1124,8 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None
             filters.append(condition)
     strain_terms = [term for term in filter_terms(data.get("mouse_strain")) if term != "all"]
     if strain_terms:
-        filters.append(or_(*(_strain_token_filter(MolecularLibraryOrder.mouse_strain, term) for term in strain_terms)))
-    priority_terms = [_normalize_priority(term) for term in filter_terms(data.get("priority"))]
+        filters.append(or_(*(csv_token_clause(MolecularLibraryOrder.mouse_strain, term) for term in strain_terms)))
+    priority_terms = [normalize_priority(term) for term in filter_terms(data.get("priority"))]
     priority = match_any(MolecularLibraryOrder.priority, priority_terms)
     if priority is not None:
         filters.append(priority)
@@ -1158,6 +1138,7 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None
     )
     _append_date_range(filters, MolecularLibraryOrder.started_at, data, "started_at_start", "started_at_end")
     _append_date_range(filters, MolecularLibraryOrder.finished_at, data, "finished_at_start", "finished_at_end")
+    filters.extend(header_filter_clauses(db, HEADER_COLUMNS, data.get("field_filters"), except_field=header_except))
     return stmt.where(*filters) if filters else stmt
 
 
@@ -1200,6 +1181,24 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
     return stats
 
 
+def get_options(db: Session) -> dict[str, list[str]]:
+    people: set[str] = set()
+    for column in (_L.owner, _L.pm, _L.qc_owner):
+        for value in db.scalars(select(column).where(column.is_not(None)).distinct()).all():
+            text = str(value or "").strip()
+            if text:
+                people.add(text)
+    return {
+        "statuses": list(STATUS_OPTIONS),
+        "priorities": list(PRIORITY_OPTIONS),
+        "qc_results": list(QC_RESULT_OPTIONS),
+        "cell_types": list(CELL_TYPE_OPTIONS),
+        "mouse_strains": list(MOUSE_STRAIN_OPTIONS),
+        # 人员下拉没输关键字时先列出文库里出现过的人，输入后再查全部在职人员
+        "people": sorted(people),
+    }
+
+
 def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     payload = data or {}
     page, limit = _page_limit(payload)
@@ -1210,13 +1209,8 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     last_page = max(1, (int(total) + limit - 1) // limit)
     if page > last_page:
         page = last_page
-    ordering = (
-        MolecularLibraryOrder.id.asc()
-        if str(payload.get("order") or "").strip() == "id_asc"
-        else MolecularLibraryOrder.id.desc()
-    )
     rows = db.scalars(
-        stmt.order_by(ordering)
+        stmt.order_by(*_list_order(payload))
         .offset((page - 1) * limit)
         .limit(limit)
     ).all()
@@ -1227,6 +1221,24 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
         "limit": limit,
         "stats": _list_stats(db, payload),
     }
+
+
+def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    """表头筛选的取值列表：套用除本列表头条件以外的全部筛选。顶部筛选里的本列条件由前端去掉。"""
+    payload = data or {}
+    field = str(payload.get("field") or "").strip()
+    spec = HEADER_COLUMNS.get(field)
+    if spec is None:
+        raise ValueError(f"不支持按「{field}」表头筛选")
+    return column_values(
+        db,
+        spec,
+        lambda stmt: _apply_list_filters(stmt, payload, db=db, header_except=field),
+        id_column=MolecularLibraryOrder.id,
+        keyword=str(payload.get("value_keyword") or ""),
+        limit=payload.get("value_limit"),
+        order=str(payload.get("value_order") or "value"),
+    )
 
 
 PROTECTED_SAVE_FIELDS = ("library_order_id", "source_discovery_id", "created_by")
@@ -1526,7 +1538,7 @@ def list_by_discovery(
 def _validate_handoff_item(row: DiscoveryWorkbench, item: dict[str, Any]) -> tuple[str, str, str | None]:
     build_type = _normalize_build_type(item.get("build_type"))
     sample_source = str(
-        _normalize_choice(
+        normalize_choice(
             item.get("sample_source"),
             PROFILE_SOURCES[build_type],
             "样品来源",
@@ -1535,7 +1547,7 @@ def _validate_handoff_item(row: DiscoveryWorkbench, item: dict[str, Any]) -> tup
     )
     raw_sample_type = item.get("sample_type")
     sample_type = (
-        _normalize_choice(raw_sample_type, SAMPLE_TYPE_LABELS, "样品类型", nullable=True)
+        normalize_choice(raw_sample_type, SAMPLE_TYPE_LABELS, "样品类型", nullable=True)
         if raw_sample_type not in (None, "")
         else None
     )
@@ -1601,13 +1613,13 @@ def handoff(
             mouse_strain=mouse_strain,
             sample_type=resolved_sample_type,
             instrument_on=(
-                _normalize_date(row.harvest_date)
+                parse_date(row.harvest_date)
                 if build_type in FILLS_INSTRUMENT_ON and str(row.harvest_date or "").strip()
                 else None
             ),
             cell_type=DEFAULT_PLASMA_CELL_TYPE if build_type == BUILD_PLASMA_NGS else None,
             positive_cell_count=(
-                _normalize_text(row.positive_cell_count, STRING_FIELDS["positive_cell_count"])
+                normalize_text(row.positive_cell_count, STRING_FIELDS["positive_cell_count"])
                 if build_type in POSITIVE_CELL_COUNT_BUILDS
                 else None
             ),
@@ -1703,9 +1715,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]):
     from utils.excel import build_list_workbook, cell_text
 
     rows = db.scalars(
-        _apply_list_filters(select(MolecularLibraryOrder), data or {}, db=db).order_by(
-            MolecularLibraryOrder.id.desc()
-        )
+        _apply_list_filters(select(MolecularLibraryOrder), data or {}, db=db).order_by(*_list_order(data or {}))
     ).all()
     table_rows = []
     for row in rows:
@@ -1998,14 +2008,10 @@ def _storage_path(relative: str) -> str:
 
 
 def _read_upload(file_obj: UploadFile, db: Session) -> tuple[str, str | None, bytes]:
-    filename = Path(file_obj.filename or "").name
-    if not filename or len(filename) > 255:
-        raise ValueError("缺少文件名")
-    content = file_obj.file.read(MAX_FILE_BYTES + 1)
+    filename = upload_filename(file_obj.filename)
+    content = read_limited(file_obj, MAX_FILE_BYTES, f"{filename}：文件")
     if not content:
         raise ValueError(f"{filename}：文件内容为空")
-    if len(content) > MAX_FILE_BYTES:
-        raise ValueError(f"{filename}：文件不能超过 50MB")
     extension = extension_of(filename)
     temp_path = _uploads_root() / "library_results" / ".tmp" / f"{secrets.token_hex(16)}{extension}"
     try:
@@ -2928,7 +2934,7 @@ def upload_batch(
     links: list[MolecularLibraryResultLink] = []
     summary: list[dict[str, Any]] = []
     summary_order_ids: list[set[int]] = []
-    now = datetime.now()
+    now = now_local()
     try:
         for root, entries in grouped.items():
             stored_links, result = _store_package(

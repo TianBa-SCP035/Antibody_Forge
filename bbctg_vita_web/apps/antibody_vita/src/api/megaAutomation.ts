@@ -114,14 +114,24 @@ export interface FlowWorkOrderMeta {
 
 export interface FlowWorkOrderListQuery {
   cell_plate_barcode: string;
-  orderType: string;
+  field_filters?: Array<Record<string, unknown>>;
+  orderType: string | string[];
   keyword: string;
-  limit: number;
-  page: number;
+  limit?: number;
+  page?: number;
   project_no: string;
   sample_plate_barcode: string;
-  status: string;
+  sort_dir?: string;
+  sort_field?: string;
+  status: string | string[];
   target: string;
+}
+
+export interface FlowWorkOrderColumnValuesQuery extends FlowWorkOrderListQuery {
+  field: string;
+  value_keyword?: string;
+  value_limit?: number;
+  value_order?: string;
 }
 
 export type FlowWorkOrderListItem = Pick<
@@ -176,6 +186,17 @@ export function fetchFlowWorkOrderList(data: FlowWorkOrderListQuery, config?: Po
     ...skipGlobalErrorHandler,
     ...config,
   });
+}
+
+export function fetchFlowWorkOrderColumnValues(data: FlowWorkOrderColumnValuesQuery, config?: PostConfig) {
+  return requestClient.post<{ items: Array<{ count: number; label?: string; value: string }>; truncated: boolean }>(
+    '/mega-automation/flow-work-orders/column_values',
+    data,
+    {
+      ...skipGlobalErrorHandler,
+      ...config,
+    },
+  );
 }
 
 export function exportFlowWorkOrderList(data: FlowWorkOrderListQuery) {

@@ -23,6 +23,12 @@ export async function loadPrimerCatalog() {
   return catalogRequest
 }
 
+/** 引物库页面每次重新加载列表时调用，文库页下次打开就拿到改动后的目录。 */
+export function clearPrimerCatalogCache() {
+  cachedPrimers = null
+  catalogRequest = null
+}
+
 export function filterPrimerCatalog(items, query) {
   const keyword = String(query || '').trim()
   if (!keyword) return []

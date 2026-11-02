@@ -190,11 +190,6 @@
 .ops-user-select {
   min-width: 0;
 }
-.target-option-code {
-  margin-left: 8px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
 .data-view-controls {
   flex-shrink: 0;
   margin-left: auto;
@@ -274,10 +269,6 @@
 }
 .sort-header-btn.is-active {
   color: var(--el-color-primary);
-  font-weight: 650;
-}
-.sort-header-btn.is-empty-filter {
-  color: var(--el-color-success);
   font-weight: 650;
 }
 .sort-order-value {

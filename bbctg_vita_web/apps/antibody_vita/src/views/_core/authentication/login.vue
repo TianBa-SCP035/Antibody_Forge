@@ -6,6 +6,7 @@ import { computed, onMounted, ref } from 'vue';
 import { AuthenticationLogin, z } from '@vben/common-ui';
 import { $t } from '@vben/locales';
 
+import { RECENT_LOGIN_ACCOUNTS_KEY } from '#/constants/storageKeys';
 import { useAuthStore } from '#/store';
 
 defineOptions({ name: 'Login' });
@@ -13,7 +14,6 @@ defineOptions({ name: 'Login' });
 const authStore = useAuthStore();
 const loginRef = ref<any>(null);
 const recentAccounts = ref<Array<{ lastLoginAt?: string; realName?: string; username: string }>>([]);
-const RECENT_LOGIN_ACCOUNTS_KEY = `ANTIBODY_RECENT_LOGIN_ACCOUNTS_${location.hostname}`;
 
 const formSchema = computed((): VbenFormSchema[] => {
   const recentAccountSchema: VbenFormSchema[] = recentAccounts.value.length

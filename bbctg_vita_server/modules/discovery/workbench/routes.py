@@ -1,16 +1,18 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from core.response import error, success
+from core.errors import route_error
+from core.response import success
 from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
 from modules.discovery.workbench import service
 from modules.system.permissions import require_permission
+from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
 
 router = APIRouter()
 WORKBENCH_VIEW_PERMISSION = "discovery.page.workbench"
@@ -28,6 +30,13 @@ class WorkbenchListRequest(BaseModel):
 
     view_group: Literal["harvest", "library", "sequencing", "cancelled"] | None = None
     boost_filter: Literal["boosting", "missing_date"] | None = None
+
+
+class WorkbenchColumnValuesRequest(WorkbenchListRequest):
+    field: str = Field(min_length=1, max_length=64)
+    value_keyword: str = Field(default="", max_length=128)
+    value_limit: int = Field(default=200, ge=1, le=1000)
+    value_order: Literal["value", "value_desc", "recent"] = "value"
 
 
 class WorkbenchBatchSaveRequest(BaseModel):
@@ -59,8 +68,7 @@ def _run_write(db: Session, fn):
             raise HTTPException(status_code=404, detail=message) from exc
         raise HTTPException(status_code=422, detail=message) from exc
     except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+        return route_error(exc, db)
 
 
 @router.post("/list")
@@ -76,6 +84,19 @@ def list_workbench(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.post("/column_values")
+def workbench_column_values(
+    data: WorkbenchColumnValuesRequest,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
+    try:
+        return success(service.get_column_values(db, data.model_dump()))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.get("/options")
 def workbench_options(
     db: Session = Depends(get_db),
@@ -83,6 +104,17 @@ def workbench_options(
 ) -> dict:
     require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
     return success(service.get_options(db))
+
+
+@router.get("/recorded_targets")
+def workbench_recorded_targets(
+    keyword: str = Query(default="", max_length=128),
+    limit: int = Query(default=DEFAULT_RECORDED_TARGET_LIMIT, ge=1, le=MAX_RECORDED_TARGET_LIMIT),
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
+    return success({"items": service.search_recorded_targets(db, keyword, limit)})
 
 
 @router.post("/save")

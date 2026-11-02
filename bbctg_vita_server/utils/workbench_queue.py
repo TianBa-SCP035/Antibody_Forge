@@ -1,9 +1,21 @@
 from typing import Any, Callable
 
-from sqlalchemy import case
+from sqlalchemy import case, select
+from sqlalchemy.orm import Session
 
 DEFAULT_PRIORITY = "正常"
 PRIORITY_ORDER = ("吉吉国王", "非常紧急", "加急", "正常")
+# 下拉选项按从低到高排列，与队列顺序相反
+PRIORITY_OPTIONS = tuple(reversed(PRIORITY_ORDER))
+
+
+def lock_queue(db: Session, model: Any) -> None:
+    """队列写入前锁住整表的行（按主键顺序，避免死锁），并发写入者排队分配队列位。
+
+    加锁前不自动 flush：会话里已改的行若先被 UPDATE，就会按任意顺序先占行锁，破坏按主键加锁的顺序。
+    """
+    with db.no_autoflush:
+        db.scalars(select(model.id).order_by(model.id.asc()).with_for_update()).all()
 
 
 def queued_sort(value: Any) -> int | None:

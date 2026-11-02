@@ -16,6 +16,9 @@ from modules.system.audit_coverage import warn_unclassified_write_routes
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    problems = settings.runtime_problems()
+    if problems:
+        raise RuntimeError("生产配置不完整：" + "；".join(problems))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -27,13 +30,14 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=lifespan)
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origin_list or ["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    if settings.cors_origin_list:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origin_list,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     setup_exception_handlers(app)
     setup_logging(app)

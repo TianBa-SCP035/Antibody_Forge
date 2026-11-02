@@ -77,7 +77,7 @@
           :key="item.value || 'all'"
           type="button"
           class="stat-tile"
-          :class="[item.tone, { 'is-active': query.family === item.value }]"
+          :class="[item.tone, { 'is-active': listQuery.family === item.value }]"
           @click="selectSeries(item.value)"
         >
           <span class="stat-copy">
@@ -90,23 +90,23 @@
 
       <div class="filter-strip list-filter-controls">
         <ElInput
-          v-model="query.name"
+          v-model="listQuery.name"
           class="filter-name"
           clearable
-          placeholder="名称"
+          v-bind="headerTop('name', '名称')"
           @keyup.enter="search"
           @clear="search"
         />
         <ElInput
-          v-model="query.sequence"
+          v-model="listQuery.sequence"
           class="filter-sequence"
           clearable
-          placeholder="显示序列"
+          v-bind="headerTop('short_sequence', '显示序列')"
           @keyup.enter="search"
           @clear="search"
         />
         <ElInput
-          v-model="query.checkKeyword"
+          v-model="listQuery.checkKeyword"
           class="filter-check"
           clearable
           placeholder="核对序列"
@@ -114,34 +114,35 @@
           @clear="search"
         />
         <ElInput
-          v-model="query.note"
+          v-model="listQuery.note"
           class="filter-note"
           clearable
-          placeholder="备注"
+          v-bind="headerTop('note', '备注')"
           @keyup.enter="search"
           @clear="search"
         />
         <ListFilterSelect
-          v-model="query.direction"
+          v-model="listQuery.direction"
           class="filter-item"
           clearable
-          placeholder="方向"
+          v-bind="headerTop('direction', '方向')"
           @change="search"
         >
           <ElOption label="正向" value="F" />
           <ElOption label="反向" value="R" />
         </ListFilterSelect>
         <ListFilterSelect
-          v-model="query.status"
+          v-model="listQuery.status"
           class="filter-item"
           clearable
-          placeholder="状态"
+          v-bind="headerTop('active', '状态')"
           @change="search"
         >
           <ElOption label="启用" value="active" />
           <ElOption label="停用" value="inactive" />
         </ListFilterSelect>
         <div class="list-filter-actions">
+          <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
           <button
             type="button"
             class="list-advanced-trigger"
@@ -159,7 +160,7 @@
 
     <ElCard shadow="never" class="list-table-card">
       <p class="sheet-hint">
-        拖拽划选单元格，Ctrl+C 复制，右键取消选中。双击一行可编辑。
+        拖拽划选单元格，Ctrl+C 复制，右键取消选中。点表头筛选或排序，按住表头选中整列。双击一行可编辑。
         <template v-if="selectionMode">勾选列可拖拽或按住 Shift 连选，表头菜单可当页全选、全部全选或取消。</template>
       </p>
       <div ref="listTableBody" class="list-table-body">
@@ -168,6 +169,7 @@
         class="sheet-wrap"
         tabindex="0"
         @copy="onCopy"
+        @click="onSheetClick"
         @contextmenu="onContextMenu"
         @keydown="onKeydown"
         @mousedown="onMouseDown"
@@ -190,6 +192,7 @@
             :keyboard-config="keyboardConfig"
             :virtual-y-config="virtualYConfig"
             :row-class-name="rowClassName"
+            :header-cell-class-name="sheetHeaderCellClass"
             empty-text="没有引物"
             @scroll="onScroll"
             @cell-selected="onCellSelected"
@@ -234,6 +237,14 @@
               :align="column.align"
               :class-name="column.mono ? 'is-sequence' : ''"
             >
+              <template #header>
+                <WorkbenchHeaderLabel
+                  v-if="headerMenuStates[column.key]"
+                  :label="column.title"
+                  v-bind="headerMenuStates[column.key]"
+                />
+                <template v-else>{{ column.title }}</template>
+              </template>
               <template #default="{ row }">
                 <ElTag
                   v-if="column.key === 'active'"
@@ -291,8 +302,8 @@
 
       <ElPagination
         v-show="total > 0"
-        v-model:current-page="query.page"
-        v-model:page-size="query.limit"
+        v-model:current-page="listQuery.page"
+        v-model:page-size="listQuery.limit"
         :total="total"
         :page-sizes="[20, 50, 100, 200, 500]"
         layout="total, sizes, prev, pager, next, jumper"
@@ -309,11 +320,12 @@
       @saved="handleSaved"
     />
     <PrimerImportDialog v-model="importVisible" @saved="handleImported" />
+    <WorkbenchHeaderMenu v-bind="headerMenuBind" />
   </div>
 </template>
 
-<script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+<script>
+import { ref } from 'vue';
 
 import { ArrowDown, Download, Plus, Refresh, Search, Tools, Upload } from '@element-plus/icons-vue';
 import { useUserStore } from '@vben/stores';
@@ -338,6 +350,12 @@ import { VxeColumn, VxeTable } from 'vxe-table';
 
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
 import ListFilterSelect from '#/components/ListFilterSelect.vue';
+import {
+  WorkbenchHeaderFilterChip,
+  WorkbenchHeaderLabel,
+  WorkbenchHeaderMenu,
+  workbenchHeaderMenuMixin,
+} from '#/components/workbench';
 import { notifyApiError } from '#/api/errors';
 import {
   batchDeletePrimers,
@@ -345,13 +363,13 @@ import {
   deletePrimer,
   exportPrimerCatalog,
   fetchPrimerCatalog,
+  fetchPrimerColumnValues,
   fetchPrimerIds,
-  type PrimerItem,
-  type PrimerListQuery,
   savePrimer,
 } from '#/api/primerCatalog';
+import { clearPrimerCatalogCache } from '../library/primerCatalogOptions';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
-import { useListTableLock } from '#/utils/listTableLock';
+import { listTableLockMixin } from '#/utils/listTableLock';
 import { canEditPrimerLibrary } from '#/utils/molecularPermission';
 
 import '#/adapter/vxe-table';
@@ -368,32 +386,32 @@ import {
 } from './primerSeries';
 import { useSheetRange } from './sheetRange';
 
-type StatusFilter = '' | 'active' | 'inactive' | Array<'active' | 'inactive'>;
-type SheetColumn = {
-  key: string;
-  title: string;
-  minWidth?: number;
-  width?: number;
-  align?: 'center';
-  mono?: boolean;
-};
-
-const columns: SheetColumn[] = [
+const COLUMNS = Object.freeze([
   { key: 'name', title: '名称', minWidth: 160 },
   { key: 'family', title: '系列', minWidth: 120 },
-  { key: 'direction', title: '方向', minWidth: 60, align: 'center' as const },
+  { key: 'direction', title: '方向', minWidth: 60, align: 'center' },
   { key: 'short_sequence', title: '显示序列', minWidth: 160, mono: true },
   { key: 'check_sequence', title: '核对序列', minWidth: 160, mono: true },
   { key: 'note', title: '备注', minWidth: 180 },
-  { key: 'active', title: '状态', width: 90, align: 'center' as const },
-];
+  { key: 'active', title: '状态', width: 90, align: 'center' },
+]);
 
-const rowConfig = Object.freeze({ keyField: 'id', isHover: true });
-const cellConfig = Object.freeze({ height: 40 });
-const columnConfig = Object.freeze({ resizable: true });
-const mouseConfig = Object.freeze({ selected: true });
-const virtualYConfig = Object.freeze({ enabled: true, gt: 40, oSize: 10, immediate: true });
-const keyboardConfig = Object.freeze({
+// 核对序列是算出来的，只有顶部筛选
+const PRIMER_HEADER_COLUMNS = Object.freeze({
+  name: { type: 'text', label: '名称', values: 'recent', top: { query: 'name', kind: 'contains' } },
+  family: { type: 'enum', label: '系列', values: 'all', top: { query: 'family' } },
+  direction: { type: 'enum', label: '方向', values: 'all', top: { query: 'direction' } },
+  short_sequence: { type: 'text', label: '显示序列', values: 'search', top: { query: 'sequence', kind: 'contains' } },
+  note: { type: 'text', label: '备注', values: 'search', top: { query: 'note', kind: 'contains' } },
+  active: { type: 'enum', label: '状态', values: 'all', top: { query: 'status' } },
+});
+
+const ROW_CONFIG = Object.freeze({ keyField: 'id', isHover: true });
+const CELL_CONFIG = Object.freeze({ height: 40 });
+const COLUMN_CONFIG = Object.freeze({ resizable: true });
+const MOUSE_CONFIG = Object.freeze({ selected: true });
+const VIRTUAL_Y_CONFIG = Object.freeze({ enabled: true, gt: 40, oSize: 10, immediate: true });
+const KEYBOARD_CONFIG = Object.freeze({
   isArrow: true,
   isShift: true,
   isTab: true,
@@ -403,155 +421,8 @@ const keyboardConfig = Object.freeze({
   isClip: false,
 });
 
-const userStore = useUserStore();
-const canEdit = computed(() => canEditPrimerLibrary(userStore.userInfo));
-const query = reactive({
-  name: '',
-  sequence: '',
-  checkKeyword: '',
-  note: '',
-  family: '',
-  direction: '' as '' | 'F' | 'R' | Array<'F' | 'R'>,
-  status: '' as StatusFilter,
-  page: 1,
-  limit: 20,
-});
-const { listTableLocked, listTableHeight, listTableBody } = useListTableLock(() => query.limit);
-const items = ref<PrimerItem[]>([]);
-const total = ref(0);
-const statsTotal = ref(0);
-const libraryStats = ref<{ count: number; name: string }[]>([]);
-const loading = ref(false);
-const exporting = ref(false);
-const savingId = ref<null | number>(null);
-const deletingId = ref<null | number>(null);
-const editorVisible = ref(false);
-const importVisible = ref(false);
-const showAdvancedOps = ref(false);
-const selectionMode = ref(false);
-const batchFamily = ref('');
-const batchDirection = ref('');
-const batching = ref(false);
-const selectedIds = ref(new Set<number>());
-let checkDrag: { checking: boolean } | null = null;
-let checkAnchor = -1;
-const editingRow = ref<null | PrimerItem>(null);
-let requestId = 0;
-
-const seriesCards = computed(() => [
-  { label: '全部', value: '', count: statsTotal.value, hint: '当前筛选', tone: 'tone-blue' },
-  ...libraryStats.value.map((item, index) => ({
-    label: item.name,
-    value: item.name,
-    count: item.count,
-    hint: libraryHint(item.name),
-    tone: libraryTone(item.name, index),
-  })),
-]);
-const libraryNames = computed(() => {
-  const names = PRESET_LIBRARIES.map((item) => item.value as string);
-  for (const item of libraryStats.value) {
-    if (!names.includes(item.name)) names.push(item.name);
-  }
-  return names;
-});
-
-const {
-  wrapRef,
-  stageRef,
-  overlayRef,
-  tableRef,
-  onContextMenu,
-  onMouseDown,
-  onMouseOver,
-  onSelectStart,
-  onScroll,
-  onCellSelected,
-  onKeydown,
-  onCopy,
-} = useSheetRange({
-  rows: items,
-  columns,
-  text: cellText,
-});
-// 模板 ref="wrapRef" 会写入这些引用，vue-tsc 不把它算作读取。
-void wrapRef;
-void listTableBody;
-void stageRef;
-void overlayRef;
-void tableRef;
-
-function cellText(row: PrimerItem, key: string) {
-  if (key === 'active') return row.active ? '启用' : '停用';
-  if (key === 'direction') return directionLabel(row.direction);
-  if (key === 'check_sequence') return checkSequence(row.short_sequence);
-  const value = row[key as keyof PrimerItem];
-  return value == null ? '' : String(value);
-}
-
-function displayCell(row: PrimerItem, key: string) {
-  return cellText(row, key) || '—';
-}
-
-function rowClassName({ row }: { row: PrimerItem }) {
-  return row.active ? '' : 'is-inactive';
-}
-
-function replaceSelected(next: Set<number>) {
-  selectedIds.value = next;
-}
-
-function clearSelected() {
-  replaceSelected(new Set());
-  checkAnchor = -1;
-}
-
-function filterTerms(value: string | string[] | Array<'active' | 'inactive'> | Array<'F' | 'R'>) {
-  return (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
-}
-
-function listPayload(): PrimerListQuery {
-  const statuses = filterTerms(query.status);
+function emptyQuery() {
   return {
-    name: query.name.trim() || undefined,
-    sequence: query.sequence.trim() || undefined,
-    check_keyword: query.checkKeyword.trim() || undefined,
-    note: query.note.trim() || undefined,
-    family: query.family || undefined,
-    direction: query.direction || undefined,
-    active: statuses.length === 1 ? statuses[0] === 'active' : undefined,
-    page: query.page,
-    limit: query.limit,
-  };
-}
-
-async function load() {
-  const current = ++requestId;
-  loading.value = true;
-  try {
-    const data = await fetchPrimerCatalog(listPayload());
-    if (current !== requestId) return;
-    items.value = data.items || [];
-    total.value = data.total || 0;
-    statsTotal.value = data.stats?.total || 0;
-    libraryStats.value = data.stats?.families || [];
-  } catch (error) {
-    if (current === requestId) {
-      notifyApiError(error, { messages: { default: '引物库加载失败' } });
-    }
-  } finally {
-    if (current === requestId) loading.value = false;
-  }
-}
-
-function search() {
-  query.page = 1;
-  clearSelected();
-  load();
-}
-
-function reset() {
-  Object.assign(query, {
     name: '',
     sequence: '',
     checkKeyword: '',
@@ -559,278 +430,459 @@ function reset() {
     family: '',
     direction: '',
     status: '',
+    sort_field: '',
+    sort_dir: '',
     page: 1,
-  });
-  clearSelected();
-  load();
+    limit: 20,
+  };
 }
 
-function selectPage() {
-  const next = new Set(selectedIds.value);
-  for (const row of items.value) next.add(row.id);
-  replaceSelected(next);
+function cellText(row, key) {
+  if (key === 'active') return row.active ? '启用' : '停用';
+  if (key === 'direction') return directionLabel(row.direction);
+  if (key === 'check_sequence') return checkSequence(row.short_sequence);
+  const value = row[key];
+  return value == null ? '' : String(value);
 }
 
-function onSelectCommand(command: string) {
-  if (command === 'clear') {
-    clearSelected();
-    return;
-  }
-  if (command === 'page') {
-    selectPage();
-    return;
-  }
-  selectAllMatching();
+function filterTerms(value) {
+  return (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
 }
 
-async function selectAllMatching() {
-  try {
-    const { page: _page, limit: _limit, ...filters } = listPayload();
-    const data = await fetchPrimerIds(filters);
-    replaceSelected(new Set(data.ids || []));
-    if (!data.ids?.length) ElMessage.info('当前筛选下没有引物');
-  } catch (error) {
-    notifyApiError(error, { messages: { default: '全选失败' } });
-  }
-}
-
-function onCheckDown(event: MouseEvent, row: PrimerItem, rowIndex: number) {
-  if (event.button !== 0) return;
-  const next = new Set(selectedIds.value);
-  const index = Number.isInteger(rowIndex) ? rowIndex : items.value.findIndex((item) => item.id === row.id);
-  if (event.shiftKey && checkAnchor >= 0 && index >= 0) {
-    const start = Math.min(checkAnchor, index);
-    const end = Math.max(checkAnchor, index);
-    for (let cursor = start; cursor <= end; cursor += 1) {
-      const item = items.value[cursor];
-      if (item) next.add(item.id);
-    }
-    replaceSelected(next);
-    return;
-  }
-  const checking = !next.has(row.id);
-  if (checking) next.add(row.id);
-  else next.delete(row.id);
-  replaceSelected(next);
-  checkAnchor = index;
-  checkDrag = { checking };
-}
-
-function onCheckEnter(row: PrimerItem) {
-  if (!checkDrag) return;
-  const next = new Set(selectedIds.value);
-  if (checkDrag.checking) next.add(row.id);
-  else next.delete(row.id);
-  replaceSelected(next);
-}
-
-function finishCheckDrag() {
-  checkDrag = null;
-}
-
-function leaveSelection() {
-  selectionMode.value = false;
-  clearSelected();
-  batchFamily.value = '';
-  batchDirection.value = '';
-}
-
-function toggleSelectionMode() {
-  if (!editable()) return;
-  if (selectionMode.value) {
-    leaveSelection();
-    return;
-  }
-  selectionMode.value = true;
-}
-
-watch(showAdvancedOps, (open) => {
-  if (!open) leaveSelection();
-});
-
-async function runBatch(action: { active?: boolean; direction?: string; family?: string; remove?: boolean }) {
-  const ids = [...selectedIds.value];
-  if (!ids.length) {
-    ElMessage.warning('请先勾选引物');
-    return;
-  }
-  const count = ids.length;
-  try {
-    if (action.remove) {
-      await ElMessageBox.confirm(
-        `确认删除选中的 ${count} 条？已被文库工单使用的会跳过。`,
-        '删除确认',
-        { type: 'warning', confirmButtonText: '删除' },
-      );
-    } else if (action.family) {
-      await ElMessageBox.confirm(`确认把选中的 ${count} 条改到「${action.family}」？`, '改系列', { type: 'warning' });
-    } else if (action.direction) {
-      const label = action.direction === 'F' ? '正向' : '反向';
-      await ElMessageBox.confirm(`确认把选中的 ${count} 条改为${label}？`, '改方向', { type: 'warning' });
-    } else if (action.active === false) {
-      await ElMessageBox.confirm(
-        `确认停用选中的 ${count} 条？停用后不再出现在文库构建的引物选项里。`,
-        '停用确认',
-        { type: 'warning' },
-      );
-    } else {
-      await ElMessageBox.confirm(`确认启用选中的 ${count} 条？`, '启用确认', { type: 'warning' });
-    }
-  } catch {
-    return;
-  }
-  batching.value = true;
-  try {
-    if (action.remove) {
-      const result = await batchDeletePrimers(ids);
-      const skipped = result.skipped || [];
-      ElMessage.success(skipped.length
-        ? `已删除 ${result.deleted} 条，${skipped.slice(0, 8).join('、')}${skipped.length > 8 ? ' 等' : ''} 已被工单使用，已跳过`
-        : `已删除 ${result.deleted} 条`);
-    } else if (action.family) {
-      await batchUpdatePrimers({ ids, family: action.family });
-      ElMessage.success('系列已更新');
-    } else if (action.direction) {
-      await batchUpdatePrimers({ ids, direction: action.direction });
-      ElMessage.success('方向已更新');
-    } else {
-      await batchUpdatePrimers({ ids, active: action.active });
-      ElMessage.success(action.active ? '已启用' : '已停用');
-    }
-    batchFamily.value = '';
-    batchDirection.value = '';
-    clearSelected();
-    await load();
-  } catch (error) {
-    notifyApiError(error, { messages: { default: '批量操作失败' } });
-  } finally {
-    batching.value = false;
-  }
-}
-
-function selectSeries(value: string) {
-  query.family = query.family === value ? '' : value;
-  search();
-}
-
-function changePageSize() {
-  query.page = 1;
-  load();
-}
-
-function editable() {
-  if (canEdit.value) return true;
-  ElMessage.warning('您没有权限编辑引物库');
-  return false;
-}
-
-function openCreate() {
-  if (!editable()) return;
-  editingRow.value = null;
-  editorVisible.value = true;
-}
-
-function openEdit(row: PrimerItem) {
-  if (!editable()) return;
-  editingRow.value = row;
-  editorVisible.value = true;
-}
-
-function openImport() {
-  if (!editable()) return;
-  importVisible.value = true;
-}
-
-function onDblclick({ row, column }: { row: PrimerItem; column?: { field?: string } }) {
-  if (!column?.field) return;
-  openEdit(row);
-}
-
-async function toggleActive(row: PrimerItem) {
-  if (!editable()) return;
-  if (row.active) {
-    try {
-      await ElMessageBox.confirm(`确认停用「${row.name}」？停用后不会出现在文库构建的引物选项里。`, '提示', {
-        type: 'warning',
-      });
-    } catch {
-      return;
-    }
-  }
-  savingId.value = row.id;
-  try {
-    await savePrimer({
-      id: row.id,
-      name: row.name,
-      family: row.family,
-      direction: row.direction,
-      short_sequence: row.short_sequence,
-      note: row.note,
-      active: !row.active,
+export default {
+  name: 'PrimerLibrary',
+  components: {
+    AdvancedOpsBar,
+    ArrowDown,
+    ElButton,
+    ElButtonGroup,
+    ElCard,
+    ElCheckbox,
+    ElDropdown,
+    ElDropdownItem,
+    ElDropdownMenu,
+    ElIcon,
+    ElInput,
+    ElOption,
+    ElPagination,
+    ElSelect,
+    ElTag,
+    ListFilterSelect,
+    PrimerEditorDialog,
+    PrimerImportDialog,
+    Tools,
+    VxeColumn,
+    VxeTable,
+    WorkbenchHeaderFilterChip,
+    WorkbenchHeaderLabel,
+    WorkbenchHeaderMenu,
+  },
+  mixins: [listTableLockMixin, workbenchHeaderMenuMixin],
+  setup() {
+    const items = ref([]);
+    const sheet = useSheetRange({
+      rows: items,
+      columns: COLUMNS,
+      text: cellText,
+      menuKeys: Object.keys(PRIMER_HEADER_COLUMNS),
     });
-    await load();
-  } catch (error) {
-    notifyApiError(error, { messages: { default: '状态更新失败' } });
-  } finally {
-    savingId.value = null;
-  }
-}
-
-async function removeRow(row: PrimerItem) {
-  if (!editable()) return;
-  try {
-    await ElMessageBox.confirm(
-      `确认删除「${row.name}」？删除后不能恢复。已被文库工单使用的引物请改用停用。`,
-      '删除确认',
-      { type: 'warning', confirmButtonText: '删除' },
-    );
-  } catch {
-    return;
-  }
-  deletingId.value = row.id;
-  try {
-    await deletePrimer(row.id);
-    ElMessage.success('已删除');
-    if (items.value.length === 1 && query.page > 1) query.page -= 1;
-    await load();
-  } catch (error) {
-    notifyApiError(error, { messages: { default: '删除失败' } });
-  } finally {
-    deletingId.value = null;
-  }
-}
-
-async function handleExport() {
-  exporting.value = true;
-  try {
-    await downloadListExcel(
-      () => exportPrimerCatalog(listPayload()),
-      `引物库_${excelTimestamp()}.xlsx`,
-    );
-  } catch (error) {
-    notifyApiError(error, { messages: { default: '导出失败' } });
-  } finally {
-    exporting.value = false;
-  }
-}
-
-function handleSaved() {
-  editingRow.value = null;
-  load();
-}
-
-function handleImported() {
-  query.page = 1;
-  load();
-}
-
-onMounted(() => {
-  window.addEventListener('mouseup', finishCheckDrag);
-  load();
-});
-onBeforeUnmount(() => {
-  window.removeEventListener('mouseup', finishCheckDrag);
-});
+    return {
+      ...sheet,
+      items,
+      userStore: useUserStore(),
+      columns: COLUMNS,
+      rowConfig: ROW_CONFIG,
+      cellConfig: CELL_CONFIG,
+      columnConfig: COLUMN_CONFIG,
+      mouseConfig: MOUSE_CONFIG,
+      virtualYConfig: VIRTUAL_Y_CONFIG,
+      keyboardConfig: KEYBOARD_CONFIG,
+      Download,
+      Plus,
+      Refresh,
+      Search,
+      Upload,
+    };
+  },
+  data() {
+    return {
+      listQuery: emptyQuery(),
+      total: 0,
+      statsTotal: 0,
+      libraryStats: [],
+      loading: false,
+      exporting: false,
+      savingId: null,
+      deletingId: null,
+      editorVisible: false,
+      importVisible: false,
+      showAdvancedOps: false,
+      selectionMode: false,
+      batchFamily: '',
+      batchDirection: '',
+      batching: false,
+      selectedIds: new Set(),
+      editingRow: null,
+    };
+  },
+  computed: {
+    headerMenuColumns() {
+      return PRIMER_HEADER_COLUMNS;
+    },
+    canEdit() {
+      return canEditPrimerLibrary(this.userStore.userInfo);
+    },
+    seriesCards() {
+      return [
+        { label: '全部', value: '', count: this.statsTotal, hint: '当前筛选', tone: 'tone-blue' },
+        ...this.libraryStats.map((item, index) => ({
+          label: item.name,
+          value: item.name,
+          count: item.count,
+          hint: libraryHint(item.name),
+          tone: libraryTone(item.name, index),
+        })),
+      ];
+    },
+    libraryNames() {
+      const names = PRESET_LIBRARIES.map((item) => item.value);
+      for (const item of this.libraryStats) {
+        if (!names.includes(item.name)) names.push(item.name);
+      }
+      return names;
+    },
+  },
+  watch: {
+    showAdvancedOps(open) {
+      if (!open) this.leaveSelection();
+    },
+  },
+  created() {
+    this._requestId = 0;
+    this._checkDrag = null;
+    this._checkAnchor = -1;
+  },
+  mounted() {
+    window.addEventListener('mouseup', this.finishCheckDrag);
+    this.load();
+  },
+  beforeUnmount() {
+    window.removeEventListener('mouseup', this.finishCheckDrag);
+  },
+  methods: {
+    displayCell(row, key) {
+      return cellText(row, key) || '—';
+    },
+    rowClassName({ row }) {
+      return row.active ? '' : 'is-inactive';
+    },
+    sheetHeaderCellClass({ column }) {
+      return this.headerCellClass(column.field);
+    },
+    onSheetClick(event) {
+      const field = this.headerMenuField(event);
+      if (field) this.openHeaderMenu(field, event.target.closest('.vxe-header--column'));
+    },
+    replaceSelected(next) {
+      this.selectedIds = next;
+    },
+    clearSelected() {
+      this.replaceSelected(new Set());
+      this._checkAnchor = -1;
+    },
+    buildQuery() {
+      const query = this.listQuery;
+      const statuses = filterTerms(query.status);
+      return {
+        name: query.name.trim() || undefined,
+        sequence: query.sequence.trim() || undefined,
+        check_keyword: query.checkKeyword.trim() || undefined,
+        note: query.note.trim() || undefined,
+        family: query.family || undefined,
+        direction: query.direction || undefined,
+        active: statuses.length === 1 ? statuses[0] === 'active' : undefined,
+        field_filters: this.headerFilterPayload(),
+        sort_field: query.sort_field || undefined,
+        sort_dir: query.sort_dir || undefined,
+        page: query.page,
+        limit: query.limit,
+      };
+    },
+    fetchHeaderValues(query) {
+      // 顶部状态换算成了 active，取状态列的值时要一并去掉
+      if (query.field === 'active') delete query.active;
+      return fetchPrimerColumnValues(query);
+    },
+    async load() {
+      const current = ++this._requestId;
+      clearPrimerCatalogCache();
+      this.loading = true;
+      try {
+        const data = await fetchPrimerCatalog(this.buildQuery());
+        if (current !== this._requestId) return;
+        this.items = data.items || [];
+        this.total = data.total || 0;
+        this.statsTotal = data.stats?.total || 0;
+        this.libraryStats = data.stats?.families || [];
+      } catch (error) {
+        if (current === this._requestId) {
+          notifyApiError(error, { messages: { default: '引物库加载失败' } });
+        }
+      } finally {
+        if (current === this._requestId) this.loading = false;
+      }
+    },
+    getList() {
+      this.clearSelected();
+      return this.load();
+    },
+    search() {
+      this.listQuery.page = 1;
+      this.getList();
+    },
+    reset() {
+      Object.assign(this.listQuery, { ...emptyQuery(), limit: this.listQuery.limit });
+      this.clearHeaderFilters();
+      this.getList();
+    },
+    selectPage() {
+      const next = new Set(this.selectedIds);
+      for (const row of this.items) next.add(row.id);
+      this.replaceSelected(next);
+    },
+    onSelectCommand(command) {
+      if (command === 'clear') {
+        this.clearSelected();
+        return;
+      }
+      if (command === 'page') {
+        this.selectPage();
+        return;
+      }
+      this.selectAllMatching();
+    },
+    async selectAllMatching() {
+      try {
+        const { page: _page, limit: _limit, ...filters } = this.buildQuery();
+        const data = await fetchPrimerIds(filters);
+        this.replaceSelected(new Set(data.ids || []));
+        if (!data.ids?.length) ElMessage.info('当前筛选下没有引物');
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '全选失败' } });
+      }
+    },
+    onCheckDown(event, row, rowIndex) {
+      if (event.button !== 0) return;
+      const next = new Set(this.selectedIds);
+      const index = Number.isInteger(rowIndex) ? rowIndex : this.items.findIndex((item) => item.id === row.id);
+      if (event.shiftKey && this._checkAnchor >= 0 && index >= 0) {
+        const start = Math.min(this._checkAnchor, index);
+        const end = Math.max(this._checkAnchor, index);
+        for (let cursor = start; cursor <= end; cursor += 1) {
+          const item = this.items[cursor];
+          if (item) next.add(item.id);
+        }
+        this.replaceSelected(next);
+        return;
+      }
+      const checking = !next.has(row.id);
+      if (checking) next.add(row.id);
+      else next.delete(row.id);
+      this.replaceSelected(next);
+      this._checkAnchor = index;
+      this._checkDrag = { checking };
+    },
+    onCheckEnter(row) {
+      if (!this._checkDrag) return;
+      const next = new Set(this.selectedIds);
+      if (this._checkDrag.checking) next.add(row.id);
+      else next.delete(row.id);
+      this.replaceSelected(next);
+    },
+    finishCheckDrag() {
+      this._checkDrag = null;
+    },
+    leaveSelection() {
+      this.selectionMode = false;
+      this.clearSelected();
+      this.batchFamily = '';
+      this.batchDirection = '';
+    },
+    toggleSelectionMode() {
+      if (!this.editable()) return;
+      if (this.selectionMode) {
+        this.leaveSelection();
+        return;
+      }
+      this.selectionMode = true;
+    },
+    async runBatch(action) {
+      const ids = [...this.selectedIds];
+      if (!ids.length) {
+        ElMessage.warning('请先勾选引物');
+        return;
+      }
+      const count = ids.length;
+      try {
+        if (action.remove) {
+          await ElMessageBox.confirm(
+            `确认删除选中的 ${count} 条？已被文库工单使用的会跳过。`,
+            '删除确认',
+            { type: 'warning', confirmButtonText: '删除' },
+          );
+        } else if (action.family) {
+          await ElMessageBox.confirm(`确认把选中的 ${count} 条改到「${action.family}」？`, '改系列', { type: 'warning' });
+        } else if (action.direction) {
+          const label = action.direction === 'F' ? '正向' : '反向';
+          await ElMessageBox.confirm(`确认把选中的 ${count} 条改为${label}？`, '改方向', { type: 'warning' });
+        } else if (action.active === false) {
+          await ElMessageBox.confirm(
+            `确认停用选中的 ${count} 条？停用后不再出现在文库构建的引物选项里。`,
+            '停用确认',
+            { type: 'warning' },
+          );
+        } else {
+          await ElMessageBox.confirm(`确认启用选中的 ${count} 条？`, '启用确认', { type: 'warning' });
+        }
+      } catch {
+        return;
+      }
+      this.batching = true;
+      try {
+        if (action.remove) {
+          const result = await batchDeletePrimers(ids);
+          const skipped = result.skipped || [];
+          ElMessage.success(skipped.length
+            ? `已删除 ${result.deleted} 条，${skipped.slice(0, 8).join('、')}${skipped.length > 8 ? ' 等' : ''} 已被工单使用，已跳过`
+            : `已删除 ${result.deleted} 条`);
+        } else if (action.family) {
+          await batchUpdatePrimers({ ids, family: action.family });
+          ElMessage.success('系列已更新');
+        } else if (action.direction) {
+          await batchUpdatePrimers({ ids, direction: action.direction });
+          ElMessage.success('方向已更新');
+        } else {
+          await batchUpdatePrimers({ ids, active: action.active });
+          ElMessage.success(action.active ? '已启用' : '已停用');
+        }
+        this.batchFamily = '';
+        this.batchDirection = '';
+        this.clearSelected();
+        await this.load();
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '批量操作失败' } });
+      } finally {
+        this.batching = false;
+      }
+    },
+    selectSeries(value) {
+      this.listQuery.family = this.listQuery.family === value ? '' : value;
+      // 点「全部」也要清掉表头里的系列条件，统计块高亮才和列表一致
+      if (this.headerFilters.family) this.dropHeaderFilter('family');
+      this.search();
+    },
+    changePageSize() {
+      this.listQuery.page = 1;
+      this.load();
+    },
+    editable() {
+      if (this.canEdit) return true;
+      ElMessage.warning('您没有权限编辑引物库');
+      return false;
+    },
+    openCreate() {
+      if (!this.editable()) return;
+      this.editingRow = null;
+      this.editorVisible = true;
+    },
+    openEdit(row) {
+      if (!this.editable()) return;
+      this.editingRow = row;
+      this.editorVisible = true;
+    },
+    openImport() {
+      if (!this.editable()) return;
+      this.importVisible = true;
+    },
+    onDblclick({ row, column }) {
+      if (!column?.field) return;
+      this.openEdit(row);
+    },
+    async toggleActive(row) {
+      if (!this.editable()) return;
+      if (row.active) {
+        try {
+          await ElMessageBox.confirm(`确认停用「${row.name}」？停用后不会出现在文库构建的引物选项里。`, '提示', {
+            type: 'warning',
+          });
+        } catch {
+          return;
+        }
+      }
+      this.savingId = row.id;
+      try {
+        await savePrimer({
+          id: row.id,
+          name: row.name,
+          family: row.family,
+          direction: row.direction,
+          short_sequence: row.short_sequence,
+          note: row.note,
+          active: !row.active,
+        });
+        await this.load();
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '状态更新失败' } });
+      } finally {
+        this.savingId = null;
+      }
+    },
+    async removeRow(row) {
+      if (!this.editable()) return;
+      try {
+        await ElMessageBox.confirm(
+          `确认删除「${row.name}」？删除后不能恢复。已被文库工单使用的引物请改用停用。`,
+          '删除确认',
+          { type: 'warning', confirmButtonText: '删除' },
+        );
+      } catch {
+        return;
+      }
+      this.deletingId = row.id;
+      try {
+        await deletePrimer(row.id);
+        ElMessage.success('已删除');
+        if (this.items.length === 1 && this.listQuery.page > 1) this.listQuery.page -= 1;
+        await this.load();
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '删除失败' } });
+      } finally {
+        this.deletingId = null;
+      }
+    },
+    async handleExport() {
+      this.exporting = true;
+      try {
+        await downloadListExcel(
+          () => exportPrimerCatalog(this.buildQuery()),
+          `引物库_${excelTimestamp()}.xlsx`,
+        );
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '导出失败' } });
+      } finally {
+        this.exporting = false;
+      }
+    },
+    handleSaved() {
+      this.editingRow = null;
+      this.load();
+    },
+    handleImported() {
+      this.listQuery.page = 1;
+      this.load();
+    },
+  },
+};
 </script>
 
 <style scoped>
@@ -1077,6 +1129,10 @@ onBeforeUnmount(() => {
 .sheet-wrap :deep(.vxe-header--column) {
   font-weight: 600;
   background: var(--list-table-header-bg, #f5f7fa);
+}
+
+.sheet-wrap :deep(.vxe-header--column.wb-hf-cell) {
+  cursor: pointer;
 }
 
 .sheet-wrap :deep(.vxe-body--column.col--selected) {

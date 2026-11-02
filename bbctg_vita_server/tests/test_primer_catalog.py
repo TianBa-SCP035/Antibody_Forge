@@ -1,30 +1,15 @@
 import unittest
 
 from openpyxl import load_workbook
-from sqlalchemy import BigInteger, create_engine
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.orm import sessionmaker
 
 from db.session import Base
 from models.molecular_cell import MolecularLibraryOrder, MolecularPrimerIndexCatalog
 from modules.molecular_cell.primer_catalog import service
+from support import DbTestCase
 
 
-@compiles(BigInteger, "sqlite")
-def _compile_big_integer_for_sqlite(_type, _compiler, **_kwargs):
-    return "INTEGER"
-
-
-class PrimerCatalogServiceTests(unittest.TestCase):
-    def setUp(self):
-        self.engine = create_engine("sqlite+pysqlite:///:memory:")
-        Base.metadata.create_all(self.engine, tables=[MolecularPrimerIndexCatalog.__table__])
-        self.Session = sessionmaker(bind=self.engine, autoflush=False, expire_on_commit=False)
-        self.db = self.Session()
-
-    def tearDown(self):
-        self.db.close()
-        self.engine.dispose()
+class PrimerCatalogServiceTests(DbTestCase):
+    tables = (MolecularPrimerIndexCatalog,)
 
     def test_save_normalizes_and_hides_inactive_from_options(self):
         saved = service.save(
@@ -289,6 +274,33 @@ class PrimerCatalogServiceTests(unittest.TestCase):
                     {"name": "DUP", "family": "UDP", "direction": "F", "short_sequence": "GGGG"},
                 ],
             )
+
+    def test_header_filters_follow_list_ids_and_stats(self):
+        for name, family, direction, active in (
+            ("UDP-1-F", "UDP", "F", False),
+            ("UDP-2-R", "UDP", "R", True),
+            ("IDX-7", "达普Barcode", "F", True),
+        ):
+            service.save(
+                self.db,
+                {"name": name, "family": family, "direction": direction, "short_sequence": "ACGT", "active": active},
+            )
+        only_udp = {"field_filters": [{"field": "family", "values": ["UDP"]}]}
+        listed = service.list_catalog(self.db, only_udp)
+        self.assertEqual([item["name"] for item in listed["items"]], ["UDP-1-F", "UDP-2-R"])
+        self.assertEqual(listed["stats"]["total"], 3)
+        self.assertEqual(len(service.list_ids(self.db, only_udp)), 2)
+
+        inactive = {"field_filters": [{"field": "active", "values": ["inactive"]}]}
+        self.assertEqual([item["name"] for item in service.list_catalog(self.db, inactive)["items"]], ["UDP-1-F"])
+        by_name = service.list_catalog(self.db, {"sort_field": "name", "sort_dir": "desc"})
+        self.assertEqual([item["name"] for item in by_name["items"]], ["UDP-2-R", "UDP-1-F", "IDX-7"])
+
+        directions = service.get_column_values(self.db, {"field": "direction", **only_udp})["items"]
+        self.assertEqual(directions, [{"value": "F", "count": 1, "label": "正向"}, {"value": "R", "count": 1, "label": "反向"}])
+        statuses = service.get_column_values(self.db, {"field": "active", **only_udp})["items"]
+        self.assertEqual([(item["value"], item["count"], item["label"]) for item in statuses], [("active", 1, "启用"), ("inactive", 1, "停用")])
+
 
 if __name__ == "__main__":
     unittest.main()

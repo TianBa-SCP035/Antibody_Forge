@@ -1,4 +1,4 @@
-import { fetchSerumTargetOptions } from '#/api/serum'
+import { fetchCatalogTargetOptions } from '#/api/options'
 
 export function uniqueTargetCodes(values) {
   return [
@@ -17,7 +17,7 @@ export function targetNameFromCodes(codes, items = []) {
 }
 
 export async function searchWorkbenchTargets(keyword = '', codes = []) {
-  const data = await fetchSerumTargetOptions(keyword || '', uniqueTargetCodes(codes))
+  const data = await fetchCatalogTargetOptions(keyword || '', uniqueTargetCodes(codes))
   return data?.items || []
 }
 

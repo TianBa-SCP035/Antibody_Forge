@@ -11,6 +11,7 @@ from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
 
 from modules.mega_automation.content import hash_dict
 from modules.mega_automation.payload import build_dispatch_payload
+from utils.clock import now_local
 
 PAUSABLE_STATUSES = frozenset({"pending", "running"})
 TERMINAL_DISPATCH_STATUSES = frozenset({"voided", "completed", "failed"})
@@ -94,7 +95,7 @@ def batch_current_dispatches(db: Session, work_order_ids: list[int]) -> dict[int
 
 def generate_dispatch_id(now: datetime | None = None) -> str:
     """生成下发编号：DSP + yyMMdd + 6 位随机数，例如 DSP260710482913。"""
-    stamp = (now or datetime.now()).strftime("%y%m%d")
+    stamp = (now or now_local()).strftime("%y%m%d")
     suffix = f"{random.randint(0, 10**DISPATCH_ID_RANDOM_DIGITS - 1):0{DISPATCH_ID_RANDOM_DIGITS}d}"
     return f"{DISPATCH_ID_PREFIX}{stamp}{suffix}"
 
@@ -191,7 +192,7 @@ def create_dispatch_record(
             content_hash_at_send=order.content_hash or "",
             status="pending",
             pause_state=None,
-            sent_at=datetime.now(),
+            sent_at=now_local(),
             created_by=operator_name,
         )
         try:

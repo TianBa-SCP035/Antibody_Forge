@@ -334,6 +334,7 @@ import {
   type TargetListQuery,
   type TargetStats,
 } from '#/api/atlas';
+import { createLatestRequest } from '#/utils/latestRequest';
 import { useStaleTabRefresh } from '#/utils/staleTabRefresh';
 import { formatTargetStructureLabel } from '#/utils/targetStructure';
 
@@ -459,24 +460,31 @@ function group(key: string, title: string, items: DetailField[]) {
   return { key, title, items };
 }
 
+const targetListRequest = createLatestRequest();
+
 async function loadTargets() {
+  const isLatest = targetListRequest.begin();
   loading.value = true;
   loadError.value = false;
   try {
     const result = await fetchTargetList({ ...query });
+    if (!isLatest()) return;
     targets.value = result.items || [];
     total.value = result.total || 0;
     Object.assign(stats, result.stats || {});
     selectedTarget.value =
       targets.value.find((item) => item.id === selectedTarget.value?.id) || targets.value[0];
   } catch {
+    if (!isLatest()) return;
     targets.value = [];
     selectedTarget.value = undefined;
     total.value = 0;
     loadError.value = true;
   } finally {
-    loading.value = false;
-    markTabDataFetched();
+    if (isLatest()) {
+      loading.value = false;
+      markTabDataFetched();
+    }
   }
 }
 

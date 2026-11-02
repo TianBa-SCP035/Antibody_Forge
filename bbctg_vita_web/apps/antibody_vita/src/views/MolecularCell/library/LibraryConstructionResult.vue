@@ -613,9 +613,9 @@
                   </el-select>
                 </el-form-item>
                 <el-form-item label="质检人">
-                  <SerumUserSelect
+                  <UserSelect
                     v-model="order.qc_owner"
-                    :options="selectedUserOptions(order.qc_owner)"
+                    :options="peopleOptions"
                     placeholder="选择质检人"
                     :disabled="!canEditQc"
                     clearable
@@ -686,10 +686,10 @@
                     :disabled="!canEdit"
                     @change="onTargetChange"
                   />
-                  <SerumUserSelect
+                  <UserSelect
                     v-else-if="field.type === 'user'"
                     v-model="order[field.key]"
-                    :options="selectedUserOptions(order[field.key])"
+                    :options="peopleOptions"
                     :placeholder="`选择${field.label}`"
                     :disabled="!canEdit"
                     clearable
@@ -862,6 +862,7 @@ import { filterPrimerCatalog, loadPrimerCatalog } from './primerCatalogOptions'
 import {
   deleteLibraryResult,
   fetchLibraryFiles,
+  fetchLibraryOrderOptions,
   libraryStoredFileDownloadUrl,
   libraryFileDownloadUrl,
   saveLibraryOrder,
@@ -879,7 +880,7 @@ import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/DiscoveryWor
 import { getSerumUserName } from '#/utils/serumPermission'
 import { getTiterPriorityTone, WORKBENCH_PRIORITY_DEFAULT } from '#/utils/serumProjectStatus'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
-import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
+import UserSelect from '#/components/UserSelect.vue'
 import {
   BUILD_PERIPHERAL_BLOOD,
   BUILD_PHAGE_DISPLAY,
@@ -971,7 +972,7 @@ export default {
     Picture,
     RefreshLeft,
     RefreshRight,
-    SerumUserSelect,
+    UserSelect,
     UploadFilled,
     WorkbenchStatusEditor,
     WorkbenchTargetSelect,
@@ -982,6 +983,7 @@ export default {
     return {
       loading: false,
       loadRequest: 0,
+      peopleOptions: [],
       activeInspector: 'summary',
       order: {},
       plateDraft: '',
@@ -1298,6 +1300,7 @@ export default {
   },
   created() {
     this.load()
+    this.loadPeopleOptions()
   },
   mounted() {
     this.bindViewerListeners()
@@ -1354,8 +1357,9 @@ export default {
       this.catalogLoading = true
       try {
         this.primerCatalog = await loadPrimerCatalog()
-      } catch {
+      } catch (error) {
         this.primerCatalog = []
+        notifyApiError(error, { messages: { default: '加载引物与 Index 字典失败，请稍后重试' } })
       } finally {
         this.catalogLoading = false
       }
@@ -1381,9 +1385,14 @@ export default {
     goBack() {
       this.$router.push('/molecular-cell/library-construction')
     },
-    selectedUserOptions(value) {
-      const text = String(value || '').trim()
-      return text ? [text] : []
+    async loadPeopleOptions() {
+      try {
+        const data = await fetchLibraryOrderOptions()
+        this.peopleOptions = Array.isArray(data?.people) ? data.people : []
+      } catch {
+        // 拿不到常用人员不影响输入关键字搜索
+        this.peopleOptions = []
+      }
     },
     canEditField(key) {
       if (!this.canEdit) return false

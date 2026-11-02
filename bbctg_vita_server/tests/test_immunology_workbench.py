@@ -2,17 +2,10 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import MagicMock, patch
 
-from sqlalchemy import BigInteger, create_engine
-from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
-from db.session import Base
 import modules.immunology.workbench.service as workbench_service
-
-
-@compiles(BigInteger, "sqlite")
-def _compile_big_integer_for_sqlite(_type, _compiler, **_kwargs):
-    return "INTEGER"
+from support import memory_engine
 
 
 class ProjectQueueTests(unittest.TestCase):
@@ -50,12 +43,8 @@ class ProjectQueueTests(unittest.TestCase):
     def test_queue_rows_include_null_and_missing_project_statuses(self):
         workbench_model = workbench_service.SerumImmWorkbench
         project_model = workbench_service.SerumImmProject
-        engine = create_engine("sqlite+pysqlite:///:memory:")
+        engine = memory_engine(project_model, workbench_model)
         self.addCleanup(engine.dispose)
-        Base.metadata.create_all(
-            engine,
-            tables=[project_model.__table__, workbench_model.__table__],
-        )
         with sessionmaker(bind=engine, expire_on_commit=False)() as db:
             default_plan = workbench_model(
                 experiment_id="QUEUE-NULL-PLAN",
@@ -71,6 +60,37 @@ class ProjectQueueTests(unittest.TestCase):
             db.commit()
             queued_ids = {row.id for row in workbench_service._queue_rows(db)}
             self.assertEqual(queued_ids, {default_plan.id, missing_project.id})
+
+
+class HeaderFilterTests(unittest.TestCase):
+    def test_started_rows_filter_by_project_values(self):
+        workbench_model = workbench_service.SerumImmWorkbench
+        project_model = workbench_service.SerumImmProject
+        engine = memory_engine(project_model, workbench_model)
+        self.addCleanup(engine.dispose)
+        with sessionmaker(bind=engine, expire_on_commit=False)() as db:
+            db.add_all([
+                workbench_model(experiment_id="E1", plan_status=workbench_service.PLAN_STATUS_STARTED, owner="旧人"),
+                project_model(experiment_id="E1", owner="张三"),
+                workbench_model(experiment_id="E2", plan_status="草稿", owner="李四"),
+                workbench_model(experiment_id="E3", plan_status="草稿"),
+            ])
+            db.commit()
+
+            values = workbench_service.get_column_values(db, {"field": "owner"})["items"]
+            self.assertEqual(
+                sorted((item["value"], item["count"]) for item in values),
+                [("", 1), ("张三", 1), ("李四", 1)],
+            )
+
+            filtered = workbench_service._apply_list_filters(
+                workbench_service._count_stmt(),
+                {"field_filters": [{"field": "owner", "values": ["张三", ""]}]},
+                db=db,
+            )
+            self.assertEqual(db.scalar(filtered), 2)
+            with self.assertRaises(ValueError):
+                workbench_service.get_column_values(db, {"field": "target_name"})
 
 
 class SchemeStrainTextTests(unittest.TestCase):

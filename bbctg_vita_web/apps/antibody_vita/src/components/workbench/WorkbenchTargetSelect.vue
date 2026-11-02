@@ -36,6 +36,8 @@
 import { nextTick, onBeforeUnmount, ref } from 'vue'
 import { ElOption, ElSelect } from 'element-plus'
 
+import { createLatestRequest } from '#/utils/latestRequest'
+
 import { searchWorkbenchTargets, targetNameFromCodes, uniqueTargetCodes } from './targetOptions'
 
 const props = defineProps({
@@ -50,20 +52,19 @@ const emit = defineEmits(['update:modelValue', 'change'])
 const selectRef = ref(null)
 const options = ref([])
 const loading = ref(false)
-let requestToken = 0
+const searchRequest = createLatestRequest()
 let menu = null
 
 async function search(keyword) {
-  const token = ++requestToken
+  const isLatest = searchRequest.begin()
   loading.value = true
   try {
     const items = await searchWorkbenchTargets(keyword, props.modelValue)
-    if (token !== requestToken) return
-    options.value = items
+    if (isLatest()) options.value = items
   } catch {
-    if (token === requestToken) options.value = options.value || []
+    // 搜索失败保留上一次的候选
   } finally {
-    if (token === requestToken) loading.value = false
+    if (isLatest()) loading.value = false
   }
 }
 

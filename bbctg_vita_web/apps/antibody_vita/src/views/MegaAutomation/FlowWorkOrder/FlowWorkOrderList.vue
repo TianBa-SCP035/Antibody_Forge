@@ -57,7 +57,7 @@
           v-model="listQuery.orderType"
           class="filter-item"
           clearable
-          placeholder="检测类型"
+          v-bind="headerTop('orderType', '检测类型')"
           @change="handleFilter"
         >
           <el-option
@@ -71,7 +71,7 @@
           v-model="listQuery.status"
           class="filter-item"
           clearable
-          placeholder="状态"
+          v-bind="headerTop('status', '状态')"
           @change="handleFilter"
         >
           <el-option
@@ -85,7 +85,7 @@
           v-model="listQuery.project_no"
           class="filter-item"
           clearable
-          placeholder="项目号"
+          v-bind="headerTop('project_nos', '项目号')"
           @keyup.enter="handleFilter"
         />
         <el-input
@@ -99,14 +99,14 @@
           v-model="listQuery.sample_plate_barcode"
           class="filter-item"
           clearable
-          placeholder="样本板条码"
+          v-bind="headerTop('sample_plate_barcodes', '样本板条码')"
           @keyup.enter="handleFilter"
         />
         <el-input
           v-model="listQuery.cell_plate_barcode"
           class="filter-item"
           clearable
-          placeholder="细胞板条码"
+          v-bind="headerTop('cell_plate_barcodes', '细胞板条码')"
           @keyup.enter="handleFilter"
         />
         <button
@@ -119,6 +119,7 @@
           <el-icon><Tools /></el-icon>
         </button>
         <div class="filter-actions list-filter-actions">
+          <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
           <el-button class="list-filter-action-button" type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilter">查询</el-button>
           <el-button class="list-filter-action-button" :icon="Refresh" @click="resetFilter">重置</el-button>
         </div>
@@ -142,9 +143,12 @@
         size="large"
         class="list-data-table"
         style="width: 100%"
+        :header-cell-class-name="headerCellClassName"
+        @header-click="onTableHeaderClick"
       >
         <!-- 列宽：全部用 min-width，表格会按这些最小值动态分配剩余空间；总宽不够则横向滚动 -->
-        <el-table-column label="订单编号" prop="orderNum" fixed min-width="120" show-overflow-tooltip>
+        <el-table-column column-key="orderNum" prop="orderNum" fixed min-width="120" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="订单编号" v-bind="headerMenuStates.orderNum" /></template>
           <template #default="{ row }">
             <span
               class="list-code-text is-clickable"
@@ -153,46 +157,60 @@
             >{{ row.orderNum || '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="订单名称" prop="orderName" min-width="120" show-overflow-tooltip>
+        <el-table-column column-key="orderName" prop="orderName" min-width="120" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="订单名称" v-bind="headerMenuStates.orderName" /></template>
           <template #default="{ row }">{{ row.orderName || '—' }}</template>
         </el-table-column>
-        <el-table-column label="类型" min-width="80" align="center">
+        <el-table-column column-key="orderType" min-width="80" align="center">
+          <template #header><WorkbenchHeaderLabel label="类型" v-bind="headerMenuStates.orderType" /></template>
           <template #default="{ row }">{{ orderTypeLabel(row.orderType) }}</template>
         </el-table-column>
-        <el-table-column label="优先级" min-width="80" align="center">
+        <el-table-column column-key="priority" min-width="80" align="center">
+          <template #header><WorkbenchHeaderLabel label="优先级" v-bind="headerMenuStates.priority" /></template>
           <template #default="{ row }">
             <el-tag class="list-status-tag" :type="priorityTagType(row.priority)" effect="plain">
               {{ priorityLabel(row.priority) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="项目号" min-width="120" show-overflow-tooltip>
+        <el-table-column column-key="project_nos" min-width="120" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="项目号" v-bind="headerMenuStates.project_nos" /></template>
           <template #default="{ row }">{{ formatArray(row.project_nos) }}</template>
         </el-table-column>
-        <el-table-column label="靶点" min-width="100" show-overflow-tooltip>
+        <el-table-column column-key="targets" min-width="100" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="靶点" v-bind="headerMenuStates.targets" /></template>
           <template #default="{ row }">{{ formatArray(row.targets) }}</template>
         </el-table-column>
-        <el-table-column label="样本板" min-width="100" show-overflow-tooltip>
+        <el-table-column column-key="sample_plate_barcodes" min-width="100" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="样本板" v-bind="headerMenuStates.sample_plate_barcodes" /></template>
           <template #default="{ row }">{{ formatArray(row.sample_plate_barcodes) }}</template>
         </el-table-column>
-        <el-table-column label="细胞板" min-width="100" show-overflow-tooltip>
+        <el-table-column column-key="cell_plate_barcodes" min-width="100" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="细胞板" v-bind="headerMenuStates.cell_plate_barcodes" /></template>
           <template #default="{ row }">{{ formatArray(row.cell_plate_barcodes) }}</template>
         </el-table-column>
-        <el-table-column label="备注" prop="remark" min-width="100" show-overflow-tooltip>
+        <el-table-column column-key="remark" prop="remark" min-width="100" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="备注" v-bind="headerMenuStates.remark" /></template>
           <template #default="{ row }">{{ row.remark || '—' }}</template>
         </el-table-column>
-        <el-table-column label="状态" prop="status" align="center" min-width="98">
+        <el-table-column column-key="status" prop="status" align="center" min-width="98">
+          <template #header><WorkbenchHeaderLabel label="状态" v-bind="headerMenuStates.status" /></template>
           <template #default="{ row }">
             <el-tag class="list-status-tag" :type="statusTagType(row)" effect="plain">
               {{ statusLabel(row) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="创建人" prop="created_by" min-width="90" align="center" />
-        <el-table-column label="发送时间" prop="sent_at" min-width="160" align="center">
+        <el-table-column column-key="created_by" prop="created_by" min-width="90" align="center">
+          <template #header><WorkbenchHeaderLabel label="创建人" v-bind="headerMenuStates.created_by" /></template>
+        </el-table-column>
+        <el-table-column column-key="sent_at" prop="sent_at" min-width="160" align="center">
+          <template #header><WorkbenchHeaderLabel label="发送时间" v-bind="headerMenuStates.sent_at" /></template>
           <template #default="{ row }">{{ row.sent_at || '—' }}</template>
         </el-table-column>
-        <el-table-column label="更新时间" prop="updated_at" min-width="160" align="center" />
+        <el-table-column column-key="updated_at" prop="updated_at" min-width="160" align="center">
+          <template #header><WorkbenchHeaderLabel label="更新时间" v-bind="headerMenuStates.updated_at" /></template>
+        </el-table-column>
         <el-table-column label="操作" fixed="right" width="240" align="center">
           <template #default="{ row }">
             <el-button-group>
@@ -233,10 +251,11 @@
         :page-sizes="[20, 50, 100, 200, 500]"
         layout="total, sizes, prev, pager, next, jumper"
         class="list-pagination"
-        @size-change="fetchList"
-        @current-change="fetchList"
+        @size-change="getList"
+        @current-change="getList"
       />
     </el-card>
+    <WorkbenchHeaderMenu v-bind="headerMenuBind" />
   </div>
 </template>
 
@@ -267,12 +286,19 @@ import {
 import { useUserStore } from '@vben/stores';
 
 import {
+  fetchFlowWorkOrderColumnValues,
   fetchFlowWorkOrderList,
   fetchFlowWorkOrderMeta,
   exportFlowWorkOrderList,
 } from '#/api/megaAutomation';
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import ListFilterSelect from '#/components/ListFilterSelect.vue';
+import {
+  WorkbenchHeaderFilterChip,
+  WorkbenchHeaderLabel,
+  WorkbenchHeaderMenu,
+  workbenchHeaderMenuMixin,
+} from '#/components/workbench';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
 import { listTableLockMixin } from '#/utils/listTableLock';
 import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage';
@@ -282,24 +308,30 @@ import {
 } from '#/utils/megaPermission';
 import { rememberTiterOrderFocus } from '#/views/Serum/titer/SerumTiterOrderList.vue';
 import {
+  FLOW_WORK_ORDER_STATUS_OPTIONS,
   orderStatusTagType,
   resolveOrderDisplayLabel,
   resolveOrderDisplayStatus,
 } from '#/utils/megaFlowWorkOrderStatus';
 
-const DEFAULT_STATUS_OPTIONS = [
-  { value: 'draft', label: '草稿' },
-  { value: 'validated', label: '已校验' },
-  { value: 'sent', label: '已发送' },
-  { value: 'running', label: '执行中' },
-  { value: 'paused', label: '已暂停' },
-  { value: 'execution_failed', label: '执行失败' },
-  { value: 'completed', label: '已完成' },
-  { value: 'failed', label: '校验失败' },
-  { value: 'cancelled', label: '已作废' },
-];
-
 const FLOW_WORK_ORDER_LIST_FILTER_KEY = 'flowWorkOrderList';
+
+// 靶点顶部框按整串匹配，与表头的多选不同口径，所以不联动
+const FLOW_WORK_ORDER_HEADER_COLUMNS = Object.freeze({
+  orderNum: { type: 'text', label: '订单编号', values: 'recent' },
+  orderName: { type: 'text', label: '订单名称', values: 'recent' },
+  orderType: { type: 'enum', label: '类型', values: 'all', top: { query: 'orderType' } },
+  priority: { type: 'enum', label: '优先级', values: 'all' },
+  project_nos: { type: 'csv', label: '项目号', values: 'all', top: { query: 'project_no', kind: 'tokens' } },
+  targets: { type: 'csv', label: '靶点', values: 'all' },
+  sample_plate_barcodes: { type: 'csv', label: '样本板', values: 'all', top: { query: 'sample_plate_barcode', kind: 'tokens' } },
+  cell_plate_barcodes: { type: 'csv', label: '细胞板', values: 'all', top: { query: 'cell_plate_barcode', kind: 'tokens' } },
+  remark: { type: 'text', label: '备注', values: 'search' },
+  status: { type: 'enum', label: '状态', values: 'all', top: { query: 'status' } },
+  created_by: { type: 'enum', label: '创建人', values: 'all' },
+  sent_at: { type: 'date', label: '发送时间', values: 'all' },
+  updated_at: { type: 'date', label: '更新时间', values: 'all' },
+});
 
 function emptyQuery() {
   return {
@@ -312,12 +344,14 @@ function emptyQuery() {
     target: '',
     sample_plate_barcode: '',
     cell_plate_barcode: '',
+    sort_field: '',
+    sort_dir: '',
   };
 }
 
 export default {
   name: 'MegaFlowWorkOrderList',
-  mixins: [listTableLockMixin],
+  mixins: [listTableLockMixin, workbenchHeaderMenuMixin],
   components: {
     ElButton,
     ElButtonGroup,
@@ -332,6 +366,9 @@ export default {
     AdvancedOpsBar,
     ListFilterSelect,
     Tools,
+    WorkbenchHeaderFilterChip,
+    WorkbenchHeaderLabel,
+    WorkbenchHeaderMenu,
   },
   setup() {
     const userStore = useUserStore();
@@ -354,7 +391,7 @@ export default {
       listLoading: false,
       showAdvancedOps: false,
       listQuery: emptyQuery(),
-      statusOptions: DEFAULT_STATUS_OPTIONS,
+      statusOptions: FLOW_WORK_ORDER_STATUS_OPTIONS,
       orderTypeOptions: [{ value: 'TITER', label: '效价' }],
       priorityOptions: [
         { value: 'high', label: '高' },
@@ -370,12 +407,15 @@ export default {
     currentUserInfo() {
       return this.userStore.userInfo || {};
     },
+    headerMenuColumns() {
+      return FLOW_WORK_ORDER_HEADER_COLUMNS;
+    },
   },
   created() {
     this.restoreListFilters();
     this.listLoading = true;
     this.loadMeta();
-    this.fetchList();
+    this.getList();
   },
   beforeRouteLeave(_to, _from, next) {
     this.persistListFilters();
@@ -386,25 +426,38 @@ export default {
   },
   activated() {
     if (this.listLoadError || shouldRefreshTabData(this.tabDataFetchedAt)) {
-      this.fetchList();
+      this.getList();
     }
   },
   methods: {
     async loadMeta() {
       try {
         const data = await fetchFlowWorkOrderMeta();
-        this.statusOptions = data?.statuses?.length ? data.statuses : DEFAULT_STATUS_OPTIONS;
+        this.statusOptions = data?.statuses?.length ? data.statuses : FLOW_WORK_ORDER_STATUS_OPTIONS;
         this.orderTypeOptions = data?.orderTypes?.length ? data.orderTypes : this.orderTypeOptions;
         this.priorityOptions = data?.priorities?.length ? data.priorities : this.priorityOptions;
       } catch {
         // 列表仍可用，元数据失败时使用本地默认值。
       }
     },
-    async fetchList() {
+    buildQuery() {
+      return { ...this.listQuery, field_filters: this.headerFilterPayload() };
+    },
+    fetchHeaderValues(query) {
+      return fetchFlowWorkOrderColumnValues(query);
+    },
+    headerCellClassName({ column }) {
+      return this.headerCellClass(column.columnKey);
+    },
+    onTableHeaderClick(column, event) {
+      if (!this.headerMenuColumns[column.columnKey]) return;
+      this.openHeaderMenu(column.columnKey, event.target.closest('th'));
+    },
+    async getList() {
       const requestId = ++this.fetchSequence;
       this.listLoading = true;
       try {
-        const data = await fetchFlowWorkOrderList(this.listQuery);
+        const data = await fetchFlowWorkOrderList(this.buildQuery());
         if (requestId !== this.fetchSequence) return;
         this.list = data?.items || [];
         this.total = data?.total || 0;
@@ -424,12 +477,12 @@ export default {
     },
     handleFilter() {
       this.listQuery.page = 1;
-      this.fetchList();
+      this.getList();
     },
     async handleListExport() {
       try {
         await downloadListExcel(
-          () => exportFlowWorkOrderList(this.listQuery),
+          () => exportFlowWorkOrderList(this.buildQuery()),
           `流式工单总览_${excelTimestamp()}.xlsx`,
         );
       } catch (error) {
@@ -438,17 +491,22 @@ export default {
     },
     resetFilter() {
       this.listQuery = emptyQuery();
+      this.clearHeaderFilters();
       this.persistListFilters();
-      this.fetchList();
+      this.getList();
     },
     persistListFilters() {
-      saveListFilters(FLOW_WORK_ORDER_LIST_FILTER_KEY, { listQuery: { ...this.listQuery } });
+      saveListFilters(FLOW_WORK_ORDER_LIST_FILTER_KEY, {
+        listQuery: { ...this.listQuery },
+        headerFilters: this.headerFilters,
+      });
     },
     restoreListFilters() {
       const state = loadListFilters(FLOW_WORK_ORDER_LIST_FILTER_KEY);
       if (state?.listQuery && typeof state.listQuery === 'object') {
         Object.assign(this.listQuery, state.listQuery);
       }
+      this.restoreHeaderFilters(state?.headerFilters);
     },
     toggleStatus(status) {
       this.listQuery.status = this.listQuery.status === status ? '' : status;

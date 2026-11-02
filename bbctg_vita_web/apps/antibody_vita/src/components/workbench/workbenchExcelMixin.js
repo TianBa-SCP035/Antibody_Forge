@@ -1,4 +1,8 @@
-import { clipboardCell } from './clipboardGrid'
+import { ElMessage } from 'element-plus'
+
+import { loadAllUserNames } from '#/utils/userOptions'
+
+import { clipboardCell, readClipboardGrid } from './clipboardGrid'
 
 const SHEET_ROW_CONFIG = Object.freeze({ keyField: 'id', isHover: true })
 const SHEET_CELL_CONFIG = Object.freeze({ height: 48 })
@@ -42,6 +46,8 @@ const SHEET_CATALOG_POPUP_CONFIG = Object.freeze({
   width: 280,
 })
 const SHEET_EDIT_RENDER_CACHE = new Map()
+// 有表头菜单的列：按住表头超过这么久才选中整列，短按是开菜单
+const SHEET_HEADER_HOLD_MS = 350
 
 /**
  * Excel 划选 / 键入 / 列序。约定见 docs/modules/workbench.md。
@@ -154,6 +160,7 @@ export default {
   },
   beforeUnmount() {
     this.destroySortable()
+    this.cancelSheetHeaderPress()
     if (this._sheetRangeRafId) {
       cancelAnimationFrame(this._sheetRangeRafId)
       this._sheetRangeRafId = 0
@@ -170,6 +177,7 @@ export default {
   },
   deactivated() {
     this.destroySortable()
+    this.cancelSheetHeaderPress()
     if (this._sheetRangeRafId) {
       cancelAnimationFrame(this._sheetRangeRafId)
       this._sheetRangeRafId = 0
@@ -271,52 +279,6 @@ export default {
       this.listQuery.page = 1
       this.getList()
     },
-    isDateEmptyFiltered(field) {
-      return Boolean(field && this.listQuery?.empty_date === field)
-    },
-    dateSortMark(field) {
-      const sortMark = this.listQuery?.sort_field === field
-        ? (this.listQuery?.sort_dir === 'desc' ? ' ↓' : ' ↑')
-        : ''
-      const emptyMark = this.isDateEmptyFiltered(field) ? ' ∅' : ''
-      return `${sortMark}${emptyMark}`
-    },
-    dateSortTitle(field) {
-      const col =
-        this.sheetColumnByKey?.get(field)?.column
-        || this.workbenchColumns?.find?.((c) => c.key === field)
-      const label = col?.label || '日期'
-      let sortHint = `左键按${label}从早到晚`
-      if (this.listQuery?.sort_field === field) {
-        sortHint = this.listQuery?.sort_dir === 'asc'
-          ? '当前从早到晚，左键改为从晚到早'
-          : '当前从晚到早，左键恢复最新在前'
-      }
-      const emptyHint = this.isDateEmptyFiltered(field)
-        ? `当前只看未填${label}，右键取消`
-        : `右键只看未填${label}`
-      return `${sortHint}；${emptyHint}`
-    },
-    cycleDateSort(field) {
-      if (!this.listQuery) return
-      if (this.listQuery.sort_field === field && this.listQuery.sort_dir === 'asc') {
-        this.listQuery.sort_dir = 'desc'
-      } else if (this.listQuery.sort_field === field && this.listQuery.sort_dir === 'desc') {
-        this.listQuery.sort_field = ''
-        this.listQuery.sort_dir = ''
-      } else {
-        this.listQuery.sort_field = field
-        this.listQuery.sort_dir = 'asc'
-      }
-      this.listQuery.page = 1
-      this.getList()
-    },
-    toggleEmptyDate(field) {
-      if (!this.listQuery || !field) return
-      this.listQuery.empty_date = this.listQuery.empty_date === field ? '' : field
-      this.listQuery.page = 1
-      this.getList()
-    },
     async revealCreatedRow(saved) {
       if (!saved?.id) return saved
       const limit = Math.max(1, Number(this.listQuery.limit) || 20)
@@ -338,7 +300,7 @@ export default {
     },
     sheetColumnTitle(column) {
       if (this.isExcelRowSelectField(column?.key)) return this.sortColumnLabel
-      return `${column?.label || ''}${this.dateSortMark?.(column?.key) || ''}`
+      return column?.label || ''
     },
     queueReorderPayload(oldIndex, newIndex) {
       const moved = this.list[oldIndex]
@@ -473,9 +435,8 @@ export default {
     },
     sheetHeaderCellClassName({ column }) {
       if (!column.field) return ''
-      const empty = this.isDateEmptyFiltered?.(column.field) ? ' is-empty-date-filtered' : ''
-      const sorted = !empty && this.dateSortMark?.(column.field) ? ' is-date-sorted' : ''
-      return `sheet-selectable-header${empty}${sorted}`
+      const menu = this.headerCellClass?.(column.field)
+      return menu ? `sheet-selectable-header ${menu}` : 'sheet-selectable-header'
     },
     sheetCellClassName() {
       return ''
@@ -559,6 +520,7 @@ export default {
       this.paintSheetColumnMove(event)
     },
     finishSheetPointer() {
+      this.cancelSheetHeaderPress()
       const move = this.sheetDragMode === 'move-column' ? this.sheetColumnMove : null
       window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
       this._sheetPointerDown = false
@@ -608,7 +570,21 @@ export default {
       this.syncPasteAnchorFromRange()
       this.scheduleSheetRangePaint()
     },
+    /** 按住表头到时，或按着拖到别的列：从按下的列选到 toIndex。 */
+    selectPressedSheetColumns(toIndex) {
+      const press = this._sheetHeaderPress
+      if (!press) return
+      this.cancelSheetHeaderPress()
+      this._sheetHeaderSelected = true
+      this.setSheetRange({ r1: 0, c1: press.colIndex, r2: this.list.length - 1, c2: toIndex ?? press.colIndex })
+    },
+    cancelSheetHeaderPress() {
+      if (!this._sheetHeaderPress) return
+      clearTimeout(this._sheetHeaderPress.timer)
+      this._sheetHeaderPress = null
+    },
     clearSheetRange() {
+      this.cancelSheetHeaderPress()
       window.removeEventListener('mousemove', this.onSheetColumnPointerMove)
       this._sheetPointerDown = false
       this._sheetSelectDragMode = ''
@@ -920,6 +896,7 @@ export default {
       this.focusSheetWrap()
       const headerHit = this.hitSheetHeader(event.target)
       if (event.button !== 0) return
+      this._sheetHeaderSelected = false
       if (headerHit && event.shiftKey && !this.isSheetColumnPinned(this.sheetColumns[headerHit.colIndex])) {
         event.preventDefault()
         window.getSelection()?.removeAllRanges()
@@ -943,18 +920,21 @@ export default {
         this.toggleQueueSort?.()
         return
       }
-      if (headerHit && this.excelHeaderClick?.(this.sheetColumns[headerHit.colIndex])) {
-        event.preventDefault()
-        window.getSelection()?.removeAllRanges()
-        this.$refs.sheetTable?.clearEdit?.()
-        return
-      }
       if (headerHit && this.list.length) {
         event.preventDefault()
         window.getSelection()?.removeAllRanges()
         this.$refs.sheetTable?.clearEdit?.()
         this._sheetSelectDragMode = 'columns'
         this._sheetPointerDown = true
+        if (this.headerMenuColumns?.[headerHit.field]) {
+          // 单击要开菜单，先不选；按住到时或拖到别的列再选，松开前没选就交给 click 开菜单
+          this.cancelSheetHeaderPress()
+          this._sheetHeaderPress = {
+            colIndex: headerHit.colIndex,
+            timer: setTimeout(() => this.selectPressedSheetColumns(), SHEET_HEADER_HOLD_MS),
+          }
+          return
+        }
         this.setSheetRange({
           r1: 0,
           c1: headerHit.colIndex,
@@ -1004,7 +984,12 @@ export default {
       if (dragMode === 'move-column') return
       if (dragMode === 'columns') {
         const headerHit = this.hitSheetHeader(event.target)
-        if (!headerHit || !this.sheetRange || headerHit.colIndex === this.sheetRange.c2) return
+        if (!headerHit) return
+        if (this._sheetHeaderPress) {
+          if (headerHit.colIndex !== this._sheetHeaderPress.colIndex) this.selectPressedSheetColumns(headerHit.colIndex)
+          return
+        }
+        if (!this.sheetRange || headerHit.colIndex === this.sheetRange.c2) return
         this.setSheetRange({ ...this.sheetRange, c2: headerHit.colIndex })
         return
       }
@@ -1041,12 +1026,6 @@ export default {
     },
     onSheetWrapContextMenu(event) {
       if (event.target?.closest?.('input, textarea')) return
-      const headerHit = this.hitSheetHeader(event.target)
-      if (headerHit && this.excelHeaderContextMenu?.(this.sheetColumns[headerHit.colIndex], event)) {
-        event.preventDefault()
-        this.$refs.sheetTable?.clearEdit?.()
-        return
-      }
       event.preventDefault()
       this.clearSheetRange()
     },
@@ -1119,13 +1098,92 @@ export default {
       this.sheetEditOriginal = this.createSheetEditOriginal(row, key)
       if (this.sheetEditSource === 'dblclick') this.openSheetEditorPanel(row, key)
     },
+    async loadAllUserOptions() {
+      try {
+        this.allUserOptions = await loadAllUserNames()
+      } catch {
+        this.allUserOptions = []
+        ElMessage.warning('人员名单加载失败，人员列暂时无法选择或粘贴，请刷新页面重试')
+      }
+    },
+    /**
+     * 粘贴的公共开头：判断是否接管、识别表头、单个值填满选区、截掉超出列表的行。
+     * 返回 null 表示不处理。limitRows 可传函数 (headerKeys, hasHeader) => boolean，
+     * 返回 false 时不截行，由页面自己定位行（如按单号匹配）。
+     */
+    async prepareSheetPaste(event, labelToKey, { limitRows = true } = {}) {
+      if (!this.canEdit) return null
+      if (event.target?.closest?.('input, textarea')) return null
+      const plain = event.clipboardData?.getData('text/plain') || ''
+      const grid = readClipboardGrid(event.clipboardData)
+      if (!grid.length) return null
+      const singleValue = grid.length === 1
+        && grid[0].length === 1
+        && !String(grid[0][0]).includes('\n')
+      if (!plain.includes('\t') && !plain.includes('\n') && singleValue && !this.sheetRange) return null
+      event.preventDefault()
+      if (!await this.flushPendingSheetEdits()) return null
+
+      const headerKeys = grid[0].map((cell) => labelToKey.get(String(cell || '').trim()) || null)
+      const nonEmptyHeaderCount = grid[0].filter((cell) => String(cell || '').trim()).length
+      const matchedHeaderCount = headerKeys.filter(Boolean).length
+      const hasHeader = matchedHeaderCount >= 2 && matchedHeaderCount === nonEmptyHeaderCount
+      let dataRows = hasHeader ? grid.slice(1) : grid
+      let startIndex = this.pasteAnchor?.rowIndex ?? 0
+      const startColKey = this.pasteAnchor?.colKey || this.sheetColumns[0]?.key
+      let startColIndex = this.sheetColumns.findIndex((column) => column.key === startColKey)
+      if (startColIndex < 0) return null
+      const selectedRange = this.normalizedSheetRange()
+      const fillSelectedRange = !hasHeader
+        && dataRows.length === 1
+        && dataRows[0]?.length === 1
+        && selectedRange
+        && (selectedRange.r1 !== selectedRange.r2 || selectedRange.c1 !== selectedRange.c2)
+      if (fillSelectedRange) {
+        const value = dataRows[0][0]
+        const rowCount = selectedRange.r2 - selectedRange.r1 + 1
+        const columnCount = selectedRange.c2 - selectedRange.c1 + 1
+        dataRows = Array.from({ length: rowCount }, () => Array(columnCount).fill(value))
+        startIndex = selectedRange.r1
+        startColIndex = selectedRange.c1
+      }
+      const limit = typeof limitRows === 'function' ? limitRows(headerKeys, hasHeader) : limitRows
+      let skippedRowCount = 0
+      if (limit) {
+        const availableRowCount = Math.max(this.list.length - startIndex, 0)
+        skippedRowCount = Math.max(dataRows.length - availableRowCount, 0)
+        dataRows.splice(availableRowCount)
+      }
+      if (!dataRows.length) {
+        ElMessage.warning('粘贴区域超出当前列表，本次未保存')
+        return null
+      }
+      return { dataRows, hasHeader, headerKeys, skippedRowCount, startColIndex, startIndex }
+    },
+    sheetSelectEditor() {
+      const editor = this.$refs.sheetSelectEditor
+      return (Array.isArray(editor) ? editor.find(Boolean) : editor) || null
+    },
+    onSheetSelectVisible(visible) {
+      if (visible) return
+      this.$nextTick(() => {
+        if (this.sheetSelectEditor()?.isOpen()) return
+        this.$refs.sheetTable?.clearEdit?.()
+      })
+    },
     openSheetEditorPanel(row, key) {
       const open = () => {
+        const select = this.sheetSelectEditor()
+        if (select) {
+          select.open()
+          return true
+        }
+        // VxeSelect 和日期 VxeInput 在输入框获得焦点时弹出面板；已有焦点时先失焦才会再触发
         const cell = this.$refs.sheetTable?.getCellElement?.(row, key)
-        const node = cell?.querySelector?.('.vxe-select, .vxe-input')
-        const panel = node?.__vueParentComponent?.proxy
-        if (typeof panel?.showPanel !== 'function') return false
-        panel.showPanel()
+        const input = cell?.querySelector?.('.vxe-select input, .vxe-input.type--date input')
+        if (!input) return false
+        if (document.activeElement === input) input.blur()
+        input.focus()
         return true
       }
       this.$nextTick(() => {

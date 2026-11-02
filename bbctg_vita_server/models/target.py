@@ -11,10 +11,6 @@ class Target(Base):
     __table_args__ = (
         Index("uk_target_external_id", "external_id", unique=True),
         Index("uk_target_snum", "snum", unique=True),
-        Index("idx_target_name", "name"),
-        Index("idx_target_human_gene_name", "human_gene_official_name"),
-        Index("idx_target_mouse_gene_name", "mouse_gene_official_name"),
-        Index("idx_target_status_type", "status", "type"),
         {"comment": "靶点表（项目管理同步）"},
     )
 

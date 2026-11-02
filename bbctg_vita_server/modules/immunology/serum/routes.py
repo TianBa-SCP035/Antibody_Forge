@@ -4,8 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from core.errors import BusinessError
-from core.response import error, success
+from core.response import success
 from db.session import get_db
 from models.immunology import SerumImmProject
 from models.system import SysUser
@@ -15,26 +14,12 @@ from modules.immunology.serum import scheme_export, service
 from modules.system.permissions import (
     DEFAULT_PERMISSION_MESSAGE,
     PERMISSION_MESSAGES,
-    has_any_permission,
     has_permission,
     require_permission,
 )
+from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
 
 router = APIRouter()
-OPTION_ACCESS_PERMISSIONS = {
-    "serum.page.edit",
-    "serum.page.workbench",
-    "discovery.page.workbench",
-    "discovery.workbench.edit",
-    "discovery.page.synthesis_progress",
-    "discovery.synthesis_progress.edit",
-    "discovery.synthesis_progress.pm_edit",
-    "discovery.synthesis_progress.assay_edit",
-    "molecular.page.library",
-    "molecular.library.edit",
-    "molecular.page.library_detail",
-    "molecular.library.file.manage",
-}
 
 
 def _parse_export_ids(data: dict) -> list:
@@ -52,22 +37,14 @@ def _attachment_response(content: bytes, filename: str, media_type: str) -> Resp
     )
 
 
-def _require_option_access(db: Session, user: SysUser) -> None:
-    if has_any_permission(db, user, OPTION_ACCESS_PERMISSIONS):
-        return
-    raise HTTPException(
-        status_code=403,
-        detail=PERMISSION_MESSAGES.get("serum.page.edit", DEFAULT_PERMISSION_MESSAGE),
-    )
-
-
-@router.get("/stats")
+@router.post("/stats")
 def stats(
+    data: dict | None = None,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, "serum.page.list")
-    return success(service.get_stats(db))
+    return success(service.get_stats(db, data or {}))
 
 
 @router.post("/list")
@@ -96,27 +73,6 @@ def detail(
     return success(data)
 
 
-@router.get("/target_options")
-def target_options(
-    keyword: str = Query(default=""),
-    limit: int = Query(default=20, ge=1, le=50),
-    codes: str = Query(default=""),
-    db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
-) -> dict:
-    _require_option_access(db, current_user)
-    return success(service.get_target_options(db, keyword, limit, codes.split(",")))
-
-
-@router.get("/user_options")
-def user_options(
-    db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
-) -> dict:
-    _require_option_access(db, current_user)
-    return success({"items": service.get_user_options(db)})
-
-
 @router.get("/mouse-groups")
 def mouse_groups(
     experiment_id: str = Query(...),
@@ -124,10 +80,7 @@ def mouse_groups(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     _require_mouse_registry_access(db, current_user)
-    try:
-        return success({"items": service.get_mouse_groups(db, experiment_id)})
-    except ValueError as exc:
-        return error(str(exc))
+    return success({"items": service.get_mouse_groups(db, experiment_id)})
 
 
 @router.post("/mouse-registry/save")
@@ -137,14 +90,7 @@ def mouse_registry_save(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     _require_mouse_registry_access(db, current_user)
-    try:
-        return success(service.save_mouse_registry(db, data or {}))
-    except ValueError as exc:
-        db.rollback()
-        return error(str(exc))
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    return success(service.save_mouse_registry(db, data or {}))
 
 
 @router.post("/save")
@@ -153,23 +99,17 @@ def save(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
+    save_data = dict(data or {})
     try:
-        save_data = dict(data or {})
         _require_project_save_permission(db, current_user, save_data)
         return success(service.save_serum(db, save_data))
-    except HTTPException:
-        raise
     except ValueError as exc:
-        db.rollback()
         message = str(exc)
         if "已被其他用户修改" in message:
             raise HTTPException(status_code=409, detail=message) from exc
         if "项目版本缺失" in message:
             raise HTTPException(status_code=422, detail=message) from exc
-        return error(message)
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+        raise
 
 
 @router.post("/delete")
@@ -178,16 +118,10 @@ def delete(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.project.delete")
-        action = project_lifecycle.delete_or_revert_project(db, int(data.get("id")))
-        message = "已撤回为工作台草稿" if action == "reverted" else "删除成功"
-        return success({"action": action, "message": message})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.project.delete")
+    action = project_lifecycle.delete_or_revert_project(db, int(data.get("id")))
+    message = "已撤回为工作台草稿" if action == "reverted" else "删除成功"
+    return success({"action": action, "message": message})
 
 
 @router.get("/filter_options")
@@ -199,21 +133,26 @@ def filter_options(
     return success(service.get_filter_options(db))
 
 
+@router.get("/recorded_targets")
+def recorded_targets(
+    keyword: str = Query(default="", max_length=128),
+    limit: int = Query(default=DEFAULT_RECORDED_TARGET_LIMIT, ge=1, le=MAX_RECORDED_TARGET_LIMIT),
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "serum.page.list")
+    return success({"items": service.search_recorded_targets(db, keyword, limit)})
+
+
 @router.post("/update_status")
 def update_status(
     data: dict,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        _require_status_update_access(db, current_user, int(data.get("id")))
-        service.update_status(db, int(data.get("id")), data.get("project_status"))
-        return success({"message": "状态修改成功"})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    _require_status_update_access(db, current_user, int(data.get("id")))
+    service.update_status(db, int(data.get("id")), data.get("project_status"))
+    return success({"message": "状态修改成功"})
 
 
 @router.post("/update_lab_notebook")
@@ -222,15 +161,9 @@ def update_lab_notebook(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        _require_project_scheme_edit(db, current_user, int(data.get("id")))
-        value = service.update_lab_notebook(db, int(data.get("id")), data.get("lab_notebook"))
-        return success({"message": "实验记录本更新成功", "lab_notebook": value})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    _require_project_scheme_edit(db, current_user, int(data.get("id")))
+    value = service.update_lab_notebook(db, int(data.get("id")), data.get("lab_notebook"))
+    return success({"message": "实验记录本更新成功", "lab_notebook": value})
 
 
 @router.post("/update_cage_position")
@@ -239,19 +172,10 @@ def update_cage_position(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.cage.update")
-        _require_project_owner_or_edit_all(db, current_user, int(data.get("id")))
-        service.update_cage_position(db, int(data.get("id")), data.get("cage_position"))
-        return success({"message": "笼位更新成功"})
-    except HTTPException:
-        raise
-    except BusinessError as exc:
-        db.rollback()
-        return error(exc.message, exc.code, exc.error_code)
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.cage.update")
+    _require_project_owner_or_edit_all(db, current_user, int(data.get("id")))
+    service.update_cage_position(db, int(data.get("id")), data.get("cage_position"))
+    return success({"message": "笼位更新成功"})
 
 
 @router.post("/project/prep_status")
@@ -260,15 +184,9 @@ def update_prep_status(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.cell.prep_status.update")
-        service.update_prep_status(db, data.get("experiment_id"), data.get("prep_status"))
-        return success({"message": "制备状态更新成功"})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.cell.prep_status.update")
+    service.update_prep_status(db, data.get("experiment_id"), data.get("prep_status"))
+    return success({"message": "制备状态更新成功"})
 
 
 @router.post("/auto_update_status")
@@ -277,14 +195,8 @@ def auto_update_status(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.status.auto_update")
-        return success(service.auto_update_status(db, data or {}))
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.status.auto_update")
+    return success(service.auto_update_status(db, data or {}))
 
 
 @router.post("/export_list")

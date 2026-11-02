@@ -7,13 +7,34 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from utils.filter_values import (
-    catalog_names_for_pairs,
-    clean_field_text,
+    DEFAULT_RECORDED_TARGET_LIMIT,
     combine_any,
+    like_contains,
     match_any,
     recorded_target_clause,
+    recorded_target_search,
     split_code_tokens,
-    target_select_options,
+)
+from models.types import date_blank, date_present
+from utils.normalize import (
+    join_known_options,
+    join_tokens,
+    normalize_choice,
+    normalize_date,
+    normalize_nonneg_int,
+    normalize_positive_int,
+    normalize_priority,
+    normalize_target_codes,
+    normalize_text,
+)
+from utils.header_filters import (
+    HeaderColumn,
+    column_values,
+    csv_column,
+    csv_token_clause,
+    header_filter_clauses,
+    header_sort_clauses,
+    target_column,
 )
 
 from models.discovery import DiscoveryWorkbench
@@ -34,14 +55,16 @@ from modules.discovery.workbench.constants import (
 )
 from utils.workbench_queue import (
     DEFAULT_PRIORITY,
+    PRIORITY_OPTIONS,
     PRIORITY_ORDER,
     apply_priority_constraints,
-    canonicalize_priority,
     list_order_clauses,
+    lock_queue,
     place_row_among,
     queued_sort,
     renumber_queue,
 )
+from utils.clock import now_local, today_local
 MISSING_ROW = "发现工作台记录不存在"
 DISCOVERY_ID_PREFIX = "DSC"
 DISCOVERY_ID_RANDOM_LEN = 6
@@ -94,11 +117,11 @@ WRITABLE_FIELDS = (
 
 
 def _today_text() -> str:
-    return date.today().isoformat()
+    return today_local().isoformat()
 
 
 def generate_discovery_id(now: datetime | None = None) -> str:
-    stamp = (now or datetime.now()).strftime("%y%m%d")
+    stamp = (now or now_local()).strftime("%y%m%d")
     suffix = "".join(secrets.choice(DISCOVERY_ID_ALPHABET) for _ in range(DISCOVERY_ID_RANDOM_LEN))
     return f"{DISCOVERY_ID_PREFIX}-{stamp}-{suffix}"
 
@@ -118,69 +141,16 @@ def _assign_discovery_id(db: Session, row: DiscoveryWorkbench) -> None:
     row.discovery_id = _next_discovery_id(db)
 
 
-def _normalize_csv_options(
-    value: Any,
-    options: tuple[str, ...],
-    error: str,
-    separator: str = ",",
-) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, (list, tuple)):
-        tokens = [str(item).strip() for item in value if str(item).strip()]
-    else:
-        text = str(value).strip()
-        if not text:
-            return None
-        tokens = [part.strip() for part in text.replace("，", ",").split(",") if part.strip()]
-    allowed = set(options)
-    if any(token not in allowed for token in tokens):
-        raise ValueError(error)
-    ordered = [option for option in options if option in tokens]
-    return separator.join(ordered) or None
-
-
 def _normalize_screening_methods(value: Any) -> str | None:
-    return _normalize_csv_options(value, SCREENING_METHOD_OPTIONS, "筛选方式包含不允许的选项")
-
-
-def _mouse_csv_tokens(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, (list, tuple)):
-        raw = [str(item).strip() for item in value]
-    else:
-        text = str(value).strip()
-        if not text:
-            return []
-        raw = text.replace("，", ",").replace("、", ",").replace("+", ",").split(",")
-    tokens: list[str] = []
-    seen: set[str] = set()
-    for item in raw:
-        token = item.strip()
-        if not token or token in seen:
-            continue
-        seen.add(token)
-        tokens.append(token)
-    return tokens
-
-
-def _normalize_mouse_csv(value: Any, options: tuple[str, ...]) -> str | None:
-    tokens = _mouse_csv_tokens(value)
-    if not tokens:
-        return None
-    known = set(options)
-    ordered = [option for option in options if option in tokens]
-    extras = [token for token in tokens if token not in known]
-    return "、".join([*ordered, *extras]) or None
+    return join_known_options(value, SCREENING_METHOD_OPTIONS, "筛选方式包含不允许的选项")
 
 
 def _normalize_mouse_strain_category(value: Any) -> str | None:
-    return _normalize_mouse_csv(value, MOUSE_STRAIN_CATEGORY_OPTIONS)
+    return join_tokens(value, MOUSE_STRAIN_CATEGORY_OPTIONS)
 
 
 def _normalize_mouse_strain(value: Any) -> str | None:
-    return _normalize_mouse_csv(value, MOUSE_STRAIN_OPTIONS)
+    return join_tokens(value, MOUSE_STRAIN_OPTIONS)
 
 
 def _shift_date(value: str | None, days: int) -> str | None:
@@ -189,84 +159,8 @@ def _shift_date(value: str | None, days: int) -> str | None:
     return (date.fromisoformat(value) + timedelta(days=days)).isoformat()
 
 
-def _normalize_target_codes(value: Any) -> list[str]:
-    if value is None or value == "":
-        return []
-    if isinstance(value, str):
-        return [part.strip() for part in value.replace("，", ",").replace("、", ",").split(",") if part.strip()]
-    if not isinstance(value, list):
-        raise ValueError("靶点编号必须是数组")
-    return [str(item).strip() for item in value if str(item).strip()]
-
-
-def _normalize_date(value: Any) -> str | None:
-    if value in (None, ""):
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        datetime.strptime(text, "%Y-%m-%d")
-    except ValueError as exc:
-        raise ValueError("日期必须是 YYYY-MM-DD") from exc
-    return text
-
-
-def _normalize_nonneg_int(value: Any, label: str) -> int | None:
-    if value in (None, ""):
-        return None
-    try:
-        number = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{label}必须是整数") from exc
-    if number < 0:
-        raise ValueError(f"{label}不能为负数")
-    return number
-
-
-def _normalize_mouse_count(value: Any) -> int | None:
-    return _normalize_nonneg_int(value, "小鼠只数")
-
-
-def _normalize_int(value: Any) -> int | None:
-    if value in (None, ""):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _normalize_text(value: Any, max_len: int, *, keep_breaks: bool = False) -> str | None:
-    if value is None:
-        return None
-    text = clean_field_text(value, keep_breaks=keep_breaks)
-    if not text:
-        return None
-    if len(text) > max_len:
-        raise ValueError(f"字段长度不能超过 {max_len}")
-    return text
-
-
 def _normalize_status(value: Any) -> str:
-    text = str(value or "").strip() or PLAN_STATUS_PLANNING
-    if text not in PLAN_STATUS_OPTIONS:
-        raise ValueError("状态不在允许的选项中")
-    return text
-
-
-def _normalize_priority(value: Any) -> str:
-    text = canonicalize_priority(value)
-    if text not in PRIORITY_ORDER:
-        raise ValueError("优先级不在允许的选项中")
-    return text
-
-
-def _normalize_sort_order(value: Any) -> int:
-    number = _normalize_int(value)
-    if number is None or number <= 0:
-        raise ValueError("排序必须是正整数")
-    return number
+    return normalize_choice(value, PLAN_STATUS_OPTIONS, "状态", default=PLAN_STATUS_PLANNING)
 
 
 def _current_status(row: DiscoveryWorkbench) -> str:
@@ -293,17 +187,6 @@ def _boost_expired(boost_date: Any, today: str | None = None) -> bool:
     if not text:
         return False
     return text < (today or _today_text())
-
-
-def _csv_token_filter(column, value: str, separators: tuple[str, ...] = (",",)):
-    clauses = [column == value]
-    for sep in separators:
-        clauses.extend((
-            column.like(f"{value}{sep}%"),
-            column.like(f"%{sep}{value}"),
-            column.like(f"%{sep}{value}{sep}%"),
-        ))
-    return or_(*clauses)
 
 
 def _split_filter_tokens(value: Any) -> list[str]:
@@ -345,7 +228,7 @@ def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> bool:
             continue
         value = data.get(field)
         if field == "target_codes":
-            value = _normalize_target_codes(value)
+            value = normalize_target_codes(value)
         elif field == "screening_methods":
             value = _normalize_screening_methods(value)
         elif field == "mouse_strain_category":
@@ -353,19 +236,19 @@ def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> bool:
         elif field == "mouse_strain":
             value = _normalize_mouse_strain(value)
         elif field == "mouse_count":
-            value = _normalize_mouse_count(value)
+            value = normalize_nonneg_int(value, "小鼠只数")
         elif field == "sort_order":
             if value in (None, "", "-"):
                 continue
-            value = _normalize_sort_order(value)
+            value = normalize_positive_int(value, "排序必须是正整数")
         elif field == "status":
             value = _normalize_status(value)
         elif field == "priority":
-            value = _normalize_priority(value)
+            value = normalize_priority(value)
         elif field in DATE_FIELDS:
-            value = _normalize_date(value)
+            value = normalize_date(value)
         else:
-            value = _normalize_text(
+            value = normalize_text(
                 value,
                 STRING_FIELDS[field],
                 keep_breaks=field in BREAK_FIELDS,
@@ -400,8 +283,7 @@ def advance_expired_boosts(db: Session) -> int:
     rows = db.scalars(
         select(DiscoveryWorkbench).where(
             DiscoveryWorkbench.status == PLAN_STATUS_WAIT_BOOST,
-            DiscoveryWorkbench.boost_date.is_not(None),
-            DiscoveryWorkbench.boost_date != "",
+            date_present(DiscoveryWorkbench.boost_date),
             DiscoveryWorkbench.boost_date < _today_text(),
         ).with_for_update()
     ).all()
@@ -424,16 +306,16 @@ def _view_group_for_status(status: str) -> str | None:
 
 
 def _contains_filter(column, value: Any):
-    return combine_any(value, lambda text: column.like(f"%{text}%"))
+    return combine_any(value, lambda text: like_contains(column, text))
 
 
 def _apply_date_range(filters: list, column, data: dict[str, Any], start_key: str, end_key: str) -> None:
     start_raw = data.get(start_key)
     end_raw = data.get(end_key)
     if start_raw not in (None, ""):
-        filters.append(column >= _normalize_date(start_raw))
+        filters.append(column >= normalize_date(start_raw))
     if end_raw not in (None, ""):
-        filters.append(column <= _normalize_date(end_raw))
+        filters.append(column <= normalize_date(end_raw))
 
 
 def _status_column():
@@ -456,24 +338,57 @@ def _view_group_filter(view_group: str):
 def _boosting_filter():
     today = _today_text()
     return and_(
-        DiscoveryWorkbench.boost_date.is_not(None),
-        DiscoveryWorkbench.boost_date != "",
+        date_present(DiscoveryWorkbench.boost_date),
         DiscoveryWorkbench.boost_date >= today,
     )
-
-
-def _blank_date(column):
-    return or_(column.is_(None), column == "")
 
 
 def _missing_date_filter():
     return and_(
         or_(
-            _blank_date(DiscoveryWorkbench.harvest_date),
-            _blank_date(DiscoveryWorkbench.boost_date),
+            date_blank(DiscoveryWorkbench.harvest_date),
+            date_blank(DiscoveryWorkbench.boost_date),
         ),
         ~_status_column().in_(tuple(TERMINAL_STATUSES)),
     )
+
+
+_W = DiscoveryWorkbench
+HEADER_COLUMNS: dict[str, HeaderColumn] = {
+    "priority": HeaderColumn(_W.priority, "enum", order=tuple(PRIORITY_ORDER)),
+    "status": HeaderColumn(_status_column(), "enum", order=tuple(PLAN_STATUS_OPTIONS)),
+    "pm": HeaderColumn(_W.pm, "enum"),
+    "project_code": HeaderColumn(_W.project_code),
+    "experiment_id": HeaderColumn(_W.experiment_id),
+    "target_name": target_column(_W.target_name, _W.target_codes),
+    "study_type": HeaderColumn(_W.study_type, "enum"),
+    "mouse_strain_category": csv_column(_W.mouse_strain_category, tuple(MOUSE_STRAIN_CATEGORY_OPTIONS)),
+    "mouse_strain": csv_column(_W.mouse_strain, tuple(MOUSE_STRAIN_OPTIONS)),
+    "screening_methods": csv_column(_W.screening_methods, tuple(SCREENING_METHOD_OPTIONS)),
+    "mouse_count": HeaderColumn(_W.mouse_count, "number"),
+    "harvest_date": HeaderColumn(_W.harvest_date, "date"),
+    "boost_date": HeaderColumn(_W.boost_date, "date"),
+    "owner": HeaderColumn(_W.owner, "enum"),
+    "immune_owner": HeaderColumn(_W.immune_owner, "enum"),
+    "cell_collector": HeaderColumn(_W.cell_collector, "enum"),
+    "cage_position": HeaderColumn(_W.cage_position),
+    "mouse_nos": HeaderColumn(_W.mouse_nos),
+    "serum_titer": HeaderColumn(_W.serum_titer),
+    "immune_antigen": HeaderColumn(_W.immune_antigen),
+    "screening_antigen": HeaderColumn(_W.screening_antigen),
+    "positive_cell_count": HeaderColumn(_W.positive_cell_count),
+    "plate_nos": HeaderColumn(_W.plate_nos),
+    "boost_antigen": HeaderColumn(_W.boost_antigen),
+    "boost_cells": HeaderColumn(_W.boost_cells),
+    "remark": HeaderColumn(_W.remark),
+}
+
+
+def _csv_filter(column, value: Any):
+    tokens = _split_filter_tokens(value)
+    if not tokens:
+        return None
+    return or_(*[csv_token_clause(column, token) for token in tokens])
 
 
 def _apply_list_filters(
@@ -483,6 +398,7 @@ def _apply_list_filters(
     apply_view: bool = True,
     apply_boost: bool = True,
     db: Session | None = None,
+    header_except: str | None = None,
 ):
     filters = []
     kw_tokens = split_code_tokens(data.get("keyword"))
@@ -515,13 +431,10 @@ def _apply_list_filters(
     remark = _contains_filter(DiscoveryWorkbench.remark, data.get("remark"))
     if remark is not None:
         filters.append(remark)
-    methods = _split_filter_tokens(data.get("screening_methods"))
-    if methods:
-        if any(token not in SCREENING_METHOD_OPTIONS for token in methods):
-            raise ValueError("筛选方式包含不允许的选项")
-        filters.append(
-            or_(*[_csv_token_filter(DiscoveryWorkbench.screening_methods, method) for method in methods])
-        )
+    for field in ("screening_methods", "mouse_strain_category", "mouse_strain"):
+        csv_filter = _csv_filter(getattr(DiscoveryWorkbench, field), data.get(field))
+        if csv_filter is not None:
+            filters.append(csv_filter)
     pm = match_any(DiscoveryWorkbench.pm, data.get("pm"))
     if pm is not None:
         filters.append(pm)
@@ -537,40 +450,12 @@ def _apply_list_filters(
     study_type = match_any(DiscoveryWorkbench.study_type, data.get("study_type"))
     if study_type is not None:
         filters.append(study_type)
-    categories = _split_filter_tokens(data.get("mouse_strain_category"))
-    if categories:
-        if any(token not in MOUSE_STRAIN_CATEGORY_OPTIONS for token in categories):
-            raise ValueError("归类鼠型不在允许的选项中")
-        filters.append(
-            or_(*[
-                _csv_token_filter(
-                    DiscoveryWorkbench.mouse_strain_category,
-                    item,
-                    separators=(",", "、", "+"),
-                )
-                for item in categories
-            ])
-        )
-    strains = _split_filter_tokens(data.get("mouse_strain"))
-    if strains:
-        if any(token not in MOUSE_STRAIN_OPTIONS for token in strains):
-            raise ValueError("小鼠品系不在允许的选项中")
-        filters.append(
-            or_(*[
-                _csv_token_filter(
-                    DiscoveryWorkbench.mouse_strain,
-                    item,
-                    separators=(",", "、", "+"),
-                )
-                for item in strains
-            ])
-        )
     status = combine_any(data.get("status"), _status_filter_clause)
     if status is not None:
         filters.append(status)
     priority = combine_any(
         data.get("priority"),
-        lambda value: DiscoveryWorkbench.priority == _normalize_priority(value),
+        lambda value: DiscoveryWorkbench.priority == normalize_priority(value),
     )
     if priority is not None:
         filters.append(priority)
@@ -599,10 +484,9 @@ def _apply_list_filters(
         "boost_date_start",
         "boost_date_end",
     )
-    for empty_col in split_code_tokens(data.get("empty_date")):
-        if empty_col in DATE_FIELDS:
-            col = getattr(DiscoveryWorkbench, empty_col)
-            filters.append(or_(col.is_(None), col == ""))
+    filters.extend(
+        header_filter_clauses(db, HEADER_COLUMNS, data.get("field_filters"), except_field=header_except)
+    )
     if apply_view:
         view_filter = _view_group_filter(str(data.get("view_group") or "").strip())
         if view_filter is not None:
@@ -620,25 +504,13 @@ def _apply_list_filters(
     return stmt
 
 
-_DATE_SORT_COLUMNS = {
-    "harvest_date": DiscoveryWorkbench.harvest_date,
-    "boost_date": DiscoveryWorkbench.boost_date,
-}
-
-
 def _list_order(data: dict[str, Any] | None = None):
     payload = data or {}
     field = str(payload.get("sort_field") or "").strip()
-    column = _DATE_SORT_COLUMNS.get(field)
+    spec = HEADER_COLUMNS.get(field)
     direction = str(payload.get("sort_dir") or "").strip()
-    if column is not None and direction in {"asc", "desc"}:
-        blank = or_(column.is_(None), column == "")
-        ordered = column.asc() if direction == "asc" else column.desc()
-        return (
-            case((blank, 1), else_=0),
-            ordered,
-            DiscoveryWorkbench.id.desc(),
-        )
+    if spec is not None and direction in {"asc", "desc"}:
+        return header_sort_clauses(spec, direction, DiscoveryWorkbench.id)
     return list_order_clauses(
         field,
         DiscoveryWorkbench.sort_order,
@@ -658,11 +530,7 @@ def _queue_rows(db: Session) -> list[DiscoveryWorkbench]:
 
 
 def _lock_queue(db: Session) -> None:
-    db.scalars(
-        select(DiscoveryWorkbench.id)
-        .order_by(DiscoveryWorkbench.id.asc())
-        .with_for_update()
-    ).all()
+    lock_queue(db, DiscoveryWorkbench)
 
 
 def _place_row(db: Session, row: DiscoveryWorkbench, *, mode: str, target_sort: int | None = None) -> None:
@@ -756,14 +624,51 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    """表头筛选的取值列表：套用除本列表头条件以外的全部筛选。顶部筛选里的本列条件由前端去掉。"""
+    payload = data or {}
+    field = str(payload.get("field") or "").strip()
+    spec = HEADER_COLUMNS.get(field)
+    if spec is None:
+        raise ValueError(f"不支持按「{field}」表头筛选")
+    return column_values(
+        db,
+        spec,
+        lambda stmt: _apply_list_filters(stmt, payload, db=db, header_except=field),
+        id_column=DiscoveryWorkbench.id,
+        keyword=str(payload.get("value_keyword") or ""),
+        limit=payload.get("value_limit"),
+        order=str(payload.get("value_order") or "value"),
+    )
+
+
+# 抗原建议只取最近录入的行，开销固定；更早的冷门写法用户可直接手填
+ANTIGEN_SUGGESTION_SCAN_ROWS = 5000
+
+
 def _distinct_lines(db: Session, column) -> list[str]:
     result: set[str] = set()
-    for value in db.scalars(select(column).where(column.is_not(None))).all():
+    stmt = (
+        select(column)
+        .where(column.is_not(None), column != "")
+        .order_by(DiscoveryWorkbench.id.desc())
+        .limit(ANTIGEN_SUGGESTION_SCAN_ROWS)
+    )
+    for value in db.scalars(stmt).all():
         for part in str(value or "").splitlines():
             text = part.strip()
             if text:
                 result.add(text)
     return sorted(result)
+
+
+def search_recorded_targets(db: Session, keyword: str = "", limit: int = DEFAULT_RECORDED_TARGET_LIMIT) -> list[dict]:
+    return recorded_target_search(
+        db,
+        select(DiscoveryWorkbench.target_name, DiscoveryWorkbench.target_codes),
+        keyword,
+        limit,
+    )
 
 
 def get_options(db: Session) -> dict[str, Any]:
@@ -779,13 +684,9 @@ def get_options(db: Session) -> dict[str, Any]:
     return {
         "screening_methods": list(SCREENING_METHOD_OPTIONS),
         "statuses": list(PLAN_STATUS_OPTIONS),
-        "priorities": list(PRIORITY_ORDER),
-        "targets": target_select_options(
-            (pairs := db.execute(
-                select(DiscoveryWorkbench.target_name, DiscoveryWorkbench.target_codes)
-            ).all()),
-            catalog_names_for_pairs(db, pairs),
-        ),
+        "priorities": list(PRIORITY_OPTIONS),
+        "mouse_strain_categories": list(MOUSE_STRAIN_CATEGORY_OPTIONS),
+        "mouse_strains": list(MOUSE_STRAIN_OPTIONS),
         "pms": values(DiscoveryWorkbench.pm),
         "owners": values(DiscoveryWorkbench.owner),
         "immune_owners": values(DiscoveryWorkbench.immune_owner),

@@ -1,7 +1,10 @@
+import logging
 import threading
+from collections.abc import Callable
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from db.session import SessionLocal
+from jobs.lock import job_lock
 from jobs.discovery_status import discovery_auto_update_status_job
 from jobs.employee_profile_sync import employee_profile_sync_job
 from jobs.labillion_status_sync import labillion_status_sync_job
@@ -11,6 +14,8 @@ from jobs.target_master_sync import target_master_sync_job
 from modules.system.audit_context import audit_scope
 from modules.system.features import build_job_trigger, get_job_schedule
 
+logger = logging.getLogger(__name__)
+MANUAL_LOCK_WAIT_SECONDS = 10
 _scheduler: BackgroundScheduler | None = None
 SCHEDULED_JOBS = [
     {
@@ -143,29 +148,48 @@ def run_scheduled_job_now(job_code: str) -> None:
     func = job.get("func")
     if not callable(func):
         raise ValueError("定时任务未配置执行函数")
+    # 由后台线程取锁再回报结果，避免先查再取之间被别的进程抢走、接口却报成功
+    locked = threading.Event()
+    outcome: list[bool] = []
+
+    def on_lock(acquired: bool) -> None:
+        outcome.append(acquired)
+        locked.set()
+
     thread = threading.Thread(
         target=_run_job_with_audit,
         args=(job,),
+        kwargs={"on_lock": on_lock},
         name=f"manual-{job['id']}",
         daemon=True,
     )
     thread.start()
+    if not locked.wait(MANUAL_LOCK_WAIT_SECONDS):
+        raise ValueError("任务启动超时，请稍后查看执行记录")
+    if not outcome[0]:
+        raise ValueError("该任务正在运行，请稍后再试")
 
 
-def _run_job_with_audit(job: dict) -> None:
+def _run_job_with_audit(job: dict, on_lock: Callable[[bool], None] | None = None) -> None:
     func = job.get("func")
     if not callable(func):
         raise ValueError("定时任务未配置执行函数")
     action = str(job.get("feature_code") or job.get("id") or "job.unknown")
     name = str(job.get("name") or action)
-    with audit_scope(
-        action,
-        name,
-        source="job",
-        operation_type="update",
-        resource=job.get("resource"),
-    ):
-        func()
+    with job_lock(str(job.get("id") or action)) as acquired:
+        if on_lock:
+            on_lock(acquired)
+        if not acquired:
+            logger.warning("job %s skipped: already running in another process", action)
+            return
+        with audit_scope(
+            action,
+            name,
+            source="job",
+            operation_type="update",
+            resource=job.get("resource"),
+        ):
+            func()
 
 
 def _register_job(scheduler: BackgroundScheduler, job: dict, schedule: dict) -> None:

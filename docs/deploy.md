@@ -26,11 +26,15 @@ Windows： 无需路径约定，固定环境为 local。
 | 变量 | 含义 |
 |------|------|
 | `PORT` / `HOST` | 后端监听端口与地址 |
-| `DATABASE_URL` | MySQL 连接串 |
-| `SECRET_KEY` | JWT 等签名密钥 |
-| `CORS_ORIGINS` | 允许的前端来源（逗号分隔） |
+| `DATABASE_URL` | MySQL 连接串；prod 仍为默认值时拒绝启动 |
+| `SECRET_KEY` | JWT 等签名密钥；prod 必须改掉默认值且不短于 32 位，否则拒绝启动 |
+| `CORS_ORIGINS` | 允许的前端来源（逗号分隔）。经 Nginx 同域访问时可留空；不能填 `*` |
+| `DEBUG` | 只在本地用；prod 开启会拒绝启动 |
 | `REPOSITORY_ROOT` | 附件/日志根目录，默认 `repository` |
+| `UPLOAD_MAX_MB` | 效价文件等页面上传的单文件上限，默认 50；文库结果文件另有固定上限（单文件 50MB、单次 500MB）。Nginx `client_max_body_size` 需不小于实际单次请求大小 |
 | `ENABLE_SCHEDULER` | 是否强制开定时任务；prod 环境即使为 false 也会开 |
+| `LABILLION_CALLBACK_TOKEN` / `LABILLION_CALLBACK_IPS` | 镁伽回调校验（可选）。令牌放请求头 `X-Callback-Token`（不收 URL 参数，免得进访问日志），IP 英文逗号分隔；留空不校验，两项都配则都要满足 |
+| `ORDER_SYNC_TOKEN` / `ORDER_SYNC_IPS` / `ORDER_SYNC_MAX_MB` | 工单数据回传 `POST /api/order-experiment/sync` 的同类校验与 JSON 文件上限（默认 20MB） |
 | `YUNZHIJIA_*` | 云之家（可选） |
 | `CELL_DB_URL` / `EMPLOYEE_DB_URL` / `ONE_DB_URL` | 外部只读库（可选）；分别提供细胞库存、员工与靶点主数据、One 合成订单与交付进度 |
 | `LABILLION_BASE_URL` / `LABILLION_USERNAME` / `LABILLION_PASSWORD` / `LABILLION_PLATFORM_ID` | 镁伽 Labillion（可选；URL 留空则不推送。`PLATFORM_ID` 是登录后请求头 `Platform`） |
@@ -137,7 +141,19 @@ sudo apt install -y libreoffice
 | `labillion_status_sync` | 02:00 | 镁伽非终态流式工单状态批量同步；未配 `LABILLION_BASE_URL` 时 skip 并记日志 |
 | `discovery_synthesis_order_sync` | 每隔 1 小时 | One 合成订单与交付进度同步；未配 `ONE_DB_URL` 时 skip 并记日志 |
 
+每个任务（含「立即执行」）运行前先取 MySQL `GET_LOCK`，取不到就跳过并记日志，所以即使误开了多个后端进程也不会重复执行；但仍建议只让一个进程开调度。
+
 应用日志：`repository/logs/app.log`。`start_dev.sh` 另写 `repository/logs/backend.nohup.log`。调度开关/时间见 `sys_feature_flag` 中 `job.*`（**改完即写库，重启后端生效**）。系统功能页可对任一 job **立即执行**（不依赖 scheduler 是否启动），见 [auth-permissions.md](./auth-permissions.md)。
+
+## 生产上线检查
+
+- `config/prod/vita_server.env`：`DATABASE_URL`、`SECRET_KEY`（≥32 位随机串）已填；`DEBUG` 未开；`CORS_ORIGINS` 只含实际前端地址或留空。启动日志若提示配置问题，按提示补齐后再启动。
+- 调度：只在一个后端进程开（prod 默认开，test/local 默认关）。
+- 外部接口：镁伽回调、工单数据回传按需配置令牌或 IP 白名单；经 Nginx 转发时后端看到的来源 IP 来自 `X-Forwarded-For`（样例配置已带）。
+- 库结构变更（2026-11-02 已在正式库执行）：其他环境按 [db-upgrade-2026-11.sql](./db-upgrade-2026-11.sql) 逐段补齐，执行后结构与 `vita-database.sql` 一致。内容是合成单新增三列、12 个日期列改 `DATE`、索引精简与统一命名（普通索引 `idx_<表>_<列>`，唯一键 `uk_<表>_<列>`）、合成单检测状态回填。
+  - 日期列改完后旧版后端写空串会被拒，改列后尽快上新版。
+  - 只是名字不同的索引用 `RENAME INDEX`，不要按名 `DROP` 后靠建表语句补，`create_all` 不会给已存在的表加索引。
+- 上传：Nginx `client_max_body_size` 不小于 `UPLOAD_MAX_MB`。文库批量上传一次请求后端最多收 500MB，样例 Nginx 配的是 200m，超过 200MB 的一批会被 Nginx 拒掉（413）；需要更大时把 Nginx 调到 500m。
 
 ## 验收清单
 

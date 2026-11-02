@@ -1,19 +1,27 @@
 <template>
   <div class="app-container" :class="{ 'is-list-table-locked': listTableLocked }">
     <AdvancedOpsBar v-model="showAdvancedOps">
-      <!-- 第 1 行（8 格）：合成订单 4 项 + 实验验证结果与说明 4 项 -->
+      <!-- 第 1 行（8 格）：合成与批次属性 5 项 + 3 项文本说明（检测备注/未出原因/流式说明） -->
       <el-input
-        v-model="listQuery.order_no"
+        v-model="listQuery.batch_label"
         clearable
-        placeholder="订单号"
-        title="多个订单号用逗号、空格或换行分隔，按完整单号查找；只填一个时按包含查找"
+        v-bind="headerTop('batch_label', '工单批次')"
+        title="多个工单批次用逗号、空格或换行分隔，按完整批次查找；只填一个时按包含查找"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <el-input
+        v-model="listQuery.synthesis_code"
+        clearable
+        v-bind="headerTop('synthesis_code', '送测转码')"
+        title="多个送测转码用逗号、空格或换行分隔，按完整转码查找；只填一个时按包含查找"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
       <ListFilterSelect
         v-model="listQuery.synthetic_corp"
         clearable
-        placeholder="合成公司"
+        v-bind="headerTop('synthetic_corp', '合成公司')"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.synthetic_corps" :key="item" :label="item" :value="item" />
@@ -21,7 +29,7 @@
       <ListFilterSelect
         v-model="listQuery.selection_method"
         clearable
-        placeholder="挑选方式"
+        v-bind="headerTop('selection_method', '挑选方式')"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.selection_methods" :key="item" :label="item" :value="item" />
@@ -29,56 +37,48 @@
       <ListFilterSelect
         v-model="listQuery.supply_mode"
         clearable
-        placeholder="供应方式"
+        v-bind="headerTop('supply_mode', '供应方式')"
         @change="handleFilter"
       >
         <el-option v-for="item in supplyModeOptions" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
-      <ListFilterSelect
-        v-model="listQuery.status"
-        clearable
-        placeholder="状态"
-        @change="handleFilter"
-      >
-        <el-option v-for="item in statusOptions" :key="item" :label="item" :value="item" />
-      </ListFilterSelect>
       <el-input
         v-model="listQuery.remark"
         clearable
-        placeholder="备注"
+        v-bind="headerTop('remark', '检测备注')"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
       <el-input
         v-model="listQuery.report_reason"
         clearable
-        placeholder="未出原因"
+        v-bind="headerTop('report_reason', '未出原因')"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
       <el-input
         v-model="listQuery.flow_note"
         clearable
-        placeholder="流式说明"
+        v-bind="headerTop('flow_note', '流式说明')"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
 
-      <!-- 第 2 行（8 格）：项目与队列属性 5 项 + 3 个验证日期区间（与上方备注/未出原因/流式说明纵向一一对应） -->
+      <!-- 第 2 行（8 格）：项目与队列属性 5 项 + 3 个验证日期区间（与上方检测备注/未出原因/流式说明纵向对齐） -->
       <el-input
         v-model="listQuery.project_code"
         clearable
-        placeholder="项目编号"
+        v-bind="headerTop('project_code', '项目编号')"
         title="多个项目编号或实验号用逗号、空格或换行分隔，按完整编号查找；只填一个时按包含查找"
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
       <div class="ops-user-select">
-        <SerumUserSelect
+        <UserSelect
           v-model="listQuery.pm"
           multi-gesture
           :options="optionLists.pms"
-          placeholder="PM"
+          v-bind="headerTop('pm', 'PM')"
           clearable
           @change="handleFilter"
         />
@@ -86,32 +86,32 @@
       <ListFilterSelect
         v-model="listQuery.study_type"
         clearable
-        placeholder="课题类型"
+        v-bind="headerTop('study_type', '课题类型')"
         @change="handleFilter"
       >
         <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
       <ListFilterSelect
-        v-model="listQuery.order_kind"
-        clearable
-        placeholder="订单性质"
-        @change="handleFilter"
-      >
-        <el-option v-for="item in orderKindOptions" :key="item" :label="item" :value="item" />
-      </ListFilterSelect>
-      <ListFilterSelect
         v-model="listQuery.priority"
         clearable
-        placeholder="优先级"
+        v-bind="headerTop('priority', '优先级')"
         @change="handleFilter"
       >
         <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.status"
+        clearable
+        v-bind="headerTop('status', '状态')"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in statusFilterOptions" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
       <el-date-picker
         v-model="arrivalDateRange"
         type="daterange"
         range-separator="至"
-        start-placeholder="到货起始"
+        v-bind="headerTop('arrival_date', '到货起始', 'startPlaceholder')"
         end-placeholder="到货截止"
         value-format="YYYY-MM-DD"
         @change="handleFilter"
@@ -120,7 +120,7 @@
         v-model="affinityDateRange"
         type="daterange"
         range-separator="至"
-        start-placeholder="亲和力起始"
+        v-bind="headerTop('affinity_date', '亲和力起始', 'startPlaceholder')"
         end-placeholder="亲和力截止"
         value-format="YYYY-MM-DD"
         @change="handleFilter"
@@ -129,17 +129,25 @@
         v-model="flowDateRange"
         type="daterange"
         range-separator="至"
-        start-placeholder="流式起始"
+        v-bind="headerTop('flow_date', '流式起始', 'startPlaceholder')"
         end-placeholder="流式截止"
         value-format="YYYY-MM-DD"
         @change="handleFilter"
       />
 
-      <!-- 第 3 行（2 格 + 操作按钮）：序列改造专属筛选项 -->
+      <!-- 第 3 行（3 格 + 操作按钮）：订单性质与序列改造筛选项 -->
+      <ListFilterSelect
+        v-model="listQuery.order_kind"
+        clearable
+        v-bind="headerTop('order_kind', '订单性质')"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in orderKindOptions" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
       <ListFilterSelect
         v-model="listQuery.eng_type"
         clearable
-        placeholder="改造类型"
+        v-bind="headerTop('eng_type', '改造类型')"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.eng_types" :key="item" :label="item" :value="item" />
@@ -147,7 +155,7 @@
       <ListFilterSelect
         v-model="listQuery.eng_method"
         clearable
-        placeholder="改造方式"
+        v-bind="headerTop('eng_method', '改造方式')"
         @change="handleFilter"
       >
         <el-option v-for="item in optionLists.eng_methods" :key="item" :label="item" :value="item" />
@@ -210,14 +218,13 @@
           class="lifecycle-item"
           :class="[`stage-${item.tone}`, { 'is-active': activeViewGroup === item.key }]"
           :aria-pressed="activeViewGroup === item.key"
-          :title="lifecycleTitle(item)"
+          :title="item.hint"
           @click="handleViewGroup(item.key)"
-          @contextmenu="onLifecycleContextMenu(item, $event)"
         >
           <span class="stage-marker">{{ item.step }}</span>
           <span class="stage-copy">
             <strong>{{ item.label }}</strong>
-            <small>{{ lifecycleHint(item) }}</small>
+            <small>{{ item.hint }}</small>
           </span>
           <span class="stage-count">{{ stats[item.valueKey] || 0 }}</span>
         </button>
@@ -228,48 +235,24 @@
       <div class="data-toolbar list-filter-controls">
         <div class="filter-strip">
           <el-input
-            v-model="listQuery.batch_label"
+            v-model="listQuery.order_no"
             class="filter-select"
-            placeholder="工单批次"
-            title="多个工单批次用逗号、空格或换行分隔，按完整批次查找；只填一个时按包含查找"
+            v-bind="headerTop('order_no', '订单号')"
+            title="多个订单号用逗号、空格或换行分隔，按完整单号查找；只填一个时按包含查找"
             clearable
             @keyup.enter="handleFilter"
             @clear="handleFilter"
           />
-          <el-input
-            v-model="listQuery.synthesis_code"
-            class="filter-select"
-            placeholder="送测转码"
-            title="多个送测转码用逗号、空格或换行分隔，按完整转码查找；只填一个时按包含查找"
-            clearable
-            @keyup.enter="handleFilter"
-            @clear="handleFilter"
-          />
-          <ListFilterSelect
+          <WorkbenchTargetFilter
             v-model="listQuery.target_name"
             class="filter-select"
-            clearable
-            filterable
-            placeholder="靶点"
-            :filter-method="setTargetFilterQuery"
-            @clear="setTargetFilterQuery('')"
+            v-bind="headerTop('target_name', '靶点')"
+            scope="synthesisProgress"
             @change="handleFilter"
-          >
-            <el-option
-              v-for="item in filteredTargetOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            >
-              <span>{{ item.label }}</span>
-              <span v-if="targetOptionExtra(item)" class="target-option-code">
-                {{ targetOptionExtra(item) }}
-              </span>
-            </el-option>
-          </ListFilterSelect>
+          />
           <ListFilterSelect
             v-model="listQuery.target_type"
-            placeholder="靶点类型"
+            v-bind="headerTop('target_type', '靶点类型')"
             clearable
             class="filter-select"
             @change="handleFilter"
@@ -279,7 +262,7 @@
           </ListFilterSelect>
           <ListFilterSelect
             v-model="listQuery.mouse_strain"
-            placeholder="小鼠品系"
+            v-bind="headerTop('mouse_strain', '小鼠品系')"
             clearable
             class="filter-select"
             @change="handleFilter"
@@ -287,11 +270,11 @@
             <el-option v-for="item in mouseStrainOptions" :key="item" :label="item" :value="item" />
           </ListFilterSelect>
           <div class="filter-select">
-            <SerumUserSelect
+            <UserSelect
               v-model="listQuery.owner"
               multi-gesture
               :options="optionLists.owners"
-              placeholder="负责人"
+              v-bind="headerTop('owner', '负责人')"
               title="左键单选，右键追加"
               clearable
               @change="handleFilter"
@@ -299,7 +282,7 @@
           </div>
           <ListFilterSelect
             v-model="listQuery.affinity_result"
-            placeholder="亲和力结果"
+            v-bind="headerTop('affinity_result', '亲和力结果')"
             clearable
             class="filter-select"
             @change="handleFilter"
@@ -311,13 +294,14 @@
             class="harvest-range"
             type="daterange"
             range-separator="至"
-            start-placeholder="合成起始"
+            v-bind="headerTop('synthetic_date', '合成起始', 'startPlaceholder')"
             end-placeholder="合成截止"
             value-format="YYYY-MM-DD"
             @change="handleFilter"
           />
         </div>
         <div class="data-view-controls list-filter-actions">
+          <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
           <button
             type="button"
             class="list-advanced-trigger"
@@ -330,7 +314,7 @@
           <el-button
             class="list-filter-action-button"
             type="primary"
-            title="右键清空筛选"
+            title="右键清空筛选与表头排序"
             @click="handleFilter"
             @contextmenu.prevent="resetFilters"
           >
@@ -353,7 +337,7 @@
           ref="workbenchTable"
           :height="listTableHeight"
           v-loading="loading"
-          storage-key="discoverySynthesisViewPrefs.v7"
+          :storage-key="viewPrefsStorageKey"
           :columns="workbenchColumns"
           :data="list"
           border
@@ -367,6 +351,8 @@
           row-key="id"
           :row-class-name="workbenchRowClassName"
           :cell-class-name="workbenchCellClassName"
+          :header-menu-states="headerMenuStates"
+          @header-menu="openHeaderMenu"
           @row-click="onWorkbenchRowClick"
           @row-contextmenu="onWorkbenchRowContextMenu"
           @reorder="scheduleSortable"
@@ -428,19 +414,20 @@
             </el-tag>
           </template>
           <template #status="{ row }">
+            <SynthesisAssayStatusEditor
+              v-if="assayStatusBadges(row).length"
+              :badges="assayStatusBadges(row)"
+              :editable="canEditAssayStatuses(row)"
+              compact
+              @change="(change) => updateAssayStatus(row, change)"
+            />
             <WorkbenchStatusEditor
+              v-else
               :value="row.status || '待下单'"
               :options="statusOptions"
               :type="statusTone(row.status)"
               :editable="canEditField(row, 'status')"
               @change="(val) => updateOrderStatus(row, val)"
-            />
-          </template>
-          <template #header-target_name>
-            <WorkbenchColorFilterHeader
-              v-model="listQuery.target_color"
-              label="靶点"
-              @change="handleFilter"
             />
           </template>
           <template #target_name="{ row }">
@@ -459,17 +446,6 @@
                 :title="badge.title"
               >{{ badge.text }}</i>
             </span>
-          </template>
-          <template #header-target_type>
-            <button
-              type="button"
-              class="sort-header-btn"
-              :class="{ 'is-active': Boolean(listQuery.target_type) }"
-              :title="targetTypeHeaderTitle()"
-              @click.stop="cycleTargetTypeFilter"
-            >
-              靶点类型
-            </button>
           </template>
           <template #target_type="{ row }">
             <WorkbenchStatusEditor
@@ -494,50 +470,6 @@
           </template>
           <template #target_codes="{ row }">
             {{ formatCodesText(row.target_codes) }}
-          </template>
-          <template #header-synthetic_date>
-            <WorkbenchDateHeader
-              label="合成日期"
-              :mark="dateSortMark('synthetic_date')"
-              :sorted="listQuery.sort_field === 'synthetic_date'"
-              :empty-filtered="isDateEmptyFiltered('synthetic_date')"
-              :title="dateSortTitle('synthetic_date')"
-              @sort="cycleDateSort('synthetic_date')"
-              @toggle-empty="toggleEmptyDate('synthetic_date')"
-            />
-          </template>
-          <template #header-arrival_date>
-            <WorkbenchDateHeader
-              label="到货日期"
-              :mark="dateSortMark('arrival_date')"
-              :sorted="listQuery.sort_field === 'arrival_date'"
-              :empty-filtered="isDateEmptyFiltered('arrival_date')"
-              :title="dateSortTitle('arrival_date')"
-              @sort="cycleDateSort('arrival_date')"
-              @toggle-empty="toggleEmptyDate('arrival_date')"
-            />
-          </template>
-          <template #header-flow_date>
-            <WorkbenchDateHeader
-              label="流式日期"
-              :mark="dateSortMark('flow_date')"
-              :sorted="listQuery.sort_field === 'flow_date'"
-              :empty-filtered="isDateEmptyFiltered('flow_date')"
-              :title="dateSortTitle('flow_date')"
-              @sort="cycleDateSort('flow_date')"
-              @toggle-empty="toggleEmptyDate('flow_date')"
-            />
-          </template>
-          <template #header-affinity_date>
-            <WorkbenchDateHeader
-              label="亲和力日期"
-              :mark="dateSortMark('affinity_date')"
-              :sorted="listQuery.sort_field === 'affinity_date'"
-              :empty-filtered="isDateEmptyFiltered('affinity_date')"
-              :title="dateSortTitle('affinity_date')"
-              @sort="cycleDateSort('affinity_date')"
-              @toggle-empty="toggleEmptyDate('affinity_date')"
-            />
           </template>
           <template #actions="{ row }">
             <SynthesisRowActions
@@ -564,6 +496,7 @@
           @keydown.capture="onSheetKeydownCapture"
           @compositionend.capture="onSheetCompositionEnd"
           @mousedown="onSheetWrapMouseDown"
+          @click="onSheetHeaderMenuClick"
           @mouseover="onSheetWrapMouseOver"
           @contextmenu="onSheetWrapContextMenu"
           @selectstart="onSheetSelectStart"
@@ -604,14 +537,8 @@
                   :edit-render="sheetCustomEditRender"
                   :formatter="sheetFormatter(column)"
                 >
-                  <template v-if="column.key === 'target_name'" #header>
-                    <WorkbenchColorFilterHeader
-                      v-model="listQuery.target_color"
-                      :label="column.label"
-                      :batch-count="selectedSheetRowsForColor().length"
-                      @change="handleFilter"
-                      @batch-mark="applyBatchTargetColor"
-                    />
+                  <template v-if="headerMenuStates[column.key]" #header>
+                    <WorkbenchHeaderLabel :label="column.label" v-bind="headerMenuStates[column.key]" />
                   </template>
                   <template v-if="column.key === 'target_name'" #default="{ row }">
                     <WorkbenchColorMark
@@ -657,6 +584,9 @@
                   :edit-render="sheetCustomEditRender"
                   :formatter="sheetFormatter(column)"
                 >
+                  <template v-if="headerMenuStates[column.key]" #header>
+                    <WorkbenchHeaderLabel :label="column.label" v-bind="headerMenuStates[column.key]" />
+                  </template>
                   <template #edit="{ row }">
                     <ListFilterSelect
                       v-if="isCsvField(column.key) && sheetEditSource === 'dblclick'"
@@ -665,11 +595,12 @@
                       filterable
                       allow-create
                       default-first-option
+                      ref="sheetSelectEditor"
                       class="sheet-category-select"
                       popper-class="vxe-table--ignore-clear"
                       clearable
                       @change="onCsvFieldChange(row, column.key, $event)"
-                      @visible-change="onCategorySheetVisible"
+                      @visible-change="onSheetSelectVisible"
                     >
                       <el-option
                         v-for="item in csvFieldOptions(column.key)"
@@ -713,7 +644,11 @@
                   :min-width="column.minWidth || column.width || 120"
                   :edit-render="sheetEditRender(column)"
                   :formatter="sheetFormatter(column)"
-                />
+                >
+                  <template v-if="headerMenuStates[column.key]" #header>
+                    <WorkbenchHeaderLabel :label="column.label" v-bind="headerMenuStates[column.key]" />
+                  </template>
+                </vxe-column>
               </template>
               <vxe-column title="操作" width="240" fixed="right" align="center">
                 <template #default="{ row }">
@@ -748,6 +683,31 @@
         />
       </div>
     </el-card>
+
+    <WorkbenchHeaderMenu v-bind="headerMenuBind">
+      <template v-if="headerMenuColumn?.key === 'target_name' && isExcelMode && selectedSheetRowsForColor().length > 1" #extra>
+        <div class="wb-hm-sec">
+          <div class="wb-hm-sec-hd">批量标记选中 {{ selectedSheetRowsForColor().length }} 行</div>
+          <div class="wb-hm-colors">
+            <button
+              v-for="item in cellColorOptions"
+              :key="item.key"
+              type="button"
+              class="wb-hm-color"
+              :title="item.label"
+              :style="{ '--swatch': item.swatch }"
+              @click="applyBatchTargetColor(item.key); closeHeaderMenu()"
+            />
+            <button
+              type="button"
+              class="wb-hm-color is-none"
+              title="清除选中行颜色"
+              @click="applyBatchTargetColor(null); closeHeaderMenu()"
+            />
+          </div>
+        </div>
+      </template>
+    </WorkbenchHeaderMenu>
 
     <el-drawer
       v-model="drawerVisible"
@@ -839,7 +799,7 @@
                     placeholder="选择日期"
                     style="width: 100%;"
                     :disabled="!canEditField(editingRow, field.key)"
-                    @change="onDrawerDateChange(editingRow, field.key)"
+                    @change="persistRow(editingRow, field.key)"
                   />
                   <WorkbenchTargetSelect
                     v-else-if="field.type === 'target'"
@@ -855,13 +815,13 @@
                     disabled
                     placeholder="自动带出"
                   />
-                  <SerumUserSelect
+                  <UserSelect
                     v-else-if="field.type === 'user'"
                     v-model="editingRow[field.key]"
                     :options="usedUserOptions(field)"
                     :placeholder="`选择${field.label}`"
                     :disabled="!canEditField(editingRow, field.key)"
-                    :clearable="field.key !== 'owner' || canFullEdit"
+                    clearable
                     @change="persistRow(editingRow, field.key)"
                   />
                   <ListFilterSelect
@@ -890,6 +850,12 @@
                       :value="item"
                     />
                   </ListFilterSelect>
+                  <SynthesisAssayStatusEditor
+                    v-else-if="field.key === 'status' && assayStatusBadges(editingRow).length"
+                    :badges="assayStatusBadges(editingRow)"
+                    :editable="canEditAssayStatuses(editingRow)"
+                    @change="(change) => updateAssayStatus(editingRow, change)"
+                  />
                   <el-select
                     v-else-if="field.type === 'select' || field.type === 'corp_select'"
                     v-model="editingRow[field.key]"
@@ -1024,35 +990,38 @@ import 'vxe-table/styles/cssvar.scss'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import {
+  CELL_COLOR_OPTIONS,
   cellColorClass,
   cleanFieldText,
   coerceOptionalNonnegInt,
   coerceRequiredPositiveInt,
   coerceWorkbenchViewMode,
   EXCEL_VIEW,
-  readClipboardGrid,
-  searchWorkbenchTargets,
   splitTargetNames,
   syncDrawerControlTooltip,
-  targetNameFromCodes,
   uniqueTargetCodes,
   WORKBENCH_VIEW,
-  WorkbenchColorFilterHeader,
   WorkbenchColorMark,
   WorkbenchDataTable,
-  WorkbenchDateHeader,
+  WorkbenchHeaderFilterChip,
+  WorkbenchHeaderLabel,
+  WorkbenchHeaderMenu,
   WorkbenchInlineSelect,
+  WorkbenchTargetFilter,
   workbenchExcelMixin,
+  workbenchTargetMixin,
+  workbenchHeaderMenuMixin,
+  WorkbenchStatusEditor,
+  WorkbenchTargetSelect,
+  WorkbenchViewToggle,
 } from '#/components/workbench'
-import WorkbenchStatusEditor from '#/components/workbench/WorkbenchStatusEditor.vue'
-import WorkbenchTargetSelect from '#/components/workbench/WorkbenchTargetSelect.vue'
-import WorkbenchViewToggle from '#/components/workbench/WorkbenchViewToggle.vue'
 import {
   adoptDiscoverySynthesisSource,
   checkRemoteDiscoverySynthesis,
   claimDiscoverySynthesis,
   deleteDiscoverySynthesis,
   exportDiscoverySynthesisList,
+  fetchDiscoverySynthesisColumnValues,
   fetchDiscoverySynthesisList,
   fetchDiscoverySynthesisOptions,
   reorderDiscoverySynthesis,
@@ -1075,17 +1044,16 @@ import {
   canonicalizeWorkbenchPriority,
   getTiterPriorityTone,
 } from '#/utils/serumProjectStatus'
-import { loadSerumUserOptions, uniqueNames } from '#/utils/serumUserOptions'
+import { applyOptionLists } from '#/utils/optionLists'
+import { uniqueNames } from '#/utils/userOptions'
+import { WORKBENCH_VIEW_PREFS_KEYS } from '#/constants/storageKeys'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
-import {
-  filterTargetOptions,
-  normalizeTargetOptions,
-  targetOptionExtra as targetOptionHint,
-} from '#/utils/targetFilterOptions'
-import SerumUserSelect from '../../Serum/shared/SerumUserSelect.vue'
+import UserSelect from '#/components/UserSelect.vue'
+import SynthesisAssayStatusEditor from './SynthesisAssayStatusEditor.vue'
 import SynthesisRowActions from './SynthesisRowActions.vue'
 import {
   AFFINITY_RESULT_OPTIONS,
+  AFFINITY_STATUS_OPTIONS,
   ASSAY_EDIT_FIELD_KEYS,
   BASE_EDITOR_SECTIONS,
   BREAK_FIELDS,
@@ -1098,16 +1066,18 @@ import {
   DEFAULT_TARGET_TYPE_OPTIONS,
   EDITABLE_FIELDS,
   ENGINEERING_EDITOR_SECTION,
+  FLOW_STATUS_OPTIONS,
+  HEADER_MENU_COLUMNS,
   INT_COUNT_KEYS,
   MOUSE_STRAIN_OPTIONS,
   ORDER_KIND_OPTIONS,
   PM_EDIT_FIELD_KEYS,
   PRIORITY_OPTIONS,
-  QUEUE_KEYS,
   QUEUE_TERMINAL_STATUSES,
   SHEET_COLUMN_ORDER,
   SHEET_COLUMNS,
   SHEET_HEADER_ALIASES,
+  STATUS_FILTER_OPTIONS,
   STATUS_OPTIONS,
   STATUS_VIEWS,
   STRING_MAX,
@@ -1118,6 +1088,23 @@ import {
 } from './synthesisColumns'
 
 let lastViewMode = WORKBENCH_VIEW
+
+const BADGE_TEXT = Object.freeze({
+  亲和力待检测: '待测',
+  亲和力检测中: '测中',
+  亲和力已完成: '完成',
+  流式待检测: '待测',
+  流式已完成: '完成',
+})
+const badgeOptions = (values) =>
+  Object.freeze(values.filter((value) => BADGE_TEXT[value]).map((value) => ({ value, label: BADGE_TEXT[value] })))
+const AFFINITY_BADGE_OPTIONS = badgeOptions(AFFINITY_STATUS_OPTIONS)
+const FLOW_BADGE_OPTIONS = badgeOptions(FLOW_STATUS_OPTIONS)
+function badgeTone(status) {
+  if (status?.endsWith('已完成')) return 'done'
+  if (status?.endsWith('检测中')) return 'run'
+  return 'wait'
+}
 
 function splitCsv(value) {
   return String(value || '')
@@ -1155,7 +1142,6 @@ function emptyQuery() {
     synthesis_code: '',
     target_name: '',
     target_type: '',
-    target_color: '',
     mouse_strain: '',
     selection_method: '',
     affinity_result: '',
@@ -1176,7 +1162,6 @@ function emptyQuery() {
     remark: '',
     view_group: '',
     quick_filter: '',
-    empty_date: '',
     sort_field: '',
     sort_dir: '',
   }
@@ -1184,7 +1169,7 @@ function emptyQuery() {
 
 export default {
   name: 'DiscoverySynthesisProgress',
-  mixins: [workbenchExcelMixin, listTableLockMixin],
+  mixins: [workbenchExcelMixin, workbenchTargetMixin, workbenchHeaderMenuMixin, listTableLockMixin],
   components: {
     AdvancedOpsBar,
     ElAutocomplete,
@@ -1202,19 +1187,22 @@ export default {
     ElTag,
     ListFilterSelect,
     Search,
-    SerumUserSelect,
+    UserSelect,
+    SynthesisAssayStatusEditor,
     SynthesisRowActions,
     Tools,
     VxeColumn,
     VxeInput,
     VxeSelect,
     VxeTable,
-    WorkbenchColorFilterHeader,
     WorkbenchColorMark,
     WorkbenchDataTable,
-    WorkbenchDateHeader,
+    WorkbenchHeaderFilterChip,
+    WorkbenchHeaderLabel,
+    WorkbenchHeaderMenu,
     WorkbenchInlineSelect,
     WorkbenchStatusEditor,
+    WorkbenchTargetFilter,
     WorkbenchTargetSelect,
     WorkbenchViewToggle,
   },
@@ -1224,6 +1212,7 @@ export default {
   },
   data() {
     return {
+      viewPrefsStorageKey: WORKBENCH_VIEW_PREFS_KEYS.synthesis,
       loading: false,
       syncingNow: false,
       list: [],
@@ -1250,7 +1239,6 @@ export default {
       affinityDateRange: [],
       listQuery: emptyQuery(),
       optionLists: {
-        targets: [],
         owners: [],
         pms: [],
         synthetic_corps: [...DEFAULT_CORP_OPTIONS],
@@ -1260,6 +1248,7 @@ export default {
         eng_methods: [...DEFAULT_ENG_METHOD_OPTIONS],
       },
       statusOptions: [...STATUS_OPTIONS],
+      statusFilterOptions: [...STATUS_FILTER_OPTIONS],
       priorityOptions: [...PRIORITY_OPTIONS],
       orderKindOptions: [...ORDER_KIND_OPTIONS],
       supplyModeOptions: [...SUPPLY_MODE_OPTIONS],
@@ -1269,17 +1258,17 @@ export default {
       statusViews: STATUS_VIEWS,
       sheetColumns: SHEET_COLUMN_ORDER.load(),
       workbenchColumns: WORKBENCH_COLUMNS,
+      headerMenuColumns: HEADER_MENU_COLUMNS,
+      cellColorOptions: CELL_COLOR_OPTIONS,
       pendingDrawerSaves: new Set(),
       rowBaselines: new Map(),
       remoteDuplicatesById: {},
       remoteCandidatesById: {},
+      remoteUnavailableWarned: false,
       listRequestToken: 0,
       listLoaded: false,
       tabDataFetchedAt: 0,
       allUserOptions: [],
-      targetOptions: [],
-      targetRequestToken: 0,
-      targetFilterQuery: '',
     }
   },
   computed: {
@@ -1312,9 +1301,6 @@ export default {
     activeViewGroup() {
       return this.listQuery.view_group || ''
     },
-    assayStatusExact() {
-      return this.listQuery.view_group === 'assay' && this.listQuery.status === '亲和力完成'
-    },
     quickFilterTitle() {
       if (this.listQuery.quick_filter === 'has_issue') {
         return '当前只看填写了检测说明或异常的批次。右键取消；左键改看无人问津待认领。'
@@ -1323,9 +1309,6 @@ export default {
         return '当前只看负责人为无人问津的待认领批次。再点取消；右键改看有检测说明或异常的批次。'
       }
       return '左键只看无人问津待认领；右键只看有检测说明或异常的批次。'
-    },
-    filteredTargetOptions() {
-      return filterTargetOptions(this.optionLists.targets, this.targetFilterQuery)
     },
     editingRow() {
       return this.editingRowData
@@ -1372,7 +1355,8 @@ export default {
     },
     hasAdvancedFilters() {
       return Boolean(
-        this.listQuery.order_no ||
+        this.listQuery.batch_label ||
+          this.listQuery.synthesis_code ||
           this.listQuery.project_code ||
           this.listQuery.pm ||
           this.listQuery.study_type ||
@@ -1395,30 +1379,16 @@ export default {
     hasSecondaryFilters() {
       return Boolean(
         this.listQuery.keyword ||
-          this.listQuery.batch_label ||
-          this.listQuery.synthesis_code ||
+          this.listQuery.order_no ||
           this.listQuery.target_name ||
           this.listQuery.target_type ||
-          this.listQuery.target_color ||
           this.listQuery.mouse_strain ||
           this.listQuery.owner ||
           this.listQuery.affinity_result ||
-          this.listQuery.empty_date ||
           this.syntheticDateRange?.length ||
+          this.headerFiltering ||
           this.hasAdvancedFilters,
       )
-    },
-    sheetTargetSelectOptions() {
-      return this.targetOptions.map((item) => ({
-        label: `${item.name}（${item.snum}）`,
-        value: item.snum,
-      }))
-    },
-    sheetTargetRemoteConfig() {
-      return Object.freeze({
-        autoLoad: true,
-        queryMethod: this.querySheetTargetOptions,
-      })
     },
     sheetChoiceOptionsMap() {
       const map = Object.create(null)
@@ -1547,10 +1517,8 @@ export default {
         if (field === 'synthesis_order_id') return
         if (field === 'target_codes') {
           payload.target_codes = uniqueTargetCodes(row.target_codes)
-        } else if (INT_COUNT_KEYS.includes(field)) {
-          payload[field] = row[field] === '' || row[field] == null ? null : row[field]
         } else {
-          payload[field] = row[field]
+          payload[field] = row[field] === '' || row[field] == null ? null : row[field]
         }
       })
       return payload
@@ -1581,6 +1549,9 @@ export default {
         keys.add('batch_label')
       }
       keys.add('status')
+      keys.add('affinity_status')
+      keys.add('affinity_owner')
+      keys.add('flow_status')
       keys.add('sort_order')
       keys.add('drift_fields')
       keys.add('has_drift')
@@ -1606,6 +1577,7 @@ export default {
       if (!this.canClaim || !row?.id) return false
       const owner = String(row.owner || '').trim()
       return (
+        !owner ||
         owner === '无人问津' ||
         (Boolean(this.currentPersonName) && owner === this.currentPersonName)
       )
@@ -1613,11 +1585,10 @@ export default {
     claimButtonTitle(row) {
       if (!this.canClaim) return '您没有权限认领合成结果'
       const owner = String(row?.owner || '').trim()
-      if (owner === '无人问津') return '认领该批次合成结果'
+      if (!owner || owner === '无人问津') return '认领该批次合成结果'
       if (this.currentPersonName && owner === this.currentPersonName) {
         return '将该批次改回无人问津'
       }
-      if (!owner) return '仅无人问津的批次可认领'
       return `该批次已被 ${owner} 认领，不可重复认领`
     },
     canEditField(row, fieldKey) {
@@ -1723,10 +1694,6 @@ export default {
       try {
         const saved = await saveDiscoverySynthesis(this.payloadRow(row, [field]))
         this.applySavedFields(saved, [field])
-        if (QUEUE_KEYS.includes(field)) {
-          await this.getList({ flushEditor: false })
-          return saved
-        }
         if (field === 'order_no' || field === 'synthesis_code' || field === 'batch_label') {
           this.scheduleRemoteCheck([saved], { triggerFields: [field] })
         }
@@ -1741,18 +1708,6 @@ export default {
       row.status = value
       return this.persistRow(row, 'status')
     },
-    onDrawerDateChange(row, key) {
-      if (key === 'affinity_date') {
-        if (row.affinity_date) {
-          if (!row.affinity_result) row.affinity_result = '正常'
-        } else {
-          row.affinity_result = null
-        }
-        const baseline = this.rowBaselines.get(row?.id)
-        if (baseline) baseline.affinity_result = row.affinity_result
-      }
-      return this.persistRow(row, key)
-    },
     rowPriority(row) {
       return canonicalizeWorkbenchPriority(row?.priority)
     },
@@ -1763,24 +1718,59 @@ export default {
       const value = String(status || '').trim() || '待下单'
       if (value === '已取消') return 'info'
       if (value === '已完成') return 'success'
-      if (value === '待检测' || value === '检测中' || value === '亲和力完成') return 'warning'
+      if (value === '待检测' || value === '检测中') return 'warning'
       if (value === '合成中') return 'primary'
       return 'info'
+    },
+    assayStatusBadges(row) {
+      if (!row || !['待检测', '检测中'].includes(String(row.status || '').trim())) return []
+      const flowSkip = row.flow_status === '流式不适用'
+      const affPrefix = flowSkip ? '亲和力·' : '亲·'
+      const badges = []
+      const affLabel = BADGE_TEXT[row.affinity_status]
+      if (affLabel) {
+        badges.push({
+          key: 'affinity',
+          kind: '亲和力',
+          full: row.affinity_status,
+          text: `${affPrefix}${affLabel}`,
+          options: AFFINITY_BADGE_OPTIONS,
+          tone: badgeTone(row.affinity_status),
+          editable: !String(row.report_reason || '').trim(),
+        })
+      }
+      const flowLabel = !flowSkip && BADGE_TEXT[row.flow_status]
+      if (flowLabel) {
+        badges.push({
+          key: 'flow',
+          kind: '流式',
+          full: row.flow_status,
+          text: `流·${flowLabel}`,
+          options: FLOW_BADGE_OPTIONS,
+          tone: badgeTone(row.flow_status),
+          editable: true,
+        })
+      }
+      return badges
+    },
+    canEditAssayStatuses(row) {
+      if (!(this.canFullEdit || this.canAssayEdit) || !row?.id) return false
+      return String(row.status || '').trim() !== '已取消'
+    },
+    async updateAssayStatus(row, change) {
+      if (!this.canEditAssayStatuses(row) || !change?.key || !change?.value) return
+      const field = change.key === 'affinity' ? 'affinity_status' : 'flow_status'
+      try {
+        const saved = await saveDiscoverySynthesis({ id: row.id, [field]: change.value })
+        this.applySavedFields(saved, [field])
+        ElMessage.success('实验状态已更新')
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '实验状态更新失败' } })
+      }
     },
     targetTypeTone(value) {
       const text = String(value || '').trim()
       return text ? (text.includes('分泌') ? 'secreted' : 'cell') : ''
-    },
-    targetTypeHeaderTitle() {
-      const v = this.listQuery.target_type
-      if (v === '分泌型') return '当前只看分泌型。再点切换为非分泌型'
-      if (v === '非分泌型') return '当前只看非分泌型。再点恢复全部'
-      return '点击快速切换：分泌型 / 非分泌型 / 全部'
-    },
-    cycleTargetTypeFilter() {
-      const v = this.listQuery.target_type
-      this.listQuery.target_type = v === '分泌型' ? '非分泌型' : v === '非分泌型' ? '' : '分泌型'
-      this.handleFilter()
     },
     drawerSelectClass(field) {
       if (field?.key === 'status') {
@@ -1952,6 +1942,12 @@ export default {
       return checkRemoteDiscoverySynthesis(ids)
         .then((res) => {
           if (listToken !== this.listRequestToken) return null
+          if (res?.remote_available === false) {
+            if (!this.remoteUnavailableWarned) ElMessage.warning('外部订单库暂时连不上，本次未核对外部订单')
+            this.remoteUnavailableWarned = true
+          } else if (res) {
+            this.remoteUnavailableWarned = false
+          }
           if (res?.duplicates && typeof res.duplicates === 'object') {
             const nextDups = { ...this.remoteDuplicatesById }
             ids.forEach((id) => {
@@ -1996,8 +1992,6 @@ export default {
       if (!payload.priority) delete payload.priority
       if (!payload.order_kind) delete payload.order_kind
       if (!payload.supply_mode) delete payload.supply_mode
-      if (!payload.target_color) delete payload.target_color
-      if (!payload.empty_date) delete payload.empty_date
       if (!payload.sort_field) delete payload.sort_field
       if (!payload.sort_dir) delete payload.sort_dir
       if (Array.isArray(this.syntheticDateRange) && this.syntheticDateRange.length === 2) {
@@ -2016,29 +2010,33 @@ export default {
         payload.affinity_date_start = this.affinityDateRange[0]
         payload.affinity_date_end = this.affinityDateRange[1]
       }
+      const fieldFilters = this.headerFilterPayload()
+      if (fieldFilters.length) payload.field_filters = fieldFilters
       return payload
+    },
+    fetchHeaderValues(query) {
+      return fetchDiscoverySynthesisColumnValues(query)
     },
     async loadOptions() {
       try {
         const data = await fetchDiscoverySynthesisOptions(skipGlobalErrorHandler)
-        this.optionLists.targets = normalizeTargetOptions(data?.targets)
         this.optionLists.owners = this.uniq(data?.owners || [])
         this.optionLists.pms = this.uniq(data?.pms || [])
-        if (Array.isArray(data?.synthetic_corps) && data.synthetic_corps.length) {
-          this.optionLists.synthetic_corps = data.synthetic_corps
-        }
-        if (Array.isArray(data?.target_types) && data.target_types.length) {
-          this.optionLists.target_types = data.target_types
-        }
-        if (Array.isArray(data?.selection_methods) && data.selection_methods.length) {
-          this.optionLists.selection_methods = data.selection_methods
-        }
-        if (Array.isArray(data?.eng_types) && data.eng_types.length) {
-          this.optionLists.eng_types = data.eng_types
-        }
-        if (Array.isArray(data?.eng_methods) && data.eng_methods.length) {
-          this.optionLists.eng_methods = data.eng_methods
-        }
+        applyOptionLists(this.optionLists, data, [
+          'synthetic_corps',
+          'target_types',
+          'selection_methods',
+          'eng_types',
+          'eng_methods',
+        ])
+        applyOptionLists(this, data, {
+          statuses: 'statusOptions',
+          priorities: 'priorityOptions',
+          order_kinds: 'orderKindOptions',
+          supply_modes: 'supplyModeOptions',
+          affinity_results: 'affinityResultOptions',
+          mouse_strains: 'mouseStrainOptions',
+        })
       } catch (error) {
         notifyApiError(error, { messages: { default: '加载合成进度选项失败' } })
       }
@@ -2096,30 +2094,9 @@ export default {
       this.listQuery.page = 1
       this.getList()
     },
-    lifecycleHint(item) {
-      if (item.key === 'assay' && this.assayStatusExact) return '只看状态为亲和力完成'
-      return item.hint
-    },
-    lifecycleTitle(item) {
-      if (item.key !== 'assay') return item.hint
-      if (this.assayStatusExact) {
-        return '当前只看状态为亲和力完成。右键回到待检测、检测中与亲和力完成。'
-      }
-      return '左键看待检测、检测中与亲和力完成；右键只看状态为亲和力完成。'
-    },
-    onLifecycleContextMenu(item, event) {
-      if (item.key !== 'assay') return
-      event.preventDefault()
-      if (this.assayStatusExact) {
-        this.listQuery.status = ''
-      } else {
-        this.listQuery.view_group = 'assay'
-        this.listQuery.status = '亲和力完成'
-      }
-      this.handleFilter()
-    },
     handleViewGroup(key) {
       this.listQuery.status = ''
+      this.dropHeaderFilter('status')
       this.listQuery.view_group = key || ''
       this.handleFilter()
     },
@@ -2127,39 +2104,19 @@ export default {
       this.listQuery.quick_filter = this.listQuery.quick_filter === value ? '' : value
       this.handleFilter()
     },
-    excelHeaderContextMenu(column) {
-      if (!DATE_KEYS.includes(column?.key)) return false
-      this.toggleEmptyDate(column.key)
-      return true
-    },
+    /** 清空全部筛选和表头排序；统计块视图和队列排序是视图模式，保留。 */
     resetFilters() {
-      const viewGroup = this.listQuery.view_group
-      const sortField = this.listQuery.sort_field
-      const sortDir = this.listQuery.sort_dir
       this.listQuery = {
         ...emptyQuery(),
-        view_group: viewGroup,
-        sort_field: sortField,
-        sort_dir: sortDir,
+        view_group: this.listQuery.view_group,
+        sort_field: this.isQueueSorted ? 'sort_order' : '',
       }
       this.syntheticDateRange = []
       this.arrivalDateRange = []
       this.flowDateRange = []
       this.affinityDateRange = []
+      this.clearHeaderFilters()
       this.getList()
-    },
-    sheetHeaderCellClassName({ column }) {
-      const cls = workbenchExcelMixin.methods.sheetHeaderCellClassName.call(this, { column })
-      return column.field === 'target_type' && this.listQuery.target_type ? `${cls} is-date-sorted` : cls
-    },
-    excelHeaderClick(column) {
-      if (column?.key === 'target_type') {
-        this.cycleTargetTypeFilter()
-        return true
-      }
-      if (!DATE_KEYS.includes(column?.key)) return false
-      this.cycleDateSort(column.key)
-      return true
     },
     async toggleViewMode() {
       if (this.isExcelMode && !(await this.flushPendingSheetEdits())) return
@@ -2475,9 +2432,6 @@ export default {
     isSheetChoiceColumn(column) {
       return column?.edit === 'multi' || column?.edit === 'select'
     },
-    categorySheetSelect() {
-      return document.querySelector('.sheet-category-select')?.__vueParentComponent?.proxy
-    },
     isCsvField(key) {
       return Object.prototype.hasOwnProperty.call(CSV_FIELD_OPTIONS, key)
     },
@@ -2487,6 +2441,7 @@ export default {
       }
       if (key === 'eng_type') return this.optionLists.eng_types || DEFAULT_ENG_TYPE_OPTIONS
       if (key === 'eng_method') return this.optionLists.eng_methods || DEFAULT_ENG_METHOD_OPTIONS
+      if (key === 'mouse_strain') return this.mouseStrainOptions
       return CSV_FIELD_OPTIONS[key] || []
     },
     extraCsvOptions(key, value) {
@@ -2498,78 +2453,14 @@ export default {
       if (this.sheetEditSource === 'dblclick') return
       this.persistRow(row, key)
     },
-    onCategorySheetVisible(visible) {
-      if (visible) return
-      this.$nextTick(() => {
-        if (this.categorySheetSelect()?.expanded) return
-        this.$refs.sheetTable?.clearEdit?.()
-      })
-    },
-    openSheetEditorPanel(row, key) {
-      if (!this.isCsvField(key)) {
-        workbenchExcelMixin.methods.openSheetEditorPanel.call(this, row, key)
-        return
-      }
-      const open = () => {
-        const select = this.categorySheetSelect()
-        if (!select) return false
-        select.expanded = true
-        return true
-      }
-      this.$nextTick(() => {
-        if (!open()) this.$nextTick(open)
-      })
-    },
     formatCodesText(value) {
       return uniqueTargetCodes(value).join(',')
-    },
-    async loadAllUserOptions() {
-      try {
-        this.allUserOptions = await loadSerumUserOptions()
-      } catch {
-        this.allUserOptions = []
-      }
-    },
-    mergeTargetOptions(items) {
-      const map = new Map((this.targetOptions || []).map((item) => [item.snum, item]))
-      ;(items || []).forEach((item) => {
-        if (item?.snum) map.set(item.snum, item)
-      })
-      this.targetOptions = [...map.values()]
     },
     onDrawerTargetChange(row, payload) {
       row.target_codes = payload.codes
       row.target_name = payload.name
       this.mergeTargetOptions(payload.items)
       this.persistRow(row, 'target_codes')
-    },
-    setTargetFilterQuery(query) {
-      this.targetFilterQuery = query || ''
-    },
-    targetOptionExtra(item) {
-      return targetOptionHint(item, this.targetFilterQuery)
-    },
-    async searchTargetOptions(keyword, selectedCodes) {
-      const requestToken = ++this.targetRequestToken
-      try {
-        const items = await searchWorkbenchTargets(keyword, selectedCodes)
-        if (requestToken !== this.targetRequestToken) return
-        this.mergeTargetOptions(items)
-        this.targetOptions = items
-      } catch {
-        if (requestToken === this.targetRequestToken) {
-          this.targetOptions = this.targetOptions || []
-        }
-      }
-    },
-    querySheetTargetOptions({ searchValue }) {
-      const row = this.list[this.pasteAnchor?.rowIndex]
-      return this.searchTargetOptions(searchValue, row?.target_codes)
-    },
-    onSheetTargetPickerChange(row) {
-      const codes = uniqueTargetCodes(row.target_codes)
-      row.target_codes = codes
-      row.target_name = targetNameFromCodes(codes, this.targetOptions)
     },
     sheetTargetDirectValue(row, key) {
       return key === 'target_codes' ? this.sheetDirectTextValue(row, key) : row.target_name
@@ -2591,66 +2482,17 @@ export default {
     setSheetChoiceDirectValue(row, column, value) {
       this.setSheetDirectValue(row, column.key, value)
     },
-    createSheetEditOriginal(row, key) {
-      return {
-        key,
-        rowId: row.id,
-        targetCodes: this.cloneSheetValue(row.target_codes),
-        targetName: row.target_name,
-        value: this.cloneSheetValue(this.sheetValueSnapshot(row, key)),
-      }
-    },
-    async flushExcelKeyboardSwitch(previousKey, nextKey) {
-      if (
-        ['target_codes', 'target_name'].includes(previousKey) &&
-        ['target_codes', 'target_name'].includes(nextKey) &&
-        this.pendingSheetOps.size
-      ) {
-        await Promise.allSettled([...this.pendingSheetOps])
-      }
-    },
-    async resolveTargetCodes(codes) {
-      const normalized = uniqueTargetCodes(codes)
-      if (!normalized.length) return { missing: [], nameByCode: new Map(), names: [] }
-      const items = await searchWorkbenchTargets('', normalized)
-      this.mergeTargetOptions(items)
-      const nameByCode = new Map(items.map((item) => [item.snum, item.name]))
-      return {
-        missing: normalized.filter((code) => !nameByCode.has(code)),
-        nameByCode,
-        names: normalized.map((code) => nameByCode.get(code)).filter(Boolean),
-      }
-    },
-    async resolveTargetNames(value) {
-      const names = splitTargetNames(value)
-      if (!names.length) {
-        return { ambiguous: [], itemByName: new Map(), items: [], missing: [] }
-      }
-      const results = await Promise.all(
-        names.map(async (name) => {
-          const items = await searchWorkbenchTargets(name)
-          const exact = items.filter(
-            (item) => String(item.name || '').trim().toLowerCase() === name.toLowerCase(),
-          )
-          this.mergeTargetOptions(exact)
-          return { exact, name }
-        }),
-      )
-      const missing = results.filter((item) => item.exact.length === 0).map((item) => item.name)
-      const ambiguous = results.filter((item) => item.exact.length > 1).map((item) => item.name)
-      const matched = results.filter((item) => item.exact.length === 1)
-      return {
-        ambiguous,
-        itemByName: new Map(matched.map((item) => [item.name.toLowerCase(), item.exact[0]])),
-        items: matched.map((item) => item.exact[0]),
-        missing,
-      }
-    },
     formatCodes({ row }) {
       return this.formatCodesText(row.target_codes)
     },
     formatCsvCell({ cellValue }) {
       return displayCsvField(cellValue)
+    },
+    formatStatusCell({ row }) {
+      const badges = this.assayStatusBadges(row)
+      return badges.length
+        ? badges.map((item) => item.text).join('  ')
+        : String(row?.status || '待下单')
     },
     isSheetCellLocked(row, key) {
       if (!row?.id) return true
@@ -2677,6 +2519,7 @@ export default {
     },
     sheetFormatter(column) {
       if (column.key === 'sort_order') return this.formatSortColumnCell
+      if (column.key === 'status') return this.formatStatusCell
       if (this.isCsvField(column.key)) return this.formatCsvCell
       if (column.key === 'target_codes') return this.formatCodes
       return undefined
@@ -2737,7 +2580,7 @@ export default {
       if (key === 'sort_order') return coerceRequiredPositiveInt(raw)
       if (key === 'priority') {
         const canon = canonicalizeWorkbenchPriority(raw)
-        return PRIORITY_OPTIONS.includes(canon)
+        return this.priorityOptions.includes(canon)
           ? { ok: true, value: canon }
           : { ok: false, reason: 'option' }
       }
@@ -2828,26 +2671,10 @@ export default {
       }
       const columnConfig = this.sheetColumns.find((item) => item.key === key)
       if (editSource === 'dblclick' && columnConfig?.edit === 'target') {
-        const codes = uniqueTargetCodes(row.target_codes)
-        const submittedName = String(row.target_name || '')
         const originalCodes = originalRecord?.targetCodes ?? originalValue
         const originalName = originalRecord?.targetName ?? this.rowBaselines.get(row.id)?.target_name ?? ''
-        if (
-          this.sameSheetValue('target_codes', codes, originalCodes) &&
-          this.sameSheetValue('target_name', submittedName, originalName)
-        ) {
-          return
-        }
-        try {
-          const resolved = await this.resolveTargetCodes(codes)
-          if (resolved.missing.length) throw new Error('target-missing')
-          row.target_codes = codes
-          row.target_name = resolved.names.join('&')
+        if (await this.applySheetTargetPick(row, originalCodes, originalName)) {
           return this.persistRow(row, 'target_codes')
-        } catch {
-          row.target_codes = this.cloneSheetValue(originalCodes)
-          row.target_name = originalName
-          ElMessage.warning('靶点校验失败，本次修改未保存')
         }
         return
       }
@@ -2863,119 +2690,17 @@ export default {
         return
       }
       this.restoreSheetEditValue(row, key, result.value)
-      if (key === 'target_codes') {
-        const submittedCodes = [...row.target_codes]
-        const submittedName = String(row.target_name || '')
-        try {
-          const resolved = await this.resolveTargetCodes(submittedCodes)
-          if (
-            !this.sameSheetValue('target_codes', row.target_codes, submittedCodes) ||
-            !this.sameSheetValue('target_name', row.target_name, submittedName)
-          ) {
-            return
-          }
-          if (resolved.missing.length) {
-            this.restoreSheetEditValue(row, key, originalValue)
-            ElMessage.warning(`未找到靶点编号：${resolved.missing.join('、')}`)
-            return
-          }
-          row.target_name = resolved.names.join('&')
-        } catch {
-          if (
-            !this.sameSheetValue('target_codes', row.target_codes, submittedCodes) ||
-            !this.sameSheetValue('target_name', row.target_name, submittedName)
-          ) {
-            return
-          }
-          this.restoreSheetEditValue(row, key, originalValue)
-          ElMessage.warning('靶点校验失败，本次修改未保存')
-          return
-        }
-      }
-      if (key === 'target_name') {
-        const submittedName = String(row.target_name || '').trim()
-        const submittedCodes = this.cloneSheetValue(row.target_codes)
-        try {
-          const resolved = await this.resolveTargetNames(row.target_name)
-          if (
-            !this.sameSheetValue('target_name', row.target_name, submittedName) ||
-            !this.sameSheetValue('target_codes', row.target_codes, submittedCodes)
-          ) {
-            return
-          }
-          if (resolved.missing.length) {
-            this.restoreSheetEditValue(row, key, originalValue)
-            ElMessage.warning(`未找到靶点名称：${resolved.missing.join('、')}`)
-            return
-          }
-          if (resolved.ambiguous.length) {
-            this.restoreSheetEditValue(row, key, originalValue)
-            ElMessage.warning(`靶点名称不唯一，请双击选择：${resolved.ambiguous.join('、')}`)
-            return
-          }
-          row.target_codes = resolved.items.map((item) => item.snum)
-          row.target_name = resolved.items.map((item) => item.name).join('&')
-        } catch {
-          if (
-            !this.sameSheetValue('target_name', row.target_name, submittedName) ||
-            !this.sameSheetValue('target_codes', row.target_codes, submittedCodes)
-          ) {
-            return
-          }
-          this.restoreSheetEditValue(row, key, originalValue)
-          ElMessage.warning('靶点校验失败，本次修改未保存')
-          return
-        }
-      }
+      if ((key === 'target_codes' || key === 'target_name') && !await this.applySheetTargetText(row, key, originalValue)) return
       return this.persistRow(row, key)
     },
     async onSheetPaste(event) {
-      if (!this.canEdit) return
-      if (event.target?.closest?.('input, textarea')) return
-      const plain = event.clipboardData?.getData('text/plain') || ''
-      const grid = readClipboardGrid(event.clipboardData)
-      if (!grid.length) return
-      const singleValue =
-        grid.length === 1 && grid[0].length === 1 && !String(grid[0][0]).includes('\n')
-      if (!plain.includes('\t') && !plain.includes('\n') && singleValue && !this.sheetRange) return
-      event.preventDefault()
-      if (!(await this.flushPendingSheetEdits())) return
-
       const labelToKey = new Map([
         ...Object.entries(SHEET_HEADER_ALIASES),
         ...SHEET_COLUMNS.map((column) => [column.label, column.key]),
       ])
-      const headerKeys = grid[0].map((cell) => labelToKey.get(String(cell || '').trim()) || null)
-      const nonEmptyHeaderCount = grid[0].filter((cell) => String(cell || '').trim()).length
-      const matchedHeaderCount = headerKeys.filter(Boolean).length
-      const hasHeader = matchedHeaderCount >= 2 && matchedHeaderCount === nonEmptyHeaderCount
-      let dataRows = hasHeader ? grid.slice(1) : grid
-      let startIndex = this.pasteAnchor?.rowIndex ?? 0
-      const startColKey = this.pasteAnchor?.colKey || this.sheetColumns[0]?.key
-      let startColIndex = this.sheetColumns.findIndex((column) => column.key === startColKey)
-      if (startColIndex < 0) return
-      const selectedRange = this.normalizedSheetRange()
-      const fillSelectedRange =
-        !hasHeader &&
-        dataRows.length === 1 &&
-        dataRows[0]?.length === 1 &&
-        selectedRange &&
-        (selectedRange.r1 !== selectedRange.r2 || selectedRange.c1 !== selectedRange.c2)
-      if (fillSelectedRange) {
-        const value = dataRows[0][0]
-        const rowCount = selectedRange.r2 - selectedRange.r1 + 1
-        const columnCount = selectedRange.c2 - selectedRange.c1 + 1
-        dataRows = Array.from({ length: rowCount }, () => Array(columnCount).fill(value))
-        startIndex = selectedRange.r1
-        startColIndex = selectedRange.c1
-      }
-      const availableRowCount = Math.max(this.list.length - startIndex, 0)
-      const skippedRowCount = Math.max(dataRows.length - availableRowCount, 0)
-      dataRows.splice(availableRowCount)
-      if (!dataRows.length) {
-        ElMessage.warning('粘贴区域超出当前列表，本次未保存')
-        return
-      }
+      const paste = await this.prepareSheetPaste(event, labelToKey)
+      if (!paste) return
+      const { dataRows, hasHeader, headerKeys, skippedRowCount, startColIndex, startIndex } = paste
 
       const workingRows = this.list.map((row) => this.normalizeRow(JSON.parse(JSON.stringify(row))))
       const dirtyByIndex = new Map()
@@ -3182,6 +2907,10 @@ export default {
 .table-card :deep(.el-tag.target-tone-cell) { color: #0f766e; background: #f0fdfa; border-color: #99f6e4; }
 .sheet-wrap :deep(.sheet-tone-secreted) { color: #be185d; }
 .sheet-wrap :deep(.sheet-tone-cell) { color: #0f766e; }
+.table-card :deep(.status-column-cell .cell) {
+  padding-right: 4px;
+  padding-left: 4px;
+}
 .target-corner-badges {
   position: absolute;
   top: 2px;

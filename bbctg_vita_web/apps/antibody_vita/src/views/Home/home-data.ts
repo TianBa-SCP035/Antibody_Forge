@@ -7,6 +7,7 @@ import { computed } from 'vue';
 
 import { preferences } from '@vben/preferences';
 
+import { HOME_START_PAGE_STORAGE_KEY } from '#/constants/storageKeys';
 import { $t } from '#/locales';
 
 const HOME_WEEK_DAYS_ZH = ['一', '二', '三', '四', '五', '六', '日'] as const;
@@ -66,10 +67,6 @@ export function getHomeMessages(): HomeMessage[] {
 
 export const HOME_QUICK_NAV_SLOTS = 6;
 
-export const HOME_QUICK_NAV_STORAGE_KEY = 'antibody-vita-home-quick-nav';
-export const HOME_WARM_NOTE_STORAGE_KEY = 'antibody-vita-home-warm-note';
-/** 登录后默认打开的站内路径（空则跟随服务端 homePath / 系统默认） */
-export const HOME_START_PAGE_STORAGE_KEY = 'antibody-vita-user-start-page';
 
 /** 对外展示站（GitHub Pages），首页品牌名与「使用提示」底部外链 */
 export const HOME_SHOWCASE_SITE_URL =

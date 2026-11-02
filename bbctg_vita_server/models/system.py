@@ -8,12 +8,16 @@ from db.session import Base
 
 class SysUser(Base):
     __tablename__ = "sys_user"
+    __table_args__ = (
+        UniqueConstraint("username", name="uk_sys_user_username"),
+        UniqueConstraint("openid", name="uk_sys_user_openid"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
-    username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, comment="账号")
+    username: Mapped[str] = mapped_column(String(64), nullable=False, comment="账号")
     display_name: Mapped[str | None] = mapped_column(String(128), comment="姓名")
     password_hash: Mapped[str | None] = mapped_column(String(255), comment="密码哈希")
-    openid: Mapped[str | None] = mapped_column(String(100), unique=True, comment="云之家OpenID")
+    openid: Mapped[str | None] = mapped_column(String(100), comment="云之家OpenID")
     job_no: Mapped[str | None] = mapped_column(String(32), comment="工号")
     department: Mapped[str | None] = mapped_column(String(128), comment="部门")
     group_name: Mapped[str | None] = mapped_column(String(128), comment="组别")
@@ -57,9 +61,10 @@ class SysUser(Base):
 
 class SysRole(Base):
     __tablename__ = "sys_role"
+    __table_args__ = (UniqueConstraint("code", name="uk_sys_role_code"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
-    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, comment="角色编码")
+    code: Mapped[str] = mapped_column(String(64), nullable=False, comment="角色编码")
     name: Mapped[str] = mapped_column(String(128), nullable=False, comment="角色名称")
     description: Mapped[str | None] = mapped_column(String(255), comment="角色描述")
     status: Mapped[str] = mapped_column(String(16), default="active", comment="角色状态")
@@ -75,9 +80,10 @@ class SysRole(Base):
 
 class SysPermission(Base):
     __tablename__ = "sys_permission"
+    __table_args__ = (UniqueConstraint("code", name="uk_sys_permission_code"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
-    code: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, comment="权限编码")
+    code: Mapped[str] = mapped_column(String(128), nullable=False, comment="权限编码")
     name: Mapped[str] = mapped_column(String(128), nullable=False, comment="权限名称")
     type: Mapped[str] = mapped_column(String(16), nullable=False, comment="权限类型")
     module: Mapped[str | None] = mapped_column(String(64), comment="所属模块编码")
@@ -93,9 +99,10 @@ class SysPermission(Base):
 
 class SysPermissionBundle(Base):
     __tablename__ = "sys_permission_bundle"
+    __table_args__ = (UniqueConstraint("code", name="uk_sys_permission_bundle_code"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
-    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, comment="权限包编码")
+    code: Mapped[str] = mapped_column(String(64), nullable=False, comment="权限包编码")
     name: Mapped[str] = mapped_column(String(128), nullable=False, comment="权限包名称")
     module: Mapped[str] = mapped_column(String(64), nullable=False, comment="所属模块")
     description: Mapped[str | None] = mapped_column(String(255), comment="权限包描述")
@@ -163,10 +170,13 @@ class SysPermissionApi(Base):
 
 class SysFeatureFlag(Base):
     __tablename__ = "sys_feature_flag"
-    __table_args__ = {"comment": "运行时功能配置（菜单可见性、功能开关、定时任务参数、站点偏好等）"}
+    __table_args__ = (
+        UniqueConstraint("code", name="uk_sys_feature_flag_code"),
+        {"comment": "运行时功能配置（菜单可见性、功能开关、定时任务参数、站点偏好等）"},
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
-    code: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, comment="功能编码")
+    code: Mapped[str] = mapped_column(String(128), nullable=False, comment="功能编码")
     name: Mapped[str] = mapped_column(String(128), nullable=False, comment="功能名称")
     category: Mapped[str] = mapped_column(String(32), nullable=False, comment="功能分类")
     description: Mapped[str | None] = mapped_column(String(255), comment="功能说明")
@@ -232,9 +242,6 @@ class SysOperationLog(Base):
     __table_args__ = (
         Index("idx_sys_operation_log_created_at", "created_at"),
         Index("idx_sys_operation_log_request", "request_id"),
-        Index("idx_sys_operation_log_source_time", "source", "created_at"),
-        Index("idx_sys_operation_log_target_time", "target_type", "target_id", "created_at"),
-        Index("idx_sys_operation_log_user_time", "username", "created_at"),
         Index("idx_sys_operation_log_result_time", "result", "created_at"),
     )
 
@@ -264,10 +271,7 @@ class SysOperationLog(Base):
 
 class SysOperationLogItem(Base):
     __tablename__ = "sys_operation_log_item"
-    __table_args__ = (
-        Index("idx_sys_operation_log_item_log", "log_id"),
-        Index("idx_sys_operation_log_item_entity", "entity_type", "entity_id"),
-    )
+    __table_args__ = (Index("idx_sys_operation_log_item_log", "log_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
     log_id: Mapped[int] = mapped_column(

@@ -1,3 +1,4 @@
+import logging
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
@@ -5,7 +6,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core.response import error, success
+from core.response import success
 from db.session import get_db
 from models.immunology import SerumElisaPlate, SerumFacsPlate, SerumFile, SerumImmProject, SerumTiterOrder
 from models.system import SysUser
@@ -18,8 +19,10 @@ from modules.system.permissions import (
     has_permission,
     require_permission,
 )
+from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _TITER_READ_PERMISSIONS = ("serum.page.detail", "serum.page.titer")
 
@@ -50,15 +53,9 @@ def file_save(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.file.manage")
-        _require_project_owner_or_edit_all(db, current_user, experiment_id=experiment_id)
-        return success(service.save_file(db, file, experiment_id, _operator_name(current_user)))
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.file.manage")
+    _require_project_owner_or_edit_all(db, current_user, experiment_id=experiment_id)
+    return success(service.save_file(db, file, experiment_id, _operator_name(current_user)))
 
 
 @router.post("/file/delete")
@@ -67,16 +64,10 @@ def file_delete(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.file.manage")
-        _require_project_owner_or_edit_all(db, current_user, file_id=int(data.get("id")))
-        service.delete_file(db, int(data.get("id")))
-        return success({"message": "删除成功"})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.file.manage")
+    _require_project_owner_or_edit_all(db, current_user, file_id=int(data.get("id")))
+    service.delete_file(db, int(data.get("id")))
+    return success({"message": "删除成功"})
 
 
 @router.post("/file/rename")
@@ -85,16 +76,10 @@ def file_rename(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.file.manage")
-        _require_project_owner_or_edit_all(db, current_user, file_id=int(data.get("id")))
-        service.rename_file(db, int(data.get("id")), data.get("new_name"))
-        return success({"message": "重命名成功"})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.file.manage")
+    _require_project_owner_or_edit_all(db, current_user, file_id=int(data.get("id")))
+    service.rename_file(db, int(data.get("id")), data.get("new_name"))
+    return success({"message": "重命名成功"})
 
 
 @router.post("/file/replace")
@@ -104,15 +89,9 @@ def file_replace(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.file.manage")
-        _require_project_owner_or_edit_all(db, current_user, file_id=id)
-        return success(service.replace_file(db, id, file, _operator_name(current_user)))
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.file.manage")
+    _require_project_owner_or_edit_all(db, current_user, file_id=id)
+    return success(service.replace_file(db, id, file, _operator_name(current_user)))
 
 
 @router.get("/file/download")
@@ -154,7 +133,8 @@ def file_download(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.error("titer file download failed", exc_info=exc)
+        raise HTTPException(status_code=500, detail="文件读取失败") from exc
 
 
 @router.post("/target/save")
@@ -163,15 +143,9 @@ def target_save(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.titer.edit")
-        _require_project_owner_or_edit_all(db, current_user, experiment_id=data.get("experiment_id"))
-        return success({"items": service.save_targets(db, data.get("experiment_id"), data.get("targets", []))})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.titer.edit")
+    _require_project_owner_or_edit_all(db, current_user, experiment_id=data.get("experiment_id"))
+    return success({"items": service.save_targets(db, data.get("experiment_id"), data.get("targets", []))})
 
 
 @router.post("/pc/save")
@@ -180,15 +154,9 @@ def pc_save(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.titer.edit")
-        _require_project_owner_or_edit_all(db, current_user, experiment_id=data.get("experiment_id"))
-        return success({"items": service.save_pcs(db, data.get("experiment_id"), data.get("pcs", []))})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.titer.edit")
+    _require_project_owner_or_edit_all(db, current_user, experiment_id=data.get("experiment_id"))
+    return success({"items": service.save_pcs(db, data.get("experiment_id"), data.get("pcs", []))})
 
 
 @router.post("/plate/list")
@@ -207,15 +175,9 @@ def plate_save(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.titer.edit")
-        _require_project_owner_or_edit_all(db, current_user, experiment_id=(data or {}).get("experiment_id"))
-        return success(service.save_facs_plate(db, data or {}))
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.titer.edit")
+    _require_project_owner_or_edit_all(db, current_user, experiment_id=(data or {}).get("experiment_id"))
+    return success(service.save_facs_plate(db, data or {}))
 
 
 @router.post("/plate/delete")
@@ -224,16 +186,10 @@ def plate_delete(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.titer.edit")
-        _require_project_owner_or_edit_all(db, current_user, plate_id=int(data.get("id")))
-        service.delete_facs_plate(db, int(data.get("id")))
-        return success({"message": "删除成功"})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.titer.edit")
+    _require_project_owner_or_edit_all(db, current_user, plate_id=int(data.get("id")))
+    service.delete_facs_plate(db, int(data.get("id")))
+    return success({"message": "删除成功"})
 
 
 @router.post("/elisa/plate/list")
@@ -252,15 +208,9 @@ def elisa_plate_save(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.titer.edit")
-        _require_project_owner_or_edit_all(db, current_user, experiment_id=(data or {}).get("experiment_id"))
-        return success(service.save_elisa_plate(db, data or {}))
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.titer.edit")
+    _require_project_owner_or_edit_all(db, current_user, experiment_id=(data or {}).get("experiment_id"))
+    return success(service.save_elisa_plate(db, data or {}))
 
 
 @router.post("/elisa/plate/delete")
@@ -269,16 +219,10 @@ def elisa_plate_delete(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.titer.edit")
-        _require_project_owner_or_edit_all(db, current_user, elisa_plate_id=int(data.get("id")))
-        service.delete_elisa_plate(db, int(data.get("id")))
-        return success({"message": "删除成功"})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.titer.edit")
+    _require_project_owner_or_edit_all(db, current_user, elisa_plate_id=int(data.get("id")))
+    service.delete_elisa_plate(db, int(data.get("id")))
+    return success({"message": "删除成功"})
 
 
 _TITER_ORDER_BATCH_FIELD_KEYS = (
@@ -303,13 +247,25 @@ def titer_order_meta(
     return success(service.get_titer_order_page_meta(db))
 
 
-@router.get("/order/stats")
-def titer_order_stats(
+@router.get("/order/recorded_targets")
+def titer_order_recorded_targets(
+    keyword: str = Query(default="", max_length=128),
+    limit: int = Query(default=DEFAULT_RECORDED_TARGET_LIMIT, ge=1, le=MAX_RECORDED_TARGET_LIMIT),
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, "serum.page.titer_order")
-    return success(service.get_titer_order_stats(db))
+    return success({"items": service.search_titer_order_targets(db, keyword, limit)})
+
+
+@router.post("/order/stats")
+def titer_order_stats(
+    data: dict | None = None,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "serum.page.titer_order")
+    return success(service.get_titer_order_stats(db, data or {}))
 
 
 @router.get("/order/owner_stats")
@@ -347,10 +303,7 @@ def titer_order_batch_preview(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     _require_titer_order_form_access(db, current_user)
-    try:
-        return success(service.get_titer_order_batch_preview(db, experiment_id))
-    except ValueError as exc:
-        return error(str(exc))
+    return success(service.get_titer_order_batch_preview(db, experiment_id))
 
 
 @router.post("/order/list")
@@ -382,14 +335,8 @@ def titer_order_save(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        _validate_titer_order_save(db, current_user, data or {})
-        return success(service.save_titer_order(db, data or {}))
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    _validate_titer_order_save(db, current_user, data or {})
+    return success(service.save_titer_order(db, data or {}))
 
 
 @router.post("/order/delete")
@@ -398,18 +345,12 @@ def titer_order_delete(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.titer_order.delete")
-        order_id = data.get("id")
-        if order_id is None or str(order_id).strip() == "":
-            raise ValueError("缺少工单 ID")
-        service.delete_titer_order(db, int(order_id))
-        return success({"message": "删除成功"})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        return error(str(exc))
+    require_permission(db, current_user, "serum.titer_order.delete")
+    order_id = data.get("id")
+    if order_id is None or str(order_id).strip() == "":
+        raise ValueError("缺少工单 ID")
+    service.delete_titer_order(db, int(order_id))
+    return success({"message": "删除成功"})
 
 
 def _require_project_owner_or_edit_all(

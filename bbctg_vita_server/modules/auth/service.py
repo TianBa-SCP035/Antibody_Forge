@@ -1,4 +1,3 @@
-import logging
 import re
 
 from fastapi import HTTPException
@@ -15,7 +14,6 @@ from modules.system.permissions import build_user_context
 from utils.clock import now_local
 
 YUNZHIJIA_AUTO_PROVISION_FEATURE = "feature.yunzhijia_auto_provision"
-logger = logging.getLogger(__name__)
 
 
 def login_with_password(db: Session, username: str, password: str) -> dict:
@@ -73,14 +71,8 @@ def login_with_password(db: Session, username: str, password: str) -> dict:
 def login_with_yunzhijia_ticket(db: Session, ticket: str) -> dict:
     settings = get_settings()
     client = YunzhijiaClient(settings.yunzhijia_appid, settings.yunzhijia_appsecret)
-    try:
-        result = client.acquire_user_context(ticket)
-    except Exception:
-        logger.exception("yunzhijia login request failed")
-        result = None
-    user_context = result.get("data") if isinstance(result, dict) else None
-    if not isinstance(user_context, dict):
-        user_context = {}
+    result = client.acquire_user_context(ticket)
+    user_context = result["data"]
     openid = user_context.get("openid")
     if not openid:
         write_operation_log(

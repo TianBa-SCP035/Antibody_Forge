@@ -29,10 +29,9 @@ export async function loginApi(data: AuthApi.LoginParams) {
  * 云之家免密登录
  */
 export async function yunzhijiaLoginApi(ticket: string) {
-  // 冷启动要串行两次外网请求，实测成功也超过 15 秒；这里要盖住后端两次 15 秒超时。
   return requestClient.get<AuthApi.LoginResult>('/auth/yunzhijia', {
     params: { ticket },
-    timeout: 40_000,
+    timeout: 15_000,
   });
 }
 

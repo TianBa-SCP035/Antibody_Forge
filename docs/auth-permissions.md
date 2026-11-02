@@ -143,7 +143,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `molecular.page.primer` | page | 引物库 |
 | `molecular.primer.edit` | action | 新增、修改、停用、删除、改系列、改方向和批量导入引物 |
 
-写接口 `POST /api/molecular-cell/library-orders/save`、`/batch_save`、`/delete`、`/handoff`、`/files/preflight`、`/files/upload_batch`、`/files/update`、`/files/delete`、`/catalog/save`、`/catalog/delete`、`/catalog/batch_update`、`/catalog/batch_delete`、`/catalog/batch_save` 登记 `sys_permission_api`；使用 POST 返回文件的 `/catalog/export` 也按页面权限登记。查询 `/catalog/list` 和全选 `/catalog/ids` 不记操作日志。取消统一通过 `/save` 更新状态。只改质检结论、质检人、质检日期、质检说明时，`/save` 也接受 `molecular.library.file.manage`；`/batch_save` 在每一条都只改这些字段时同样接受。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。权限码在 `sys_permission`，菜单开关 `menu.molecular_cell` / `menu.molecular_cell.library` / `menu.molecular_cell.primer`。不写入示例角色/权限包。靶点 / 人名复用血清目录接口，这两条同时接受文库页权限。
+写接口 `POST /api/molecular-cell/library-orders/save`、`/batch_save`、`/delete`、`/handoff`、`/files/preflight`、`/files/upload_batch`、`/files/update`、`/files/delete`、`/catalog/save`、`/catalog/delete`、`/catalog/batch_update`、`/catalog/batch_delete`、`/catalog/batch_save` 登记 `sys_permission_api`；使用 POST 返回文件的 `/catalog/export` 也按页面权限登记。查询 `/catalog/list`、`/catalog/column_values` 和全选 `/catalog/ids` 不记操作日志。取消统一通过 `/save` 更新状态。只改质检结论、质检人、质检日期、质检说明时，`/save` 也接受 `molecular.library.file.manage`；`/batch_save` 在每一条都只改这些字段时同样接受。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。权限码在 `sys_permission`，菜单开关 `menu.molecular_cell` / `menu.molecular_cell.library` / `menu.molecular_cell.primer`。不写入示例角色/权限包。靶点 / 人名复用血清目录接口，这两条同时接受文库页权限。
 
 ### 2.6 系统模块（`system.*`）
 
@@ -290,7 +290,7 @@ flowchart LR
 - `meta.featureCode` 对应 `sys_feature_flag`：控制菜单是否显示、排序；与 RBAC 正交。拉取失败时隐藏受控菜单项。
 - 父级路由需配置 `authority`（如 `/system`），否则子路由全被过滤后仍可能出现空目录。
 
-路由定义位置：`apps/antibody_vita/src/router/routes/modules/*.ts`。
+路由定义位置：`bbctg_vita_web/apps/antibody_vita/src/router/routes/modules/*.ts`。下文前端路径均相对 `bbctg_vita_web/apps/antibody_vita/src/`。
 
 ### 5.2 按钮与交互（层 3）
 
@@ -317,15 +317,11 @@ flowchart LR
 
 ### 5.4 系统首页（门户）
 
-- **`/home`** 为系统级默认落地页（`defaultHomePath`、`build_user_info` 的 `homePath`）；用户可在首页快捷导航弹窗中覆盖为本机偏好路径；**不设 `meta.authority`**，凡已登录用户可访问（含零角色账号）。
-- 侧栏「首页」`order: 0`；**门户 Hero** → **三列等宽**：公告中心+站内信 | 快捷导航+好书推荐+暖心便签 | 日历+使用提示。
-- **系统快捷导航** 6 格（3×2）：右上角「自定义配置」弹窗内排布快捷入口；**点击已填入的格子**可勾选为登录后默认页（`HOME_START_PAGE_STORAGE_KEY`），新模块只需加入下方预设列表即可被用户选为默认，无需单独维护默认页清单。配置仅存浏览器 `localStorage`，**不落库**；未勾选时仍用服务端 `homePath`。
-- 「使用提示」底部外链打开 GitHub Pages 展示站；Hero 问候语与欢迎公告里的 `Antibody Vita` 默认与正文同色，悬浮/键盘聚焦时出现下划线并可点开同一站点。
-- 公告中心 / 站内信为固定高度列表区，超出滚动；点击查看全部（列表页待接 API）。
-- 静态数据在 `views/Home/home-data.ts`；暖心便签仅存浏览器 `localStorage`。
-- **北京天气**：前端 `useHomeWeather` 直连 **Open-Meteo** 与 **weather-api.site**，并行竞速取先返回者；30 分钟浏览器缓存；均无需注册或 API Key。
+- **`/home`** 为系统级默认落地页（`defaultHomePath`、`build_user_info` 的 `homePath`）；**不设 `meta.authority`**，凡已登录用户可访问（含零角色账号）。
+- 用户可在首页快捷导航里把某个入口设为登录后默认页（`HOME_START_PAGE_STORAGE_KEY`）。该偏好只存浏览器 `localStorage`，不落库；未设置时用服务端 `homePath`。
+- 首页的公告、便签等为前端静态数据或 `localStorage`（`views/Home/home-data.ts`）；天气由浏览器直连 Open-Meteo / weather-api.site，不经后端。
 
-路由与页面：`apps/antibody_vita/src/router/routes/modules/home.ts`、`views/Home/`。
+路由与页面：`router/routes/modules/home.ts`、`views/Home/`。
 
 ## 6. 操作审计
 
@@ -351,19 +347,14 @@ flowchart LR
 | `menu` | `menu.atlas`、`menu.atlas.target_library` | 千鼠万抗侧栏 |
 | `menu` | `menu.serum`、`menu.serum.workbench`、`menu.serum.list`、`menu.serum.titer_order` | 免疫实验侧栏 |
 | `menu` | `menu.discovery`、`menu.discovery.workbench`、`menu.discovery.synthesis_progress` | 抗体发现侧栏 |
-| `menu` | `menu.molecular_cell`、`menu.molecular_cell.library` | 分子与细胞侧栏 |
+| `menu` | `menu.molecular_cell`、`menu.molecular_cell.library`、`menu.molecular_cell.primer` | 分子与细胞侧栏 |
 | `menu` | `menu.mega_automation`、`menu.mega_automation.flow_work_orders` | 镁伽自动化侧栏 |
 | `menu` | `menu.system`、`menu.system.user_permission`、`menu.system.features` | 系统管理侧栏 |
 | `feature` | `feature.drm_file_security` | DRM 上传解密 / 下载加密（请求时读库，立即生效；另需 env 与 SDK） |
 | `feature` | `feature.yunzhijia_auto_provision` | 云之家登录自动开户（请求时读库，立即生效） |
-| `job` | `job.employee_profile_sync` | 员工资料定时同步（默认 00:30） |
-| `job` | `job.target_master_sync` | 靶点主数据定时同步（默认 00:45） |
-| `job` | `job.serum_auto_update_status` | 免疫状态定时更新（默认 01:00） |
-| `job` | `job.discovery_auto_update_status` | 抗体发现过期冲击免状态更新（默认 01:15，启动时补跑） |
-| `job` | `job.mega_labillion_status_sync` | 镁伽工单状态同步（默认 02:00；未配 Labillion 地址时 skip） |
-| `job` | `job.discovery_synthesis_order_sync` | 合成进度外部订单同步（默认每 1 小时；未配 `ONE_DB_URL` 时 skip） |
+| `job` | `job.employee_profile_sync`、`job.target_master_sync`、`job.serum_auto_update_status`、`job.discovery_auto_update_status`、`job.mega_labillion_status_sync`、`job.discovery_synthesis_order_sync` | 定时任务开关与执行时间；各任务作用与默认时间见 [deploy.md](./deploy.md)「定时任务」 |
 
-**定时任务页（系统功能）**：启用开关与执行时间**改完即写库**；cron 变更需**重启后端**后生效（配置项 `restart_required`）。「立即执行」随时可点，直接调对应 job 函数，local 未开 scheduler 也可用。
+**定时任务页（系统功能）**：启用开关与执行时间改完即写库，并立即重排正在运行的调度，无需重启。「立即执行」随时可点，直接调对应 job 函数，local 未开 scheduler 也可用。
 
 有效配置接口：`GET /api/system/features/effective`（前端 `getSystemEffectiveFeaturesApi`），登录即可读，只返回菜单与功能开关（不含定时任务和 cron 细节）。系统状态 `GET /api/system/features/system_status`（服务器时间、环境、调度是否在跑）需要 `system.page.feature`。定时任务执行前取 MySQL `GET_LOCK`，多进程同时触发时只有一个真正执行，其余只在应用日志里记一条跳过。
 

@@ -39,7 +39,7 @@
 
         <slot name="extra" />
 
-        <div v-if="column.color" class="wb-hm-sec">
+        <div v-if="column.color && !column.sortOnly" class="wb-hm-sec">
           <div class="wb-hm-sec-hd">按颜色筛选</div>
           <div class="wb-hm-colors">
             <button
@@ -55,7 +55,7 @@
           </div>
         </div>
 
-        <div class="wb-hm-sec">
+        <div v-if="!column.sortOnly" class="wb-hm-sec">
           <button
             type="button"
             class="wb-hm-item"
@@ -144,7 +144,7 @@
           </div>
         </div>
 
-        <div class="wb-hm-values">
+        <div v-if="!column.sortOnly" class="wb-hm-values">
           <el-input
             v-model="search"
             size="small"
@@ -202,7 +202,7 @@
           <button type="button" @click="$emit('clear-external')">清除</button>
         </div>
 
-        <div class="wb-hm-foot">
+        <div v-if="!column.sortOnly" class="wb-hm-foot">
           <el-button size="small" @click="$emit('close')">取消</el-button>
           <el-button size="small" type="primary" :disabled="selectsNothing" @click="confirm">确定</el-button>
         </div>
@@ -514,7 +514,7 @@ export default {
       this.truncated = false
       this.loadError = false
       this.place()
-      if (this.valueMode !== 'search') this.fetchValues()
+      if (this.valueMode !== 'search' && !this.column.sortOnly) this.fetchValues()
     },
     requestOptions(keyword) {
       if (this.valueMode !== 'all') return { keyword, limit: RECENT_LIMIT, order: 'recent' }
@@ -648,9 +648,11 @@ export default {
     buildState({ op = this.condOp, ignoreValues = false } = {}) {
       const state = ignoreValues ? {} : this.valueSelection()
       const needsValue = op && !['blank', 'not_blank'].includes(op)
-      if (op && (!needsValue || String(this.condValue).trim() || String(this.condValue2).trim())) {
+      const value = this.condValue ?? ''
+      const value2 = this.condValue2 ?? ''
+      if (op && (!needsValue || String(value).trim() || String(value2).trim())) {
         state.condition = needsValue
-          ? { op, value: this.condValue, value2: op === 'between' ? this.condValue2 : '' }
+          ? { op, value, value2: op === 'between' ? value2 : '' }
           : { op }
       }
       if (this.colors.length) state.colors = [...this.colors]

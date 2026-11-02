@@ -420,11 +420,12 @@ def get_feature_flag(db: Session, code: str) -> dict[str, Any] | None:
     }
 
 
-def get_job_schedule(db: Session, code: str, default_hour: int, default_minute: int) -> tuple[bool, dict[str, Any]]:
+def get_job_schedule(db: Session, code: str, default_config: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    hour, minute = default_config["hour"], default_config["minute"]
     flag = get_feature_flag(db, code)
     if flag is None:
-        return True, normalize_job_config({"hour": default_hour, "minute": default_minute}, default_hour, default_minute)
-    return bool(flag.get("enabled", True)), normalize_job_config(flag.get("config") or {}, default_hour, default_minute)
+        return True, normalize_job_config(default_config, hour, minute)
+    return bool(flag.get("enabled", True)), normalize_job_config(flag.get("config") or {}, hour, minute)
 
 
 def record_job_run(

@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from models.discovery import DiscoverySynthesisOrder
 from models.immunology import SerumImmMouse, SerumImmProject, SerumImmStep, SerumImmWorkbench, SerumTiterOrder
+from models.mega_automation import MegaFlowWorkOrder
 from models.target import Target
 from modules.discovery.synthesis_progress import service as synthesis
 from modules.immunology.serum import service as serum
@@ -86,6 +87,14 @@ class SerumStatsTests(DbTestCase):
         self.assertEqual(stats["status_counts"]["completed"], 1)
         self.assertEqual({item["name"]: item["value"] for item in stats["owner_counts"]}, {"甲": 2, "乙": 1})
 
+    def test_header_filters_apply_to_list_but_not_own_stat_dimensions(self):
+        owners = serum.get_column_values(self.db, {"field": "owner"})["items"]
+        self.assertEqual(owners, [{"value": "乙", "count": 2}, {"value": "甲", "count": 2}])
+        only_pm1 = {"field_filters": [{"field": "pm", "values": ["PM1"]}, {"field": "owner", "values": ["甲"]}]}
+        listed = serum.get_list(self.db, {**only_pm1, "sort_field": "project_status", "sort_dir": "desc"})
+        self.assertEqual([item["experiment_id"] for item in listed["items"]], ["E2", "E1"])
+        self.assertEqual(serum.get_stats(self.db, only_pm1)["total"], 3)
+
     def test_ongoing_filter_matches_stats_rule(self):
         listed = serum.get_list(self.db, {"project_status": "ongoing"})
         self.assertEqual(sorted(item["experiment_id"] for item in listed["items"]), ["E1", "E3", "E4"])
@@ -102,7 +111,7 @@ class SerumStatsTests(DbTestCase):
 
 
 class TiterStatsTests(DbTestCase):
-    tables = (SerumImmProject, SerumImmStep, SerumTiterOrder)
+    tables = (SerumImmProject, SerumImmMouse, SerumImmStep, SerumTiterOrder, MegaFlowWorkOrder)
 
     def setUp(self):
         super().setUp()
@@ -122,6 +131,23 @@ class TiterStatsTests(DbTestCase):
         self.assertEqual(titer.get_titer_order_stats(self.db, {})["pending"], 2)
         self.assertEqual(titer.get_titer_order_stats(self.db, scope)["pending"], 1)
         self.assertEqual(titer.get_titer_order_stats(self.db, {**scope, "blood_collection_start": "2026-11-01"})["pending"], 0)
+
+    def test_header_filters_follow_displayed_mouse_count(self):
+        for code in ("E1", "E2"):
+            self.db.add(SerumImmProject(project_code=code, experiment_id=code, project_status="已采血"))
+        self.db.add_all([SerumImmMouse(experiment_id="E1", mouse_count=" 3 "), SerumImmMouse(experiment_id="E1", mouse_count="/")])
+        self.db.add(SerumTiterOrder(experiment_id="E1", titer_order_id="T1", serum_status="已采血"))
+        self.db.add(SerumTiterOrder(experiment_id="E2", titer_order_id="T2", serum_status="已采血", mouse_count=5))
+        self.db.commit()
+
+        values = titer.get_titer_order_column_values(self.db, {"field": "mouse_count"})["items"]
+        self.assertEqual(values, [{"value": 3, "count": 1}, {"value": 5, "count": 1}])
+        three = {"field_filters": [{"field": "mouse_count", "values": [3]}]}
+        self.assertEqual([item["titer_order_id"] for item in titer.get_titer_order_list(self.db, three)["items"]], ["T1"])
+        self.assertEqual(titer.get_titer_order_stats(self.db, three)["pending"], 1)
+        tested = {"field_filters": [{"field": "serum_status", "values": ["已检测"]}]}
+        self.assertEqual(titer.get_titer_order_list(self.db, tested)["total"], 0)
+        self.assertEqual(titer.get_titer_order_stats(self.db, tested)["pending"], 2)
 
 
 class SynthesisSyncQueueTests(DbTestCase):

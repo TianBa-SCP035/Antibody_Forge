@@ -23,8 +23,7 @@ SCHEDULED_JOBS = [
         "name": "免疫状态自动更新",
         "resource": "project",
         "feature_code": "job.serum_auto_update_status",
-        "default_hour": 1,
-        "default_minute": 0,
+        "default_config": {"hour": 1, "minute": 0},
         "func": auto_update_status_job,
     },
     {
@@ -32,8 +31,7 @@ SCHEDULED_JOBS = [
         "name": "员工资料同步",
         "resource": "user",
         "feature_code": "job.employee_profile_sync",
-        "default_hour": 0,
-        "default_minute": 30,
+        "default_config": {"hour": 0, "minute": 30},
         "func": employee_profile_sync_job,
     },
     {
@@ -41,8 +39,7 @@ SCHEDULED_JOBS = [
         "name": "靶点同步",
         "resource": "target",
         "feature_code": "job.target_master_sync",
-        "default_hour": 0,
-        "default_minute": 45,
+        "default_config": {"hour": 0, "minute": 45},
         "func": target_master_sync_job,
     },
     {
@@ -50,8 +47,7 @@ SCHEDULED_JOBS = [
         "name": "发现状态更新",
         "resource": "discovery_workbench",
         "feature_code": "job.discovery_auto_update_status",
-        "default_hour": 1,
-        "default_minute": 15,
+        "default_config": {"hour": 1, "minute": 15},
         "func": discovery_auto_update_status_job,
     },
     {
@@ -59,8 +55,7 @@ SCHEDULED_JOBS = [
         "name": "镁伽状态同步",
         "resource": "flow_work_order",
         "feature_code": "job.mega_labillion_status_sync",
-        "default_hour": 2,
-        "default_minute": 0,
+        "default_config": {"hour": 2, "minute": 0},
         "func": labillion_status_sync_job,
     },
     {
@@ -68,8 +63,7 @@ SCHEDULED_JOBS = [
         "name": "合成与验证外部订单同步",
         "resource": "synthesis_progress",
         "feature_code": "job.discovery_synthesis_order_sync",
-        "default_hour": 0,
-        "default_minute": 20,
+        "default_config": {"schedule": "interval", "every": 1, "unit": "hour", "hour": 0, "minute": 20},
         "func": synthesis_order_sync_job,
     },
 ]
@@ -87,11 +81,7 @@ def get_scheduler() -> BackgroundScheduler:
             }
         )
         for job in SCHEDULED_JOBS:
-            enabled, schedule = _scheduled_job_config(
-                job["feature_code"],
-                job["default_hour"],
-                job["default_minute"],
-            )
+            enabled, schedule = _scheduled_job_config(job["feature_code"], job["default_config"])
             if not enabled:
                 continue
             _register_job(_scheduler, job, schedule)
@@ -115,11 +105,7 @@ def apply_job_schedule(job_code: str) -> bool:
     job = get_scheduled_job(job_code)
     if job is None:
         return False
-    enabled, schedule = _scheduled_job_config(
-        job["feature_code"],
-        job["default_hour"],
-        job["default_minute"],
-    )
+    enabled, schedule = _scheduled_job_config(job["feature_code"], job["default_config"])
     if not enabled:
         if scheduler.get_job(job["id"]):
             scheduler.remove_job(job["id"])
@@ -202,9 +188,9 @@ def _register_job(scheduler: BackgroundScheduler, job: dict, schedule: dict) -> 
     )
 
 
-def _scheduled_job_config(feature_code: str, default_hour: int, default_minute: int) -> tuple[bool, dict]:
+def _scheduled_job_config(feature_code: str, default_config: dict) -> tuple[bool, dict]:
     db = SessionLocal()
     try:
-        return get_job_schedule(db, feature_code, default_hour, default_minute)
+        return get_job_schedule(db, feature_code, default_config)
     finally:
         db.close()

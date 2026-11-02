@@ -291,6 +291,7 @@ import {
   fetchFlowWorkOrderMeta,
   exportFlowWorkOrderList,
 } from '#/api/megaAutomation';
+import { notifyApiError } from '#/api/errors';
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import ListFilterSelect from '#/components/ListFilterSelect.vue';
 import {
@@ -300,9 +301,8 @@ import {
   workbenchHeaderMenuMixin,
 } from '#/components/workbench';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
+import { listPageMixin } from '#/utils/listPage';
 import { listTableLockMixin } from '#/utils/listTableLock';
-import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage';
-import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
 import {
   canEditMegaFlowWorkOrder,
 } from '#/utils/megaPermission';
@@ -313,8 +313,6 @@ import {
   resolveOrderDisplayLabel,
   resolveOrderDisplayStatus,
 } from '#/utils/megaFlowWorkOrderStatus';
-
-const FLOW_WORK_ORDER_LIST_FILTER_KEY = 'flowWorkOrderList';
 
 // 靶点顶部框按整串匹配，与表头的多选不同口径，所以不联动
 const FLOW_WORK_ORDER_HEADER_COLUMNS = Object.freeze({
@@ -351,7 +349,8 @@ function emptyQuery() {
 
 export default {
   name: 'MegaFlowWorkOrderList',
-  mixins: [listTableLockMixin, workbenchHeaderMenuMixin],
+  mixins: [listTableLockMixin, listPageMixin, workbenchHeaderMenuMixin],
+  listFilterKey: 'flowWorkOrderList',
   components: {
     ElButton,
     ElButtonGroup,
@@ -399,8 +398,6 @@ export default {
         { value: 'low', label: '低' },
       ],
       listLoadError: false,
-      fetchSequence: 0,
-      tabDataFetchedAt: 0,
     };
   },
   computed: {
@@ -412,20 +409,12 @@ export default {
     },
   },
   created() {
-    this.restoreListFilters();
     this.listLoading = true;
     this.loadMeta();
     this.getList();
   },
-  beforeRouteLeave(_to, _from, next) {
-    this.persistListFilters();
-    next();
-  },
-  beforeUnmount() {
-    this.persistListFilters();
-  },
   activated() {
-    if (this.listLoadError || shouldRefreshTabData(this.tabDataFetchedAt)) {
+    if (this.listLoadError || this.isListDataStale()) {
       this.getList();
     }
   },
@@ -446,38 +435,27 @@ export default {
     fetchHeaderValues(query) {
       return fetchFlowWorkOrderColumnValues(query);
     },
-    headerCellClassName({ column }) {
-      return this.headerCellClass(column.columnKey);
-    },
-    onTableHeaderClick(column, event) {
-      if (!this.headerMenuColumns[column.columnKey]) return;
-      this.openHeaderMenu(column.columnKey, event.target.closest('th'));
-    },
     async getList() {
-      const requestId = ++this.fetchSequence;
+      const isLatest = this.beginListRequest();
       this.listLoading = true;
       try {
         const data = await fetchFlowWorkOrderList(this.buildQuery());
-        if (requestId !== this.fetchSequence) return;
+        if (!isLatest()) return;
         this.list = data?.items || [];
         this.total = data?.total || 0;
         this.stats = data?.stats || {};
         this.listLoadError = false;
-        this.tabDataFetchedAt = Date.now();
+        this.markListFetched();
       } catch (error) {
-        if (requestId !== this.fetchSequence) return;
+        if (!isLatest()) return;
         this.list = [];
         this.total = 0;
         this.stats = {};
         this.listLoadError = true;
-        ElMessage.error(error?.message || '工单列表加载失败');
+        notifyApiError(error, { fallback: '工单列表加载失败' });
       } finally {
-        if (requestId === this.fetchSequence) this.listLoading = false;
+        if (isLatest()) this.listLoading = false;
       }
-    },
-    handleFilter() {
-      this.listQuery.page = 1;
-      this.getList();
     },
     async handleListExport() {
       try {
@@ -486,27 +464,13 @@ export default {
           `流式工单总览_${excelTimestamp()}.xlsx`,
         );
       } catch (error) {
-        ElMessage.error(error?.message || '列表导出失败，请重试');
+        notifyApiError(error, { fallback: '列表导出失败，请重试' });
       }
     },
     resetFilter() {
       this.listQuery = emptyQuery();
       this.clearHeaderFilters();
-      this.persistListFilters();
       this.getList();
-    },
-    persistListFilters() {
-      saveListFilters(FLOW_WORK_ORDER_LIST_FILTER_KEY, {
-        listQuery: { ...this.listQuery },
-        headerFilters: this.headerFilters,
-      });
-    },
-    restoreListFilters() {
-      const state = loadListFilters(FLOW_WORK_ORDER_LIST_FILTER_KEY);
-      if (state?.listQuery && typeof state.listQuery === 'object') {
-        Object.assign(this.listQuery, state.listQuery);
-      }
-      this.restoreHeaderFilters(state?.headerFilters);
     },
     toggleStatus(status) {
       this.listQuery.status = this.listQuery.status === status ? '' : status;

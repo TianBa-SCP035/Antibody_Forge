@@ -19,8 +19,8 @@ bbctg_vita_server/
     options/           # 跨模块下拉：靶点库搜索、在职人员搜索
     immunology/        # serum / workbench / titer / cell
     atlas/             # 千鼠万抗
-    discovery/         # 抗体发现（工作台）
-    molecular_cell/    # 分子与细胞（文库构建）
+    discovery/         # 抗体发现：workbench / synthesis_progress（合成与验证，含 One 库同步）
+    molecular_cell/    # 分子与细胞：library_orders（文库构建）/ primer_catalog（引物库）
     mega_automation/   # 镁伽流式工单（含 callback、labillion_sync）
     order_sync/        # 工单数据回传
     system/            # 用户角色权限、审计、功能开关
@@ -36,7 +36,7 @@ bbctg_vita_server/
 |------|------|
 | `utils/normalize.py` | 文本、日期、非负整数、靶点编号、多值拼接、状态、优先级的清洗 |
 | `utils/workbench_queue.py` | 优先级常量（`PRIORITY_ORDER` 队列顺序从高到低；`PRIORITY_OPTIONS` 下拉顺序从低到高）、队列锁与重编号 |
-| `utils/header_filters.py` | 表头筛选；多值字段匹配统一用 `csv_token_clause`（已转义 `%` `_`） |
+| `utils/header_filters.py` | 表头筛选；多值字段匹配统一用 `csv_token_clause`（已转义 `%` `_`）；统计块去掉本维度的表头条件用 `without_header_fields` |
 | `utils/filter_values.py` | `like_literal`、`recorded_target_search`（各模块 `GET /recorded_targets` 共用，关键字与上限都进 SQL） |
 | `utils/codes.py` | 编号生成；唯一键冲突时重试 |
 | `utils/clock.py` | `now_local()`，固定 Asia/Shanghai，不要再用裸 `datetime.now()` |
@@ -76,13 +76,14 @@ DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Offi
 
 ## 响应格式
 
-业务接口（除健康检查外）统一：
+业务接口统一如下；健康检查、设备回传、镁伽回调三处例外列在最后：
 
 - 成功：`{ "code": 0, "data": ... }`
 - 业务失败（HTTP 200）：`{ "code": 1, "message": "..." }`（`BusinessError` 可带 `errorCode`）
 - HTTP 异常（401/403/404/500）：保留状态码，body 同上
 - 健康检查 `/api/health`：`{ "status": "ok" }`（不走上述 envelope）
 - 设备回传 `/api/order-experiment/sync`：`{ "code", "message", "trace_id", "data" }`（multipart 上传 `order_json`）
+- 镁伽状态回调：`{ "success": true, "data": ... }`，按 Labillion 约定返回（`modules/mega_automation/routes.py`）
 
 ## 前端错误分层（L0–L3）
 

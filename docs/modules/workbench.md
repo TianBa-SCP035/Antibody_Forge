@@ -1,76 +1,103 @@
-# 项目工作台（共用约定）
+# 项目工作台共用约定
 
-后续大模块若也做「项目工作台」，先对照本文，再写本模块字段与接口。免疫见 [immunology/workbench.md](./immunology/workbench.md)，发现见 [discovery/workbench.md](./discovery/workbench.md)。
+> 适用页面：免疫工作台、发现工作台、发现合成与验证、文库构建使用工作台 / Excel 双视图；免疫实验列表、效价实验列表、流式工单列表、引物库也使用共用表头菜单。模块事实见 [免疫工作台](./immunology/workbench.md) 与 [发现工作台](./discovery/workbench.md)。
 
-## 两种视图
+## 组件清单
 
-| 称谓 | `viewMode` | 做什么 |
-|------|------------|--------|
-| **工作台**（默认） | `workbench` | 扫读表格；关键字段行内改；左键点行开右侧抽屉，再点同一行或右键任意行关闭（无全屏遮罩） |
-| **Excel** | `excel` | 当前分页内划选、复制、事务性粘贴、键入续写 |
+| 组件 | 职责 | 使用页面 |
+|---|---|---|
+| `WorkbenchDataTable.vue` | 工作台表格、显示字段、固定首末列、`Shift` 拖列表头 | 免疫、发现、合成与验证、文库构建 |
+| `WorkbenchViewToggle.vue`、`viewMode.js` | 切换 `workbench` / `excel`；右键恢复当前视图列设置 | 免疫、发现、合成与验证、文库构建 |
+| `columnOrder.js` | `createColumnOrder` 持久化 `{ order, hidden }`，合并新增列并保持固定列 | 双视图页面的工作台表；免疫、发现、文库构建的 Excel 表 |
+| `workbenchExcelMixin.js`、`workbenchExcel.css` | 当前页选区、复制、粘贴、键入、整行/整列选择和列拖动 | 免疫、发现、合成与验证、文库构建 |
+| `WorkbenchHeaderMenu.vue`、`workbenchHeaderMenu.js` | 表头取值筛选、条件筛选、颜色筛选和排序 | 上述双视图页面、免疫实验列表、效价实验列表、流式工单列表、引物库 |
+| `WorkbenchStatusEditor.vue` | 行内状态选择 | 免疫、发现 |
+| `WorkbenchMultiTagEditor.vue` | 行内多选标签 | 发现 |
+| `WorkbenchTargetSelect.vue`、`workbenchTargetMixin.js` | 编辑区远程选靶点，联动名称与编号 | 免疫、发现、合成与验证、文库构建 |
+| `WorkbenchTargetFilter.vue` | 调用页面的 `GET /recorded_targets` 搜索已录入靶点，并保留已选项显示名 | 免疫、发现、合成与验证、文库构建 |
+| `WorkbenchColorMark.vue` | 单元格底色标记 | 发现合成与验证 |
+| `workbenchDrawer.css`、`workbenchDrawerChrome.css` | 无遮罩编辑抽屉 | 免疫、发现、合成与验证、文库构建 |
 
-「视图」按钮切换；工作台和 Excel 都是 `Shift` 拖列表头调列顺序，右键该按钮恢复**当前视图**的默认列序（工作台还会恢复显示字段）。两套列序分开存。实现：`apps/antibody_vita/src/components/workbench/`。旧稿里的「快速编辑 / Sheet」即这一对，新文档与界面统一用上表。
+## 表头筛选与排序
 
-## 只抽肯定共用的
+页面通过 `headerMenuColumns` 登记有菜单的列。菜单支持升降序、按值包含/排除、空白/非空白和按类型适用的条件；颜色筛选由 `WorkbenchHeaderMenu.vue` 展示，数据列需在后端登记颜色条件。`WorkbenchColorMark` 只负责合成与验证页的单元格颜色编辑。
 
-已落地、免疫和发现都在用：
+`workbenchHeaderMenu.js` 使用 `listQuery.sort_field`、`listQuery.sort_dir` 和 `field_filters`。顶部筛选能表达的条件写回顶部控件；排除、空白、颜色等条件保留为表头条件。工具栏胶囊显示保留在表头的条件数并可一次清除。
 
-| 文件 | 用途 |
-|------|------|
-| `workbenchExcelMixin.js` | 划选、复制、键入、列拖、选区 overlay；数字格普通输入，提交时由本页校验 |
-| `workbenchExcel.css` | 格子、选区、日期/选择器编辑外观 |
-| `workbenchDrawer.css` / `workbenchDrawerChrome.css` | 选择器弹出层、无遮罩抽屉 |
-| `drawerOverflowTooltip.js` | 抽屉定高控件超长时悬停出全文；备注 / 鼠号等自动高度框不弹 |
-| `WorkbenchViewToggle.vue` | 「视图」按钮与提示 |
-| `WorkbenchStatusEditor.vue` | 状态标签点选 |
-| `WorkbenchColorMark.vue` | 单元格底色标记（悬停色点选色）与表头单选/多选颜色筛选及批量标记 |
-| `WorkbenchMultiTagEditor.vue` | 多选标签（筛选方式） |
-| `WorkbenchTargetSelect.vue` | 抽屉靶点远程搜索；检索逻辑在 `targetOptions.js` |
-| `WorkbenchTargetFilter.vue` | 顶部靶点筛选：调本页 `GET /recorded_targets` 远程搜索、多选，已选项保留显示名。不要再一次性拉全表靶点 |
-| `columnOrder.js` | 列序 `localStorage`；可钉首列 / 末列；工作台另记隐藏列 `{ order, hidden }` |
-| `WorkbenchDataTable.vue` | 工作台视图表：一份字段目录、默认勾选、`Shift` 拖表头；单元格用按 key 的插槽 |
-| `WorkbenchHeaderMenu.vue` / `workbenchHeaderMenu.js` | 可选的表头筛选菜单，见下文「表头筛选」 |
-| `viewMode.js` | `workbench` / `excel`（兼容旧值 `sheet`） |
-| `workbenchConsole.css` | 页头、阶段条、绿色胶囊 |
+取值请求在当前列表条件上增加以下字段：
 
-优先级排队算法在后端 `utils/workbench_queue.py`（四档、只给未完成行的 `sort_order`、改档挤位；终态 `NULL`）。列表默认 `id` 倒序，表头为「序号」，格子里是本页行号 1..n。点该表头改为「排序」，按队列值排列并显示 `sort_order`，此时才能改号、拖行。拖行是把被拖行放到落点行当前的队列位，筛不筛选都能拖，终态行不参与。再点表头恢复默认。新建 / 复制 / 效价「测序」下发后按当前排序跳到该行所在页并打开抽屉。免疫和发现都用它。人名选择复用 `components/UserSelect.vue`（系统用户显示名）。抽屉靶点用 `WorkbenchTargetSelect`。Excel 里的靶点远程格和编号 / 名称互补在 `workbenchTargetMixin`，开展 / 下架仍在各页。该列表头左键只切换这两种显示，不再全选该列。
+| 字段 | 含义 |
+|---|---|
+| `field` | 列键 |
+| `value_keyword` | 菜单内搜索词 |
+| `value_limit` | 返回上限，后端限制为 1–1000 |
+| `value_order` | `value`、`value_desc` 或 `recent` |
 
-新工作台：`mixins: [workbenchExcelMixin]`，提供 `list`、`sheetColumns`、`canEdit`、`persistSheetColumnOrder`、`finishSheetEdit`、`normalizeRow`。键入默认 `row[key] = 文本`；有双字段或展示转换时再覆写 `sheetDirectTextValue` / `sheetValueSnapshot`。行选择列用 `excelRowSelectKey`（免疫和发现都是 `sort_order`）。粘贴校验与保存仍写在本页。人员名单由混入的 `loadAllUserOptions()` 加载，失败时提示并置空。固定枚举（状态、优先级、鼠型等）用 `utils/optionLists.ts` 的 `applyOptionLists` 从本页 `GET /options` 覆盖前端预设，后端返回空列表时保留预设；粘贴校验读这些列表，不要直接读前端常量。
+`all` 列在前端加载取值后搜索；`recent` 默认取最近出现的 200 个值；`search` 列输入关键字后请求。后端 `utils/header_filters.py` 的 `HEADER_COLUMNS` 生成列表、统计、导出共用的筛选和排序条件。取值查询保留其他列条件，并排除当前列自身条件。`recent` 最多扫描最近 5000 行。业务枚举按登记顺序排列，空值始终排在末尾。
 
-其他前端约定：本地存储键名都在 `constants/storageKeys.ts`，新键加在这里；同一份数据可能被连点或切换触发多次加载时，用 `utils/latestRequest.ts` 的 `createLatestRequest()`，每次 `await` 之后和 `finally` 里先判断 `isLatest()`，旧响应直接丢弃。
+值在内存里推算、SQL 筛不准的列登记 `sortOnly: true`，菜单只有排序（效价的采血日期，空值在后）；效价笼位不登记。效价的只数、FACS、ELISA 按显示值筛：单上没填跟随方案，只数为全项目小鼠只数之和，空按 0。统计块自己切换的维度（免疫实验的状态、负责人；效价的负责人、血清状态、小结、检测日期）不看这些列的表头条件；效价这四列由统计块改写顶部筛选，表头条件不写回顶部，与顶部同时生效。
 
-工作台视图用 `WorkbenchDataTable`：本页给一份 `WORKBENCH_COLUMNS`（与 Excel 同一组业务 key，外加操作列；免疫台「状态」只用 `status`，不要再并列 `plan_status`）。`defaultVisible: true` 的是默认短列，其余默认藏。排序列钉左、操作列钉右，单元格按 key 插槽。不要复用 Excel 的列序 key。右键「视图」按 `viewMode` 清当前这份。高级操作「显示字段」勾选这份目录；序号和操作列不能藏。新字段标了 `defaultVisible` 才默认出现。Excel 仍用自己的 `SHEET_COLUMNS`。
+Excel 视图中，有菜单的表头单击打开菜单；按住约 350 ms 或拖到其他列后选择整列。未登记菜单的表头直接选择整列。`Shift` 拖动用于调整列序，不打开菜单。
 
-## 表头筛选（可选）
+## 视图与列
 
-类 Excel 自动筛选，按页接入，不接的页面不受影响。合成与验证、发现工作台、免疫工作台、文库构建、流式工单列表、引物库在用。
+| 视图 | 用途 | 列设置 |
+|---|---|---|
+| 工作台 `workbench` | 扫读、行内编辑、右侧抽屉 | `WORKBENCH_COLUMNS`；`defaultVisible: true` 默认显示；排序列固定左侧，操作列固定右侧 |
+| Excel `excel` | 当前分页选区、复制、批量粘贴和逐格编辑 | `SHEET_COLUMNS`；使用独立存储键 |
 
-- 前端：`WorkbenchHeaderMenu.vue`（菜单）+ `workbenchHeaderMenu.js`（mixin、表头标签 `WorkbenchHeaderLabel`、工具栏胶囊 `WorkbenchHeaderFilterChip`）；`WorkbenchDataTable` 传 `header-menu-states` 后，点整个表头格子打开菜单。Excel 里有菜单的列单击表头只开菜单，按住约 0.35 秒或按着拖到别的列才选中整列（这时不开菜单）；没登记菜单的列按下即选整列；`Shift` 拖列不开菜单。
-- 页面提供 `headerMenuColumns`（只登记的列有菜单）、`fetchHeaderValues(query)`，并在 `buildQuery` 里合并 `headerFilterPayload()`、`resetFilters` 里调 `clearHeaderFilters()`。模板都是一行绑定：`<WorkbenchHeaderMenu v-bind="headerMenuBind" />`、`<WorkbenchHeaderFilterChip v-bind="headerChipBind" />`、顶部控件 `v-bind="headerTop(key, '占位')"`（日期区间第三个参数 `'startPlaceholder'`）、Excel 列 `<WorkbenchHeaderLabel :label v-bind="headerMenuStates[key]" />` 加表格外层 `@click="onSheetHeaderMenuClick"`；「重置全部筛选」条件里加 `headerFiltering`。Excel 表头格子样式由 `workbenchExcelMixin` 自动合并，页面不用覆盖。普通 `el-table`（流式工单列表）给列写 `column-key`，`header-cell-class-name` 返回 `headerCellClass(columnKey)`，`@header-click` 里对登记的列调 `openHeaderMenu(key, th)`。引物库的 Excel 用自己的 `sheetRange.ts`：`useSheetRange` 传 `menuKeys` 得到同样的长按选列，表格外层 `@click` 用 `headerMenuField(event)` 取列再开菜单。新页面照这一套接，不要再写表头点击排序、右键只看空白这类单列开关。
-- 取值请求是列表条件加 `field` / `value_keyword` / `value_limit` / `value_order`。菜单搜索词用 `value_keyword`，不能占用列表自己的 `keyword`。
-- 每列 `values` 选取值方式：`all` 一次列出全部（最多 1000 个，本地搜索）；`recent` 只列最近出现的 200 个，搜索走服务端，「全选搜索结果」按包含筛选；`search` 输入关键字才查（长文本）。日期按月分组、新到旧。
-- 一个字段只有一份条件：顶部筛选能表达的（选值、单号、包含、日期区间）写回顶部；表达不了的（排除、空白、颜色、其他条件）留在表头，顶部控件变蓝框并显示「表头：…」。改任一边都覆盖另一边。顶部是逗号分隔精确值的（流式工单的项目号、板条码），`top.kind` 写 `tokens`：只填一个值也按精确值，含空白或分隔符的值留在表头。顶部独有的选项（登记为 `topOnly`）在菜单里提示并可一键清除。
-- 取值列表套用除本列以外的全部条件（顶部和表头的本列条件都去掉），搜索规则与顶部下拉一致（靶点按正式名、别名、编号匹配）。加载中转圈，失败显示「重试」；失败时点确定不改动本列已有的按值条件。
-- 菜单里的按键不外传：Excel 视图表格仍处于激活状态，否则 `Backspace` / `Delete` / 方向键会作用到选中格子。`Esc` 关闭。打开期间页面或表格滚动时菜单跟随表头，表头滚出表格可视区就关闭；只在打开时挂滚动监听，取值不随列表刷新重取。
-- 留在表头的条件，工具栏显示「表头筛选 N ×」胶囊，悬停列出各列条件，点击全部清除（列被隐藏或滚出视野时也能看到）。点统计块切状态视图会清掉状态列的表头条件。「重置全部筛选」/ 右键查询同时清掉表头条件和表头排序（`headerSortActive` 也会让重置按钮出现）；统计块视图和队列排序属于视图模式，保留。
-- 拼接字段的口径：一格多值（顿号分隔、靶点组合）完整支持，按「含有」；展示拼接（状态列附带亲和 / 流式徽标）只筛主字段，其余部分走顶部筛选（`topOnly` 提示）；长文本用 `search`；序号、操作、靶点编号这类派生或重复列不登记。
-- 有业务顺序的列（优先级、状态、负责人）先按业务顺序，顺序外的值再按原值排；空值始终在最后。
-- 后端：`utils/header_filters.py` 按列登记 `HeaderColumn`，生成筛选条件（列表、统计、导出共用）、取值列表和排序。一格多值的列用 `csv_column`（顿号 / 逗号 / 加号分隔）和 `target_column`（靶点，与顶部靶点筛选同一口径），按「含有该值」，排除即去掉含有该值的行。JSON 数组列（流式工单）用 `json_overlaps` 匹配，`HeaderColumn.blank` 把空数组也算空白。顶部的多值筛选不要再校验「必须是预设选项」：表头列的是库里实际存的值，自填值也要能筛。单号类「最近出现」只扫最近 5000 行，开销固定。各页加一个 `POST /column_values`（查询权限，列入审计忽略）。
+两种视图均通过 `createColumnOrder` 保存列序。`Shift` 拖动业务列表头调整顺序。右键“视图”恢复当前视图默认列序；工作台视图同时恢复默认显示字段。“显示字段”可以调整业务列顺序和可见性，固定列不可隐藏。
 
-不要把整张 Excel 收成一个组件。列、选项、coerce、接口各台不同，抽出去只会把字段绑定搬来搬去。选项格 `#edit` 模板可以抄免疫 / 发现，不要做成万能选择器。
+Excel 操作范围是当前分页。单值粘贴到多格选区会填满选区；任一单元格校验失败时整批不保存。日期、枚举、正整数和非负整数由页面在提交前校验。多行文本按页面登记保留换行。
 
-## Excel 交互（各台相同）
+靶点顶部筛选使用 `WorkbenchTargetFilter` 搜索本表已录入值。编辑区使用 `WorkbenchTargetSelect` 或 `workbenchTargetMixin` 搜索靶点主数据，并同时保存靶点名称和编号。
 
-当前分页：点选/拖选单元格，活动格白底，选区浅色底加边框。点行选择列选整行并可上下拖多行；点业务表头选整列并可左右拖多列；`Ctrl+A` 选本页全部格子。选中后直接键入从末尾续写，`Backspace` 删末字符，`Delete` 清空选中单元格，右键取消选中。数字格同样先收下字符，提交或粘贴时校验整数，不合法则提示并打回。双击日期或选项只打开选择器。向多格选区粘贴单个值会填满选区；任一格不合法则整批不保存。来源格子里的换行留在这一格，不另起一行。剪贴板有 HTML 表格时按格子读取，没有表格时按纯文本里的引号读取；复制出去时，含换行、制表符或引号的格子会加上引号。写入时，单行字段去掉回车、制表符和不可见控制字符。备注，发现台的鼠号、板号、血清效价、阳性细胞数、免疫抗原、筛选抗原、冲击免抗原和冲击免细胞，以及文库的阳性细胞数和片段大小保留换行，只去掉开头和结尾的空行。这些字段在默认表格里仍单行省略，悬停时按原换行展开。文库板号仍把回车和制表符当作分隔符。Excel 里新建文库工单仍打开抽屉，抽屉保存走同一套清理。
+## 队列排序与优先级
 
-## Excel 实现约定（下一台直接按这个做）
+免疫工作台和发现工作台使用 `utils/workbench_queue.py`。优先级从高到低为 `吉吉国王`、`非常紧急`、`加急`、`正常`。
 
-这些是已经踩过的坑，不是各台自己发挥的地方。
+列表默认按 `id DESC`，首列显示当前页序号。点击“序号”切换到队列模式：请求 `sort_field=sort_order`，首列显示 `sort_order`，并开放改号和拖行。再次点击恢复默认模式。
 
-1. **行对象身份。** 单格保存只改 `list` 里原来那一行的字段，调用 mixin 的 `patchExistingListRow(saved, fields)`。派生列由本页 `savedFieldKeys` 补上。整行回写（抽屉一次存多项、复制后合并）用 `patchExistingListRow(saved)`，内部是 `Object.assign`。禁止 `list.splice` 换成新对象：VXE 会拆掉编辑器，输入框回到打开前的字，数据其实已经写进去了。排序 / 优先级保存后也保持当前数组顺序，避免正在操作的行跳走；后端重编号结果在下次主动刷新、筛选、翻页、切换排序模式或拖拽后生效。
-2. **键入先写文本。** mixin 默认 `setSheetDirectValue` 就是 `row[key] = text`。不要在键入时拆词、转数组、走 formatter。校验、拆词、写回列表字段放在 `finishSheetEdit` / `coerceSheetValue`。
-3. **formatter 少挂。** `sheetFormatter` 只给排序、靶点编号、多选展示这类列返回**稳定的方法引用**（如 `this.formatSortColumnCell`），其余列返回 `undefined`。不要 `return ({ cellValue }) => ...` 包所有列，也不要每次渲染新建函数，否则 VXE 当列配置变了，编辑器重挂。
-4. **整数当文本打。** `edit` 只表示 Excel 编辑器（`text` / `select` / `date` / `target` / `readonly`），不要用 `edit: 'number'` 冒充校验。排序号、发现只数都是普通 `VxeInput`，提交时按字段 coerce：排序号必填正整数（`coerceRequiredPositiveInt`），发现只数可空、`0` 合法（`coerceOptionalNonnegInt`）。免疫「数量」仍是自由文本。
-5. **编辑器不要反复打开。** 同一格继续敲，mixin 已打开则不再 `setEditCell`。不要往 input 里写值再派发 `input` 去“同步显示”。
+`sort_order` 只分配给非终态记录，并保持稠密的 `1..N`。终态记录为 `NULL`，不参与改号或拖行。改排序号和拖行不会改变优先级，目标位置会限制在当前优先级档位内。只改优先级时，升档放到目标档末尾，降档放到目标档开头。新记录按默认优先级加入该档末尾。项目状态写入终态或离开终态时，由写操作同步出队或入队；列表和导出不改队列。
 
-本页仍要自己写：列定义、`coerceSheetValue`、`finishSheetEdit`、保存 API、抽屉脏字段。免疫 `saveRow` 另有 `_expected` 冲突链，发现没有，不必合成一个保存函数。
+## 保存与并发
+
+页面保存后使用 `patchExistingListRow` 在原行对象上合并返回值，保持正在编辑的 VXE 单元格实例。抽屉切行、关闭、筛选和切换视图前会提交脏字段。
+
+免疫工作台逐行保存时携带 `_expected`，值来自该行最近一次加载或保存后的基线。后端在行锁内比较本次涉及字段；值不一致返回 `409`。`save_batch` 在写入前校验每行 `_expected`，任一行冲突时整批回滚。方案保存使用独立的 `scheme_revision`。
+
+发现工作台的 `/save` 和 `/save_batch` 不使用 `_expected`。批量保存仍在一个事务中执行，任一行失败时整批回滚。
+
+## Excel 实现约定
+
+以下是 VXE 编辑器踩过的坑，新页面照做：
+
+1. 保存后只用 `patchExistingListRow` 改原行对象，不用 `list.splice` 换成新对象，否则编辑器被拆掉，输入框回到旧值。保存排序或优先级后也保持当前数组顺序，重编号结果等下次刷新再生效。
+2. 键入时 `setSheetDirectValue` 只做 `row[key] = 文本`，不拆词、不转数组；校验和转换放在 `finishSheetEdit` / `coerceSheetValue`。有双字段或展示转换时覆写 `sheetDirectTextValue`。
+3. `sheetFormatter` 只给少数列返回稳定的方法引用（如 `this.formatSortColumnCell`），其余列返回 `undefined`；每次渲染新建函数会让 VXE 重挂编辑器。
+4. 整数列也按文本输入，`edit` 只表示编辑器类型；提交时用 `coerce.js` 校验，例如排序号用 `coerceRequiredPositiveInt`，可空只数用 `coerceOptionalNonnegInt`。
+5. 同一格继续键入时不要重复 `setEditCell`，也不要往 input 里写值再派发 `input` 事件。
+
+## 新页面接入清单
+
+- [ ] 定义 `WORKBENCH_COLUMNS`、`SHEET_COLUMNS`、独立存储键和 `createColumnOrder`。
+- [ ] 接入 `WorkbenchDataTable`、`WorkbenchViewToggle`、`workbenchExcelMixin`，实现页面字段校验与保存。
+- [ ] 列表请求、筛选暂存和切回刷新用 `listPageMixin`，见下节。
+- [ ] 定义 `headerMenuColumns`，提供 `listQuery.sort_field`、`listQuery.sort_dir` 和 `fetchHeaderValues(query)`。
+- [ ] `buildQuery()` 合并 `headerFilterPayload()`；重置操作调用 `clearHeaderFilters()`。
+- [ ] 后端定义 `HEADER_COLUMNS`，列表、统计和导出共用 `header_filter_clauses` 与 `header_sort_clauses`。
+- [ ] 提供查询权限保护的 `POST /api/<module>/column_values`，调用 `header_column_values`，并列入审计忽略清单。
+- [ ] 靶点页面提供 `GET /api/<module>/recorded_targets`，顶部筛选与编辑区使用对应共用组件。
+- [ ] 队列页面接入 `sort_order`、`priority`、终态判定、`POST /reorder` 和写入时队列同步。
+
+## 普通列表页接入清单（无 Excel、无抽屉）
+
+表格用 `el-table`，新增和编辑走弹窗或详情页时按下面接入，参考流式工单列表。要多格编辑再接 Excel 视图。
+
+- [ ] 混入 `listTableLockMixin`、`listPageMixin`（`utils/listPage.js`）、`workbenchHeaderMenuMixin`，顺序同此。
+- [ ] 写组件选项 `listFilterKey`，现有列表页都写了；`listQuery` 和表头条件自动存取，日期区间等别的筛选用 `listFilterExtras()` / `restoreListFilterExtras(state)`。排序和页码一起恢复。
+- [ ] `getList()` 开头 `const isLatest = this.beginListRequest()`，响应回来先判断 `isLatest()`，成功后 `markListFetched()`；`activated` 里 `isListDataStale()` 为真时重拉。
+- [ ] 顶部筛选调 `handleFilter()`，分页绑 `handleCurrentChange` / `handleSizeChange`；重置清空 `listQuery` 并调 `clearHeaderFilters()`。
+- [ ] `el-table` 绑 `:header-cell-class-name="headerCellClassName"` 和 `@header-click="onTableHeaderClick"`，有菜单的列写 `column-key`，表头插槽放 `WorkbenchHeaderLabel`；页面放 `WorkbenchHeaderMenu`，工具栏放 `WorkbenchHeaderFilterChip`。
+- [ ] `headerMenuColumns`、`fetchHeaderValues`、`buildQuery()`、后端 `HEADER_COLUMNS` 和 `column_values` 同上节。
+- [ ] 统计块按自己的维度分组时，后端用 `without_header_fields` 去掉这些列的表头条件。

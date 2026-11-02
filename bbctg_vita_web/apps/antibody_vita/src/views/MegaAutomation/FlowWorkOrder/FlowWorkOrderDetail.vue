@@ -365,6 +365,8 @@ import {
   saveFlowWorkOrder,
   validateFlowWorkOrder,
 } from '#/api/megaAutomation';
+import { notifyApiError, resolveUserMessage } from '#/api/errors';
+import { copyToClipboard } from '#/utils/clipboard';
 import { createLatestRequest } from '#/utils/latestRequest';
 import {
   canDispatchMegaFlowWorkOrder,
@@ -711,37 +713,16 @@ export default {
       } catch (error) {
         if (!isLatest()) return;
         this.clearActivePayload();
-        ElMessage.warning(error?.message || '加载生效下发失败');
+        notifyApiError(error, { fallback: '加载生效下发失败', level: 'warning' });
       } finally {
         if (isLatest()) this.activePayloadLoading = false;
       }
     },
     async copyActivePayload() {
       if (!this.activePayload) return;
-      const text = JSON.stringify(this.activePayload, null, 2);
-      try {
-        if (navigator.clipboard?.writeText) {
-          try {
-            await navigator.clipboard.writeText(text);
-            ElMessage.success('已复制当前生效下发 JSON');
-            return;
-          } catch {
-            // HTTP 等非安全上下文下回退到传统复制方式。
-          }
-        }
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.setAttribute('readonly', 'readonly');
-        textarea.style.cssText = 'position:fixed;left:-9999px;opacity:0';
-        document.body.appendChild(textarea);
-        try {
-          textarea.select();
-          if (!document.execCommand('copy')) throw new Error('copy failed');
-        } finally {
-          document.body.removeChild(textarea);
-        }
+      if (await copyToClipboard(JSON.stringify(this.activePayload, null, 2))) {
         ElMessage.success('已复制当前生效下发 JSON');
-      } catch {
+      } else {
         ElMessage.warning('复制失败，请手动选择文本复制');
       }
     },
@@ -805,7 +786,7 @@ export default {
       } catch (error) {
         this.defaultSampleWells = [];
         this.defaultCellColumns = [];
-        ElMessage.warning(error?.message || '加载工单默认孔位配置失败，请刷新页面重试');
+        notifyApiError(error, { fallback: '加载工单默认孔位配置失败，请刷新页面重试', level: 'warning' });
       }
     },
     resetPausedTracking() {
@@ -915,7 +896,7 @@ export default {
         this.loadError = true;
         this.order = this.normalizeOrder(createDefaultFlowWorkOrder());
         this.resetPausedTracking();
-        ElMessage.error(error?.message || '工单加载失败，请返回列表后重试');
+        notifyApiError(error, { fallback: '工单加载失败，请返回列表后重试' });
       } finally {
         if (isLatest()) {
           this.loading = false;
@@ -980,7 +961,7 @@ export default {
         if (notes.length) ElMessage.info(notes.join('；'));
       } catch (error) {
         if (fillEmpty && this.cellUsageTokens[index] === token) {
-          ElMessage.warning(error?.message || '查询细胞板占用失败');
+          notifyApiError(error, { fallback: '查询细胞板占用失败', level: 'warning' });
         }
       }
     },
@@ -1097,7 +1078,7 @@ export default {
         ElMessage.success(data?.unchanged ? '内容无变化，未更新数据库' : '保存成功');
         return true;
       } catch (error) {
-        ElMessage.warning(error?.message || '保存失败');
+        notifyApiError(error, { fallback: '保存失败', level: 'warning' });
         return false;
       } finally {
         this.saving = false;
@@ -1127,7 +1108,7 @@ export default {
         }
       } catch (error) {
         this.applyValidationResult({
-          errors: [error?.message || '校验失败'],
+          errors: [resolveUserMessage(error, { fallback: '校验失败' }).message],
         });
       }
     },
@@ -1180,7 +1161,7 @@ export default {
       } catch (error) {
         if (error !== 'cancel' && error?.message !== 'cancel') {
           this.applyValidationResult({
-            errors: [error?.message || '校验失败'],
+            errors: [resolveUserMessage(error, { fallback: '校验失败' }).message],
           });
         }
       }
@@ -1221,7 +1202,7 @@ export default {
         ElMessage.success(simulated ? '已模拟发送' : '已发送');
       } catch (error) {
         if (error !== 'cancel' && error?.message !== 'cancel') {
-          ElMessage.warning(error?.message || '发送失败，请确认已校验通过');
+          notifyApiError(error, { fallback: '发送失败，请确认已校验通过', level: 'warning' });
         }
       } finally {
         this.actionLoading = false;
@@ -1258,7 +1239,7 @@ export default {
         ElMessage.success('已标为执行中');
       } catch (error) {
         if (error !== 'cancel' && error?.message !== 'cancel') {
-          ElMessage.warning(error?.message || '继续执行失败');
+          notifyApiError(error, { fallback: '继续执行失败', level: 'warning' });
         }
       }
     },
@@ -1279,7 +1260,7 @@ export default {
         ElMessage.success('已确认执行');
       } catch (error) {
         if (error !== 'cancel' && error?.message !== 'cancel') {
-          ElMessage.warning(error?.message || '确认执行失败');
+          notifyApiError(error, { fallback: '确认执行失败', level: 'warning' });
         }
       }
     },
@@ -1309,7 +1290,7 @@ export default {
         ElMessage.success(simulated || isWithdraw ? `已${label}` : '已标为暂停中');
       } catch (error) {
         if (error !== 'cancel' && error?.message !== 'cancel') {
-          ElMessage.warning(error?.message || `${label}失败`);
+          notifyApiError(error, { fallback: `${label}失败`, level: 'warning' });
         }
       } finally {
         this.actionLoading = false;
@@ -1328,7 +1309,7 @@ export default {
         });
         ElMessage.success('已标为已暂停');
       } catch (error) {
-        ElMessage.warning(error?.message || '确认暂停失败');
+        notifyApiError(error, { fallback: '确认暂停失败', level: 'warning' });
       } finally {
         this.actionLoading = false;
       }
@@ -1344,7 +1325,7 @@ export default {
           data?.status === 'running' ? '已标为执行中' : '已标为已发送',
         );
       } catch (error) {
-          ElMessage.warning(error?.message || '确认恢复失败');
+          notifyApiError(error, { fallback: '确认恢复失败', level: 'warning' });
       } finally {
         this.actionLoading = false;
       }
@@ -1367,7 +1348,7 @@ export default {
         ElMessage.success('已标为恢复中');
       } catch (error) {
         if (error !== 'cancel' && error?.message !== 'cancel') {
-          ElMessage.warning(error?.message || '无法请求恢复');
+          notifyApiError(error, { fallback: '无法请求恢复', level: 'warning' });
         }
       } finally {
         this.actionLoading = false;
@@ -1385,7 +1366,7 @@ export default {
         });
         ElMessage.success('已重新发送');
       } catch (error) {
-        ElMessage.warning(error?.message || '无法继续，请先校验确认修改');
+        notifyApiError(error, { fallback: '无法继续，请先校验确认修改', level: 'warning' });
       } finally {
         this.actionLoading = false;
       }
@@ -1403,7 +1384,7 @@ export default {
         ElMessage.success('工单已完成');
       } catch (error) {
         if (error !== 'cancel' && error?.message !== 'cancel') {
-          ElMessage.warning(error?.message || '完成操作失败');
+          notifyApiError(error, { fallback: '完成操作失败', level: 'warning' });
         }
       }
     },
@@ -1425,7 +1406,7 @@ export default {
         ElMessage.success('已标记为手动失败');
       } catch (error) {
         if (error !== 'cancel' && error?.message !== 'cancel') {
-          ElMessage.warning(error?.message || '标记手动失败失败');
+          notifyApiError(error, { fallback: '标记手动失败失败', level: 'warning' });
         }
       }
     },
@@ -1443,7 +1424,7 @@ export default {
         this.goBack();
       } catch (error) {
         if (error !== 'cancel' && error?.message !== 'cancel') {
-          ElMessage.warning(error?.message || '删除失败');
+          notifyApiError(error, { fallback: '删除失败', level: 'warning' });
         }
       }
     },
@@ -1465,7 +1446,7 @@ export default {
         ElMessage.success('已作废');
       } catch (error) {
         if (error !== 'cancel' && error?.message !== 'cancel') {
-          ElMessage.warning(error?.message || '作废失败');
+          notifyApiError(error, { fallback: '作废失败', level: 'warning' });
         }
       }
     },

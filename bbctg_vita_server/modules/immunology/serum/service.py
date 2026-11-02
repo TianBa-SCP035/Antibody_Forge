@@ -44,7 +44,16 @@ from modules.immunology.titer.service import (
     create_titer_order_for_blood_collection_if_absent,
 )
 from utils.clock import now_local
-from utils.header_filters import csv_token_clause
+from utils.header_filters import (
+    HeaderColumn,
+    csv_column,
+    csv_token_clause,
+    header_column_values,
+    header_filter_clauses,
+    header_sort_clauses,
+    target_column,
+    without_header_fields,
+)
 from utils.codes import insert_with_retry
 
 SERUM_CAGE_NO_MOUSE = "SERUM_CAGE_NO_MOUSE"
@@ -170,23 +179,28 @@ def _collect_titer_owners_by_experiment(db: Session, experiment_ids: list[str]) 
     return owners_map
 
 
-PROJECT_SORT_COLUMNS = {
-    "owner": SerumImmProject.owner,
-    "project_code": SerumImmProject.project_code,
-    "project_name": SerumImmProject.project_name,
-    "project_status": SerumImmProject.project_status,
-    "start_date": SerumImmProject.start_date,
-    "target_name": SerumImmProject.target_name,
+# 笼位按小鼠汇总显示，不登记
+HEADER_COLUMNS: dict[str, HeaderColumn] = {
+    "project_code": HeaderColumn(SerumImmProject.project_code),
+    "project_name": HeaderColumn(SerumImmProject.project_name),
+    "lab_notebook": HeaderColumn(SerumImmProject.lab_notebook),
+    "mouse_strain_category": csv_column(SerumImmProject.mouse_strain_category),
+    "remark": HeaderColumn(SerumImmProject.remark),
+    "study_type": HeaderColumn(SerumImmProject.study_type, "enum"),
+    "pm": HeaderColumn(SerumImmProject.pm, "enum"),
+    "mouse_strain": csv_column(SerumImmProject.mouse_strain),
+    "target_name": target_column(SerumImmProject.target_name, SerumImmProject.target_codes),
+    "owner": HeaderColumn(SerumImmProject.owner, "enum"),
+    "start_date": HeaderColumn(SerumImmProject.start_date, "date"),
+    "project_status": HeaderColumn(SerumImmProject.project_status, "enum"),
 }
 
 
 def _project_order_by(data: dict[str, Any]) -> list:
-    column = PROJECT_SORT_COLUMNS.get(str(data.get("sort_field") or ""))
-    if column is None:
+    spec = HEADER_COLUMNS.get(str(data.get("sort_field") or ""))
+    if spec is None:
         return [SerumImmProject.id.desc()]
-    direction = str(data.get("sort_order") or "").lower()
-    ordered_column = column.asc() if direction == "asc" else column.desc()
-    return [ordered_column, SerumImmProject.id.desc()]
+    return list(header_sort_clauses(spec, str(data.get("sort_dir") or ""), SerumImmProject.id))
 
 
 def _project_target_pairs():
@@ -208,7 +222,13 @@ def join_strain_parts(groups: list[dict[str, Any]], key: str) -> str | None:
     return "、".join(values) or None
 
 
-def apply_project_filters(stmt, data: dict[str, Any], *, db: Session | None = None):
+def apply_project_filters(
+    stmt,
+    data: dict[str, Any],
+    *,
+    db: Session | None = None,
+    header_except: str | None = None,
+):
     p_code = data.get("project_code")
     p_codes = data.get("project_codes")
     p_name = data.get("project_name")
@@ -287,7 +307,7 @@ def apply_project_filters(stmt, data: dict[str, Any], *, db: Session | None = No
         mouse_strain_category,
         lambda value: csv_token_clause(SerumImmProject.mouse_strain_category, value),
     )
-    return stmt
+    return stmt.where(*header_filter_clauses(db, HEADER_COLUMNS, data.get("field_filters"), except_field=header_except))
 
 
 def _project_status_clause(status: str):
@@ -302,8 +322,9 @@ def _project_status_clause(status: str):
 
 
 def get_stats(db: Session, data: dict[str, Any] | None = None) -> dict:
-    """统计块跟随列表筛选；状态和负责人是统计块自己切换的维度，不参与。"""
-    scope = {key: value for key, value in (data or {}).items() if key not in {"project_status", "owner"}}
+    """统计块跟随列表筛选；状态和负责人是统计块自己切换的维度，顶部和表头的这两项都不参与。"""
+    own = {"project_status", "owner"}
+    scope = without_header_fields({key: value for key, value in (data or {}).items() if key not in own}, own)
     scoped = _project_list_stmt(db, scope).subquery()
     status_counts = db.execute(
         select(scoped.c.project_status, func.count()).group_by(scoped.c.project_status)
@@ -351,13 +372,23 @@ def generate_next_id(db: Session, project_code: str, skip: int = 0) -> str | Non
     return f"{project_code}{next_suffix:02d}"
 
 
-def _project_list_stmt(db: Session, data: dict[str, Any]):
-    stmt = apply_project_filters(select(SerumImmProject), data, db=db)
+def _apply_start_date_range(stmt, data: dict[str, Any]):
     if data.get("start_date"):
         stmt = stmt.where(SerumImmProject.start_date >= data["start_date"])
     if data.get("end_date"):
         stmt = stmt.where(SerumImmProject.start_date <= data["end_date"])
     return stmt
+
+
+def _project_list_stmt(db: Session, data: dict[str, Any]):
+    return _apply_start_date_range(apply_project_filters(select(SerumImmProject), data, db=db), data)
+
+
+def get_column_values(db: Session, data: dict[str, Any] | None) -> dict[str, Any]:
+    def apply_filters(stmt, payload: dict[str, Any], field: str):
+        return _apply_start_date_range(apply_project_filters(stmt, payload, db=db, header_except=field), payload)
+
+    return header_column_values(db, HEADER_COLUMNS, data, apply_filters, id_column=SerumImmProject.id)
 
 
 def _cages_by_experiment(db: Session, experiment_ids: list[str]) -> dict[str, str]:

@@ -268,6 +268,16 @@ def titer_order_stats(
     return success(service.get_titer_order_stats(db, data or {}))
 
 
+@router.post("/order/column_values")
+def titer_order_column_values(
+    data: dict | None = None,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "serum.page.titer_order")
+    return success(service.get_titer_order_column_values(db, data or {}))
+
+
 @router.get("/order/owner_stats")
 def titer_order_owner_stats(
     month_start: str = "",

@@ -49,7 +49,7 @@ from modules.discovery.synthesis_progress.one_sync import (
 from utils.excel import build_list_workbook
 from utils.header_filters import (
     HeaderColumn,
-    column_values,
+    header_column_values,
     csv_column,
     csv_token_clause,
     header_filter_clauses,
@@ -876,20 +876,12 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
-    """表头筛选的取值列表：套用除本列表头条件以外的全部筛选。顶部筛选里的本列条件由前端去掉。"""
-    payload = data or {}
-    field = str(payload.get("field") or "").strip()
-    spec = HEADER_COLUMNS.get(field)
-    if spec is None:
-        raise ValueError(f"不支持按「{field}」表头筛选")
-    return column_values(
+    return header_column_values(
         db,
-        spec,
-        lambda stmt: _apply_list_filters(stmt, payload, db=db, header_except=field),
+        HEADER_COLUMNS,
+        data,
+        lambda stmt, payload, field: _apply_list_filters(stmt, payload, db=db, header_except=field),
         id_column=DiscoverySynthesisOrder.id,
-        keyword=str(payload.get("value_keyword") or ""),
-        limit=payload.get("value_limit"),
-        order=str(payload.get("value_order") or "value"),
     )
 
 

@@ -514,6 +514,7 @@ import {
 
 import { notifyApiError } from '#/api/errors'
 import { exportScheme, exportSchemePdf, fetchDetail } from '#/api/serum'
+import { copyToClipboard } from '#/utils/clipboard'
 import { downloadBlob } from '#/utils/file-resource'
 import { SERUM_ERRORS } from '../shared/errors'
 import {
@@ -823,34 +824,10 @@ export default {
           this.schemeExportLoading = false
         })
     },
-    copyText(text) {
+    async copyText(text) {
       if (!text) return
-      // 兼容：navigator.clipboard 不一定存在
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(String(text)).then(() => {
-          ElMessage.success('已复制到剪贴板')
-        }).catch(() => {
-          this.fallbackCopy(String(text))
-        })
-      } else {
-        this.fallbackCopy(String(text))
-      }
-    },
-    fallbackCopy(text) {
-      try {
-        const input = document.createElement('textarea')
-        input.value = text
-        input.setAttribute('readonly', 'readonly')
-        input.style.position = 'fixed'
-        input.style.opacity = '0'
-        document.body.appendChild(input)
-        input.select()
-        document.execCommand('copy')
-        document.body.removeChild(input)
-        ElMessage.success('已复制到剪贴板')
-      } catch (e) {
-        ElMessage.warning('复制失败，请手动复制')
-      }
+      if (await copyToClipboard(String(text))) ElMessage.success('已复制到剪贴板')
+      else ElMessage.warning('复制失败，请手动复制')
     }
   }
 }

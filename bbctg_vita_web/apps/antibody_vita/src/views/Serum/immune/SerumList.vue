@@ -92,15 +92,15 @@
     <div class="filter-wrapper list-filter-controls">
         <el-row :gutter="15" type="flex" align="middle" style="flex-wrap: wrap;">
             <el-col :span="4">
-               <el-input v-model="listQuery.project_code" placeholder="项目编号" class="filter-item" @keyup.enter="handleFilter" clearable :prefix-icon="Search" />
+               <el-input v-model="listQuery.project_code" v-bind="headerTop('project_code', '项目编号')" class="filter-item" @keyup.enter="handleFilter" clearable :prefix-icon="Search" />
             </el-col>
             <el-col :span="4">
-                <el-input v-model="listQuery.project_name" placeholder="项目名称" class="filter-item" @keyup.enter="handleFilter" clearable :prefix-icon="Search" />
+                <el-input v-model="listQuery.project_name" v-bind="headerTop('project_name', '项目名称')" class="filter-item" @keyup.enter="handleFilter" clearable :prefix-icon="Search" />
             </el-col>
             <el-col :span="3">
                  <WorkbenchTargetFilter
                       v-model="listQuery.target_name"
-                      placeholder="靶点"
+                      v-bind="headerTop('target_name', '靶点')"
                       scope="serumList"
                       style="width: 100%"
                       @change="handleFilter" />
@@ -108,7 +108,7 @@
             <el-col :span="3">
                  <ListFilterSelect 
                       v-model="listQuery.owner" 
-                      placeholder="负责人" 
+                      v-bind="headerTop('owner', '负责人')"
                       clearable 
                       filterable 
                       :filter-method="q => setFilterQuery('owner', q)"
@@ -123,7 +123,7 @@
                   v-model="dateRange"
                   type="daterange"
                   range-separator="至"
-                  start-placeholder="开始"
+                  v-bind="headerTop('start_date', '开始', 'startPlaceholder')"
                   end-placeholder="结束"
                   style="width: 100%;"
                   format="YYYY-MM-DD"
@@ -145,6 +145,7 @@
             </el-col>
             <el-col :span="4" style="text-align: right;">
                 <div class="list-filter-actions">
+                  <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
                   <el-button class="list-filter-action-button" type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilters">查询</el-button>
                   <el-button
                     class="list-filter-action-button"
@@ -170,7 +171,7 @@
               <el-col :span="4">
                  <ListFilterSelect 
                       v-model="listQuery.study_type" 
-                      placeholder="课题类型" 
+                      v-bind="headerTop('study_type', '课题类型')"
                       clearable 
                       filterable 
                       :filter-method="q => setFilterQuery('studyType', q)"
@@ -183,7 +184,7 @@
               <el-col :span="4">
                  <ListFilterSelect 
                       v-model="listQuery.pm" 
-                      placeholder="PM" 
+                      v-bind="headerTop('pm', 'PM')"
                       clearable 
                       filterable 
                       :filter-method="q => setFilterQuery('pm', q)"
@@ -196,7 +197,7 @@
               <el-col :span="3">
                  <ListFilterSelect 
                       v-model="listQuery.mouse_strain" 
-                      placeholder="鼠型" 
+                      v-bind="headerTop('mouse_strain', '鼠型')"
                       clearable 
                       filterable 
                       :filter-method="q => setFilterQuery('mouseStrain', q)"
@@ -209,7 +210,7 @@
               <el-col :span="3">
                  <ListFilterSelect 
                       v-model="listQuery.project_status" 
-                      placeholder="状态" 
+                      v-bind="headerTop('project_status', '状态')"
                       clearable 
                       filterable 
                       :filter-method="q => setFilterQuery('status', q)"
@@ -224,7 +225,7 @@
               <el-col :span="5">
                  <ListFilterSelect 
                       v-model="listQuery.mouse_strain_category" 
-                      placeholder="归类鼠型" 
+                      v-bind="headerTop('mouse_strain_category', '归类鼠型')"
                       clearable 
                       filterable 
                       :filter-method="q => setFilterQuery('mouseStrainCategory', q)"
@@ -293,21 +294,25 @@
         size="large"
         class="list-data-table"
         style="width: 100%;"
-        @sort-change="handleSortChange"
+        :header-cell-class-name="headerCellClassName"
+        @header-click="onTableHeaderClick"
         >
-        <el-table-column label="编号" prop="project_code" align="left" width="135" sortable="custom" fixed>
+        <el-table-column column-key="project_code" prop="project_code" align="left" width="135" fixed>
+            <template #header><WorkbenchHeaderLabel label="编号" v-bind="headerMenuStates.project_code" /></template>
             <template #default="{ row }">
                <div class="list-code-text is-clickable" @click="handleView(row)">{{ row.project_code }}</div>
             </template>
         </el-table-column>
         
-        <el-table-column label="项目名称" prop="project_name" align="left" min-width="240" sortable="custom" show-overflow-tooltip>
+        <el-table-column column-key="project_name" prop="project_name" align="left" min-width="240" show-overflow-tooltip>
+            <template #header><WorkbenchHeaderLabel label="项目名称" v-bind="headerMenuStates.project_name" /></template>
             <template #default="{ row }">
                <span class="project-name">{{ row.project_name }}</span>
             </template>
         </el-table-column>
 
-        <el-table-column v-if="showExtraColumns" label="实验记录本" prop="lab_notebook" align="center" min-width="110" show-overflow-tooltip class-name="inline-edit-cell">
+        <el-table-column v-if="showExtraColumns" column-key="lab_notebook" prop="lab_notebook" align="center" min-width="110" show-overflow-tooltip class-name="inline-edit-cell">
+            <template #header><WorkbenchHeaderLabel label="实验记录本" v-bind="headerMenuStates.lab_notebook" /></template>
             <template #default="{ row }">
                <el-input
                   v-if="editingField === 'lab_notebook' && editingRowId === row.id"
@@ -329,9 +334,15 @@
             </template>
         </el-table-column>
 
-        <el-table-column v-if="showExtraColumns" label="归类鼠型" prop="mouse_strain_category" align="center" min-width="110" show-overflow-tooltip />
+        <el-table-column v-if="showExtraColumns" column-key="mouse_strain_category" prop="mouse_strain_category" align="center" min-width="110" show-overflow-tooltip>
+            <template #header><WorkbenchHeaderLabel label="归类鼠型" v-bind="headerMenuStates.mouse_strain_category" /></template>
+        </el-table-column>
 
-        <el-table-column v-if="showExtraColumns" :label="isCageMode ? '笼位' : '实验备注'" prop="remark" align="center" min-width="130" show-overflow-tooltip :class-name="isCageMode ? 'inline-edit-cell' : ''">
+        <el-table-column v-if="showExtraColumns" :column-key="isCageMode ? '' : 'remark'" prop="remark" align="center" min-width="130" show-overflow-tooltip :class-name="isCageMode ? 'inline-edit-cell' : ''">
+            <template #header>
+               <span v-if="isCageMode">笼位</span>
+               <WorkbenchHeaderLabel v-else label="实验备注" v-bind="headerMenuStates.remark" />
+            </template>
             <template #default="{ row }">
                <el-input
                   v-if="isCageMode && editingField === 'cage' && editingRowId === row.id"
@@ -354,23 +365,35 @@
             </template>
         </el-table-column>
 
-        <el-table-column v-if="showExtraColumns" label="课题类型" prop="study_type" align="center" min-width="100" show-overflow-tooltip />
+        <el-table-column v-if="showExtraColumns" column-key="study_type" prop="study_type" align="center" min-width="100" show-overflow-tooltip>
+            <template #header><WorkbenchHeaderLabel label="课题类型" v-bind="headerMenuStates.study_type" /></template>
+        </el-table-column>
 
-        <el-table-column v-if="showExtraColumns" label="PM" prop="pm" align="center" width="100" show-overflow-tooltip />
+        <el-table-column v-if="showExtraColumns" column-key="pm" prop="pm" align="center" width="100" show-overflow-tooltip>
+            <template #header><WorkbenchHeaderLabel label="PM" v-bind="headerMenuStates.pm" /></template>
+        </el-table-column>
 
-        <el-table-column v-if="showExtraColumns" label="鼠型" prop="mouse_strain" align="center" min-width="100" show-overflow-tooltip />
+        <el-table-column v-if="showExtraColumns" column-key="mouse_strain" prop="mouse_strain" align="center" min-width="100" show-overflow-tooltip>
+            <template #header><WorkbenchHeaderLabel label="鼠型" v-bind="headerMenuStates.mouse_strain" /></template>
+        </el-table-column>
 
-        <el-table-column label="靶点" prop="target_name" align="center" width="100" sortable="custom" />
+        <el-table-column column-key="target_name" prop="target_name" align="center" width="100">
+            <template #header><WorkbenchHeaderLabel label="靶点" v-bind="headerMenuStates.target_name" /></template>
+        </el-table-column>
         
-        <el-table-column label="负责人" prop="owner" align="center" width="100" sortable="custom">
+        <el-table-column column-key="owner" prop="owner" align="center" width="100">
+            <template #header><WorkbenchHeaderLabel label="负责人" v-bind="headerMenuStates.owner" /></template>
             <template #default="{ row }">
                {{ row.owner }}
             </template>
         </el-table-column>
         
-        <el-table-column label="开始日期" prop="start_date" align="center" width="120" sortable="custom" />
+        <el-table-column column-key="start_date" prop="start_date" align="center" width="120">
+            <template #header><WorkbenchHeaderLabel label="开始日期" v-bind="headerMenuStates.start_date" /></template>
+        </el-table-column>
         
-        <el-table-column label="状态" prop="project_status" align="center" width="100" sortable="custom" class-name="status-column-cell">
+        <el-table-column column-key="project_status" prop="project_status" align="center" width="100" class-name="status-column-cell">
+            <template #header><WorkbenchHeaderLabel label="状态" v-bind="headerMenuStates.project_status" /></template>
             <template #default="{ row }">
               <SerumProjectStatusEditor
                 :project-id="row.id"
@@ -453,6 +476,7 @@
         </div>
     </el-dialog>
 
+    <WorkbenchHeaderMenu v-bind="headerMenuBind" />
   </div>
 </template>
 
@@ -494,13 +518,14 @@ import {
 } from 'element-plus'
 
 import { notifyApiError, resolveUserMessage } from '#/api/errors'
-import { fetchList, fetchStats, getSerumFilterOptions, export_mouse, exportSerumList, autoUpdateStatus, updateCagePosition, updateLabNotebook, exportSchemePdf } from '#/api/serum'
+import { fetchList, fetchSerumColumnValues, fetchStats, getSerumFilterOptions, export_mouse, exportSerumList, autoUpdateStatus, updateCagePosition, updateLabNotebook, exportSchemePdf } from '#/api/serum'
 import { skipGlobalErrorHandler } from '#/api/request'
 import { SERUM_ERRORS } from '../shared/errors'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import SerumProjectStatusEditor from '../shared/SerumProjectStatusEditor.vue'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
+import { listPageMixin } from '#/utils/listPage'
 import { listTableLockMixin } from '#/utils/listTableLock'
 import { downloadBlob } from '#/utils/file-resource'
 import {
@@ -515,16 +540,35 @@ import {
   getSerumUserName,
   getSerumUserRoles,
 } from '#/utils/serumPermission'
-import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage'
 import { SERUM_MOUSE_STRAIN_CATEGORY_OPTIONS, SERUM_MOUSE_STRAIN_OPTIONS } from '#/utils/serumMouseOptions'
 import WorkbenchTargetFilter from '#/components/workbench/WorkbenchTargetFilter.vue'
-import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
+import {
+  WorkbenchHeaderFilterChip,
+  WorkbenchHeaderLabel,
+  WorkbenchHeaderMenu,
+  workbenchHeaderMenuMixin,
+} from '#/components/workbench'
 
-const SERUM_LIST_FILTER_KEY = 'serumList'
+// 实验记录本顶部框输入「空」表示未填写，与表头的「包含」不同口径，所以不联动
+const SERUM_HEADER_COLUMNS = Object.freeze({
+  project_code: { type: 'text', label: '编号', values: 'recent', top: { query: 'project_code', kind: 'codes' } },
+  project_name: { type: 'text', label: '项目名称', values: 'search', top: { query: 'project_name', kind: 'contains' } },
+  lab_notebook: { type: 'text', label: '实验记录本', values: 'recent' },
+  mouse_strain_category: { type: 'csv', label: '归类鼠型', values: 'all', top: { query: 'mouse_strain_category' } },
+  remark: { type: 'text', label: '实验备注', values: 'search' },
+  study_type: { type: 'enum', label: '课题类型', values: 'all', top: { query: 'study_type' } },
+  pm: { type: 'enum', label: 'PM', values: 'all', top: { query: 'pm' } },
+  mouse_strain: { type: 'csv', label: '鼠型', values: 'all', top: { query: 'mouse_strain' } },
+  target_name: { type: 'text', label: '靶点', values: 'all', search: 'target', top: { query: 'target_name' } },
+  owner: { type: 'enum', label: '负责人', values: 'all', top: { query: 'owner' } },
+  start_date: { type: 'date', label: '开始日期', values: 'all', top: { range: 'dateRange' } },
+  project_status: { type: 'enum', label: '状态', values: 'all', top: { query: 'project_status', topOnly: ['ongoing', 'completed'] } },
+})
 
 export default {
   name: 'SerumList',
-  mixins: [listTableLockMixin],
+  mixins: [listTableLockMixin, listPageMixin, workbenchHeaderMenuMixin],
+  listFilterKey: 'serumList',
   components: {
     ElButton,
     ElButtonGroup,
@@ -543,6 +587,9 @@ export default {
     ListFilterSelect,
     SerumProjectStatusEditor,
     WorkbenchTargetFilter,
+    WorkbenchHeaderFilterChip,
+    WorkbenchHeaderLabel,
+    WorkbenchHeaderMenu,
     ArrowDown,
     CircleCheck,
     DataAnalysis,
@@ -564,6 +611,9 @@ export default {
     }
   },
   computed: {
+    headerMenuColumns() {
+      return SERUM_HEADER_COLUMNS
+    },
     currentUserInfo() {
       return this.userStore.userInfo || {}
     },
@@ -622,8 +672,8 @@ export default {
         project_status: undefined,
         start_date: undefined,
         end_date: undefined,
-        sort_field: undefined,
-        sort_order: undefined
+        sort_field: '',
+        sort_dir: ''
       },
       dateRange: [],
       ownerFilterQuery: '',
@@ -651,8 +701,6 @@ export default {
       schemePrintLoading: false,
       tableScrollAnimationFrame: 0,
       extraColumnsTimer: 0,
-      tabDataFetchedAt: 0,
-      listRequestToken: 0,
       statsRequestToken: 0,
       statsKey: '',
     }
@@ -662,23 +710,17 @@ export default {
   },
   mounted() {
     this.paginationReady = false
-    this.restoreListFilters()
     this.$nextTick(() => {
       this.paginationReady = true
       this.getList()
     })
   },
   activated() {
-    if (shouldRefreshTabData(this.tabDataFetchedAt)) {
+    if (this.isListDataStale()) {
       this.refreshTabData()
     }
   },
-  beforeRouteLeave(_to, _from, next) {
-    this.persistListFilters()
-    next()
-  },
   beforeUnmount() {
-    this.persistListFilters()
     if (this.tableScrollAnimationFrame) {
       cancelAnimationFrame(this.tableScrollAnimationFrame)
     }
@@ -688,22 +730,14 @@ export default {
     }
   },
   methods: {
-    persistListFilters() {
-      saveListFilters(SERUM_LIST_FILTER_KEY, {
-        listQuery: { ...this.listQuery, sort_field: undefined, sort_order: undefined },
+    listFilterExtras() {
+      return {
         dateRange: this.dateRange,
         showAdvancedFilters: this.showAdvancedFilters,
         showExtraColumns: this.showAdvancedFilters,
-      })
+      }
     },
-    restoreListFilters() {
-      const state = loadListFilters(SERUM_LIST_FILTER_KEY)
-      if (!state) {
-        return
-      }
-      if (state.listQuery) {
-        Object.assign(this.listQuery, state.listQuery)
-      }
+    restoreListFilterExtras(state) {
       if (state.dateRange) {
         this.dateRange = state.dateRange
       }
@@ -761,7 +795,7 @@ export default {
     toggleAdvancedOps() {
       this.showAdvancedOps = !this.showAdvancedOps
     },
-    getCurrentFilterPayload() {
+    buildQuery() {
         const [startDate, endDate] = this.dateRange?.length === 2 ? this.dateRange : [undefined, undefined]
 
         let projectCode = this.listQuery.project_code
@@ -795,8 +829,17 @@ export default {
             page: this.listQuery.page,
             limit: this.listQuery.limit,
             sort_field: this.listQuery.sort_field,
-            sort_order: this.listQuery.sort_order
+            sort_dir: this.listQuery.sort_dir,
+            field_filters: this.headerFilterPayload()
         }
+    },
+    fetchHeaderValues(query) {
+      if (query.field === 'project_code') delete query.project_codes
+      if (query.field === 'start_date') {
+        delete query.start_date
+        delete query.end_date
+      }
+      return fetchSerumColumnValues(query)
     },
     async initListMeta() {
       try {
@@ -822,7 +865,7 @@ export default {
     },
     /** 统计块跟随列表筛选；状态和负责人由统计块自己切换，不传。 */
     statsPayload() {
-      const { page, limit, sort_field, sort_order, project_status, owner, ...scope } = this.getCurrentFilterPayload()
+      const { page, limit, sort_field, sort_dir, project_status, owner, ...scope } = this.buildQuery()
       return scope
     },
     getStats() {
@@ -845,7 +888,7 @@ export default {
       this.getStats()
     },
     getList() {
-      const requestToken = ++this.listRequestToken
+      const isLatest = this.beginListRequest()
       this.listLoading = true
       // Handle Date Range
       if (this.dateRange && this.dateRange.length === 2) {
@@ -856,21 +899,21 @@ export default {
           this.listQuery.end_date = undefined
       }
 
-      const payload = this.getCurrentFilterPayload()
+      const payload = this.buildQuery()
       if (JSON.stringify(this.statsPayload()) !== this.statsKey) this.getStats()
       fetchList(payload, skipGlobalErrorHandler).then((response) => {
-        if (requestToken !== this.listRequestToken) return
+        if (!isLatest()) return
         this.list = Array.isArray(response.items) ? response.items : []
         this.total = Number(response.total) || 0;
       }).catch((error) => {
-         if (requestToken !== this.listRequestToken) return
+         if (!isLatest()) return
          this.list = []
          this.total = 0
          notifyApiError(error, { messages: SERUM_ERRORS.list.loadList })
       }).finally(() => {
-        if (requestToken !== this.listRequestToken) return
+        if (!isLatest()) return
         this.listLoading = false
-        this.tabDataFetchedAt = Date.now()
+        this.markListFetched()
       })
     },
     toggleAdvanced() {
@@ -931,17 +974,8 @@ export default {
         }
       })
     },
-    handleSizeChange(size) {
-      this.listQuery.limit = size
-      this.listQuery.page = 1
-      this.getList()
-    },
-    handleCurrentChange(page) {
-      this.listQuery.page = page
-      this.getList()
-    },
     resetFilters() {
-      const { limit, sort_field, sort_order } = this.listQuery
+      const { limit } = this.listQuery
       this.listQuery = {
         page: 1,
         limit,
@@ -958,9 +992,10 @@ export default {
         project_status: undefined,
         start_date: undefined,
         end_date: undefined,
-        sort_field,
-        sort_order,
+        sort_field: '',
+        sort_dir: '',
       }
+      this.clearHeaderFilters()
       this.dateRange = []
       this.ownerFilterQuery = ''
       this.studyTypeFilterQuery = ''
@@ -969,16 +1004,6 @@ export default {
       this.mouseStrainCategoryFilterQuery = ''
       this.statusFilterQuery = ''
       this.persistListFilters()
-      this.getList()
-    },
-    handleFilter() {
-      this.listQuery.page = 1
-      this.getList()
-    },
-    handleSortChange({ prop, order }) {
-      this.listQuery.sort_field = order ? prop : undefined
-      this.listQuery.sort_order = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : undefined
-      this.listQuery.page = 1
       this.getList()
     },
     handleStatusFilter(status) {
@@ -1278,7 +1303,7 @@ export default {
     async handleListExport() {
         try {
             await downloadListExcel(
-                () => exportSerumList(this.getCurrentFilterPayload()),
+                () => exportSerumList(this.buildQuery()),
                 `免疫实验列表_${excelTimestamp()}.xlsx`,
             )
         } catch (error) {
@@ -1293,7 +1318,7 @@ export default {
             background: 'rgba(0, 0, 0, 0.7)'
         })
         
-        const exportQuery = this.getCurrentFilterPayload()
+        const exportQuery = this.buildQuery()
         exportQuery.start_date = startDate
         exportQuery.end_date = endDate
         
@@ -1331,7 +1356,7 @@ export default {
                 background: 'rgba(0, 0, 0, 0.7)'
             })
             
-            const updateQuery = this.getCurrentFilterPayload()
+            const updateQuery = this.buildQuery()
             
             autoUpdateStatus(updateQuery).then(response => {
                 ElMessage.success('状态更新成功')

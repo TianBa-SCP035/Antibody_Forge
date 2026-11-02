@@ -7,11 +7,20 @@ from typing import Any
 
 from fastapi import UploadFile
 from PIL import Image
-from sqlalchemy import JSON, String, and_, bindparam, case, cast, func, or_, select, text
+from sqlalchemy import JSON, Integer, String, and_, bindparam, case, cast, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
 from utils.clock import now_local
+from utils.header_filters import (
+    HeaderColumn,
+    header_column_values,
+    header_filter_clauses,
+    header_sort_clauses,
+    json_array_column,
+    target_column,
+    without_header_fields,
+)
 from utils.normalize import normalize_date
 from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_ORDER
 from utils.uploads import contained_path, read_limited, safe_path_part, upload_filename
@@ -181,51 +190,15 @@ def _assay_plate_expr(method: str):
     return func.coalesce(order_col, project_col)
 
 
-def _has_positive_plate_count(column):
-    return and_(column.is_not(None), column > 0)
-
-
-def _only_zero_plate_count(column):
-    return or_(column.is_(None), column <= 0)
-
-
-def _parse_optional_plate_count(value: Any) -> float | None:
-    if value is None or value == "":
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _mouse_count_expr():
-    return func.coalesce(SerumTiterOrder.mouse_count, 0)
-
-
-def _apply_numeric_column_filters(stmt, data: dict[str, Any]):
-    specs = (
-        ("mouse_count", _mouse_count_expr),
-        ("facs_plate", lambda: _assay_plate_expr("FACS")),
-        ("elisa_plate", lambda: _assay_plate_expr("ELISA")),
+def _scheme_mouse_count_expr():
+    """方案只数：全项目小鼠只数之和，不是整数的格不计，与 _sum_mouse_count 一致。"""
+    count = func.trim(SerumImmMouse.mouse_count)
+    return (
+        select(cast(func.sum(cast(count, Integer)), Integer))
+        .where(SerumImmMouse.experiment_id == SerumTiterOrder.experiment_id, count.regexp_match("^-?[0-9]+$"))
+        .correlate(SerumTiterOrder)
+        .scalar_subquery()
     )
-    for prefix, expr_fn in specs:
-        zero_mode = str(data.get(f"{prefix}_zero") or "").strip()
-        min_val = _parse_optional_plate_count(data.get(f"{prefix}_min"))
-        max_val = _parse_optional_plate_count(data.get(f"{prefix}_max"))
-        if not zero_mode and min_val is None and max_val is None:
-            continue
-        expr = expr_fn()
-        parts = []
-        if zero_mode == "hide":
-            parts.append(_has_positive_plate_count(expr))
-        elif zero_mode == "only":
-            parts.append(_only_zero_plate_count(expr))
-        if min_val is not None:
-            parts.append(expr >= min_val)
-        if max_val is not None:
-            parts.append(expr <= max_val)
-        stmt = stmt.where(and_(*parts))
-    return stmt
 
 
 def _assay_method_clause(assay_method: str):
@@ -605,28 +578,6 @@ def _build_blood_dates_by_experiment(db: Session, experiment_ids: list[str]) -> 
     return {eid: _all_blood_collection_dates(steps) for eid, steps in steps_by_exp.items()}
 
 
-def _row_sort_key(
-    order: SerumTiterOrder,
-    project: SerumImmProject,
-    field: str,
-    blood_date: str,
-):
-    if field == "serum_status":
-        return TITER_SERUM_STATUS_RANK.get(str(order.serum_status or "").strip(), len(TITER_SERUM_STATUS_ORDER))
-    if field == "priority":
-        value = str(order.priority or "").strip() or TITER_ORDER_PRIORITY_DEFAULT
-        return TITER_PRIORITY_RANK.get(value, len(TITER_ORDER_PRIORITIES))
-    if field == "project_code":
-        return str(project.project_code or "")
-    if field == "blood_collection_date":
-        return blood_date
-    if field == "test_dates_display":
-        raw_dates = order.test_dates if isinstance(order.test_dates, list) else []
-        dates = sorted({str(item).strip()[:10] for item in raw_dates if str(item or "").strip()})
-        return "、".join(dates)
-    return ""
-
-
 def _resolve_followable_fields(
     order: SerumTiterOrder,
     project: SerumImmProject,
@@ -885,62 +836,60 @@ def _titer_order_query():
     )
 
 
-TITER_SERUM_STATUS_RANK = {status: index for index, status in enumerate(TITER_SERUM_STATUS_ORDER)}
-TITER_PRIORITY_RANK = {name: index for index, name in enumerate(TITER_ORDER_PRIORITIES)}
-TITER_ORDER_SQL_SORT_COLUMNS = {
-    "project_code": SerumImmProject.project_code,
-    "serum_status": case(
-        TITER_SERUM_STATUS_RANK,
-        value=SerumTiterOrder.serum_status,
-        else_=len(TITER_SERUM_STATUS_ORDER),
+def _latest_order_status_expr():
+    return (
+        select(MegaFlowWorkOrder.status)
+        .where(
+            MegaFlowWorkOrder.orderType == TITER_FLOW_ORDER_TYPE,
+            MegaFlowWorkOrder.source_id == SerumTiterOrder.titer_order_id,
+        )
+        .order_by(MegaFlowWorkOrder.id.desc())
+        .limit(1)
+        .correlate(SerumTiterOrder)
+        .scalar_subquery()
+    )
+
+
+# 笼位、采血日期大多跟随免疫步骤推算，SQL 里筛不准，不登记；采血日期只在内存里排序。
+HEADER_COLUMNS: dict[str, HeaderColumn] = {
+    "project_code": HeaderColumn(SerumImmProject.project_code),
+    "target_name": target_column(SerumImmProject.target_name, SerumImmProject.target_codes),
+    "mouse_count": HeaderColumn(func.coalesce(SerumTiterOrder.mouse_count, _scheme_mouse_count_expr(), 0), "number"),
+    "assay_method": HeaderColumn(_assay_method_expr(), "enum"),
+    "facs_plate_count": HeaderColumn(func.coalesce(_assay_plate_expr("FACS"), 0), "number"),
+    "elisa_plate_count": HeaderColumn(func.coalesce(_assay_plate_expr("ELISA"), 0), "number"),
+    "immune_owner": HeaderColumn(SerumImmProject.owner, "enum"),
+    "titer_owners": json_array_column(SerumTiterOrder.titer_owners),
+    "test_dates": json_array_column(SerumTiterOrder.test_dates),
+    "serum_status": HeaderColumn(SerumTiterOrder.serum_status, "enum", order=TITER_SERUM_STATUS_ORDER),
+    "priority": HeaderColumn(
+        func.coalesce(func.nullif(SerumTiterOrder.priority, ""), TITER_ORDER_PRIORITY_DEFAULT),
+        "enum",
+        order=TITER_ORDER_PRIORITIES,
     ),
-    "priority": case(
-        TITER_PRIORITY_RANK,
-        value=func.coalesce(func.nullif(SerumTiterOrder.priority, ""), TITER_ORDER_PRIORITY_DEFAULT),
-        else_=len(TITER_ORDER_PRIORITIES),
-    ),
-}
-TITER_ORDER_ITEM_SORT_FIELDS = {
-    "blood_collection_date",
-    "project_code",
-    "serum_status",
-    "priority",
-    "test_dates_display",
+    "remark": HeaderColumn(SerumTiterOrder.remark),
+    "summary": HeaderColumn(SerumTiterOrder.summary),
+    "order_status": HeaderColumn(_latest_order_status_expr(), "enum"),
+    "immune_status": HeaderColumn(SerumImmProject.project_status, "enum"),
 }
 
 
 def _titer_order_sql_order_by(data: dict[str, Any]) -> list:
-    column = TITER_ORDER_SQL_SORT_COLUMNS.get(str(data.get("sort_field") or ""))
-    if column is None:
+    spec = HEADER_COLUMNS.get(str(data.get("sort_field") or ""))
+    if spec is None:
         return [SerumTiterOrder.id.desc()]
-    direction = str(data.get("sort_order") or "").lower()
-    ordered_column = column.asc() if direction == "asc" else column.desc()
-    return [ordered_column, SerumTiterOrder.id.desc()]
+    return list(header_sort_clauses(spec, str(data.get("sort_dir") or ""), SerumTiterOrder.id))
 
 
-def _titer_order_needs_full_scan(data: dict[str, Any], blood_start: str | None, blood_end: str | None) -> bool:
-    if blood_start or blood_end:
-        return True
-    return str(data.get("sort_field") or "") in {"blood_collection_date", "test_dates_display"}
+def _sorts_by_blood_date(data: dict[str, Any]) -> bool:
+    return str(data.get("sort_field") or "") == "blood_collection_date"
 
 
-def _item_sort_key(item: dict, field: str):
-    if field == "serum_status":
-        return TITER_SERUM_STATUS_RANK.get(str(item.get("serum_status") or "").strip(), len(TITER_SERUM_STATUS_ORDER))
-    if field == "priority":
-        value = str(item.get("priority") or "").strip() or TITER_ORDER_PRIORITY_DEFAULT
-        return TITER_PRIORITY_RANK.get(value, len(TITER_ORDER_PRIORITIES))
-    return str(item.get(field) or "")
-
-
-def _sort_titer_order_items(items: list[dict], data: dict[str, Any]) -> list[dict]:
-    field = str(data.get("sort_field") or "")
-    if field not in TITER_ORDER_ITEM_SORT_FIELDS:
-        return items
-    reverse = str(data.get("sort_order") or "").lower() == "desc"
-    items.sort(key=lambda item: int(item.get("id") or 0), reverse=True)
-    items.sort(key=lambda item: _item_sort_key(item, field), reverse=reverse)
-    return items
+def _sort_by_blood_date(items: list, data: dict[str, Any], blood_date, row_id) -> None:
+    """采血日期按免疫步骤推算，只能在内存里排序；空的总在最后。"""
+    items.sort(key=row_id, reverse=True)
+    items.sort(key=blood_date, reverse=str(data.get("sort_dir") or "") == "desc")
+    items.sort(key=lambda item: not blood_date(item))
 
 
 def _empty_titer_owners_condition():
@@ -987,7 +936,13 @@ def _titer_target_pairs():
     )
 
 
-def _apply_titer_order_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None):
+def _apply_titer_order_list_filters(
+    stmt,
+    data: dict[str, Any],
+    *,
+    db: Session | None = None,
+    header_except: str | None = None,
+):
     titer_order_id = str(data.get("titer_order_id") or "").strip()
     if titer_order_id:
         stmt = stmt.where(SerumTiterOrder.titer_order_id == titer_order_id)
@@ -1039,7 +994,7 @@ def _apply_titer_order_list_filters(stmt, data: dict[str, Any], *, db: Session |
     stmt = restrict(stmt, data.get("priority"), _titer_priority_clause)
     stmt = restrict(stmt, data.get("order_status"), _titer_order_status_clause)
     stmt = _apply_assay_method_filter(stmt, data.get("assay_method"))
-    stmt = _apply_numeric_column_filters(stmt, data)
+    stmt = stmt.where(*header_filter_clauses(db, HEADER_COLUMNS, data.get("field_filters"), except_field=header_except))
     summary_empty = bool(data.get("summary_empty"))
     summary_filled = bool(data.get("summary_filled"))
     if summary_empty and not summary_filled:
@@ -1068,7 +1023,10 @@ def _titer_order_list_items(db: Session, data: dict[str, Any]) -> list[dict]:
     rows = db.execute(stmt.order_by(*_titer_order_sql_order_by(data))).all()
     if blood_start or blood_end:
         rows = [(order, project) for order, project, _ in _with_blood_dates(db, rows, blood_start, blood_end, True)]
-    return _sort_titer_order_items(_enrich_order_rows(db, rows), data)
+    items = _enrich_order_rows(db, rows)
+    if _sorts_by_blood_date(data):
+        _sort_by_blood_date(items, data, lambda item: item.get("blood_collection_date") or "", lambda item: int(item.get("id") or 0))
+    return items
 
 
 def _with_blood_dates(
@@ -1100,6 +1058,41 @@ def _with_blood_dates(
     return candidates
 
 
+def _blood_range_clause(db: Session, data: dict[str, Any], *, header_except: str | None = None):
+    """采血日期区间只能在内存里判断，先算出命中的工单，再作为条件交给 SQL 统计。"""
+    blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
+    if not (blood_start or blood_end):
+        return None
+    rows = db.execute(
+        _apply_titer_order_list_filters(_titer_order_query(), data, db=db, header_except=header_except)
+    ).all()
+    return SerumTiterOrder.id.in_([order.id for order, _, _ in _with_blood_dates(db, rows, blood_start, blood_end, True)])
+
+
+def get_titer_order_column_values(db: Session, data: dict[str, Any] | None) -> dict[str, Any]:
+    payload = data or {}
+    blood_clause = _blood_range_clause(db, payload, header_except=str(payload.get("field") or "").strip())
+
+    def apply_filters(stmt, scope: dict[str, Any], field: str):
+        stmt = (
+            stmt.select_from(SerumTiterOrder)
+            .join(SerumImmProject, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
+            .where(or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"))
+        )
+        if blood_clause is not None:
+            stmt = stmt.where(blood_clause)
+        return _apply_titer_order_list_filters(stmt, scope, db=db, header_except=field)
+
+    return header_column_values(
+        db,
+        HEADER_COLUMNS,
+        payload,
+        apply_filters,
+        id_column=SerumTiterOrder.id,
+        labels={"order_status": ORDER_STATUS_LABELS},
+    )
+
+
 def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
     page = max(int(data.get("page", 1) or 1), 1)
     limit = min(max(int(data.get("limit", 20) or 20), 1), MAX_LIST_LIMIT)
@@ -1107,17 +1100,11 @@ def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
 
     blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
 
-    if _titer_order_needs_full_scan(data, blood_start, blood_end):
+    if blood_start or blood_end or _sorts_by_blood_date(data):
         rows = db.execute(stmt.order_by(*_titer_order_sql_order_by(data))).all()
-        need_blood_date = bool(blood_start or blood_end or str(data.get("sort_field") or "") == "blood_collection_date")
-        candidates = _with_blood_dates(db, rows, blood_start, blood_end, need_blood_date)
-
-        field = str(data.get("sort_field") or "")
-        if field in TITER_ORDER_ITEM_SORT_FIELDS:
-            reverse = str(data.get("sort_order") or "").lower() == "desc"
-            candidates.sort(key=lambda item: int(item[0].id or 0), reverse=True)
-            candidates.sort(key=lambda item: _row_sort_key(item[0], item[1], field, item[2]), reverse=reverse)
-
+        candidates = _with_blood_dates(db, rows, blood_start, blood_end, True)
+        if _sorts_by_blood_date(data):
+            _sort_by_blood_date(candidates, data, lambda item: item[2], lambda item: int(item[0].id or 0))
         total = len(candidates)
         start = max(page - 1, 0) * limit
         page_rows = [(order, project) for order, project, _ in candidates[start : start + limit]]
@@ -1385,10 +1372,14 @@ _TITER_STAT_OWN_KEYS = frozenset({
     "test_dates_start",
     "test_dates_end",
 })
+_TITER_STAT_OWN_HEADER_FIELDS = frozenset({"titer_owners", "serum_status", "summary", "test_dates"})
 
 
 def get_titer_order_stats(db: Session, data: dict[str, Any] | None = None) -> dict[str, int]:
-    scope = {key: value for key, value in (data or {}).items() if key not in _TITER_STAT_OWN_KEYS}
+    scope = without_header_fields(
+        {key: value for key, value in (data or {}).items() if key not in _TITER_STAT_OWN_KEYS},
+        _TITER_STAT_OWN_HEADER_FIELDS,
+    )
     join_on = SerumImmProject.experiment_id == SerumTiterOrder.experiment_id
     deleted_filter = or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted")
     pending_cond = and_(
@@ -1420,11 +1411,9 @@ def get_titer_order_stats(db: Session, data: dict[str, Any] | None = None) -> di
         .join(SerumImmProject, join_on)
         .where(deleted_filter)
     )
-    blood_start, blood_end = _filter_date_bounds(scope, "blood_collection_start", "blood_collection_end")
-    if blood_start or blood_end:
-        rows = db.execute(_apply_titer_order_list_filters(_titer_order_query(), scope, db=db)).all()
-        matched_ids = [order.id for order, _, _ in _with_blood_dates(db, rows, blood_start, blood_end, True)]
-        stmt = stmt.where(SerumTiterOrder.id.in_(matched_ids))
+    blood_clause = _blood_range_clause(db, scope)
+    if blood_clause is not None:
+        stmt = stmt.where(blood_clause)
     row = db.execute(_apply_titer_order_list_filters(stmt, scope, db=db)).one()
 
     return {

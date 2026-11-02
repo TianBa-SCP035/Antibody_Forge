@@ -44,11 +44,12 @@ from modules.immunology.serum.service import (
 from utils.target_structure import to_serum_target_type
 from utils.header_filters import (
     HeaderColumn,
-    column_values,
+    header_column_values,
     csv_column,
     csv_token_clause,
     header_filter_clauses,
     header_sort_clauses,
+    without_header_fields,
 )
 from utils.normalize import join_known_options, normalize_target_codes, optional_int
 from utils.workbench_queue import (
@@ -1032,6 +1033,11 @@ def _count_stmt():
 
 
 def _list_stats(db: Session, data: dict[str, Any]) -> dict[str, int]:
+    """状态和可开展是卡片自己切换的维度，顶部和表头的这两项都不参与。"""
+    scope = without_header_fields(
+        {key: value for key, value in (data or {}).items() if key != "display_status"},
+        {"status", "can_start"},
+    )
     stmt = _apply_list_filters(
         select(
             SerumImmWorkbench.plan_status,
@@ -1049,7 +1055,7 @@ def _list_stats(db: Session, data: dict[str, Any]) -> dict[str, int]:
             SerumImmProject.project_status,
             SerumImmWorkbench.can_start,
         ),
-        data or {},
+        scope,
         skip_status=True,
         db=db,
     )
@@ -1117,29 +1123,14 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
-    """表头筛选的取值列表：套用除本列表头条件以外的全部筛选。顶部筛选里的本列条件由前端去掉。"""
-    payload = data or {}
-    field = str(payload.get("field") or "").strip()
-    spec = HEADER_COLUMNS.get(field)
-    if spec is None:
-        raise ValueError(f"不支持按「{field}」表头筛选")
-
-    def scoped(stmt):
+    def apply_filters(stmt, payload, field):
         joined = stmt.select_from(SerumImmWorkbench).outerjoin(
             SerumImmProject,
             SerumImmWorkbench.experiment_id == SerumImmProject.experiment_id,
         )
         return _apply_list_filters(joined, payload, db=db, header_except=field)
 
-    return column_values(
-        db,
-        spec,
-        scoped,
-        id_column=SerumImmWorkbench.id,
-        keyword=str(payload.get("value_keyword") or ""),
-        limit=payload.get("value_limit"),
-        order=str(payload.get("value_order") or "value"),
-    )
+    return header_column_values(db, HEADER_COLUMNS, data, apply_filters, id_column=SerumImmWorkbench.id)
 
 
 def export_list_workbook(

@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import json
-from collections import defaultdict
 from typing import Any
 
-from sqlalchemy import String, case, cast, func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, defer
 
 from utils.filter_values import combine_any, filter_terms, like_literal, match_any, split_code_tokens
-from utils.header_filters import HeaderColumn, column_values, header_filter_clauses, header_sort_clauses
+from utils.header_filters import (
+    HeaderColumn,
+    header_column_values,
+    header_filter_clauses,
+    header_sort_clauses,
+    json_array_column,
+)
 
 from models.immunology import SerumImmProject, SerumTiterOrder
 from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
@@ -470,32 +475,6 @@ def _list_status_clause(status: str):
     return MegaFlowWorkOrder.status == text
 
 
-def _json_array_column(column) -> HeaderColumn:
-    """JSON 数组列：按「含有任一值」匹配，NULL 和空数组都算空白。"""
-
-    def match(_db, tokens: list[str]):
-        return _json_overlaps(column, tokens)
-
-    def values(db: Session, scoped, keyword: str) -> list[dict[str, Any]]:
-        counts: dict[str, int] = defaultdict(int)
-        for items in db.scalars(scoped(select(column).where(column.is_not(None)))):
-            if not isinstance(items, list):
-                continue
-            for token in {clean_text(item) for item in items} - {""}:
-                counts[token] += 1
-        text = keyword.lower()
-        found = sorted(token for token in counts if not text or text in token.lower())
-        return [{"value": token, "count": counts[token]} for token in found]
-
-    return HeaderColumn(
-        cast(column, String),
-        "multi",
-        match=match,
-        values=values,
-        blank=or_(column.is_(None), func.json_length(column) == 0),
-    )
-
-
 _W = MegaFlowWorkOrder
 # 状态与统计块同口径：三种执行异常合为 execution_failed
 _STATUS_GROUP = case((_W.status.in_(sorted(EXECUTION_ISSUE_STATUSES)), "execution_failed"), else_=_W.status)
@@ -504,10 +483,10 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "orderName": HeaderColumn(_W.orderName),
     "orderType": HeaderColumn(_W.orderType, "enum", order=tuple(ORDER_TYPE_LABELS)),
     "priority": HeaderColumn(_W.priority, "enum", order=tuple(PRIORITY_LABELS)),
-    "project_nos": _json_array_column(_W.project_nos),
-    "targets": _json_array_column(_W.targets),
-    "sample_plate_barcodes": _json_array_column(_W.sample_plate_barcodes),
-    "cell_plate_barcodes": _json_array_column(_W.cell_plate_barcodes),
+    "project_nos": json_array_column(_W.project_nos),
+    "targets": json_array_column(_W.targets),
+    "sample_plate_barcodes": json_array_column(_W.sample_plate_barcodes),
+    "cell_plate_barcodes": json_array_column(_W.cell_plate_barcodes),
     "remark": HeaderColumn(_W.remark),
     "status": HeaderColumn(_STATUS_GROUP, "enum", order=tuple(item["value"] for item in WORK_ORDER_STATUSES)),
     "created_by": HeaderColumn(_W.created_by, "enum"),
@@ -615,27 +594,14 @@ def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
-    """表头筛选的取值列表：套用除本列表头条件以外的全部筛选。顶部筛选里的本列条件由前端去掉。"""
-    payload = data or {}
-    field = str(payload.get("field") or "").strip()
-    spec = HEADER_COLUMNS.get(field)
-    if spec is None:
-        raise ValueError(f"不支持按「{field}」表头筛选")
-    result = column_values(
+    return header_column_values(
         db,
-        spec,
-        lambda stmt: _apply_list_filters(stmt, payload, db=db, header_except=field),
+        HEADER_COLUMNS,
+        data,
+        lambda stmt, payload, field: _apply_list_filters(stmt, payload, db=db, header_except=field),
         id_column=MegaFlowWorkOrder.id,
-        keyword=str(payload.get("value_keyword") or ""),
-        limit=payload.get("value_limit"),
-        order=str(payload.get("value_order") or "value"),
+        labels=_VALUE_LABELS,
     )
-    labels = _VALUE_LABELS.get(field)
-    if labels:
-        for item in result["items"]:
-            if item["value"] in labels:
-                item["label"] = labels[item["value"]]
-    return result
 
 
 def _attach_serum_project_ids(db: Session, items: list[dict[str, Any]]) -> None:

@@ -32,7 +32,11 @@ def _create_optional_session_factory(
 
 
 @lru_cache(maxsize=8)
-def _cached_one_session_factory(database_url: str, connect_timeout: int, read_timeout: int) -> sessionmaker[Session]:
+def _cached_session_factory(
+    database_url: str,
+    connect_timeout: int | None = None,
+    read_timeout: int | None = None,
+) -> sessionmaker[Session]:
     factory = _create_optional_session_factory(
         database_url,
         connect_timeout=connect_timeout,
@@ -44,11 +48,10 @@ def _cached_one_session_factory(database_url: str, connect_timeout: int, read_ti
 
 def get_cell_db() -> Generator[Session, None, None]:
     settings = get_settings()
-    factory = _create_optional_session_factory(settings.cell_db_url)
-    if factory is None:
+    if not settings.cell_db_url:
         raise RuntimeError("CELL_DB_URL 未配置")
 
-    db = factory()
+    db = _cached_session_factory(settings.cell_db_url)()
     try:
         yield db
     finally:
@@ -57,11 +60,10 @@ def get_cell_db() -> Generator[Session, None, None]:
 
 def get_employee_db() -> Generator[Session, None, None]:
     settings = get_settings()
-    factory = _create_optional_session_factory(settings.employee_db_url)
-    if factory is None:
+    if not settings.employee_db_url:
         raise RuntimeError("EMPLOYEE_DB_URL 未配置")
 
-    db = factory()
+    db = _cached_session_factory(settings.employee_db_url)()
     try:
         yield db
     finally:
@@ -79,7 +81,7 @@ def open_one_db(
     if not url:
         yield None
         return
-    factory = _cached_one_session_factory(url, connect_timeout, read_timeout)
+    factory = _cached_session_factory(url, connect_timeout, read_timeout)
     db = factory()
     try:
         yield db

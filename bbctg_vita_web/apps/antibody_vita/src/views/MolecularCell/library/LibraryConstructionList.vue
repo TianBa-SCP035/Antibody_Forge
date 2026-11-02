@@ -21,16 +21,16 @@
         <ListFilterSelect
           :model-value="listQuery.build_type"
           clearable
-          placeholder="建库类型"
+          v-bind="headerTop('build_type', '建库类型')"
           @change="onBuildTypeFilter"
         >
           <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
         </ListFilterSelect>
-        <UserSelect v-model="listQuery.pm" multi-gesture :options="enumLists.people" placeholder="PM" clearable @change="handleFilter" />
-        <ListFilterSelect v-model="listQuery.study_type" clearable filterable placeholder="课题类型" @change="handleFilter">
+        <UserSelect v-model="listQuery.pm" multi-gesture :options="enumLists.people" v-bind="headerTop('pm', 'PM')" clearable @change="handleFilter" />
+        <ListFilterSelect v-model="listQuery.study_type" clearable filterable v-bind="headerTop('study_type', '课题类型')" @change="handleFilter">
           <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
         </ListFilterSelect>
-        <ListFilterSelect v-model="listQuery.sample_type" clearable placeholder="样品类型" @change="handleFilter">
+        <ListFilterSelect v-model="listQuery.sample_type" clearable v-bind="headerTop('sample_type', '样品类型')" @change="handleFilter">
           <el-option v-for="item in sampleTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
         </ListFilterSelect>
         <ListFilterSelect v-model="listQuery.mouse_strain" clearable v-bind="headerTop('mouse_strain', '小鼠品系')" @change="handleFilter">
@@ -42,7 +42,7 @@
           filterable
           allow-create
           default-first-option
-          placeholder="细胞类型"
+          v-bind="headerTop('cell_type', '细胞类型')"
           @change="handleFilter"
         >
           <el-option v-for="item in cellTypeOptions" :key="item" :label="item" :value="item" />
@@ -115,7 +115,7 @@
           v-model="listQuery.library_code"
           class="filter-item filter-keyword"
           clearable
-          placeholder="建库编号"
+          v-bind="headerTop('library_code', '建库编号')"
           title="多个编号用逗号、空格或换行分隔，按完整编号查找；只填一个时按包含查找"
           :prefix-icon="Search"
           @keyup.enter="handleFilter"
@@ -136,13 +136,13 @@
           clearable
           @change="handleFilter"
         />
-        <ListFilterSelect v-model="listQuery.sample_source" class="filter-item" clearable placeholder="样品来源" @change="handleFilter">
+        <ListFilterSelect v-model="listQuery.sample_source" class="filter-item" clearable v-bind="headerTop('sample_source', '样品来源')" @change="handleFilter">
           <el-option v-for="item in sampleSourceOptions" :key="item.value" :label="item.label" :value="item.value" />
         </ListFilterSelect>
         <WorkbenchTargetFilter
           v-model="listQuery.target_name"
           class="filter-item"
-          placeholder="靶点"
+          v-bind="headerTop('target_name', '靶点')"
           scope="library"
           @change="handleFilter"
         />
@@ -208,11 +208,7 @@
         @header-menu="openHeaderMenu"
         @row-click="onWorkbenchRowClick"
         @row-contextmenu="onWorkbenchRowContextMenu"
-        @header-contextmenu="onWorkbenchHeaderContextMenu"
       >
-        <template #header-library_code>
-          <span class="library-code-head" :class="{ 'is-asc': libraryCodeOldestFirst }" :title="libraryCodeHeadTitle">建库编号</span>
-        </template>
         <template #build_type="{ row }">{{ buildTypeLabel(row.build_type) || '—' }}</template>
         <template #mouse_strain="{ row }">{{ row.mouse_strain || '—' }}</template>
         <template #sample_source="{ row }">{{ sampleSourceLabel(row.sample_source) || '—' }}</template>
@@ -273,7 +269,7 @@
         @mousedown="onSheetWrapMouseDown"
         @click="onSheetHeaderMenuClick"
         @mouseover="onSheetWrapMouseOver"
-        @contextmenu="onSheetContextMenu"
+        @contextmenu="onSheetWrapContextMenu"
         @selectstart="onSheetSelectStart"
       >
         <div ref="sheetTableStage" class="sheet-table-stage">
@@ -429,10 +425,7 @@
                 :edit-render="sheetEditRender(column)"
                 :formatter="sheetFormatter(column)"
               >
-                <template v-if="column.key === 'library_code'" #header>
-                  <span class="library-code-head" :class="{ 'is-asc': libraryCodeOldestFirst }" :title="libraryCodeHeadTitle">建库编号</span>
-                </template>
-                <template v-else-if="headerMenuStates[column.key]" #header>
+                <template v-if="headerMenuStates[column.key]" #header>
                   <WorkbenchHeaderLabel :label="column.label" v-bind="headerMenuStates[column.key]" />
                 </template>
               </vxe-column>
@@ -458,8 +451,8 @@
               v-if="showLibraryCodeFillHandle"
               type="button"
               class="library-code-fill-handle"
-              title="往下按序号填充建库编号"
-              aria-label="往下按序号填充建库编号"
+              title="往上或往下拖，按末尾数字递增填充建库编号"
+              aria-label="往上或往下拖，按末尾数字递增填充建库编号"
               @mousedown.stop.prevent="onLibraryCodeFillStart"
             />
           </div>
@@ -810,15 +803,14 @@ import UserSelect from '#/components/UserSelect.vue'
 import LibraryResultUploadDialog from './LibraryResultUploadDialog.vue'
 import LibraryRowActions from './LibraryRowActions.vue'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
+import { listPageMixin } from '#/utils/listPage'
 import { listTableLockMixin } from '#/utils/listTableLock'
 import { canEditLibrary, canManageLibraryFiles, canViewLibraryDetail } from '#/utils/molecularPermission'
 import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/DiscoveryWorkbench.vue'
 import { getSerumUserName } from '#/utils/serumPermission'
 import { applyOptionLists } from '#/utils/optionLists'
 import { getTiterPriorityTone } from '#/utils/serumProjectStatus'
-import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage'
 import { LIBRARY_CREATED_KEY, WORKBENCH_VIEW_PREFS_KEYS } from '#/constants/storageKeys'
-import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import {
   allSheetColumns,
   BUILD_PLASMA_NGS,
@@ -865,8 +857,6 @@ import {
 } from './libraryColumns'
 import { filterPrimerCatalog, loadPrimerCatalog } from './primerCatalogOptions'
 
-const LIBRARY_LIST_FILTER_KEY = 'libraryConstructionList'
-
 function emptyQuery() {
   return {
     page: 1,
@@ -894,7 +884,6 @@ function emptyQuery() {
     started_at_end: '',
     finished_at_start: '',
     finished_at_end: '',
-    order: '',
     sort_field: '',
     sort_dir: '',
   }
@@ -902,32 +891,62 @@ function emptyQuery() {
 
 /**
  * 表头菜单登记，字段含义见 synthesisColumns.js 的 HEADER_MENU_COLUMNS。
- * 存代码的列（建库类型、样品来源/类型、Barcode 方式）和靶点沿用顶部筛选；
- * PM、课题类型、细胞类型的顶部筛选是包含匹配，和表头的精确取值不同，不互相回写。
  */
 const HEADER_MENU_COLUMNS = Object.freeze({
+  library_code: { type: 'text', values: 'recent', top: { query: 'library_code', kind: 'codes' } },
   source_project_code: { type: 'text', values: 'recent', top: { query: 'source_project_code', kind: 'codes' } },
   library_order_id: { type: 'text', values: 'recent' },
   source_discovery_id: { type: 'text', values: 'recent', top: { query: 'source_discovery_id', kind: 'codes' } },
   library_batch_no: { type: 'text', values: 'recent', top: { query: 'library_batch_no', kind: 'codes' } },
+  target_name: { type: 'text', values: 'all', search: 'target', top: { query: 'target_name' } },
+  build_type: { type: 'enum', values: 'all', top: { query: 'build_type' } },
+  sample_source: { type: 'enum', values: 'all', top: { query: 'sample_source' } },
+  sample_type: { type: 'enum', values: 'all', top: { query: 'sample_type' } },
+  index_mode: { type: 'enum', values: 'all' },
   owner: { type: 'enum', values: 'all', top: { query: 'owner' } },
-  pm: { type: 'enum', values: 'all' },
-  study_type: { type: 'enum', values: 'all' },
+  pm: { type: 'enum', values: 'all', top: { query: 'pm', kind: 'contains' } },
+  study_type: { type: 'enum', values: 'all', top: { query: 'study_type', kind: 'contains' } },
   status: { type: 'enum', values: 'all', top: { query: 'status' } },
   priority: { type: 'enum', values: 'all', top: { query: 'priority' } },
   mouse_strain: { type: 'csv', values: 'all', top: { query: 'mouse_strain' } },
-  cell_type: { type: 'enum', values: 'all' },
+  cell_type: { type: 'enum', values: 'all', top: { query: 'cell_type', kind: 'contains' } },
   immunization_stage: { type: 'enum', values: 'all' },
   notebook_no: { type: 'text', values: 'recent', top: { query: 'notebook_no', kind: 'contains' } },
   positive_cell_count: { type: 'text', values: 'recent' },
+  plate_nos: { type: 'csv', values: 'all' },
+  target_forms: { type: 'enum', values: 'all' },
+  source_experiment_type: { type: 'enum', values: 'all' },
+  project_goal: { type: 'text', values: 'search' },
   received_on: { type: 'date', values: 'all' },
   instrument_on: { type: 'date', values: 'all', top: { range: 'instrumentRange' } },
   blood_collected_on: { type: 'date', values: 'all' },
   started_at: { type: 'date', values: 'all', top: { range: 'startedRange' } },
   finished_at: { type: 'date', values: 'all', top: { range: 'finishedRange' } },
+  rna_location: { type: 'text', values: 'recent' },
+  cdna_location: { type: 'text', values: 'recent' },
+  library_location: { type: 'text', values: 'recent' },
+  cdna_concentration: { type: 'text', values: 'recent' },
+  library_concentration: { type: 'text', values: 'recent' },
+  initial_library_size: { type: 'text', values: 'recent' },
+  effective_library_size: { type: 'text', values: 'recent' },
+  fragment_size_bp: { type: 'text', values: 'recent' },
+  h_forward_primer_name: { type: 'enum', values: 'all' },
+  h_reverse_primer_name: { type: 'enum', values: 'all' },
+  h_primer_concentration: { type: 'text', values: 'recent' },
+  k_forward_primer_name: { type: 'enum', values: 'all' },
+  k_reverse_primer_name: { type: 'enum', values: 'all' },
+  k_primer_concentration: { type: 'text', values: 'recent' },
+  l_forward_primer_name: { type: 'enum', values: 'all' },
+  l_reverse_primer_name: { type: 'enum', values: 'all' },
+  l_primer_concentration: { type: 'text', values: 'recent' },
+  i7_name: { type: 'enum', values: 'all' },
+  i7_sequence: { type: 'text', values: 'recent' },
+  i5_name: { type: 'enum', values: 'all' },
+  i5_sequence: { type: 'text', values: 'recent' },
   qc_result: { type: 'enum', values: 'all' },
   qc_owner: { type: 'enum', values: 'all' },
   qc_on: { type: 'date', values: 'all' },
+  qc_note: { type: 'text', values: 'search' },
   remark: { type: 'text', values: 'search', top: { query: 'remark', kind: 'contains' } },
 })
 
@@ -1012,7 +1031,8 @@ const SHEET_STRING_MAX = {
 
 export default {
   name: 'LibraryConstructionList',
-  mixins: [workbenchExcelMixin, workbenchTargetMixin, workbenchHeaderMenuMixin, listTableLockMixin],
+  mixins: [workbenchExcelMixin, workbenchTargetMixin, listPageMixin, workbenchHeaderMenuMixin, listTableLockMixin],
+  listFilterKey: 'libraryConstructionList',
   components: {
     AdvancedOpsBar,
     ListFilterSelect,
@@ -1064,7 +1084,6 @@ export default {
       excelRowSelectKey: 'id',
       showAdvancedOps: false,
       loading: false,
-      listRequestId: 0,
       list: [],
       total: 0,
       stats: {},
@@ -1090,7 +1109,6 @@ export default {
       drawerPointerBound: false,
       sheetColumns: allSheetColumns(),
       listLoaded: false,
-      tabDataFetchedAt: 0,
       libraryCodeFill: null,
     }
   },
@@ -1101,16 +1119,8 @@ export default {
     canEdit() {
       return canEditLibrary(useUserStore().userInfo)
     },
-    libraryCodeOldestFirst() {
-      return this.listQuery.order === 'id_asc' && !this.headerSortActive
-    },
-    libraryCodeHeadTitle() {
-      return this.libraryCodeOldestFirst
-        ? '当前按创建时间正序，右键恢复倒序'
-        : '右键改为按创建时间正序，方便接着往下编号'
-    },
     showLibraryCodeFillHandle() {
-      if (!this.canEdit || !this.isExcelMode || !this.libraryCodeOldestFirst) return false
+      if (!this.canEdit || !this.isExcelMode) return false
       const range = this.normalizedSheetRange()
       if (!range || range.c1 !== range.c2) return false
       if (this.sheetColumns[range.c1]?.key !== 'library_code') return false
@@ -1259,7 +1269,6 @@ export default {
     },
   },
   created() {
-    this.restoreListFilters()
     this.viewMode = coerceWorkbenchViewMode(this.viewMode)
     this.rebuildSheetColumns()
     this.loadAllUserOptions()
@@ -1271,7 +1280,7 @@ export default {
   },
   activated() {
     this.bindDrawerPointer()
-    if (this.listLoaded && shouldRefreshTabData(this.tabDataFetchedAt)) {
+    if (this.listLoaded && this.isListDataStale()) {
       this.getList({ flushEditor: false })
     }
     this.consumeCreatedQuery()
@@ -1279,12 +1288,7 @@ export default {
   mounted() {
     this.bindDrawerPointer()
   },
-  beforeRouteLeave(_to, _from, next) {
-    this.persistListFilters()
-    next()
-  },
   beforeUnmount() {
-    this.persistListFilters()
     this.stopLibraryCodeFill()
     this.unbindDrawerPointer()
   },
@@ -1422,37 +1426,6 @@ export default {
       }
       this.handleFilter()
     },
-    handleFilter() {
-      this.listQuery.page = 1
-      this.getList()
-    },
-    onWorkbenchHeaderContextMenu(column, event) {
-      if (column?.key !== 'library_code') return
-      event.preventDefault()
-      this.showLibraryCodesInCreatedOrder()
-    },
-    onSheetContextMenu(event) {
-      const headerHit = this.hitSheetHeader(event.target)
-      const column = headerHit ? this.sheetColumns[headerHit.colIndex] : null
-      if (column?.key === 'library_code') {
-        event.preventDefault()
-        this.showLibraryCodesInCreatedOrder()
-        return
-      }
-      this.onSheetWrapContextMenu(event)
-    },
-    async showLibraryCodesInCreatedOrder() {
-      if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
-      this.clearSheetRange?.()
-      const oldestFirst = !this.libraryCodeOldestFirst
-      this.listQuery.order = oldestFirst ? 'id_asc' : ''
-      this.listQuery.sort_field = ''
-      this.listQuery.sort_dir = ''
-      this.listQuery.page = oldestFirst ? 1_000_000 : 1
-      if (await this.getList()) {
-        ElMessage.success(oldestFirst ? '已改为创建时间正序' : '已恢复创建时间倒序')
-      }
-    },
     onLibraryCodeFillStart() {
       const range = this.normalizedSheetRange()
       if (!range || !this.showLibraryCodeFillHandle) return
@@ -1464,8 +1437,7 @@ export default {
       const fill = this.libraryCodeFill
       if (!fill) return
       const hit = this.hitSheetCell(event.target)
-      if (!hit || hit.colIndex !== fill.colIndex || hit.rowIndex < fill.rowIndex) return
-      if (this.sheetRange?.r2 === hit.rowIndex && this.sheetRange?.c2 === fill.colIndex) return
+      if (!hit || hit.colIndex !== fill.colIndex) return
       this.setSheetRange({
         r1: fill.rowIndex,
         c1: fill.colIndex,
@@ -1480,28 +1452,29 @@ export default {
     },
     async onLibraryCodeFillEnd() {
       const fill = this.libraryCodeFill
-      const range = this.normalizedSheetRange()
+      const endIndex = this.sheetRange?.r2
       this.stopLibraryCodeFill()
-      if (!fill || !range || range.r2 <= fill.rowIndex) {
-        if (fill) {
-          this.setSheetRange({
-            r1: fill.rowIndex,
-            c1: fill.colIndex,
-            r2: fill.rowIndex,
-            c2: fill.colIndex,
-          })
-        }
+      if (!fill) return
+      if (endIndex == null || endIndex === fill.rowIndex) {
+        this.setSheetRange({
+          r1: fill.rowIndex,
+          c1: fill.colIndex,
+          r2: fill.rowIndex,
+          c2: fill.colIndex,
+        })
         return
       }
-      await this.fillLibraryCodesDown(fill.rowIndex, range.r2, fill.colIndex)
+      await this.fillLibraryCodes(fill.rowIndex, endIndex, fill.colIndex)
     },
-    async fillLibraryCodesDown(startIndex, endIndex, colIndex) {
-      if (!this.libraryCodeOldestFirst) return
+    /** 从种子格往拖动方向逐格加 1：默认新工单在上，从最近的编号往上拖，编号就和创建先后一致。 */
+    async fillLibraryCodes(startIndex, endIndex, colIndex) {
       if (!await this.flushPendingSheetEdits()) return
       const column = this.sheetColumns[colIndex]
       const seedRow = this.list[startIndex]
       if (!seedRow || column?.key !== 'library_code') return
-      const targets = this.list.slice(startIndex + 1, endIndex + 1)
+      const targets = endIndex > startIndex
+        ? this.list.slice(startIndex + 1, endIndex + 1)
+        : this.list.slice(endIndex, startIndex).reverse()
       if (targets.some((row) => this.isSheetCellLocked(row, 'library_code'))) {
         ElMessage.warning('选中的建库编号有不能修改的格子，本次未填充')
         this.setSheetRange({ r1: startIndex, c1: colIndex, r2: startIndex, c2: colIndex })
@@ -1509,7 +1482,7 @@ export default {
       }
       const codes = libraryCodeSeries(seedRow.library_code, targets.length)
       if (!codes) {
-        ElMessage.warning('建库编号末尾要有数字才能往下填充')
+        ElMessage.warning('建库编号末尾要有数字才能填充')
         this.setSheetRange({ r1: startIndex, c1: colIndex, r2: startIndex, c2: colIndex })
         return
       }
@@ -1552,38 +1525,17 @@ export default {
       this.persistListFilters()
       this.getList()
     },
-    persistListFilters() {
-      const sorted = this.listQuery.order || this.headerSortActive
-      saveListFilters(LIBRARY_LIST_FILTER_KEY, {
-        // 排序不存，换了排序后原页码对应的是另一批行
-        listQuery: {
-          ...this.listQuery,
-          order: undefined,
-          sort_field: undefined,
-          sort_dir: undefined,
-          page: sorted ? 1 : this.listQuery.page,
-        },
-        headerFilters: this.headerFilters,
+    listFilterExtras() {
+      return {
         instrumentRange: this.instrumentRange,
         startedRange: this.startedRange,
         finishedRange: this.finishedRange,
-      })
-    },
-    restoreListFilters() {
-      const state = loadListFilters(LIBRARY_LIST_FILTER_KEY)
-      if (!state) return
-      if (state.listQuery && typeof state.listQuery === 'object') {
-        const saved = { ...state.listQuery }
-        if (saved.keyword && !saved.library_code) saved.library_code = saved.keyword
-        delete saved.keyword
-        if (saved.target) saved.target_name = ''
-        delete saved.target
-        Object.assign(this.listQuery, saved)
       }
+    },
+    restoreListFilterExtras(state) {
       if (Array.isArray(state.instrumentRange)) this.instrumentRange = state.instrumentRange
       if (Array.isArray(state.startedRange)) this.startedRange = state.startedRange
       if (Array.isArray(state.finishedRange)) this.finishedRange = state.finishedRange
-      this.restoreHeaderFilters(state.headerFilters)
     },
     openColumnPicker() {
       this.$refs.workbenchTable?.openColumnPicker()
@@ -1637,12 +1589,12 @@ export default {
       return lists[field.key] || field.options || []
     },
     async getList({ flushEditor = true } = {}) {
-      const requestId = ++this.listRequestId
+      const isLatest = this.beginListRequest()
       this.loading = true
       try {
         if (flushEditor) await this.flushPendingSheetEdits()
         const data = await fetchLibraryOrderList(this.buildQuery(), skipGlobalErrorHandler)
-        if (requestId !== this.listRequestId) return false
+        if (!isLatest()) return false
         this.list = (data?.items || []).map((row) => this.normalizeRow(row))
         this.list.forEach((row) => this.updateRowBaseline(row))
         this.total = data?.total || 0
@@ -1657,14 +1609,14 @@ export default {
             this.closeDrawer()
           }
         }
-        this.tabDataFetchedAt = Date.now()
+        this.markListFetched()
         return true
       } catch (error) {
-        if (requestId !== this.listRequestId) return false
+        if (!isLatest()) return false
         notifyApiError(error, { messages: { default: '加载文库工单失败' } })
         return false
       } finally {
-        if (requestId === this.listRequestId) this.loading = false
+        if (isLatest()) this.loading = false
       }
     },
     rebuildSheetColumns() {
@@ -1931,7 +1883,7 @@ export default {
         })
         this.createVisible = false
         if (this.isExcelMode) {
-          this.listQuery.page = this.libraryCodeOldestFirst ? 1_000_000 : 1
+          this.listQuery.page = 1
           await this.getList({ flushEditor: false })
           return
         }
@@ -1944,11 +1896,7 @@ export default {
     async handleListExport() {
       try {
         await downloadListExcel(
-          () => {
-            const query = this.buildQuery()
-            delete query.order
-            return exportLibraryOrderList(query)
-          },
+          () => exportLibraryOrderList(this.buildQuery()),
           `文库构建_${excelTimestamp()}.xlsx`,
         )
       } catch (error) {
@@ -2474,10 +2422,6 @@ export default {
 <style scoped src="#/components/workbench/workbenchDrawerChrome.css"></style>
 <style src="#/components/workbench/workbenchDrawer.css"></style>
 <style scoped>
-.library-code-head.is-asc {
-  color: var(--el-color-primary);
-}
-
 .library-code-fill-handle {
   position: absolute;
   right: -5px;

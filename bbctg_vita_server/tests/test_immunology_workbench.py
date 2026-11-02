@@ -92,6 +92,27 @@ class HeaderFilterTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 workbench_service.get_column_values(db, {"field": "target_name"})
 
+    def test_stats_ignore_own_status_conditions(self):
+        workbench_model = workbench_service.SerumImmWorkbench
+        engine = memory_engine(workbench_service.SerumImmProject, workbench_model)
+        self.addCleanup(engine.dispose)
+        with sessionmaker(bind=engine, expire_on_commit=False)() as db:
+            db.add_all([
+                workbench_model(experiment_id="E1", plan_status="草稿", owner="张三"),
+                workbench_model(experiment_id="E2", plan_status="已取消", owner="张三"),
+                workbench_model(experiment_id="E3", plan_status="草稿", owner="李四"),
+            ])
+            db.commit()
+
+            stats = workbench_service._list_stats(db, {
+                "display_status": "草稿",
+                "field_filters": [
+                    {"field": "status", "values": ["草稿"]},
+                    {"field": "owner", "values": ["张三"]},
+                ],
+            })
+            self.assertEqual((stats["all"], stats["planned"], stats["cancelled"]), (2, 1, 1))
+
 
 class SchemeStrainTextTests(unittest.TestCase):
     def test_scheme_join_keeps_group_order_with_ideographic_comma(self):

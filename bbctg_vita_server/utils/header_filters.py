@@ -1,14 +1,15 @@
 """表头筛选（类 Excel 自动筛选）：按列登记生成筛选条件、取值列表和排序，供各工作台复用。
 
 前端每列只传一份状态：values 只看这些值、exclude 排除这些值、condition 条件、colors 颜色。
-空值统一用 ''。一格多个值的列（逗号分隔、靶点）用 kind="multi"，按「含有该值」匹配。
+空值统一用 ''。一格多个值的列（逗号分隔、JSON 数组、靶点）用 kind="multi"，按「含有该值」匹配。
 """
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Collection
 
 from sqlalchemy import String, and_, case, cast, false, func, not_, or_, select
 from sqlalchemy.orm import Session
@@ -228,6 +229,15 @@ def header_filter_clauses(
     return clauses
 
 
+def without_header_fields(data: dict[str, Any], fields: Collection[str]) -> dict[str, Any]:
+    """去掉这些列的表头条件，返回新字典：统计块按自己的维度分组时，本维度的条件不能参与。"""
+    field_filters = data.get("field_filters")
+    if not isinstance(field_filters, list):
+        return dict(data)
+    kept = [item for item in field_filters if not (isinstance(item, dict) and item.get("field") in fields)]
+    return {**data, "field_filters": kept}
+
+
 def header_sort_expression(spec: HeaderColumn):
     if spec.order:
         return case(
@@ -328,6 +338,42 @@ def column_values(
     return {"items": items, "truncated": truncated}
 
 
+def header_column_values(
+    db: Session,
+    columns: dict[str, HeaderColumn],
+    data: dict[str, Any] | None,
+    apply_filters: Callable[[Any, dict[str, Any], str], Any],
+    *,
+    id_column,
+    labels: dict[str, dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    """各页 /column_values 的实现：套用除本列表头条件以外的全部筛选，顶部筛选里的本列条件由前端去掉。
+
+    apply_filters(stmt, payload, field) 给语句套上列表筛选并跳过 field 自己的表头条件；
+    labels 给存代码的列附上中文名。
+    """
+    payload = data or {}
+    field = str(payload.get("field") or "").strip()
+    spec = columns.get(field)
+    if spec is None:
+        raise ValueError(f"不支持按「{field}」表头筛选")
+    result = column_values(
+        db,
+        spec,
+        lambda stmt: apply_filters(stmt, payload, field),
+        id_column=id_column,
+        keyword=str(payload.get("value_keyword") or ""),
+        limit=payload.get("value_limit"),
+        order=str(payload.get("value_order") or "value"),
+    )
+    names = (labels or {}).get(field)
+    if names:
+        for item in result["items"]:
+            if item["value"] in names:
+                item["label"] = names[item["value"]]
+    return result
+
+
 def csv_token_clause(column, token: str):
     literal = like_literal(token)
     clauses = [column == token]
@@ -368,6 +414,32 @@ def csv_column(column, presets: tuple[str, ...] = ()) -> HeaderColumn:
         return [{"value": token, "count": counts[token]} for token in found]
 
     return HeaderColumn(column, "multi", match=match, values=values)
+
+
+def json_array_column(column) -> HeaderColumn:
+    """JSON 数组列：按「含有任一值」匹配，NULL 和空数组都算空白。"""
+
+    def match(_db, tokens: list[str]):
+        return func.json_overlaps(column, json.dumps(tokens))
+
+    def values(db: Session, scoped: Scoped, keyword: str) -> list[dict[str, Any]]:
+        counts: dict[str, int] = defaultdict(int)
+        for items in db.scalars(scoped(select(column).where(column.is_not(None)))):
+            if not isinstance(items, list):
+                continue
+            for token in {str(item or "").strip() for item in items} - {""}:
+                counts[token] += 1
+        text = keyword.lower()
+        found = sorted(token for token in counts if not text or text in token.lower())
+        return [{"value": token, "count": counts[token]} for token in found]
+
+    return HeaderColumn(
+        cast(column, String),
+        "multi",
+        match=match,
+        values=values,
+        blank=or_(column.is_(None), func.json_length(column) == 0),
+    )
 
 
 def target_value_items(

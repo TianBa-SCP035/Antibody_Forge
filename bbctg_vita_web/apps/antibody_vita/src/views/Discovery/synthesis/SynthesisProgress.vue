@@ -1038,8 +1038,10 @@ import {
   canPmEditDiscoverySynthesis,
 } from '#/utils/discoveryPermission'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
+import { listPageMixin } from '#/utils/listPage'
 import { listTableLockMixin } from '#/utils/listTableLock'
 import { canAccessSerumDetail } from '#/utils/serumPermission'
+import { copyToClipboard } from '#/utils/clipboard'
 import {
   canonicalizeWorkbenchPriority,
   getTiterPriorityTone,
@@ -1047,7 +1049,6 @@ import {
 import { applyOptionLists } from '#/utils/optionLists'
 import { uniqueNames } from '#/utils/userOptions'
 import { WORKBENCH_VIEW_PREFS_KEYS } from '#/constants/storageKeys'
-import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import UserSelect from '#/components/UserSelect.vue'
 import SynthesisAssayStatusEditor from './SynthesisAssayStatusEditor.vue'
 import SynthesisRowActions from './SynthesisRowActions.vue'
@@ -1169,7 +1170,8 @@ function emptyQuery() {
 
 export default {
   name: 'DiscoverySynthesisProgress',
-  mixins: [workbenchExcelMixin, workbenchTargetMixin, workbenchHeaderMenuMixin, listTableLockMixin],
+  mixins: [workbenchExcelMixin, workbenchTargetMixin, listPageMixin, workbenchHeaderMenuMixin, listTableLockMixin],
+  listFilterKey: 'synthesisProgress',
   components: {
     AdvancedOpsBar,
     ElAutocomplete,
@@ -1265,9 +1267,7 @@ export default {
       remoteDuplicatesById: {},
       remoteCandidatesById: {},
       remoteUnavailableWarned: false,
-      listRequestToken: 0,
       listLoaded: false,
-      tabDataFetchedAt: 0,
       allUserOptions: [],
     }
   },
@@ -1439,7 +1439,7 @@ export default {
   },
   activated() {
     document.addEventListener('mousedown', this.onDocumentPointerDown, true)
-    if (this.listLoaded && shouldRefreshTabData(this.tabDataFetchedAt)) {
+    if (this.listLoaded && this.isListDataStale()) {
       this.getList()
     } else {
       this.scheduleSortable()
@@ -1824,34 +1824,11 @@ export default {
       const msg = codes.length > 1 ? `已复制 ${codes.length} 个编号（换行分隔）` : `已复制：${codes[0]}`
       this.copyBannerCode(joined, msg)
     },
-    copyBannerCode(text, customMessage) {
+    async copyBannerCode(text, customMessage) {
       const val = String(text ?? '').trim()
       if (!val) return
-      const onSuccess = () => ElMessage.success(customMessage || `已复制：${val}`)
-      if (navigator.clipboard?.writeText) {
-        navigator.clipboard
-          .writeText(val)
-          .then(onSuccess)
-          .catch(() => this.fallbackCopyText(val, onSuccess))
-        return
-      }
-      this.fallbackCopyText(val, onSuccess)
-    },
-    fallbackCopyText(val, onSuccess) {
-      try {
-        const input = document.createElement('textarea')
-        input.value = val
-        input.setAttribute('readonly', 'readonly')
-        input.style.position = 'fixed'
-        input.style.opacity = '0'
-        document.body.appendChild(input)
-        input.select()
-        document.execCommand('copy')
-        document.body.removeChild(input)
-        onSuccess()
-      } catch {
-        ElMessage.warning('复制失败，请手动复制')
-      }
+      if (await copyToClipboard(val)) ElMessage.success(customMessage || `已复制：${val}`)
+      else ElMessage.warning('复制失败，请手动复制')
     },
     isCodeField(key) {
       return key === 'order_no' || key === 'batch_label' || key === 'synthesis_code'
@@ -1938,10 +1915,10 @@ export default {
       )
       const ids = targetRows.map((row) => row.id)
       if (!ids.length) return Promise.resolve(null)
-      const listToken = this.listRequestToken
+      const sameList = this.listRequest.peek()
       return checkRemoteDiscoverySynthesis(ids)
         .then((res) => {
-          if (listToken !== this.listRequestToken) return null
+          if (!sameList()) return null
           if (res?.remote_available === false) {
             if (!this.remoteUnavailableWarned) ElMessage.warning('外部订单库暂时连不上，本次未核对外部订单')
             this.remoteUnavailableWarned = true
@@ -2043,7 +2020,7 @@ export default {
     },
     async getList({ flushEditor = true, silent = false, skipRemoteCheck = false } = {}) {
       if (!silent) this.loading = true
-      const requestToken = ++this.listRequestToken
+      const isLatest = this.beginListRequest()
       try {
         if (flushEditor) {
           await this.flushPendingSheetEdits()
@@ -2052,9 +2029,9 @@ export default {
             await Promise.all([...this.pendingDrawerSaves])
           }
         }
-        if (requestToken !== this.listRequestToken) return
+        if (!isLatest()) return
         const data = await fetchDiscoverySynthesisList(this.buildQuery(), skipGlobalErrorHandler)
-        if (requestToken !== this.listRequestToken) return
+        if (!isLatest()) return
         const editorIsDirty = this.drawerDirtyFields(this.editingRowData).length > 0
         this.list = (data?.items || []).map((row) => this.normalizeRow(row))
         this.list.forEach((row) => this.updateRowBaseline(row))
@@ -2076,23 +2053,19 @@ export default {
         if (selected && !editorIsDirty) {
           this.editingRowData = this.normalizeRow(JSON.parse(JSON.stringify(selected)))
         }
-        this.tabDataFetchedAt = Date.now()
+        this.markListFetched()
         this.clearSheetRange()
         this.scheduleSortable()
         if (!skipRemoteCheck) {
           this.scheduleRemoteCheck(this.list)
         }
       } catch (error) {
-        if (requestToken === this.listRequestToken) {
+        if (isLatest()) {
           notifyApiError(error, { messages: { default: '加载合成与验证列表失败' } })
         }
       } finally {
-        if (requestToken === this.listRequestToken) this.loading = false
+        if (isLatest()) this.loading = false
       }
-    },
-    handleFilter() {
-      this.listQuery.page = 1
-      this.getList()
     },
     handleViewGroup(key) {
       this.listQuery.status = ''
@@ -2117,6 +2090,20 @@ export default {
       this.affinityDateRange = []
       this.clearHeaderFilters()
       this.getList()
+    },
+    listFilterExtras() {
+      return {
+        syntheticDateRange: this.syntheticDateRange,
+        arrivalDateRange: this.arrivalDateRange,
+        flowDateRange: this.flowDateRange,
+        affinityDateRange: this.affinityDateRange,
+      }
+    },
+    restoreListFilterExtras(state) {
+      if (Array.isArray(state.syntheticDateRange)) this.syntheticDateRange = state.syntheticDateRange
+      if (Array.isArray(state.arrivalDateRange)) this.arrivalDateRange = state.arrivalDateRange
+      if (Array.isArray(state.flowDateRange)) this.flowDateRange = state.flowDateRange
+      if (Array.isArray(state.affinityDateRange)) this.affinityDateRange = state.affinityDateRange
     },
     async toggleViewMode() {
       if (this.isExcelMode && !(await this.flushPendingSheetEdits())) return

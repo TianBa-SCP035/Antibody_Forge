@@ -978,9 +978,7 @@ export default {
   beforeRouteUpdate(to, from, next) {
     const workbenchId = this.parseWorkbenchId(to.query.id)
     const continueNavigation = () => {
-      this.initRequest.cancel()
-      this.targetRequest.cancel()
-      this.activeWorkbenchId = null
+      this.cancelPageRequests()
       next()
       this.$nextTick(() => this.initPage(workbenchId, to))
     }
@@ -994,9 +992,7 @@ export default {
   beforeRouteLeave(to, from, next) {
     this.flushPendingSave()
       .then(() => {
-        this.initRequest.cancel()
-        this.targetRequest.cancel()
-        this.activeWorkbenchId = null
+        this.cancelPageRequests()
         next()
       })
       .catch((err) => {
@@ -1005,6 +1001,16 @@ export default {
       })
   },
   methods: {
+    /** 作废进行中的加载；被作废请求的 finally 不再复位，所以加载状态要在这里一并清掉。 */
+    cancelPageRequests() {
+      this.initRequest.cancel()
+      this.targetRequest.cancel()
+      this.activeWorkbenchId = null
+      this.loadingWorkbenchId = null
+      this.loading = false
+      this.initializing = false
+      this.targetLoading = false
+    },
     async loadWorkbenchOptions() {
       try {
         const data = await fetchWorkbenchOptions()

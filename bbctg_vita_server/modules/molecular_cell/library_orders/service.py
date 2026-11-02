@@ -18,11 +18,14 @@ from sqlalchemy.orm import Session
 from core.config import get_settings
 from utils.header_filters import (
     HeaderColumn,
-    column_values,
+    header_column_values,
     csv_column,
     csv_token_clause,
     header_filter_clauses,
     header_sort_clauses,
+    json_array_column,
+    target_column,
+    without_header_fields,
 )
 from utils.normalize import (
     normalize_choice,
@@ -1028,12 +1031,17 @@ def search_recorded_targets(db: Session, keyword: str = "", limit: int = DEFAULT
 
 
 _L = MolecularLibraryOrder
-# 建库类型、样品来源/类型、Barcode 方式存的是代码，靠统计卡片和顶部筛选；靶点沿用顶部筛选。
 HEADER_COLUMNS: dict[str, HeaderColumn] = {
+    "library_code": HeaderColumn(_L.library_code),
     "source_project_code": HeaderColumn(_L.source_project_code),
     "library_order_id": HeaderColumn(_L.library_order_id),
     "source_discovery_id": HeaderColumn(_L.source_discovery_id),
     "library_batch_no": HeaderColumn(_L.library_batch_no),
+    "target_name": target_column(_L.target_name, _L.target_codes),
+    "build_type": HeaderColumn(_L.build_type, "enum", order=BUILD_TYPE_ORDER),
+    "sample_source": HeaderColumn(_L.sample_source, "enum", order=tuple(SAMPLE_SOURCE_LABELS)),
+    "sample_type": HeaderColumn(_L.sample_type, "enum", order=tuple(SAMPLE_TYPE_LABELS)),
+    "index_mode": HeaderColumn(_L.index_mode, "enum", order=tuple(INDEX_MODE_LABELS)),
     "owner": HeaderColumn(_L.owner, "enum"),
     "pm": HeaderColumn(_L.pm, "enum"),
     "study_type": HeaderColumn(_L.study_type, "enum"),
@@ -1044,15 +1052,48 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "immunization_stage": HeaderColumn(_L.immunization_stage, "enum"),
     "notebook_no": HeaderColumn(_L.notebook_no),
     "positive_cell_count": HeaderColumn(_L.positive_cell_count),
+    "plate_nos": json_array_column(_L.plate_nos),
+    "target_forms": HeaderColumn(_L.target_forms, "enum", order=TARGET_FORM_OPTIONS),
+    "source_experiment_type": HeaderColumn(_L.source_experiment_type, "enum", order=PHAGE_EXPERIMENT_TYPES),
+    "project_goal": HeaderColumn(_L.project_goal),
     "received_on": HeaderColumn(_L.received_on, "date"),
     "instrument_on": HeaderColumn(_L.instrument_on, "date"),
     "blood_collected_on": HeaderColumn(_L.blood_collected_on, "date"),
     "started_at": HeaderColumn(_L.started_at, "date"),
     "finished_at": HeaderColumn(_L.finished_at, "date"),
+    "rna_location": HeaderColumn(_L.rna_location),
+    "cdna_location": HeaderColumn(_L.cdna_location),
+    "library_location": HeaderColumn(_L.library_location),
+    "cdna_concentration": HeaderColumn(_L.cdna_concentration),
+    "library_concentration": HeaderColumn(_L.library_concentration),
+    "initial_library_size": HeaderColumn(_L.initial_library_size),
+    "effective_library_size": HeaderColumn(_L.effective_library_size),
+    "fragment_size_bp": HeaderColumn(_L.fragment_size_bp),
+    "h_forward_primer_name": HeaderColumn(_L.h_forward_primer_name, "enum"),
+    "h_reverse_primer_name": HeaderColumn(_L.h_reverse_primer_name, "enum"),
+    "h_primer_concentration": HeaderColumn(_L.h_primer_concentration),
+    "k_forward_primer_name": HeaderColumn(_L.k_forward_primer_name, "enum"),
+    "k_reverse_primer_name": HeaderColumn(_L.k_reverse_primer_name, "enum"),
+    "k_primer_concentration": HeaderColumn(_L.k_primer_concentration),
+    "l_forward_primer_name": HeaderColumn(_L.l_forward_primer_name, "enum"),
+    "l_reverse_primer_name": HeaderColumn(_L.l_reverse_primer_name, "enum"),
+    "l_primer_concentration": HeaderColumn(_L.l_primer_concentration),
+    "i7_name": HeaderColumn(_L.i7_name, "enum"),
+    "i7_sequence": HeaderColumn(_L.i7_sequence),
+    "i5_name": HeaderColumn(_L.i5_name, "enum"),
+    "i5_sequence": HeaderColumn(_L.i5_sequence),
     "qc_result": HeaderColumn(_L.qc_result, "enum", order=QC_RESULT_OPTIONS),
     "qc_owner": HeaderColumn(_L.qc_owner, "enum"),
     "qc_on": HeaderColumn(_L.qc_on, "date"),
+    "qc_note": HeaderColumn(_L.qc_note),
     "remark": HeaderColumn(_L.remark),
+}
+# 这几列存的是代码，取值列表附上中文名
+_VALUE_LABELS = {
+    "build_type": BUILD_TYPE_LABELS,
+    "sample_source": SAMPLE_SOURCE_LABELS,
+    "sample_type": SAMPLE_TYPE_LABELS,
+    "index_mode": INDEX_MODE_LABELS,
 }
 
 
@@ -1061,8 +1102,6 @@ def _list_order(data: dict[str, Any]):
     direction = str(data.get("sort_dir") or "").strip()
     if spec is not None and direction in {"asc", "desc"}:
         return header_sort_clauses(spec, direction, MolecularLibraryOrder.id)
-    if str(data.get("order") or "").strip() == "id_asc":
-        return (MolecularLibraryOrder.id.asc(),)
     return (MolecularLibraryOrder.id.desc(),)
 
 
@@ -1146,9 +1185,8 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
     stats = {code: 0 for code in BUILD_TYPE_ORDER}
     for sample_type in PLASMA_SAMPLE_TYPES:
         stats[f"{BUILD_PLASMA_NGS}:{sample_type}"] = 0
-    filtered = dict(payload or {})
-    filtered.pop("build_type", None)
-    filtered.pop("sample_type", None)
+    own = {"build_type", "sample_type"}
+    filtered = without_header_fields({key: value for key, value in (payload or {}).items() if key not in own}, own)
     stmt = _apply_list_filters(
         select(
             MolecularLibraryOrder.build_type,
@@ -1224,20 +1262,13 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
-    """表头筛选的取值列表：套用除本列表头条件以外的全部筛选。顶部筛选里的本列条件由前端去掉。"""
-    payload = data or {}
-    field = str(payload.get("field") or "").strip()
-    spec = HEADER_COLUMNS.get(field)
-    if spec is None:
-        raise ValueError(f"不支持按「{field}」表头筛选")
-    return column_values(
+    return header_column_values(
         db,
-        spec,
-        lambda stmt: _apply_list_filters(stmt, payload, db=db, header_except=field),
+        HEADER_COLUMNS,
+        data,
+        lambda stmt, payload, field: _apply_list_filters(stmt, payload, db=db, header_except=field),
         id_column=MolecularLibraryOrder.id,
-        keyword=str(payload.get("value_keyword") or ""),
-        limit=payload.get("value_limit"),
-        order=str(payload.get("value_order") or "value"),
+        labels=_VALUE_LABELS,
     )
 
 

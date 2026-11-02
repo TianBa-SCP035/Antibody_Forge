@@ -829,6 +829,7 @@ import {
   WorkbenchStatusEditor,
   WorkbenchTargetSelect,
 } from '#/components/workbench'
+import { listPageMixin } from '#/utils/listPage'
 import { listTableLockMixin } from '#/utils/listTableLock'
 import { notifyApiError } from '#/api/errors'
 import {
@@ -862,9 +863,7 @@ import {
 } from '#/utils/serumProjectStatus'
 import { getCachedUserNames } from '#/utils/userOptions'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
-import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage'
 import { WORKBENCH_VIEW_PREFS_KEYS } from '#/constants/storageKeys'
-import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import { SERUM_ERRORS } from '../shared/errors'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import UserSelect from '#/components/UserSelect.vue'
@@ -1093,7 +1092,6 @@ const WORKBENCH_COLUMNS = [
   { key: 'actions', label: '操作', defaultVisible: true, width: 240, className: 'action-column-cell', fixed: 'right' },
 ]
 let lastViewMode = WORKBENCH_VIEW
-const SERUM_WORKBENCH_FILTER_KEY = 'serumWorkbench'
 /**
  * 表头菜单登记，字段含义见 synthesisColumns.js 的 HEADER_MENU_COLUMNS。
  * 靶点、品系沿用顶部筛选（品系显示的是方案分组合并值）；周龄是按出生日期推算的，不放表头。
@@ -1145,7 +1143,8 @@ const SHEET_HEADER_ALIASES = Object.freeze({
 })
 export default {
   name: 'SerumWorkbench',
-  mixins: [workbenchExcelMixin, workbenchTargetMixin, workbenchHeaderMenuMixin, listTableLockMixin],
+  mixins: [workbenchExcelMixin, workbenchTargetMixin, listPageMixin, workbenchHeaderMenuMixin, listTableLockMixin],
+  listFilterKey: 'serumWorkbench',
   components: {
     AdvancedOpsBar,
     WorkbenchHeaderFilterChip,
@@ -1187,7 +1186,6 @@ export default {
     return {
       viewPrefsStorageKey: WORKBENCH_VIEW_PREFS_KEYS.serum,
       loading: false,
-      tabDataFetchedAt: 0,
       schemeReturnRefresh: false,
       list: [],
       total: 0,
@@ -1199,7 +1197,6 @@ export default {
       editingRowData: null,
       ageEditingRowId: null,
       allUserOptions: getCachedUserNames(),
-      listRequestToken: 0,
       pendingDrawerSaves: new Set(),
       rowSaveChains: new Map(),
       rowBaselines: new Map(),
@@ -1397,7 +1394,6 @@ export default {
     },
   },
   created() {
-    this.restoreListFilters()
     this.loading = true
     this.loadFilterOptions()
     this.getList()
@@ -1407,12 +1403,7 @@ export default {
     this.scheduleSortable()
     document.addEventListener('mousedown', this.onDocumentPointerDown, true)
   },
-  beforeRouteLeave(_to, _from, next) {
-    this.persistListFilters()
-    next()
-  },
   beforeUnmount() {
-    this.persistListFilters()
     document.removeEventListener('mousedown', this.onDocumentPointerDown, true)
   },
   activated() {
@@ -1423,7 +1414,7 @@ export default {
       this.getList()
       return
     }
-    if (shouldRefreshTabData(this.tabDataFetchedAt)) {
+    if (this.isListDataStale()) {
       this.getList()
     } else {
       this.scheduleSortable()
@@ -2092,6 +2083,8 @@ export default {
       return this.saveRow(row, { fields })
     },
     handleViewGroup(key) {
+      this.listQuery.display_status = ''
+      this.dropHeaderFilter('status')
       this.listQuery.view_group = key || null
       this.handleFilter()
     },
@@ -2132,12 +2125,6 @@ export default {
       this.handleFilter()
       this.persistListFilters()
     },
-    persistListFilters() {
-      saveListFilters(SERUM_WORKBENCH_FILTER_KEY, {
-        listQuery: { ...this.listQuery, sort_field: undefined, sort_dir: undefined },
-        headerFilters: this.headerFilters,
-      })
-    },
     buildQuery() {
       const payload = { ...this.listQuery }
       if (!payload.sort_dir) delete payload.sort_dir
@@ -2147,19 +2134,6 @@ export default {
     },
     fetchHeaderValues(query) {
       return fetchWorkbenchColumnValues(query)
-    },
-    restoreListFilters() {
-      const state = loadListFilters(SERUM_WORKBENCH_FILTER_KEY)
-      if (state?.listQuery && typeof state.listQuery === 'object') {
-        const saved = { ...state.listQuery }
-        delete saved.target
-        Object.assign(this.listQuery, saved)
-      }
-      this.restoreHeaderFilters(state?.headerFilters)
-    },
-    handleFilter() {
-      this.listQuery.page = 1
-      this.getList()
     },
     async handleListExport() {
       try {
@@ -2173,7 +2147,7 @@ export default {
     },
     async getList({ flushEditor = true } = {}) {
       this.loading = true
-      const requestToken = ++this.listRequestToken
+      const isLatest = this.beginListRequest()
       try {
         if (flushEditor) {
           await this.flushPendingSheetEdits()
@@ -2185,9 +2159,9 @@ export default {
             await Promise.allSettled([...this.rowSaveChains.values()])
           }
         }
-        if (requestToken !== this.listRequestToken) return
+        if (!isLatest()) return
         const data = await fetchWorkbenchList(this.buildQuery())
-        if (requestToken !== this.listRequestToken) return
+        if (!isLatest()) return
         const editorIsDirty = this.drawerDirtyFields(this.editingRowData).length > 0
         this.list = (data?.items || []).map((row) => this.normalizeRow(row))
         this.list.forEach((row) => this.updateRowBaseline(row))
@@ -2204,15 +2178,15 @@ export default {
         if (selected && !editorIsDirty && !this.rowSaveChains.has(this.editingId)) {
           this.editingRowData = this.normalizeRow(JSON.parse(JSON.stringify(selected)))
         }
-        this.tabDataFetchedAt = Date.now()
+        this.markListFetched()
         this.clearSheetRange()
         this.scheduleSortable()
       } catch (err) {
-        if (requestToken === this.listRequestToken) {
+        if (isLatest()) {
           notifyApiError(err, { messages: SERUM_ERRORS.workbench.load })
         }
       } finally {
-        if (requestToken === this.listRequestToken) this.loading = false
+        if (isLatest()) this.loading = false
       }
     },
     normalizeRow(row) {

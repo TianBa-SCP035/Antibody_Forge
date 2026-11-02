@@ -4,7 +4,7 @@
       <ListFilterSelect
         v-model="listQuery.order_status"
         clearable
-        placeholder="工单状态"
+        v-bind="headerTop('order_status', '工单状态')"
         @change="handleFilter"
       >
         <el-option
@@ -109,7 +109,7 @@
           v-model="listQuery.project_code"
           class="filter-item"
           clearable
-          placeholder="项目编号"
+          v-bind="headerTop('project_code', '项目编号')"
           :prefix-icon="Search"
           @keyup.enter="handleFilter"
         />
@@ -117,7 +117,7 @@
           v-model="listQuery.target_name"
           class="filter-item"
           popper-class="titer-select-dropdown"
-          placeholder="靶点"
+          v-bind="headerTop('target_name', '靶点')"
           scope="titerOrder"
           @change="handleFilter"
         />
@@ -128,7 +128,7 @@
           filterable
           popper-class="titer-select-dropdown"
           :filter-method="filterMethodFor('assayMethodFilterQuery')"
-          placeholder="检测方法"
+          v-bind="headerTop('assay_method', '检测方法')"
           @clear="clearFilterQuery('assayMethodFilterQuery')"
           @change="handleFilter"
         >
@@ -149,7 +149,7 @@
           filterable
           popper-class="titer-select-dropdown"
           :filter-method="filterMethodFor('immuneOwnerFilterQuery')"
-          placeholder="免疫负责人"
+          v-bind="headerTop('immune_owner', '免疫负责人')"
           @clear="clearFilterQuery('immuneOwnerFilterQuery')"
           @change="handleFilter"
         >
@@ -185,7 +185,7 @@
           filterable
           popper-class="titer-select-dropdown"
           :filter-method="filterMethodFor('immuneStatusFilterQuery')"
-          placeholder="免疫状态"
+          v-bind="headerTop('immune_status', '免疫状态')"
           @clear="clearFilterQuery('immuneStatusFilterQuery')"
           @change="handleFilter"
         >
@@ -234,7 +234,7 @@
           v-model="listQuery.priority"
           class="filter-item"
           clearable
-          placeholder="检测优先级"
+          v-bind="headerTop('priority', '检测优先级')"
           @change="handleFilter"
         >
           <el-option
@@ -255,6 +255,7 @@
           <el-option label="已填写小结" value="filled" />
         </ListFilterSelect>
         <div class="filter-actions list-filter-actions">
+          <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
           <button
             type="button"
             class="list-advanced-trigger"
@@ -290,10 +291,12 @@
           size="large"
           class="list-data-table"
           style="width: 100%"
-          @sort-change="handleSortChange"
+          :header-cell-class-name="headerCellClassName"
+          @header-click="onTableHeaderClick"
           @header-dragend="onTableHeaderDragEnd"
         >
-        <el-table-column label="项目编号" prop="project_code" align="left" sortable="custom" fixed min-width="120" show-overflow-tooltip>
+        <el-table-column column-key="project_code" prop="project_code" align="left" fixed min-width="120" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="项目编号" v-bind="headerMenuStates.project_code" /></template>
           <template #default="{ row }">
             <span
               class="list-code-text is-clickable"
@@ -302,31 +305,15 @@
             >{{ row.project_code || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="靶点" prop="target_name" align="center" min-width="100" show-overflow-tooltip />
+        <el-table-column column-key="target_name" prop="target_name" align="center" min-width="100" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="靶点" v-bind="headerMenuStates.target_name" /></template>
+        </el-table-column>
         <el-table-column label="笼位" prop="cage_position" align="center" min-width="110" show-overflow-tooltip />
-        <el-table-column label="采血日期" prop="blood_collection_date" align="center" sortable="custom" min-width="115" />
-        <el-table-column prop="mouse_count" align="center" min-width="80" class-name="plate-col-mouse">
-          <template #header>
-            <el-popover v-model:visible="colFilterOpen.mouse_count" trigger="click" width="220">
-              <el-radio-group v-model="listQuery.mouse_count_zero" size="small" class="col-filter-zero">
-                <el-radio-button label="">全部</el-radio-button>
-                <el-radio-button label="hide">排除0</el-radio-button>
-                <el-radio-button label="only">只看0</el-radio-button>
-              </el-radio-group>
-              <div class="col-filter-range">
-                <el-input-number v-model="listQuery.mouse_count_min" :min="0" :controls="false" placeholder="最小" />
-                <span>—</span>
-                <el-input-number v-model="listQuery.mouse_count_max" :min="0" :controls="false" placeholder="最大" />
-              </div>
-              <div class="col-filter-actions">
-                <el-button size="small" @click="resetColFilter('mouse_count')">重置</el-button>
-                <el-button size="small" type="primary" @click="applyColFilter('mouse_count')">确定</el-button>
-              </div>
-              <template #reference>
-                <button type="button" class="col-filter-head" :class="{ 'is-active': isColFilterActive('mouse_count') }" @click.stop>只数</button>
-              </template>
-            </el-popover>
-          </template>
+        <el-table-column column-key="blood_collection_date" prop="blood_collection_date" align="center" min-width="115">
+          <template #header><WorkbenchHeaderLabel label="采血日期" v-bind="headerMenuStates.blood_collection_date" /></template>
+        </el-table-column>
+        <el-table-column column-key="mouse_count" prop="mouse_count" align="center" min-width="80" class-name="plate-col-mouse">
+          <template #header><WorkbenchHeaderLabel label="只数" v-bind="headerMenuStates.mouse_count" /></template>
           <template #default="{ row, $index }">
             <div
               class="plate-select-cell"
@@ -338,29 +325,11 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="检测方法" prop="assay_method" align="center" min-width="130" show-overflow-tooltip />
-        <el-table-column prop="facs_plate_count" align="center" min-width="80" class-name="plate-col-facs">
-          <template #header>
-            <el-popover v-model:visible="colFilterOpen.facs_plate" trigger="click" width="220">
-              <el-radio-group v-model="listQuery.facs_plate_zero" size="small" class="col-filter-zero">
-                <el-radio-button label="">全部</el-radio-button>
-                <el-radio-button label="hide">排除0</el-radio-button>
-                <el-radio-button label="only">只看0</el-radio-button>
-              </el-radio-group>
-              <div class="col-filter-range">
-                <el-input-number v-model="listQuery.facs_plate_min" :min="0" :controls="false" placeholder="最小" />
-                <span>—</span>
-                <el-input-number v-model="listQuery.facs_plate_max" :min="0" :controls="false" placeholder="最大" />
-              </div>
-              <div class="col-filter-actions">
-                <el-button size="small" @click="resetColFilter('facs_plate')">重置</el-button>
-                <el-button size="small" type="primary" @click="applyColFilter('facs_plate')">确定</el-button>
-              </div>
-              <template #reference>
-                <button type="button" class="col-filter-head" :class="{ 'is-active': isColFilterActive('facs_plate') }" @click.stop>FACS</button>
-              </template>
-            </el-popover>
-          </template>
+        <el-table-column column-key="assay_method" prop="assay_method" align="center" min-width="130" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="检测方法" v-bind="headerMenuStates.assay_method" /></template>
+        </el-table-column>
+        <el-table-column column-key="facs_plate_count" prop="facs_plate_count" align="center" min-width="80" class-name="plate-col-facs">
+          <template #header><WorkbenchHeaderLabel label="FACS" v-bind="headerMenuStates.facs_plate_count" /></template>
           <template #default="{ row, $index }">
             <div
               class="plate-select-cell"
@@ -372,28 +341,8 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="elisa_plate_count" align="center" min-width="80" class-name="plate-col-elisa">
-          <template #header>
-            <el-popover v-model:visible="colFilterOpen.elisa_plate" trigger="click" width="220">
-              <el-radio-group v-model="listQuery.elisa_plate_zero" size="small" class="col-filter-zero">
-                <el-radio-button label="">全部</el-radio-button>
-                <el-radio-button label="hide">排除0</el-radio-button>
-                <el-radio-button label="only">只看0</el-radio-button>
-              </el-radio-group>
-              <div class="col-filter-range">
-                <el-input-number v-model="listQuery.elisa_plate_min" :min="0" :controls="false" placeholder="最小" />
-                <span>—</span>
-                <el-input-number v-model="listQuery.elisa_plate_max" :min="0" :controls="false" placeholder="最大" />
-              </div>
-              <div class="col-filter-actions">
-                <el-button size="small" @click="resetColFilter('elisa_plate')">重置</el-button>
-                <el-button size="small" type="primary" @click="applyColFilter('elisa_plate')">确定</el-button>
-              </div>
-              <template #reference>
-                <button type="button" class="col-filter-head" :class="{ 'is-active': isColFilterActive('elisa_plate') }" @click.stop>ELISA</button>
-              </template>
-            </el-popover>
-          </template>
+        <el-table-column column-key="elisa_plate_count" prop="elisa_plate_count" align="center" min-width="80" class-name="plate-col-elisa">
+          <template #header><WorkbenchHeaderLabel label="ELISA" v-bind="headerMenuStates.elisa_plate_count" /></template>
           <template #default="{ row, $index }">
             <div
               class="plate-select-cell"
@@ -405,8 +354,11 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="免疫负责人" prop="immune_owner" align="center" min-width="105" show-overflow-tooltip />
-        <el-table-column label="效价负责人" align="center" min-width="175" class-name="plate-col-owner">
+        <el-table-column column-key="immune_owner" prop="immune_owner" align="center" min-width="105" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="免疫负责人" v-bind="headerMenuStates.immune_owner" /></template>
+        </el-table-column>
+        <el-table-column column-key="titer_owners" align="center" min-width="175" class-name="plate-col-owner">
+          <template #header><WorkbenchHeaderLabel label="效价负责人" v-bind="headerMenuStates.titer_owners" /></template>
           <template #default="{ row, $index }">
             <div
               class="plate-select-cell plate-select-cell--field"
@@ -453,13 +405,13 @@
           </template>
         </el-table-column>
         <el-table-column
-          label="检测日期"
+          column-key="test_dates"
           prop="test_dates_display"
           align="center"
-          sortable="custom"
           min-width="160"
           class-name="plate-col-test-dates"
         >
+          <template #header><WorkbenchHeaderLabel label="检测日期" v-bind="headerMenuStates.test_dates" /></template>
           <template #default="{ row, $index }">
             <div
               class="plate-select-cell plate-select-cell--field"
@@ -497,13 +449,13 @@
           </template>
         </el-table-column>
         <el-table-column
-          label="血清状态"
+          column-key="serum_status"
           prop="serum_status"
           align="center"
-          sortable="custom"
           min-width="140"
           class-name="status-column-cell plate-col-serum-status"
         >
+          <template #header><WorkbenchHeaderLabel label="血清状态" v-bind="headerMenuStates.serum_status" /></template>
           <template #default="{ row, $index }">
             <div
               class="plate-select-cell plate-select-cell--field"
@@ -539,7 +491,8 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="优先级" prop="priority" align="center" sortable="custom" min-width="110" class-name="status-column-cell plate-col-priority">
+        <el-table-column column-key="priority" prop="priority" align="center" min-width="110" class-name="status-column-cell plate-col-priority">
+          <template #header><WorkbenchHeaderLabel label="优先级" v-bind="headerMenuStates.priority" /></template>
           <template #default="{ row, $index }">
             <div
               class="plate-select-cell plate-select-cell--field"
@@ -572,7 +525,8 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="备注" align="center" min-width="180">
+        <el-table-column column-key="remark" align="center" min-width="180">
+          <template #header><WorkbenchHeaderLabel label="备注" v-bind="headerMenuStates.remark" /></template>
           <template #default="{ row }">
             <div
               class="cell-tooltip-target"
@@ -597,7 +551,8 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="效价小结" align="center" min-width="180">
+        <el-table-column column-key="summary" align="center" min-width="180">
+          <template #header><WorkbenchHeaderLabel label="效价小结" v-bind="headerMenuStates.summary" /></template>
           <template #default="{ row }">
             <div
               class="cell-tooltip-target"
@@ -622,7 +577,8 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="工单状态" prop="order_status" align="center" min-width="100" class-name="status-column-cell">
+        <el-table-column column-key="order_status" prop="order_status" align="center" min-width="100" class-name="status-column-cell">
+          <template #header><WorkbenchHeaderLabel label="工单状态" v-bind="headerMenuStates.order_status" /></template>
           <template #default="{ row }">
             <el-tag
               v-if="row.order_status"
@@ -635,7 +591,8 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="免疫状态" prop="immune_status" align="center" min-width="100" class-name="status-column-cell">
+        <el-table-column column-key="immune_status" prop="immune_status" align="center" min-width="100" class-name="status-column-cell">
+          <template #header><WorkbenchHeaderLabel label="免疫状态" v-bind="headerMenuStates.immune_status" /></template>
           <template #default="{ row }">
             <SerumProjectStatusEditor
               :project-id="row.project_id"
@@ -722,6 +679,8 @@
     />
 
     <TiterInstrumentOrderDialogs ref="instrumentOrderDialogsRef" />
+
+    <WorkbenchHeaderMenu v-bind="headerMenuBind" />
 
     <TiterMouseSelectWizard
       v-model="discoveryWizardVisible"
@@ -815,13 +774,9 @@ import {
   ElDialog,
   ElIcon,
   ElInput,
-  ElInputNumber,
   ElMessage,
   ElOption,
   ElPagination,
-  ElPopover,
-  ElRadioButton,
-  ElRadioGroup,
   ElSelect,
   ElTable,
   ElTableColumn,
@@ -832,6 +787,7 @@ import {
 import { notifyApiError } from '#/api/errors';
 import { skipGlobalErrorHandler } from '#/api/request';
 import {
+  fetchTiterOrderColumnValues,
   fetchTiterOrderList,
   fetchTiterOrderMeta,
   fetchTiterOrderOwnerStats,
@@ -841,7 +797,14 @@ import {
 } from '#/api/serum';
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
 import ListFilterSelect from '#/components/ListFilterSelect.vue';
+import {
+  WorkbenchHeaderFilterChip,
+  WorkbenchHeaderLabel,
+  WorkbenchHeaderMenu,
+  workbenchHeaderMenuMixin,
+} from '#/components/workbench';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
+import { listPageMixin } from '#/utils/listPage';
 import { listTableLockMixin } from '#/utils/listTableLock';
 import { getSerumTiterStatusTagType, getTiterPriorityTone, mergeTiterSerumStatusOptions, TITER_PRIORITY_DEFAULT, TITER_PRIORITY_OPTIONS, TITER_SERUM_STATUS_OPTIONS } from '#/utils/serumProjectStatus';
 import { FLOW_WORK_ORDER_STATUS_OPTIONS, orderStatusTagType } from '#/utils/megaFlowWorkOrderStatus';
@@ -857,9 +820,7 @@ import {
 } from '#/utils/serumPermission';
 import { useUserStore } from '@vben/stores';
 
-import { loadListFilters, saveListFilters } from '#/utils/listFilterStorage';
 import WorkbenchTargetFilter from '#/components/workbench/WorkbenchTargetFilter.vue';
-import { shouldRefreshTabData } from '#/utils/staleTabRefresh';
 import { DISCOVERY_WORKBENCH_CREATED_KEY } from '#/constants/storageKeys';
 import { canEditDiscoveryWorkbench } from '#/utils/discoveryPermission';
 import { handoffTiterToDiscovery } from '#/utils/titerDiscoveryHandoff';
@@ -868,7 +829,6 @@ import TiterMouseSelectWizard from './TiterMouseSelectWizard.vue';
 import TiterOrderCreateDialog from './TiterOrderCreateDialog.vue';
 import SerumProjectStatusEditor from '../shared/SerumProjectStatusEditor.vue';
 
-const TITER_ORDER_LIST_FILTER_KEY = 'titerOrderList';
 let pendingTiterOrderId = '';
 
 export function rememberTiterOrderFocus(titerOrderId) {
@@ -892,6 +852,31 @@ const FIELD_SELECT_COLUMNS = new Set(['owner', 'test_dates', 'serum_status', 'pr
 const ASSAY_FILTER_FACS = '__facs__';
 const ASSAY_FILTER_ELISA = '__elisa__';
 const ASSAY_FILTER_FACS_ELISA = '__facs_elisa__';
+
+// 效价负责人、检测日期、血清状态、小结的顶部筛选由统计块联动改写，表头条件与它们并列、不写回
+const TITER_HEADER_COLUMNS = Object.freeze({
+  project_code: { type: 'text', label: '项目编号', values: 'recent', top: { query: 'project_code', kind: 'codes' } },
+  target_name: { type: 'text', label: '靶点', values: 'all', search: 'target', top: { query: 'target_name' } },
+  blood_collection_date: { type: 'date', label: '采血日期', sortOnly: true },
+  mouse_count: { type: 'number', label: '只数', values: 'all' },
+  assay_method: {
+    type: 'enum',
+    label: '检测方法',
+    values: 'all',
+    top: { query: 'assay_method', topOnly: [ASSAY_FILTER_FACS, ASSAY_FILTER_ELISA, ASSAY_FILTER_FACS_ELISA] },
+  },
+  facs_plate_count: { type: 'number', label: 'FACS', values: 'all' },
+  elisa_plate_count: { type: 'number', label: 'ELISA', values: 'all' },
+  immune_owner: { type: 'enum', label: '免疫负责人', values: 'all', top: { query: 'immune_owner' } },
+  titer_owners: { type: 'csv', label: '效价负责人', values: 'all' },
+  test_dates: { type: 'csv', label: '检测日期', values: 'all' },
+  serum_status: { type: 'enum', label: '血清状态', values: 'all' },
+  priority: { type: 'enum', label: '优先级', values: 'all', top: { query: 'priority' } },
+  remark: { type: 'text', label: '备注', values: 'search' },
+  summary: { type: 'text', label: '效价小结', values: 'search' },
+  order_status: { type: 'enum', label: '工单状态', values: 'all', top: { query: 'order_status' } },
+  immune_status: { type: 'enum', label: '免疫状态', values: 'all', top: { query: 'immune_status' } },
+});
 
 const SERUM_STATUS_PENDING_TEST = '已采血';
 
@@ -1301,7 +1286,8 @@ const TiterTableFloatingLayer = defineComponent({
 
 export default {
   name: 'SerumTiterOrderList',
-  mixins: [listTableLockMixin],
+  mixins: [listTableLockMixin, listPageMixin, workbenchHeaderMenuMixin],
+  listFilterKey: 'titerOrderList',
   components: {
     WorkbenchTargetFilter,
     ElButton,
@@ -1311,12 +1297,8 @@ export default {
     ElDialog,
     ElIcon,
     ElInput,
-    ElInputNumber,
     ElOption,
     ElPagination,
-    ElPopover,
-    ElRadioButton,
-    ElRadioGroup,
     ElTable,
     ElTableColumn,
     ElTag,
@@ -1328,12 +1310,18 @@ export default {
     TiterInstrumentOrderDialogs,
     TiterMouseSelectWizard,
     TiterOrderCreateDialog,
+    WorkbenchHeaderFilterChip,
+    WorkbenchHeaderLabel,
+    WorkbenchHeaderMenu,
   },
   setup() {
     const userStore = useUserStore();
     return { userStore };
   },
   computed: {
+    headerMenuColumns() {
+      return TITER_HEADER_COLUMNS;
+    },
     currentUserInfo() {
       return this.userStore.userInfo || {};
     },
@@ -1414,17 +1402,8 @@ export default {
         order_status: '',
         target_name: '',
         titer_owner: '',
-        mouse_count_zero: '',
-        mouse_count_min: null,
-        mouse_count_max: null,
-        facs_plate_zero: '',
-        facs_plate_min: null,
-        facs_plate_max: null,
-        elisa_plate_zero: '',
-        elisa_plate_min: null,
-        elisa_plate_max: null,
-        sort_field: undefined,
-        sort_order: undefined,
+        sort_field: '',
+        sort_dir: '',
       },
       allOwnerOptions: [],
       allAssayMethodOptions: [],
@@ -1451,12 +1430,6 @@ export default {
       ownerStatsSummary: { total: {}, completed: {}, remaining: {}, period: {} },
       ownerStatsMonthRange: [],
       total: 0,
-      tabDataFetchedAt: 0,
-      colFilterOpen: {
-        mouse_count: false,
-        facs_plate: false,
-        elisa_plate: false,
-      },
     };
   },
   watch: {
@@ -1482,13 +1455,11 @@ export default {
     this.plateClipBox = null;
     this.plateLastClipPath = '';
     this.plateScrollingUntil = 0;
-    this.listRequestToken = 0;
     this.statsRequestToken = 0;
     this.statsKey = '';
     this.activeFocusId = '';
   },
   mounted() {
-    this.restoreListFilters();
     this.loadPageMeta();
     this.loadForRoute();
     this.onPlateDragMouseUp = () => this.finishPlateDrag();
@@ -1520,43 +1491,30 @@ export default {
       this.loadForRoute();
       return;
     }
-    if (shouldRefreshTabData(this.tabDataFetchedAt)) {
+    if (this.isListDataStale()) {
       this.refreshTabData();
     }
-  },
-  beforeRouteLeave(_to, _from, next) {
-    this.persistListFilters();
-    next();
   },
   beforeUnmount() {
     if (this._plateUiRafId) {
       cancelAnimationFrame(this._plateUiRafId);
       this._plateUiRafId = 0;
     }
-    this.persistListFilters();
     document.removeEventListener('mouseup', this.onPlateDragMouseUp);
     window.removeEventListener('resize', this.onPlateWindowResize);
     this.unbindPlateTableScroll();
   },
   methods: {
-    persistListFilters() {
-      saveListFilters(TITER_ORDER_LIST_FILTER_KEY, {
-        listQuery: { ...this.listQuery, sort_field: undefined, sort_order: undefined },
+    listFilterExtras() {
+      return {
         bloodCollectionRange: this.bloodCollectionRange,
         testDatesRange: this.testDatesRange,
         statFilterActive: this.statFilterActive,
         testDateStatScope: this.testDateStatScope,
         pendingStatScope: this.pendingStatScope,
-      });
+      };
     },
-    restoreListFilters() {
-      const state = loadListFilters(TITER_ORDER_LIST_FILTER_KEY);
-      if (!state) {
-        return;
-      }
-      if (state.listQuery) {
-        Object.assign(this.listQuery, state.listQuery);
-      }
+    restoreListFilterExtras(state) {
       if (state.bloodCollectionRange) {
         this.bloodCollectionRange = state.bloodCollectionRange;
       }
@@ -2260,24 +2218,12 @@ export default {
       if (this.statFilterActive.unassigned) {
         payload.titer_owner_unassigned = true;
       }
+      payload.field_filters = this.headerFilterPayload();
       return payload;
     },
-    applyColFilter(prefix) {
-      this.colFilterOpen[prefix] = false;
-      this.listQuery.page = 1;
-      this.persistListFilters();
-      this.getList();
-    },
-    isColFilterActive(prefix) {
-      return Boolean(this.listQuery[`${prefix}_zero`])
-        || this.listQuery[`${prefix}_min`] != null
-        || this.listQuery[`${prefix}_max`] != null;
-    },
-    resetColFilter(prefix) {
-      this.listQuery[`${prefix}_zero`] = '';
-      this.listQuery[`${prefix}_min`] = null;
-      this.listQuery[`${prefix}_max`] = null;
-      this.applyColFilter(prefix);
+    fetchHeaderValues(query) {
+      if (query.field === 'project_code') delete query.project_codes;
+      return fetchTiterOrderColumnValues(query);
     },
     appendDateRange(payload, range, startKey, endKey) {
       if (Array.isArray(range) && range.length === 2 && range[0] && range[1]) {
@@ -2377,7 +2323,7 @@ export default {
     /** 统计块跟随列表筛选；统计块自己切换的负责人、血清状态、小结、检测日期不传。 */
     statsPayload() {
       const {
-        page, limit, sort_field, sort_order, titer_order_id,
+        page, limit, sort_field, sort_dir, titer_order_id,
         titer_owner, titer_owner_unassigned, serum_status, summary_empty, summary_filled,
         test_dates_empty, tested_unsubmitted, test_dates_start, test_dates_end,
         ...scope
@@ -2435,7 +2381,7 @@ export default {
       });
     },
     getList() {
-      const requestToken = ++this.listRequestToken;
+      const isLatest = this.beginListRequest();
       this.listLoading = true;
       if (pendingTiterOrderId) {
         this.activeFocusId = pendingTiterOrderId;
@@ -2447,7 +2393,7 @@ export default {
       if (JSON.stringify(this.statsPayload()) !== this.statsKey) this.refreshStats();
       fetchTiterOrderList(payload, skipGlobalErrorHandler)
         .then((response) => {
-          if (requestToken !== this.listRequestToken) return;
+          if (!isLatest()) return;
           this.activeFocusId = '';
           this.list = Array.isArray(response.items)
             ? response.items.map((item) => ({
@@ -2462,16 +2408,16 @@ export default {
           if (focusId) this.revealFocusedRow(focusId);
         })
         .catch((error) => {
-          if (requestToken !== this.listRequestToken) return;
+          if (!isLatest()) return;
           this.activeFocusId = '';
           this.list = [];
           this.total = 0;
           notifyApiError(error, { messages: { default: '加载效价工单失败' } });
         })
         .finally(() => {
-          if (requestToken !== this.listRequestToken) return;
+          if (!isLatest()) return;
           this.listLoading = false;
-          this.tabDataFetchedAt = Date.now();
+          this.markListFetched();
           this.$nextTick(() => {
             this.invalidatePlateGeometryCache();
             this.bindPlateTableScroll();
@@ -2546,23 +2492,8 @@ export default {
       }
       this.$router.push({ path: '/serum/titer', query: { id: row.project_id } });
     },
-    handleCurrentChange(page) {
-      this.listQuery.page = page;
-      this.getList();
-    },
     handleFilter() {
       this.clearPlateSelection();
-      this.listQuery.page = 1;
-      this.getList();
-    },
-    handleSortChange({ prop, order }) {
-      const sort_field = order ? prop : undefined;
-      const sort_order = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : undefined;
-      if (this.listQuery.sort_field === sort_field && this.listQuery.sort_order === sort_order) {
-        return;
-      }
-      this.listQuery.sort_field = sort_field;
-      this.listQuery.sort_order = sort_order;
       this.listQuery.page = 1;
       this.getList();
     },
@@ -2839,11 +2770,6 @@ export default {
       }
       this.handleFilter();
     },
-    handleSizeChange(size) {
-      this.listQuery.limit = size;
-      this.listQuery.page = 1;
-      this.getList();
-    },
     resetFilter(options = {}) {
       this.clearPlateSelection();
       this.listQuery = {
@@ -2861,19 +2787,10 @@ export default {
         order_status: '',
         target_name: '',
         titer_owner: '',
-        mouse_count_zero: '',
-        mouse_count_min: null,
-        mouse_count_max: null,
-        facs_plate_zero: '',
-        facs_plate_min: null,
-        facs_plate_max: null,
-        elisa_plate_zero: '',
-        elisa_plate_min: null,
-        elisa_plate_max: null,
-        sort_field: undefined,
-        sort_order: undefined,
+        sort_field: '',
+        sort_dir: '',
       };
-      this.$refs.orderTable?.clearSort?.();
+      this.clearHeaderFilters();
       this.testDatesRange = [];
       this.bloodCollectionRange = [];
       this.ownerFilterQuery = '';
@@ -2884,7 +2801,6 @@ export default {
       this.testDateStatScope = '';
       this.pendingStatScope = '';
       this.applyingStatDateRange = false;
-      this.colFilterOpen = { mouse_count: false, facs_plate: false, elisa_plate: false };
       this.persistListFilters();
       if (options.reload !== false) this.getList();
     },
@@ -3445,58 +3361,6 @@ export default {
 
 .table-card :deep(.el-table__header .cell) {
   white-space: nowrap;
-}
-
-.col-filter-head {
-  padding: 0;
-  font: inherit;
-  font-weight: bold;
-  color: inherit;
-  cursor: pointer;
-  background: transparent;
-  border: none;
-}
-
-.col-filter-head:hover,
-.col-filter-head.is-active {
-  color: var(--el-color-primary);
-}
-
-.col-filter-zero {
-  width: 100%;
-}
-
-.col-filter-zero :deep(.el-radio-button) {
-  flex: 1;
-}
-
-.col-filter-zero :deep(.el-radio-button__inner) {
-  width: 100%;
-}
-
-.col-filter-range {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 6px;
-  align-items: center;
-  margin-top: 10px;
-}
-
-.col-filter-range :deep(.el-input-number) {
-  width: 100%;
-}
-
-.col-filter-range :deep(.el-input__wrapper) {
-  min-height: 28px;
-  padding: 0 8px;
-  font-size: 13px;
-}
-
-.col-filter-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  margin-top: 10px;
 }
 
 .table-card :deep(.el-button-group) {

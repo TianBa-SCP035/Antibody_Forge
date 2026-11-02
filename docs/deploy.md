@@ -21,7 +21,7 @@ Windows： 无需路径约定，固定环境为 local。
 
 ## 配置文件
 
-各环境使用 `config/<local|test|prod>/vita_server.env`。首次使用需将同目录模板 `vita_server.env.gitkeep` 改名为`vita_server.env` 后生效，该文件勿提交。
+各环境使用 `config/<local|test|prod>/vita_server.env`。首次使用把同目录模板 `vita_server.env.gitkeep` **复制**为 `vita_server.env`（模板保留在仓库里），只改复制出的文件，勿提交。
 
 | 变量 | 含义 |
 |------|------|
@@ -41,7 +41,7 @@ Windows： 无需路径约定，固定环境为 local。
 | `PUBLIC_API_BASE_URL` | 本系统对外 API 根，用于生成下发 Payload 的 `replyAddress` |
 | `DRM_*` | DRM（可选；另需功能开关） |
 
-一般不用设：`VITA_SERVER_ENV_FILE`（改用别的 env 路径时）、`APP_ENV`（覆盖自动识别时）。
+一般不用设：`VITA_SERVER_ENV_FILE`（改用别的 env 路径时）、`APP_ENV`（覆盖自动识别时）、`APP_NAME`（接口文档标题）。
 首个账号无 env 捷径：须在 `sys_user` 建库（超管见 `vita-database.sql` 文末）；之后可在系统管理里增用户。登录方式：账号密码，或云之家 `openid` 绑定。
 
 ## 数据库
@@ -54,25 +54,58 @@ Windows： 无需路径约定，固定环境为 local。
 
 ## 启动
 
-仓库根脚本（默认 conda 环境 `Bender`；`start_dev.sh|.bat` 可用 `CONDA_ENV` 覆盖或内变量修改）
+仓库根两个脚本，默认 conda 环境 `Bender`，可用环境变量 `CONDA_ENV` 覆盖。
 
 | 脚本 | 用途 |
 |------|------|
-| `start_dev.bat` | **Windows 本地**：清 `8888`/`5555`，开后端 + Vite |
-| `start_dev.sh` | **Linux test/prod**：构建前端 + nohup 后端（`LD_LIBRARY_PATH`）；不启 Vite |
+| `start_dev.bat` | **Windows 本地**：后端 `8888` + Vite `5555`，各开一个窗口 |
+| `start_dev.sh` | **Linux test/prod**：构建前端 dist + nohup 起后端（带 `LD_LIBRARY_PATH`）；不启 Vite |
+
+| 命令 | 作用 |
+|------|------|
+| 不带参数 / `restart` / `start` | 补依赖 → 停掉旧进程 → 启动。Linux 先构建前端再停后端，构建期间旧后端照常服务，并顺带补齐 crontab 条目（同 `cron`）；`backend.nohup.log` 超过 50MB 时改名为 `.1` |
+| `stop` | 只停止。Windows 关掉两个窗口及其进程；Linux 先正常结束后端，10 秒未退出再强杀，并暂停看门狗 |
+| `status` | 查看端口是否在监听；Linux 同时请求 `GET /api/health` |
+| `ensure`（仅 Linux） | 看门狗：后端没在监听就只启动后端（不构建、不补依赖），5 分钟内最多拉起一次；`stop` 后不拉起 |
+| `cron`（仅 Linux） | 写入当前用户 crontab：每分钟 `ensure`、每天 03:30 `backup.sh`，并列出条目；只改本仓库的条目，已存在则不动 |
+
+补依赖（`ensure_deps.py`）：Python 只检查 `requirements.txt` 里的包是否已安装，不比对版本；`pnpm-lock.yaml` 内容变化时重新 `pnpm install --frozen-lockfile`。
 
 ### Windows 本地
 
-首次：配好 `config/local/vita_server.env`（conda 环境、pnpm 需事先装好）。
-
-日常执行 `start_dev.bat`。启动时会对照 `requirements.txt` / `pnpm-lock.yaml`，只补当前环境缺少的包。前端 `5555`，后端 `8888`。健康检查：`GET /api/health`。
+首次：配好 `config/local/vita_server.env`（conda 环境、pnpm 需事先装好）。日常执行 `start_dev.bat`，停止用 `start_dev.bat stop`。健康检查：`GET /api/health`。
 
 ### Linux 服务器
 
 1. 按「环境与端口」放置仓库；维护 `config/test|prod/vita_server.env`（`PORT`：9527 / 8848）。
-2. 首次：本机已有 conda 环境 `Bender`（可用 `CONDA_ENV` 覆盖）和 `pnpm`。
-3. 日常：仓库根 `./start_dev.sh`。启动时对照 `requirements.txt` / `pnpm-lock.yaml` 补齐缺失依赖，再构建前端 dist、nohup 起后端。日志：`repository/logs/backend.nohup.log`。
-4. 配置 Nginx 代理，对外 test `:9958`、prod `:1314`。
+2. 首次：本机已有 conda 环境和 `pnpm`。
+3. 日常：仓库根 `./start_dev.sh`；停止 `./start_dev.sh stop`；查看 `./start_dev.sh status`。
+4. 启动后脚本最多等 30 秒探活；启动失败（如 prod 配置检查不通过）会打印 `repository/logs/backend.nohup.log` 最后 30 行并以非零退出。
+5. 托管与备份无需单独操作：`restart` 会写好 crontab，之后后端崩溃或服务器重启 1 分钟内自动拉起，每天自动备份（见「备份与恢复」）。`crontab -l` 可查看；不想要时 `crontab -e` 删掉带 `# antibody-forge:` 的行（下次 `restart` 会重新写入）。
+6. 配置 Nginx 代理，对外 test `:9958`、prod `:1314`。
+
+## 备份与恢复
+
+`backup.sh`（仓库根）读取当前环境 env 中的 `DATABASE_URL`，用 `mysqldump` 导出主库，并同步 `repository/uploads`、`repository/order_sync`。由 crontab 每天 03:30 执行，也可随时手动 `./backup.sh`。日志：`repository/logs/backup.log`。
+
+| 项 | 规则 |
+|----|------|
+| 位置 | `~/backups/antibody_forge/<环境>/`，环境为 `test` 或 `prod`（仓库外，同机两套环境互不干扰；可用 `BACKUP_DIR` 覆盖） |
+| 数据库 | `db/daily/<库名>_<YYYYMMDD_HHMM>.sql.gz` 保留 14 天；周日另存 `db/weekly/` 保留 8 周 |
+| 附件 | `files/uploads/`、`files/order_sync/` 增量同步，系统里删掉的文件在备份中保留 |
+| 依赖 | `mysqldump`（缺少时 `sudo apt install -y default-mysql-client`）、`python3` |
+
+主库在独立数据库服务器上，备份落在应用服务器，可防误删误改。需要防整机损坏时，再把 `~/backups/antibody_forge` 定期拷到 NAS 或另一台机器。
+
+恢复（先恢复到新库核对，确认无误再切换或覆盖）：
+
+```bash
+mysql -h <主机> -u <账号> -p -e "CREATE DATABASE bbctg_vita_restore DEFAULT CHARSET utf8mb4"
+gunzip < ~/backups/antibody_forge/prod/db/daily/bbctg_vita_<时间>.sql.gz | mysql -h <主机> -u <账号> -p bbctg_vita_restore
+rsync -a ~/backups/antibody_forge/prod/files/uploads/ <仓库>/repository/uploads/
+```
+
+本地开发若不想连生产库，可用同样方式把最新备份导入本机 MySQL，再把 `config/local/vita_server.env` 的 `DATABASE_URL` 指向本机库。
 
 ## Nginx配置
 
@@ -137,26 +170,27 @@ sudo apt install -y libreoffice
 | `employee_profile_sync` | 00:30 | 外部员工库 → 用户资料；**不改**已有用户的密码/角色/权限覆盖/超管；新建账号会写入随机初始密码 |
 | `target_master_sync` | 00:45 | 外部平台 `target` → 本地主库 `target`；全量 upsert，源记录消失时仅停用 |
 | `serum_auto_update_status` | 01:00 | 自动更新免疫实验状态 |
-| `discovery_auto_update_status` | 01:15，并在服务启动时补跑 | 自动推进已过期的抗体发现冲击免状态 |
+| `discovery_auto_update_status` | 01:15 | 自动推进已过期的抗体发现冲击免状态 |
 | `labillion_status_sync` | 02:00 | 镁伽非终态流式工单状态批量同步；未配 `LABILLION_BASE_URL` 时 skip 并记日志 |
 | `discovery_synthesis_order_sync` | 每隔 1 小时 | One 合成订单与交付进度同步；未配 `ONE_DB_URL` 时 skip 并记日志 |
 
 每个任务（含「立即执行」）运行前先取 MySQL `GET_LOCK`，取不到就跳过并记日志，所以即使误开了多个后端进程也不会重复执行；但仍建议只让一个进程开调度。
 
-应用日志：`repository/logs/app.log`。`start_dev.sh` 另写 `repository/logs/backend.nohup.log`。调度开关/时间见 `sys_feature_flag` 中 `job.*`（**改完即写库，重启后端生效**）。系统功能页可对任一 job **立即执行**（不依赖 scheduler 是否启动），见 [auth-permissions.md](./auth-permissions.md)。
+开关与时间存于 `sys_feature_flag` 的 `job.*`，在系统功能页修改后写库并立即重排调度，无需重启；调度未启动的进程只写库。系统功能页可对任一任务**立即执行**（不依赖调度是否启动），功能开关见 [auth-permissions.md](./auth-permissions.md) §7。
+
+应用日志：`repository/logs/app.log`（单文件 10MB，保留 5 份轮转）。`start_dev.sh` 另写 `repository/logs/backend.nohup.log`（不轮转）。
 
 ## 生产上线检查
 
 - `config/prod/vita_server.env`：`DATABASE_URL`、`SECRET_KEY`（≥32 位随机串）已填；`DEBUG` 未开；`CORS_ORIGINS` 只含实际前端地址或留空。启动日志若提示配置问题，按提示补齐后再启动。
 - 调度：只在一个后端进程开（prod 默认开，test/local 默认关）。
 - 外部接口：镁伽回调、工单数据回传按需配置令牌或 IP 白名单；经 Nginx 转发时后端看到的来源 IP 来自 `X-Forwarded-For`（样例配置已带）。
-- 库结构变更（2026-11-02 已在正式库执行）：其他环境按 [db-upgrade-2026-11.sql](./db-upgrade-2026-11.sql) 逐段补齐，执行后结构与 `vita-database.sql` 一致。内容是合成单新增三列、12 个日期列改 `DATE`、索引精简与统一命名（普通索引 `idx_<表>_<列>`，唯一键 `uk_<表>_<列>`）、合成单检测状态回填。
-  - 日期列改完后旧版后端写空串会被拒，改列后尽快上新版。
-  - 只是名字不同的索引用 `RENAME INDEX`，不要按名 `DROP` 后靠建表语句补，`create_all` 不会给已存在的表加索引。
+- 索引命名：普通索引 `idx_<表>_<列>`，唯一键 `uk_<表>_<列>`。已有表改索引要手写 `ALTER`（`create_all` 不会给已存在的表加索引），只是改名用 `RENAME INDEX`，不要 `DROP` 后重建。
 - 上传：Nginx `client_max_body_size` 不小于 `UPLOAD_MAX_MB`。文库批量上传一次请求后端最多收 500MB，样例 Nginx 配的是 200m，超过 200MB 的一批会被 Nginx 拒掉（413）；需要更大时把 Nginx 调到 500m。
 
 ## 验收清单
 
+- `crontab -l` 有本仓库的 `ensure` 与 `backup.sh` 两条；`~/backups/antibody_forge/<环境>/db/daily/` 有当天备份
 - 无密钥、上传文件、`config/local|test|prod` 误提交
 - env 中 `PORT` 与 Nginx `proxy_pass`、对外端口一致
 - prod 定时任务已启；云之家/密码登录、血清与系统管理主链路可用

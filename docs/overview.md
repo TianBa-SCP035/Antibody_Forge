@@ -13,11 +13,15 @@ FastAPI · SQLAlchemy · Vue 3 / Vben Admin · MySQL
 ```text
 Antibody_Forge/
 ├── bbctg_vita_server/     # 后端（内部见 backend-structure.md）
-├── bbctg_vita_web/        # 前端 monorepo（业务 app: apps/antibody_vita）
-├── config/                # 各环境 vita_server.env（不入库）
+├── bbctg_vita_web/        # 前端 monorepo（业务 app: apps/antibody_vita；其余为 Vben 基础包）
+├── config/                # 各环境 vita_server.env（真实文件不入库，模板 *.gitkeep 入库）
 ├── repository/            # 上传、回传、日志等运行时文件（gitignore）
 ├── docs/                  # 文档
-└── start_dev.sh           # Linux：构建前端 + 启动后端
+├── website/               # 对外展示站，GitHub Pages 发布
+├── .github/workflows/     # CI：quality.yml 测试与构建；pages.yml 发布 website/
+├── start_dev.bat / .sh    # 启停脚本（restart / stop / status；Linux 另有看门狗与 cron 安装），见 deploy.md
+├── backup.sh              # Linux：数据库与附件备份，见 deploy.md「备份与恢复」
+└── ensure_deps.py         # 启动脚本调用：补齐缺失的 Python / 前端依赖
 ```
 
 ## 模块路由（已落地）
@@ -50,13 +54,4 @@ Antibody_Forge/
 
 ## 定时任务
 
-| 任务 | 默认时间 | 说明 |
-|------|----------|------|
-| `employee_profile_sync` | 00:30 | 同步外部员工资料 |
-| `target_master_sync` | 00:45 | 同步外部靶点主数据至本地 `target` |
-| `serum_auto_update_status` | 01:00 | 自动更新免疫实验状态 |
-| `discovery_auto_update_status` | 01:15，启动时补跑 | 自动推进已过期的抗体发现冲击免状态 |
-| `labillion_status_sync` | 02:00 | 镁伽非终态工单状态批量同步（未配 `LABILLION_BASE_URL` 时 skip） |
-| `discovery_synthesis_order_sync` | 每隔 1 小时 | 同步外部 One 库合成订单与交付进度（未配 `ONE_DB_URL` 时 skip） |
-
-启用条件与运维见 [deploy.md](./deploy.md)；系统功能页可改开关/时间（改完即写库）并立即执行。实现位于 `bbctg_vita_server/jobs/`。
+共 6 个，实现位于 `bbctg_vita_server/jobs/`；任务清单、默认时间与启用条件见 [deploy.md](./deploy.md)「定时任务」。

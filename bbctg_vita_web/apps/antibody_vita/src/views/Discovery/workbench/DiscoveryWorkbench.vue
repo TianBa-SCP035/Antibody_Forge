@@ -877,6 +877,7 @@ import {
   WorkbenchTargetSelect,
   WorkbenchViewToggle,
 } from '#/components/workbench'
+import { listPageMixin } from '#/utils/listPage'
 import { listTableLockMixin } from '#/utils/listTableLock'
 import { notifyApiError } from '#/api/errors'
 import { skipGlobalErrorHandler } from '#/api/request'
@@ -905,7 +906,6 @@ import { applyOptionLists } from '#/utils/optionLists'
 import { uniqueNames } from '#/utils/userOptions'
 import { WORKBENCH_STUDY_TYPE_OPTIONS } from '#/utils/workbenchStudyTypes'
 import { DISCOVERY_WORKBENCH_CREATED_KEY, WORKBENCH_VIEW_PREFS_KEYS } from '#/constants/storageKeys'
-import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import UserSelect from '#/components/UserSelect.vue'
 import DiscoveryRowActions from './DiscoveryRowActions.vue'
@@ -928,6 +928,7 @@ const CSV_FIELD_OPTIONS = {
 }
 const DATE_KEYS = ['harvest_date', 'boost_date']
 const QUEUE_TERMINAL_STATUSES = ['已完成', '已取消']
+const QUEUE_KEYS = ['status', 'priority', 'sort_order']
 const STRING_MAX = {
   project_code: 64,
   experiment_id: 64,
@@ -1254,7 +1255,8 @@ export function rememberDiscoveryFocus(discoveryId) {
 
 export default {
   name: 'DiscoveryWorkbench',
-  mixins: [workbenchExcelMixin, workbenchTargetMixin, workbenchHeaderMenuMixin, listTableLockMixin],
+  mixins: [workbenchExcelMixin, workbenchTargetMixin, listPageMixin, workbenchHeaderMenuMixin, listTableLockMixin],
+  listFilterKey: 'discoveryWorkbench',
   components: {
     AdvancedOpsBar,
     DiscoveryRowActions,
@@ -1335,10 +1337,8 @@ export default {
       headerMenuColumns: HEADER_MENU_COLUMNS,
       pendingDrawerSaves: new Set(),
       rowBaselines: new Map(),
-      listRequestToken: 0,
       listLoaded: false,
       consumingCreated: false,
-      tabDataFetchedAt: 0,
       allUserOptions: [],
       handoffVisible: false,
       handoffRow: null,
@@ -1484,7 +1484,7 @@ export default {
       this.openRememberedDiscovery()
       return
     }
-    if (this.listLoaded && shouldRefreshTabData(this.tabDataFetchedAt)) {
+    if (this.listLoaded && this.isListDataStale()) {
       this.getList()
     } else {
       this.scheduleSortable()
@@ -1606,6 +1606,7 @@ export default {
       if (keys.has('screening_methods')) keys.add('screening_method_list')
       if (keys.has('harvest_date')) keys.add('boost_date')
       if (keys.has('boost_date') || keys.has('harvest_date')) keys.add('status')
+      if (QUEUE_KEYS.some((key) => keys.has(key))) keys.add('sort_order')
       return keys
     },
     syncDrawerFromSaved(normalized, fields) {
@@ -1952,7 +1953,7 @@ export default {
     },
     async getList({ flushEditor = true } = {}) {
       this.loading = true
-      const requestToken = ++this.listRequestToken
+      const isLatest = this.beginListRequest()
       try {
         if (flushEditor) {
           await this.flushPendingSheetEdits()
@@ -1961,9 +1962,9 @@ export default {
             await Promise.all([...this.pendingDrawerSaves])
           }
         }
-        if (requestToken !== this.listRequestToken) return
+        if (!isLatest()) return
         const data = await fetchDiscoveryWorkbenchList(this.buildQuery(), skipGlobalErrorHandler)
-        if (requestToken !== this.listRequestToken) return
+        if (!isLatest()) return
         const editorIsDirty = this.drawerDirtyFields(this.editingRowData).length > 0
         this.list = (data?.items || []).map((row) => this.normalizeRow(row))
         this.list.forEach((row) => this.updateRowBaseline(row))
@@ -1983,20 +1984,16 @@ export default {
         if (selected && !editorIsDirty) {
           this.editingRowData = this.normalizeRow(JSON.parse(JSON.stringify(selected)))
         }
-        this.tabDataFetchedAt = Date.now()
+        this.markListFetched()
         this.clearSheetRange()
         this.scheduleSortable()
       } catch (error) {
-        if (requestToken === this.listRequestToken) {
+        if (isLatest()) {
           notifyApiError(error, { messages: { default: '加载发现工作台失败' } })
         }
       } finally {
-        if (requestToken === this.listRequestToken) this.loading = false
+        if (isLatest()) this.loading = false
       }
-    },
-    handleFilter() {
-      this.listQuery.page = 1
-      this.getList()
     },
     /** 清空全部筛选和表头排序；视图分组和队列排序是视图模式，保留。 */
     resetFilters() {
@@ -2009,6 +2006,13 @@ export default {
       this.boostRange = []
       this.clearHeaderFilters()
       this.getList()
+    },
+    listFilterExtras() {
+      return { harvestRange: this.harvestRange, boostRange: this.boostRange }
+    },
+    restoreListFilterExtras(state) {
+      if (Array.isArray(state.harvestRange)) this.harvestRange = state.harvestRange
+      if (Array.isArray(state.boostRange)) this.boostRange = state.boostRange
     },
     lifecycleHint(item) {
       if (item.key === 'harvest' && this.harvestStatusExact) return '只看状态为待剖鼠'

@@ -1,147 +1,212 @@
 # 镁伽自动化 · 流式工单
+> 维护流式工单、板布局、设备下发和 Labillion 状态。相关：[效价上游创建流程](./titer-upstream-flow.md) · [工单数据回传接口](./order-experiment-sync-api.md)
 
-> **本文**：流式工单**模块本身**——数据模型、校验、状态机、Payload、Labillion 集成、API、前端页面与后端代码。  
-> **跨模块流程**（效价列表入口、新建向导、预填、结果回传约定）：见 [titer-upstream-flow.md](./titer-upstream-flow.md)。
+## 1. 入口与权限
 
-## 1. 当前范围
+| 项目 | 值 |
+|---|---|
+| 列表路由 | `/mega-automation/flow-work-orders` |
+| 详情路由 | `/mega-automation/flow-work-orders/detail` |
+| 一级菜单开关 | `menu.mega_automation` |
+| 列表菜单开关 | `menu.mega_automation.flow_work_orders` |
+| 页面权限 | `mega.page.flow_work_order` |
+| 编辑权限 | `mega.flow_work_order.edit` |
+| 下发权限 | `mega.flow_work_order.dispatch` |
 
-- 手工新建、编辑、校验流式工单；
-- 维护样本板、细胞板与 PC 信息；
-- 生成并保存设备下发 Payload，向 Labillion（镁伽）推送订单；
-- 接收 Labillion 状态回调、主动查询状态；详情页展示 Running 进度（不入库）；
-- 撤回（`sent` + 待确认）与继续（已撤回后重推）；
-- 详情用「手动控制」菜单确认执行、模拟撤回、停止、设备已暂停、完成、请求恢复、设备已恢复、手动失败、继续执行；这些不请求镁伽。已暂停不提供继续，已撤回不提供手动控制。执行中止、执行错误、手动失败可继续执行，回到执行中。
-- 已发送过且未完成的工单都可以作废。作废不通知设备，之后忽略回调。未发送的用工单删除。已完成不能作废。
-- 详情提供「工单编辑 / 铺板 / Payload」三个页签。
+页面权限控制列表、详情、元数据、筛选值、导出、当前 Payload 和状态同步。编辑权限控制保存、校验、删除和作废。下发权限控制发送及手动状态操作。
 
-尚未接入：检测结果业务解析入库、跨模块自动同步。
+## 2. 数据与编号
 
-`source_id` / `orderType` 字段支持关联上游业务单（如效价 `titer_order_id`）；入口与预填逻辑不在本文，见跨模块文档。
-## 2. 数据模型
+### 2.1 工单
 
-### `mega_flow_work_order`
+表：`mega_flow_work_order`。
 
-- `orderNum` 必填，不要求唯一；
-- `orderType`：样品来源大类（`TITER` / `PLAS` / `PCR`），工单均为流式实验；
-- `source_id`：来源业务主键，可空。效价上游创建时写入 `serum_titer_order.titer_order_id`；手工新建通常为空。同一 `orderType` 下可有多条工单共享同一 `source_id`（1:N）；
-- `content` 仅存 `pc_infos`、`sample_plates`、`cell_plates`；
-- `project_nos`、`targets`、样本板/细胞板条码数组用于列表筛选；
-- `content_hash` 用于并发编辑冲突检测。
+| 字段 | 含义 | 规则 |
+|---|---|---|
+| `id` | 工单主键 | 系统生成 |
+| `orderNum` | 订单编号 | 必填，允许重复 |
+| `orderName` | 订单名称 | 可空 |
+| `orderType` | 来源类型 | `TITER`、`PLAS`、`PCR` |
+| `source_id` | 来源业务主键 | 可空；首次写入后不能改为其他值 |
+| `priority` | 优先级 | `high`、`normal`、`low` |
+| `status` | 工单状态 | 见 §3 |
+| `content` | 工单内容 | 只存 `pc_infos`、`sample_plates`、`cell_plates` |
+| `content_hash` | 内容版本 | 编辑已有工单时必须提交 `expected_content_hash` |
+| `project_nos`、`targets` | 列表检索数组 | 保存时从样本板重新提取 |
+| `sample_plate_barcodes`、`cell_plate_barcodes` | 列表检索数组 | 保存时从板数据重新提取 |
+| `sent_at` | 发送时间 | 每次发送成功后更新 |
 
-检测板条码与 `detect_plan` 不属于工单编辑模型。样本板用 `cell_keys`（`{ barcode, column_no }` 对象数组）引用细胞列；下发 Payload 将其放在 `orderDetail` 内原样携带，服务端不展开嵌套任务树。
+`content_hash` 覆盖订单名称、编号、类型、优先级、备注和完整 `content`。版本不一致时拒绝保存。已校验工单修改后回到 `draft`。
 
-### `mega_flow_work_order_dispatch`
+### 2.2 工单内容
 
-- `dispatchId`：下发唯一编号；
-- `payload` / `payload_hash`：当次发送快照（hash 供完整性预留）；
-- `content_hash_at_send`：发送时的工单版本，用于暂停后“内容是否变更”；
-- `status`：`pending` | `running` | `completed` | `failed` | `voided`；
-- `pause_state`：`pausing` | `paused` | `resuming` | `withdrawn`（空表示无暂停流程）。
+| 结构 | 关键字段 | 规则 |
+|---|---|---|
+| `pc_infos[]` | `pc_id`、`pc_type`、`pc_name`、`catalog_batch`、`source`、`concentration` | `pc_type` 为 `SERUM`、`ISO`、`TAG`；临时 ID 保存时替换为稳定 ID |
+| `sample_plates[]` | `barcode`、`project_no`、`target`、`target_codes`、`secondary_antibody`、`cell_keys`、`wells` | `cell_keys` 为 `{ barcode, column_no }[]` |
+| `sample_plates[].wells[]` | `well_no`、`content_type`、`sample_code`、`pc_id` | 固定 A01-H12，共 96 孔 |
+| `cell_plates[]` | `barcode`、`columns` | 每板固定 1-12 列 |
+| `cell_plates[].columns[]` | `column_no`、`cell_name`、`cell_type`、`species`、`batch`、`generation`、`cell_count`、`catalog_no`、`source` | 有细胞名称时 `cell_type` 缺省为 `正常` |
 
-无 `active_key`。工单行锁后，存在未终止下发时不可再次发送。
+孔位类型为 `SAMPLE`、`PC`、`NC`、`ISO`、`TAG`、`BLANK`。`PC`、`ISO`、`TAG` 可不关联 `pc_id`；有关联时必须分别指向 `SERUM`、`ISO`、`TAG` 类型。
 
-## 3. 编辑与校验
+二抗为空时，`TITER` 补为 `鼠`，其他类型补为 `人`。页面可选人、猴、鼠、狗；不是人或鼠时只警告，不阻止校验和发送。
 
-保存要求：
+### 2.3 校验
 
-- 订单编号非空；
-- `orderType` 和 `priority` 必须是元数据中声明的值；
-- 编辑已有工单时必须提交 `expected_content_hash`。
+- 至少有一块样本板和一个已命名细胞列。
+- 样本板条码非空且工单内不重复；只允许字母、数字、英文括号和中划线。
+- 项目号和细胞板条码非空；只允许字母、数字、英文括号、下划线和中划线。
+- 靶点非空。样本编码非空时使用与项目号相同的字符范围。
+- 每块样本板必须完整包含 96 个不重复标准孔位；每块细胞板必须完整包含 1-12 列。
+- 每块样本板至少选择一个有效细胞列，只能选择同一块细胞板，且选中列的细胞名称不能重复。
+- 样本板条码与细胞板条码不能重复。
+- `PCR` 的每个靶点至少有一块同靶点、条码以 `-PC` 结尾的样本板。
+- 其他未作废工单已经选用的细胞列不能再次选用，也不能改写其细胞信息。保存、校验和发送都会复查占用。
+- 保存会移除回车、制表符、控制字符和零宽字符。
 
-业务校验要求：
+校验失败写入 `failed` 和 `error_message`，接口同时返回带字段路径的 `issues`。
 
-- 每块样本板具有非空且不重复的条码；
-- 每块样本板必须填写项目号、靶点；
-- 每块样本板恰好包含 A01-H12 共 96 个不重复孔位；
-- 孔位类型只能是 `SAMPLE`、`PC`、`NC`、`ISO`、`TAG`、`BLANK`；
-- PC、ISO、TAG 孔位可以不填 `pc_id`；填写时须指向已有 `pc_infos` 条目，且类型匹配（`PC`→`SERUM`，`ISO`→`ISO`，`TAG`→`TAG`）；
-- 每块细胞板具有非空且不重复的条码；
-- 每块细胞板恰好包含编号 1-12 的 12 列；
-- 至少存在一个已命名细胞列；有名称的列必须填写细胞类型；
-- 每块样本板至少选择一个有效细胞列；
-- 一块样本板只能选择同一块细胞板上的列；同一块样本板里，选中的细胞名称不能重复；
-- 样本板与细胞板条码不能重复；
-- 样本板条码只能包含字母、数字、英文括号和中划线，不能包含下划线；非空样本编码还可包含下划线；
-- 项目号和细胞板条码同样只允许字母、数字、英文括号、下划线和中划线；
-- 保存时会去掉回车、制表符和零宽字符，不单独报错；
-- 二抗留空时，效价补「鼠」，质粒和 PCR 补「人」。可选值仍为人、猴、鼠、狗；不是人/鼠时只在页面警告，不拦截校验和发送；
-- PCR 的每个靶点至少要有一块条码以 `-PC` 结尾、且靶点相同的样本板；
-- 同一细胞板条码可以出现在多张未作废工单中。某一列一旦被其中一张工单的样本板选中，其他工单不能再选中该列，也不能把该列细胞信息改成另一套。只填写、未被选中的列不占用。
+### 2.4 下发记录
 
-保存、校验和发送都会按库里的其他工单复查列占用。把细胞板条码改成另一块已有板时，当前列内容会按那块板替换：已占用列只读，未占用但其他订单填过的列带入并可改。打开已保存工单时，不会用其他订单的内容覆盖本单已有列。
+表：`mega_flow_work_order_dispatch`。
 
-校验问题包含字段路径，前端可定位到对应板、孔位或基础字段。
+| 字段 | 含义 | 规则 |
+|---|---|---|
+| `dispatchId` | 下发编号 | `DSP` + `yyMMdd` + 6 位随机数字；全局唯一 |
+| `work_order_id` | 所属工单 | 工单主键 |
+| `payload` | 当次下发快照 | 发送时生成并保留 |
+| `payload_hash` | Payload 哈希 | SHA-256 |
+| `content_hash_at_send` | 发送时内容版本 | 用于已撤回后的内容变更判断 |
+| `status` | 下发状态 | `pending`、`running`、`completed`、`failed`、`voided` |
+| `pause_state` | 暂停子状态 | 空、`pausing`、`paused`、`resuming`、`withdrawn` |
 
-## 4. 状态流转
+最新一条非 `completed`、`failed`、`voided` 的记录是当前下发。存在当前下发时不能再次发送。
 
-### 4.1 本地操作（手动 fallback）
+## 3. 状态与流转
 
-```text
-draft / failed
-  └─ 校验通过 → validated
+### 3.1 状态
 
-validated
-  └─ 发送 → sent（下发记录 pending；若已配 Labillion 则同步推送）
-     右键发送可「模拟发送」：同样变成 sent，但不请求镁伽
+| 状态码 | 显示名 | 含义 |
+|---|---|---|
+| `draft` | 草稿 | 可编辑，尚未校验通过 |
+| `validated` | 已校验 | 可发送；内容变化后回到草稿 |
+| `sent` | 已发送 | 当前下发通常为 `pending` |
+| `running` | 执行中 | 当前下发为 `running` |
+| `paused` | 已暂停 | 显示名由 `pause_state` 细分 |
+| `execution_failed` | 执行中止 | Labillion 返回 `Aborted` |
+| `execution_error` | 执行错误 | Labillion 返回 `Error` |
+| `manual_failed` | 手动失败 | 用户手动标记 |
+| `completed` | 已完成 | 终态 |
+| `failed` | 校验失败 | 可修改后重新校验 |
+| `cancelled` | 已作废 | 终态 |
 
-sent
-  ├─ 确认执行 → running（下发记录 running）
-  ├─ 撤回（仅 pending）→ paused + withdrawn（调 Labillion 删除）
-     手动控制「模拟撤回」：同样变成已撤回，但不请求镁伽
-  ├─ 停止（running）→ paused + pausing
-  ├─ 手动失败 → manual_failed（下发仍为 running，不通知设备）
-  ├─ 作废 → cancelled（不通知设备，之后忽略回调）
-  └─ Labillion 回调/查询 → 见 §4.2
+`paused` 的显示名为：`pausing`=暂停中、`paused`=已暂停、`resuming`=恢复中、`withdrawn`=已撤回。列表把三种执行问题合并为筛选和统计项“执行异常”，单行仍显示各自名称。
 
-running
-  ├─ 完成 → completed
-  ├─ 停止 → paused + pausing
-  ├─ 手动失败 → manual_failed（下发仍为 running，不通知设备）
-  ├─ 作废 → cancelled（不通知设备，之后忽略回调）
-  └─ Labillion 回调/查询 → 见 §4.2
+### 3.2 本地流转
 
-paused
-  ├─ 设备确认暂停 → paused + paused（不可编辑）
-  ├─ 手动控制「请求恢复」→ paused + resuming
-  ├─ 手动控制「设备已恢复」→ running
-  ├─ 已撤回、内容未改 → 继续 → sent（同一下发重推 Labillion）
-  ├─ 已撤回、内容已改并确认 → validated，原下发 voided，再发送
-  ├─ 暂停中、已暂停、恢复中可手动失败 → manual_failed（下发仍为 running；已撤回不可以）
-  └─ 作废 → cancelled，当前下发 voided（暂停中、恢复中也可以）
+```mermaid
+stateDiagram-v2
+  [*] --> draft: 保存新工单
+  draft --> validated: 校验通过
+  draft --> failed: 校验失败
+  failed --> validated: 校验通过
+  failed --> failed: 校验失败
+  validated --> draft: 修改后保存
+  validated --> failed: 校验失败
+  validated --> sent: 发送或模拟发送
 
-execution_failed / execution_error / manual_failed
-  ├─ 手动控制「继续执行」→ running（清空错误说明，下发仍为 running，不通知设备）
-  └─ 作废 → cancelled
+  sent --> running: 确认执行
+  sent --> paused_withdrawn: 撤回或模拟撤回（下发 pending）
+  sent --> paused_pausing: 停止（下发 running）
+  running --> paused_pausing: 停止
+  running --> completed: 完成
+
+  paused_pausing --> paused_paused: 设备已暂停
+  paused_paused --> paused_resuming: 请求恢复
+  paused_resuming --> sent: 设备已恢复（下发 pending）
+  paused_resuming --> running: 设备已恢复（下发 running）
+  paused_withdrawn --> sent: 继续且内容未变
+  paused_withdrawn --> validated: 修改并确认校验
+
+  sent --> manual_failed: 手动失败
+  running --> manual_failed: 手动失败
+  paused_pausing --> manual_failed: 手动失败
+  paused_paused --> manual_failed: 手动失败
+  paused_resuming --> manual_failed: 手动失败
+  execution_failed --> running: 继续执行
+  execution_error --> running: 继续执行
+  manual_failed --> running: 继续执行
+
+  draft --> cancelled: 作废（有下发历史）
+  validated --> cancelled: 作废（有下发历史）
+  failed --> cancelled: 作废（有下发历史）
+  sent --> cancelled: 作废
+  running --> cancelled: 作废
+  paused_withdrawn --> cancelled: 作废
+  paused_pausing --> cancelled: 作废
+  paused_paused --> cancelled: 作废
+  paused_resuming --> cancelled: 作废
+  execution_failed --> cancelled: 作废
+  execution_error --> cancelled: 作废
+  manual_failed --> cancelled: 作废
 ```
 
-「手动控制」里的确认执行、模拟撤回、完成、停止、设备已暂停、请求恢复、设备已恢复、手动失败、继续执行只改本系统状态，不请求镁伽。撤回和已撤回后的继续才会调用镁伽。已撤回不再提供手动失败。执行中止、执行错误、手动失败可以继续执行，回到执行中。作废可以发生在已发送之后的各个未完成状态，不通知设备。
+“设备已恢复”根据当前下发状态返回：下发仍为 `pending` 时回到 `sent`，下发为 `running` 时回到 `running`。已撤回状态不能标记手动失败。
 
-### 4.2 Labillion 驱动（回调与主动查询共用 `apply_labillion_status`）
+未发送过的工单使用删除。已发送过且未完成的工单可作废；作废会把当前下发置为 `voided`，不通知设备。已完成工单不能作废。
 
-| Labillion | 工单 status | 下发 status | pause_state |
-|-----------|-------------|-------------|-------------|
-| Pending | sent | pending | （清空） |
-| Running | running | running | （清空） |
-| Paused | paused | running | paused |
-| Finished | completed | completed | （清空） |
-| Aborted | execution_failed（执行中止） | running | （清空） |
-| Error | execution_error（执行错误） | running | （清空） |
-| Deleted | cancelled（已作废） | voided | （清空） |
+### 3.3 Labillion 状态
 
-- 以镁伽状态为准。已经是已撤回时，后续回调和查询都不再改这张单，直到用户点继续。
-- `aborted`、`error` 不是终态，之后的 `running` / `finished` / `deleted` 仍会改写工单。下发记录保持 `running`，不标成 `failed`。`manual_failed` 同样会被后续真实进度盖掉。
-- `deleted` 作废工单并作废下发，备注「操作台已删除工单」。`finished` 与 `deleted` 之后不再接受回调。作废、已完成之后也不再接受回调。
-- Running 时的执行进度仅由主动查询返回给前端展示，**不入库**。
-- 列表「已暂停」统计含暂停中、已暂停、已撤回、恢复中。「执行失败」统计含执行中止、执行错误、手动失败，行上仍分开显示。
-- 状态统计跟随列表的其余筛选（关键字、检测类型、项目号、靶点、板条码、表头筛选等），只是不受当前选中的状态影响（顶部和表头的状态条件都不算）。
+回调和主动查询共用同一状态应用逻辑。
 
-只有已撤回可以编辑和校验。已暂停、暂停中、恢复中、执行中止、执行错误、手动失败都不能改内容。
+| Labillion 状态 | 工单状态 | 下发状态 | `pause_state` |
+|---|---|---|---|
+| `Pending` | `sent` | `pending` | 清空 |
+| `Running` | `running` | `running` | 清空 |
+| `Paused` | `paused` | `running` | `paused` |
+| `Finished` | `completed` | `completed` | 清空 |
+| `Aborted` | `execution_failed` | `running` | 清空 |
+| `Error` | `execution_error` | `running` | 清空 |
+| `Deleted` | `cancelled` | `voided` | 清空 |
 
-`completed` 和 `cancelled` 是终态。`execution_failed`、`execution_error`、`manual_failed` 不是。作废结束整张工单；未发送工单直接删除。已撤回修改并确认后，只作废当次下发，工单回到已校验，可以再发送。
+已撤回时忽略 Labillion 状态，直到用户继续。已完成、已作废或下发记录已终止时也忽略后续状态。执行中止、执行错误和手动失败不是终态，后续真实状态仍可覆盖。Running 进度只随主动查询返回，不入库。
 
-## 5. Payload
+## 4. 页面操作
 
-发送时补充下发元数据，板数据放在 `orderDetail` 下（与编辑态 `content` 字段同名）：
+### 4.1 列表
+
+- 支持订单编号/名称关键字、类型、状态、项目号、靶点、样本板和细胞板条码筛选。
+- 支持状态统计、公共表头筛选、排序、分页和 Excel 导出。默认按更新时间倒序。
+- 表头包含订单编号、名称、类型、优先级、项目号、靶点、样本板、细胞板、备注、状态、创建人、发送时间和更新时间。
+- 订单编号左键打开关联的效价详情；右键打开效价实验列表并定位到对应效价工单。没有 `TITER` 来源关联时提示无对应效价实验。
+- 新建和复制先进入本地草稿；复制会清空订单编号、来源关联和下发历史。
+- 筛选条件、排序和页码离开列表后保留在浏览器存储中，刷新浏览器后清空。
+
+### 4.2 详情
+
+详情包含“工单编辑”“铺板”“Payload”三个页签。Payload 页签按需读取当前未终止下发的快照。
+
+| 条件 | 页面操作 |
+|---|---|
+| 未发送且无下发历史 | 保存、校验、删除 |
+| `validated` | 发送；右键发送可模拟发送 |
+| `sent` + 下发 `pending` | 撤回；手动控制可确认执行、模拟撤回、手动失败 |
+| `sent`/`running` + 下发 `running` | 手动控制可停止、手动失败；`running` 还可完成 |
+| `pausing` | 设备已暂停、手动失败 |
+| `paused` | 请求恢复、手动失败 |
+| `resuming` | 设备已恢复、手动失败 |
+| `withdrawn` | 内容未变可继续；也可编辑并重新校验 |
+| 三种执行异常 | 继续执行 |
+| 已发送且未完成 | 作废 |
+
+细胞板条码改成已有板时，按那块板带入列信息：其他未作废工单已选用的列只读，并取消本单对这些列的选择；其他工单填过但未选用的列带入后可改；名称或类型不一致时提示核对。打开已保存工单不会用其他工单的内容覆盖本单。已有工单加载失败时禁止保存和操作，避免误建新单。
+
+手动控制只改本系统状态，不调用设备。实际撤回会调用 Labillion 删除；已撤回后的继续会重新推送同一 `dispatchId`。详情加载或重新激活时，对 `sent`、`running`、`paused` 和三种执行异常异步查询 Labillion。
+
+## 5. 跨模块联动与外部集成
+
+### 5.1 Payload
 
 ```text
 dispatchId
@@ -149,382 +214,68 @@ orderNum
 orderName
 orderType
 priority
-replyAddress
 orderDetail
   pc_infos
   sample_plates
   cell_plates
+replyAddress
 ```
 
-- `replyAddress` 由 `PUBLIC_API_BASE_URL` + `/mega-automation/labillion/callback` 生成；未配置时 Payload 中为空，发送仍可在本地落库，但不会调 Labillion HTTP。
-- `sample_plates[].cell_keys` 为 `{ barcode, column_no }` 对象数组，表达「样本板 × 细胞列」组合；不下发系统内部状态、摘要或数据库 ID。
-- 不生成、不持久化检测板条码。
-- 详情「Payload」页签通过 `GET .../active-payload` 读取当前未终止下发的快照（懒加载）。
+Payload 不包含数据库主键、工单状态和检索数组。`sample_plates[].cell_keys` 按 `{ barcode, column_no }` 原样下发。
 
-## 6. API
+`replyAddress` 由 `PUBLIC_API_BASE_URL` 与 `/mega-automation/labillion/callback` 拼接。`LABILLION_BASE_URL` 为空时只在本地建立下发记录，不发起 Labillion HTTP；已配置 Labillion 时，缺少可用的 `replyAddress` 会使发送失败并回滚。
 
-```text
-GET  /api/mega-automation/flow-work-orders/meta
-GET  /api/mega-automation/flow-work-orders/cell-plate-usage
-POST /api/mega-automation/flow-work-orders/list
-POST /api/mega-automation/flow-work-orders/column_values   # 表头筛选取值列表
-POST /api/mega-automation/flow-work-orders/by-source
-GET  /api/mega-automation/flow-work-orders/{order_id}
-GET  /api/mega-automation/flow-work-orders/{order_id}/active-payload
-POST /api/mega-automation/flow-work-orders/save
-POST /api/mega-automation/flow-work-orders/{order_id}/validate
-POST /api/mega-automation/flow-work-orders/{order_id}/dispatch
-POST /api/mega-automation/flow-work-orders/{order_id}/confirm-execution
-POST /api/mega-automation/flow-work-orders/{order_id}/pause
-POST /api/mega-automation/flow-work-orders/{order_id}/pause-ack
-POST /api/mega-automation/flow-work-orders/{order_id}/resume
-POST /api/mega-automation/flow-work-orders/{order_id}/resume-ack
-POST /api/mega-automation/flow-work-orders/{order_id}/complete
-POST /api/mega-automation/flow-work-orders/{order_id}/continue-execution
-POST /api/mega-automation/flow-work-orders/{order_id}/fail
-POST /api/mega-automation/flow-work-orders/{order_id}/delete
-POST /api/mega-automation/flow-work-orders/{order_id}/cancel
-POST /api/mega-automation/flow-work-orders/{order_id}/sync-labillion-status
-POST /api/mega-automation/labillion/callback          # 镁伽推送，无需登录，恒 200（配置了来源校验时，不通过返回 401/403）
-```
+### 5.2 Labillion
 
-`sync-labillion-status`：详情页进入时对 `sent/running/paused/execution_failed/execution_error/manual_failed` 工单异步调用；单工单 10 分钟节流；返回 `execution_progress`（仅 Running 且有值时，供页面展示）。审计操作名为「同步镁伽工单状态」。
-
-## 6.1 Labillion 集成（环境变量）
-
-| 变量 | 说明 |
-|------|------|
-| `LABILLION_BASE_URL` | 镁伽 API 根；留空则不发起任何 Labillion HTTP |
-| `LABILLION_USERNAME` / `LABILLION_PASSWORD` | 登录凭据 |
-| `LABILLION_PLATFORM_ID` | 登录后请求头 `Platform`；未单独配置时用代码里的默认值 |
-| `PUBLIC_API_BASE_URL` | 本系统对外 API 根，用于 `replyAddress` |
-
-实现：`integrations/labillion.py`（登录、导入、删除、查询）；HTTP 超时 5s。
-
-## 6.2 定时任务
-
-- 功能码：`job.mega_labillion_status_sync`，默认每天 02:00。
-- 批量查询非终态工单并应用状态；未配 `LABILLION_BASE_URL` 时 skip 并记日志。
-- 开关与时间见系统功能页（改完即写库；cron 重启后端生效）；可 **立即执行** 单次同步。
-
-## 7. 权限
-
-三个权限点（前后端一致）：
-
-| code | 作用 |
+| 配置 | 用途 |
 |---|---|
-| `mega.page.flow_work_order` | 进菜单与页；meta / list / detail / active-payload / sync-labillion-status |
-| `mega.flow_work_order.edit` | 保存、校验、删除、作废；表单与铺板解锁编辑 |
-| `mega.flow_work_order.dispatch` | 发送及停止/继续/设备已暂停/确认执行/完成/继续执行/手动失败 |
-
-路由与功能开关：`menu.mega_automation`、`menu.mega_automation.flow_work_orders`。角色与权限包在系统管理中配置。
-
-## 8. 前端行为
-
-- 新建 / 复制先进入本地未保存页，不写空草稿；复制清空订单编号。
-- 已有工单加载失败禁止保存，避免误建新单。
-- 详情三个页签：工单编辑、铺板（默认锁定，可解锁改孔与条码）、Payload。
-- 列表支持关键字、类型、状态、项目号、靶点、样本板/细胞板条码筛选；返回列表时刷新，筛选条件和页码保留，浏览器刷新后清空。
-- 列表接入公共表头筛选（见 [../workbench.md](../workbench.md)「表头筛选」）：订单编号、名称、类型、优先级、状态、项目号、靶点、两种板条码、创建人、下发时间、更新时间、备注可排序和筛选。项目号、靶点、板条码按数组里「含有该值」，空数组算空白；状态和统计块同一口径，三种执行问题合成「执行失败」；时间按天筛、按完整时间排。`/list`、`/export` 另收 `field_filters`、`sort_field`、`sort_dir`，不排序时仍按更新时间倒序。
-- 列表不展示下发次数与失败摘要。
-- 详情加载后对 `sent/running/paused` 异步 sync 镁伽状态；Running 时在状态标签旁显示查询到的进度百分比（无则不显示）。
-- `sent + pending` 显示「撤回」；`running` 显示「停止」；`withdrawn` 显示「已撤回」。
-
-## 9. 数据库
-
-空库执行 `docs/vita-database.sql`（含镁伽表、权限点、API 映射与菜单开关种子）。
-
-## 10. 工单内容结构
-
-### 10.1 基础字段
-
-主表基础字段包括：
-
-- `orderNum`：订单编号，必填但允许重复；
-- `orderName`：订单名称，可选；
-- `orderType`：检测类型，目前元数据包括 `TITER`、`PLAS`、`PCR`；
-- `priority`：设备优先级，包括 `high`、`normal`、`low`；
-- `remark`：备注；
-- `status`：工单状态；
-- `created_by`、`created_at`、`updated_at`、`sent_at`：操作与时间信息。
-
-订单编号不加唯一约束。业务上可以存在编号相同的工单，系统使用主键 `id` 区分工单，使用 `dispatchId` 区分下发记录。
-
-### 10.2 `pc_infos`
-
-`pc_infos` 是可以被孔位引用的辅助信息列表，当前支持：
-
-- `SERUM`；
-- `ISO`；
-- `TAG`。
-
-每项主要字段：
-
-```text
-pc_id
-pc_type
-pc_name
-catalog_batch
-source
-concentration
-```
-
-PC 信息本身以及孔位到 PC 信息的引用都不是强制项：
-
-- 孔类型以 `content_type` 为准；
-- 任意孔位都可以不填 `pc_id`；
-- 填写了 `pc_id` 时，后端检查该 ID 是否存在，并检查孔位类型与 PC 类型是否匹配：
-  `PC` → `SERUM`，`ISO` → `ISO`，`TAG` → `TAG`。
-
-前端新建的临时 PC ID 在保存时会转换为后端生成的稳定 ID，并同步更新孔位引用。
-
-### 10.3 `sample_plates`
-
-每块样本板保存：
-
-```text
-barcode
-project_no
-target
-secondary_antibody
-cell_keys
-wells
-```
-
-`cell_keys` 表示这块样本板选择的细胞列，为对象数组：
-
-```json
-{ "barcode": "CELL-20260710-01", "column_no": 3 }
-```
-
-前端允许先添加细胞板再填写真实条码。保存时会把“细胞板1”之类的页面占位引用归一成当前细胞板条码。
-
-### 10.4 样本板孔位
-
-每块样本板标准布局为 A01-H12，共 96 孔。孔位字段包括：
-
-```text
-well_no
-content_type
-sample_code
-pc_id
-```
-
-PC / ISO / TAG 的批次等信息在 `pc_infos` 中维护，通过 `pc_id` 关联；孔位不存 `batch` / `generation`。
-
-孔位类型：
-
-- `SAMPLE`：样本；
-- `PC`：阳性对照类型孔；
-- `NC`：阴性对照类型孔；
-- `ISO`：同型对照类型孔；
-- `TAG`：标签对照类型孔；
-- `BLANK`：空孔。
-
-`SAMPLE` 孔可以填写 `sample_code`。`PC`、`ISO`、`TAG` 孔可以选择 PC 信息，也可以仅保留孔位类型而不关联具体内容。
-
-### 10.5 `cell_plates`
-
-每块细胞板保存：
-
-```text
-barcode
-columns
-```
-
-每块板固定包含编号 1-12 的 12 列。每列可保存：
-
-```text
-column_no
-cell_name
-cell_type
-species
-batch
-generation
-cell_count
-catalog_no
-source
-```
-
-未填写 `cell_name` 的列视为空列（不可选为检测细胞），保存时 `cell_type` 置为空串；有名称时 `cell_type` 默认为 `正常`（可选 `肿瘤`）。工单至少需要一个已命名的细胞列，每块样本板至少选择一个有效细胞列。
-
-### 10.6 搜索冗余字段
-
-主表中的以下 JSON 数组由 `content` 自动提取：
-
-- `project_nos`；
-- `targets`；
-- `sample_plate_barcodes`；
-- `cell_plate_barcodes`。
-
-这些字段只用于列表过滤，不是第二份可独立编辑的数据源。保存工单时由后端重新计算，避免与 `content` 不一致。
-
-## 11. 保存、版本与校验流程
-
-### 11.1 保存
-
-新建工单时，前端先保留本地草稿；用户点击保存且订单编号非空后才创建数据库记录。
-
-编辑已有工单时，前端提交当前加载到的 `content_hash`：
-
-```text
-expected_content_hash
-```
-
-后端锁定工单行，并比较当前数据库版本：
-
-- 一致：继续保存；
-- 不一致：拒绝保存，提示刷新；
-- 内容没有变化：返回当前详情，不重复更新数据库。
-
-已校验工单只要内容发生变化，就回到 `draft`。执行中止、执行错误、手动失败和已暂停不能通过改内容回到草稿。
-
-### 11.2 校验失败
-
-校验失败时：
-
-- 工单状态变为 `failed`；
-- `error_message` 保存合并后的错误描述；
-- 接口同时返回带字段路径的 `issues`；
-- 前端展示错误列表，并尽可能定位到相关样本板或字段。
-
-`failed` 表示工单内容校验失败。设备执行中止是 `execution_failed`，执行错误是 `execution_error`，手动失败是 `manual_failed`。三者都不是终态，也不能编辑。手动控制里可以继续执行，回到 `running`。
-
-### 11.3 普通状态下校验
-
-普通编辑状态的操作顺序：
-
-```text
-保存当前页面内容
-  → 保存成功
-  → 使用最新 content_hash 发起校验
-  → 校验通过后进入 validated
-```
-
-如果保存失败，前端不会继续调用校验接口。
-
-### 11.4 暂停状态下校验
-
-暂停后的编辑只开放给已撤回。已暂停表示设备上工单还在，不能改、不能继续。
-
-1. 已发送且下发仍为 `pending` 时点撤回，工单进入 `paused`，下发 `pause_state=withdrawn`，并调用 Labillion 删除；
-2. 内容未改时点继续，按同一下发重新导入，工单回到 `sent`；
-3. 内容变化时点校验，先要求确认；
-4. 确认后保存修改，将原下发记录置为 `voided`，工单回到 `validated`，再重新发送。
-
-执行中的工单在「手动控制」里点停止后进入 `pausing`，再点设备已暂停后变为已暂停。这一段不能编辑。已暂停可在手动控制里点请求恢复进入 `resuming`，再点设备已恢复回到执行中。执行中止、执行错误、手动失败可在手动控制里点继续执行，回到执行中。这些步骤都不通知设备。已撤回没有手动控制。已发送过且未完成的工单都可以直接作废。
-
-## 12. 下发记录与状态说明
-
-### 12.1 下发编号
-
-每次发送生成独立 `dispatchId`，格式由后端生成，例如：
-
-```text
-DSP260710482913
-```
-
-数据库对 `dispatchId` 保持唯一约束。工单编号是否重复与下发编号唯一性无关。
-
-### 12.2 为什么保留下发 Payload
-
-工单后续可能被编辑，但历史下发内容不能随之改变。因此每条下发记录保存：
-
-- 完整 Payload；
-- Payload 哈希；
-- 发送时工单内容哈希；
-- 下发状态；
-- 暂停状态；
-- 发送人和发送时间。
-
-这样可以还原“当时实际发送了什么”，也可以判断暂停后页面内容是否发生变化。
-
-### 12.3 当前下发记录
-
-状态不是 `completed`、`failed`、`voided` 的最新记录视为当前有效下发记录。
-
-发送前会锁定工单并检查当前记录。只要上一条下发仍是 `pending` 或 `running`，就拒绝创建下一条。这里依赖代码事务与工单行锁，不额外增加 `active_key` 数据库字段。
-
-### 12.4 工单状态与下发状态的关系
-
-```text
-工单 sent              ↔ 下发 pending
-工单 running           ↔ 下发 running
-工单 paused + withdrawn   ↔ 下发 pending + pause_state=withdrawn（已撤回，可编辑、可重推）
-工单 paused + paused     ↔ 下发 running + pause_state=paused（已暂停，不可编辑）
-工单 paused            ↔ 下发 pending/running + pause_state（pausing/resuming，不可编辑）
-工单 completed         ↔ 下发 completed
-工单 execution_failed  ↔ 下发 running（执行中止，不可编辑，可继续执行或被回调改写）
-工单 execution_error   ↔ 下发 running（执行错误，不可编辑，可继续执行或被回调改写）
-工单 manual_failed     ↔ 下发 running（手动失败，不可编辑，可继续执行或被回调改写）
-工单 cancelled         ↔ 下发 voided
-已撤回修改确认后 validated ↔ 原下发 voided
-```
-
-## 13. 前端页面
-
-### 13.1 列表
-
-关键字、检测类型、状态、项目号、靶点、样本板条码、细胞板条码；状态统计；详情 / 操作 / 复制。显示态合并 `pause_state`（暂停中 / 已暂停 / 已撤回 / 恢复中）。执行失败统计块含执行中止、执行错误、手动失败。
-
-### 13.2 详情 · 工单编辑
-
-新建 / 复制本地编辑规则同 §8。支持多样本板拖排序、96 孔划选、PC 维护、细胞列选择；细胞板 12 列编辑与列拖动；加载失败禁止保存。
-
-### 13.3 详情 · 铺板
-
-左右对照：左侧完整样本板 / 细胞板可视化，右侧板总览跳转。默认锁定；可编辑权限下解锁后可改孔内容与板条码（工单编辑页样本板条码仍在表格录入）。
-
-### 13.4 详情 · Payload
-
-展示当前生效下发的 JSON（`active-payload`），可复制。
-
-## 14. 后端代码职责
-
-### `models/mega_automation.py`
-
-工单与下发 ORM 及序列化。
-
-### `modules/mega_automation/content.py`
-
-默认结构、归一化、PC/细胞引用、搜索数组、content 哈希、业务校验。
-
-### `integrations/labillion.py`
-
-Labillion HTTP 客户端：登录、订单导入/删除、状态查询；URL 空则跳过。
-
-### `modules/mega_automation/callback.py`
-
-Labillion 状态归一化、`apply_labillion_status`、回调入口 `handle_labillion_status_push`。
-
-### `modules/mega_automation/labillion_sync.py`
-
-主动单工单 sync（节流）、定时批量 sync；查询结果经同一套 apply 落库。
-
-### `modules/mega_automation/payload.py`
-
-按当前 content 组装下发 Payload，不写库。
-
-### `modules/mega_automation/dispatch.py`
-
-`dispatchId`、当前下发查询、快照创建、暂停/恢复/完成/失败/作废。
-
-### `modules/mega_automation/service.py`
-
-CRUD、状态边界、行锁、版本校验、校验与下发联动。
-
-### `modules/mega_automation/routes.py`
-
-FastAPI 入口、`require_permission`、统一响应；业务规则不放路由层。
-
-## 15. 结果回传
-
-实验结果 JSON 走 `POST /api/order-experiment/sync`（与 Labillion **状态**回调分离）。回传以 `dispatchId` 匹配下发快照；业务解析入库与效价联动见 [titer-upstream-flow.md §8](./titer-upstream-flow.md#8-下游效价数据回传接收已实现业务处理待开发)。回传 JSON 样例见 [order-experiment-sync-api.md](../../temp_text/order-experiment-sync-api.md)。`order_json` 文件上限由 `ORDER_SYNC_MAX_MB` 控制（默认 20MB）；来源校验见 [deploy.md](../../deploy.md)。
-
-## 16. 后续待办
-
-1. 检测结果业务解析入库与效价/免疫联动；
-2. Payload 字段命名 / 空值 / 版本与设备对齐；
-3. 检测板条码产生时机与结果表；
-4. 操作审计与长时间无回调兜底（定时 sync 已覆盖状态）；
-5. 向 Labillion 主动暂停（协议未提供）。
+| `LABILLION_BASE_URL` | Labillion API 根地址；为空时禁用 HTTP 集成 |
+| `LABILLION_USERNAME`、`LABILLION_PASSWORD` | 登录凭据 |
+| `LABILLION_PLATFORM_ID` | 登录后请求的 `Platform` 头 |
+| `PUBLIC_API_BASE_URL` | 生成状态回调地址 |
+| `LABILLION_CALLBACK_TOKEN` | 可选；回调请求头 `X-Callback-Token` |
+| `LABILLION_CALLBACK_IPS` | 可选；回调来源 IP 白名单，英文逗号分隔 |
+
+令牌和 IP 都配置时必须同时通过。Labillion HTTP 超时为 5 秒。状态回调按 `dispatchId` 匹配下发记录；业务处理异常也返回 HTTP 200 和 `success: true`，避免设备重试阻塞。
+
+实验结果 JSON 使用独立接口 `POST /api/order-experiment/sync`，见 [工单数据回传接口](./order-experiment-sync-api.md)。
+
+## 6. 接口
+
+| 方法 | 路径 | 权限 | 用途 |
+|---|---|---|---|
+| GET | `/api/mega-automation/flow-work-orders/meta` | `mega.page.flow_work_order` | 状态、类型、优先级和默认板结构 |
+| GET | `/api/mega-automation/flow-work-orders/cell-plate-usage` | `mega.page.flow_work_order` | 查询同条码细胞列占用 |
+| POST | `/api/mega-automation/flow-work-orders/by-source` | `mega.page.flow_work_order` | 按 `orderType`、`source_id` 查询 |
+| POST | `/api/mega-automation/flow-work-orders/list` | `mega.page.flow_work_order` | 分页列表和状态统计 |
+| POST | `/api/mega-automation/flow-work-orders/column_values` | `mega.page.flow_work_order` | 表头筛选值 |
+| POST | `/api/mega-automation/flow-work-orders/export` | `mega.page.flow_work_order` | 按当前筛选导出 Excel |
+| GET | `/api/mega-automation/flow-work-orders/{order_id}` | `mega.page.flow_work_order` | 工单详情 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/sync-labillion-status` | `mega.page.flow_work_order` | 主动查询并应用 Labillion 状态 |
+| GET | `/api/mega-automation/flow-work-orders/{order_id}/active-payload` | `mega.page.flow_work_order` | 当前未终止下发及 Payload |
+| POST | `/api/mega-automation/flow-work-orders/save` | `mega.flow_work_order.edit` | 新建或保存工单 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/validate` | `mega.flow_work_order.edit` | 校验工单；处理已撤回修改 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/dispatch` | `mega.flow_work_order.dispatch` | 发送或模拟发送 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/pause` | `mega.flow_work_order.dispatch` | 撤回、模拟撤回或停止 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/resume` | `mega.flow_work_order.dispatch` | 已撤回后继续，或请求恢复 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/pause-ack` | `mega.flow_work_order.dispatch` | 标记设备已暂停 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/resume-ack` | `mega.flow_work_order.dispatch` | 标记设备已恢复 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/confirm-execution` | `mega.flow_work_order.dispatch` | 标记执行中 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/complete` | `mega.flow_work_order.dispatch` | 标记完成 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/continue-execution` | `mega.flow_work_order.dispatch` | 执行异常后继续 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/fail` | `mega.flow_work_order.dispatch` | 标记手动失败 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/delete` | `mega.flow_work_order.edit` | 删除未发送工单 |
+| POST | `/api/mega-automation/flow-work-orders/{order_id}/cancel` | `mega.flow_work_order.edit` | 作废已发送未完成工单 |
+| POST | `/api/mega-automation/labillion/callback` | 外部令牌/IP 校验 | 接收 Labillion 状态回调 |
+
+## 7. 定时任务
+
+| 项目 | 值 |
+|---|---|
+| 功能码 | `job.mega_labillion_status_sync` |
+| 默认计划 | 每天 02:00 |
+| 同步范围 | `sent`、`running`、`paused`、`execution_failed`、`execution_error`、`manual_failed` 的当前下发 |
+| 单批查询数 | 50 |
+| 未配置 Labillion | 跳过并记录日志 |
+
+系统功能页可启停任务、修改计划和“立即执行”。调度器运行时，保存计划会通过 `apply_job_schedule` 立即新增、移除或重排任务，不需要重启后端。

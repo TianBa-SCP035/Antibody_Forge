@@ -57,6 +57,16 @@ def list_serum(
     return success(service.get_list(db, data or {}))
 
 
+@router.post("/column_values")
+def serum_column_values(
+    data: dict | None = None,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    require_permission(db, current_user, "serum.page.list")
+    return success(service.get_column_values(db, data or {}))
+
+
 @router.get("/detail")
 def detail(
     id: int | None = Query(default=None),

@@ -94,39 +94,39 @@
           class="filter-name"
           clearable
           v-bind="headerTop('name', '名称')"
-          @keyup.enter="search"
-          @clear="search"
+          @keyup.enter="handleFilter"
+          @clear="handleFilter"
         />
         <ElInput
           v-model="listQuery.sequence"
           class="filter-sequence"
           clearable
           v-bind="headerTop('short_sequence', '显示序列')"
-          @keyup.enter="search"
-          @clear="search"
+          @keyup.enter="handleFilter"
+          @clear="handleFilter"
         />
         <ElInput
           v-model="listQuery.checkKeyword"
           class="filter-check"
           clearable
           placeholder="核对序列"
-          @keyup.enter="search"
-          @clear="search"
+          @keyup.enter="handleFilter"
+          @clear="handleFilter"
         />
         <ElInput
           v-model="listQuery.note"
           class="filter-note"
           clearable
           v-bind="headerTop('note', '备注')"
-          @keyup.enter="search"
-          @clear="search"
+          @keyup.enter="handleFilter"
+          @clear="handleFilter"
         />
         <ListFilterSelect
           v-model="listQuery.direction"
           class="filter-item"
           clearable
           v-bind="headerTop('direction', '方向')"
-          @change="search"
+          @change="handleFilter"
         >
           <ElOption label="正向" value="F" />
           <ElOption label="反向" value="R" />
@@ -136,7 +136,7 @@
           class="filter-item"
           clearable
           v-bind="headerTop('active', '状态')"
-          @change="search"
+          @change="handleFilter"
         >
           <ElOption label="启用" value="active" />
           <ElOption label="停用" value="inactive" />
@@ -152,7 +152,7 @@
           >
             <ElIcon><Tools /></ElIcon>
           </button>
-          <ElButton type="primary" :icon="Search" title="右键清空筛选" @click="search" @contextmenu.prevent="reset">查询</ElButton>
+          <ElButton type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="reset">查询</ElButton>
           <ElButton :icon="Refresh" @click="reset">重置</ElButton>
         </div>
       </div>
@@ -369,6 +369,7 @@ import {
 } from '#/api/primerCatalog';
 import { clearPrimerCatalogCache } from '../library/primerCatalogOptions';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
+import { listPageMixin } from '#/utils/listPage';
 import { listTableLockMixin } from '#/utils/listTableLock';
 import { canEditPrimerLibrary } from '#/utils/molecularPermission';
 
@@ -477,7 +478,8 @@ export default {
     WorkbenchHeaderLabel,
     WorkbenchHeaderMenu,
   },
-  mixins: [listTableLockMixin, workbenchHeaderMenuMixin],
+  mixins: [listTableLockMixin, listPageMixin, workbenchHeaderMenuMixin],
+  listFilterKey: 'primerLibrary',
   setup() {
     const items = ref([]);
     const sheet = useSheetRange({
@@ -558,13 +560,15 @@ export default {
     },
   },
   created() {
-    this._requestId = 0;
     this._checkDrag = null;
     this._checkAnchor = -1;
   },
   mounted() {
     window.addEventListener('mouseup', this.finishCheckDrag);
     this.load();
+  },
+  activated() {
+    if (this.isListDataStale()) this.load();
   },
   beforeUnmount() {
     window.removeEventListener('mouseup', this.finishCheckDrag);
@@ -614,31 +618,28 @@ export default {
       return fetchPrimerColumnValues(query);
     },
     async load() {
-      const current = ++this._requestId;
+      const isLatest = this.beginListRequest();
       clearPrimerCatalogCache();
       this.loading = true;
       try {
         const data = await fetchPrimerCatalog(this.buildQuery());
-        if (current !== this._requestId) return;
+        if (!isLatest()) return;
         this.items = data.items || [];
         this.total = data.total || 0;
         this.statsTotal = data.stats?.total || 0;
         this.libraryStats = data.stats?.families || [];
+        this.markListFetched();
       } catch (error) {
-        if (current === this._requestId) {
+        if (isLatest()) {
           notifyApiError(error, { messages: { default: '引物库加载失败' } });
         }
       } finally {
-        if (current === this._requestId) this.loading = false;
+        if (isLatest()) this.loading = false;
       }
     },
     getList() {
       this.clearSelected();
       return this.load();
-    },
-    search() {
-      this.listQuery.page = 1;
-      this.getList();
     },
     reset() {
       Object.assign(this.listQuery, { ...emptyQuery(), limit: this.listQuery.limit });
@@ -779,7 +780,7 @@ export default {
       this.listQuery.family = this.listQuery.family === value ? '' : value;
       // 点「全部」也要清掉表头里的系列条件，统计块高亮才和列表一致
       if (this.headerFilters.family) this.dropHeaderFilter('family');
-      this.search();
+      this.handleFilter();
     },
     changePageSize() {
       this.listQuery.page = 1;

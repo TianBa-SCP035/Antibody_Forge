@@ -1,129 +1,249 @@
 # 分子与细胞 · 文库构建
+> 承接上游发现交接或手工创建的建库任务，记录各工艺关键数据、产物位置与内部胶图/引物质控。相关：[引物库](./primer-library.md) · [发现工作台](../discovery/workbench.md) · [项目工作台共用约定](../workbench.md)
 
-路径 `/molecular-cell/library-construction`，质控详情 `/molecular-cell/library-construction/result?id=`，接口前缀 `/api/molecular-cell/library-orders`。
+## 1. 入口与权限
 
-本模块接收上游筛选、细胞制备、外周血或噬菌体筛选产生的材料，记录建库排程、工艺关键数据、材料/产物位置与建库内部质控。胶图和 ABI/AB1、CLC、FASTA 等引物核对文件统一视为“引物质检文件”；正式一代测序、NGS 申请、上机、run/lane、FASTQ 和分析结果属于其他测序模块。
+| 项目 | 值 |
+|---|---|
+| 列表路由 | `/molecular-cell/library-construction`（`LibraryConstructionList.vue`） |
+| 质控详情路由 | `/molecular-cell/library-construction/result?id=`（`LibraryConstructionResult.vue`，隐藏菜单，与列表共用标签页组） |
+| 一级菜单开关 | `menu.molecular_cell` |
+| 列表菜单开关 | `menu.molecular_cell.library` |
+| 接口前缀 | `/api/molecular-cell/library-orders` |
 
-## 业务分类
+| 权限码 | 类型 | 允许的操作 |
+|---|---|---|
+| `molecular.page.library` | `page` | 访问文库构建列表；查询列表（`/list`）、表头筛选值（`/column_values`）、已录入靶点（`/recorded_targets`）、下拉枚举（`/options`）、启用引物选项（`/catalog/options`）及导出列表（`/export_list`） |
+| `molecular.page.library_detail` | `page` | 访问文库质控详情页；查询工单质检文件与测序包（`/files/list`）、下载或在线预览文件（`/files/download`）、查询下拉枚举（`/options`）及启用引物选项（`/catalog/options`） |
+| `molecular.library.edit` | `action` | 新建、编辑、取消、删除工单（`/save`、`/batch_save`、`/delete`），以及发现交接查询与创建（`/by-discovery`、`/handoff`） |
+| `molecular.library.file.manage` | `action` | 质检文件预检与上传（`/files/preflight`、`/files/upload_batch`）、文件改名/标最终/框选区域（`/files/update`）、删除文件或测序包（`/files/delete`）；更新已有工单且仅修改质检结论四字段（`qc_result`、`qc_owner`、`qc_on`、`qc_note`）时，`/save` 与 `/batch_save` 亦接受本权限 |
+| `discovery.workbench.edit` | `action` | 在发现工作台查询已交接工单并发起交接创建（`/by-discovery`、`/handoff`） |
 
-`build_type` 只表示实际工艺：
+## 2. 数据与编号
 
-- `plate_single_cell`：单细胞孔板
-- `pooled_bcr`：混管 H/K/L
-- `pooled_barcode`：混管 Barcode
-- `plasma_ngs`：浆细胞 NGS
-- `peripheral_blood_bcr`：外周血 BCR
-- `phage_display`：噬菌体展示
-- `phage_ngs`：噬菌体 NGS
+### 2.1 工单主表 `molecular_library_order`
 
-以下维度单独记录，不能再混入类型：
+一张工单对应一个建库批次，不设独立草稿表。
 
-- `sample_source`：合并后的样品来源，如 Beacon、达普打板、达普打管、细胞/核酸、噬菌体产物或眼眶血。
-- `mouse_strain`：上游小鼠品系。已有库执行 `ALTER TABLE molecular_library_order CHANGE COLUMN mouse_model mouse_strain VARCHAR(128) NULL COMMENT '小鼠品系'`，再 `UPDATE molecular_library_order SET mouse_strain = NULL` 清掉旧归类鼠型。
-- `sample_type`：小鼠品系可以多选，固定选项按选项顺序排在前面，自己填的接在后面，用顿号写入。样品类型只看拼好后的第一个：`RL`、`RLB/C`、`RLSJL`、`RLKO`、`RLCKO`、`RLDF` 带出 Lite；`RN`、`RNKO`、`RNVR`、`RNVM`、`RNVMKO` 带出 Nano。`RM`、`RMB/C`、`RMSJL`、`RMKO`、`RMCKO` 不改已有样品类型。改样品类型不改品系。交接和手工编辑同一条规则。
-- `index_mode`：前端显示“Barcode 方式”，可选不加、i7、i5、双端 i7 + i5；这里的“双端”不等于双端测序。
+| 字段 | 含义 | 规则 |
+|---|---|---|
+| `id` | 主键 ID | 数据库自增主键 |
+| `library_order_id` | 系统工单号 | 创建时生成，格式 `LIB-yyMMdd-XXXXXX`（6 位大写字母或数字），全局唯一，保存时只读保护 |
+| `library_code` | 建库编号 | 实验员业务编号，自动转大写，最长 64 字符；非空值全局唯一，允许多个工单留空 |
+| `source_discovery_id` | 来源发现 ID | 发现交接时写入 `discovery_id`，手工创建为空；保存时只读保护，非空时可在抽屉/详情点击跳回发现工作台 |
+| `source_project_code`、`study_type`、`pm` | 项目快照 | 项目编号（最长 64）、课题类型（固定枚举）、PM（最长 64）；不保存来源实验号 |
+| `target_name`、`target_codes` | 靶点与靶点编号 | 关联靶点库主数据，`target_codes` 为 JSON 字符串数组 |
+| `mouse_strain` | 小鼠品系 | 支持多选预设品系或自填；固定选项按预设顺序排在前面，自填项接在后面，以顿号 `、` 拼接（最长 128 字符） |
+| `sample_type` | 样品类型 | `nano`（`Nano`）、`lite`（`Lite`）、`rnvm_blood`（`RNVM眼眶血`）、`phage`（`噬菌体`）；`plasma_ngs` 仅允许 `nano`、`lite` 或空。修改 `mouse_strain` 且未显式提交 `sample_type` 时按首个品系自动推导（见 §6） |
+| `build_type` | 建库类型 | 必填，7 种工艺枚举（见 §2.2）；仅 `待处理` 状态可修改，修改后自动清空不适用于新类型的专属字段及不匹配的 `sample_source` |
+| `sample_source` | 样品来源 | 按 `build_type` 校验可选范围（见 §2.2） |
+| `status`、`priority` | 状态与优先级 | 状态见 §3；优先级为 `正常`、`加急`、`非常紧急`、`吉吉国王`（新建默认 `正常`，列表默认按 `id` 倒序） |
+| `owner`、`notebook_no`、`library_batch_no` | 负责人、实验记录本号、建库批号 | 最长 64 字符；`library_batch_no` 仅噬菌体展示和噬菌体 NGS 使用 |
+| `received_on`、`instrument_on`、`blood_collected_on`、`started_at`、`finished_at`、`qc_on` | 实验与排程日期 | `DATE`（`YYYY-MM-DD`） |
+| `positive_cell_count`、`fragment_size_bp` | 阳性细胞数、片段大小 | 自由文本（最长 64 字符），按实验员原文保存并保留换行；抽屉与详情页并排时两框同高 |
+| `plate_nos` | 板号 | JSON 字符串数组；前端单框输入，回车、中英文逗号、顿号、制表符均按分隔符解析去重 |
+| `cell_type` | 细胞类型 | 最长 64 字符；`plasma_ngs` 与 `phage_display` 限定为 `全细胞`、`浆细胞`、`流穿液`（`plasma_ngs` 为空时默认写入 `浆细胞`） |
+| `target_forms` | 靶点形式 | 仅 `phage_display` 使用，单选：`多穿`、`分泌`、`I型`、`II型` |
+| `source_experiment_type`、`project_goal` | 实验类型、实验目标 | 仅 `phage_display` 与 `phage_ngs` 使用；实验类型单选 `抗体发现` 或 `亲和力改造`，实验目标最长 1000 字符（保留换行） |
+| `immunization_stage` | 免疫阶段 | 仅 `peripheral_blood_bcr` 使用，最长 64 字符 |
+| `rna_location`、`cdna_location`、`library_location` | 材料与产物位置 | 最长 255 字符（`library_location` 保留换行） |
+| `cdna_concentration`、`library_concentration`、`initial_library_size`、`effective_library_size` | 浓度与库容 | 最长 64 字符，按实验员原文保存 |
+| `h/k/l_forward/reverse_primer_id`、`h/k/l_forward/reverse_primer_name`、`h/k/l_primer_concentration` | H/K/L 引物与浓度 | 仅 `pooled_bcr` 使用；保存引物字典 ID、名称快照（最长 128）及浓度文本（最长 64） |
+| `index_mode`、`i7_catalog_id`、`i7_name`、`i7_sequence`、`i5_catalog_id`、`i5_name`、`i5_sequence` | Barcode 方式与 i7/i5 | 仅 `pooled_barcode`、`phage_ngs`、`peripheral_blood_bcr` 使用。`index_mode` 可选 `none`（`不加 Barcode`）、`single_i7`（`i7`）、`single_i5`（`i5`）、`dual`（`双端 i7 + i5`），切换时自动清空未启用端字段；序列最长 64 字符，仅允许 IUPAC 碱基字符（`ACGTRYSWKMBDHVN`） |
+| `qc_result`、`qc_owner`、`qc_on`、`qc_note` | 质控结果 | `qc_result` 可选 `待判定`、`通过`、`不通过`；前端选择非空 `qc_result` 时，若 `qc_owner`、`qc_on` 为空则自动补当前用户姓名与当天日期；`qc_note` 最长 1000 字符（保留换行） |
+| `remark` | 备注 | 最长 1000 字符，保留换行 |
+| `created_by`、`created_at`、`updated_at` | 审计字段 | 创建人（保存时只读保护）、创建与更新时间 |
 
-Barcode（i7 / i5 Index）在混管 Barcode、噬菌体 NGS 和外周血 BCR 中按实际方案记录。混管 H/K/L 不显示该区，改记 H/K/L 正反向引物。单细胞孔板、浆细胞 NGS 和噬菌体展示也不记 Barcode。浆细胞 NGS 只接受样品类型 Nano 或 Lite，列表统计按这两类分开计数。
+### 2.2 建库类型与专属字段（Profile）
 
-一张工单对应一个主要上游来源和一个主要产物。多板只保存 `plate_nos` 板号列表，阳性细胞数保存整批总数，不记录每板数量。前端使用一个输入区填写板号，回车、中英文逗号、制表符和粘贴的换行都按分隔符解析。多个附件由文件关联表记录。建库编号是实验员业务标识，填了就不能和其他工单重复，空着可以有多条；系统工单号唯一。
+| `build_type` | 显示名 | 允许的 `sample_source` | 专属字段 |
+|---|---|---|---|
+| `plate_single_cell` | 单细胞孔板 | `beacon`（Beacon）、`dapu_plate`（达普打板）、`beacon_dapu`（Beacon+达普打板） | `instrument_on`、`positive_cell_count`、`plate_nos`、`cdna_location` |
+| `pooled_bcr` | 混管 H/K/L | `dapu_tube`（达普打管） | `instrument_on`、`positive_cell_count`、`rna_location`、`cdna_location`、`library_location`、`cdna_concentration`、`library_concentration`、`fragment_size_bp`、H/K/L 正反向引物及浓度 |
+| `pooled_barcode` | 混管 Barcode | `dapu_tube`（达普打管） | `instrument_on`、`positive_cell_count`、`rna_location`、`cdna_location`、`library_location`、`cdna_concentration`、`library_concentration`、`fragment_size_bp`、`index_mode` 及 i7/i5 字段 |
+| `peripheral_blood_bcr` | 外周血 BCR | `retro_orbital_blood`（眼眶血）、`other_blood`（其他外周血） | `blood_collected_on`、`immunization_stage`、`positive_cell_count`、`rna_location`、`cdna_location`、`library_location`、`cdna_concentration`、`library_concentration`、`fragment_size_bp`、`index_mode` 及 i7/i5 字段 |
+| `plasma_ngs` | 浆细胞 NGS | `spleen_grind`（脾脏研磨） | `instrument_on`、`positive_cell_count`、`cell_type`（默认 `浆细胞`）、`rna_location`、`cdna_location`、`library_location`、`library_concentration`、`fragment_size_bp`；`sample_type` 仅限 `nano` 或 `lite` |
+| `phage_display` | 噬菌体展示 | `direct`（细胞/核酸） | `source_experiment_type`、`project_goal`、`instrument_on`、`library_batch_no`、`cell_type`、`target_forms`、`rna_location`、`cdna_location`、`library_location`、`initial_library_size`、`effective_library_size` |
+| `phage_ngs` | 噬菌体 NGS | `phage_display`（噬菌体展示产物）、`phage_panning`（噬菌体筛选产物） | `source_experiment_type`、`project_goal`、`library_batch_no`、`library_location`、`library_concentration`、`fragment_size_bp`、`index_mode` 及 i7/i5 字段 |
 
-## 表
+### 2.3 引物引用与测序文件核对
 
-### `molecular_library_order`
+引物与 Index 字典维护见 [引物库](./primer-library.md)。
 
-字段按以下层级组织：
+- **工单关联引物**：前端首次在引物下拉框输入搜索词时，调用 `GET /api/molecular-cell/library-orders/catalog/options?limit=2000` 拉取全部启用引物并缓存，后续在页面内按名称包含、显示序列包含（纯 `A/C/G/T/N` 时同时匹配反向互补）过滤。粘贴或输入引物名称时，若与某条启用引物名称完全一致，后端自动写入对应字典 ID（i7/i5 同时带出 `short_sequence`）；不匹配字典的名称按手填文本保存并清空字典 ID。
+- **需核对的工单范围**：
+  - `pooled_bcr`：核对已关联字典 ID（`*_primer_id`）的 `hF`、`hR`、`kF`、`kR`、`lF`、`lR` 引物；
+  - `pooled_barcode`、`phage_ngs`、`peripheral_blood_bcr`：按 `index_mode` 核对已填写序列的 `i5`（`single_i5` / `dual`）和 `i7`（`single_i7` / `dual`）；
+  - 其余建库类型、`index_mode = none` 或未配置引物的方向不核对。
+- **方向与链别识别**：
+  - 文件名含独立标记 `M13F`（前后非字母或数字）对应正向（`i5` 或 `hF/kF/lF`），含 `M13R` 对应反向（`i7` 或 `hR/kR/lR`）；同时含 `M13F` 与 `M13R` 或均未含时不核对。
+  - `pooled_bcr` 仅认建库编号开头的 `H`/`K`/`L` 链前缀（如 `HC223` 识别为建库编号 `C223`、H 链）；无链前缀的文件仅关联工单，不核对 H/K/L 引物。
+- **序列拼装与比对规则**：
+  - 取引物显示序列的反向互补作为核对序列 `body`。
+  - 正向（`F` / `i5`）拼装期待串：`ACCGAGATCTACAC` + `body` + `ACACTCTTTCC`；反向（`R` / `i7`）拼装期待串：`GGCATACGAGAT` + `body` + `GTGACTGGAGTT`。
+  - 在读段碱基中按精确子串匹配（`N` 按字面字符，不做模糊错配）：
 
-- 来源项目快照：`source_project_code`（前端显示“项目编号”）、`study_type`（课题类型）、靶点、PM、小鼠品系和样品类型；不保存来源实验号。
-- 工艺分类：`build_type`、`sample_source`；噬菌体工单额外记录实验类型（抗体发现/亲和力改造）和实验目标。
-- 来源材料：样品交接日期、上机日期、采血日期、阳性细胞数、板号、细胞类型和免疫阶段。发现台剖鼠日期交接后作为上机日期；浆细胞 NGS 也记下上机日期和阳性细胞数，没有剖鼠日期时不挡住交接。阳性细胞数保留“约120”“>100”等实验员原始写法。细胞类型在浆细胞 NGS 和噬菌体展示中从全细胞、浆细胞、流穿液里选；浆细胞 NGS 默认浆细胞。混管 H/K/L 和混管 Barcode 不记细胞类型。
-- 排程：状态、优先级、负责人、开始时间、完成时间，并以只读输入框展示来源发现 ID；有来源时可点击跳转到对应发现工单，不另设计划开始/完成。
-- 工艺记录：各类建库都记录实验记录本号；噬菌体展示和噬菌体 NGS 另有建库批号。单细胞孔板记上机日期、阳性细胞数、cDNA 位置和板号。
-- 材料与产物：RNA、cDNA、文库位置，cDNA 浓度和文库浓度，初始/有效库容原始文本，以及按原文保存的片段大小。除单细胞孔板和噬菌体展示外，各类型都记录文库浓度。混管 H/K/L、混管 Barcode、浆细胞 NGS、外周血 BCR 和噬菌体 NGS 记录片段大小。混管、浆细胞 NGS、外周血 BCR 和噬菌体展示记录 RNA、cDNA、文库三个位置；单细胞孔板只记 cDNA 位置，噬菌体 NGS 只记文库位置。
-- 引物与 Barcode：混管 H/K/L 保存 H/K/L 各自的正向引物、反向引物和浓度。混管 Barcode、噬菌体 NGS 和外周血 BCR 记录 i7/i5 名称、序列与字典引用。不再保存浓度单位。
-- 质控：只保存总体质检结论、质检人、日期和说明，不另设测序分析人、测序结论或测序说明。
+| 状态码 | 判定条件 | 接口显示文案（`sequence_check`） |
+|---|---|---|
+| `matched` | 命中期待串 | `<目标> 匹配` |
+| `matched_rc` | 命中期待串的反向互补 | `<目标> 匹配-反补` |
+| `arm_only` | 左右同源臂按正向顺序命中，且两臂间存在与 `body` 等长但序列不同的片段 | `<目标> 引物错误` |
+| `arm_only_rc` | 左右同源臂按反向互补顺序命中，且两臂间存在与 `body` 等长但序列不同的片段 | `<目标> 引物错误-反补` |
+| `not_found` | 未命中期待串及上述同源臂对 | `<目标> 同源臂未匹配` |
+| `trace_only` | `.ab1`/`.abi` 无法解析出判读碱基 | 无文案（不作结论） |
 
-实验日期都使用 `DATE`，只记年月日，包括交接、上机、采血、质检和工单开始/完成。创建时间 `created_at` 由数据库自动写入，不在表单里编辑。cDNA 浓度、文库浓度和 H/K/L 引物浓度按实验员原文保存，可以写数字，也可以补充文字或字母。阳性细胞数、片段大小和初始/有效库容同样按原文保存，不按固定数值、滴度或 CFU 解释。阳性细胞数和片段大小的换行保留，各最长 64，并排填写时两个框同高。
+  - `<目标>` 在 Barcode 工单中为 `i5`、`i7`，在混管 H/K/L 工单中为 `H链正向`、`H链反向`、`K链正向`、`K链反向`、`L链正向`、`L链反向`。
+  - 读段有效碱基数 `<= 400` bp 时，状态码追加 `_short` 后缀，显示文案追加 `-过短`。
+  - `.ab1`/`.abi` 能读出 `PBAS2`/序列碱基时按上表生成核对文案，但**不参与**工单状态的自动质检判定（自动判定仅依据 `.seq`）。
 
-类型只可在 `待处理` 修改。状态下拉不再限制能改到哪一档，用户当次手工选择时不再额外做自动推导；状态本身不增加锁定字段。人工质检结论优先：选通过就是质检通过，已有文库位置则完成；选不通过就是质检不通过。没有人工结论时，上传、删除文件或修改引物会按现有事实辅助刷新状态：写了 RNA 或 cDNA 位置就是建库中；有胶图或测序结果就是待质检；工单没配引物时，胶图和测序结果都在就是质检通过。配了引物时，任一已配置方向出现同源臂未匹配或引物错误，就是质检待确认。每个已配置方向都已匹配，但参与判定的 `.seq` 里有不超过 400 个碱基的，同样是质检待确认。胶图和测序结果都在，且每个已配置方向都有匹配 `.seq`、没有未匹配、也没有过短，才是质检通过。自动刷新不会改成质检不通过。同名文件里如果有一份标了最终，其余同名文件不再参与判定；不同名的文件互不影响，一份最终都没有时全部参与。设为最终、取消最终和改名后都会重新推导。自动刷新不会仅因已有文库位置改成已完成。已取消、已完成和质检不通过保持不动。开始、完成日期只在空着时补：写了 RNA 或 cDNA 位置记开始，写了文库位置记完成；手工填过的日期保持不动。
+## 3. 状态与流转
 
-类型变化会清除其他 profile 专属字段；来源项目快照、排程、公共质控不清除。
+`status` 共 8 档：`待处理`（新建默认）、`建库中`、`待质检`、`质检待确认`、`质检通过`、`已完成`、`质检不通过`、`已取消`。
 
-### `molecular_primer_index_catalog`
+### 3.1 状态刷新规则（`_advance_order_status`）
 
-- 一条记录是一条引物。预置系列是达普Barcode（达普仪器用，引物带 barcode）和 UDP（其他仪器或步骤用）。用户也可以自建系列，名称最长 32 个字符。方向是系列里面的正向或反向。
-- 保存名称、方向和显示序列。引物库的核对序列是显示序列按测序读数转过一次后的结果，和测序文件里的碱基一致。使用引物的工单，i5 端查找 `ACCGAGATCTACAC` + 核对序列 + `ACACTCTTTCC`，i7 端查找 `GGCATACGAGAT` + 核对序列 + `GTGACTGGAGTT`。整段对不上时，再找这一整段的反向互补。对上仍算匹配，文案末尾加 `-反补`；同源臂对上但中间引物不对时，反向互补命中同样加 `-反补`。引物不对记为 `i5 引物错误` 或 `i7 引物错误`；H/K/L 写成 `H链正向` 这种主语，再接同样的结果。两种方向的同源臂都没有时记为 `i5 同源臂未匹配`，H/K/L 则是 `H链正向 同源臂未匹配`。文件核对文案不标正反向。预览胶囊写 `i5 端` 或 `i7 端`；能判断时箭头旁再写正向或反向，表示相对插入片段的方向：i5 端直接命中为正向，反补命中为反向，i7 端相反。文件名里的 M13F、M13R 只决定核 i5 端还是 i7 端，不代表读序方向；ABI 文件本身没有正反向字段。峰图能读出判碱基时，用和 `.seq` 相同的规则显示核对结果，但不参与自动质检判读。不按差一个碱基做模糊匹配。N 仍是字面字符。参与核对的读段要多于 400 个碱基，不超过时在原核对文案后再加 `-过短`，不另存长度。预览里的 `nnn bp` 就是这个碱基数，不超过 400 时标红；`.seq` 同样显示。读不出碱基的峰图仍不做结论。
-- 不加 Barcode，或孔板、浆细胞 NGS、噬菌体展示这类没有引物的工单，不核引物，也不提示缺引物；胶图和测序结果齐了就可以到质检通过。混管 H/K/L 的链别写在建库编号前面：`HC223` 是 H 链，建库编号是 `C223`。`KC223`、`LC223` 同理。`C223-H-1` 这种把链别写在编号后面的旧文件名不再用来认链。没写链前缀的文件只按编号关联，不拿去对 H/K/L 引物。引物库里的同源臂字段仍只作参照，编辑、导入和启停不改已有版本和同源臂。
-- 名称唯一；显示序列允许重复。不自动把正向/反向映射为 i7/i5。
+工单保存、批量保存、上传/改名/切换最终标记/删除质检文件，以及打开质控详情页重核序列状态发生变化时，按以下优先级刷新状态：
 
-日常新增、修改和批量导入均在引物库页面完成。
+1. **已取消保护**：当前为 `已取消` 时保持不变（除非当次保存显式修改 `status`）。
+2. **人工质检结论优先**：
+   - `qc_result = 不通过` → `质检不通过`；
+   - `qc_result = 通过` → 已填 `library_location` 时为 `已完成`，未填时为 `质检通过`。
+3. **手工状态与终态保护**：当次请求显式传入 `status`，或当前状态已为 `已完成`、`质检不通过` 时，不执行自动推导。
+4. **实验事实自动推导**（仅统计未被同名「最终」版本替代的文件）：
+   - 已有测序文件（`.ab1`/`.abi`/`.seq`），且任一已配置引物方向在 `.seq` 中出现 `not_found` / `arm_only` / `arm_only_rc`，或所有已配置方向均匹配但存在 `<= 400` bp 的 `.seq` → `质检待确认`；
+   - 胶图与测序文件均存在，且每个已配置引物方向均有匹配 `.seq`、无失败或过短 `.seq`（未配置引物的工单只需胶图与测序文件齐备）→ `质检通过`；
+   - 已有胶图或测序文件之一 → `待质检`；
+   - 已填写 `rna_location` 或 `cdna_location` → `建库中`；
+   - 以上均不满足且原状态为 `待质检`、`质检待确认`、`质检通过` → 回退为 `待处理`。
 
-### `molecular_library_result_package`
+自动推导不会将状态直接改为 `质检不通过` 或仅因填写 `library_location` 改为 `已完成`。
 
-一个记录对应一个归档文件夹，保存原文件夹名、稳定内容指纹、存储前缀、上传人和时间。质检页上传的文件夹一律用 `owner_order_id` 记录整包归属；其中编号属于当前工单的 `.ab1` / `.abi` / `.seq` 才建立文件关联并做引物核对，编号属于其他工单的文件留在包内但不关联过去。同一包最多有一个质检页归属工单：包已由 A 工单认领后，从 B 工单质检页上传不改归属，只把编号属于 B 的测序文件关联到 B；一份都对不上时提示已挂在其他工单。列表批量入口产生的文件关联可以跨工单；批量共享包之后也可由一个工单在质检页认领，既有文件关联不受影响。包只追加、不改写：同名文件夹里，旧包的每份文件这次都原样还在（路径和内容都相同）时沿用原包，只把新文件存进去并挂到对得上的工单；有任何一份旧文件内容变了或缺了，就另存新包，旧包保持原样。因此同一个包里同一路径只有一份文件。包指纹按首次保存时的规范化包名及排序后的“包内相对路径、文件哈希、大小”生成，之后追加文件不改指纹；原样重传首次那份文件夹时按指纹找回原包。磁盘目录名使用包名加指纹前 8 位。包没有额外的包—工单多对多表：包内任一质检文件关联某工单，或 `owner_order_id` 指向某工单时，该包就在该工单可见。
+### 3.2 开始与完成日期补填（`_stamp_work_dates`）
 
-### `molecular_library_result_file`
+保存工单时：
+- `started_at` 为空且 `rna_location` 或 `cdna_location` 非空 → 自动填入当天日期；
+- `finished_at` 为空且 `library_location` 非空 → 自动填入当天日期；
+- 已有日期保持不变，清空位置不会撤回已填日期。
 
-保存物理文件属性：所属包、包内相对路径、磁盘路径、MIME、大小、哈希、可空去重键和首次保存时间。上传先写临时文件并完成 DRM 处理，再按实际内容计算大小和 `sha256`。只有包外胶图使用唯一 `gel:<sha256>` 去重键并在 `gels/` 中按内容复用，避免并发上传产生多个物理记录；测序包强调原始结构完整，包内文件不跨包去重。包外零散文件放在 `others/年/系统工单号/`。
+## 4. 页面操作
 
-### `molecular_library_result_link`
+工作台 / Excel 双视图切换、列序持久化、高级操作「显示字段」及公共表头筛选规则见 [../workbench.md](../workbench.md)。
 
-保存文件在具体工单中的业务信息：当前显示文件名、最终质检标记、胶图框选、上传人，以及结构化的序列判读状态和目标方向。同一工单中的不同物理文件分别建立关联，即使显示文件名相同也不互相替换；同一份文件再次上传时沿用已有关联，不改显示名、最终标记和框选；包内文件继续按原相对路径留在各自归档包中。中文判读文案在接口层生成，不用文案子串推动状态。文件用途仍根据扩展名实时推导。最终标记与框选区域属于关联关系，同一物理胶图可在不同工单中保存不同标记。同一工单里同名文件（不区分大小写）最多一份标最终，设新的最终时自动取消同名旧文件的标记。
+### 4.1 列表、筛选与行操作
 
-`order_id`、`file_id` 和 `package_id` 使用数据库外键约束。包外单文件删除只解除当前工单关联，没有其他工单引用时删除磁盘文件。质检列表里删除包内文件也只取消当前工单的关联，文件仍留在测序包里。测序包文件夹预览里删除才会去掉这份文件和所有工单的关联，并删除磁盘文件。重做后的同名文件用“设为最终”替代旧文件参与质检。移除整个测序包时，先解除当前工单的包内关联和归属；其他工单还在用就保留原包，已无工单引用、也没有质检页归属时才删除包和包内文件。
+- **统计块**：顶部展示 8 个统计块（单细胞孔板、混管 H/K/L、混管 Barcode、外周血 BCR、浆细胞 Nano、浆细胞 Lite、噬菌体展示、噬菌体 NGS）。点击统计块切换 `build_type`（浆细胞 Nano/Lite 同时带入 `sample_type`）；统计计数不受顶部和表头的 `build_type`、`sample_type` 条件影响。
+- **筛选条件**：
+  - 常驻筛选：建库编号、状态、优先级、负责人、样品来源、靶点（调用 `GET /recorded_targets`）、上机日起止。
+  - 高级筛选（齿轮）：项目编号、建库批号、建库类型、PM、课题类型、样品类型、小鼠品系、细胞类型、来源发现 ID、实验记录本号、备注、开始日起止、完成日起止。
+  - 建库编号、项目编号、建库批号、来源发现 ID 填单个值时按包含匹配，用逗号、顿号、空格、制表符或换行分隔多个值时按精确值匹配（单次最多 500 个）。
+  - 表头筛选覆盖除 `target_codes`（靶点编号）和 `actions`（操作）外的全部列；`plate_nos` 按 JSON 数组包含匹配。
+  - 右键「查询」清空全部筛选与表头条件。筛选条件、排序与页码保存在浏览器存储中，从质控详情页返回时恢复。
+- **行内编辑与抽屉**：工作台视图默认展示项目编号、靶点、建库类型、样品来源、样品类型、建库编号、负责人、状态、优先级、操作；行内可直接修改 `priority`、`status`、`received_on`。左键点行打开右侧无遮罩抽屉（支持「上一条 / 下一条」切换，字段修改后自动保存）。
+- **操作列（`LibraryRowActions.vue`）**：行操作列与抽屉顶部工具栏固定三个按钮：
 
-## 发现交接
+| 按钮 | 权限 | 行为 |
+|---|---|---|
+| **质检** | `molecular.page.library_detail` | 跳转 `/molecular-cell/library-construction/result?id=<id>` |
+| **交接** | `molecular.library.edit` | 提示「下游测序模块尚未开放」 |
+| **删除** | `molecular.library.edit` | 二次确认后调用 `POST /delete`，删除工单并清理无其他工单引用的独占质检文件与测序包 |
 
-发现交接复制来源快照里的小鼠品系，不复制发现台负责人和归类鼠型。弹窗按达普、Beacon、噬菌体、NGS 四行点选，选项本身带好 `build_type` 和 `sample_source`：
+### 4.2 新建、Excel 批量编辑与导出
 
-- 达普：单细胞孔板（达普打板）、混管 H/K/L（达普打管，文库记 H/K/L）、混管 Barcode（达普打管，文库补测序 Barcode）。单独出现达普时不预选。
-- Beacon：单细胞孔板，以及 Beacon+达普打板。可预选单细胞孔板；与达普同时出现时预选 Beacon+达普打板。Beacon+达普打板不能和两边各自的单细胞孔板一起选；达普打板和 Beacon 孔板可以一起交，建成两条工单。
-- 噬菌体：噬菌体展示可预选，这是为展示准备的文库。噬菌体测序是展示筛选结果再做成可上 NGS 的文库，样品来源记筛选产物。要测还没淘选的展示文库时，在工单里改成展示产物。
-- NGS：眼眶血、其他外周血，以及浆细胞 NGS 的 Nano / Lite。浆细胞 NGS 按 Nano、Lite 样品分开做 NGS 建库，统计块按浆细胞 Nano、浆细胞 Lite 分开，样品来源为脾脏研磨，不过 Beacon 或达普。不因发现台出现 NGS 字样预选。
+- **新建工单**：点击「新建」弹窗按达普、Beacon、噬菌体、NGS 四行选择工艺（自动写入 `build_type`、`sample_source` 及浆细胞 `sample_type`）。工作台视图创建后打开该行抽屉；Excel 视图创建后刷新到第 1 页，不打开抽屉。
+- **Excel 视图与批量粘贴**：
+  - 未限定 `build_type` 时展示全部 56 个业务列，每行不适用于自身 `build_type` 或 `index_mode` 的单元格锁定只读；选中单一建库类型后仅展示公共列与该类型适用列。
+  - 列表导出的表头与 Excel 视图列名完全一致。粘贴内容带「系统工单号」表头时按单号匹配当前页工单（含不存在或重复单号则整批拒绝）；不带该表头时从当前选中单元格起粘贴。只读或不适用单元格若粘贴值与现值相同则忽略，不同则整批拒绝。校验通过后调用 `POST /batch_save` 单事务保存（单次最多 500 条）。
+- **建库编号拖拽填充**：Excel 视图下选中单个 `library_code` 单元格，上下拖动右下角填充柄，按种子编号末尾数字等宽递增填充（如 `C098` → `C099`、`C100`）；若目标行已有编号则先弹窗确认覆盖，确认后调用 `POST /batch_save` 整批保存。
 
-孔板、两种混管和展示前噬菌体工单从发现交接时要求先有剖鼠日期，并将其写入文库工单的上机日期。浆细胞 NGS、外周血 BCR 与噬菌体 NGS 不用该门槛。交接后早期发现安排推进到 `待建库`；包含展示前噬菌体建库时推进到 `待噬菌体`。不因建库完成自动推进到 `待测序`。
+### 4.3 批量质检上传（`LibraryResultUploadDialog.vue`）
 
-发现安排一旦产生建库工单即保留来源追溯关系，即使工单已取消也不能直接删除发现安排；如确认两边记录都不再需要，应先删除建库工单。
+高级操作栏点击「批量质检上传」（需 `molecular.library.file.manage`）：
+1. 支持拖入文件、文件夹、`.zip` 压缩包，或左键选文件、右键选文件夹；`.zip` 在前端自动展开。
+2. 选入后先调用无状态预检接口 `POST /files/preflight`（仅传相对路径列表，不上传文件内容），按拆包与编号规则返回可接收文件下标（`accepted_indexes`）及各组匹配摘要。
+3. 点击「上传」仅提交通过预检的文件至 `POST /files/upload_batch`（不传 `order_id`），后端落盘并跨工单关联后返回各工单最新质检状态，点击工单建库编号可新标签页打开对应质控详情页。
 
-## API
+### 4.4 质控详情页（`LibraryConstructionResult.vue`）
 
-- `POST /list`、`POST /export_list`：分页、统计和导出。
-- `GET /options`：状态、优先级（正常 → 吉吉国王，从低到高）、质检结果、细胞类型、小鼠品系，与保存校验同一份常量。列表下拉、抽屉和粘贴校验读这里，接口失败时退回前端预设；结果页下拉仍用前端常量，保存时由后端校验。
-- `GET /recorded_targets?keyword&limit`：顶部靶点筛选的远程搜索，本表已录入靶点，默认 50 条、最多 200。
-- `GET /by-discovery`、`POST /handoff`：交接预览与创建。
-- `POST /save`、`POST /delete`：工单写入与删除；取消统一通过 `/save` 更新状态，删除工单时只清理已无其他工单引用的质检文件。
-- `POST /batch_save`：Excel 视图粘贴使用，在一个事务内更新多条已有工单，任一条校验失败则整批不写入。
-- `POST /files/list`、`POST /files/preflight`、`POST /files/upload_batch`、`POST /files/update`、`POST /files/delete`、`GET /files/download`：结果文件上传、浏览和工单级标记。列表批量入口先把相对路径发给无状态预检，不读取或暂存文件内容；预检使用与真实上传相同的路径和编号规则，返回可上传项及唯一匹配的建库编号，前端只提交这些文件。真实上传仍重新校验，防止预检后工单变化。列表批量上传和质检页用同一套目录规则：路径里有「测序结果」「测序合格结果」或「完成」时，其上一层是一个测序包；只拖了这些文件夹本身时，文件夹自己是一包；一个都没有时，拖进来的顶层文件夹是一包。包内文件全部保留。`.ab1`、`.abi`、`.seq` 参与匹配，`拼接结果` 和 `去载体序列` 里的只存档。i5 端、i7 端认文件名里的 M13F、M13R，两边不是字母或数字即可，两个都出现则不自动核引物。建库编号按工单上已填写的值做最长前缀，编号后面必须是分隔符或结束；`HC223` 仍是建库编号 `C223`、H 链。质检页整包挂当前工单，只关联编号属于当前工单的测序文件并核对引物。质检页的零散文件也只挂当前工单：编号属于当前工单的测序文件才关联并核对引物；文件名明确属于其他工单时不保存、不挂过去；没有建库编号的文件仍留在当前工单。列表批量入口的零散文件仍按编号跨工单关联。选择或拖入测序公司发来的 `.zip` 时，先按压缩包里的目录展开，再使用同一套文件夹规则。包内已有一层目录就用那一层的名字；标记文件夹直接位于根上时，用压缩包名作为文件夹名。包内图片只是随包文件，不再重复识别为胶图；只有包外零散图片按胶图处理并放入 `gels/年/月/`。两个入口统一使用 `/upload_batch`，`order_id` 可选。单文件最多 50MB、单次最多 400 个文件且总大小最多 500MB。文件名经公共上传函数清洗，落盘路径必须在上传根目录内。
+- **页头**：展示系统工单号、建库类型与靶点、状态与优先级点选器（需 `molecular.library.edit`）、建库编号/负责人/起止日期，以及缺项告警胶囊（`同源臂未匹配`、`引物错误`、`读段过短`、`引物未齐`、`缺测序`、`缺胶图`、`缺 RNA`、`缺 cDNA`）。
+- **左侧文件轨**：顶部上传块支持拖入或选择文件/文件夹/`.zip`（附带当前 `order_id` 调用 `POST /files/upload_batch`）。下方依次展示：胶图、成对排序的测序文件（同包或同为散件的同名 `.ab1`/`.abi` 与 `.seq` 按上传先后两两配对）、其他单文件、测序包文件夹。同类文件内标「最终」的排在前面；同名文件已有「最终」版本时，其余同名文件变淡显示且不参与质检。
+- **中间预览台**：
+  - **胶图查看器**：支持滚轮缩放（20%–800%）、左键平移、左右旋转 90°、适应/填充窗口、全屏、亮度/对比度调节（20%–320%）、反相、增强（亮度 190%、对比度 150%）、复位，以及 `Shift + 左键` 框选质检区域（单文件最多 20 个选区，支持点击标签改名，最长 24 字符）。
+  - **测序包双栏浏览器**：左侧按包内相对路径逐级浏览目录，右侧预览选中文件并标注「已关联」或「仅保存」。
+  - **序列与峰图预览（`SeqReadPreview.vue`、`AbiTracePreview.vue`）**：显示读段方向胶囊（`正向/反向 · i5 端/i7 端`，`i5` 端直接命中为正向、反补命中为反向，`i7` 端相反）与碱基数（`<= 400 bp` 标红）。打开时按核对结果自动填入搜索串并高亮定位（完全匹配填整段期待串，`arm_only` 填 `左臂......右臂`，反补命中自动开启「反补」状态按钮）；点击方向胶囊循环切换「完整引物 → 两侧同源臂 → 左臂 → 右臂」，搜索框用 `.` 或 `。` 分隔两段时按成对区间查找。峰图无自身核对结果时沿用同包同名 `.seq` 的核对状态。
+  - **通用预览（`FilePreviewer.vue`）**：支持图片、文本（`.seq`/`.txt`/`.fa`/`.fasta`/`.md`/`.log`）、表格（`.xls`/`.xlsx`/`.csv`）、`.pdf`、`.docx`、视频（`.mp4`/`.webm`/`.ogg`/`.ogv`/`.mov`）在线预览，其余格式下载查看。
+- **右侧工单检查器**：分「质检判读」「样品信息」「建库记录」三个标签页；修改 `qc_result`、`qc_owner`、`qc_on`、`qc_note` 需 `molecular.library.edit` 或 `molecular.library.file.manage`，修改其余字段需 `molecular.library.edit`。
 
-引物库接口由 `modules/molecular_cell/primer_catalog` 提供，路径沿用 `/catalog` 前缀（与 `sys_permission_api` 登记一致）：
+## 5. 文件与存储
 
-- `GET /catalog/options`：搜索启用的引物/Index 字典，工单页选引物时使用；文库页、详情页和引物库页权限均可读。按名称包含、显示序列包含匹配；输入去掉空白后若全是 A/C/G/T/N，也用这段的反向互补去对显示序列。默认最多返回 100 条，上限 2000。工单页第一次输入搜索时一次取回全部启用引物，之后在页面里筛选，打开下拉本身不请求。
-- `POST /catalog/list`：引物库分页查询；支持名称、显示序列、核对序列、备注、系列、方向和启停状态筛选。`stats.families` 按系列返回数量，预置系列始终占位，自建系列有数据才出现。
-- `POST /catalog/save`：单条新增或修改；名称唯一，序列只接受 A/C/G/T/N，系列必填且不超过 32 个字符，方向只接受正向或反向。
-- `POST /catalog/delete`：删除未被文库工单引用的引物。已被工单使用的引物只能停用，工单上的名称和序列快照保留。
-- `POST /catalog/column_values`：表头筛选的取值列表（见 [../workbench.md](../workbench.md)「表头筛选」）。名称、系列、方向、显示序列、备注、状态可排序和筛选；`/list`、`/ids`、`/export` 另收 `field_filters`、`sort_field`、`sort_dir`。系列统计不受顶部和表头的系列条件影响。Excel 视图单击表头开菜单，按住约 0.35 秒或拖到别的列才选中整列。
-- `POST /catalog/ids`：按当前筛选返回全部引物 ID，供全部全选。
-- `POST /catalog/batch_update`、`POST /catalog/batch_delete`：对勾选的引物批量停用、启用、改系列、改方向或删除。删除时跳过已被工单使用的引物。
-- `POST /catalog/batch_save`：按导出表头批量导入（名称、系列、方向、显示序列、核对序列、备注、状态）；按名称新增或更新，最多 1000 条，任一条失败则整批不写入。
-- `POST /catalog/export`：按页面当前筛选条件导出 Excel；导出的表头可直接用于再次导入。
+### 5.1 存储表与物理路径
 
-## 页面
+物理文件保存在 `{REPOSITORY_ROOT}/uploads/` 下。上传时先写入 `library_results/.tmp/` 临时文件并执行 DRM 解密（若启用），再按实际落盘内容计算 `byte_size` 与 `sha256`。
 
-工作台默认显示项目编号、靶点名称、建库类型、样品来源、样品类型、建库编号、负责人、状态、优先级和操作。“显示字段”与 Excel 使用同一组业务字段：身份、排期、位置、引物、Barcode、库容和质检都可以按需打开，默认先藏起来。
+| 表 / 对象 | 唯一约束与外键 | 物理路径（相对 `uploads/`） | 说明 |
+|---|---|---|---|
+| `molecular_library_result_package` | `signature` 唯一；`owner_order_id` 外键关联 `molecular_library_order.id` | `library_results/sequencing/{YYYY}/{MM}/{包名}--{signature前8位}/` | 测序结果归档包；记录 `original_name`、`signature`、`storage_prefix`、`owner_order_id` |
+| `molecular_library_result_file`（包内文件） | `package_id` 外键关联 `molecular_library_result_package.id` | `library_results/sequencing/{YYYY}/{MM}/{包名}--{signature前8位}/{包内相对路径}` | 保留包内原始目录结构，不跨包去重 |
+| `molecular_library_result_file`（包外胶图） | `dedupe_key`（`gel:<sha256>`）唯一 | `library_results/gels/{YYYY}/{MM}/{sha256}{ext}` | 包外图片（`.jpg`/`.jpeg`/`.png`/`.bmp`/`.webp`/`.gif`）按内容哈希去重复用 |
+| `molecular_library_result_file`（包外其他单文件） | 无 `package_id`、无 `dedupe_key` | `library_results/others/{YYYY}/{library_order_id}/{文件名}` | 包外 `.ab1`/`.abi`/`.seq` 及质检页上传的其他单文件 |
+| `molecular_library_result_link` | `(file_id, order_id)` 唯一；外键关联文件与工单 | 引用 `molecular_library_result_file.storage_path` | 工单级文件视图：存 `original_name`、`is_final_qc`、`qc_regions`、`sequence_status`、`sequence_target` |
 
-常用筛选依次为建库编号、状态、优先级、负责人、样品来源、靶点和上机日期。建库编号、项目编号和建库批号分开搜索：只填一个时按包含匹配，用逗号、空格或换行粘贴多个时按完整值匹配，三个字段互不串查。项目编号和建库批号放在高级操作里。建库类型也在高级筛选里，和上方统计块写的是同一个条件；平时用统计块切换，浆细胞 Nano、浆细胞 Lite 仍由统计块额外带上样品类型。高级筛选还有样品类型、小鼠品系、课题类型、PM、细胞类型、来源发现 ID、实验记录本号、备注及工单起止日期。右键“查询”清空全部筛选；发现工作台和免疫工作台本身没有独立重置按钮，其他列表页的重置按钮保持原样。从结果页返回列表时，筛选条件（含上机、开始、完成日期）和页码保留；按正序离开的回来是默认倒序第 1 页；浏览器刷新后清空。
+- **大小与数量限制**：单文件不超过 `50MB`（`MAX_FILE_BYTES`），单次上传最多 `400` 个文件（`MAX_UPLOAD_FILES`）且总大小不超过 `500MB`（`MAX_BATCH_BYTES`）。
+- **文件类型推导（`result_kind`）**：按 `original_name` 扩展名实时计算——图片为 `胶图`；`.ab1`/`.abi`/`.seq`/`.clc`/`.fasta`/`.fa` 为 `引物质检文件`；`.xlsx`/`.xls`/`.csv`/`.ppt`/`.pptx` 为 `PCR检测报告`；其余为 `其他`。
 
-右键“建库编号”表头在创建时间倒序和正序之间切换，正序时直接跳到最后一页，方便接着已有编号往下编；表头变色表示当前是正序，导出不受这个顺序影响。Excel 视图里单选一个建库编号格子后，拖右下角的小方块往下，可按末尾数字递增填充，位数保持不变，例如 `C098` 往下是 `C099`、`C100`。要改掉已有编号时先确认；整批一起保存，其中任一编号已被其他工单占用就整批不保存。
+### 5.2 拆包、匹配与删除规则
 
-Excel 视图里新建仍先选类型，建好后留在表格当前排序的那一页，不打开抽屉。默认视图建好后打开抽屉。粘贴或改写引物名称时，名称和一条启用引物完全一致，就带上这条引物；i5、i7 同时带出显示序列。对不上引物库的名称仍按手填保存，不会编造序列。
+- **目录拆包与 `.zip` 展开**：路径中含 `测序结果`、`测序合格结果`、`完成` 标记目录时，以其上一层目录为一包（标记目录在最外层时以自身为一包）；无标记目录时，每个顶层文件夹为一包；无文件夹层级的文件为零散文件。`.zip` 在前端解压（过滤 `__MACOSX`、`.DS_Store`、`Thumbs.db`），若无唯一顶层目录或唯一顶层目录即标记目录，自动补一层压缩包名目录后按同一规则拆包。
+- **包指纹与只增不改**：`signature` 由首次建包时的规范化包名与排序后的 `(包内相对路径, sha256, byte_size)` 生成。同名文件夹重传时，若原包全部文件在本次上传中路径与 `sha256` 均一致，则沿用原包（不改 `signature`）并仅追加新文件；若原包任一文件缺失或内容变化，则另存新包。
+- **建库编号识别与关联**：
+  - **测序文件（`.ab1`/`.abi`/`.seq`）**：包内 `拼接结果`、`去载体序列` 子目录中的文件仅归档，不参与匹配；其余测序文件去掉开头可选链字母 `H`/`K`/`L` 后，按工单已填 `library_code` 做最长前缀匹配（编号后须为结尾或分隔符 `-_()（）. `），唯一匹配工单时建立 `molecular_library_result_link` 并执行引物核对。
+  - **包外胶图**：识别文件名中所有形如 `[HKL]?[NLCX]\d+`（前无紧邻字母/数字）的建库编号（去掉链前缀），可同时关联多个唯一匹配的工单；包内图片仅作为随包文件保存，不识别为胶图。
+  - **入口差异**：列表批量上传的测序包可跨工单关联，无任何文件唯一匹配工单的包或零散非图片/非测序文件直接跳过；质检页上传的测序包在 `owner_order_id` 为空时认领归属当前工单，且仅关联属于当前工单的测序文件（若包已归属其他工单且无文件匹配当前工单则拒绝）；质检页上传的零散文件仅挂当前工单（明确含其他工单编号时拒绝，无建库编号的普通文件保留在当前工单）。
+- **最终标记与删除**：
+  - 同一工单内同名文件（忽略大小写）最多一份 `is_final_qc = true`，设置新最终文件时自动取消同名其余文件的最终标记。
+  - 删除工单文件关联（传 `link_id`）：仅解除当前工单关联；包内文件仍留在包中，包外文件在无其他工单引用时同步删除物理记录与磁盘文件。
+  - 测序包预览内删除文件（传 `file_id` + `order_id`）：解除该文件与所有工单的关联，并删除物理记录与磁盘文件。
+  - 移除测序包（传 `package_id` + `order_id`）：解除当前工单对该包内文件的关联及 `owner_order_id` 归属；当该包无任何工单关联且 `owner_order_id` 为空时，删除包记录、包内文件记录及磁盘目录。
 
-Excel 视图包含系统工单号、来源发现 ID 和全部面向用户的业务字段，不包含数据库主键、目录外键、文件哈希及审计时间等技术字段。未选择建库类型时显示完整字段集，但每行不适用于自身建库类型的实验字段只读；明确选择某一统计块或建库类型后，仅保留公共字段及该类型适用的实验字段。切换类型不会覆盖用户保存的全局列顺序。
+## 6. 跨模块联动
 
-列表导出的表头与 Excel 视图列名一致。带“系统工单号”的表头粘贴会按工单号匹配当前页，不依赖行顺序；包含当前页不存在或重复的工单号时整次拒绝。未带系统工单号的普通区域粘贴仍从当前选中位置开始。只读或不适用的单元格若粘贴值与现值相同则忽略，不同则整次拒绝。
+发现工作台行操作「交接」（`LibraryHandoffDialog.vue`）调用 `GET /by-discovery` 与 `POST /handoff` 批量创建建库工单（`已完成`、`已取消` 的发现安排不可交接）：
 
-质控详情页保留三栏审阅台：
+- **工艺矩阵与预选**：
+  - `达普` 行：单细胞孔板（`dapu_plate`）、混管 H/K/L（`dapu_tube`）、混管 Barcode（`dapu_tube`）；
+  - `Beacon` 行：单细胞孔板（`beacon`）、Beacon+达普打板（`beacon_dapu`，与两侧单独的单细胞孔板互斥）；
+  - `噬菌体` 行：噬菌体展示（`direct`）、噬菌体测序（`phage_ngs`，默认 `phage_panning`）；
+  - `NGS` 行：眼眶血（`retro_orbital_blood`）、其他外周血（`other_blood`）、浆细胞 Nano（`plasma_ngs` + `spleen_grind` + `nano`）、浆细胞 Lite（`plasma_ngs` + `spleen_grind` + `lite`）。
+  - 发现安排已填 `screening_methods` 时仅开放对应行（`Beacon+达普打板` 需同时标 `达普` 与 `Beacon`），未填时四行均可选。当对应 `build_type` 尚无非取消工单时：同时含 `Beacon` 与 `达普` 预选 `Beacon+达普打板`，仅含 `Beacon` 预选 `Beacon` 单细胞孔板，含 `噬菌体` 预选 `噬菌体展示`，其余不预选。
+- **字段携带与品系推导样品类型**：
+  - 新工单写入 `source_discovery_id = discovery_id`，并携带发现安排的 `project_code → source_project_code`、`study_type`、`target_name`、`target_codes`、`pm`、`mouse_strain`、`priority`；不复制发现台负责人和归类鼠型。
+  - **首个品系推导 `sample_type`**（交接与工单编辑共用）：`mouse_strain` 按预设品系在前、自填在后以顿号拼接；未显式指定 `sample_type` 时，仅根据拼接后的**第一个**品系推导：
+    - `RL`、`RLB/C`、`RLSJL`、`RLKO`、`RLCKO`、`RLDF` → `lite`（`Lite`）；
+    - `RN`、`RNKO`、`RNVR`、`RNVM`、`RNVMKO` → `nano`（`Nano`）；
+    - 其余品系（如 `RM`、`RMB/C`、`RMSJL`、`RMKO`、`RMCKO` 及自填项）不自动推导或覆盖已有 `sample_type`。手动修改 `sample_type` 不会反向改动 `mouse_strain`。
+  - **上机日期与细胞数**：`plate_single_cell`、`pooled_bcr`、`pooled_barcode`、`phage_display` 四类交接时必须先在发现台填写 `harvest_date`（剖鼠日期），交接后写入 `instrument_on`；`plasma_ngs` 有 `harvest_date` 时亦写入 `instrument_on`，无日期不阻断交接。`plate_single_cell`、`pooled_bcr`、`pooled_barcode`、`plasma_ngs`、`peripheral_blood_bcr` 自动复制 `positive_cell_count`。
+- **发现状态推进与删除保护**：
+  - 交接创建包含 `phage_display` 且发现安排处于 `规划中`、`待冲击`、`待剖鼠`、`待建库` 时，发现状态推进为 `待噬菌体`；否则若处于 `规划中`、`待冲击`、`待剖鼠`，推进为 `待建库`。文库构建完成不会自动将发现安排推进为 `待测序`。
+  - 只要 `molecular_library_order` 中存在 `source_discovery_id = discovery_id` 的工单（含 `已取消`），发现工作台即禁止删除该发现安排，需先删除关联的建库工单。
 
-- 左侧固定上传块与文件轨；上传块可拖入文件、文件夹或 zip，左键多选文件、右键选文件夹。zip 会按其中的目录展开。文件轨依次显示胶图、参与当前工单质检的测序结果、其他单文件，最后是测序包文件夹。测序结果按文件名排序，同名的 `.ab1` / `.abi` 与 `.seq` 按上传先后两两成组，同一测序包内的文件只和包内的配对；同名的几组里标了最终的排在前面。胶图和其他单文件标了最终的在前，其余按上传时间新到旧。同名文件已有最终版本时，其余同名文件变淡显示，页头缺项提示也不再计入；
-- 中间在测序包模式下使用双栏文件管理器，按原目录层级逐级浏览，双击文件夹进入、单击文件在右侧预览。通用预览组件支持图片、文本与 FASTA、Excel/CSV、PDF、DOCX 文本和 ABI/AB1；旧版 DOC 与 PPT/PPTX 保留下载。ABI/AB1 提供交互峰图，序列与峰位随缩放对齐，可手工查找任意 A/C/G/T/N 序列。反补是状态按钮：按下后搜索框换成当前内容的反向互补，并按框里的内容查找，再按一次换回。两侧时左右臂交换并各自互补，中间仍是六个点。胶囊写 `i5 端` 或 `i7 端`，判断出方向时箭头旁同时写正向或反向。峰图和 `.seq` 用同一套方向：峰图自己没有核对结果时，沿用同名 `.seq` 的结果，没有同名序列时再看峰图碱基里能不能找到核对序列。打开预览时按核对结果填好搜索：完全匹配填整段引物，两侧同源臂对上填左右臂（中间六个点），只对上一侧就只填那一侧；命中在反补上时按钮按下，框里就是互补后的序列。之后点击胶囊仍可切换完整引物、两侧、左臂、右臂，反补状态保持，框里跟着换成对应内容。上一个、下一个在两侧模式下按一整对移动并同时高亮这两段。搜索框用任意个 `.` 或 `。` 隔开两段时同样按一对查找。峰图能读出判碱基时用和 `.seq` 相同的规则显示核对结果，自动质检判读仍只看 `.seq`。峰图按实际预览宽度限制最大可见范围，区域尺寸变化时自动重算；文件编号与当前工单匹配且已配置对应 i5/i7 时，自动查找并高亮核对序列及峰区。胶图查看器继续支持亮度、对比度、反相、增强、缩放、拖拽、填充窗口、复位和多区域框选；
-- 右侧合并为质检判读、样品信息和建库记录三个视图并自动保存；状态和优先级只在页头编辑，建库记录不重复显示。
+## 7. 接口
 
-业务字段布局和前端选项集中在 `libraryColumns.js`；后端对枚举和字段适用范围做最终校验。
+引物库 `/api/molecular-cell/library-orders/catalog/*` 接口见 [引物库](./primer-library.md)。
+
+| 方法 | 路径 | 权限 | 用途 |
+|---|---|---|---|
+| `GET` | `/api/molecular-cell/library-orders/options` | `molecular.page.library` 或 `molecular.page.library_detail` | 获取状态、优先级、质检结论、细胞类型、小鼠品系及本表已有人员选项 |
+| `GET` | `/api/molecular-cell/library-orders/recorded_targets` | `molecular.page.library` | 远程搜索本表已录入靶点（`keyword`、`limit` 默认 50、上限 200） |
+| `POST` | `/api/molecular-cell/library-orders/list` | `molecular.page.library` | 分页查询工单列表与建库类型统计（`stats`） |
+| `POST` | `/api/molecular-cell/library-orders/column_values` | `molecular.page.library` | 获取表头筛选菜单候选值 |
+| `GET` | `/api/molecular-cell/library-orders/by-discovery` | `discovery.workbench.edit` 或 `molecular.library.edit` | 按 `discovery_workbench_id` 或 `discovery_id` 查询发现交接预览、已有建库工单及预选建议 |
+| `POST` | `/api/molecular-cell/library-orders/save` | `molecular.library.edit`（有 `id` 且仅改 `qc_result`、`qc_owner`、`qc_on`、`qc_note` 时也接受 `molecular.library.file.manage`） | 单条新建或更新工单（取消工单亦通过本接口更新 `status`） |
+| `POST` | `/api/molecular-cell/library-orders/batch_save` | `molecular.library.edit`（每条均仅改上述 4 个质检字段时也接受 `molecular.library.file.manage`） | 批量事务更新已有工单（单次最多 500 条，任一条失败整批回滚） |
+| `POST` | `/api/molecular-cell/library-orders/export_list` | `molecular.page.library` | 按当前筛选与排序导出工单 Excel |
+| `POST` | `/api/molecular-cell/library-orders/handoff` | `discovery.workbench.edit` 或 `molecular.library.edit` | 从发现工作台交接批量创建建库工单并更新发现状态 |
+| `POST` | `/api/molecular-cell/library-orders/delete` | `molecular.library.edit` | 删除工单并清理无其他工单引用的独占质检文件与测序包 |
+| `POST` | `/api/molecular-cell/library-orders/files/list` | `molecular.page.library_detail` | 查询指定 `order_id` 的工单信息、已配置引物序列、质检文件及测序包（打开时自动按最新规则重核序列） |
+| `POST` | `/api/molecular-cell/library-orders/files/upload_batch` | `molecular.library.file.manage` | 批量上传文件或测序包（`order_id` 可选：传则挂当前工单，不传则按预检跨工单关联） |
+| `POST` | `/api/molecular-cell/library-orders/files/preflight` | `molecular.library.file.manage` | 列表批量上传前的无状态路径与建库编号预检 |
+| `POST` | `/api/molecular-cell/library-orders/files/delete` | `molecular.library.file.manage` | 删除工单文件关联（`link_id`）、测序包内物理文件（`file_id` + `order_id`）或移除测序包（`package_id` + `order_id`） |
+| `POST` | `/api/molecular-cell/library-orders/files/update` | `molecular.library.file.manage` | 更新工单文件显示名（`original_name`，保持扩展名）、最终质检标记（`is_final_qc`）或胶图框选区域（`qc_regions`） |
+| `GET` | `/api/molecular-cell/library-orders/files/download` | `molecular.page.library_detail` | 按 `id`（关联 ID）或 `file_id`（包内物理文件 ID）下载文件、获取图片缩略图（`thumb=true`）、在线预览（`preview=true`）或解析 ABI/AB1 峰图 JSON |

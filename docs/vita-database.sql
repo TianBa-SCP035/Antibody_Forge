@@ -7,7 +7,7 @@
 --   - 表、字段 COMMENT 须齐全且简练，只说明业务含义，不在括号中列举可能值。
 --   - 新模块尽量少改数据库；新增表和字段必须有长期业务意义，不建临时占位。
 --   - sys_permission / sys_permission_api / sys_feature_flag：与代码约定对齐，建议保持完整。
---   - 文末「权限包 / 角色」仅为空库示例（血清 + 历史已写入的镁伽/系统）。免疫之后的新模块只加权限点，不要再写入 guest/operator，也不要改现网角色/权限包。
+--   - 文末「权限包 / 角色」仅为空库示例，覆盖血清、镁伽与系统管理。其余模块只加权限点，不写入 guest/operator，也不改现网角色/权限包。
 --   - 外部细胞库 sam_sample 见文末注释（CELL_DB_URL，models/cell_inventory.py），勿在主库执行。
 --   - 外部员工库 org_emp / org_depart 见文末注释（EMPLOYEE_DB_URL，modules/system/employee_sync.py），勿在主库执行。
 --
@@ -955,12 +955,12 @@ VALUES
   ('menu.system.features', '系统功能菜单', 'menu', '控制系统管理下系统功能页面显示', 1, 1, 20, JSON_OBJECT('path', '/system/features', 'icon', 'lucide:sliders-horizontal', 'parent_code', 'menu.system')),
   ('feature.yunzhijia_auto_provision', '云之家自动创建用户', 'feature', '允许云之家登录时自动创建未绑定用户', 0, 1, 110, JSON_OBJECT()),
   ('feature.drm_file_security', 'DRM 文件安全模块', 'feature', '控制上传自动解密、下载前加密等 DRM 文件安全能力', 0, 1, 120, JSON_OBJECT()),
-  ('job.employee_profile_sync', '员工资料定时同步', 'job', '每天 00:30 同步外部员工基础资料', 1, 1, 200, JSON_OBJECT('hour', 0, 'minute', 30, 'restart_required', true)),
-  ('job.target_master_sync', '靶点主数据定时同步', 'job', '每天 00:45 同步外部靶点主数据', 1, 1, 205, JSON_OBJECT('hour', 0, 'minute', 45, 'restart_required', true)),
-  ('job.serum_auto_update_status', '免疫状态自动更新', 'job', '每天 01:00 自动更新免疫实验状态', 1, 1, 210, JSON_OBJECT('hour', 1, 'minute', 0, 'restart_required', true)),
-  ('job.discovery_auto_update_status', '抗体发现状态自动更新', 'job', '每天 01:15 自动更新已过期的冲击免状态', 1, 1, 215, JSON_OBJECT('hour', 1, 'minute', 15, 'restart_required', true)),
-  ('job.mega_labillion_status_sync', '镁伽工单状态同步', 'job', '每天 02:00 同步镁伽非终态工单状态', 1, 1, 220, JSON_OBJECT('hour', 2, 'minute', 0, 'restart_required', true)),
-  ('job.discovery_synthesis_order_sync', '合成与验证外部订单同步', 'job', '每隔 1 小时同步 One 合成订单与交付进度', 1, 1, 225, JSON_OBJECT('schedule', 'interval', 'every', 1, 'unit', 'hour', 'hour', 0, 'minute', 20, 'restart_required', true));
+  ('job.employee_profile_sync', '员工资料定时同步', 'job', '每天 00:30 同步外部员工基础资料', 1, 1, 200, JSON_OBJECT('hour', 0, 'minute', 30)),
+  ('job.target_master_sync', '靶点主数据定时同步', 'job', '每天 00:45 同步外部靶点主数据', 1, 1, 205, JSON_OBJECT('hour', 0, 'minute', 45)),
+  ('job.serum_auto_update_status', '免疫状态自动更新', 'job', '每天 01:00 自动更新免疫实验状态', 1, 1, 210, JSON_OBJECT('hour', 1, 'minute', 0)),
+  ('job.discovery_auto_update_status', '抗体发现状态自动更新', 'job', '每天 01:15 自动更新已过期的冲击免状态', 1, 1, 215, JSON_OBJECT('hour', 1, 'minute', 15)),
+  ('job.mega_labillion_status_sync', '镁伽工单状态同步', 'job', '每天 02:00 同步镁伽非终态工单状态', 1, 1, 220, JSON_OBJECT('hour', 2, 'minute', 0)),
+  ('job.discovery_synthesis_order_sync', '合成与验证外部订单同步', 'job', '每隔 1 小时同步 One 合成订单与交付进度', 1, 1, 225, JSON_OBJECT('schedule', 'interval', 'every', 1, 'unit', 'hour', 'hour', 0, 'minute', 20));
 
 -- =============================================================================
 -- 权限包 / 角色（仅示例三档：访客、业务员、系统管理；生产环境完全自定义）

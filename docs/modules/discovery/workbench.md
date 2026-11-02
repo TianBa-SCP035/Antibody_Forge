@@ -1,139 +1,145 @@
-# 抗体发现 · 项目工作台
+# 发现工作台
 
-安排剖鼠取细胞与筛选路径。路径 `/discovery/workbench`，接口 `/api/discovery/workbench`。一行一条发现安排；展示用的项目 / 实验 / 靶点 / 鼠 / 效价等全部是本表列，不联查免疫表。文库 / NGS 进度列不在本页。本台没有开展 / 下架。效价列表「测序」按下发规则写入本表一行，之后两边各改各的。
+> 管理剖鼠取细胞、冲击免疫和筛选路线，并承接效价下发与文库构建交接。相关：[项目工作台共用约定](../workbench.md)、[免疫工作台](../immunology/workbench.md)、[文库构建](../molecular-cell/library-construction.md)
 
-页内大标题和系统标签页为「发现工作台」；侧栏仍叫「项目工作台」。共用壳、Excel、优先级排队见 [../workbench.md](../workbench.md)。
+## 1. 入口与权限
 
-## 表 `discovery_workbench`
+前端路由为 `/discovery/workbench`。菜单功能开关为 `menu.discovery.workbench`。
 
-| 列 | 说明 |
+| 权限码 | 范围 |
 |---|---|
-| `discovery_id` | 发现安排号。创建时后端生成，之后只读；页面不展示，请求里带了也忽略 |
-| `project_code` / `experiment_id` / `target_name` / `target_codes` / `study_type` / `pm` | 项目侧，本台可改 |
-| `owner` | 本台负责人，不在工作台表显示 |
-| `immune_owner` | 免疫负责人。效价「测序」下发时带免疫项目的负责人，不是效价负责人 |
-| `cell_collector` | 细胞收集人，下发时留空，人名选项与负责人相同 |
-| `mouse_strain_category` / `mouse_strain` / `cage_position` | 归类鼠型和小鼠品系可以点选，也可以自己填。多个值里，固定选项按选项顺序排在前面，自己填的接在后面，用顿号拼接。以前用 `+` 或英文逗号写的旧值不用改，打开和筛选时照样按项识别。笼位是文本，不在工作台表显示 |
-| `mouse_count` / `mouse_nos` | 只数是可选非负整数（空为 `NULL`，`0` 合法）；抽屉和 Excel 当普通文本键入，提交时校验。鼠号是文本 |
-| `serum_titer` | 血清效价文本 |
-| `immune_antigen` | 免疫用抗原，可换行。效价下发时按所选小鼠用过的抗原一行一个写入；有货号或批号时用「——」接在名称后，两者都有只接货号 |
-| `screening_methods` | 筛选方式，英文逗号拼接 |
-| `positive_cell_count` | 阳性细胞数，可换行，最长 64 |
-| `screening_antigen` | 筛选抗原，可换行，直接填写 |
-| `plate_nos` | 板号文本 |
-| `harvest_date` | 剖鼠取细胞日（上机时间），`YYYY-MM-DD`。这一列发生变化时，冲击日期写成同一天减 5 天；清空则冲击日期一并清空 |
-| `boost_date` / `boost_antigen` / `boost_cells` | 冲击日期可单独修改，不会回写剖鼠日期。冲击免抗原、冲击免细胞可换行，框高随内容增加。冲击免抗原的选项就是本行免疫抗原，选中填入当前行 |
-| `status` | 状态 |
-| `priority` / `sort_order` | 与免疫工作台同一套四档优先级和全表排序 |
-| `remark` | 备注 |
-| `created_by` / `created_at` / `updated_at` | 审计 |
+| `discovery.page.workbench` | 查看页面、列表、选项、靶点、表头取值和导出 |
+| `discovery.workbench.edit` | 新建、编辑、批量保存、删除、排序；可从效价下发和交接文库 |
+| `molecular.library.edit` | 可交接文库，但不授予发现工作台编辑权限 |
+| `serum.page.detail` | 操作列“详情”进入免疫实验详情 |
 
-`experiment_id` 不加唯一约束。`discovery_id` 是本台业务键，库内唯一。格式 `DSC-yyMMdd-` + 6 位大写字母数字（`A-Z0-9`），例如 `DSC-260917-A3K9Q2`。手工新建、Excel 批量、「测序」下发都由后端发号。实验数据量小，DDL 只建主键和发现安排号唯一索引。若本地曾按旧稿建过 `idx_*`，可自行 `DROP INDEX`，不要对正式库执行。已有本地库自行执行本仓库 DDL 中的 `CREATE TABLE discovery_workbench` 与对应权限 / 菜单 `INSERT IGNORE`。已有表可先清空再补列：`TRUNCATE` 后 `ADD COLUMN discovery_id VARCHAR(32) NOT NULL` 并加 `uk_discovery_workbench_discovery_id`。
+## 2. 数据与编号
 
-## 状态
+主表为 `discovery_workbench`。一行是一条发现安排；页面直接读写本表快照，不联查免疫项目。`experiment_id` 可以重复。
 
-`status` 表示这条安排走到哪。合法值：`规划中`、`待冲击`、`待剖鼠`、`待建库`、`待噬菌体`、`待测序`、`已完成`、`已取消`。新建默认 `规划中`。
+| 字段 | 含义 | 规则 |
+|---|---|---|
+| `discovery_id` | 发现安排号 | 库内唯一；创建时生成；保存请求中的同名字段被忽略 |
+| `project_code` / `experiment_id` | 项目编号 / 实验号 | 文本，可在本台修改 |
+| `target_name` / `target_codes` | 靶点名称 / 编号 | 远程选择时成对写入 |
+| `owner` / `immune_owner` / `cell_collector` | 负责人 / 免疫负责人 / 细胞收集人 | 系统用户名显示值 |
+| `mouse_strain_category` / `mouse_strain` | 归类鼠型 / 小鼠品系 | 固定选项优先、自填值随后，按顿号存储；筛选同时识别逗号、顿号和加号 |
+| `mouse_count` | 小鼠只数 | 可空非负整数，`0` 合法 |
+| `mouse_nos` / `serum_titer` | 鼠号 / 血清效价 | 保留换行 |
+| `screening_methods` | 筛选方式 | `达普`、`噬菌体`、`Beacon`、`NGS` 多选，英文逗号存储 |
+| `harvest_date` | 剖鼠日期 | `YYYY-MM-DD`；文库交接时作为上机日期 |
+| `boost_date` | 冲击日期 | 修改剖鼠日期时自动设为剖鼠日期前 5 天；之后可单独修改 |
+| `positive_cell_count` | 阳性细胞数 | 保留换行，最长 64 字符 |
+| `immune_antigen` / `screening_antigen` / `boost_antigen` / `boost_cells` | 抗原与冲击免细胞 | 保留换行 |
+| `priority` / `sort_order` | 优先级与队列位 | 规则见[共用约定](../workbench.md) |
 
-半自动：用户仍可手改状态。填了冲击免日且当前是规划中 / 待剖鼠 / 待冲击时，写成 `待冲击`；冲击免日已过（当天仍算冲击免中，次日才过）则写成 `待剖鼠`。清空冲击免日且当前是待冲击时回到 `规划中`。`已完成` / `已取消` 不因日期改写。打开列表 / 导出时用一条 `UPDATE` 把已过期的「待冲击」写成「待剖鼠」，没有命中就不提交。
+发现安排号格式为 `DSC-yyMMdd-XXXXXX`，后缀是 6 位大写字母或数字。页面新建和效价下发都由后端发号。
 
-顶部五个标签是粗跳转，不是和状态一一对应：
+## 3. 状态与流转
 
-| 标签 | 计入的状态 |
-|------|------------|
-| 全部安排 | 全部（含已完成、已取消） |
-| 待剖鼠 | 规划中、待冲击、待剖鼠 |
-| 待建库 | 待建库、待噬菌体 |
-| 待测序 | 待测序 |
-| 已取消 | 已取消 |
+| 状态 | 含义 |
+|---|---|
+| `规划中` | 新建默认状态 |
+| `待冲击` | 冲击日期为今天或未来 |
+| `待剖鼠` | 冲击日期已过 |
+| `待建库` | 已交接非噬菌体展示建库 |
+| `待噬菌体` | 已交接噬菌体展示 |
+| `待测序` | 用户维护的后续状态 |
+| `已完成` / `已取消` | 终态，退出队列 |
 
-已完成只出现在全部安排里。
+用户可以直接修改状态。保存剖鼠日期或冲击日期且未同时显式提交状态时，`规划中`、`待冲击`、`待剖鼠`按冲击日期调整：日期为今天或未来时设为 `待冲击`，日期已过时设为 `待剖鼠`；清空冲击日期时，`待冲击`恢复为 `规划中`。终态不受日期影响。
 
-## 冲击免胶囊
+文库交接会在早期状态上写入 `待建库`；本次包含噬菌体展示时优先写入 `待噬菌体`。`待测序`、`已完成`、`已取消`不被交接改写。建库工单完成不会回写发现状态。
 
-右上角绿色胶囊统计 **冲击免中**：已填冲击免日，且今天 ≤ 冲击免日。左键只看这些行；右键只看「已排剖鼠日、未排冲击免日、且未完成/未取消」。再点同一操作取消筛选。不改当前阶段标签。
+列表与导出均为只读查询。过期的 `待冲击`由定时任务推进为 `待剖鼠`。
 
-## 优先级
+## 4. 页面操作
 
-与免疫工作台相同：`吉吉国王` > `非常紧急` > `加急` > `正常`。列表默认 `id` 倒序，表头「序号」显示本页行号；点该表头变为「排序」，按队列值排并显示 `sort_order`，再点恢复。`sort_order` 只给未完成行（1..N），`已完成` / `已取消` 出队为 `NULL`，队列模式下界面 `-`。改档挤位、拖动、重编号规则见 [../workbench.md](../workbench.md)。算法在 `utils/workbench_queue.py`。新建默认「正常」并落到未完成队尾。拖行只在「排序」模式可用，落到目标行的队列位，筛不筛选都能拖，只改进行中的行。
+关键字搜索发现安排号、项目编号和实验号。单个词按包含匹配；多个词对三类编号做精确匹配。
 
-## 筛选方式
+| 区域 | 控件 |
+|---|---|
+| 顶部 | 关键字、靶点、PM、筛选方式、状态、优先级、归类鼠型、剖鼠日期范围 |
+| 齿轮高级区 | 课题类型、负责人、免疫负责人、细胞收集人、笼位、小鼠品系、鼠号、板号、免疫抗原、筛选抗原、冲击免抗原、备注、冲击日期范围 |
+| 表头 | 除序号、靶点编号和操作列外的已登记业务列；接口为 `POST /api/discovery/workbench/column_values` |
 
-合法值固定：`达普`、`噬菌体`、`Beacon`、`NGS`。多选，存英文逗号拼接（如 `达普,NGS`），规则同免疫工作台 `immuno_method`。接口拒绝选项外的值。列表筛选按单个选项命中包含该方式的记录。工作台用彩色标签展示（达普蓝、噬菌体橙、Beacon 绿、NGS 灰），多选并排，不折叠。
+| 阶段卡 | 包含状态 | 右键 |
+|---|---|---|
+| 全部安排 | 全部状态 | 无 |
+| 待剖鼠 | `规划中`、`待冲击`、`待剖鼠` | 在“阶段合集”和“仅 `待剖鼠`”之间切换 |
+| 待建库 | `待建库`、`待噬菌体` | 无 |
+| 待测序 | `待测序` | 无 |
+| 已取消 | `已取消` | 无 |
 
-## 剖鼠日
+`已完成`只计入“全部安排”。阶段统计忽略当前阶段和胶囊筛选，保留其他筛选。
 
-`harvest_date` 即上机时间：达普 / Beacon 同日剖鼠上机，噬菌体也用这一天。一行一个日期。
+绿色胶囊左键切换 `boost_filter=boosting`：冲击日期非空且不早于今天。右键切换 `boost_filter=missing_date`：剖鼠日期或冲击日期任一为空，且状态不是 `已完成`、`已取消`。再次执行同一操作取消胶囊筛选。
 
-## 接口
+工作台和 Excel 交互、列序、显示字段、表头菜单及队列规则见[共用约定](../workbench.md)。工作台行内可编辑优先级、状态、筛选方式、剖鼠日期和冲击日期。左键行打开无模态抽屉；再次点击同一行、右键任意行或点击表外关闭。
+
+抽屉按“队列 / 状态、项目、小鼠、筛选、日程”分区编辑全部业务字段。冲击免抗原输入框以本行免疫抗原的各行为候选。鼠号、板号、血清效价、阳性细胞数、四类抗原/细胞文本和备注保留中间换行。
+
+操作列包括“详情、交接、删除”。详情按 `experiment_id` 查找并打开免疫实验；交接打开文库核对弹窗；已有建库工单的安排不能删除。列表导出沿用当前全部筛选。页面没有导入入口。
+
+## 5. 跨模块联动
+
+### 效价下发
+
+效价实验列表的“测序”按钮始终可点击。缺少 `discovery.workbench.edit` 时显示权限提示；具备权限时打开 `TiterMouseSelectWizard.vue`，并要求至少选择一只小鼠。
+
+`utils/titerDiscoveryHandoff.ts` 使用 `buildFacsConclusionForPage` 和 `summarizeTiterBrief` 生成快照，再调用 `POST /api/discovery/workbench/save`。每次确认都新增一行，不按实验号去重，也不保存效价工单 ID。
+
+| 发现字段 | 来源 |
+|---|---|
+| 项目编号、实验号、靶点、课题类型、PM | 正式免疫项目当前值 |
+| 笼位 | 效价列表当前行 |
+| 鼠号、只数 | 向导选中的小鼠；按组生成鼠号行 |
+| 归类鼠型、小鼠品系 | 所选小鼠所在分组 |
+| 免疫抗原 | 所选分组步骤引用的抗原；名称后优先附货号，其次批号 |
+| 免疫负责人 | 正式免疫项目负责人 |
+| 血清效价 | 仅按所选小鼠汇总的最新数字阶段简要结论 |
+| 状态、优先级 | `规划中`、`正常` |
+
+下发完成后跳转 `/discovery/workbench?created=<id>` 并打开新行。后续修改效价数据不会刷新该快照。
+
+### 文库构建交接
+
+`LibraryHandoffDialog.vue` 通过以下接口加载核对信息并创建工单：
 
 | 方法 | 路径 | 权限 |
-|------|------|------|
-| `POST /list` | 分页列表；默认 `id` 倒序；`sort_field=sort_order` 按队列，其他登记列按表头排序；`view_group` / `boost_filter` / `field_filters` 与统计 | `discovery.page.workbench` |
-| `POST /column_values` | 表头筛选的取值列表，见 [../workbench.md](../workbench.md)「表头筛选」 | `discovery.page.workbench` |
-| `GET /options` | 状态、优先级（按 正常 → 吉吉国王 从低到高，下拉直接用）、筛选方式、归类鼠型、小鼠品系、已有 PM / 负责人 / 免疫负责人 / 细胞收集人、免疫抗原 / 筛选抗原 / 冲击免抗原（本表按行）。前端下拉与粘贴校验读这里，接口失败时退回前端预设 | `discovery.page.workbench` |
-| `GET /recorded_targets?keyword&limit` | 顶部靶点筛选的远程搜索：本表已录入的靶点，关键字匹配记录名称、编号或靶点库正式名；默认 50 条，最多 200 | `discovery.page.workbench` |
-| `POST /export_list` | 按当前筛选导出 | `discovery.page.workbench` |
-| `POST /save` | 无 `id` 新增并生成 `discovery_id`；有 `id` 只更新请求中出现的字段，忽略 `discovery_id` | `discovery.workbench.edit` |
-| `POST /save_batch` | Excel 粘贴批量保存 | `discovery.workbench.edit` |
-| `POST /delete` | 按主键删除并重编号。若该 `discovery_id` 已有关联建库工单则拒绝 | `discovery.workbench.edit` |
-| `POST /reorder` | `moved_id` 放到 `target_id` 当前队列位，再重编号未完成行；终态不参与 | `discovery.workbench.edit` |
+|---|---|---|
+| GET | `/api/molecular-cell/library-orders/by-discovery` | `discovery.workbench.edit` 或 `molecular.library.edit` |
+| POST | `/api/molecular-cell/library-orders/handoff` | `discovery.workbench.edit` 或 `molecular.library.edit` |
 
-`POST /list` 接受 `view_group=harvest|library|sequencing|cancelled`，以及 `boost_filter=boosting|missing_date`。返回统计 `all / harvest / library / sequencing / cancelled / boosting / missing_date`。阶段统计忽略当前标签和胶囊筛选，但保留关键字、表头筛选和其余筛选项。胶囊两项统计同样忽略标签和胶囊筛选。统计用一次 `GROUP BY status`，条件汇总冲击免中 / 日期未填，不再按标签拆成多次 `COUNT`。
+弹窗展示项目编号、靶点、课题类型、小鼠品系、优先级、上机日期和阳性细胞数，并列出 `source_discovery_id` 已关联的工单。`已完成`和`已取消`不能交接。
 
-关键字搜发现编号、项目编号、实验号（一个词按包含，多个词按完整匹配）。笼位、鼠号、板号、免疫抗原、筛选抗原、冲击免抗原走各自筛选项，按包含匹配。归类鼠型和小鼠品系可多选，按顿号拆开后命中对应项，以前的 `+` 和英文逗号也同样认，自己填的值也能筛。另有筛选方式、状态、优先级、课题类型、PM、负责人、剖鼠日起止、冲击免日起止。
-
-表头筛选登记了除序号、靶点编号、操作以外的业务列，规则见 [../workbench.md](../workbench.md)。状态按 `规划中` → `已取消` 的业务顺序排，空状态算 `规划中`。剖鼠日期、冲击日期的排序和「只看空白」都在表头菜单里，原来的「点日期表头排序、右键只看未填」已去掉。切到「全部安排」或从「只看待剖鼠」退出时，状态列的表头条件随顶部状态一起清掉。
-
-写操作登记 `sys_permission_api`。页面权限与菜单开关在 `sys_permission`、`sys_feature_flag`。不写入示例角色/权限包。超级管理员走 `is_superuser`；其他人在系统管理里按需授权。
-
-## 页面
-
-操作列固定三个按钮：**详情**（primary，跳转免疫实验查看页）、**交接**（success）、**删除**（warning）。交接与删除权限拆开：删除看 `discovery.workbench.edit`；交接看 `discovery.workbench.edit` 或 `molecular.library.edit`，无权限时灰显。详情按实验号打开对应免疫项目，未填实验号、没有详情权限或找不到项目时提示。交接打开核对弹窗，见下文「交接至文库构建」。点行打开右侧抽屉，再点同一行或右键任意行关闭。
-
-- **工作台（默认）**：表格可扫读；默认列序为序号/排序、优先级、状态、PM、项目编号、靶点名称、小鼠品系、只数、筛选方式、筛选抗原、冲击抗原、剖鼠日期、冲击日期。`Shift` 拖表头可调业务列顺序（序号、操作不动），右键「视图」恢复列序和显示字段。高级操作「显示字段」可从与 Excel 相同的全量字段里勾选，默认短列之外的先藏着。优先级、状态、筛选方式、剖鼠日期、冲击日期可在行内改。点行打开右侧抽屉。点「序号」表头进入队列序后，才能改排序号、拖该列改序。
-- **Excel**：划选 / 粘贴走共用 mixin；校验在本页。行选择列默认显示本页行号；切到「排序」后才是可改的队列号。该列表头左键切换这两种显示，不再全选列。
-- 常驻筛选：项目编号/实验号、靶点、PM、筛选方式、状态、优先级、归类鼠型、剖鼠日起止。齿轮里：课题类型、负责人、免疫负责人、细胞收集人、笼位、小鼠品系、鼠号、板号、免疫 / 筛选 / 冲击免抗原、备注、冲击免日起止、重置、显示字段、列表导出。
-- 抽屉 / Excel：PM、负责人、免疫负责人和细胞收集人用人名选择器（默认本台已有人名，敲字再搜系统用户）；课题类型与免疫台同一套固定选项，点选、不可搜索或自创；归类鼠型和小鼠品系与列表筛选同一套点法，左键选中并收起，右键追加或取消，多个值按选项顺序用顿号写入同一字段，自己填的接在固定选项后面，框里直接显示这段拼接文本，框宽不随字数变；阳性细胞数、冲击免细胞可换行；靶点走共用远程搜索（名称与编号一起带出，粘贴会校验编号 / 名称）。免疫抗原、筛选抗原、冲击免抗原、冲击免细胞都是可换行文本，各占一行，框高随内容增加，不能拖拽。免疫抗原和筛选抗原直接填写。只有冲击免抗原在点进文本框时列出本行免疫抗原，按当前行过滤，选中后填入当前行。抽屉「小鼠」三行：归类鼠型 / 小鼠品系，笼位 / 只数，鼠号。抽屉「筛选」：筛选方式；免疫抗原；筛选抗原；血清效价 / 阳性细胞数；板号。抽屉「日程」：剖鼠日期 / 冲击日期；免疫负责人 / 细胞收集人；冲击免抗原；冲击免细胞；备注。血清效价和阳性细胞数可换行，行距与其他多行框相同，并排时两框同高。鼠号、板号、血清效价、阳性细胞数、免疫抗原、筛选抗原、冲击免抗原、冲击免细胞和备注保留中间的换行，只去掉开头和结尾的空行。默认表格仍单行省略；这类字段悬停时按原换行展开。
-
-## 交接至文库构建
-
-点「交接」打开核对弹窗，不是直接新建。接口 `GET /api/molecular-cell/library-orders/by-discovery` 与 `POST /handoff`，权限为 `discovery.workbench.edit` 或 `molecular.library.edit`。
-
-`已完成` / `已取消` 不能交接。弹窗展示项目编号、课题类型、靶点、小鼠品系、上机日期、筛选方式、优先级和阳性细胞数；发现台剖鼠日期在这里按实验员习惯显示为上机日期。不展示实验号、鼠号、只数或笼位。已有建库工单按 `source_discovery_id` 列出。
-
-弹窗按四种筛选方式分四行，点选项即确定建库类型和样品来源。达普行是单细胞孔板（达普打板）、混管 H/K/L 和混管 Barcode（两种都是达普打管）。Beacon 行是单细胞孔板，以及 Beacon+达普打板（同一块板）。Beacon+达普打板不能和两边各自的单细胞孔板一起选；达普打板和 Beacon 孔板可以一起交，会建成两条工单。噬菌体行是噬菌体展示和噬菌体测序。噬菌体展示是给展示准备的文库；噬菌体测序是展示筛选结果再做成可上 NGS 的文库，样品来源记筛选产物。同一建库类型也可以改成展示产物，用来测还没淘选的展示文库。NGS 行是眼眶血、其他外周血，以及浆细胞 Nano、浆细胞 Lite。这两种分别是 Nano、Lite 样品的 NGS 建库，样品来源为脾脏研磨，不过 Beacon 或达普。Beacon 可预选单细胞孔板；达普与 Beacon 同时出现时预选 Beacon+达普打板；达普单独出现时不预选；噬菌体只预选噬菌体展示；NGS 不预选。本行筛选方式会标成对应颜色，未标的行仍可点。单细胞孔板、两种混管和噬菌体展示工单要求已有 `harvest_date`；浆细胞 NGS、外周血 BCR 与噬菌体 NGS 不用该门槛。仍允许重复创建同一建库类型，已有相同工艺的选项上标「已有」。
-
-创建后：有 `molecular.page.library` 则跳文库列表并打开第一条新单；没有则留在本台并提示 `LIB-` 号。发现状态只在早期阶段首次交出时写成 `待建库` / `待噬菌体`，不因再次交接回退，也不因建库完成自动改成 `待测序`。细节见 [../molecular-cell/library-construction.md](../molecular-cell/library-construction.md)。
-
-## 效价「测序」下发
-
-效价实验列表点「测序」：无 `discovery.workbench.edit` 时警告，按钮保持可点。有权限则打开与上机相同的选鼠向导（`TiterMouseSelectWizard.vue`），标题为「抗体发现工单」；**至少选一只**。确定后前端用现有 `buildFacsConclusion` 只对勾中的鼠收一版简要说明，再 `POST /discovery/workbench/save` 无 id 新增一行，跳到本台并用 `?created=` 打开该行。不按实验号去重，再点再开一条。不写 `titer_order_id`。后端生成 `discovery_id`。
-
-| 发现列 | 下发时 |
+| 筛选方式行 | 可选工艺 |
 |---|---|
-| 项目编号 / 实验号 / 靶点名称 / 靶点编号 / 课题类型 / PM | 免疫项目当时快照 |
-| 笼位 | 效价列表该行的笼位 |
-| 鼠号 / 只数 | 按原分组一行一组；标签用该组方案抗原类型（与效价结论相同，多种用 `+`），没有类型则用组号；组内鼠号排序后顿号拼接 |
-| 归类鼠型 / 小鼠品系 | 这些鼠所在组的归类鼠型 / 小鼠品系。同一组只取一次，多个值再按各自固定选项顺序用顿号拼接 |
-| 免疫抗原 | 这些组在方案里用到的抗原，去重后一行一个。名称后用「——」接货号，没有货号则接批号；只填了横线、空格或换行的不算 |
-| 免疫负责人 | 免疫项目的负责人，不是效价负责人 |
-| 血清效价 | 最晚有数字阶段的 `方法+种属:min-max`，换行；只吃勾中的鼠和数字格 |
-| 筛选方式 / 阳性细胞数 / 筛选抗原 / 板号 / 剖鼠日 / 冲击免 / 冲击免细胞 / 细胞收集人 / 负责人 | 空着 |
-| 状态 / 优先级 | `规划中` / `正常`，入队尾 |
+| 达普 | 单细胞孔板、混管 H/K/L、混管 Barcode |
+| Beacon | 单细胞孔板、Beacon+达普打板 |
+| 噬菌体 | 噬菌体展示、噬菌体测序 |
+| NGS | 眼眶血、其他外周血、浆细胞 Nano、浆细胞 Lite |
 
-`mouse_nos` 例：
+发现行存在 `screening_methods` 时，未标记方式对应的整行不可选；该字段为空时四行全部开放。Beacon+达普打板要求同时标记达普和 Beacon，并与两个单路线孔板选项互斥。
 
-```text
-蛋白：1、3、5
-LNP：2、4
-```
+单细胞孔板、混管 H/K/L、混管 Barcode 和噬菌体展示要求 `harvest_date`。弹窗允许重复创建，已有匹配工艺显示“已有”。默认建议为：Beacon+达普同时存在时选 Beacon+达普打板；仅 Beacon 时选 Beacon 单细胞孔板；噬菌体时选噬菌体展示；达普单独和 NGS 不预选。
 
-`serum_titer` 例：
+默认建议只在对应建库类型尚无未取消工单时产生。有 `molecular.page.library` 时，创建后跳到文库构建并打开第一条新工单；否则停留在发现工作台。
 
-```text
-FACS人:10000-100000
-FACS猴:10000-100000
-ELISA人猴:2500-312500
-```
+## 6. 接口
 
-种属用标靶上的 `species` 原文，不把「人」和「猴」捏成「人猴」。FACS 结论格已是 `10^n`，ELISA 已是稀释度。之后改效价板不会刷新这串字。实现：`utils/titerDiscoveryHandoff.ts`、`summarizeTiterBrief`。
+| 方法 | 路径 | 权限 | 用途 |
+|---|---|---|---|
+| POST | `/api/discovery/workbench/list` | `discovery.page.workbench` | 分页、筛选和统计 |
+| POST | `/api/discovery/workbench/column_values` | `discovery.page.workbench` | 表头取值 |
+| GET | `/api/discovery/workbench/options` | `discovery.page.workbench` | 编辑和筛选选项 |
+| GET | `/api/discovery/workbench/recorded_targets` | `discovery.page.workbench` | 搜索本工作台已录入靶点 |
+| POST | `/api/discovery/workbench/export_list` | `discovery.page.workbench` | 按当前条件导出 |
+| POST | `/api/discovery/workbench/save` | `discovery.workbench.edit` | 新建或更新传入字段 |
+| POST | `/api/discovery/workbench/save_batch` | `discovery.workbench.edit` | 单事务批量保存 |
+| POST | `/api/discovery/workbench/delete` | `discovery.workbench.edit` | 删除未关联建库工单的安排 |
+| POST | `/api/discovery/workbench/reorder` | `discovery.workbench.edit` | 将 `moved_id` 放到 `target_id` 的队列位 |
+
+## 7. 定时任务与外部集成
+
+`job.discovery_auto_update_status` 默认每天 01:15 执行。任务将冲击日期早于当天且状态为 `待冲击` 的记录改为 `待剖鼠`。任务运行由同名功能开关及其调度配置控制；应用启动和列表查询不会执行这次状态推进。

@@ -8,7 +8,7 @@ from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from utils.filter_values import clean_field_text, filter_terms, like_contains, match_any
-from utils.header_filters import HeaderColumn, column_values, header_filter_clauses, header_sort_clauses
+from utils.header_filters import HeaderColumn, header_column_values, header_filter_clauses, header_sort_clauses
 
 from models.molecular_cell import (
     LIBRARY_PRIMER_ID_FIELDS,
@@ -238,27 +238,14 @@ def list_catalog(db: Session, data: dict[str, Any] | None = None) -> dict[str, A
 
 
 def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
-    """表头筛选的取值列表：套用除本列表头条件以外的全部筛选。顶部筛选里的本列条件由前端去掉。"""
-    payload = data or {}
-    field = str(payload.get("field") or "").strip()
-    spec = HEADER_COLUMNS.get(field)
-    if spec is None:
-        raise ValueError(f"不支持按「{field}」表头筛选")
-    result = column_values(
+    return header_column_values(
         db,
-        spec,
-        lambda stmt: stmt.where(*_filters(payload, header_except=field)),
+        HEADER_COLUMNS,
+        data,
+        lambda stmt, payload, field: stmt.where(*_filters(payload, header_except=field)),
         id_column=Primer.id,
-        keyword=str(payload.get("value_keyword") or ""),
-        limit=payload.get("value_limit"),
-        order=str(payload.get("value_order") or "value"),
+        labels=_VALUE_LABELS,
     )
-    labels = _VALUE_LABELS.get(field)
-    if labels:
-        for item in result["items"]:
-            if item["value"] in labels:
-                item["label"] = labels[item["value"]]
-    return result
 
 
 def list_options(

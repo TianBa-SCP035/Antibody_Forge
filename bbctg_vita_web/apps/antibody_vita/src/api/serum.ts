@@ -21,6 +21,13 @@ export function fetchList(data: any, config?: PostConfig) {
   return requestClient.post('/serum/list', data, config);
 }
 
+export function fetchSerumColumnValues(data: any, config?: PostConfig) {
+  return requestClient.post('/serum/column_values', data, {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
 export function fetchDetail(id: any, config?: RequestConfig) {
   return requestClient.get('/serum/detail', {
     params: { id },
@@ -195,6 +202,13 @@ export function fetchTiterOrderMeta(config?: RequestConfig) {
 
 export function fetchTiterOrderStats(data: Record<string, unknown> = {}, config?: PostConfig) {
   return requestClient.post('/serum/titer/order/stats', data, {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
+export function fetchTiterOrderColumnValues(data: any, config?: PostConfig) {
+  return requestClient.post('/serum/titer/order/column_values', data, {
     ...skipGlobalErrorHandler,
     ...config,
   });

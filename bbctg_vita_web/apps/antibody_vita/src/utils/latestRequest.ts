@@ -13,6 +13,11 @@ export function createLatestRequest() {
       const id = ++current;
       return () => id === current;
     },
+    /** 不发新请求，只用来判断此后有没有新请求发出。 */
+    peek(): () => boolean {
+      const id = current;
+      return () => id === current;
+    },
     /** 让进行中的请求全部作废，例如离开页面或切换对象时。 */
     cancel() {
       current += 1;

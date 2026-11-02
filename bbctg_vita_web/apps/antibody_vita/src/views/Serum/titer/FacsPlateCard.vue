@@ -519,6 +519,8 @@ import {
   ElMessage,
 } from 'element-plus'
 
+import { copyToClipboard } from '#/utils/clipboard'
+
 const GATE_TEMPLATES = {
   domestic: { top: 7.3, left: 3.9, bottom: 4.4, right: 2.1 },
   cytomics: { top: 9.5, left: 6.6, bottom: 5.2, right: 3.6 }
@@ -1026,23 +1028,8 @@ export default {
         ElMessage.warning('没有可复制的鼠号')
         return
       }
-      const text = numbers.join('、')
-      try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(text)
-        } else {
-          const ta = document.createElement('textarea')
-          ta.value = text
-          ta.style.cssText = 'position:fixed;left:-9999px'
-          document.body.appendChild(ta)
-          ta.select()
-          if (!document.execCommand('copy')) throw new Error('copy failed')
-          document.body.removeChild(ta)
-        }
-        ElMessage.success(`已复制 ${numbers.length} 个鼠号`)
-      } catch {
-        ElMessage.warning('复制失败，请手动复制')
-      }
+      if (await copyToClipboard(numbers.join('、'))) ElMessage.success(`已复制 ${numbers.length} 个鼠号`)
+      else ElMessage.warning('复制失败，请手动复制')
     },
     handleWellEnter(row, index) {
       const nextIndex = index + 1

@@ -10,12 +10,28 @@
 | [backend-structure.md](./backend-structure.md) | 后端目录、API 前缀、响应与错误约定 |
 | [deploy.md](./deploy.md) | 环境与端口、配置、启动、Nginx、DRM、验收 |
 | [vita-database.sql](./vita-database.sql) | 主库 DDL + 权限/功能开关种子（空库执行一次） |
-| [modules/](./modules/) | 各业务模块详细说明（按模块分子目录）；项目工作台共用约定见 [modules/workbench.md](./modules/workbench.md) |
-| [temp_text/](./temp_text/) | 临时草稿、对接样例 JSON、外部协议 PDF（未定稿，非正式入口） |
+| [modules/](./modules/) | 各业务模块详细说明（按模块分子目录），见下表 |
 
 `overview` / `auth-permissions` / `backend-structure` / `deploy` 只写**当前已实现**的行为；路线图只在本文维护。
 
-**文档分层**：根目录文档 = 全景与运维概要；`modules/` = 已成型模块的详细设计；`temp_text/` = 开发过程中沉淀的**临时**材料（协议附件、样例数据、尚未定稿的说明）。后者不保证与代码同步，模块定型后应迁入 `modules/` 或合并进概要文档，避免长期堆在临时目录。
+**文档分层**：根目录文档 = 全景与运维概要；`modules/` = 已成型模块的详细设计。
+
+### 模块文档
+
+| 模块 | 文档 |
+|------|------|
+| 工作台类页面共用约定（表头筛选、视图与列、队列排序、保存并发） | [modules/workbench.md](./modules/workbench.md) |
+| 千鼠万抗 · 靶点库 | [modules/atlas/target-library.md](./modules/atlas/target-library.md) |
+| 小鼠免疫 · 项目工作台 | [modules/immunology/workbench.md](./modules/immunology/workbench.md) |
+| 抗体发现 · 项目工作台 | [modules/discovery/workbench.md](./modules/discovery/workbench.md) |
+| 抗体发现 · 合成与验证 | [modules/discovery/synthesis-progress.md](./modules/discovery/synthesis-progress.md) |
+| 分子与细胞 · 文库构建 | [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md) |
+| 分子与细胞 · 引物库 | [modules/molecular-cell/primer-library.md](./modules/molecular-cell/primer-library.md) |
+| 镁伽流式工单 | [modules/mega-automation/flow-work-order.md](./modules/mega-automation/flow-work-order.md) |
+| 效价 → 流式工单 | [modules/mega-automation/titer-upstream-flow.md](./modules/mega-automation/titer-upstream-flow.md) |
+| 工单数据回传接口（对外协议） | [modules/mega-automation/order-experiment-sync-api.md](./modules/mega-automation/order-experiment-sync-api.md) |
+
+免疫实验列表、效价数据、效价实验列表、细胞库存暂无独立模块文档，路由与接口见 [overview.md](./overview.md)，权限见 [auth-permissions.md](./auth-permissions.md)。
 
 代码：`bbctg_vita_server/` 后端 · `bbctg_vita_web/apps/antibody_vita/` 前端 · `config/` 环境配置 · `repository/` 运行时文件。
 
@@ -45,7 +61,7 @@
 - **严禁硬编码泄密项**：代码、文档、注释中**不得**出现数据库密码、JWT `SECRET_KEY`、第三方账号密码、内网 token 等；仅允许读取环境配置。
 - **统一走配置文件**：连接串、密钥、各对外/对内 **API 根地址**（如 `DATABASE_URL`、`LABILLION_BASE_URL`、`PUBLIC_API_BASE_URL`、`YUNZHIJIA_*` 等）写在 `config/<local|test|prod>/vita_server.env`（模板见同目录 `*.gitkeep`），**勿提交**真实 env 文件。
 - **新增变量**：在 [deploy.md](./deploy.md) 补充变量含义与是否必填；代码通过 `core/config.py`（或现有配置入口）读取，不在业务模块里写死 URL/端口。
-- **默认值仅 local 兜底**：`core/config.py` 中的 `database_url`、`secret_key` 等默认值仅供本地无 env 时启动；**test / prod 必须在** `config/<env>/vita_server.env` **中配置**，不得依赖代码默认值上线。
+- **默认值仅 local 兜底**：`core/config.py` 中的 `database_url`、`secret_key` 等默认值仅供本地无 env 时启动；test / prod 必须在 `config/<env>/vita_server.env` 中配置。prod 启动时会自检（默认库、短密钥、`DEBUG`、`CORS_ORIGINS`），不通过直接拒绝启动；test 不自检，靠人工保证。
 - **前端**：业务请求统一走 `/api` 代理；不在源码里写死后端域名或生产端口（本地 Vite 代理配置除外）。
 
 ### 接口
@@ -57,7 +73,7 @@
 ### 文档
 
 - **代码与文档同步提交**：行为、字段、状态机、对外协议或权限有变时，同一 PR / 提交内更新对应文档，不留「代码已改、文档待补」。
-- **写到哪里**：表结构 → `vita-database.sql`；全景与路由 → `overview.md`；权限/功能开关 → `auth-permissions.md`；后端约定 → `backend-structure.md`；部署与环境变量 → `deploy.md`；单模块详述 → `modules/<模块>/`；未定稿样例 → `temp_text/`（定型后迁入 `modules/` 或合并概要）。
+- **写到哪里**：表结构 → `vita-database.sql`；全景与路由 → `overview.md`；权限/功能开关 → `auth-permissions.md`；后端约定 → `backend-structure.md`；部署与环境变量 → `deploy.md`；单模块详述 → `modules/<模块>/`。
 - **只写已实现**：`overview` 等概要文档描述当前行为；规划与菜单蓝图**仅在本 README「开发计划」**维护，不在多处重复写「将来可能」。
 - **简洁直述**：句子短、结构清楚；同一事实不在多篇文档间来回复制——模块内细节一篇为主，跨模块边界文首互链即可（参考 `modules/mega-automation/` 两篇分工）。
 
@@ -71,13 +87,7 @@
 
 ## 业务概览
 
-### 设计原则（业务架构）
-
-- **按实验阶段垂直切片**：每次优先打通本阶段可控链路，再进入下一阶段；外部依赖未齐时允许分步交付并文档标注待办。
-- **单一数据源**：同一业务事实只存一处；跨模块用 `experiment_id` 等主键关联，避免双写。
-- **工单驱动设备环节**：工单 + 下发快照 + 回传核对（镁伽流式工单已落地）。
-
-（书写与协作层面的通用要求见上文「开发约定」。）
+业务架构沿用上文「开发约定」中的垂直切片与单一数据源；需设备执行的环节统一走「工单 + 下发快照 + 回传核对」（镁伽流式工单已落地）。
 
 ### 模块与现状
 
@@ -93,6 +103,7 @@
 | 效价 → 发现工作台（「测序」按钮） | 已上线 | 选鼠向导 → 效价简要说明快照 → 新建一条发现安排 |
 | 发现 → 文库构建（「交接」） | 已上线 | 核对取样日与阳性细胞数 → 按类型新建建库工单 |
 | 分子与细胞 · 文库构建 | 已上线 | 统一建库工单；胶图与质检文件；无项目工作台 |
+| 分子与细胞 · 引物库 | 已上线 | 引物主数据维护与导入导出；建库测序引物核对的数据来源 |
 | 镁伽流式工单 | 已上线 | 编辑、校验、铺板、Payload 下发；Labillion 推送/回调/状态查询 |
 | 工单数据回传 | 接收已上线 | `POST /api/order-experiment/sync`；业务解析入库待做 |
 | 单细胞筛选 / 噬菌体展示 | 规划中 | 筛选与发现子路线 |
@@ -150,6 +161,7 @@ serum_imm_workbench（草稿 experiment_id=SCP-YYYYMMDD-HHMMSS-XXXX）
 └─ 合成与验证（已上线）
 
 分子与细胞
+├─ 引物库（已上线）
 ├─ 文库构建（已上线）
 ├─ 质粒构建
 ├─ 质粒制备

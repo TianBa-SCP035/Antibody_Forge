@@ -1,11 +1,32 @@
 @echo off
 setlocal
 
-set "CONDA_ENV=Bender"
+rem Windows local dev: start_dev.bat [restart^|stop^|status]; no argument means restart.
+if not defined CONDA_ENV set "CONDA_ENV=Bender"
 set "ROOT=%~dp0"
+set "ACTION=%~1"
+if "%ACTION%"=="" set "ACTION=restart"
+if /i "%ACTION%"=="start" set "ACTION=restart"
 
+if /i "%ACTION%"=="status" goto status
+if /i "%ACTION%"=="stop" goto stop
+if /i "%ACTION%"=="restart" goto stop
+echo Usage: %~nx0 [restart^|stop^|status]
+exit /b 2
+
+:status
+netstat -ano | findstr /R /C:":8888 .*LISTENING" /C:":5555 .*LISTENING" || echo Backend 8888 and frontend 5555 are not running.
+exit /b 0
+
+:stop
+taskkill /FI "WINDOWTITLE eq Antibody Forge Backend*" /T /F >nul 2>nul
+taskkill /FI "WINDOWTITLE eq Antibody Forge Frontend*" /T /F >nul 2>nul
 for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":8888 .*LISTENING" /C:":5555 .*LISTENING"') do (
   taskkill /PID %%P /T /F >nul 2>nul
+)
+if /i "%ACTION%"=="stop" (
+  echo Stopped backend 8888 and frontend 5555.
+  exit /b 0
 )
 
 call conda activate %CONDA_ENV%

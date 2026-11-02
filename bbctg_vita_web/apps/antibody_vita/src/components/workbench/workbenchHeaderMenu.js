@@ -8,8 +8,9 @@ import { filterTargetOptions, targetOptionExtra } from '#/utils/targetFilterOpti
  * 通用表头菜单（类 Excel 自动筛选）。
  *
  * 页面需提供：
- * - headerMenuColumns：{ [key]: { type, label?, color?, values?, search?, top? } }，只有登记的列才有菜单。
+ * - headerMenuColumns：{ [key]: { type, label?, color?, values?, search?, top?, sortOnly? } }，只有登记的列才有菜单。
  *   type: text | enum | csv | date | number；values: all | recent | search；search 指定搜索匹配规则；
+ *   sortOnly 只排序不筛选，给值在内存里推算、SQL 筛不准的列；
  *   top 描述对应的顶部筛选器，见 synthesisColumns.js。
  *   两种视图列键不同但是同一字段时写 { alias: '主键' }，条件、排序都记在主键上。
  * - listQuery.sort_field / sort_dir：与队列排序共用。
@@ -22,6 +23,8 @@ import { filterTargetOptions, targetOptionExtra } from '#/utils/targetFilterOpti
  * - <WorkbenchHeaderMenu v-bind="headerMenuBind" />，工具栏 <WorkbenchHeaderFilterChip v-bind="headerChipBind" />。
  * - WorkbenchDataTable 传 :header-menu-states 与 @header-menu="openHeaderMenu"；
  *   Excel 列表头 <WorkbenchHeaderLabel :label v-bind="headerMenuStates[key]" />，表格外层 @click="onSheetHeaderMenuClick"。
+ * - 普通 el-table：:header-cell-class-name="headerCellClassName" @header-click="onTableHeaderClick"，
+ *   列写 column-key，表头插槽放 <WorkbenchHeaderLabel :label v-bind="headerMenuStates[key]" />。
  * - 顶部控件 v-bind="headerTop(key, '占位文字')"，日期区间用 headerTop(key, '起始', 'startPlaceholder')。
  * - 「重置全部筛选」的显示条件里加 headerFiltering。
  *
@@ -187,6 +190,8 @@ export default {
         (raw) => {
           if (raw !== '""' && raw !== '[]' && this.headerFilters[key]) this.dropHeaderFilter(key)
         },
+        // 顶部控件的 @change 会同步发起查询，必须在那之前清掉同列表头条件。
+        { flush: 'sync' },
       )
     }
   },
@@ -259,7 +264,9 @@ export default {
           this.listQuery[top.query] = String(cond.value).trim()
           return true
         }
-        if (!onlyKeys(state, ['values']) || !state.values.length || state.values.includes('')) return false
+        // 单个编号写回顶部会变成包含匹配，所以只有多选才写回；含分隔符的值写回后会被拆开，也留在表头。
+        if (!onlyKeys(state, ['values']) || state.values.length < 2) return false
+        if (state.values.some((value) => !String(value).trim() || CODE_SPLIT.test(String(value)))) return false
         this.listQuery[top.query] = state.values.join(',')
         return true
       }
@@ -317,6 +324,12 @@ export default {
     },
     headerCellClass(key) {
       return this.headerMenuStates[key] ? 'wb-hf-cell' : ''
+    },
+    headerCellClassName({ column }) {
+      return this.headerCellClass(column.columnKey)
+    },
+    onTableHeaderClick(column, event) {
+      this.openHeaderMenu(column.columnKey, event.target.closest('th'))
     },
     /** 打开中的高亮直接改锚点 class：放进 headerMenuStates 会让整张表的表头跟着重渲染。 */
     openHeaderMenu(column, anchor) {

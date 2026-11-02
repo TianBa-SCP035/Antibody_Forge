@@ -133,6 +133,8 @@
 import { Delete, EditPen, Plus } from '@element-plus/icons-vue'
 import { ElButton, ElDialog, ElInput, ElMessage, ElSwitch } from 'element-plus'
 
+import { copyToClipboard } from '#/utils/clipboard'
+
 /** 换行拆行，行内按 Tab/逗号/空格等拆分 */
 function splitTokens(text) {
   const s = (text || '').replace(/\r\n?/g, '\n').trim()
@@ -375,19 +377,13 @@ export default {
       section.rows = tokens.map((no) => ({ no, sex: section.sex, alive: aliveMap[no] ?? true }))
       this.bulkEditVisible = false
     },
-    copyBulkEditText() {
+    async copyBulkEditText() {
       const tokens = splitTokens(this.bulkEditText)
       if (!tokens.length) {
         ElMessage.warning('没有可复制的内容')
         return
       }
-      const ta = document.createElement('textarea')
-      ta.value = tokens.join('\t')
-      ta.style.cssText = 'position:fixed;left:-9999px'
-      document.body.appendChild(ta)
-      ta.select()
-      const ok = document.execCommand('copy')
-      document.body.removeChild(ta)
+      const ok = await copyToClipboard(tokens.join('\t'))
       ElMessage[ok ? 'success' : 'warning'](ok ? '已复制' : '请手动全选复制')
     },
     applyPasteTokens(sectionKey, text) {

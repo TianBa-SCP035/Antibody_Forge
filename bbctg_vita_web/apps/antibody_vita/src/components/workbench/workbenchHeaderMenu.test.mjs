@@ -108,6 +108,17 @@ test('code tops split on commas and spaces into a value pick', () => {
   assert.deepEqual(vm.headerFilters.batch, { condition: { op: 'contains', value: 'B5 B6' } })
 })
 
+test('a single picked code or a code with separators stays an exact header pick', () => {
+  const vm = page()
+  apply(vm, 'batch', { values: ['P1'] })
+  assert.equal(vm.listQuery.batch, '')
+  assert.deepEqual(vm.headerFilters.batch, { values: ['P1'] })
+
+  apply(vm, 'batch', { values: ['批次 A', 'B2'] })
+  assert.equal(vm.listQuery.batch, '')
+  assert.deepEqual(vm.headerFilters.batch, { values: ['批次 A', 'B2'] })
+})
+
 test('token tops are always an exact value pick, even for a single value', () => {
   const vm = page({ plates: 'P1' })
   assert.deepEqual(vm.headerFilterState('plates'), { values: ['P1'] })

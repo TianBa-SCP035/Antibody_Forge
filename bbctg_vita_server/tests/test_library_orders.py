@@ -124,17 +124,15 @@ class LibraryOrderTests(DbTestCase):
         )
         self.assertIsNone(second["library_code"])
 
-    def test_created_order_lists_oldest_first_on_the_last_page(self):
+    def test_list_is_newest_first_and_clamps_page(self):
         first = service.save(self.db, {"build_type": service.BUILD_POOLED_BCR, "library_code": "C1"})
         second = service.save(self.db, {"build_type": service.BUILD_POOLED_BCR, "library_code": "C2"})
         third = service.save(self.db, {"build_type": service.BUILD_POOLED_BCR, "library_code": "C3"})
         newest_first = service.get_list(self.db, {"page": 1, "limit": 2})
         self.assertEqual([item["id"] for item in newest_first["items"]], [third["id"], second["id"]])
-        oldest_first = service.get_list(self.db, {"order": "id_asc", "page": 99, "limit": 2})
-        self.assertEqual(oldest_first["page"], 2)
-        self.assertEqual([item["id"] for item in oldest_first["items"]], [third["id"]])
-        self.assertEqual(oldest_first["total"], 3)
-        self.assertLess(first["id"], third["id"])
+        last_page = service.get_list(self.db, {"page": 99, "limit": 2})
+        self.assertEqual(last_page["page"], 2)
+        self.assertEqual([item["id"] for item in last_page["items"]], [first["id"]])
 
     def test_library_code_fill_rejects_a_code_used_by_another_order(self):
         service.save(self.db, {"build_type": service.BUILD_POOLED_BCR, "library_code": "C124"})
@@ -981,10 +979,12 @@ class LibraryOrderTests(DbTestCase):
         excluded = service.get_list(self.db, {"field_filters": [{"field": "owner", "exclude": [""]}]})
         self.assertEqual({item["library_code"] for item in excluded["items"]}, {"C1", "C2"})
 
-        by_owner = service.get_list(self.db, {"order": "id_asc", "sort_field": "owner", "sort_dir": "desc"})
+        by_owner = service.get_list(self.db, {"sort_field": "owner", "sort_dir": "desc"})
         self.assertEqual([item["library_code"] for item in by_owner["items"]][-1], "C3")
+        build_types = service.get_column_values(self.db, {"field": "build_type"})["items"]
+        self.assertEqual(build_types, [{"value": service.BUILD_POOLED_BCR, "count": 3, "label": "混管 H/K/L"}])
         with self.assertRaisesRegex(ValueError, "不支持"):
-            service.get_column_values(self.db, {"field": "build_type"})
+            service.get_column_values(self.db, {"field": "target_codes"})
 
     def test_discovery_delete_protection(self):
         row = self._discovery()

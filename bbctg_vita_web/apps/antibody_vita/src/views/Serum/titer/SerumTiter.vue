@@ -677,6 +677,8 @@ export default {
       pcsLoading: false,
       targetsTimer: null,
       pcsTimer: null,
+      targetsPending: false,
+      pcsPending: false,
 
       // Plates
       facsPlates: [],
@@ -896,6 +898,8 @@ export default {
         clearTimeout(this.pcsTimer)
         this.pcsTimer = null
       }
+      this.targetsPending = false
+      this.pcsPending = false
       Object.values(this.plateTimers).forEach(t => clearTimeout(t))
       this.plateTimers = {}
       if (this.conclusionRefreshTimer) {
@@ -1263,24 +1267,36 @@ export default {
       this.autoSaveTargets()
     },
     autoSaveTargets() {
-      if (!this.canEditTiter()) return
-      if (!this.experiment_id || this.targetsLoading) return
-      this.targetsLoading = true
-      if (this.targetsTimer) clearTimeout(this.targetsTimer)
-      this.targetsTimer = setTimeout(() => {
-        saveTiterTargets({
-          experiment_id: this.experiment_id,
-          targets: this.titer_targets
-        }).then((res) => {
-          if (res?.items) {
-            this.titer_targets = res.items
-          }
-        }).catch((err) => {
-          notifyApiError(err, { messages: SERUM_ERRORS.titer.savePlate })
-        }).finally(() => {
-          this.targetsLoading = false
-        })
-      }, 500)
+      this.queueChildSave('targets')
+    },
+    queueChildSave(kind) {
+      if (!this.canEditTiter() || !this.experiment_id) return
+      clearTimeout(this[`${kind}Timer`])
+      this[`${kind}Timer`] = setTimeout(() => this.flushChildSave(kind), 500)
+    },
+    // 整表提交：上一次还没返回时只记待补发，返回后再交一次最新的表，避免中途的修改被丢掉或被回填覆盖
+    async flushChildSave(kind) {
+      if (this[`${kind}Loading`]) {
+        this[`${kind}Pending`] = true
+        return
+      }
+      const experimentId = this.experiment_id
+      const save = kind === 'targets' ? saveTiterTargets : saveTiterPcs
+      this[`${kind}Loading`] = true
+      try {
+        const res = await save({ experiment_id: experimentId, [kind]: this[`titer_${kind}`] })
+        if (res?.items && !this[`${kind}Pending`] && experimentId === this.experiment_id) {
+          this[`titer_${kind}`] = res.items
+        }
+      } catch (err) {
+        notifyApiError(err, { messages: SERUM_ERRORS.titer.savePlate })
+      } finally {
+        this[`${kind}Loading`] = false
+        if (this[`${kind}Pending`]) {
+          this[`${kind}Pending`] = false
+          if (experimentId === this.experiment_id) this.flushChildSave(kind)
+        }
+      }
     },
 
     handleAddPc() {
@@ -1302,24 +1318,7 @@ export default {
       this.autoSavePcs()
     },
     autoSavePcs() {
-      if (!this.canEditTiter()) return
-      if (!this.experiment_id || this.pcsLoading) return
-      this.pcsLoading = true
-      if (this.pcsTimer) clearTimeout(this.pcsTimer)
-      this.pcsTimer = setTimeout(() => {
-        saveTiterPcs({
-          experiment_id: this.experiment_id,
-          pcs: this.titer_pcs
-        }).then((res) => {
-          if (res?.items) {
-            this.titer_pcs = res.items
-          }
-        }).catch((err) => {
-          notifyApiError(err, { messages: SERUM_ERRORS.titer.savePlate })
-        }).finally(() => {
-          this.pcsLoading = false
-        })
-      }, 500)
+      this.queueChildSave('pcs')
     },
 
     // --- Plate Methods ---

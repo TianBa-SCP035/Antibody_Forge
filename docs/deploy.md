@@ -172,7 +172,7 @@ sudo apt install -y libreoffice
 | `serum_auto_update_status` | 01:00 | 自动更新免疫实验状态 |
 | `discovery_auto_update_status` | 01:15 | 自动推进已过期的抗体发现冲击免状态 |
 | `labillion_status_sync` | 02:00 | 镁伽非终态流式工单状态批量同步；未配 `LABILLION_BASE_URL` 时 skip 并记日志 |
-| `discovery_synthesis_order_sync` | 每隔 1 小时 | One 合成订单与交付进度同步；未配 `ONE_DB_URL` 时 skip 并记日志 |
+| `discovery_synthesis_order_sync` | 每隔 1 小时 | One 合成订单与交付进度同步，并把 One 新订单建成合成与验证工单；未配 `ONE_DB_URL` 时 skip 并记日志 |
 
 每个任务（含「立即执行」）运行前先取 MySQL `GET_LOCK`，取不到就跳过并记日志，所以即使误开了多个后端进程也不会重复执行；但仍建议只让一个进程开调度。
 

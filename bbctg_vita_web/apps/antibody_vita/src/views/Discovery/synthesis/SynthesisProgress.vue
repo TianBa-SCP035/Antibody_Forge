@@ -477,6 +477,7 @@
               :can-claim="canClaimRow(row)"
               :claim-title="claimButtonTitle(row)"
               :can-delete="canDeleteRow(row)"
+              :delete-title="deleteBlockReason(row)"
               @detail="openSerumProject"
               @claim="handleClaim"
               @delete="handleDelete"
@@ -658,6 +659,7 @@
                     :can-claim="canClaimRow(row)"
                     :claim-title="claimButtonTitle(row)"
                     :can-delete="canDeleteRow(row)"
+                    :delete-title="deleteBlockReason(row)"
                     @detail="openSerumProject"
                     @claim="handleClaim"
                     @delete="handleDelete"
@@ -738,6 +740,7 @@
             :can-claim="canClaimRow(editingRow)"
             :claim-title="claimButtonTitle(editingRow)"
             :can-delete="canDeleteRow(editingRow)"
+            :delete-title="deleteBlockReason(editingRow)"
             @detail="openSerumProject"
             @claim="handleClaim"
             @delete="handleDelete"
@@ -1611,9 +1614,16 @@ export default {
       }
       return false
     },
+    deleteBlockReason(row) {
+      if (row?.source_one_id) return '已关联 One 订单，不能删除，不再需要请改为"已取消"'
+      if (this.canFullEdit) return ''
+      if (this.canPmEdit) {
+        return String(row?.status || '').trim() === '待下单' ? '' : 'PM 权限只能删除待下单状态的工单'
+      }
+      return '您没有权限删除合成与验证工单'
+    },
     canDeleteRow(row) {
-      if (this.canFullEdit) return true
-      return this.canPmEdit && String(row?.status || '').trim() === '待下单'
+      return !this.deleteBlockReason(row)
     },
     async openSerumProject(row) {
       const lookupCode = String(row?.experiment_id || row?.project_code || '').trim()
@@ -1897,9 +1907,10 @@ export default {
           return
         }
         const linked = Number(res?.linked || 0)
+        const created = Number(res?.created || 0)
         const updated = Number(res?.updated || 0)
-        ElMessage.success(`同步完成：新关联 ${linked} 条，更新 ${updated} 条`)
-        if (linked > 0 || updated > 0) {
+        ElMessage.success(`同步完成：新建 ${created} 条，新关联 ${linked} 条，更新 ${updated} 条`)
+        if (linked > 0 || created > 0 || updated > 0) {
           await this.getList({ flushEditor: false, skipRemoteCheck: true })
         }
       } catch (error) {
@@ -2378,10 +2389,9 @@ export default {
       }
     },
     async handleDelete(row) {
-      if (!this.canDeleteRow(row)) {
-        ElMessage.warning(
-          this.canPmEdit ? 'PM 权限只能删除待下单状态的工单' : '您没有权限删除合成与验证工单',
-        )
+      const blockReason = this.deleteBlockReason(row)
+      if (blockReason) {
+        ElMessage.warning(blockReason)
         return
       }
       const label = row.order_no || row.synthesis_code || row.target_name || `#${row.id}`

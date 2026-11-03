@@ -27,7 +27,7 @@
         plain
         :icon="Delete"
         :class="{ 'no-permission-btn': !canDelete }"
-        :title="!canDelete ? '您没有权限删除该工单' : ''"
+        :title="deleteTitle || (!canDelete ? '您没有权限删除该工单' : '')"
         @click="$emit('delete', row)"
       >
         删除
@@ -48,6 +48,7 @@ export default {
     canClaim: { type: Boolean, default: false },
     claimTitle: { type: String, default: '' },
     canDelete: { type: Boolean, default: false },
+    deleteTitle: { type: String, default: '' },
   },
   emits: ['detail', 'claim', 'delete'],
   setup() {

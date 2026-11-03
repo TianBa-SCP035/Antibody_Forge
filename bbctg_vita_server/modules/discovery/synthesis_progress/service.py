@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections import Counter, defaultdict
 from datetime import datetime
 from io import BytesIO
 import logging
+import re
 import secrets
 import string
 from typing import Any
@@ -23,6 +25,8 @@ from modules.discovery.synthesis_progress.constants import (
     ENG_TYPE_OPTIONS,
     FLOW_STATUS_OPTIONS,
     MOUSE_STRAIN_OPTIONS,
+    ONE_AUTO_CREATE_SINCE,
+    ONE_AUTO_CREATED_BY,
     ORDER_KIND_ENGINEERING,
     ORDER_KIND_NORMAL,
     ORDER_KIND_OPTIONS,
@@ -42,8 +46,12 @@ from modules.discovery.synthesis_progress.constants import (
     UNCLAIMED_OWNER,
 )
 from modules.discovery.synthesis_progress.one_sync import (
+    SNAPSHOT_STORED_FIELDS,
+    apply_remote_snapshot_to_row,
     check_remote_for_local_rows,
+    collect_new_remote_orders,
     compute_drift_fields,
+    parse_one_target,
     sync_derived_statuses,
 )
 from utils.excel import build_list_workbook
@@ -1222,6 +1230,8 @@ def delete(
     row = db.get(DiscoverySynthesisOrder, int(row_id))
     if not row:
         raise ValueError(MISSING_ROW)
+    if row.source_one_id is not None:
+        raise ValueError("该工单已关联 One 订单，不能删除；不再需要时请把状态改为「已取消」")
     if "full" not in scopes:
         if row.status != STATUS_WAIT_ORDER:
             raise PermissionError("PM 权限只能删除待下单状态的工单")
@@ -1284,12 +1294,130 @@ def adopt_source(
     return serialize_order(row)
 
 
-def sync_from_one(
+_SIBLING_COPY_FIELDS = ("priority", "owner", "pm", "project_code", "experiment_id", "study_type", "mouse_strain")
+_STRAIN_KEY_TAIL_RE = re.compile(r"(?:[SAPCDM]\d+|\d+)$")
+
+
+def _strain_key(synthesis_code: Any) -> str:
+    """送测转码去掉靶点段与批次后缀后的品系标记，如 20R430_RM_C_W_S1 -> RMCW。"""
+    parts = str(synthesis_code or "").split("_", 1)
+    if len(parts) < 2:
+        return ""
+    return _STRAIN_KEY_TAIL_RE.sub("", re.sub(r"[^A-Z0-9]", "", parts[1].upper()))
+
+
+def _mouse_strain_guesser(db: Session):
+    counts: dict[str, Counter] = defaultdict(Counter)
+    rows = db.execute(
+        select(DiscoverySynthesisOrder.synthesis_code, DiscoverySynthesisOrder.mouse_strain).where(
+            DiscoverySynthesisOrder.synthesis_code.is_not(None),
+            DiscoverySynthesisOrder.mouse_strain.is_not(None),
+        )
+    ).all()
+    for code, strain in rows:
+        key = _strain_key(code)
+        if key and strain in MOUSE_STRAIN_OPTIONS:
+            counts[key][strain] += 1
+
+    def guess(synthesis_code: Any) -> str | None:
+        hits = counts.get(_strain_key(synthesis_code))
+        return hits.most_common(1)[0][0] if hits else None
+
+    return guess
+
+
+def _payload_from_snapshot(db: Session, snap: dict[str, Any], guess_strain) -> dict[str, Any]:
+    """One 新订单建行时的字段：执行信息取 One，项目信息沿用同批次已有行，靶点优先取 One。"""
+    payload = {f: snap[f] for f in SNAPSHOT_STORED_FIELDS if snap.get(f) not in (None, "")}
+    clauses = [
+        column == value
+        for column, value in (
+            (DiscoverySynthesisOrder.batch_label, snap.get("batch_label")),
+            (DiscoverySynthesisOrder.synthesis_code, snap.get("synthesis_code")),
+        )
+        if value
+    ]
+    sibling = (
+        db.scalars(
+            select(DiscoverySynthesisOrder)
+            .where(or_(*clauses))
+            .order_by(DiscoverySynthesisOrder.id.desc())
+            .limit(1)
+        ).first()
+        if clauses
+        else None
+    )
+    if sibling is not None:
+        for field in _SIBLING_COPY_FIELDS:
+            value = getattr(sibling, field)
+            if value not in (None, ""):
+                payload[field] = value
+
+    codes, name = parse_one_target(snap.get("task_target"), snap.get("task_projectcode"), snap.get("synthesis_code"))
+    if codes:
+        known = db.scalar(select(Target.name).where(Target.snum == codes[0])) if len(codes) == 1 else None
+        payload["target_codes"] = codes
+        if known or name:
+            payload["target_name"] = (known or name)[: STRING_FIELDS["target_name"]]
+    elif sibling is not None and sibling.target_name:
+        payload["target_name"] = sibling.target_name
+        payload["target_codes"] = sibling.target_codes
+        if sibling.target_type:
+            payload["target_type"] = sibling.target_type
+    elif name:
+        payload["target_name"] = name[: STRING_FIELDS["target_name"]]
+
+    if not payload.get("mouse_strain"):
+        strain = guess_strain(snap.get("synthesis_code"))
+        if strain:
+            payload["mouse_strain"] = strain
+    return payload
+
+
+def _apply_new_remote_orders(
     db: Session,
-    created_by: str | None = "system",
-) -> dict[str, Any]:
-    """Matches and updates existing active local synthesis rows against One DB without creating new rows."""
-    _ = created_by
+    creates: list[dict[str, Any]],
+    relinks: list[tuple[DiscoverySynthesisOrder, dict[str, Any]]],
+) -> int:
+    for row, snap in relinks:
+        previous = dict(row.source_snapshot) if isinstance(row.source_snapshot, dict) else None
+        row.source_one_type = snap["source_one_type"]
+        row.source_one_id = snap["source_one_id"]
+        apply_remote_snapshot_to_row(row, snap, replace_from_snapshot=previous)
+
+    created = 0
+    if creates:
+        _lock_queue(db)
+        guess_strain = _mouse_strain_guesser(db)
+        for snap in creates:
+            try:
+                with db.begin_nested():
+                    saved = save(
+                        db,
+                        _payload_from_snapshot(db, snap, guess_strain),
+                        created_by=ONE_AUTO_CREATED_BY,
+                        commit=False,
+                        lock_queue=False,
+                    )
+                    row = db.get(DiscoverySynthesisOrder, saved["id"])
+                    row.source_one_type = snap["source_one_type"]
+                    row.source_one_id = snap["source_one_id"]
+                    apply_remote_snapshot_to_row(row, snap)
+                    db.flush()
+                created += 1
+            except ValueError:
+                logger.warning(
+                    "skip auto-create from One %s:%s",
+                    snap.get("source_one_type"),
+                    snap.get("source_one_id"),
+                    exc_info=True,
+                )
+    db.commit()
+    return created
+
+
+def sync_from_one(db: Session) -> dict[str, Any]:
+    """核对并回填本地未完结工单，再把 One 新出现、本地还没有的订单建成新行。"""
     candidate_rows = list(
         db.scalars(
             select(DiscoverySynthesisOrder).where(
@@ -1301,24 +1429,31 @@ def sync_from_one(
             )
         ).all()
     )
-    if not candidate_rows:
-        return {"linked": 0, "updated": 0, "unchanged": 0, "total": 0}
+    skipped = {"skipped": True, "message": "未配置或无法连接 ONE_DB_URL，已跳过外部同步"}
+    total_linked = total_updated = 0
+    if candidate_rows:
+        res = check_remote_for_local_rows(
+            db,
+            rows=candidate_rows,
+            connect_timeout=3,
+            read_timeout=15,
+            serialize_changed=False,
+        )
+        if not res.get("remote_available"):
+            return skipped
+        total_linked = int(res.get("linked") or 0)
+        total_updated = int(res.get("updated") or 0)
 
-    res = check_remote_for_local_rows(
-        db,
-        rows=candidate_rows,
-        connect_timeout=3,
-        read_timeout=15,
-        serialize_changed=False,
-    )
-    if not res.get("remote_available"):
-        return {"skipped": True, "message": "未配置或无法连接 ONE_DB_URL，已跳过外部同步"}
+    pending = collect_new_remote_orders(db, ONE_AUTO_CREATE_SINCE)
+    if pending is None and not candidate_rows:
+        return skipped
+    creates, relinks = pending or ([], [])
+    created = _apply_new_remote_orders(db, creates, relinks) if creates or relinks else 0
 
-    total_linked = int(res.get("linked") or 0)
-    total_updated = int(res.get("updated") or 0)
     total_checked = len(candidate_rows)
     return {
-        "linked": total_linked,
+        "linked": total_linked + len(relinks),
+        "created": created,
         "updated": total_updated,
         "unchanged": max(0, total_checked - total_linked - total_updated),
         "total": total_checked,

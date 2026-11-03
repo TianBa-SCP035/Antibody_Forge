@@ -12,8 +12,8 @@
 | 权限代码 | 作用域 | 允许的操作与字段范围 |
 |---|---|---|
 | `discovery.page.synthesis_progress` | 只读查看 | 访问页面；调用 `/list`、`/column_values`、`/options`、`/recorded_targets`、`/check_remote`、`/export_list` |
-| `discovery.synthesis_progress.edit` | 全部编辑（`full`） | 新建工单、抽屉「加单」、修改全部可写字段（含 `target_color` 靶点底色标记）、调整队列排序、认领/退回批次、删除任意状态工单、采用外部来源最新值（`/adopt_source`）、手动触发 One 库全量同步（`/sync_now`） |
-| `discovery.synthesis_progress.pm_edit` | PM 操作（`pm`） | 新建工单、抽屉「加单」、调整队列排序（`/reorder`）、删除 `待下单` 状态工单、认领/退回批次（`/claim`）；可编辑字段（`PM_EDIT_FIELDS`）：`priority`、`sort_order`、`order_kind`、`supply_mode`、`owner`（仅限在空值/`无人问津` 与本人姓名间切换）、`pm`、`project_code`、`experiment_id`、`study_type`、`target_name`、`target_codes`、`target_type`、`mouse_strain`、`eng_type`、`eng_method`、`eng_parent_seq`、`eng_requirement`、`remark`（不可改 `status`、`eng_result`、合成订单及到货验证字段） |
+| `discovery.synthesis_progress.edit` | 全部编辑（`full`） | 新建工单、抽屉「加单」、修改全部可写字段（含 `target_color` 靶点底色标记）、调整队列排序、认领/退回批次、删除未关联 One 的任意状态工单、采用外部来源最新值（`/adopt_source`）、手动触发 One 库全量同步（`/sync_now`） |
+| `discovery.synthesis_progress.pm_edit` | PM 操作（`pm`） | 新建工单、抽屉「加单」、调整队列排序（`/reorder`）、删除未关联 One 的 `待下单` 工单、认领/退回批次（`/claim`）；可编辑字段（`PM_EDIT_FIELDS`）：`priority`、`sort_order`、`order_kind`、`supply_mode`、`owner`（仅限在空值/`无人问津` 与本人姓名间切换）、`pm`、`project_code`、`experiment_id`、`study_type`、`target_name`、`target_codes`、`target_type`、`mouse_strain`、`eng_type`、`eng_method`、`eng_parent_seq`、`eng_requirement`、`remark`（不可改 `status`、`eng_result`、合成订单及到货验证字段） |
 | `discovery.synthesis_progress.assay_edit` | 实验员操作（`assay`） | 仅可修改已有工单（不可新建）；可编辑字段（`ASSAY_EDIT_FIELDS`）：`affinity_status`、`affinity_owner`、`affinity_result`、`affinity_date`、`report_reason`、`flow_status`、`flow_date`、`flow_note`（不可改 `arrival_count`、`arrival_date` 及主状态 `status`） |
 | `serum.page.detail` | 跨模块跳转 | 点击行操作「详情」按 `experiment_id` 或 `project_code` 跳转免疫实验详情页（`/serum/detail?id=`） |
 
@@ -92,6 +92,7 @@
 | `422` | 调用 `/claim` 认领已被他人负责（`owner` 非空、非 `无人问津` 且非本人）的批次 | `该批次已被 {cur_owner} 认领，不可重复认领` |
 | `422` | 调用 `/reorder` 时任一记录处于终态或 `sort_order` 为空 | `终态记录不参与排序` |
 | `422` | 调用 `/adopt_source` 时记录无 `source_snapshot` 或未指定有效可采用字段 | `该记录没有可用的外部来源快照` / `未指定可采用的来源字段` |
+| `422` | 删除已关联 One 订单（`source_one_id` 非空）的工单 | `该工单已关联 One 订单，不能删除；不再需要时请把状态改为「已取消」` |
 | `403` | 仅具 `pm_edit` 权限修改他人负责的 `owner`、修改范围外字段或删除非 `待下单` 工单 | 对应权限拒绝提示 |
 | `404` | 指定 `id` 的记录不存在 | `合成与验证记录不存在` |
 
@@ -144,7 +145,7 @@
 
 ## 5. 跨模块联动 / 外部集成
 
-工单仅在本系统创建，不从外部 One 库自动生成新行。外部数据源为 One 库 `one_task_ngs_data_analyze`（关联 `one_task_ngs_task`）、`one_task_beacon_data_analyze`（关联 `one_task_beacon_task`）及 `orderhis`（当 `orderno` 为空但有 `refstr` 文件名时反查订单号与合成公司）；下单人按 `refstr` 文件名取订单文件上传人（ngs 为 `fileinfoSelected.uploader`，beacon 为 `beacon_upload_file.uploaded_by`）。
+工单在本系统创建，或由定时同步把 One 库新出现的订单自动建成新行（见第 6 项）。外部数据源为 One 库 `one_task_ngs_data_analyze`（关联 `one_task_ngs_task`）、`one_task_beacon_data_analyze`（关联 `one_task_beacon_task`）及 `orderhis`（当 `orderno` 为空但有 `refstr` 文件名时反查订单号与合成公司）；下单人按 `refstr` 文件名取订单文件上传人（ngs 为 `fileinfoSelected.uploader`，beacon 为 `beacon_upload_file.uploaded_by`）。
 
 1. **两段式加载与即时核对（`POST /check_remote`）**：
    - 首屏先由 `POST /list` 查本地主库立即渲染；随后前端异步调用 `POST /check_remote`（连接/读取超时各 1 秒，最多 500 行），或在单行修改 `order_no`、`synthesis_code`、`batch_label` 及打开抽屉时点查。One 库不可用时返回 `remote_available: false`，页面提示「外部订单库暂时连不上，本次未核对外部订单」。
@@ -164,6 +165,12 @@
    - `candidates`（单行点查 `len(rows) == 1` 时返回，最多 20 条）：返回同 `synthesis_code` 或同 `batch_label` 下尚未被占用的其他 One 库订单快照，供抽屉 `order_no`、`batch_label`、`synthesis_code` 输入框自动补全选择。
 5. **修改标识字段自动解绑（`_apply_fields`）**：
    - 已绑定 `source_one_id` 的工单在保存时，若修改了 `order_no`，或修改了 `synthesis_code` / `batch_label`（且当次未传 `order_no`、当前 `order_no` 仍等于原快照 `order_no`，此时一并清空 `order_no`），后端自动将 `source_one_type` 与 `source_one_id` 置为 `NULL` 解除绑定并清空 `order_sender`；若解绑后 `order_no`、`synthesis_code`、`batch_label` 均为空，同时清空 `source_snapshot`。保存后前端立即调用 `check_remote` 按新值重新匹配。
+6. **One 新订单自动建单（`collect_new_remote_orders`，随定时任务与 `/sync_now` 执行）**：
+   - 范围：ngs 与 beacon 中 `a.created >= ONE_AUTO_CREATE_SINCE`（`2026-11-01`，此前的订单已按总工单 Excel 导入对齐）、未删除且未被本地工单关联的记录。
+   - 跳过改造类批次：订单文件名（`refstr`）`_数字clones` 前的前缀（取不到时用 `t.projectcode`）按 `_` 拆分后第 5 段为 `M数字`（如 `23R037_RM_C_W_M1_20261102`）时不建，这类改造/改亚型/转染工单由人工先建空单，再经三轮匹配绑定。
+   - 去重：有订单号的按订单号建一条，本地已有同订单号（不区分大小写）时不建；没有订单号的按文件只建一条 `待下单` 行，同文件已有订单号或已有记录在本地时不建。同文件先建了无订单号的 `待下单` 行、后来同文件另一条记录才下单时，改绑那一行（按上一版快照替换自动填入值）而不是再建。
+   - 字段：快照 8 个字段与下单人取 One；`priority`、`owner`、`pm`、`project_code`、`experiment_id`、`study_type`、`mouse_strain` 沿用同 `batch_label` 或同 `synthesis_code` 的最新本地行；靶点编号取 `t.target` 中的 `[20R147]`，没有时取文件前缀或转码开头的 `数字数字R数字数字数字`，单个编号时名称取靶点库，否则用 One 的名称，都取不到时沿用同批次行的靶点；仍无小鼠品系时按转码品系标记（如 `RMCW`）取本地同标记行中最多的品系。`created_by` 为 `One同步`，状态按订单号与到货日期自动推导，并按优先级排到同优先级队尾。
+   - 删除：已关联 One 的工单不能删除，只能改为 `已取消`；要彻底去掉需在 One 删除对应记录，否则下次同步会重新建出。
 
 ## 6. 接口
 
@@ -178,13 +185,13 @@
 | `POST` | `/api/discovery/synthesis-progress/save_batch` | `edit` / `pm_edit` / `assay_edit` | Excel 视图粘贴或批量颜色标记单事务保存（`items`） |
 | `POST` | `/api/discovery/synthesis-progress/claim` | `edit` / `pm_edit` | PM 认领空白/`无人问津` 批次，或将本人批次退回 `无人问津` |
 | `POST` | `/api/discovery/synthesis-progress/reorder` | `edit` / `pm_edit` | 优先级队列拖拽排序（`moved_id`、`target_id`） |
-| `POST` | `/api/discovery/synthesis-progress/delete` | `edit` / `pm_edit` | 删除工单并重编队列（`pm_edit` 仅可删除 `待下单` 状态工单） |
+| `POST` | `/api/discovery/synthesis-progress/delete` | `edit` / `pm_edit` | 删除工单并重编队列（已关联 One 的工单不可删除；`pm_edit` 仅可删除 `待下单` 状态工单） |
 | `POST` | `/api/discovery/synthesis-progress/adopt_source` | `discovery.synthesis_progress.edit` | 采用外部来源快照覆盖本地差异字段（`id`、可选 `fields`） |
-| `POST` | `/api/discovery/synthesis-progress/sync_now` | `discovery.synthesis_progress.edit` | 手动立即对所有未完结候选工单执行 One 库批量匹配与进度同步 |
+| `POST` | `/api/discovery/synthesis-progress/sync_now` | `discovery.synthesis_progress.edit` | 手动立即执行一次定时同步（批量匹配与进度回填，再自动建单），返回 `linked`、`created`、`updated`、`unchanged`、`total` |
 | `POST` | `/api/discovery/synthesis-progress/export_list` | `discovery.page.synthesis_progress` | 按当前筛选与排序导出 Excel（`.xlsx`） |
 
 ## 7. 定时任务
 
 - **任务代码**：`job.discovery_synthesis_order_sync`（名称：「合成与验证外部订单同步」，实现：`jobs/synthesis_order_sync.py`）。
 - **默认周期**：每隔 1 小时执行一次（`schedule: "interval", every: 1, unit: "hour"`，起始时间 `00:20`）。在系统管理页面修改任务开关或调度配置后，通过 `jobs/registry.py` 的 `apply_job_schedule` 立即生效，无需重启服务。
-- **执行逻辑**：调用 `service.sync_from_one`，筛选本地主状态处于非终态（`待下单`、`合成中`、`待检测`、`检测中`）且已绑定 `source_one_id` 或 `supply_mode == '合成到货'` 的工单，以 3 秒连接超时、15 秒读取超时批量核对 One 库并回填合成与到货字段。当环境未配置或无法连接 `ONE_DB_URL` 时自动跳过，运行日志记录为 `skipped`（「未配置 ONE_DB_URL，已跳过」）。
+- **执行逻辑**：调用 `service.sync_from_one`，筛选本地主状态处于非终态（`待下单`、`合成中`、`待检测`、`检测中`）且已绑定 `source_one_id` 或 `supply_mode == '合成到货'` 的工单，以 3 秒连接超时、15 秒读取超时批量核对 One 库并回填合成与到货字段；随后按第 5 节第 6 项把 One 新订单建成新行。当环境未配置或无法连接 `ONE_DB_URL` 时自动跳过，运行日志记录为 `skipped`（「未配置 ONE_DB_URL，已跳过」）。

@@ -9,6 +9,6 @@ def synthesis_order_sync_job() -> None:
     run_recorded_job(
         JOB_CODE,
         JOB_NAME,
-        lambda db: sync_from_one(db, created_by="system"),
+        sync_from_one,
         skip_summary="未配置 ONE_DB_URL，已跳过",
     )

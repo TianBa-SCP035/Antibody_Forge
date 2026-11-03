@@ -41,6 +41,9 @@ _VALID_ORDER_NO_RE = re.compile(
 )
 
 SNAPSHOT_STORED_FIELDS = (*DRIFT_COMPARE_FIELDS, "synthesis_code", "batch_label")
+_CLONES_PREFIX_RE = re.compile(r"^(.*?)_\d+clones", re.IGNORECASE)
+_MANUAL_BATCH_SEGMENT_RE = re.compile(r"M\d+", re.IGNORECASE)
+_TARGET_CODE_RE = re.compile(r"\d{2}R\d{3}", re.IGNORECASE)
 
 
 def _clean_str(value: Any, max_len: int | None = None) -> str | None:
@@ -264,10 +267,34 @@ def build_remote_snapshot(
         "arrival_date": arrival_date,
         "order_sender": _clean_str(row_map.get("uploader"), 128),
         "order_state": _clean_str(row_map.get("orderstate"), 64),
+        "refstr": refstr,
         "task_projectid": task_projectid,
         "task_projectcode": _clean_str(row_map.get("task_projectcode"), 128),
         "task_batchname": task_batchname,
+        "task_target": _clean_str(row_map.get("task_target"), 255),
     }
+
+
+def is_manual_batch(refstr: Any, projectcode: Any = None) -> bool:
+    """改造、改亚型、转染等先在本系统建空单：工单批次（文件名前缀）第 5 段为 M1、M2… 时不自动建单。"""
+    match = _CLONES_PREFIX_RE.match(str(refstr or ""))
+    prefix = match.group(1) if match else str(projectcode or "")
+    parts = prefix.split("_")
+    return len(parts) > 4 and bool(_MANUAL_BATCH_SEGMENT_RE.fullmatch(parts[4].strip()))
+
+
+def parse_one_target(raw: Any, *code_sources: Any) -> tuple[list[str], str | None]:
+    """One 靶点写作 `[20R147]MCSP`；没有方括号编号时取工单批次/送测转码开头的靶点编号。"""
+    text_value = str(raw or "")
+    codes = [code.upper() for code in re.findall(r"\[(\d{2}R\d{3})\]", text_value, re.IGNORECASE)]
+    name = re.sub(r"\[[^\]]*\]", "", text_value).strip() or None
+    if not codes:
+        for source in code_sources:
+            head = str(source or "").split("_")[0]
+            if _TARGET_CODE_RE.fullmatch(head):
+                codes = [head.upper()]
+                break
+    return codes, name
 
 
 def compute_drift_fields(row: DiscoverySynthesisOrder) -> list[dict[str, str]]:
@@ -361,6 +388,7 @@ _NGS_QUERY_BASE = """
         t.projectid AS task_projectid,
         t.projectcode AS task_projectcode,
         t.batchname AS task_batchname,
+        t.target AS task_target,
         f.uploader AS uploader
     FROM one_task_ngs_data_analyze a
     LEFT JOIN one_task_ngs_task t ON a.ngstaskid = t.id
@@ -390,6 +418,7 @@ _BEACON_QUERY_BASE = """
         t.projectid AS task_projectid,
         t.projectcode AS task_projectcode,
         t.batchname AS task_batchname,
+        t.target AS task_target,
         f.uploaded_by AS uploader
     FROM one_task_beacon_data_analyze a
     LEFT JOIN one_task_beacon_task t ON a.ngstaskid = t.id
@@ -516,26 +545,115 @@ def _query_candidates_for_rows(
         expanding_binds.append(bindparam("syn_vals", expanding=True))
     if not clauses:
         return []
+    condition = f"AND ({' OR '.join(clauses)}) ORDER BY a.id DESC"
+    return _fetch_snapshots(one_db, condition, params, expanding_binds, orderhis_map)
 
-    where_or = " OR ".join(clauses)
-    raw_cands: list[tuple[str, dict[str, Any]]] = []
+
+def _fetch_snapshots(
+    one_db: Session,
+    condition: str,
+    params: dict[str, Any],
+    binds: list[Any] | tuple[Any, ...] = (),
+    orderhis_map: dict[str, tuple[str, str]] | None = None,
+) -> list[dict[str, Any]]:
+    raw_rows: list[tuple[str, dict[str, Any]]] = []
     for stype, qbase in (("ngs", _NGS_QUERY_BASE), ("beacon", _BEACON_QUERY_BASE)):
-        stmt = text(f"{qbase} AND ({where_or}) ORDER BY a.id DESC").bindparams(*expanding_binds)
-        for rm in one_db.execute(stmt, params).mappings().all():
-            raw_cands.append((stype, dict(rm)))
-
-    if not raw_cands:
-        return []
-
+        stmt = text(f"{qbase} {condition}").bindparams(*binds)
+        raw_rows.extend((stype, dict(rm)) for rm in one_db.execute(stmt, params).mappings().all())
     if orderhis_map is None:
         missing_fns = [
             str(rm["refstr"]).strip()
-            for _, rm in raw_cands
+            for _, rm in raw_rows
             if not _clean_order_no(rm.get("orderno")) and _clean_str(rm.get("refstr"))
         ]
         orderhis_map = _load_orderhis_map(one_db, missing_fns) if missing_fns else None
+    return [build_remote_snapshot(stype, rm, orderhis_map) for stype, rm in raw_rows]
 
-    return [build_remote_snapshot(stype, rm, orderhis_map) for stype, rm in raw_cands]
+
+def _source_key(snap: dict[str, Any]) -> tuple[str, int]:
+    return str(snap["source_one_type"]).lower(), int(snap["source_one_id"])
+
+
+def collect_new_remote_orders(
+    db: Session,
+    since: str,
+) -> tuple[list[dict[str, Any]], list[tuple[DiscoverySynthesisOrder, dict[str, Any]]]] | None:
+    """One 自 since 起新建、本地还没有的订单；One 不可用时返回 None。
+
+    返回 (要新建的快照, 要改绑的本地行与快照)。同一订单号只建一条；没有订单号的按文件去重，
+    同文件已下单或已在本地时不建。同文件先建了无订单号的待下单行、后来另一条才下单时，改绑那一行而不是再建。
+    """
+    try:
+        with open_one_db(connect_timeout=3, read_timeout=15) as one_db:
+            if one_db is None:
+                return None
+            fresh_snaps = _fetch_snapshots(one_db, "AND a.created >= :since", {"since": since})
+            refs = sorted({snap["refstr"] for snap in fresh_snaps if snap.get("refstr")})
+            file_snaps = (
+                _fetch_snapshots(
+                    one_db, "AND a.refstr IN :refs", {"refs": refs}, [bindparam("refs", expanding=True)]
+                )
+                if refs
+                else []
+            )
+    except Exception:
+        logger.warning("collect_new_remote_orders failed or timed out", exc_info=True)
+        return None
+
+    linked = {
+        (str(stype).lower(), int(sid)): int(rid)
+        for rid, stype, sid in db.execute(
+            select(
+                DiscoverySynthesisOrder.id,
+                DiscoverySynthesisOrder.source_one_type,
+                DiscoverySynthesisOrder.source_one_id,
+            ).where(DiscoverySynthesisOrder.source_one_id.is_not(None))
+        ).all()
+        if stype
+    }
+    local_orders = {
+        str(order_no).strip().upper()
+        for order_no in db.scalars(
+            select(DiscoverySynthesisOrder.order_no).where(DiscoverySynthesisOrder.order_no.is_not(None))
+        ).all()
+    }
+    fresh = [
+        snap
+        for snap in fresh_snaps
+        if _source_key(snap) not in linked
+        and not is_manual_batch(snap.get("refstr"), snap.get("task_projectcode"))
+    ]
+    same_file: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for snap in file_snaps:
+        same_file.setdefault((snap["source_one_type"], snap.get("refstr") or ""), []).append(snap)
+
+    creates: list[dict[str, Any]] = []
+    relinks: list[tuple[DiscoverySynthesisOrder, dict[str, Any]]] = []
+    seen: set[Any] = set()
+    for snap in sorted(fresh, key=_source_key):
+        file_key = (snap["source_one_type"], snap.get("refstr") or "")
+        group = same_file.get(file_key, []) if snap.get("refstr") else []
+        order_no = (snap.get("order_no") or "").upper()
+        if order_no:
+            if order_no in local_orders or order_no in seen:
+                continue
+            seen.add(order_no)
+            pending = (
+                db.get(DiscoverySynthesisOrder, linked[_source_key(other)])
+                for other in group
+                if _source_key(other) in linked and not other.get("order_no")
+            )
+            row = next((item for item in pending if item is not None and not item.order_no), None)
+            if row is not None:
+                relinks.append((row, snap))
+            else:
+                creates.append(snap)
+        elif group and file_key not in seen:
+            if any(other.get("order_no") or _source_key(other) in linked for other in group):
+                continue
+            seen.add(file_key)
+            creates.append(snap)
+    return creates, relinks
 
 
 def _taken_sources_for_snaps(

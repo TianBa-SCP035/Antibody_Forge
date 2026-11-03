@@ -229,6 +229,102 @@ class SynthesisProgressServiceTests(DbTestCase):
             manual_main = service.save(db, {"id": pm_created["id"], "remark": "手工状态保持"})
             self.assertEqual(manual_main["status"], "已完成")
 
+    def test_one_batch_and_target_parsing(self):
+        self.assertTrue(one_sync.is_manual_batch("23R037_RM_C_W_M1_20261102_20clones_20261103_to君跻_M.xlsx"))
+        self.assertTrue(one_sync.is_manual_batch(None, "23R037_RM_C_W_M12_20261102"))
+        self.assertFalse(one_sync.is_manual_batch("20R430_RM_C_W_S1_20261102_20clones_20261103_to君跻_M.xlsx"))
+        self.assertFalse(one_sync.is_manual_batch("CD6_M1_20clones.xlsx"))
+        self.assertEqual(one_sync.parse_one_target("[20R147]MCSP"), (["20R147"], "MCSP"))
+        self.assertEqual(one_sync.parse_one_target("FN1", "21R009_RL_B_K_S1", None), (["21R009"], "FN1"))
+        self.assertEqual(one_sync.parse_one_target("FN1", "FN1_RL_B_K_S1"), ([], "FN1"))
+
+    def test_sync_from_one_creates_new_orders(self):
+        def snap(sid, refstr, **extra):
+            return {
+                "source_one_type": "ngs",
+                "source_one_id": sid,
+                "refstr": refstr,
+                "order_no": None,
+                "synthetic_corp": "君跻",
+                "synthetic_count": 20,
+                "synthetic_date": "2026-11-03",
+                "arrival_count": None,
+                "arrival_date": None,
+                "order_sender": "陶俊先 Junxian Tao",
+                **extra,
+            }
+
+        file_a = "20R430_RM_C_W_S1_20261102_20clones_20261103_to君跻_M.xlsx"
+        file_b = "21R001_RM_C_W_S2_20261102_10clones_20261103_to君跻_M.xlsx"
+        new_a = snap(
+            201, file_a, order_no="CN001", batch_label="20R430_RM_C_W_S1_20261102",
+            synthesis_code="20R430_RMCWS1", task_target="[20R430]PD-L1",
+        )
+        new_b = snap(202, file_b, synthesis_code="21R001_RMCWS2", task_target="[21R001]XYZ")
+        manual = snap(203, "23R037_RM_C_W_M1_20261102_20clones_20261103_to君跻_M.xlsx", order_no="CN003")
+        known_order = snap(204, "x_20clones.xlsx", order_no="CN999")
+        remote = [new_a, new_b, manual, known_order]
+
+        def fake_fetch(_one_db, condition, params, *_args):
+            if "created" in condition:
+                return list(remote)
+            return [item for item in remote if item["refstr"] in params["refs"]]
+
+        def run_sync(db):
+            with patch("modules.discovery.synthesis_progress.one_sync.open_one_db") as mock_open, patch(
+                "modules.discovery.synthesis_progress.one_sync.fetch_remote_snapshots_by_ids", return_value={}
+            ), patch(
+                "modules.discovery.synthesis_progress.one_sync._query_candidates_for_rows", return_value=[]
+            ), patch("modules.discovery.synthesis_progress.one_sync._fetch_snapshots", side_effect=fake_fetch):
+                mock_open.return_value.__enter__.return_value = object()
+                return service.sync_from_one(db)
+
+        with self.Session() as db:
+            service.save(
+                db,
+                {
+                    "target_name": "PD-L1",
+                    "batch_label": "20R430_RM_C_W_S1_20261102",
+                    "synthesis_code": "20R430_RMCWS1",
+                    "priority": "加急",
+                    "owner": "张三",
+                    "pm": "李四",
+                    "project_code": "P001",
+                    "mouse_strain": "RMB/C",
+                },
+                created_by="tester",
+            )
+            service.save(db, {"target_name": "OLD", "order_no": "cn999"}, created_by="tester")
+
+            res = run_sync(db)
+            self.assertEqual(res["created"], 2)
+            rows = {row.source_one_id: row for row in db.query(DiscoverySynthesisOrder).all() if row.source_one_id}
+            self.assertEqual(set(rows), {201, 202})
+
+            row_a = rows[201]
+            self.assertEqual(row_a.created_by, "One同步")
+            self.assertEqual(row_a.status, "合成中")
+            self.assertEqual(row_a.order_no, "CN001")
+            self.assertEqual(row_a.order_sender, "陶俊先 Junxian Tao")
+            self.assertEqual((row_a.owner, row_a.pm, row_a.project_code, row_a.priority), ("张三", "李四", "P001", "加急"))
+            self.assertEqual((row_a.target_codes, row_a.target_name), (["20R430"], "PD-L1"))
+
+            row_b = rows[202]
+            self.assertEqual(row_b.status, "待下单")
+            self.assertEqual(row_b.target_codes, ["21R001"])
+            self.assertEqual(row_b.mouse_strain, "RMB/C")
+
+            with self.assertRaisesRegex(ValueError, "已关联 One 订单"):
+                service.delete(db, row_a.id)
+
+            # 同文件另一条后来才下单：改绑已建的待下单行，不再新建
+            remote.append(snap(205, file_b, order_no="CN005", synthesis_code="21R001_RMCWS2"))
+            res = run_sync(db)
+            self.assertEqual(res["created"], 0)
+            db.refresh(row_b)
+            self.assertEqual((row_b.source_one_id, row_b.order_no, row_b.status), (205, "CN005", "合成中"))
+            self.assertEqual(db.query(DiscoverySynthesisOrder).count(), 4)
+
     def test_sync_from_one_and_drift_adoption(self):
         fake_snap = {
             "source_one_type": "ngs",

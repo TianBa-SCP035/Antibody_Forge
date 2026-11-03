@@ -109,6 +109,9 @@ TARGET_COLOR_OPTIONS = (
 )
 
 SOURCE_ONE_TYPES = ("ngs", "beacon")
+# 此前的订单已按总工单 Excel 导入对齐；只为 One 在此之后新建的订单自动建单
+ONE_AUTO_CREATE_SINCE = "2026-11-01"
+ONE_AUTO_CREATED_BY = "One同步"
 
 ENG_TYPE_OPTIONS = (
     "亲和力",
@@ -183,6 +186,8 @@ __all__ = [
     "FLOW_STATUS_OPTIONS",
     "FLOW_STATUS_WAIT",
     "MOUSE_STRAIN_OPTIONS",
+    "ONE_AUTO_CREATE_SINCE",
+    "ONE_AUTO_CREATED_BY",
     "ORDER_KIND_ENGINEERING",
     "ORDER_KIND_NORMAL",
     "ORDER_KIND_OPTIONS",

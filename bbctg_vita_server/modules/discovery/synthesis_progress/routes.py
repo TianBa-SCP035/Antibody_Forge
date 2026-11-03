@@ -266,7 +266,7 @@ def sync_synthesis_orders_now(
     require_permission(db, current_user, SYNTHESIS_EDIT_PERMISSION)
     return _run_write(
         db,
-        lambda: service.sync_from_one(db, created_by=_actor_name(current_user)),
+        lambda: service.sync_from_one(db),
     )
 
 

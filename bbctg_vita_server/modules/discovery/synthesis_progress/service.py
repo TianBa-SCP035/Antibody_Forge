@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 import logging
 import re
@@ -20,6 +20,7 @@ from modules.discovery.synthesis_progress.constants import (
     AFFINITY_STATUS_OPTIONS,
     AFFINITY_STATUS_WAIT,
     AFFINITY_RESULT_OPTIONS,
+    CLAIM_RETURN_DAYS,
     DRIFT_COMPARE_FIELDS,
     ENG_METHOD_OPTIONS,
     ENG_TYPE_OPTIONS,
@@ -205,18 +206,21 @@ PM_EDIT_FIELDS = frozenset(
     }
 )
 
-ASSAY_EDIT_FIELDS = frozenset(
+AFFINITY_EDIT_FIELDS = frozenset(
     {
         "affinity_owner",
         "affinity_result",
         "affinity_status",
         "affinity_date",
         "report_reason",
-        "flow_status",
-        "flow_date",
-        "flow_note",
     }
 )
+
+FLOW_EDIT_FIELDS = frozenset({"flow_status", "flow_date", "flow_note"})
+
+SCOPE_EDIT_FIELDS = {"pm": PM_EDIT_FIELDS, "affinity": AFFINITY_EDIT_FIELDS, "flow": FLOW_EDIT_FIELDS}
+PM_OWNERSHIP_MESSAGE = "只能操作 PM 或负责人是本人的工单"
+CLAIM_RETURN_EXPIRED_MESSAGE = f"认领已超过 {CLAIM_RETURN_DAYS} 天，不能退回「无人问津」，可转让给其他人"
 
 
 def clean_actor_person_name(name: str | None) -> str | None:
@@ -225,6 +229,40 @@ def clean_actor_person_name(name: str | None) -> str | None:
         return None
     first = text.split()[0].strip()
     return first[:64] if first else None
+
+
+def pm_owns_row(row: DiscoverySynthesisOrder, actor_person: str | None) -> bool:
+    return bool(actor_person) and actor_person in {
+        str(row.pm or "").strip(),
+        str(row.owner or "").strip(),
+    }
+
+
+def _touch_owner_claim(row: DiscoverySynthesisOrder, previous_owner: str | None) -> None:
+    owner = str(row.owner or "").strip()
+    if owner != str(previous_owner or "").strip():
+        row.owner_claimed_at = now_local() if owner and owner != UNCLAIMED_OWNER else None
+
+
+def _can_return_claim(row: DiscoverySynthesisOrder) -> bool:
+    claimed_at = row.owner_claimed_at
+    return claimed_at is not None and now_local() - claimed_at <= timedelta(days=CLAIM_RETURN_DAYS)
+
+
+def _check_pm_owner_change(
+    row: DiscoverySynthesisOrder,
+    cur_owner: str,
+    next_owner: str,
+    actor_person: str | None,
+) -> None:
+    """PM 认领「无人问津」；本人负责的批次可转让给他人，认领 7 天内还可退回「无人问津」。"""
+    if actor_person and cur_owner == UNCLAIMED_OWNER and next_owner == actor_person:
+        return
+    if actor_person and cur_owner == actor_person and next_owner:
+        if next_owner != UNCLAIMED_OWNER or _can_return_claim(row):
+            return
+        raise PermissionError(CLAIM_RETURN_EXPIRED_MESSAGE)
+    raise PermissionError("仅可认领「无人问津」的批次，或转让、退回本人负责的批次")
 
 
 def generate_synthesis_order_id(now: datetime | None = None) -> str:
@@ -1050,10 +1088,9 @@ def save(
         if is_new and "pm" not in scopes:
             raise PermissionError("当前权限不能新建合成与验证工单")
         allowed_fields: set[str] = set()
-        if "pm" in scopes:
-            allowed_fields.update(PM_EDIT_FIELDS)
-        if "assay" in scopes:
-            allowed_fields.update(ASSAY_EDIT_FIELDS)
+        for scope, fields in SCOPE_EDIT_FIELDS.items():
+            if scope in scopes:
+                allowed_fields.update(fields)
         if not allowed_fields:
             raise PermissionError("没有权限编辑合成与验证工单")
         disallowed = [
@@ -1063,6 +1100,8 @@ def save(
         ]
         if disallowed:
             raise PermissionError("当前权限不可修改该字段")
+        if is_new and normalize_text(payload.get("owner"), STRING_FIELDS["owner"]):
+            raise PermissionError("负责人需通过认领设置")
 
     if lock_queue and (is_new or QUEUE_LOCK_FIELDS.intersection(payload)):
         _lock_queue(db)
@@ -1084,21 +1123,14 @@ def save(
         row = db.get(DiscoverySynthesisOrder, row_id)
         if not row:
             raise ValueError(MISSING_ROW)
-        if "full" not in scopes and "owner" in payload:
-            cur_owner = str(row.owner or "").strip()
-            next_owner = normalize_text(payload.get("owner"), STRING_FIELDS["owner"]) or ""
-            if next_owner != cur_owner:
-                allowed_owners = {"", UNCLAIMED_OWNER}
-                if actor_person:
-                    allowed_owners.add(actor_person)
-                can_update_owner = (
-                    cur_owner in allowed_owners
-                    and next_owner in allowed_owners
-                )
-                if not can_update_owner:
-                    raise PermissionError(
-                        "仅可认领空白或「无人问津」的批次，并修改本人负责的批次"
-                    )
+        if "full" not in scopes:
+            if any(key in PM_EDIT_FIELDS and key != "owner" for key in payload) and not pm_owns_row(row, actor_person):
+                raise PermissionError(PM_OWNERSHIP_MESSAGE)
+            if "owner" in payload:
+                cur_owner = str(row.owner or "").strip()
+                next_owner = normalize_text(payload.get("owner"), STRING_FIELDS["owner"]) or ""
+                if next_owner != cur_owner:
+                    _check_pm_owner_change(row, cur_owner, next_owner, actor_person)
         previous_sort = queued_sort(row.sort_order)
         previous_priority = row.priority or DEFAULT_PRIORITY
 
@@ -1110,7 +1142,9 @@ def save(
         _prepare_assay_status_edits(row, payload, actor_person)
 
     previous_target_type = (row.target_type or "").strip()
+    previous_owner = row.owner
     _apply_fields(row, payload)
+    _touch_owner_claim(row, previous_owner)
     if "target_codes" in payload and "target_type" not in payload:
         row.target_type = _infer_target_type(db, row.target_codes)
     if "status" not in payload and (is_new or AUTO_STATUS_FIELDS.intersection(payload)):
@@ -1119,14 +1153,13 @@ def save(
             changed.add("target_type")
         sync_derived_statuses(row, changed_fields=changed)
 
-    if actor_person and (
-        (is_new and (row.order_kind == ORDER_KIND_ENGINEERING or "full" not in scopes))
-        or (payload.get("order_kind") == ORDER_KIND_ENGINEERING)
+    if actor_person and is_new and "full" not in scopes:
+        row.pm = actor_person
+    elif actor_person and not row.pm and (
+        (is_new and row.order_kind == ORDER_KIND_ENGINEERING)
+        or payload.get("order_kind") == ORDER_KIND_ENGINEERING
     ):
-        if not row.owner or row.owner == UNCLAIMED_OWNER:
-            row.owner = actor_person
-        if not row.pm:
-            row.pm = actor_person
+        row.pm = actor_person
 
     _apply_queue(
         db,
@@ -1201,20 +1234,33 @@ def claim_order(
     db: Session,
     row_id: int,
     actor_name: str | None,
+    *,
+    scopes: frozenset[str] = frozenset({"full"}),
 ) -> dict[str, Any]:
+    """全部编辑权限在空白与「无人问津」间切换（开放/撤回认领）；PM 认领「无人问津」或在 7 天内退回本人批次。"""
     row = db.get(DiscoverySynthesisOrder, int(row_id), with_for_update=True)
     if not row:
         raise ValueError(MISSING_ROW)
-    person = clean_actor_person_name(actor_name)
-    if not person:
-        raise ValueError("无法识别当前认领人姓名")
     cur_owner = str(row.owner or "").strip()
-    if cur_owner in {"", UNCLAIMED_OWNER}:
-        row.owner = person
-    elif cur_owner == person:
-        row.owner = UNCLAIMED_OWNER
+    if "full" in scopes:
+        if cur_owner not in {"", UNCLAIMED_OWNER}:
+            raise ValueError(f"该批次已由 {cur_owner} 负责，如需调整请直接修改负责人")
+        row.owner = None if cur_owner else UNCLAIMED_OWNER
     else:
-        raise ValueError(f"该批次已被 {cur_owner} 认领，不可重复认领")
+        person = clean_actor_person_name(actor_name)
+        if not person:
+            raise ValueError("无法识别当前认领人姓名")
+        if cur_owner == UNCLAIMED_OWNER:
+            row.owner = person
+        elif cur_owner == person:
+            if not _can_return_claim(row):
+                raise ValueError(CLAIM_RETURN_EXPIRED_MESSAGE)
+            row.owner = UNCLAIMED_OWNER
+        elif not cur_owner:
+            raise ValueError("该批次尚未开放认领，标记为「无人问津」后才能认领")
+        else:
+            raise ValueError(f"该批次已被 {cur_owner} 认领，不可重复认领")
+    _touch_owner_claim(row, cur_owner)
     db.commit()
     db.refresh(row)
     return serialize_order(row)
@@ -1225,6 +1271,7 @@ def delete(
     row_id: int,
     *,
     scopes: frozenset[str] = frozenset({"full"}),
+    actor_name: str | None = None,
 ) -> None:
     _lock_queue(db)
     row = db.get(DiscoverySynthesisOrder, int(row_id))
@@ -1233,6 +1280,8 @@ def delete(
     if row.source_one_id is not None:
         raise ValueError("该工单已关联 One 订单，不能删除；不再需要时请把状态改为「已取消」")
     if "full" not in scopes:
+        if not pm_owns_row(row, clean_actor_person_name(actor_name)):
+            raise PermissionError(PM_OWNERSHIP_MESSAGE)
         if row.status != STATUS_WAIT_ORDER:
             raise PermissionError("PM 权限只能删除待下单状态的工单")
     db.delete(row)
@@ -1241,7 +1290,14 @@ def delete(
     db.commit()
 
 
-def reorder(db: Session, moved_id: Any, target_id: Any) -> dict[str, Any]:
+def reorder(
+    db: Session,
+    moved_id: Any,
+    target_id: Any,
+    *,
+    scopes: frozenset[str] = frozenset({"full"}),
+    actor_name: str | None = None,
+) -> dict[str, Any]:
     _lock_queue(db)
     parsed_moved_id = _parse_row_id(moved_id)
     parsed_target_id = _parse_row_id(target_id)
@@ -1251,6 +1307,8 @@ def reorder(db: Session, moved_id: Any, target_id: Any) -> dict[str, Any]:
     target = db.get(DiscoverySynthesisOrder, parsed_target_id)
     if not moved or not target:
         raise ValueError(MISSING_ROW)
+    if "full" not in scopes and not pm_owns_row(moved, clean_actor_person_name(actor_name)):
+        raise PermissionError(PM_OWNERSHIP_MESSAGE)
     if parsed_moved_id == parsed_target_id:
         return {"items": [serialize_order(moved)]}
     for row in (moved, target):
@@ -1350,7 +1408,7 @@ def _payload_from_snapshot(db: Session, snap: dict[str, Any], guess_strain) -> d
     if sibling is not None:
         for field in _SIBLING_COPY_FIELDS:
             value = getattr(sibling, field)
-            if value not in (None, ""):
+            if value not in (None, "") and not (field == "owner" and value == UNCLAIMED_OWNER):
                 payload[field] = value
 
     codes, name = parse_one_target(snap.get("task_target"), snap.get("task_projectcode"), snap.get("synthesis_code"))
@@ -1520,7 +1578,8 @@ def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, st
 
 
 __all__ = [
-    "ASSAY_EDIT_FIELDS",
+    "AFFINITY_EDIT_FIELDS",
+    "FLOW_EDIT_FIELDS",
     "MISSING_ROW",
     "PM_EDIT_FIELDS",
     "adopt_source",

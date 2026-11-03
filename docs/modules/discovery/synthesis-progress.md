@@ -12,9 +12,10 @@
 | 权限代码 | 作用域 | 允许的操作与字段范围 |
 |---|---|---|
 | `discovery.page.synthesis_progress` | 只读查看 | 访问页面；调用 `/list`、`/column_values`、`/options`、`/recorded_targets`、`/check_remote`、`/export_list` |
-| `discovery.synthesis_progress.edit` | 全部编辑（`full`） | 新建工单、抽屉「加单」、修改全部可写字段（含 `target_color` 靶点底色标记）、调整队列排序、认领/退回批次、删除未关联 One 的任意状态工单、采用外部来源最新值（`/adopt_source`）、手动触发 One 库全量同步（`/sync_now`） |
-| `discovery.synthesis_progress.pm_edit` | PM 操作（`pm`） | 新建工单、抽屉「加单」、调整队列排序（`/reorder`）、删除未关联 One 的 `待下单` 工单、认领/退回批次（`/claim`）；可编辑字段（`PM_EDIT_FIELDS`）：`priority`、`sort_order`、`order_kind`、`supply_mode`、`owner`（仅限在空值/`无人问津` 与本人姓名间切换）、`pm`、`project_code`、`experiment_id`、`study_type`、`target_name`、`target_codes`、`target_type`、`mouse_strain`、`eng_type`、`eng_method`、`eng_parent_seq`、`eng_requirement`、`remark`（不可改 `status`、`eng_result`、合成订单及到货验证字段） |
-| `discovery.synthesis_progress.assay_edit` | 实验员操作（`assay`） | 仅可修改已有工单（不可新建）；可编辑字段（`ASSAY_EDIT_FIELDS`）：`affinity_status`、`affinity_owner`、`affinity_result`、`affinity_date`、`report_reason`、`flow_status`、`flow_date`、`flow_note`（不可改 `arrival_count`、`arrival_date` 及主状态 `status`） |
+| `discovery.synthesis_progress.edit` | 全部编辑（`full`） | 新建工单、抽屉「加单」、修改全部可写字段（含 `target_color` 靶点底色标记）、调整队列排序、「认领」按钮在负责人为空与 `无人问津` 间切换（标记为 `无人问津` 即开放 PM 认领）、删除未关联 One 的任意状态工单、采用外部来源最新值（`/adopt_source`）、手动触发 One 库全量同步（`/sync_now`） |
+| `discovery.synthesis_progress.pm_edit` | PM 操作（`pm`） | 新建工单（不可填 `owner`）、抽屉「加单」、认领 `无人问津` 批次（`/claim`，不限工单归属），认领后 7 天内可退回 `无人问津`，之后只能转让给他人；修改字段、调整队列排序（`/reorder`）、删除未关联 One 的 `待下单` 工单仅限 `pm` 或 `owner` 是本人的工单；可编辑字段（`PM_EDIT_FIELDS`）：`priority`、`sort_order`、`order_kind`、`supply_mode`、`owner`（`无人问津` → 本人；本人 → 他人，或 7 天内 → `无人问津`）、`pm`、`project_code`、`experiment_id`、`study_type`、`target_name`、`target_codes`、`target_type`、`mouse_strain`、`eng_type`、`eng_method`、`eng_parent_seq`、`eng_requirement`、`remark`（不可改 `status`、`eng_result`、合成订单及到货验证字段） |
+| `discovery.synthesis_progress.affinity_edit` | 亲和力实验员（`affinity`） | 仅可修改已有工单（不可新建）；可编辑字段（`AFFINITY_EDIT_FIELDS`）：`affinity_status`、`affinity_owner`、`affinity_result`、`affinity_date`、`report_reason` |
+| `discovery.synthesis_progress.flow_edit` | 流式实验员（`flow`） | 仅可修改已有工单（不可新建）；可编辑字段（`FLOW_EDIT_FIELDS`）：`flow_status`、`flow_date`、`flow_note` |
 | `serum.page.detail` | 跨模块跳转 | 点击行操作「详情」按 `experiment_id` 或 `project_code` 跳转免疫实验详情页（`/serum/detail?id=`） |
 
 ## 2. 数据与编号
@@ -47,7 +48,8 @@
 | `report_reason` | 未出原因 | 最长 500，保留换行 |
 | `flow_status` | 流式检测状态 | 枚举：`流式待检测`、`流式已完成`、`流式不适用`（无检测中状态）；验证前阶段为 `NULL` |
 | `flow_note` | 流式说明 | 最长 500，保留换行 |
-| `owner` | 负责人 | 最长 64，未认领可记为 `无人问津`。新建 `改造` 单、仅具 `pm_edit` 权限新建工单，或保存将 `order_kind` 设为 `改造` 时，若 `owner` 为空或 `无人问津` 自动填入当前操作人姓名首词（同时若 `pm` 为空也自动填入） |
+| `owner` | 负责人 | 最长 64；`无人问津` 是审核人标记的「可认领」状态，空值不可认领。仅具 `pm_edit` 新建工单时 `pm` 自动填为当前操作人姓名首词；新建 `改造` 单或保存将 `order_kind` 设为 `改造` 时，若 `pm` 为空同样自动填入。不再自动填 `owner` |
+| `owner_claimed_at` | 负责人认领时间 | 不可直接写入；`owner` 变成具体人员（认领、转让、直接修改或自动建单沿用）时记为当前时间，变为空或 `无人问津` 时清空。PM 退回 `无人问津` 须在此时间后 `CLAIM_RETURN_DAYS`（7）天内，为空视为已超期 |
 | `remark` | 检测备注 | 最长 1000，保留换行 |
 | `eng_type` | 改造类型 | 最长 128；预设：`亲和力`、`人源化`、`去PTM`、`Tm`、`PI`、`亲水性`、`稳定性`、`CIC`、`HIC`、`Tagg`、`糖基化`、`氧化风险`、`脱酰胺风险`、`同家族交叉`、`VHH序列改造`、`改亚型`、`其他`，支持多选与自填，按预设顺序以顿号拼接 |
 | `eng_method` | 改造方式 | 最长 128；预设：`AI`、`NGS姐妹克隆`、`理性设计`、`饱和突变`、`其他`，支持多选与自填，按预设顺序以顿号拼接 |
@@ -89,11 +91,14 @@
 | `422` | `report_reason` 非空（含当次传入或原值未清空）时手动将 `affinity_status` 设为 `亲和力检测中` 或 `亲和力已完成` | `请先清除未出报告原因，再修改亲和力状态` |
 | `422` | 手动将 `affinity_status` 设为 `亲和力检测中` 但当前用户无法解析出姓名 | `无法识别当前亲和力人员姓名` |
 | `422` | `target_type == '分泌型'`（含当次传入或原值）时手动传入 `flow_status` | `分泌型靶点不需要流式实验` |
-| `422` | 调用 `/claim` 认领已被他人负责（`owner` 非空、非 `无人问津` 且非本人）的批次 | `该批次已被 {cur_owner} 认领，不可重复认领` |
+| `422` | 仅具 `pm_edit` 调用 `/claim`：负责人为空 / 已被他人负责 / 本人认领超过 7 天 | `该批次尚未开放认领，标记为「无人问津」后才能认领` / `该批次已被 {cur_owner} 认领，不可重复认领` / `认领已超过 7 天，不能退回「无人问津」，可转让给其他人` |
+| `422` | 具 `edit` 调用 `/claim` 时负责人已是具体人员 | `该批次已由 {cur_owner} 负责，如需调整请直接修改负责人` |
 | `422` | 调用 `/reorder` 时任一记录处于终态或 `sort_order` 为空 | `终态记录不参与排序` |
 | `422` | 调用 `/adopt_source` 时记录无 `source_snapshot` 或未指定有效可采用字段 | `该记录没有可用的外部来源快照` / `未指定可采用的来源字段` |
 | `422` | 删除已关联 One 订单（`source_one_id` 非空）的工单 | `该工单已关联 One 订单，不能删除；不再需要时请把状态改为「已取消」` |
-| `403` | 仅具 `pm_edit` 权限修改他人负责的 `owner`、修改范围外字段或删除非 `待下单` 工单 | 对应权限拒绝提示 |
+| `403` | 无 `edit` 时修改、排序或删除 `pm`/`owner` 都不是本人的工单 | `只能操作 PM 或负责人是本人的工单` |
+| `403` | 无 `edit` 时新建工单传入 `owner`、修改不归本人的 `owner`、把本人批次改为空，或认领超过 7 天后退回 `无人问津` | `负责人需通过认领设置` / `仅可认领「无人问津」的批次，或转让、退回本人负责的批次` / `认领已超过 7 天，不能退回「无人问津」，可转让给其他人` |
+| `403` | 修改范围外字段，或仅具 `pm_edit` 删除非 `待下单` 工单 | `当前权限不可修改该字段` / `PM 权限只能删除待下单状态的工单` |
 | `404` | 指定 `id` 的记录不存在 | `合成与验证记录不存在` |
 
 ## 4. 页面操作
@@ -140,7 +145,7 @@
 - **编辑抽屉（540px 无遮罩）**：
   - 分区顺序：`1. 状态 / 归属` → `2. 改造信息`（仅 `order_kind == '改造'` 时展开） → `3. 项目信息` → `4. 合成订单` → `5. 到货与验证`。
   - 顶部工具栏含 `详情`、`认领`、`删除`、`加单`、`全部采用`（`has_drift && canFullEdit` 时显示）及 `上一条 / 下一条`。
-  - **新建与「加单」**：右上角「新建工单」在「序列改造」视图下默认创建 `order_kind = '改造'`，其余视图默认创建 `常规合成`。抽屉「加单」复制当前工单的项目、靶点、小鼠品系与改造需求等基础字段（具备 `edit` 权限时额外复制 `selection_method`、`synthesis_code`、`batch_label`；`owner` 为 `无人问津` 或仅具 `pm_edit` 且非本人时不复制），生成新行后立即触发 `check_remote` 尝试自动绑定 One 库同转码/批次的下一笔未关联订单。
+  - **新建与「加单」**：右上角「新建工单」在「序列改造」视图下默认创建 `order_kind = '改造'`，其余视图默认创建 `常规合成`。抽屉「加单」复制当前工单的项目、靶点、小鼠品系与改造需求等基础字段（具备 `edit` 权限时额外复制 `selection_method`、`synthesis_code`、`batch_label`；`owner` 为 `无人问津` 或不具 `edit` 时不复制），生成新行后立即触发 `check_remote` 尝试自动绑定 One 库同转码/批次的下一笔未关联订单。
 - **Excel 粘贴与导出**：Excel 粘贴支持标准列名与别名映射（`SHEET_HEADER_ALIASES`）及靶点名称/编号双向解析校验，通过 `POST /save_batch` 单事务保存；「列表导出」调用 `POST /export_list` 导出 38 列 Excel。
 
 ## 5. 跨模块联动 / 外部集成
@@ -153,7 +158,7 @@
    - 对 `source_one_id` 为空且填有 `order_no`、`synthesis_code` 或 `batch_label` 的行，排除已被其他本地工单占用的 One 记录，且要求双方非空订单号兼容（相同，或 `CN`/`GS` 前缀互为别名且合成个数一致），依次按三轮匹配（同轮多候选优先选 `synthetic_count` 相同者，否则取 `id` 最大者）：
      1. `order_no` 精确匹配 `a.orderno`；
      2. `batch_label`（取 `|` 前主干及剥离 `_数字`/`_C数字` 后基础名）匹配 `t.projectid`、`t.projectcode` 或 `t.batchname`；
-     3. `synthesis_code` 匹配 `t.synthesiscode` 或 `t.projectcode`。
+     3. `synthesis_code` 匹配 `t.synthesiscode` 或 `t.projectcode`（仅 `supply_mode = '合成到货'`；改亚型、内部转染与原合成共用转码，只按前两轮关联）。
 3. **快照字段、自动回填与差异采用**：
    - `SNAPSHOT_STORED_FIELDS`（存入 `source_snapshot` 的 **8 个字段**）：`order_no`、`synthetic_corp`、`synthetic_count`、`synthetic_date`、`arrival_count`、`arrival_date`、`synthesis_code`、`batch_label`。
    - `DRIFT_COMPARE_FIELDS`（参与差异比对的 **6 个执行字段**）：`order_no`、`synthetic_corp`、`synthetic_count`、`synthetic_date`、`arrival_count`、`arrival_date`。
@@ -169,7 +174,7 @@
    - 范围：ngs 与 beacon 中 `a.created >= ONE_AUTO_CREATE_SINCE`（`2026-11-01`，此前的订单已按总工单 Excel 导入对齐）、未删除且未被本地工单关联的记录。
    - 跳过改造类批次：订单文件名（`refstr`）`_数字clones` 前的前缀（取不到时用 `t.projectcode`）按 `_` 拆分后第 5 段为 `M数字`（如 `23R037_RM_C_W_M1_20261102`）时不建，这类改造/改亚型/转染工单由人工先建空单，再经三轮匹配绑定。
    - 去重：有订单号的按订单号建一条，本地已有同订单号（不区分大小写）时不建；没有订单号的按文件只建一条 `待下单` 行，同文件已有订单号或已有记录在本地时不建。同文件先建了无订单号的 `待下单` 行、后来同文件另一条记录才下单时，改绑那一行（按上一版快照替换自动填入值）而不是再建。
-   - 字段：快照 8 个字段与下单人取 One；`priority`、`owner`、`pm`、`project_code`、`experiment_id`、`study_type`、`mouse_strain` 沿用同 `batch_label` 或同 `synthesis_code` 的最新本地行；靶点编号取 `t.target` 中的 `[20R147]`，没有时取文件前缀或转码开头的 `数字数字R数字数字数字`，单个编号时名称取靶点库，否则用 One 的名称，都取不到时沿用同批次行的靶点；仍无小鼠品系时按转码品系标记（如 `RMCW`）取本地同标记行中最多的品系。`created_by` 为 `One同步`，状态按订单号与到货日期自动推导，并按优先级排到同优先级队尾。
+   - 字段：快照 8 个字段与下单人取 One；`priority`、`owner`、`pm`、`project_code`、`experiment_id`、`study_type`、`mouse_strain` 沿用同 `batch_label` 或同 `synthesis_code` 的最新本地行（`owner` 为 `无人问津` 时不沿用，留空待审核标记）；靶点编号取 `t.target` 中的 `[20R147]`，没有时取文件前缀或转码开头的 `数字数字R数字数字数字`，单个编号时名称取靶点库，否则用 One 的名称，都取不到时沿用同批次行的靶点；仍无小鼠品系时按转码品系标记（如 `RMCW`）取本地同标记行中最多的品系。`created_by` 为 `One同步`，状态按订单号与到货日期自动推导，并按优先级排到同优先级队尾。
    - 删除：已关联 One 的工单不能删除，只能改为 `已取消`；要彻底去掉需在 One 删除对应记录，否则下次同步会重新建出。
 
 ## 6. 接口
@@ -181,11 +186,11 @@
 | `GET` | `/api/discovery/synthesis-progress/options` | `discovery.page.synthesis_progress` | 获取下拉与校验选项：`statuses`、`affinity_statuses`、`flow_statuses`、`priorities`、`order_kinds`、`supply_modes`、`affinity_results`、`target_types`、`mouse_strains`、`selection_methods`（挑选方式）、`synthetic_corps`、`eng_types`、`eng_methods`、`owners`、`pms` |
 | `GET` | `/api/discovery/synthesis-progress/recorded_targets` | `discovery.page.synthesis_progress` | 顶部靶点筛选远程搜索本表已录入靶点（`keyword`、`limit` 默认 50、最大 200） |
 | `POST` | `/api/discovery/synthesis-progress/check_remote` | `discovery.page.synthesis_progress` | 按本地行 `ids` 核对 One 库快照，返回 `updated_items`、`linked`、`updated`、`duplicates`、`candidates`、`remote_available` |
-| `POST` | `/api/discovery/synthesis-progress/save` | `edit` / `pm_edit` / `assay_edit` | 单条新增（无 `id`，需 `edit` 或 `pm_edit`）或按字段范围修改（有 `id`） |
-| `POST` | `/api/discovery/synthesis-progress/save_batch` | `edit` / `pm_edit` / `assay_edit` | Excel 视图粘贴或批量颜色标记单事务保存（`items`） |
-| `POST` | `/api/discovery/synthesis-progress/claim` | `edit` / `pm_edit` | PM 认领空白/`无人问津` 批次，或将本人批次退回 `无人问津` |
-| `POST` | `/api/discovery/synthesis-progress/reorder` | `edit` / `pm_edit` | 优先级队列拖拽排序（`moved_id`、`target_id`） |
-| `POST` | `/api/discovery/synthesis-progress/delete` | `edit` / `pm_edit` | 删除工单并重编队列（已关联 One 的工单不可删除；`pm_edit` 仅可删除 `待下单` 状态工单） |
+| `POST` | `/api/discovery/synthesis-progress/save` | `edit` / `pm_edit` / `affinity_edit` / `flow_edit` | 单条新增（无 `id`，需 `edit` 或 `pm_edit`）或按字段范围修改（有 `id`） |
+| `POST` | `/api/discovery/synthesis-progress/save_batch` | `edit` / `pm_edit` / `affinity_edit` / `flow_edit` | Excel 视图粘贴或批量颜色标记单事务保存（`items`） |
+| `POST` | `/api/discovery/synthesis-progress/claim` | `edit` / `pm_edit` | `edit`：负责人在空与 `无人问津` 间切换；`pm_edit`：认领 `无人问津` 批次，或在认领 7 天内将本人批次退回 `无人问津` |
+| `POST` | `/api/discovery/synthesis-progress/reorder` | `edit` / `pm_edit` | 优先级队列拖拽排序（`moved_id`、`target_id`；`pm_edit` 仅可移动本人工单） |
+| `POST` | `/api/discovery/synthesis-progress/delete` | `edit` / `pm_edit` | 删除工单并重编队列（已关联 One 的工单不可删除；`pm_edit` 仅可删除本人的 `待下单` 工单） |
 | `POST` | `/api/discovery/synthesis-progress/adopt_source` | `discovery.synthesis_progress.edit` | 采用外部来源快照覆盖本地差异字段（`id`、可选 `fields`） |
 | `POST` | `/api/discovery/synthesis-progress/sync_now` | `discovery.synthesis_progress.edit` | 手动立即执行一次定时同步（批量匹配与进度回填，再自动建单），返回 `linked`、`created`、`updated`、`unchanged`、`total` |
 | `POST` | `/api/discovery/synthesis-progress/export_list` | `discovery.page.synthesis_progress` | 按当前筛选与排序导出 Excel（`.xlsx`） |

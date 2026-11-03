@@ -1,3 +1,4 @@
+from datetime import timedelta
 import unittest
 from unittest.mock import patch
 
@@ -5,6 +6,7 @@ from models.discovery import DiscoverySynthesisOrder
 from models.target import Target
 from modules.discovery.synthesis_progress import one_sync, service
 from support import DbTestCase
+from utils.clock import now_local
 
 
 class SynthesisProgressServiceTests(DbTestCase):
@@ -105,7 +107,7 @@ class SynthesisProgressServiceTests(DbTestCase):
                 db,
                 {"id": row1["id"], "affinity_status": "亲和力检测中"},
                 created_by="张赞 Zan Zhang",
-                scopes=frozenset({"assay"}),
+                scopes=frozenset({"affinity"}),
             )
             self.assertEqual(row1["status"], "检测中")
             self.assertEqual(row1["affinity_status"], "亲和力检测中")
@@ -139,7 +141,7 @@ class SynthesisProgressServiceTests(DbTestCase):
             self.assertEqual(row1["status"], "已完成")
 
             # 5. Engineering order with multi-value eng_type & eng_method joined with '、',
-            #    and auto-fills owner and pm from created_by
+            #    and auto-fills pm (not owner) from created_by
             row2 = service.save(
                 db,
                 {
@@ -162,7 +164,7 @@ class SynthesisProgressServiceTests(DbTestCase):
             self.assertEqual(row2["priority"], "加急")
             self.assertEqual(row2["eng_type"], "亲和力、Tm")
             self.assertEqual(row2["eng_method"], "AI、NGS姐妹克隆")
-            self.assertEqual(row2["owner"], "王子豪")
+            self.assertIsNone(row2["owner"])
             self.assertEqual(row2["pm"], "王子豪")
 
             # 6. Default list order is id desc; completed row1 has left the active queue.
@@ -173,36 +175,21 @@ class SynthesisProgressServiceTests(DbTestCase):
             self.assertEqual(queue_list[0]["sort_order"], 1)
             self.assertIsNone(queue_list[1]["sort_order"])
 
-            # 7. Empty/无人问津 owners can be claimed; same user re-claiming reverts to 无人问津
-            claimed = service.claim_order(db, row1["id"], "张赞 Zan Zhang")
-            self.assertEqual(claimed["owner"], "张赞")
-            with self.assertRaises(ValueError):
-                service.claim_order(db, row1["id"], "兰维秋")
-            reverted = service.claim_order(db, row1["id"], "张赞 Zan Zhang")
-            self.assertEqual(reverted["owner"], "无人问津")
-
-            # 8. PM scope & Assay scope permissions and manual status preservation
+            # 7. PM 新建：pm 自动填本人，负责人留空
             pm_created = service.save(
                 db,
                 {"target_name": "CD6", "eng_requirement": "提高Tm"},
                 created_by="兰维秋",
                 scopes=frozenset({"pm"}),
             )
-            self.assertEqual(pm_created["owner"], "兰维秋")
-            self.assertEqual(pm_created["pm"], "兰维秋")
-            with self.assertRaises(PermissionError):
-                service.save(
-                    db,
-                    {"id": pm_created["id"], "arrival_count": 50},
-                    scopes=frozenset({"pm"}),
-                )
+            self.assertEqual((pm_created["pm"], pm_created["owner"]), ("兰维秋", None))
 
             # Reopening affinity via pill on a completed row moves status back to 检测中 without snapping back to 已完成
             reopened = service.save(
                 db,
                 {"id": row1["id"], "affinity_status": "亲和力检测中"},
                 created_by="张赞",
-                scopes=frozenset({"assay"}),
+                scopes=frozenset({"affinity"}),
             )
             self.assertEqual(reopened["status"], "检测中")
             self.assertEqual(reopened["affinity_status"], "亲和力检测中")
@@ -210,7 +197,7 @@ class SynthesisProgressServiceTests(DbTestCase):
                 service.save(
                     db,
                     {"id": row1["id"], "status": "待检测"},
-                    scopes=frozenset({"assay"}),
+                    scopes=frozenset({"affinity", "flow"}),
                 )
 
             # Manual assay completion without dates keeps main status in 检测中; manual main status is preserved across note edits
@@ -218,7 +205,7 @@ class SynthesisProgressServiceTests(DbTestCase):
                 db,
                 {"id": pm_created["id"], "affinity_status": "亲和力已完成", "flow_status": "流式已完成"},
                 created_by="兰维秋",
-                scopes=frozenset({"assay"}),
+                scopes=frozenset({"affinity", "flow"}),
             )
             self.assertEqual(
                 service.get_list(db, {"status": ["亲和力检测中", "流式已完成"]})["total"],
@@ -228,6 +215,43 @@ class SynthesisProgressServiceTests(DbTestCase):
             self.assertEqual(manual_main["status"], "已完成")
             manual_main = service.save(db, {"id": pm_created["id"], "remark": "手工状态保持"})
             self.assertEqual(manual_main["status"], "已完成")
+
+    def test_claim_and_scope_rules(self):
+        pm = frozenset({"pm"})
+        with self.Session() as db:
+            rid = service.save(db, {"target_name": "CD6"})["id"]
+            # 空负责人不能认领；全部编辑在空与无人问津间切换
+            with self.assertRaisesRegex(ValueError, "尚未开放认领"):
+                service.claim_order(db, rid, "张赞", scopes=pm)
+            self.assertEqual(service.claim_order(db, rid, None)["owner"], "无人问津")
+            # PM 认领后他人不能再认领，7 天内可退回
+            self.assertEqual(service.claim_order(db, rid, "张赞", scopes=pm)["owner"], "张赞")
+            with self.assertRaisesRegex(ValueError, "不可重复认领"):
+                service.claim_order(db, rid, "兰维秋", scopes=pm)
+            self.assertEqual(service.claim_order(db, rid, "张赞", scopes=pm)["owner"], "无人问津")
+            # 超过 7 天不能退回，只能转让
+            service.claim_order(db, rid, "张赞", scopes=pm)
+            db.get(DiscoverySynthesisOrder, rid).owner_claimed_at = now_local() - timedelta(days=8)
+            with self.assertRaisesRegex(ValueError, "超过 7 天"):
+                service.claim_order(db, rid, "张赞", scopes=pm)
+            with self.assertRaisesRegex(PermissionError, "超过 7 天"):
+                service.save(db, {"id": rid, "owner": "无人问津"}, created_by="张赞", scopes=pm)
+            self.assertEqual(service.save(db, {"id": rid, "owner": "兰维秋"}, created_by="张赞", scopes=pm)["owner"], "兰维秋")
+            with self.assertRaisesRegex(ValueError, "已由 兰维秋 负责"):
+                service.claim_order(db, rid, None)
+            # PM 只能操作 pm 或负责人是本人的工单，新建不能填负责人
+            with self.assertRaisesRegex(PermissionError, "PM 或负责人是本人"):
+                service.save(db, {"id": rid, "remark": "x"}, created_by="张赞", scopes=pm)
+            with self.assertRaisesRegex(PermissionError, "PM 或负责人是本人"):
+                service.delete(db, rid, scopes=pm, actor_name="张赞")
+            service.save(db, {"id": rid, "remark": "x"}, created_by="兰维秋", scopes=pm)
+            with self.assertRaisesRegex(PermissionError, "需通过认领"):
+                service.save(db, {"target_name": "CD7", "owner": "兰维秋"}, created_by="兰维秋", scopes=pm)
+            # 实验员权限按亲和力 / 流式拆分
+            with self.assertRaises(PermissionError):
+                service.save(db, {"id": rid, "flow_note": "x"}, scopes=frozenset({"affinity"}))
+            with self.assertRaises(PermissionError):
+                service.save(db, {"id": rid, "affinity_result": "x"}, scopes=frozenset({"flow"}))
 
     def test_one_batch_and_target_parsing(self):
         self.assertTrue(one_sync.is_manual_batch("23R037_RM_C_W_M1_20261102_20clones_20261103_to君跻_M.xlsx"))
@@ -482,6 +506,36 @@ class SynthesisProgressServiceTests(DbTestCase):
                 self.assertEqual(switched_item["synthetic_corp"], "擎科")
                 self.assertEqual(switched_item["synthetic_date"], "2026-03-01")
                 self.assertIsNone(switched_item["order_sender"])
+
+    def test_internal_supply_rows_link_only_by_order_or_batch(self):
+        remote = {
+            "source_one_type": "ngs",
+            "source_one_id": 301,
+            "synthesis_code": "20R383_RNBK01",
+            "order_no": "BAO0000310",
+            "synthetic_count": 192,
+            "synthetic_date": "2026-03-26",
+            "task_projectid": "FCGR2A_RN_B_K_01_20251115",
+        }
+
+        def check(db, row_id):
+            with patch("modules.discovery.synthesis_progress.one_sync.open_one_db") as mock_open, patch(
+                "modules.discovery.synthesis_progress.one_sync.fetch_remote_snapshots_by_ids", return_value={}
+            ), patch(
+                "modules.discovery.synthesis_progress.one_sync._query_candidates_for_rows", return_value=[remote]
+            ):
+                mock_open.return_value.__enter__.return_value = object()
+                return service.check_remote_for_local_rows(db, [row_id])
+
+        with self.Session() as db:
+            subtype = service.save(
+                db,
+                {"target_name": "FCGR2A", "supply_mode": "改亚型", "synthesis_code": "20R383_RNBK01",
+                 "batch_label": "FCGR2A_RNBK01", "synthetic_count": 564},
+            )
+            self.assertEqual(check(db, subtype["id"])["linked"], 0)
+            service.save(db, {"id": subtype["id"], "batch_label": "FCGR2A_RN_B_K_01_20251115"})
+            self.assertEqual(check(db, subtype["id"])["linked"], 1)
 
     def test_remote_snapshot_keeps_uploader_as_order_sender(self):
         snap = one_sync.build_remote_snapshot("beacon", {"id": 7, "uploader": "任鸿滨 Hongbin Ren"})

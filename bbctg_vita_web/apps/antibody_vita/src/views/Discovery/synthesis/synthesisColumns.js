@@ -143,6 +143,8 @@ export const BREAK_FIELDS = new Set([
   'eng_result',
 ]);
 
+export const CLAIM_RETURN_DAYS = 7;
+
 export const USER_OPTION_LIST = {
   affinity_owner: 'owners',
   owner: 'owners',
@@ -213,12 +215,15 @@ export const PM_EDIT_FIELD_KEYS = new Set([
   'remark',
 ]);
 
-export const ASSAY_EDIT_FIELD_KEYS = new Set([
+export const AFFINITY_EDIT_FIELD_KEYS = new Set([
   'affinity_status',
   'affinity_owner',
   'affinity_result',
   'affinity_date',
   'report_reason',
+]);
+
+export const FLOW_EDIT_FIELD_KEYS = new Set([
   'flow_status',
   'flow_date',
   'flow_note',

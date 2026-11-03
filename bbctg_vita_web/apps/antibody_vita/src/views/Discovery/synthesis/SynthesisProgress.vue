@@ -625,7 +625,7 @@
                         v-model="row[column.key]"
                         class-name="sheet-grid-editor sheet-picker-control"
                         :filterable="isUserColumn(column)"
-                        :options="sheetChoiceSelectOptions(column)"
+                        :options="sheetChoiceSelectOptions(column, row)"
                         :popup-config="sheetChoicePopupConfig"
                         @visible-change="onSheetPickerVisibleChange"
                       />
@@ -1037,8 +1037,9 @@ import { notifyApiError } from '#/api/errors'
 import { skipGlobalErrorHandler } from '#/api/request'
 import { fetchSerumDetailByExperimentId } from '#/api/serum'
 import {
-  canAssayEditDiscoverySynthesis,
+  canAffinityEditDiscoverySynthesis,
   canEditDiscoverySynthesis,
+  canFlowEditDiscoverySynthesis,
   canPmEditDiscoverySynthesis,
 } from '#/utils/discoveryPermission'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
@@ -1057,11 +1058,12 @@ import UserSelect from '#/components/UserSelect.vue'
 import SynthesisAssayStatusEditor from './SynthesisAssayStatusEditor.vue'
 import SynthesisRowActions from './SynthesisRowActions.vue'
 import {
+  AFFINITY_EDIT_FIELD_KEYS,
   AFFINITY_RESULT_OPTIONS,
   AFFINITY_STATUS_OPTIONS,
-  ASSAY_EDIT_FIELD_KEYS,
   BASE_EDITOR_SECTIONS,
   BREAK_FIELDS,
+  CLAIM_RETURN_DAYS,
   CSV_FIELD_OPTIONS,
   DATE_KEYS,
   DEFAULT_CORP_OPTIONS,
@@ -1071,6 +1073,7 @@ import {
   DEFAULT_TARGET_TYPE_OPTIONS,
   EDITABLE_FIELDS,
   ENGINEERING_EDITOR_SECTION,
+  FLOW_EDIT_FIELD_KEYS,
   FLOW_STATUS_OPTIONS,
   HEADER_MENU_COLUMNS,
   INT_COUNT_KEYS,
@@ -1282,11 +1285,14 @@ export default {
     canPmEdit() {
       return canPmEditDiscoverySynthesis(this.userStore.userInfo || {})
     },
-    canAssayEdit() {
-      return canAssayEditDiscoverySynthesis(this.userStore.userInfo || {})
+    canAffinityEdit() {
+      return canAffinityEditDiscoverySynthesis(this.userStore.userInfo || {})
+    },
+    canFlowEdit() {
+      return canFlowEditDiscoverySynthesis(this.userStore.userInfo || {})
     },
     canEdit() {
-      return this.canFullEdit || this.canPmEdit || this.canAssayEdit
+      return this.canFullEdit || this.canPmEdit || this.canAffinityEdit || this.canFlowEdit
     },
     canCreate() {
       return this.canFullEdit || this.canPmEdit
@@ -1411,13 +1417,6 @@ export default {
         value: item,
       }))
       for (const [key, listKey] of Object.entries(USER_OPTION_LIST)) {
-        if (key === 'owner' && !this.canFullEdit && this.canPmEdit) {
-          map[key] = this.uniq([this.currentPersonName, '无人问津']).map((item) => ({
-            label: item,
-            value: item,
-          }))
-          continue
-        }
         map[key] = this.uniq([
           ...(this.optionLists[listKey] || []),
           ...this.allUserOptions,
@@ -1542,6 +1541,9 @@ export default {
         keys.add('owner')
         keys.add('pm')
       }
+      if (keys.has('owner')) {
+        keys.add('owner_claimed_at')
+      }
       if (keys.has('affinity_date')) {
         keys.add('affinity_result')
       }
@@ -1580,20 +1582,50 @@ export default {
     canClaimRow(row) {
       if (!this.canClaim || !row?.id) return false
       const owner = String(row.owner || '').trim()
+      if (this.canFullEdit) return !owner || owner === '无人问津'
       return (
-        !owner ||
         owner === '无人问津' ||
-        (Boolean(this.currentPersonName) && owner === this.currentPersonName)
+        (Boolean(this.currentPersonName) && owner === this.currentPersonName && this.canReturnClaim(row))
       )
+    },
+    canReturnClaim(row) {
+      const claimedAt = Date.parse(String(row?.owner_claimed_at || '').replace(' ', 'T'))
+      return Number.isFinite(claimedAt) && Date.now() - claimedAt <= CLAIM_RETURN_DAYS * 86400000
+    },
+    pmOwnerChoices(row) {
+      const base = (row?.id && this.rowBaselines.get(row.id)) || row || {}
+      const owner = String(base.owner || '').trim()
+      const me = this.currentPersonName
+      if (!me) return []
+      if (owner === '无人问津') return [me, '无人问津']
+      if (owner !== me) return []
+      const others = this.uniq([...(this.optionLists.owners || []), ...this.allUserOptions]).filter(
+        (name) => name !== '无人问津',
+      )
+      return this.canReturnClaim(base) ? [...others, '无人问津'] : others
     },
     claimButtonTitle(row) {
       if (!this.canClaim) return '您没有权限认领合成结果'
       const owner = String(row?.owner || '').trim()
-      if (!owner || owner === '无人问津') return '认领该批次合成结果'
+      if (this.canFullEdit) {
+        if (!owner) return '标记为无人问津，开放 PM 认领'
+        if (owner === '无人问津') return '取消无人问津标记'
+        return `该批次已由 ${owner} 负责，如需调整请直接修改负责人`
+      }
+      if (owner === '无人问津') return '认领该批次合成结果'
+      if (!owner) return '该批次尚未开放认领，标记为「无人问津」后才能认领'
       if (this.currentPersonName && owner === this.currentPersonName) {
-        return '将该批次改回无人问津'
+        return this.canReturnClaim(row)
+          ? '将该批次改回无人问津'
+          : `认领已超过 ${CLAIM_RETURN_DAYS} 天，不能退回「无人问津」，可在负责人中转让给他人`
       }
       return `该批次已被 ${owner} 认领，不可重复认领`
+    },
+    pmOwnsRow(row) {
+      if (!row?.id) return true
+      const base = this.rowBaselines.get(row.id) || row
+      const me = this.currentPersonName
+      return Boolean(me) && [base.pm, base.owner].some((name) => String(name || '').trim() === me)
     },
     canEditField(row, fieldKey) {
       if (fieldKey === 'synthesis_order_id' || fieldKey === 'order_sender') {
@@ -1604,20 +1636,18 @@ export default {
       }
       if (this.canFullEdit) return true
       if (this.canPmEdit && PM_EDIT_FIELD_KEYS.has(fieldKey)) {
-        if (fieldKey === 'owner') {
-          return this.canClaimRow(row)
-        }
-        return true
+        if (fieldKey === 'owner') return this.pmOwnerChoices(row).length > 0
+        if (this.pmOwnsRow(row)) return true
       }
-      if (this.canAssayEdit && ASSAY_EDIT_FIELD_KEYS.has(fieldKey)) {
-        return true
-      }
+      if (this.canAffinityEdit && AFFINITY_EDIT_FIELD_KEYS.has(fieldKey)) return true
+      if (this.canFlowEdit && FLOW_EDIT_FIELD_KEYS.has(fieldKey)) return true
       return false
     },
     deleteBlockReason(row) {
       if (row?.source_one_id) return '已关联 One 订单，不能删除，不再需要请改为"已取消"'
       if (this.canFullEdit) return ''
       if (this.canPmEdit) {
+        if (!this.pmOwnsRow(row)) return '只能删除 PM 或负责人是本人的工单'
         return String(row?.status || '').trim() === '待下单' ? '' : 'PM 权限只能删除待下单状态的工单'
       }
       return '您没有权限删除合成与验证工单'
@@ -1658,9 +1688,13 @@ export default {
       try {
         const saved = await claimDiscoverySynthesis(row.id)
         this.applySavedFields(saved, ['owner'])
-        ElMessage.success(
-          saved?.owner === '无人问津' ? '已改回无人问津' : `已认领：${saved?.owner || ''}`,
-        )
+        if (this.canFullEdit) {
+          ElMessage.success(saved?.owner === '无人问津' ? '已标记为无人问津' : '已取消无人问津标记')
+        } else {
+          ElMessage.success(
+            saved?.owner === '无人问津' ? '已改回无人问津' : `已认领：${saved?.owner || ''}`,
+          )
+        }
       } catch (error) {
         notifyApiError(error, { messages: { default: '认领失败' } })
       }
@@ -1747,7 +1781,7 @@ export default {
           text: `${affPrefix}${affLabel}`,
           options: AFFINITY_BADGE_OPTIONS,
           tone: badgeTone(row.affinity_status),
-          editable: !String(row.report_reason || '').trim(),
+          editable: this.canEditField(row, 'affinity_status') && !String(row.report_reason || '').trim(),
         })
       }
       const flowLabel = !flowSkip && BADGE_TEXT[row.flow_status]
@@ -1759,18 +1793,19 @@ export default {
           text: `流·${flowLabel}`,
           options: FLOW_BADGE_OPTIONS,
           tone: badgeTone(row.flow_status),
-          editable: true,
+          editable: this.canEditField(row, 'flow_status'),
         })
       }
       return badges
     },
     canEditAssayStatuses(row) {
-      if (!(this.canFullEdit || this.canAssayEdit) || !row?.id) return false
+      if (!(this.canFullEdit || this.canAffinityEdit || this.canFlowEdit) || !row?.id) return false
       return String(row.status || '').trim() !== '已取消'
     },
     async updateAssayStatus(row, change) {
       if (!this.canEditAssayStatuses(row) || !change?.key || !change?.value) return
       const field = change.key === 'affinity' ? 'affinity_status' : 'flow_status'
+      if (!this.canEditField(row, field)) return
       try {
         const saved = await saveDiscoverySynthesis({ id: row.id, [field]: change.value })
         this.applySavedFields(saved, [field])
@@ -1807,7 +1842,7 @@ export default {
     },
     usedUserOptions(field) {
       if (field?.key === 'owner' && !this.canFullEdit && this.canPmEdit) {
-        return this.uniq([this.currentPersonName, '无人问津', this.editingRow?.owner])
+        return this.uniq([...this.pmOwnerChoices(this.editingRow), this.editingRow?.owner])
       }
       return this.uniq([
         ...(this.optionLists[USER_OPTION_LIST[field?.key]] || []),
@@ -2357,7 +2392,7 @@ export default {
       const payload = {}
       baseKeys.forEach((key) => {
         const val = source[key]
-        if (key === 'owner' && (val === '无人问津' || (!this.canFullEdit && val !== this.currentPersonName))) {
+        if (key === 'owner' && (val === '无人问津' || !this.canFullEdit)) {
           return
         }
         if (Array.isArray(val)) {
@@ -2475,7 +2510,10 @@ export default {
       if (column.key === 'target_name') return row.target_name || ''
       return row[column.key] ?? ''
     },
-    sheetChoiceSelectOptions(column) {
+    sheetChoiceSelectOptions(column, row) {
+      if (column?.key === 'owner' && !this.canFullEdit && this.canPmEdit) {
+        return this.pmOwnerChoices(row).map((item) => ({ label: item, value: item }))
+      }
       return this.sheetChoiceOptionsMap[column?.key] || []
     },
     sheetChoiceDirectValue(row, column) {
@@ -2502,6 +2540,7 @@ export default {
       if (fixed) return fixed
       if (this.canEditField(row, key)) return ''
       if (key === 'owner' && this.canPmEdit && !this.canFullEdit) return this.claimButtonTitle(row)
+      if (this.canPmEdit && PM_EDIT_FIELD_KEYS.has(key)) return '只能修改 PM 或负责人是本人的工单'
       return `你没有修改「${this.sheetColumnLabel(key)}」的权限`
     },
     sheetCellClassName({ row, column }) {
@@ -2614,9 +2653,8 @@ export default {
       }
       if (this.isUserColumn({ key })) {
         const val = String(raw || '').trim()
-        if (key === 'owner' && !this.canFullEdit && this.canPmEdit) {
-          if (!val) return { ok: false, reason: 'option' }
-          return this.matchSheetOption(this.uniq([this.currentPersonName, '无人问津']), val)
+        if (key === 'owner' && !this.canFullEdit && this.canPmEdit && !val) {
+          return { ok: false, reason: 'option' }
         }
         if (!val) return { ok: true, value: null }
         return this.matchSheetOption(

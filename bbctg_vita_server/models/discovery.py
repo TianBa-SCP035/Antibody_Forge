@@ -137,6 +137,7 @@ class DiscoverySynthesisOrder(Base):
     affinity_date: Mapped[str | None] = mapped_column(DateString, comment="亲和力日期")
     affinity_result: Mapped[str | None] = mapped_column(String(32), comment="亲和力结果")
     owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
+    owner_claimed_at: Mapped[object | None] = mapped_column(DateTime, comment="负责人认领时间")
     batch_label: Mapped[str | None] = mapped_column(String(255), comment="工单批次")
     flow_note: Mapped[str | None] = mapped_column(String(500), comment="流式说明")
     report_reason: Mapped[str | None] = mapped_column(String(500), comment="未出原因")
@@ -199,6 +200,7 @@ class DiscoverySynthesisOrder(Base):
             "affinity_date": self.affinity_date,
             "affinity_result": self.affinity_result,
             "owner": self.owner,
+            "owner_claimed_at": format_time(self.owner_claimed_at),
             "batch_label": self.batch_label,
             "flow_note": self.flow_note,
             "report_reason": self.report_reason,

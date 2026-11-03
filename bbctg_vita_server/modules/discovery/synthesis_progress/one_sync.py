@@ -757,9 +757,9 @@ def _match_unlinked_rows_batch(
             matched[urow.id] = chosen
             taken.add((str(chosen["source_one_type"]).lower(), int(chosen["source_one_id"])))
 
-    # Pass 3: Synthesis code match
+    # Pass 3: Synthesis code match；改亚型/内部转染与原合成共用转码，只能按订单号或批次关联
     for urow in unlinked_rows:
-        if urow.id in matched:
+        if urow.id in matched or (urow.supply_mode or SUPPLY_MODE_ARRIVAL) != SUPPLY_MODE_ARRIVAL:
             continue
         syn_u = (urow.synthesis_code or "").strip().upper()
         if not syn_u or syn_u not in by_syn:

@@ -63,7 +63,8 @@ DISCOVERY_PERMISSION_CODES = {
     "discovery.page.synthesis_progress",
     "discovery.synthesis_progress.edit",
     "discovery.synthesis_progress.pm_edit",
-    "discovery.synthesis_progress.assay_edit",
+    "discovery.synthesis_progress.affinity_edit",
+    "discovery.synthesis_progress.flow_edit",
 }
 
 MOLECULAR_PERMISSION_CODES = {
@@ -115,7 +116,8 @@ PERMISSION_MESSAGES: dict[str, str] = {
     "discovery.page.synthesis_progress": "没有权限访问合成与验证",
     "discovery.synthesis_progress.edit": "没有权限编辑合成与验证",
     "discovery.synthesis_progress.pm_edit": "没有权限执行合成与验证PM操作",
-    "discovery.synthesis_progress.assay_edit": "没有权限执行合成与验证实验操作",
+    "discovery.synthesis_progress.affinity_edit": "没有权限执行合成与验证亲和力操作",
+    "discovery.synthesis_progress.flow_edit": "没有权限执行合成与验证流式操作",
     "molecular.page.library": "没有权限访问文库构建",
     "molecular.library.edit": "没有权限编辑文库构建工单",
     "molecular.page.library_detail": "没有权限查看文库构建详情",

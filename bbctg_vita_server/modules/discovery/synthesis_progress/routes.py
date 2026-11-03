@@ -18,7 +18,9 @@ router = APIRouter()
 SYNTHESIS_VIEW_PERMISSION = "discovery.page.synthesis_progress"
 SYNTHESIS_EDIT_PERMISSION = "discovery.synthesis_progress.edit"
 SYNTHESIS_PM_EDIT_PERMISSION = "discovery.synthesis_progress.pm_edit"
-SYNTHESIS_ASSAY_EDIT_PERMISSION = "discovery.synthesis_progress.assay_edit"
+SYNTHESIS_AFFINITY_EDIT_PERMISSION = "discovery.synthesis_progress.affinity_edit"
+SYNTHESIS_FLOW_EDIT_PERMISSION = "discovery.synthesis_progress.flow_edit"
+ALL_EDIT_SCOPES = {"full", "pm", "affinity", "flow"}
 
 
 class SynthesisSaveRequest(BaseModel):
@@ -75,12 +77,13 @@ def _require_edit_scopes(
     user: SysUser,
     allowed_scopes: set[str] | None = None,
 ) -> frozenset[str]:
-    allowed = allowed_scopes or {"full", "pm", "assay"}
+    allowed = allowed_scopes or ALL_EDIT_SCOPES
     context = build_user_context(db, user)
     permission_scopes = {
         SYNTHESIS_EDIT_PERMISSION: "full",
         SYNTHESIS_PM_EDIT_PERMISSION: "pm",
-        SYNTHESIS_ASSAY_EDIT_PERMISSION: "assay",
+        SYNTHESIS_AFFINITY_EDIT_PERMISSION: "affinity",
+        SYNTHESIS_FLOW_EDIT_PERMISSION: "flow",
     }
     scopes = frozenset(
         scope
@@ -172,7 +175,7 @@ def save_synthesis_order(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    scopes = _require_edit_scopes(db, current_user, {"full", "pm", "assay"})
+    scopes = _require_edit_scopes(db, current_user, ALL_EDIT_SCOPES)
     payload = data.model_dump(exclude_unset=True)
     return _run_write(
         db,
@@ -191,7 +194,7 @@ def save_synthesis_order_batch(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    scopes = _require_edit_scopes(db, current_user, {"full", "pm", "assay"})
+    scopes = _require_edit_scopes(db, current_user, ALL_EDIT_SCOPES)
     payload = data.model_dump()
     return _run_write(
         db,
@@ -210,10 +213,10 @@ def claim_synthesis_order(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    _require_edit_scopes(db, current_user, {"full", "pm"})
+    scopes = _require_edit_scopes(db, current_user, {"full", "pm"})
     return _run_write(
         db,
-        lambda: service.claim_order(db, data.id, _actor_name(current_user)),
+        lambda: service.claim_order(db, data.id, _actor_name(current_user), scopes=scopes),
     )
 
 
@@ -223,10 +226,12 @@ def reorder_synthesis_orders(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    _require_edit_scopes(db, current_user, {"full", "pm"})
+    scopes = _require_edit_scopes(db, current_user, {"full", "pm"})
     return _run_write(
         db,
-        lambda: service.reorder(db, data.moved_id, data.target_id),
+        lambda: service.reorder(
+            db, data.moved_id, data.target_id, scopes=scopes, actor_name=_actor_name(current_user)
+        ),
     )
 
 
@@ -239,7 +244,7 @@ def delete_synthesis_order(
     scopes = _require_edit_scopes(db, current_user, {"full", "pm"})
 
     def _delete():
-        service.delete(db, data.id, scopes=scopes)
+        service.delete(db, data.id, scopes=scopes, actor_name=_actor_name(current_user))
         return {"message": "删除成功"}
 
     return _run_write(db, _delete)

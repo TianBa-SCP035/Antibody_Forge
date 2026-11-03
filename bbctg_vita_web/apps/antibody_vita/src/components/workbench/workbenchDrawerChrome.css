@@ -29,7 +29,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
@@ -79,7 +79,7 @@
   margin-bottom: 6px;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #eef0f4;
+  border-bottom: 1px solid var(--el-border-color-lighter);
   border-radius: 0;
 }
 .drawer-card:last-child {
@@ -95,13 +95,13 @@
 }
 .drawer-card-title {
   margin: 0 0 6px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.04em;
 }
 .drawer-card.is-queue .drawer-card-title {
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 .drawer-card-grid {
   display: grid;
@@ -116,7 +116,7 @@
   margin-bottom: 8px;
 }
 .drawer-form :deep(.el-form-item__label) {
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 13px;
 }
 .drawer-form :deep(.el-form-item__content) {

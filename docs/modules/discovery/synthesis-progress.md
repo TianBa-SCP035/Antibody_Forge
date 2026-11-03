@@ -38,6 +38,7 @@
 | `selection_method` | 挑选方式 | 最长 128；预设：`补挑`、`EYE`、`DS`、`JX_P`、`JX_C`、`RH_P`、`RH_C`、`D`、`D模型`、`D模型-3轮`、`P`，支持多选与自填，按预设顺序以顿号拼接 |
 | `synthesis_code` / `order_no` / `batch_label` | 转码 / 订单号 / 批次 | 送测转码（最长 64）、合成订单号（最长 64）、工单批次（最长 255） |
 | `synthetic_corp` | 合成公司 | 最长 64；预设：`君跻`、`擎科`、`金斯瑞`、`百奥`、`内部`，支持自填 |
+| `order_sender` | 下单人 | 最长 128；系统内不可编辑，只由 One 同步，原样保存订单文件上传人（多为「中文名 英文名」），见第 5 节 |
 | `synthetic_count` / `arrival_count` | 合成个数 / 到货个数 | 可选非负整数（`0` 合法，空为 `NULL`；Excel 输入自动剥离 `个`/`条`） |
 | `synthetic_date` / `arrival_date` / `flow_date` / `affinity_date` | 各里程碑日期 | `YYYY-MM-DD`。保存时若清空 `affinity_date` 且当次请求未传 `affinity_result`，后端自动将 `affinity_result` 清空为 `NULL` |
 | `affinity_status` | 亲和力检测状态 | 枚举：`亲和力待检测`、`亲和力检测中`、`亲和力已完成`；验证前阶段为 `NULL` |
@@ -124,7 +125,7 @@
   - 第 2 行：`项目编号`（同时匹配 `project_code` 与 `experiment_id`）、`PM`、`课题类型`、`优先级`、`状态`（合并主状态、亲和力子状态、流式子状态共 12 项；选中子状态时后端限定 `status IN ('待检测', '检测中')`）、`到货日期区间`、`亲和力日期区间`、`流式日期区间`。
   - 第 3 行：`订单性质`、`改造类型`、`改造方式`；右侧提供「重置全部筛选」按钮（右键点击「查询」按钮同样触发重置，保留阶段视图与队列排序模式）、「显示字段」（工作台视图）、「列表导出」。
 - **匹配规则**：单号类（`order_no`、`synthesis_code`、`batch_label`、`project_code`）填单个词按包含匹配，用逗号、空格、分号或换行分隔多个词按精确值 `IN` 匹配；顿号多值字段（`mouse_strain`、`selection_method`、`eng_type`、`eng_method`）按拆分后包含某项匹配；文本说明（`remark`、`report_reason`、`flow_note`）按包含匹配。
-- **表头筛选（`HEADER_MENU_COLUMNS`）**：除 `sort_order`、`target_codes`、`actions` 外的 32 个业务列均开放表头菜单（单号类 `synthesis_code`/`order_no`/`batch_label`/`project_code` 为 `recent` 最近 200 项，长文本 `remark`/`report_reason`/`flow_note`/`eng_parent_seq`/`eng_requirement`/`eng_result` 为 `search` 输入后查询，其余为 `all`）。`status` 表头菜单对亲和力/流式子状态显示 `topOnly` 提示，`target_type` 表头菜单对 `非分泌型` 显示 `topOnly` 提示。
+- **表头筛选（`HEADER_MENU_COLUMNS`）**：除 `sort_order`、`target_codes`、`order_sender`、`actions` 外的 32 个业务列均开放表头菜单（单号类 `synthesis_code`/`order_no`/`batch_label`/`project_code` 为 `recent` 最近 200 项，长文本 `remark`/`report_reason`/`flow_note`/`eng_parent_seq`/`eng_requirement`/`eng_result` 为 `search` 输入后查询，其余为 `all`）。`status` 表头菜单对亲和力/流式子状态显示 `topOnly` 提示，`target_type` 表头菜单对 `非分泌型` 显示 `topOnly` 提示。
 - **批量标记靶点底色**：需 `edit` 权限。在 Excel 视图下框选多行后，点击 `靶点名称` 表头菜单中的颜色圆点或点击选中行内的色点，调用 `POST /save_batch` 批量更新选中行的 `target_color`。
 
 ### 状态胶囊、靶点角标与右侧抽屉
@@ -139,11 +140,11 @@
   - 分区顺序：`1. 状态 / 归属` → `2. 改造信息`（仅 `order_kind == '改造'` 时展开） → `3. 项目信息` → `4. 合成订单` → `5. 到货与验证`。
   - 顶部工具栏含 `详情`、`认领`、`删除`、`加单`、`全部采用`（`has_drift && canFullEdit` 时显示）及 `上一条 / 下一条`。
   - **新建与「加单」**：右上角「新建工单」在「序列改造」视图下默认创建 `order_kind = '改造'`，其余视图默认创建 `常规合成`。抽屉「加单」复制当前工单的项目、靶点、小鼠品系与改造需求等基础字段（具备 `edit` 权限时额外复制 `selection_method`、`synthesis_code`、`batch_label`；`owner` 为 `无人问津` 或仅具 `pm_edit` 且非本人时不复制），生成新行后立即触发 `check_remote` 尝试自动绑定 One 库同转码/批次的下一笔未关联订单。
-- **Excel 粘贴与导出**：Excel 粘贴支持标准列名与别名映射（`SHEET_HEADER_ALIASES`）及靶点名称/编号双向解析校验，通过 `POST /save_batch` 单事务保存；「列表导出」调用 `POST /export_list` 导出 37 列 Excel。
+- **Excel 粘贴与导出**：Excel 粘贴支持标准列名与别名映射（`SHEET_HEADER_ALIASES`）及靶点名称/编号双向解析校验，通过 `POST /save_batch` 单事务保存；「列表导出」调用 `POST /export_list` 导出 38 列 Excel。
 
 ## 5. 跨模块联动 / 外部集成
 
-工单仅在本系统创建，不从外部 One 库自动生成新行。外部数据源为 One 库 `one_task_ngs_data_analyze`（关联 `one_task_ngs_task`）、`one_task_beacon_data_analyze`（关联 `one_task_beacon_task`）及 `orderhis`（当 `orderno` 为空但有 `refstr` 文件名时反查订单号与合成公司）。
+工单仅在本系统创建，不从外部 One 库自动生成新行。外部数据源为 One 库 `one_task_ngs_data_analyze`（关联 `one_task_ngs_task`）、`one_task_beacon_data_analyze`（关联 `one_task_beacon_task`）及 `orderhis`（当 `orderno` 为空但有 `refstr` 文件名时反查订单号与合成公司）；下单人按 `refstr` 文件名取订单文件上传人（ngs 为 `fileinfoSelected.uploader`，beacon 为 `beacon_upload_file.uploaded_by`）。
 
 1. **两段式加载与即时核对（`POST /check_remote`）**：
    - 首屏先由 `POST /list` 查本地主库立即渲染；随后前端异步调用 `POST /check_remote`（连接/读取超时各 1 秒，最多 500 行），或在单行修改 `order_no`、`synthesis_code`、`batch_label` 及打开抽屉时点查。One 库不可用时返回 `remote_available: false`，页面提示「外部订单库暂时连不上，本次未核对外部订单」。
@@ -156,12 +157,13 @@
    - `SNAPSHOT_STORED_FIELDS`（存入 `source_snapshot` 的 **8 个字段**）：`order_no`、`synthetic_corp`、`synthetic_count`、`synthetic_date`、`arrival_count`、`arrival_date`、`synthesis_code`、`batch_label`。
    - `DRIFT_COMPARE_FIELDS`（参与差异比对的 **6 个执行字段**）：`order_no`、`synthetic_corp`、`synthetic_count`、`synthetic_date`、`arrival_count`、`arrival_date`。
    - 本地为空的快照字段（或重新绑定时仍等于上一版快照自动填入值的字段）自动用 One 库值回填，触及 `order_no` 或 `arrival_date` 时自动推导状态并在进入终态时重编队列。
+   - `order_sender` 不进快照、不比对差异，每次核对都直接改成 One 当前值（One 没有上传记录时清空）。
    - 本地已有非空值且与快照不一致时（本地 `CN` 与远端 `GS` 前缀订单号除外），不覆盖本地值，返回 `drift_fields` 与 `has_drift = true`；抽屉字段下显示「来源最新」横幅，由具备 `edit` 权限的用户点击「采用」或「全部采用」调用 `POST /adopt_source` 覆盖。
 4. **本地重号提示与远端候选补全**：
    - `duplicates`（请求行数 ≤ 50 时返回）：检测当前行与本地其他工单在 `order_no`、`batch_label`、`synthesis_code` 上的重号（已绑定 One 的行前端仅提示 `order_no` 重号，未绑定行提示三项重号），抽屉横幅支持右键复制冲突编号。
    - `candidates`（单行点查 `len(rows) == 1` 时返回，最多 20 条）：返回同 `synthesis_code` 或同 `batch_label` 下尚未被占用的其他 One 库订单快照，供抽屉 `order_no`、`batch_label`、`synthesis_code` 输入框自动补全选择。
 5. **修改标识字段自动解绑（`_apply_fields`）**：
-   - 已绑定 `source_one_id` 的工单在保存时，若修改了 `order_no`，或修改了 `synthesis_code` / `batch_label`（且当次未传 `order_no`、当前 `order_no` 仍等于原快照 `order_no`，此时一并清空 `order_no`），后端自动将 `source_one_type` 与 `source_one_id` 置为 `NULL` 解除绑定；若解绑后 `order_no`、`synthesis_code`、`batch_label` 均为空，同时清空 `source_snapshot`。保存后前端立即调用 `check_remote` 按新值重新匹配。
+   - 已绑定 `source_one_id` 的工单在保存时，若修改了 `order_no`，或修改了 `synthesis_code` / `batch_label`（且当次未传 `order_no`、当前 `order_no` 仍等于原快照 `order_no`，此时一并清空 `order_no`），后端自动将 `source_one_type` 与 `source_one_id` 置为 `NULL` 解除绑定并清空 `order_sender`；若解绑后 `order_no`、`synthesis_code`、`batch_label` 均为空，同时清空 `source_snapshot`。保存后前端立即调用 `check_remote` 按新值重新匹配。
 
 ## 6. 接口
 

@@ -1,14 +1,14 @@
 /* 青绿风格，整体偏浅、色条更鲜亮 */
-$ink: #303133;
-$slate: #606266;
-$mist: #909399;
-$line: #e4e7ed;
-$wash: #f5f7fa;
-$panel: #ffffff;
+$ink: var(--el-text-color-primary);
+$slate: var(--el-text-color-regular);
+$mist: var(--el-text-color-secondary);
+$line: var(--el-border-color-light);
+$wash: var(--el-fill-color-light);
+$panel: var(--el-bg-color);
 $accent-mid: #14b8a6;
 $accent-deep: #0d9488;
 $accent-soft: #e6fffa;
-$drop: #f56c6c;
+$drop: var(--el-color-danger);
 
 .tio-header {
   display: flex;
@@ -45,7 +45,7 @@ $drop: #f56c6c;
   padding: 8px 12px;
   margin-bottom: 14px;
   background: $wash;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
 }
 
@@ -95,7 +95,7 @@ $drop: #f56c6c;
 .tio-stage + .tio-stage {
   margin-top: 18px;
   padding-top: 16px;
-  border-top: 1px solid #f0f2f5;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .tio-stage-head {
@@ -199,7 +199,7 @@ $drop: #f56c6c;
   }
 
   &--drop {
-    background: #fef0f0;
+    background: var(--el-color-danger-light-9);
     box-shadow: inset 0 0 0 1px rgb(245 108 108 / 45%);
   }
 }
@@ -219,7 +219,7 @@ $drop: #f56c6c;
   }
 
   &:disabled {
-    color: #c0c4cc;
+    color: var(--el-text-color-disabled);
     cursor: not-allowed;
   }
 }
@@ -236,8 +236,8 @@ $drop: #f56c6c;
 }
 
 .tio-table {
-  --el-table-border-color: #ebeef5;
-  --el-table-header-bg-color: #fafafa;
+  --el-table-border-color: var(--el-border-color-lighter);
+  --el-table-header-bg-color: var(--el-fill-color-lighter);
   --el-table-row-hover-bg-color: #f0fdfa;
 
   :deep(.el-table__inner-wrapper::before),
@@ -336,12 +336,12 @@ $drop: #f56c6c;
 .tio-board-ratio-sep {
   margin: 0 2px;
   font-weight: 400;
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
 }
 
 .tio-plate-wrap {
   overflow-x: auto;
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
   border: 1px solid $line;
   border-radius: 8px;
   user-select: none;
@@ -356,8 +356,8 @@ $drop: #f56c6c;
 
   th,
   td {
-    border-right: 1px solid #ebeef5;
-    border-bottom: 1px solid #ebeef5;
+    border-right: 1px solid var(--el-border-color-lighter);
+    border-bottom: 1px solid var(--el-border-color-lighter);
   }
 
   th:last-child,
@@ -374,7 +374,7 @@ $drop: #f56c6c;
 .tio-plate-corner,
 .tio-plate-row {
   width: 36px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
 }
 
 .tio-plate-col,
@@ -384,7 +384,7 @@ $drop: #f56c6c;
   font-weight: 500;
   color: $mist;
   text-align: center;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
 }
 
 .tio-well {
@@ -421,7 +421,7 @@ $drop: #f56c6c;
   }
 
   &.is-drag-remove {
-    background: #fef0f0;
+    background: var(--el-color-danger-light-9);
     box-shadow: inset 0 0 0 1.5px rgb(245 108 108 / 55%);
 
     .tio-well-text {
@@ -432,10 +432,10 @@ $drop: #f56c6c;
 
   &.is-dead {
     cursor: not-allowed;
-    background: #f5f7fa;
+    background: var(--el-fill-color-light);
 
     .tio-well-text {
-      color: #c0c4cc;
+      color: var(--el-text-color-disabled);
       text-decoration: line-through;
     }
   }
@@ -477,4 +477,27 @@ $drop: #f56c6c;
 .tio-btn {
   min-width: 96px;
   height: 32px;
+}
+
+html.dark .tio-stage-index,
+html.dark .tio-metric-n,
+html.dark .tio-text-btn,
+html.dark .tio-link,
+html.dark .tio-board-ratio,
+html.dark .tio-well.is-selected .tio-well-text {
+  color: var(--vita-library-text);
+}
+
+html.dark .tio-metric,
+html.dark .tio-hint-swatch--pick,
+html.dark .tio-table--click :deep(.el-table__body tr:hover > td),
+html.dark .tio-well.is-alive:hover:not(.is-selected):not(.is-drag-add):not(.is-drag-remove),
+html.dark .tio-well.is-selected,
+html.dark .tio-well.is-drag-add,
+html.dark .tio-well.is-empty {
+  background: var(--vita-library-bg);
+}
+
+html.dark .tio-table {
+  --el-table-row-hover-bg-color: var(--vita-library-bg);
 }

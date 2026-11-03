@@ -1047,9 +1047,9 @@ $plate-legend-title-h: 28px;
     min-width: 0;
     padding: 16px;
     box-sizing: border-box;
-    background: #fff;
+    background: var(--el-bg-color);
     border-radius: 8px;
-    border: 1px solid #e4e7ed;
+    border: 1px solid var(--el-border-color-light);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     display: grid;
     grid-template-columns: #{$plate-form-cols};
@@ -1064,10 +1064,10 @@ $plate-legend-title-h: 28px;
       gap: 8px;
       margin-bottom: 2px;
       padding-bottom: 12px;
-      border-bottom: 1px solid #ebeef5;
+      border-bottom: 1px solid var(--el-border-color-lighter);
       font-size: 15px;
       font-weight: 700;
-      color: #303133;
+      color: var(--el-text-color-primary);
 
       .header-left {
         display: flex;
@@ -1080,11 +1080,11 @@ $plate-legend-title-h: 28px;
         align-items: center;
         gap: 4px;
         font-size: 12px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
       }
 
       .el-icon {
-        color: #409eff;
+        color: var(--el-color-primary);
         font-size: 14px;
       }
     }
@@ -1124,7 +1124,7 @@ $plate-legend-title-h: 28px;
         font-size: 14px;
         font-weight: 700;
         line-height: 32px;
-        color: #606266;
+        color: var(--el-text-color-regular);
         white-space: nowrap;
       }
 
@@ -1158,7 +1158,7 @@ $plate-legend-title-h: 28px;
             z-index: 1;
             transform: translateY(-50%);
             font-size: 12px;
-            color: #909399;
+            color: var(--el-text-color-secondary);
             pointer-events: none;
           }
         }
@@ -1188,7 +1188,7 @@ $plate-legend-title-h: 28px;
     gap: 8px;
     font-size: 15px;
     font-weight: 700;
-    color: #303133;
+    color: var(--el-text-color-primary);
     margin-bottom: 8px;
     padding: 0 10px;
 
@@ -1200,7 +1200,7 @@ $plate-legend-title-h: 28px;
 
     .wavelength-tag {
       font-size: 12px;
-      color: #909399;
+      color: var(--el-text-color-secondary);
       font-weight: normal;
     }
 
@@ -1217,12 +1217,12 @@ $plate-legend-title-h: 28px;
     }
 
     .el-icon {
-      color: #409eff;
+      color: var(--el-color-primary);
       font-size: 14px;
     }
 
     .delete-btn {
-      color: #f56c6c;
+      color: var(--el-color-danger);
       height: auto;
       font-size: 14px;
       line-height: 1;
@@ -1239,7 +1239,7 @@ $plate-legend-title-h: 28px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    background: #fafafa;
+    background: var(--el-fill-color-lighter);
     border-radius: 8px;
     padding: 16px;
     min-height: 0;
@@ -1324,9 +1324,9 @@ $plate-legend-title-h: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #409eff;
+  border: 1px solid var(--el-color-primary);
   border-radius: 8px;
-  background: rgba(64, 158, 255, 0.1);
+  background: color-mix(in srgb, var(--el-color-primary) 10%, transparent);
   color: #306cb3;
   overflow: hidden;
 
@@ -1349,7 +1349,7 @@ $plate-legend-title-h: 28px;
 
   &.drag-preview {
     border-style: dashed;
-    background: rgba(64, 158, 255, 0.18);
+    background: color-mix(in srgb, var(--el-color-primary) 18%, transparent);
     font-size: 12px;
     font-weight: 600;
     pointer-events: none;
@@ -1399,21 +1399,21 @@ $plate-legend-title-h: 28px;
 
     &.corner-well {
       :deep(.el-input__wrapper) {
-        background: #f4f4f5;
-        box-shadow: 0 0 0 1px #dcdfe6 inset;
+        background: var(--el-color-info-light-9);
+        box-shadow: 0 0 0 1px var(--el-border-color) inset;
       }
 
       :deep(.el-input__inner) {
-        background: #f4f4f5;
-        color: #606266;
+        background: var(--el-color-info-light-9);
+        color: var(--el-text-color-regular);
         font-weight: 600;
-        -webkit-text-fill-color: #606266;
+        -webkit-text-fill-color: var(--el-text-color-regular);
       }
     }
 
     &.drag-selected :deep(.el-input__wrapper) {
-      box-shadow: 0 0 0 1px #409eff inset, 0 0 0 2px rgba(64, 158, 255, 0.15);
-      background: #ecf5ff;
+      box-shadow: 0 0 0 1px var(--el-color-primary) inset, 0 0 0 2px color-mix(in srgb, var(--el-color-primary) 15%, transparent);
+      background: var(--el-color-primary-light-9);
     }
   }
 }
@@ -1422,16 +1422,16 @@ $plate-legend-title-h: 28px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: #fff;
+  background: var(--el-bg-color);
   border-radius: 8px;
-  outline: 2px dashed #e4e7ed;
+  outline: 2px dashed var(--el-border-color-light);
   outline-offset: 0;
   padding: $plate-panel-pad-y $plate-panel-pad-x;
   box-sizing: border-box;
 
   &.has-data {
     outline-style: solid;
-    outline-color: #e4e7ed;
+    outline-color: var(--el-border-color-light);
   }
 }
 
@@ -1445,12 +1445,12 @@ $plate-legend-title-h: 28px;
 
   .preview-meta {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
     white-space: nowrap;
   }
 
   &.is-placeholder .preview-meta--placeholder {
-    color: #c0c4cc;
+    color: var(--el-text-color-disabled);
   }
 }
 
@@ -1467,7 +1467,7 @@ $plate-legend-title-h: 28px;
   align-items: center;
   margin-bottom: $plate-col-label-gap;
   font-size: 11px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   text-align: center;
 
   .row-label-gap {
@@ -1489,47 +1489,47 @@ $plate-legend-title-h: 28px;
   justify-content: center;
   font-size: 12px;
   font-weight: 600;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 .grid-cell {
   height: $plate-cell-h;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--el-border-color);
   border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  background: #fff;
+  background: var(--el-bg-color);
   user-select: none;
 
   .od-value {
     font-size: 10px;
-    color: #303133;
+    color: var(--el-text-color-primary);
   }
 
   &.is-positive {
-    background: #fef0f0;
-    border-color: #f56c6c;
+    background: var(--el-color-danger-light-9);
+    border-color: var(--el-color-danger);
 
     .od-value {
-      color: #f56c6c;
+      color: var(--el-color-danger);
       font-weight: 600;
     }
   }
 
   &.is-empty .od-value {
-    color: #c0c4cc;
+    color: var(--el-text-color-disabled);
   }
 
   &.well-drag-add {
-    background: #fef0f0;
-    border-color: #f56c6c;
+    background: var(--el-color-danger-light-9);
+    border-color: var(--el-color-danger);
   }
 
   &.well-drag-remove {
-    background: #f4f4f5;
-    border-color: #909399;
+    background: var(--el-color-info-light-9);
+    border-color: var(--el-color-info);
   }
 }
 
@@ -1538,8 +1538,8 @@ $plate-legend-title-h: 28px;
   display: flex;
   flex-direction: column;
   height: $plate-panel-h;
-  background: #fff;
-  outline: 1px solid #e4e7ed;
+  background: var(--el-bg-color);
+  outline: 1px solid var(--el-border-color-light);
   border-radius: 8px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   overflow: hidden;
@@ -1551,14 +1551,14 @@ $plate-legend-title-h: 28px;
     justify-content: center;
     font-size: 13px;
     font-weight: 600;
-    color: #303133;
-    border-bottom: 1px solid #ebeef5;
-    background: #fafafa;
+    color: var(--el-text-color-primary);
+    border-bottom: 1px solid var(--el-border-color-lighter);
+    background: var(--el-fill-color-lighter);
   }
 
   &__header-gap {
     height: $plate-grid-header-h - $plate-legend-title-h;
-    border-bottom: 1px solid #f0f2f5;
+    border-bottom: 1px solid var(--el-border-color-lighter);
   }
 
   &__row {
@@ -1568,7 +1568,7 @@ $plate-legend-title-h: 28px;
     justify-content: space-between;
     padding: 0 10px;
     font-size: 12px;
-    border-bottom: 1px solid #f5f7fa;
+    border-bottom: 1px solid var(--el-border-color-extra-light);
 
     &:last-child {
       border-bottom: none;
@@ -1578,7 +1578,7 @@ $plate-legend-title-h: 28px;
   &__row-value {
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    color: #409eff;
+    color: var(--el-color-primary);
     text-align: center;
     flex: 1;
   }
@@ -1598,4 +1598,8 @@ $plate-legend-title-h: 28px;
   }
 }
 
+html.dark .slot-group-block,
+html.dark .slot-group-block :deep(.el-input__inner) {
+  color: var(--el-color-primary);
+}
 </style>

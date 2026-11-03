@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus'
 import { loadAllUserNames } from '#/utils/userOptions'
 
 import { clipboardCell, readClipboardGrid } from './clipboardGrid'
+import './shiftHeld'
 
 const SHEET_ROW_CONFIG = Object.freeze({ keyField: 'id', isHover: true })
 const SHEET_CELL_CONFIG = Object.freeze({ height: 48 })
@@ -52,6 +53,8 @@ const SHEET_HEADER_HOLD_MS = 350
 /**
  * Excel 划选 / 键入 / 列序。约定见 docs/modules/workbench.md。
  * 页面需提供：list, sheetColumns, canEdit, persistSheetColumnOrder, finishSheetEdit。
+ * 列宽记忆：页面 sheetColumnStore 返回列序存储，vxe-column 用 sheetColumnWidth，表格接 onSheetColumnResize。
+ * 锁定规则覆写 sheetCellLockReason，返回原因文案；双击或键入锁定格时提示。只读列可在列定义写 lockHint。
  * 键入默认 row[key] = 文本；有双字段或展示转换时再覆写 sheetDirectTextValue。
  * 单格保存必须 patchExistingListRow，禁止 splice 换行对象。
  * 数字格普通输入，提交时由本页 coerceSheetValue 校验。
@@ -73,6 +76,8 @@ export default {
       sheetDragMode: '',
       sheetPointerDown: false,
       sheetColumnMove: null,
+      sheetColumnWidths: {},
+      sheetLayoutVersion: 0,
       sortEditingId: null,
       sortInputRefs: {},
       sortable: null,
@@ -94,7 +99,8 @@ export default {
       return this.viewMode === 'excel'
     },
     sheetColumnOrderKey() {
-      return this.sheetColumns.map((column) => column.key).join(',')
+      // 带上版本号：重置列宽时重建表格，清掉 vxe 内部记下的拖拽宽度。
+      return `${this.sheetLayoutVersion}|${this.sheetColumns.map((column) => column.key).join(',')}`
     },
     sheetRowIndexById() {
       const map = new Map()
@@ -153,6 +159,9 @@ export default {
     viewMode() {
       this.clearSheetRange()
     },
+  },
+  created() {
+    this.sheetColumnWidths = this.sheetColumnStore()?.loadWidths() || {}
   },
   mounted() {
     this.onWindowMouseUp = () => this.finishSheetPointer()
@@ -235,11 +244,32 @@ export default {
       if (!key) return false
       return key === this.sheetPinFirstKey || key === this.sheetPinLastKey
     },
+    // 页面有自己的锁定规则时覆写这个方法，返回不可编辑的原因；空串表示可编辑。
+    sheetCellLockReason(row, key) {
+      if (!this.canEdit) return '你没有编辑权限'
+      return this.sheetSortLockReason(row, key) || this.sheetReadonlyLockReason(key)
+    },
     isSheetCellLocked(row, key) {
-      if (!this.canEdit) return true
-      if (this.isExcelRowSelectField(key) && (!this.isQueueSorted || this.isQueueTerminalRow?.(row))) return true
+      return Boolean(this.sheetCellLockReason(row, key))
+    },
+    notifySheetCellLocked(row, key) {
+      const reason = this.sheetCellLockReason(row, key)
+      if (reason) ElMessage.info({ message: reason, grouping: true })
+      return Boolean(reason)
+    },
+    sheetColumnLabel(key) {
+      return this.sheetColumnByKey.get(key)?.column?.label || '该字段'
+    },
+    sheetSortLockReason(row, key) {
+      if (!this.isExcelRowSelectField(key)) return ''
+      if (!this.isQueueSorted) return '先点表头「序号」切到队列排序，再改排序'
+      if (this.isQueueTerminalRow?.(row)) return '已结束的记录不在队列里，不能改排序'
+      return ''
+    },
+    sheetReadonlyLockReason(key) {
       const column = this.sheetColumnByKey.get(key)?.column
-      return column?.edit === 'readonly'
+      if (column?.edit !== 'readonly') return ''
+      return column.lockHint || `「${column.label}」不能在表格里修改`
     },
     canEditSortCell(row) {
       if (!this.isQueueSorted || this.isQueueTerminalRow?.(row)) return false
@@ -413,6 +443,23 @@ export default {
     },
     async flushExcelKeyboardSwitch() {},
     persistSheetColumnOrder() {},
+    sheetColumnStore() {
+      return null
+    },
+    sheetColumnWidth(column) {
+      return this.sheetColumnWidths[column?.key] || column?.width
+    },
+    onSheetColumnResize({ resizeColumn, resizeWidth }) {
+      const key = resizeColumn?.field
+      const width = Math.round(Number(resizeWidth))
+      if (!key || !width) return
+      this.sheetColumnWidths = { ...this.sheetColumnWidths, [key]: width }
+      this.sheetColumnStore()?.saveWidth(key, width)
+    },
+    resetSheetColumnWidths() {
+      this.sheetColumnWidths = {}
+      this.sheetLayoutVersion += 1
+    },
     async flushPendingSheetEdits() {
       await this.sheetKeyboardChain
       await this.$refs.sheetTable?.clearEdit?.()
@@ -435,8 +482,11 @@ export default {
     },
     sheetHeaderCellClassName({ column }) {
       if (!column.field) return ''
+      const classes = ['sheet-selectable-header']
+      if (!this.isSheetColumnPinned({ key: column.field })) classes.push('sheet-movable-header')
       const menu = this.headerCellClass?.(column.field)
-      return menu ? `sheet-selectable-header ${menu}` : 'sheet-selectable-header'
+      if (menu) classes.push(menu)
+      return classes.join(' ')
     },
     sheetCellClassName() {
       return ''
@@ -786,9 +836,8 @@ export default {
       if (event.target?.closest?.('input, textarea, .vxe-input, .vxe-select')) return
       const hit = this.hitSheetCell(event.target)
       const row = hit ? this.list[hit.rowIndex] : null
-      if (!row || this.isSheetCellLocked(row, hit.field)) {
+      if (!row || this.notifySheetCellLocked(row, hit.field)) {
         this.sheetEditSource = ''
-        if (row) this.onLockedSheetDblClick?.(row, hit.field)
         return
       }
       this.sheetEditSource = 'dblclick'
@@ -809,7 +858,7 @@ export default {
       if (!row || !key) return
       if (mode !== 'composition') event.preventDefault()
       event.stopPropagation()
-      if (this.isSheetCellLocked(row, key)) return
+      if (this.notifySheetCellLocked(row, key)) return
       const character = text || event.key
       const run = async () => {
         const continuing = this.sheetEditOriginal?.rowId === row.id

@@ -1,3 +1,6 @@
+const MIN_COLUMN_WIDTH = 40
+const MAX_COLUMN_WIDTH = 1200
+
 export function createColumnOrder(
   storageKey,
   defaultColumns,
@@ -53,17 +56,39 @@ export function createColumnOrder(
   function readStore() {
     try {
       const raw = JSON.parse(localStorage.getItem(storageKey) || 'null')
-      if (Array.isArray(raw)) return { order: raw, hidden: undefined }
+      if (Array.isArray(raw)) return { order: raw, hidden: undefined, widths: {} }
       if (raw && typeof raw === 'object') {
         return {
           order: Array.isArray(raw.order) ? raw.order : (Array.isArray(raw.keys) ? raw.keys : []),
           hidden: Array.isArray(raw.hidden) ? raw.hidden : undefined,
+          widths: sanitizeWidths(raw.widths),
         }
       }
     } catch {
       /* ignore */
     }
     return null
+  }
+
+  function write(store) {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(store))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function sanitizeWidths(widths) {
+    const result = {}
+    if (!widths || typeof widths !== 'object') return result
+    const known = new Set(defaultColumns.map((column) => column.key))
+    for (const [key, value] of Object.entries(widths)) {
+      const width = Math.round(Number(value))
+      if (known.has(key) && width >= MIN_COLUMN_WIDTH) {
+        result[key] = Math.min(width, MAX_COLUMN_WIDTH)
+      }
+    }
+    return result
   }
 
   function sanitizeHidden(hidden) {
@@ -88,18 +113,26 @@ export function createColumnOrder(
     return sanitizeHidden([...storedHidden, ...unseen])
   }
 
+  function loadWidths() {
+    return readStore()?.widths || {}
+  }
+
   function save(columns, hidden) {
-    try {
-      const stored = readStore()?.hidden
-      localStorage.setItem(storageKey, JSON.stringify({
-        order: (columns || []).map((column) => column.key),
-        hidden: sanitizeHidden(
-          hidden !== undefined ? hidden : (Array.isArray(stored) ? stored : defaultHidden),
-        ),
-      }))
-    } catch {
-      /* ignore */
-    }
+    const stored = readStore()
+    write({
+      order: (columns || []).map((column) => column.key),
+      hidden: sanitizeHidden(
+        hidden !== undefined ? hidden : (Array.isArray(stored?.hidden) ? stored.hidden : defaultHidden),
+      ),
+      widths: stored?.widths || {},
+    })
+  }
+
+  // 只调了列宽时不写 order/hidden，免得把默认列序和显示字段固化下来。
+  function saveWidth(key, width) {
+    const stored = readStore()
+    const widths = sanitizeWidths({ ...stored?.widths, [key]: width })
+    write(stored ? { order: stored.order, hidden: stored.hidden, widths } : { widths })
   }
 
   function clear() {
@@ -110,5 +143,5 @@ export function createColumnOrder(
     }
   }
 
-  return { clear, load, loadHidden, merge, move, save }
+  return { clear, load, loadHidden, loadWidths, merge, move, save, saveWidth }
 }

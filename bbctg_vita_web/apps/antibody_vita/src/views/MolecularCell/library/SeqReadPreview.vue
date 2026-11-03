@@ -325,7 +325,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #fff;
+  background: var(--el-bg-color);
 }
 
 .seq-state {
@@ -414,7 +414,7 @@ button.direction-badge.is-arm {
   padding: 0 8px;
   color: var(--el-text-color-regular);
   font-size: 11px;
-  background: #fff;
+  background: var(--el-bg-color);
   border: 1px solid var(--el-border-color);
   border-radius: 4px;
   cursor: pointer;
@@ -472,5 +472,9 @@ button.direction-badge.is-arm {
 
 .seq-text mark.is-active {
   background: var(--el-color-warning-light-5);
+}
+
+html.dark .seq-text mark {
+  color: var(--el-color-warning);
 }
 </style>

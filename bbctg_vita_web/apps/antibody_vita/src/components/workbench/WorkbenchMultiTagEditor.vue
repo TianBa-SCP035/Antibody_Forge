@@ -223,4 +223,14 @@ export default {
 .workbench-multi-tag-option.is-current .list-status-tag {
   box-shadow: 0 0 0 1px currentColor;
 }
+
+html.dark .el-tag.list-status-tag.is-purple {
+  --el-tag-border-color: var(--el-border-color);
+  border-color: var(--el-border-color);
+}
+
+html.dark .el-tag.list-status-tag.is-purple.el-tag--light {
+  --el-tag-bg-color: var(--el-fill-color-light);
+  background-color: var(--el-fill-color-light);
+}
 </style>

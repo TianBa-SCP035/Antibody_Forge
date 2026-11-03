@@ -130,9 +130,9 @@ export default {
 </script>
 
 <style scoped lang="scss">
-$primary: #409eff;
-$label-color: #606266;
-$border-color: #e4e7ed;
+$primary: var(--el-color-primary);
+$label-color: var(--el-text-color-regular);
+$border-color: var(--el-border-color-light);
 
 .plate-switch {
   display: flex;
@@ -155,7 +155,7 @@ $border-color: #e4e7ed;
   padding: 0;
   border: 1px solid $border-color;
   border-radius: 4px;
-  background: #fff;
+  background: var(--el-bg-color);
   color: $label-color;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;

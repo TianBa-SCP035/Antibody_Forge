@@ -464,6 +464,7 @@
             :header-cell-class-name="sheetHeaderCellClassName"
             :cell-class-name="sheetCellClassName"
             @scroll="onSheetScroll"
+            @column-resizable-change="onSheetColumnResize"
             @edit-actived="onSheetEditActived"
             @edit-closed="onSheetEditClosed"
             @cell-delete-value="onSheetEditClosed"
@@ -474,7 +475,7 @@
                 v-if="column.edit === 'target'"
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
-                :width="column.width"
+                :width="sheetColumnWidth(column)"
                 :min-width="column.minWidth || column.width || 120"
                 :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
@@ -513,7 +514,7 @@
                 v-else-if="column.edit === 'select' || isMultiSelectColumn(column)"
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
-                :width="column.width"
+                :width="sheetColumnWidth(column)"
                 :min-width="column.minWidth || column.width || 120"
                 :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
@@ -548,7 +549,7 @@
                 v-else
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
-                :width="column.width"
+                :width="sheetColumnWidth(column)"
                 :min-width="column.minWidth || column.width || 120"
                 :align="column.key === 'sort_order' ? 'center' : undefined"
                 :header-align="column.key === 'sort_order' ? 'center' : undefined"
@@ -1047,7 +1048,7 @@ const SHEET_COLUMNS = [
   { key: 'antigen_remark', label: '抗原备注', edit: 'text', minWidth: 160 },
   { key: 'can_start', label: '可否开展', width: 100, edit: 'select', optionsKey: 'yesno' },
   { key: 'plan_status', label: '状态', width: 110, edit: 'select', optionsKey: 'plan_status' },
-  { key: 'experiment_id', label: '实验号', width: 190, edit: 'readonly' },
+  { key: 'experiment_id', label: '实验号', width: 190, edit: 'readonly', lockHint: '实验号由系统生成，改项目编号时自动更新' },
 ]
 const SHEET_COLUMN_ORDER = createColumnOrder('workbenchSheetColumnOrder', SHEET_COLUMNS, {
   pinFirstKey: 'sort_order',
@@ -1435,6 +1436,7 @@ export default {
         SHEET_COLUMN_ORDER.clear()
         this.sheetColumns = [...SHEET_COLUMNS]
         this.persistSheetColumnOrder(this.sheetColumns)
+        this.resetSheetColumnWidths()
         this.clearSheetRange()
         return
       }
@@ -1445,6 +1447,9 @@ export default {
     },
     persistSheetColumnOrder(columns) {
       SHEET_COLUMN_ORDER.save(columns)
+    },
+    sheetColumnStore() {
+      return SHEET_COLUMN_ORDER
     },
     uniq(values) {
       return [...new Set((values || []).map((item) => String(item || '').trim()).filter(Boolean))]
@@ -1897,15 +1902,22 @@ export default {
     setSheetChoiceDirectValue(row, key, value) {
       row[key] = value
     },
-    isSheetCellLocked(row, key) {
-      if (key === 'sort_order' && !this.isQueueSorted) return true
-      if (this.isGroupStrainLocked(row, key)) return true
-      if (!this.canEditField(row, key)) return true
-      const column = this.sheetColumnByKey.get(key)?.column
-      if (column?.edit === 'readonly') return true
-      if (key === 'plan_status' && row.aligned_locked) return true
-      if (key === 'project_code') return false
-      return Boolean(row.aligned_locked && ALIGNED_FIELDS.has(key))
+    sheetCellLockReason(row, key) {
+      const label = this.sheetColumnLabel(key)
+      const fixed = this.sheetSortLockReason(row, key) || this.sheetReadonlyLockReason(key)
+      if (fixed) return fixed
+      if (this.isGroupStrainLocked(row, key)) return `有多组小鼠，${label}请到方案页按组修改`
+      if (!this.canEditField(row, key)) {
+        if (this.canDraftEdit && !this.isDraftRow(row) && !DRAFT_PROTECTED_FIELDS.has(key)) {
+          return '你只能修改草稿记录'
+        }
+        return `你没有修改「${label}」的权限`
+      }
+      if (key === 'plan_status' && row.aligned_locked) return '项目已开展，状态以正式项目为准'
+      if (key !== 'project_code' && row.aligned_locked && ALIGNED_FIELDS.has(key)) {
+        return `项目已开展，${label}请到正式项目修改`
+      }
+      return ''
     },
     normalizeYesNo(text) {
       const raw = String(text || '').trim()

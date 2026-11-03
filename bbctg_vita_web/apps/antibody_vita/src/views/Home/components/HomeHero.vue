@@ -164,17 +164,7 @@ watch(
     90deg,
     #e6f0ff 0%,
     #f2faf7 46%,
-    #ffffff 100%
-  );
-}
-
-:global(html.dark) .home-hero {
-  border-color: hsl(var(--border) / 0.55);
-  background: linear-gradient(
-    90deg,
-    hsl(210 28% 18% / 0.45) 0%,
-    hsl(155 12% 16% / 0.22) 46%,
-    hsl(var(--card)) 100%
+    var(--el-bg-color) 100%
   );
 }
 
@@ -192,5 +182,15 @@ watch(
   50% {
     transform: translateY(-5px);
   }
+}
+
+html.dark .home-hero {
+  border-color: var(--el-border-color);
+  background: linear-gradient(
+    90deg,
+    var(--el-color-primary-light-9) 0%,
+    var(--el-color-success-light-9) 46%,
+    var(--el-bg-color) 100%
+  );
 }
 </style>

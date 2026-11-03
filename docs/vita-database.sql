@@ -612,6 +612,7 @@ CREATE TABLE IF NOT EXISTS discovery_synthesis_order (
   synthetic_corp VARCHAR(64) NULL COMMENT '合成公司',
   synthetic_count INT NULL COMMENT '合成个数',
   synthetic_date DATE NULL COMMENT '合成日期',
+  order_sender VARCHAR(128) NULL COMMENT '下单人',
   arrival_count INT NULL COMMENT '到货个数',
   arrival_date DATE NULL COMMENT '到货日期',
   affinity_status VARCHAR(32) NULL COMMENT '亲和力检测状态',

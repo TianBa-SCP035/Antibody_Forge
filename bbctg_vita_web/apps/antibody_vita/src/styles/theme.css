@@ -1,0 +1,74 @@
+/**
+ * 全站颜色入口。页面里只用 Element 变量（--el-*）和这里的 --vita-* 变量，暗色自动生效。
+ * 主题色只影响 Vben 外壳（菜单、页签、顶栏），页面内容一律用 Element 蓝。
+ *
+ * --vita-king-*     王牌/紫色胶囊
+ * --vita-library-*  待建库青色
+ */
+
+:root {
+  --vita-king-text: #6f4d9c;
+  --vita-king-bg: #efe8f6;
+  --vita-king-border: #d4c4ea;
+
+  --vita-library-text: #12bbc0;
+  --vita-library-bg: #e7f8f9;
+  --vita-library-border: #89dde0;
+}
+
+/* 暗色：底色、浅底、边框统一取 Vben 外壳的偏蓝灰。:root.dark 比 Element 的 html.dark 高一级。 */
+:root.dark {
+  --el-bg-color-page: hsl(var(--background-deep));
+  --el-bg-color: hsl(var(--card));
+  --el-bg-color-overlay: hsl(220deg 10% 15%);
+  --el-fill-color-blank: hsl(var(--card));
+  --el-fill-color-extra-light: hsl(220deg 10% 14%);
+  --el-fill-color-lighter: hsl(220deg 9% 15.5%);
+  --el-fill-color-light: hsl(220deg 8% 17%);
+  --el-fill-color: hsl(220deg 7% 20%);
+  --el-fill-color-dark: hsl(220deg 6% 23%);
+  --el-fill-color-darker: hsl(220deg 6% 26%);
+  --el-border-color-extra-light: hsl(220deg 8% 17%);
+  --el-border-color-lighter: hsl(220deg 7% 20%);
+  --el-border-color-light: hsl(220deg 6% 23%);
+  --el-border-color: hsl(220deg 6% 27%);
+  --el-border-color-dark: hsl(220deg 5% 32%);
+  --el-border-color-darker: hsl(220deg 5% 37%);
+
+  --vita-king-text: #b79be0;
+  --vita-king-bg: #2a2236;
+  --vita-king-border: #4d3d66;
+
+  --vita-library-text: #3fd0d4;
+  --vita-library-bg: #15302f;
+  --vita-library-border: #1f6f72;
+
+  /* vxe-table 自带暗色是纯黑灰，改成和 Element 同一套 */
+  --vxe-ui-layout-background-color: var(--el-bg-color);
+  --vxe-ui-font-color: var(--el-text-color-regular);
+  --vxe-ui-base-popup-border-color: var(--el-border-color-light);
+  --vxe-ui-base-hover-background-color: var(--el-fill-color-light);
+  --vxe-ui-base-active-background-color: var(--el-fill-color);
+  --vxe-ui-input-border-color: var(--el-border-color);
+  --vxe-ui-input-disabled-background-color: var(--el-fill-color-light);
+  --vxe-ui-table-header-background-color: var(--el-fill-color-light);
+  --vxe-ui-table-column-to-row-background-color: var(--el-fill-color-light);
+  --vxe-ui-table-border-color: var(--el-border-color-lighter);
+  --vxe-ui-table-row-hover-background-color: var(--el-fill-color-light);
+  --vxe-ui-table-row-striped-background-color: var(--el-fill-color-lighter);
+  --vxe-ui-table-row-hover-striped-background-color: var(--el-fill-color-light);
+  --vxe-ui-table-row-current-background-color: var(--el-color-primary-light-9);
+  --vxe-ui-table-row-hover-current-background-color: var(--el-color-primary-light-8);
+  --vxe-ui-table-column-hover-background-color: var(--el-color-primary-light-9);
+  --vxe-ui-table-column-current-background-color: var(--el-color-primary-light-9);
+  --vxe-ui-table-column-hover-current-background-color: var(--el-color-primary-light-8);
+  --vxe-ui-table-row-checkbox-checked-background-color: var(--el-color-warning-light-9);
+  --vxe-ui-table-row-hover-checkbox-checked-background-color: var(--el-color-warning-light-8);
+  --vxe-ui-table-row-radio-checked-background-color: var(--el-color-warning-light-9);
+  --vxe-ui-table-row-hover-radio-checked-background-color: var(--el-color-warning-light-8);
+}
+
+/* Element 暗色把卡片设成浮层色（更亮一档），改回和页面面板同色 */
+:root.dark .el-card {
+  --el-card-bg-color: var(--el-bg-color);
+}

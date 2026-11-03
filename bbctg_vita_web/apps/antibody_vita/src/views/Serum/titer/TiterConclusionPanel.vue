@@ -216,26 +216,26 @@ export default {
   align-items: center;
   justify-content: center;
   padding: 48px 16px;
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
 }
 
 .conclusion-empty .el-icon {
   font-size: 48px;
   margin-bottom: 12px;
   opacity: 0.5;
-  color: #a0cfff;
+  color: var(--el-color-primary-light-5);
 }
 
 .conclusion-empty p {
   margin: 0 0 6px;
   font-size: 15px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-weight: 500;
 }
 
 .conclusion-empty .sub-text {
   font-size: 13px;
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
 }
 
 /* 与 TITER 板管理 tabs 一致 */
@@ -255,11 +255,11 @@ export default {
 }
 
 .stage-tabs :deep(.el-tabs__item:hover) {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .stage-tabs :deep(.el-tabs__item.is-active) {
-  color: #409eff;
+  color: var(--el-color-primary);
   font-weight: 600;
 }
 
@@ -270,8 +270,8 @@ export default {
 .group-table-block {
   margin-bottom: 14px;
   padding: 12px 14px;
-  background: #fbfcfd;
-  border: 1px solid #eef1f6;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
 }
 
@@ -295,8 +295,8 @@ export default {
   max-width: 100%;
   padding: 3px 10px;
   border-radius: 999px;
-  border: 1px solid #dfe4ea;
-  background: #f7f9fc;
+  border: 1px solid var(--el-border-color-light);
+  background: var(--el-fill-color-light);
   line-height: 1.2;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -306,9 +306,9 @@ export default {
 .group-chip--primary {
   font-size: 13px;
   font-weight: 600;
-  color: #606266;
-  border-color: #d2d8e0;
-  background: #f2f5f9;
+  color: var(--el-text-color-regular);
+  border-color: var(--el-border-color-dark);
+  background: var(--el-fill-color-light);
 }
 
 .group-chip--plain {
@@ -341,33 +341,33 @@ export default {
   flex-shrink: 0;
   font-size: 13px;
   font-weight: 600;
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 
 .meta-target {
   font-size: 13px;
   min-width: 0;
-  color: #606266;
+  color: var(--el-text-color-regular);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .conclusion-table :deep(.el-table__header-wrapper th) {
-  background-color: #f8f9fb;
-  color: #606266;
+  background-color: var(--el-fill-color-light);
+  color: var(--el-text-color-regular);
   font-weight: 600;
   height: 32px;
-  border-bottom: 1px solid #eef1f6;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .conclusion-table :deep(.el-table__row td) {
   height: 32px;
-  border-bottom: 1px solid #f0f0f0;
-  color: #606266;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  color: var(--el-text-color-regular);
 }
 
 .conclusion-table :deep(.el-table__body tr:hover > td) {
-  background-color: #f5f9ff;
+  background-color: var(--el-fill-color-light);
 }
 
 .cell-value {
@@ -375,15 +375,19 @@ export default {
 }
 
 .cell-value.is-na {
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
 }
 
 .cell-value.is-negative {
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .cell-value.is-positive {
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-weight: 600;
+}
+
+html.dark .group-chip--plain {
+  color: var(--el-text-color-secondary);
 }
 </style>

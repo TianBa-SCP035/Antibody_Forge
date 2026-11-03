@@ -7,7 +7,9 @@ import { initStores } from '@vben/stores';
 import '@vben/styles';
 // Temporarily disable Vben's Element Plus-specific style overrides.
 // import '@vben/styles/ele';
+import 'element-plus/theme-chalk/dark/css-vars.css';
 
+import './styles/theme.css';
 import './styles/list-page-surface.css';
 import './styles/isolated-loading.css';
 
@@ -17,6 +19,7 @@ import { $t, setupI18n } from '#/locales';
 
 import { initSessionExpiryWatcher } from '#/utils/auth-session';
 import { isolatedLoadingDirective } from '#/utils/isolatedLoading';
+import { initTableContextMenu } from '#/utils/tableContextMenu';
 
 import { initComponentAdapter } from './adapter/component';
 import { initSetupVbenForm } from './adapter/form';
@@ -64,6 +67,7 @@ async function bootstrap(namespace: string) {
   // 配置路由及路由守卫
   app.use(router);
   initSessionExpiryWatcher();
+  initTableContextMenu();
 
   // 配置Motion插件
   const { MotionPlugin } = await import('@vben/plugins/motion');

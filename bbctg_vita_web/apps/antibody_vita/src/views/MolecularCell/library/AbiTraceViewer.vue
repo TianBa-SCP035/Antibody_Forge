@@ -718,7 +718,7 @@ onBeforeUnmount(() => {
   width: 100%;
   min-width: 0;
   overflow: hidden;
-  background: #fff;
+  background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
 }
@@ -813,7 +813,7 @@ button.direction-badge.is-arm {
   padding: 0 8px;
   color: var(--el-text-color-regular);
   font-size: 11px;
-  background: #fff;
+  background: var(--el-bg-color);
   border: 1px solid var(--el-border-color);
   border-radius: 4px;
   cursor: pointer;
@@ -908,5 +908,9 @@ button.direction-badge.is-arm {
 
 .abi-trace-viewer :deep(canvas) {
   cursor: grab;
+}
+
+html.dark .sequence-base-mark.is-match b {
+  color: var(--el-color-warning);
 }
 </style>

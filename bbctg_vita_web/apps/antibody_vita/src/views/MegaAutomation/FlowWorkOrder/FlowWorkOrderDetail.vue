@@ -1468,11 +1468,11 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-$primary: #409eff;
-$title-color: #303133;
-$label-color: #606266;
-$muted-color: #909399;
-$border-color: #e4e7ed;
+$primary: var(--el-color-primary);
+$title-color: var(--el-text-color-primary);
+$label-color: var(--el-text-color-regular);
+$muted-color: var(--el-text-color-secondary);
+$border-color: var(--el-border-color-light);
 $radius: 8px;
 
 .flow-order-detail {
@@ -1486,8 +1486,8 @@ $radius: 8px;
   align-items: center;
   justify-content: center;
   min-height: 360px;
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: $radius;
 }
 
@@ -1519,8 +1519,8 @@ $radius: 8px;
   flex-wrap: wrap;
   padding: 14px 18px;
   margin-bottom: 12px;
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: $radius;
 }
 
@@ -1532,7 +1532,7 @@ $radius: 8px;
 }
 
 .execution-progress-hint {
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1;
 }
@@ -1581,15 +1581,15 @@ $radius: 8px;
 
 .header-actions .status-note-trigger.el-button {
   background: transparent;
-  border-color: #dcdfe6;
-  color: #606266;
+  border-color: var(--el-border-color);
+  color: var(--el-text-color-regular);
 }
 
 .header-actions .status-note-trigger.el-button:hover,
 .header-actions .status-note-trigger.el-button:focus {
   background: transparent;
-  border-color: #c0c4cc;
-  color: #606266;
+  border-color: var(--el-border-color-darker);
+  color: var(--el-text-color-regular);
 }
 
 .status-note-caret {
@@ -1617,7 +1617,7 @@ $radius: 8px;
   margin-bottom: 12px;
   font-size: 13px;
   color: #a8071a;
-  background: #fff1f0;
+  background: var(--el-color-danger-light-9);
   border: 1px solid #ffa39e;
   border-radius: $radius;
 }
@@ -1651,12 +1651,12 @@ $radius: 8px;
 .is-invalid-control.el-select :deep(.el-select__wrapper),
 :deep(.is-invalid-control .el-input__wrapper),
 :deep(.is-invalid-control.el-select .el-select__wrapper) {
-  box-shadow: 0 0 0 1px #f56c6c inset !important;
+  box-shadow: 0 0 0 1px var(--el-color-danger) inset !important;
 }
 
 :deep(.cell-select-trigger.is-invalid-control) {
-  box-shadow: 0 0 0 1px #f56c6c inset;
-  background: #fff;
+  box-shadow: 0 0 0 1px var(--el-color-danger) inset;
+  background: var(--el-bg-color);
 }
 
 /* 通用面板（含 EditorTab / PlatingTab 内：需 :deep 才能穿透子组件） */
@@ -1664,8 +1664,8 @@ $radius: 8px;
 :deep(.panel) {
   padding: 14px 16px;
   margin-bottom: 12px;
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: $radius;
   box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
 }
@@ -1752,7 +1752,7 @@ $radius: 8px;
   gap: 10px;
   padding-top: 10px;
   margin-top: 12px;
-  border-top: 1px solid #f0f2f5;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .timeline-label {
@@ -1771,8 +1771,8 @@ $radius: 8px;
   padding: 2px 10px;
   font-size: 12px;
   color: #475569;
-  background: #f5f7fa;
-  border: 1px solid #e5e7eb;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-light);
   border-radius: 999px;
 
   &.is-empty {
@@ -1801,7 +1801,7 @@ $radius: 8px;
   overflow: auto;
   font-size: 12px;
   line-height: 1.5;
-  color: #d1d5db;
+  color: #d1d5db; /* theme-ok 深色代码面板，明暗都不变 */
   background: #111827;
   border-radius: 6px;
 }
@@ -1818,5 +1818,26 @@ $radius: 8px;
   .base-field--wide {
     grid-column: span 2;
   }
+}
+
+html.dark .status-note-menu .status-note-hint.is-disabled,
+html.dark .preview-banner,
+html.dark .optional-warning-banner {
+  color: var(--el-color-warning);
+}
+
+html.dark .preview-banner,
+html.dark .optional-warning-banner {
+  background: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning-light-7);
+}
+
+html.dark .validation-banner {
+  color: var(--el-color-danger);
+  border-color: var(--el-color-danger-light-7);
+}
+
+html.dark .timeline-chip {
+  color: var(--el-text-color-regular);
 }
 </style>

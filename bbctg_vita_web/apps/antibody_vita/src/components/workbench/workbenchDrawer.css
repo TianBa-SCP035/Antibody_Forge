@@ -62,10 +62,10 @@
   color: var(--el-color-primary);
 }
 .workbench-drawer .status-select.status-tone-library .el-select__wrapper {
-  background-color: #e7f8f9;
+  background-color: var(--vita-library-bg);
 }
 .workbench-drawer .status-select.status-tone-library .el-select__selected-item {
-  color: #12bbc0;
+  color: var(--vita-library-text);
 }
 .workbench-drawer .status-select.status-tone-warning .el-select__wrapper,
 .workbench-drawer .priority-select.status-tone-warning .el-select__wrapper {
@@ -92,8 +92,8 @@
   color: var(--el-color-danger);
 }
 .workbench-drawer .priority-select.status-tone-king .el-select__wrapper {
-  background-color: #efe8f6;
+  background-color: var(--vita-king-bg);
 }
 .workbench-drawer .priority-select.status-tone-king .el-select__selected-item {
-  color: #6f4d9c;
+  color: var(--vita-king-text);
 }

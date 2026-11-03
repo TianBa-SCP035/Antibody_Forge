@@ -716,10 +716,10 @@ export default {
 </script>
 
 <style scoped lang="scss">
-$primary: #409eff;
-$title-color: #303133;
-$label-color: #606266;
-$muted-color: #909399;
+$primary: var(--el-color-primary);
+$title-color: var(--el-text-color-primary);
+$label-color: var(--el-text-color-regular);
+$muted-color: var(--el-text-color-secondary);
 
 .empty-hint {
   margin: 8px 0 0;
@@ -745,7 +745,7 @@ $muted-color: #909399;
   transition: background-color 0.15s;
 
   &:hover {
-    background: #f0f5ff;
+    background: var(--el-color-primary-light-9);
   }
 
   &:active {
@@ -764,7 +764,7 @@ $muted-color: #909399;
 
 :deep(.sortable-ghost) {
   opacity: 0.55;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
 }
 
 /* 编辑区左右布局 */
@@ -795,14 +795,14 @@ $muted-color: #909399;
   :deep(.el-select.is-soft-warning .el-select__wrapper),
   :deep(.el-select.is-soft-warning .el-select__wrapper:hover),
   :deep(.el-select.is-soft-warning .el-select__wrapper.is-focused) {
-    box-shadow: 0 0 0 1px #e6a23c inset !important;
+    box-shadow: 0 0 0 1px var(--el-color-warning) inset !important;
   }
 
   :deep(th.el-table__cell) {
     font-size: 12px;
     font-weight: 600;
     color: $label-color;
-    background: #f5f7fa;
+    background: var(--el-fill-color-light);
   }
 
   :deep(.el-input__wrapper),
@@ -815,11 +815,11 @@ $muted-color: #909399;
   :deep(.el-input__wrapper:hover),
   :deep(.el-select__wrapper:hover) {
     box-shadow: 0 0 0 1px $primary inset;
-    background: #fff;
+    background: var(--el-bg-color);
   }
 
   :deep(.el-table__row.is-active-row > td.el-table__cell) {
-    background: #ecf5ff;
+    background: var(--el-color-primary-light-9);
   }
 }
 
@@ -842,7 +842,7 @@ $muted-color: #909399;
   &:hover:not(.is-disabled),
   &.is-open {
     box-shadow: 0 0 0 1px $primary inset;
-    background: #fff;
+    background: var(--el-bg-color);
   }
 
   &.is-disabled {
@@ -852,8 +852,8 @@ $muted-color: #909399;
   }
 
   &.is-invalid-control {
-    box-shadow: 0 0 0 1px #f56c6c inset;
-    background: #fff;
+    box-shadow: 0 0 0 1px var(--el-color-danger) inset;
+    background: var(--el-bg-color);
   }
 }
 
@@ -866,7 +866,7 @@ $muted-color: #909399;
 
 .cell-select-placeholder {
   flex: 1;
-  color: #a8abb2;
+  color: var(--el-text-color-placeholder);
 }
 
 .cell-select-arrow {
@@ -877,7 +877,7 @@ $muted-color: #909399;
 
 /* 可视化面板 */
 .viz-panel {
-  background: #fff;
+  background: var(--el-bg-color);
 }
 
 /* 细胞板列视图（横向泳道） */
@@ -892,13 +892,13 @@ $muted-color: #909399;
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  background: #f8fafc;
-  border: 1px solid #eceff4;
-  border-left: 3px solid #dfe4ec;
+  background: var(--el-fill-color-extra-light);
+  border: 1px solid var(--el-border-color-lighter);
+  border-left: 3px solid var(--el-border-color-light);
   border-radius: 6px;
 
   &.is-filled {
-    background: #f4f9ff;
+    background: var(--el-fill-color-light);
     border-left-color: $primary;
   }
 }
@@ -912,7 +912,7 @@ $muted-color: #909399;
 .lane-well {
   width: 7px;
   height: 7px;
-  background: #dfe4ec;
+  background: var(--el-border-color-light);
   border-radius: 50%;
 
   .is-filled & {
@@ -971,7 +971,7 @@ $muted-color: #909399;
   max-height: 300px;
   overflow-y: auto;
   font-size: 13px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 /* 细胞板：一级，做成带底色的表头行 */
@@ -981,13 +981,13 @@ $muted-color: #909399;
   gap: 6px;
   height: 34px;
   padding: 0 12px;
-  color: #303133;
+  color: var(--el-text-color-primary);
   cursor: pointer;
-  background: #f5f7fa;
-  border-top: 1px solid #ebeef5;
+  background: var(--el-fill-color-light);
+  border-top: 1px solid var(--el-border-color-lighter);
 
   &:hover {
-    background: #eef1f6;
+    background: var(--el-fill-color);
   }
 }
 
@@ -998,7 +998,7 @@ $muted-color: #909399;
 .cell-picker-group-arrow {
   flex-shrink: 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .cell-picker-group.is-open .cell-picker-group-arrow {
@@ -1015,11 +1015,11 @@ $muted-color: #909399;
 .cell-picker-group-count {
   flex-shrink: 0;
   font-size: 12px;
-  color: #409eff;
+  color: var(--el-color-primary);
 
   &::before {
     content: '已选 ';
-    color: #a8abb2;
+    color: var(--el-text-color-placeholder);
   }
 }
 
@@ -1043,20 +1043,20 @@ $muted-color: #909399;
     width: 1px;
     height: 32px;
     content: '';
-    background: #ebeef5;
+    background: var(--el-border-color-lighter);
   }
 
   &:hover {
-    background: #f5f7fa;
+    background: var(--el-fill-color-light);
   }
 
   &.is-selected {
-    color: #409eff;
-    background: #ecf5ff;
+    color: var(--el-color-primary);
+    background: var(--el-color-primary-light-9);
   }
 
   &.is-locked {
-    color: #a8abb2;
+    color: var(--el-text-color-placeholder);
     cursor: not-allowed;
 
     &:hover {
@@ -1078,24 +1078,28 @@ $muted-color: #909399;
   font-size: 12px;
   line-height: 17px;
   color: #7a8699;
-  background: #f2f4f7;
+  background: var(--el-fill-color);
   border-radius: 4px;
 }
 
 .cell-picker-option.is-selected .cell-picker-option-col {
-  color: #409eff;
-  background: #d9ecff;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-8);
 }
 
 .cell-picker-option-check {
   flex-shrink: 0;
   font-size: 14px;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .cell-picker-empty {
   padding: 20px 12px;
-  color: #a8abb2;
+  color: var(--el-text-color-placeholder);
   text-align: center;
+}
+
+html.dark .cell-picker-option-col {
+  color: var(--el-text-color-secondary);
 }
 </style>

@@ -10,7 +10,7 @@
           <span>1. 项目基础信息 (Project Info)</span>
           <div style="float: right;">
               <span v-if="!canEdit" class="readonly-hint">只读</span>
-              <span v-if="autoSaving" style="margin-right: 10px; color: #409EFF; font-size: 12px;">
+              <span v-if="autoSaving" style="margin-right: 10px; color: var(--el-color-primary); font-size: 12px;">
                   <el-icon class="is-loading"><Loading /></el-icon> 自动保存中...
               </span>
               <el-button size="small" type="primary" title="停 3 秒自动保存、右键保存并新建" @click="submitForm" @contextmenu.prevent="submitForm($event, true)" :loading="loading" :disabled="loading || autoSaving || !canEdit">保存</el-button>
@@ -449,7 +449,7 @@
         </div>
       </template>
       
-      <div v-if="postForm.mouse_groups.length === 0" style="text-align: center; color: #999; padding: 20px;">
+      <div v-if="postForm.mouse_groups.length === 0" style="text-align: center; color: var(--el-text-color-secondary); padding: 20px;">
           请先在上方添加小鼠分组
       </div>
 
@@ -598,7 +598,7 @@
         </template>
         <el-form label-width="85px">
           <el-form-item label="来源分组">
-            <el-input :value="copyFromGroup" disabled style="background-color: #f5f7fa;" />
+            <el-input :value="copyFromGroup" disabled style="background-color: var(--el-fill-color-light);" />
           </el-form-item>
 
           <el-form-item label="目标分组">
@@ -753,10 +753,10 @@
       
       <div class="danger-zone-content">
         <div class="danger-zone-text">
-          <h4 style="margin: 0 0 8px 0; color: #F56C6C;">
+          <h4 style="margin: 0 0 8px 0; color: var(--el-color-danger);">
             <el-icon><Delete /></el-icon> 删除此实验项目
           </h4>
-          <p style="margin: 0; color: #606266; font-size: 13px;">
+          <p style="margin: 0; color: var(--el-text-color-regular); font-size: 13px;">
             删除后将无法恢复，所有相关数据（小鼠分组、抗原信息、免疫步骤、效价检测等）都将被永久清除。请谨慎操作。
           </p>
         </div>
@@ -1332,7 +1332,7 @@ export default {
 <style scoped>
 .createPost-main-container {
   padding: 10px 20px;
-  background-color: #f5f7fa;
+  background-color: var(--el-fill-color-light);
   min-height: 100vh;
 }
 .box-card {
@@ -1353,7 +1353,7 @@ export default {
 }
 .readonly-hint {
   margin-right: 10px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 .createPost-main-container :deep(.el-button--small) {
@@ -1445,11 +1445,11 @@ export default {
     margin-bottom: 5px;
     font-size: 13px;
     font-weight: bold;
-    color: #606266;
+    color: var(--el-text-color-regular);
 }
 .delete-btn {
     cursor: pointer;
-    color: #f56c6c;
+    color: var(--el-color-danger);
     font-size: 16px;
     vertical-align: middle;
 }
@@ -1459,7 +1459,7 @@ export default {
 
 /* Keep border on active tab for better visual consistency */
 .el-tabs--card :deep(.el-tabs__item.is-active) {
-    border-bottom-color: #e4e7ed !important;
+    border-bottom-color: var(--el-border-color-light) !important;
 }
 
 /* Set tab width */
@@ -1470,12 +1470,12 @@ export default {
 
 /* Remark icon styling */
 .remark-icon {
-    color: #909399;
+    color: var(--el-text-color-secondary);
     vertical-align: middle;
 }
 
 .remark-icon.has-remark {
-    color: #409EFF;
+    color: var(--el-color-primary);
 }
 
 .remark-icon:hover {
@@ -1484,12 +1484,12 @@ export default {
 
 /* Danger Zone Styling */
 .danger-zone-card {
-    border: 2px solid #F56C6C;
-    background-color: #FEF0F0;
+    border: 2px solid var(--el-color-danger);
+    background-color: var(--el-color-danger-light-9);
 }
 
 .danger-zone-header {
-    color: #F56C6C;
+    color: var(--el-color-danger);
     font-weight: bold;
 }
 

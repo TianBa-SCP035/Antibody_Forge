@@ -419,6 +419,7 @@ export default {
   },
   mounted() {
     document.addEventListener('mousedown', this.onDocumentMouseDown, true)
+    document.addEventListener('contextmenu', this.onDocumentContextMenu, true)
     window.addEventListener('resize', this.close)
     document.addEventListener('keydown', this.onKeydown)
   },
@@ -426,6 +427,7 @@ export default {
     clearTimeout(this.searchTimer)
     this.toggleScrollFollow(false)
     document.removeEventListener('mousedown', this.onDocumentMouseDown, true)
+    document.removeEventListener('contextmenu', this.onDocumentContextMenu, true)
     window.removeEventListener('resize', this.close)
     document.removeEventListener('keydown', this.onKeydown)
   },
@@ -470,12 +472,20 @@ export default {
       if (gone) this.close()
       else this.place()
     },
+    isInsideMenu(target) {
+      return this.$refs.panel?.contains(target) || target?.closest?.('.wb-hm-popper, .el-picker__popper, .el-select__popper')
+    },
+    // 右键交给 contextmenu 处理：mousedown 时就关掉的话，到 contextmenu 已判断不出要不要拦浏览器菜单。
     onDocumentMouseDown(event) {
-      if (!this.visible) return
+      if (!this.visible || event.button === 2) return
       const target = event.target
-      if (this.$refs.panel?.contains(target)) return
-      if (this.anchor?.contains?.(target)) return
-      if (target?.closest?.('.wb-hm-popper, .el-picker__popper, .el-select__popper')) return
+      if (this.isInsideMenu(target) || this.anchor?.contains?.(target)) return
+      this.close()
+    },
+    /** 菜单开着时右键任意表头（含自己那列）只收起菜单，不弹浏览器菜单。 */
+    onDocumentContextMenu(event) {
+      if (!this.visible || this.isInsideMenu(event.target)) return
+      if (event.target?.closest?.('.wb-hf-cell')) event.preventDefault()
       this.close()
     },
     place() {
@@ -680,7 +690,7 @@ export default {
   overflow: hidden;
   color: var(--el-text-color-regular);
   font-size: 12.5px;
-  background: #fff;
+  background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-light);
   border-radius: 6px;
   box-shadow: 0 10px 28px rgb(15 23 42 / 16%);
@@ -767,7 +777,7 @@ export default {
   height: 18px;
   padding: 0;
   background: var(--swatch);
-  border: 2px solid #fff;
+  border: 2px solid var(--el-bg-color);
   border-radius: 50%;
   box-shadow: 0 0 0 1px var(--el-border-color);
   cursor: pointer;
@@ -1039,6 +1049,13 @@ export default {
 th.wb-hf-cell,
 .vxe-header--column.wb-hf-cell {
   cursor: pointer;
+}
+
+/* el-table 调列宽只给 body 设 col-resize，表头自身的光标会把它盖住。
+   只点名带光标的表头元素：写 * 会让 body 每次改 style 都重算整页样式。 */
+body[style*="col-resize"] th.wb-hf-cell,
+body[style*="col-resize"] th.el-table__cell .wb-col-hd {
+  cursor: col-resize;
 }
 
 th.wb-hf-cell:hover,

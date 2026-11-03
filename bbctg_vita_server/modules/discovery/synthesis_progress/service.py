@@ -1016,6 +1016,7 @@ def _apply_fields(
                 row.order_no = None
             row.source_one_type = None
             row.source_one_id = None
+            row.order_sender = None
             if not any((row.order_no, row.synthesis_code, row.batch_label)):
                 row.source_snapshot = None
 
@@ -1351,6 +1352,7 @@ EXPORT_COLUMNS = (
     ("流式说明", "flow_note"),
     ("负责人", "owner"),
     ("合成公司", "synthetic_corp"),
+    ("下单人", "order_sender"),
     ("订单性质", "order_kind"),
     ("供应方式", "supply_mode"),
     ("靶点编号", "target_codes"),

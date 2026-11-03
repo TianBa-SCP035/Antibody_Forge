@@ -145,26 +145,26 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-$primary: #409eff;
+$primary: var(--el-color-primary);
 $title-color: #1f2937;
 $label-color: #64748b;
-$muted-color: #909399;
+$muted-color: var(--el-text-color-secondary);
 /* 徽章 / 液柱：手调配色入口 */
 $normal-badge: rgb(35, 183, 252);
 $tumor-badge: rgb(251, 126, 36);
 $tube-radial: radial-gradient(ellipse 90% 38% at 50% 8%, rgb(255 255 255 / 70%) 0%, transparent 62%);
 $tube-radial-sm: radial-gradient(ellipse 90% 45% at 50% 12%, rgb(255 255 255 / 60%) 0%, transparent 58%);
-$empty-bar-fill: linear-gradient(180deg, #f8fafc 0%, #eef2f7 32%, #e2e8f0 68%, #cbd5e1 100%);
+$empty-bar-fill: linear-gradient(180deg, var(--el-fill-color-extra-light) 0%, var(--el-fill-color) 32%, var(--el-border-color-light) 68%, #cbd5e1 100%);
 $normal-bar-fill: linear-gradient(
   180deg,
-  #f0f9ff 0%,
+  var(--el-border-color-extra-light) 0%,
   #bae6fd 28%,
   rgb(69, 199, 255) 62%,
   rgb(16, 167, 238) 100%
 );
 $tumor-bar-fill: linear-gradient(
   180deg,
-  #fff7ed 0%,
+  var(--el-color-warning-light-9) 0%,
   #fed7aa 28%,
   rgb(255, 152, 67) 62%,
   rgb(239, 111, 20) 100%
@@ -241,7 +241,7 @@ $tumor-bar-fill: linear-gradient(
   width: 8px;
   height: 20px;
   background: $tube-radial-sm, $empty-bar-fill;
-  border: 1px solid #e8edf3;
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 999px;
   box-sizing: border-box;
 
@@ -256,15 +256,15 @@ $tumor-bar-fill: linear-gradient(
   }
 
   &.is-locked {
-    background: #e5e7eb;
-    border-color: #d1d5db;
+    background: var(--el-fill-color-darker);
+    border-color: var(--el-border-color-dark);
   }
 }
 
 .cell-board {
   padding: 18px 12px 20px;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  border: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, var(--el-fill-color-extra-light) 0%, var(--el-fill-color-light) 100%);
+  border: 1px solid var(--el-border-color-light);
   border-radius: 12px;
 }
 
@@ -283,8 +283,8 @@ $tumor-bar-fill: linear-gradient(
   height: 236px;
   padding: 10px 5px;
   overflow: hidden;
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-light);
   border-radius: 10px;
   box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
   transition: box-shadow 0.18s ease, transform 0.18s ease;
@@ -295,20 +295,20 @@ $tumor-bar-fill: linear-gradient(
   }
 
   &.is-empty {
-    background: #fafbfc;
+    background: var(--el-fill-color-lighter);
   }
 
   &.is-normal {
-    background: linear-gradient(180deg, #fff 0%, #f7fcff 100%);
+    background: linear-gradient(180deg, var(--el-bg-color) 0%, var(--el-fill-color-extra-light) 100%);
   }
 
   &.is-tumor {
-    background: linear-gradient(180deg, #fff 0%, #fffcf7 100%);
+    background: linear-gradient(180deg, var(--el-bg-color) 0%, #fffcf7 100%);
   }
 
   &.is-locked {
-    background: #f8fafc;
-    box-shadow: inset 0 0 0 1px #e5e7eb;
+    background: var(--el-fill-color-extra-light);
+    box-shadow: inset 0 0 0 1px var(--el-border-color-light);
   }
 }
 
@@ -323,7 +323,7 @@ $tumor-bar-fill: linear-gradient(
   font-weight: 700;
   line-height: 1;
   color: #64748b;
-  background: #eef2f7;
+  background: var(--el-fill-color);
   border-radius: 999px;
 
   .is-filled & {
@@ -356,8 +356,8 @@ $tumor-bar-fill: linear-gradient(
   width: 30px;
   height: 100%;
   overflow: hidden;
-  background: #f8fafc;
-  border: 1px solid #d8dee8;
+  background: var(--el-fill-color-extra-light);
+  border: 1px solid var(--el-border-color);
   border-radius: 999px;
 
   .is-normal & {
@@ -402,7 +402,7 @@ $tumor-bar-fill: linear-gradient(
   min-width: 0;
   padding-top: 6px;
   overflow: hidden;
-  border-top: 1px solid #edf2f7;
+  border-top: 1px solid var(--el-border-color-extra-light);
   box-sizing: border-box;
 }
 
@@ -445,5 +445,20 @@ $tumor-bar-fill: linear-gradient(
   font-size: 12px;
   font-weight: 500;
   color: #94a3b8;
+}
+
+html.dark .panel-title,
+html.dark .current-info:not(.is-empty),
+html.dark .capsule-name {
+  color: var(--el-text-color-primary);
+}
+
+html.dark .cell-capsule.is-empty .capsule-no,
+html.dark .capsule-species {
+  color: var(--el-text-color-regular);
+}
+
+html.dark .cell-capsule.is-tumor {
+  background: var(--el-color-warning-light-9);
 }
 </style>

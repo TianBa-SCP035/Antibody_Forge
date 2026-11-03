@@ -2383,8 +2383,8 @@ onMounted(loadData);
 .dialog-section {
   padding: 14px 14px 2px;
   margin-bottom: 12px;
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
+  background: var(--el-fill-color-extra-light);
+  border: 1px solid var(--el-border-color-extra-light);
   border-radius: var(--list-mid-radius);
 }
 
@@ -2402,7 +2402,7 @@ onMounted(loadData);
 
 .danger-section {
   background: #fff7f7;
-  border-color: #ffd6d6;
+  border-color: var(--el-color-danger-light-7);
 }
 
 .danger-line {
@@ -2468,8 +2468,8 @@ onMounted(loadData);
 .bundle-group {
   padding: 12px;
   margin-bottom: 12px;
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
+  background: var(--el-fill-color-extra-light);
+  border: 1px solid var(--el-border-color-extra-light);
   border-radius: var(--list-mid-radius);
 }
 
@@ -2485,8 +2485,8 @@ onMounted(loadData);
   padding: 10px 12px;
   margin: 0 8px 10px 0;
   vertical-align: top;
-  background: #fff;
-  border: 1px solid #e5eaf3;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-light);
   border-radius: var(--list-mid-radius);
 }
 
@@ -2519,7 +2519,7 @@ onMounted(loadData);
 .permission-preview {
   padding: 10px 12px;
   color: #475569;
-  background: #f8fafc;
+  background: var(--el-fill-color-extra-light);
   border: 1px dashed #cbd5e1;
   border-radius: var(--list-mid-radius);
 }
@@ -2527,8 +2527,8 @@ onMounted(loadData);
 .permission-table-group {
   padding: 12px;
   margin-bottom: 12px;
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
+  background: var(--el-fill-color-extra-light);
+  border: 1px solid var(--el-border-color-extra-light);
   border-radius: var(--list-mid-radius);
 }
 
@@ -2554,8 +2554,8 @@ onMounted(loadData);
 .permission-group {
   padding: 12px;
   margin-bottom: 12px;
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
+  background: var(--el-fill-color-extra-light);
+  border: 1px solid var(--el-border-color-extra-light);
   border-radius: var(--list-mid-radius);
 }
 
@@ -2582,5 +2582,41 @@ onMounted(loadData);
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+html.dark .system-header h2,
+html.dark .summary-card strong {
+  color: var(--el-text-color-primary);
+}
+
+html.dark .summary-card span,
+html.dark .danger-line p,
+html.dark .hint-text,
+html.dark .bundle-card-main p {
+  color: var(--el-text-color-secondary);
+}
+
+html.dark .dialog-section-title,
+html.dark .bundle-group-title,
+html.dark .permission-table-title,
+html.dark .permission-group-title {
+  color: var(--el-text-color-primary);
+}
+
+html.dark .danger-section {
+  background: var(--el-color-danger-light-9);
+}
+
+html.dark .danger-line strong {
+  color: var(--el-color-danger);
+}
+
+html.dark .bundle-card-main span {
+  color: var(--el-color-primary);
+}
+
+html.dark .permission-preview {
+  color: var(--el-text-color-regular);
+  border-color: var(--el-border-color);
 }
 </style>

@@ -522,6 +522,7 @@
               :header-cell-class-name="sheetHeaderCellClassName"
               :cell-class-name="sheetCellClassName"
               @scroll="onSheetScroll"
+              @column-resizable-change="onSheetColumnResize"
               @edit-actived="onSheetEditActived"
               @edit-closed="onSheetEditClosed"
               @cell-delete-value="onSheetEditClosed"
@@ -532,7 +533,7 @@
                   v-if="column.edit === 'target'"
                   :field="column.key"
                   :title="sheetColumnTitle(column)"
-                  :width="column.width"
+                  :width="sheetColumnWidth(column)"
                   :min-width="column.minWidth || column.width || 120"
                   :edit-render="sheetCustomEditRender"
                   :formatter="sheetFormatter(column)"
@@ -579,7 +580,7 @@
                   v-else-if="isSheetChoiceColumn(column)"
                   :field="column.key"
                   :title="sheetColumnTitle(column)"
-                  :width="column.width"
+                  :width="sheetColumnWidth(column)"
                   :min-width="column.minWidth || column.width || 120"
                   :edit-render="sheetCustomEditRender"
                   :formatter="sheetFormatter(column)"
@@ -640,7 +641,7 @@
                   v-else
                   :field="column.key"
                   :title="sheetColumnTitle(column)"
-                  :width="column.width"
+                  :width="sheetColumnWidth(column)"
                   :min-width="column.minWidth || column.width || 120"
                   :edit-render="sheetEditRender(column)"
                   :formatter="sheetFormatter(column)"
@@ -787,7 +788,7 @@
                 v-for="field in section.fields"
                 :key="field.key"
                 :label="field.label"
-                :class="['drawer-field', field.wide ? 'is-wide' : '']"
+                :class="['drawer-field', field.wide ? 'is-wide' : '', field.solo ? 'is-solo' : '']"
               >
                 <div class="drawer-field-stack">
                   <el-date-picker
@@ -1592,7 +1593,7 @@ export default {
       return `该批次已被 ${owner} 认领，不可重复认领`
     },
     canEditField(row, fieldKey) {
-      if (fieldKey === 'synthesis_order_id') {
+      if (fieldKey === 'synthesis_order_id' || fieldKey === 'order_sender') {
         return false
       }
       if (fieldKey === 'sort_order' && this.isQueueTerminalRow(row)) {
@@ -2116,6 +2117,7 @@ export default {
         SHEET_COLUMN_ORDER.clear()
         this.sheetColumns = [...SHEET_COLUMNS]
         this.persistSheetColumnOrder(this.sheetColumns)
+        this.resetSheetColumnWidths()
         this.clearSheetRange()
         return
       }
@@ -2126,6 +2128,9 @@ export default {
     },
     persistSheetColumnOrder(columns) {
       SHEET_COLUMN_ORDER.save(columns)
+    },
+    sheetColumnStore() {
+      return SHEET_COLUMN_ORDER
     },
     isQueueTerminalRow(row) {
       return QUEUE_TERMINAL_STATUSES.includes(String(row?.status || '').trim())
@@ -2481,12 +2486,13 @@ export default {
         ? badges.map((item) => item.text).join('  ')
         : String(row?.status || '待下单')
     },
-    isSheetCellLocked(row, key) {
-      if (!row?.id) return true
-      if (key === 'sort_order' && !this.isQueueSorted) return true
-      if (!this.canEditField(row, key)) return true
-      const column = this.sheetColumnByKey.get(key)?.column
-      return column?.edit === 'readonly'
+    sheetCellLockReason(row, key) {
+      if (!row?.id) return '记录还没保存'
+      const fixed = this.sheetSortLockReason(row, key) || this.sheetReadonlyLockReason(key)
+      if (fixed) return fixed
+      if (this.canEditField(row, key)) return ''
+      if (key === 'owner' && this.canPmEdit && !this.canFullEdit) return this.claimButtonTitle(row)
+      return `你没有修改「${this.sheetColumnLabel(key)}」的权限`
     },
     sheetCellClassName({ row, column }) {
       const classes = []
@@ -2924,7 +2930,7 @@ export default {
 }
 .target-corner-badge.is-internal {
   color: #0958d9;
-  background: #edf5ff;
+  background: var(--el-color-primary-light-9);
   border: 1px solid #c9e0ff;
 }
 .target-corner-badge.is-isotype {
@@ -2953,6 +2959,9 @@ export default {
   width: 100%;
   min-width: 0;
 }
+.drawer-field.is-solo + .drawer-field {
+  grid-column-start: 1;
+}
 .drift-banner {
   display: flex;
   align-items: center;
@@ -2976,7 +2985,7 @@ export default {
   padding: 1px 8px;
   border: 1px solid #f59e0b;
   border-radius: 4px;
-  background: #fff;
+  background: var(--el-bg-color);
   color: #b76e00;
   font-size: 11px;
   cursor: pointer;
@@ -3007,5 +3016,60 @@ export default {
     grid-template-columns: repeat(5, minmax(130px, 1fr));
     overflow-x: auto;
   }
+}
+
+html.dark .table-card :deep(.el-tag.target-tone-secreted) {
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
+  border-color: var(--el-color-danger-light-7);
+}
+
+html.dark .table-card :deep(.el-tag.target-tone-cell) {
+  color: var(--vita-library-text);
+  background: var(--vita-library-bg);
+  border-color: var(--vita-library-border);
+}
+
+html.dark .target-corner-badge.is-eng,
+html.dark .drawer-card.is-eng-section {
+  color: var(--vita-king-text);
+  background: var(--vita-king-bg);
+  border-color: var(--vita-king-border);
+}
+
+html.dark .target-corner-badge.is-internal {
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-7);
+}
+
+html.dark .target-corner-badge.is-isotype {
+  color: var(--vita-library-text);
+  background: var(--vita-library-bg);
+  border-color: var(--vita-library-border);
+}
+
+html.dark .target-corner-badge.is-drift {
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning-light-7);
+}
+
+html.dark .drawer-card.is-eng-section .drawer-card-title {
+  color: var(--vita-king-text);
+}
+
+html.dark .drift-banner {
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
+}
+
+html.dark .drift-adopt-btn {
+  color: var(--el-color-warning);
+  border-color: var(--el-color-warning);
+}
+
+html.dark .drift-adopt-btn:hover {
+  background: var(--el-color-warning-light-9);
 }
 </style>

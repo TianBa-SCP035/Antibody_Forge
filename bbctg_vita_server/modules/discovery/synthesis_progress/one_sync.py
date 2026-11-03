@@ -262,6 +262,7 @@ def build_remote_snapshot(
         "synthetic_date": synthetic_date,
         "arrival_count": arrival_count,
         "arrival_date": arrival_date,
+        "order_sender": _clean_str(row_map.get("uploader"), 128),
         "order_state": _clean_str(row_map.get("orderstate"), 64),
         "task_projectid": task_projectid,
         "task_projectcode": _clean_str(row_map.get("task_projectcode"), 128),
@@ -329,6 +330,12 @@ def apply_remote_snapshot_to_row(
             if field in {"order_no", "arrival_date"}:
                 status_input_changed = True
 
+    # 下单人系统内不可编辑，始终跟随 One 的值（含清空）。
+    order_sender = snapshot.get("order_sender")
+    if row.order_sender != order_sender:
+        row.order_sender = order_sender
+        changed = True
+
     if status_input_changed:
         old_states = (row.status, row.affinity_status, row.flow_status)
         sync_derived_statuses(row)
@@ -353,9 +360,11 @@ _NGS_QUERY_BASE = """
         t.synthesiscode AS synthesiscode,
         t.projectid AS task_projectid,
         t.projectcode AS task_projectcode,
-        t.batchname AS task_batchname
+        t.batchname AS task_batchname,
+        f.uploader AS uploader
     FROM one_task_ngs_data_analyze a
     LEFT JOIN one_task_ngs_task t ON a.ngstaskid = t.id
+    LEFT JOIN fileinfoSelected f ON f.filename = a.refstr
     WHERE (a.isdelete IS NULL OR a.isdelete = '0')
       AND NOT (
         COALESCE(a.orderno, '') = ''
@@ -380,9 +389,11 @@ _BEACON_QUERY_BASE = """
         t.synthesiscode AS synthesiscode,
         t.projectid AS task_projectid,
         t.projectcode AS task_projectcode,
-        t.batchname AS task_batchname
+        t.batchname AS task_batchname,
+        f.uploaded_by AS uploader
     FROM one_task_beacon_data_analyze a
     LEFT JOIN one_task_beacon_task t ON a.ngstaskid = t.id
+    LEFT JOIN beacon_upload_file f ON f.file_name = a.refstr
     WHERE (a.isdelete IS NULL OR a.isdelete = '0')
       AND NOT (
         COALESCE(a.orderno, '') = ''
@@ -873,6 +884,7 @@ def check_remote_for_local_rows(
             row.status,
             row.synthesis_code,
             row.batch_label,
+            row.order_sender,
             *(getattr(row, f, None) for f in DRIFT_COMPARE_FIELDS),
         )
         row_changed = apply_remote_snapshot_to_row(
@@ -882,6 +894,7 @@ def check_remote_for_local_rows(
             row.status,
             row.synthesis_code,
             row.batch_label,
+            row.order_sender,
             *(getattr(row, f, None) for f in DRIFT_COMPARE_FIELDS),
         )
         drifts = compute_drift_fields(row)

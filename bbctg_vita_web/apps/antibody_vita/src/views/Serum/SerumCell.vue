@@ -810,7 +810,7 @@ export default {
 .app-container {
   padding: 20px;
   min-height: 100vh;
-  background: #fff;
+  background: var(--el-bg-color);
 }
 
 /* Page-local small tag semantics: Element UI mini ~= Element Plus small. */
@@ -844,7 +844,7 @@ export default {
   align-items: center;
   gap: 24px;
   padding: 16px 16px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   border-radius: 5px;
   margin-bottom: 16px;
   font-size: 16px;
@@ -867,9 +867,9 @@ export default {
   flex: 1;
   display: flex;
   flex-direction: column;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 4px;
-  background: #fff;
+  background: var(--el-bg-color);
   overflow: hidden;
 }
 
@@ -931,8 +931,8 @@ export default {
 
 .column-header {
   padding: 15px;
-  border-bottom: 1px solid #ebeef5;
-  background: #f5f7fa;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  background: var(--el-fill-color-light);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -958,30 +958,30 @@ export default {
   cursor: pointer;
   transition: all 0.3s;
   margin-bottom: 8px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--el-border-color-lighter);
 }
 
 .target-item:hover {
-  background: #f5f7fa;
-  border-color: #409eff;
+  background: var(--el-fill-color-light);
+  border-color: var(--el-color-primary);
 }
 
 .target-item.active {
-  background: #ecf5ff;
-  border-color: #409eff;
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary);
 }
 
 .target-name {
   font-weight: 500;
   margin-bottom: 8px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .project-item {
   padding: 12px;
   border-radius: 4px;
   margin-bottom: 8px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--el-border-color-lighter);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -994,7 +994,7 @@ export default {
 
 .project-name {
   font-weight: 500;
-  color: #303133;
+  color: var(--el-text-color-primary);
   margin-bottom: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1009,22 +1009,22 @@ export default {
 
 .project-code {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .project-date {
   font-size: 12px;
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 
 .project-owner {
   font-size: 12px;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .project-prep {
   font-size: 12px;
-  color: #67c23a;
+  color: var(--el-color-success);
   font-weight: 500;
 }
 
@@ -1034,14 +1034,14 @@ export default {
 
 .project-section-header {
   padding: 10px 12px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   border-radius: 4px;
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
   font-weight: 500;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin-bottom: 8px;
 }
 
@@ -1051,7 +1051,7 @@ export default {
 
 .genus-header {
   padding: 10px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   border-radius: 4px;
   display: flex;
   justify-content: space-between;
@@ -1064,11 +1064,11 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   border-radius: 4px;
   font-size: 13px;
   font-weight: 500;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin-bottom: 8px;
 }
 
@@ -1087,7 +1087,7 @@ export default {
   padding: 12px;
   border-radius: 4px;
   margin-bottom: 8px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--el-border-color-lighter);
   display: flex;
   align-items: center;
 }
@@ -1100,7 +1100,7 @@ export default {
 
 .cell-name {
   font-weight: 500;
-  color: #303133;
+  color: var(--el-text-color-primary);
   margin-bottom: 4px;
 }
 
@@ -1115,7 +1115,7 @@ export default {
 
 .cell-details {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   display: flex;
   align-items: center;
   flex: 1;
@@ -1128,7 +1128,7 @@ export default {
 
 .empty-tip {
   text-align: center;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   padding: 40px 20px;
   font-size: 14px;
 }
@@ -1148,7 +1148,7 @@ export default {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--el-fill-color);
 }
 
 ::-webkit-scrollbar-thumb {

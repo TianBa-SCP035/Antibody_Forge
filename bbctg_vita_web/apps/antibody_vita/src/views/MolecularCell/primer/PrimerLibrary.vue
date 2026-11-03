@@ -257,7 +257,7 @@
                 <template v-else>{{ displayCell(row, column.key) }}</template>
               </template>
             </vxe-column>
-            <vxe-column title="操作" width="210" fixed="right" align="center">
+            <vxe-column title="操作" width="240" fixed="right" align="center">
               <template #default="{ row }">
                 <div class="sheet-actions" @mousedown.stop @click.stop @dblclick.stop>
                   <ElButtonGroup>
@@ -265,6 +265,7 @@
                       class="list-table-action-btn"
                       type="primary"
                       plain
+                      :icon="Edit"
                       :class="{ 'no-permission-btn': !canEdit }"
                       @click="openEdit(row)"
                     >
@@ -274,6 +275,7 @@
                       class="list-table-action-btn"
                       type="success"
                       plain
+                      :icon="row.active ? CircleClose : CircleCheck"
                       :loading="savingId === row.id"
                       :class="{ 'no-permission-btn': !canEdit }"
                       @click="toggleActive(row)"
@@ -284,6 +286,7 @@
                       class="list-table-action-btn"
                       type="warning"
                       plain
+                      :icon="Delete"
                       :loading="deletingId === row.id"
                       :class="{ 'no-permission-btn': !canEdit }"
                       @click="removeRow(row)"
@@ -327,7 +330,19 @@
 <script>
 import { ref } from 'vue';
 
-import { ArrowDown, Download, Plus, Refresh, Search, Tools, Upload } from '@element-plus/icons-vue';
+import {
+  ArrowDown,
+  CircleCheck,
+  CircleClose,
+  Delete,
+  Download,
+  Edit,
+  Plus,
+  Refresh,
+  Search,
+  Tools,
+  Upload,
+} from '@element-plus/icons-vue';
 import { useUserStore } from '@vben/stores';
 import {
   ElButton,
@@ -499,7 +514,11 @@ export default {
       mouseConfig: MOUSE_CONFIG,
       virtualYConfig: VIRTUAL_Y_CONFIG,
       keyboardConfig: KEYBOARD_CONFIG,
+      CircleCheck,
+      CircleClose,
+      Delete,
       Download,
+      Edit,
       Plus,
       Refresh,
       Search,
@@ -912,7 +931,7 @@ export default {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, #fff 100%);
+  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, var(--el-bg-color) 100%);
   border: 1px solid rgb(191 219 254 / 45%);
   border-radius: var(--list-mid-radius);
 }
@@ -1012,14 +1031,14 @@ export default {
 }
 
 .stat-tile:hover {
-  background: #fff;
+  background: var(--el-bg-color);
   border-color: #dce3ec;
   box-shadow: 0 8px 20px rgb(15 23 42 / 7%);
   transform: translateY(-2px);
 }
 
 .stat-tile.is-active {
-  background: #fff;
+  background: var(--el-bg-color);
   border-color: transparent;
   box-shadow: 0 6px 18px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
 }
@@ -1046,7 +1065,7 @@ export default {
   gap: 10px;
   align-items: center;
   padding-top: 10px;
-  border-top: 1px solid #edf1f7;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .filter-name {
@@ -1129,7 +1148,7 @@ export default {
 
 .sheet-wrap :deep(.vxe-header--column) {
   font-weight: 600;
-  background: var(--list-table-header-bg, #f5f7fa);
+  background: var(--list-table-header-bg, var(--el-fill-color-light));
 }
 
 .sheet-wrap :deep(.vxe-header--column.wb-hf-cell) {
@@ -1197,5 +1216,14 @@ export default {
     flex: 1 1 120px;
     width: auto;
   }
+}
+
+html.dark .page-header-band {
+  background: var(--el-fill-color-extra-light);
+  border-color: var(--el-border-color-light);
+}
+
+html.dark .stat-tile:hover {
+  border-color: var(--el-border-color-light);
 }
 </style>

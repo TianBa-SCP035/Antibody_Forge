@@ -299,7 +299,7 @@ onMounted(loadProfile);
   width: 100%;
   min-height: 100vh;
   padding: 20px 24px 32px;
-  background: linear-gradient(180deg, #e8f0ff 0%, #f0f4f8 38%, #f8fafc 70%, #fff 100%);
+  background: linear-gradient(180deg, #e8f0ff 0%, var(--el-fill-color) 38%, var(--el-fill-color-extra-light) 70%, var(--el-bg-color) 100%);
 }
 
 .profile-inner {
@@ -369,23 +369,23 @@ onMounted(loadProfile);
   padding: 20px 24px;
   background: linear-gradient(
     135deg,
-    rgba(64, 158, 255, 0.1) 0%,
+    color-mix(in srgb, var(--el-color-primary) 10%, transparent) 0%,
     rgba(255, 255, 255, 0.95) 48%,
-    #fff 100%
+    var(--el-bg-color) 100%
   );
 }
 
 .panel-card--info :deep(.el-card__body) {
   padding-top: 4px;
-  background: linear-gradient(180deg, #f4f8ff 0%, #fafcff 35%, #fff 100%);
+  background: linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-fill-color-extra-light) 35%, var(--el-bg-color) 100%);
 }
 
 .panel-card--signature :deep(.el-card__body) {
-  background: linear-gradient(180deg, #f0faf4 0%, #f8fffb 40%, #fff 100%);
+  background: linear-gradient(180deg, #f0faf4 0%, #f8fffb 40%, var(--el-bg-color) 100%);
 }
 
 .panel-card--password :deep(.el-card__body) {
-  background: linear-gradient(180deg, #fff9f2 0%, #fffcf8 40%, #fff 100%);
+  background: linear-gradient(180deg, var(--el-color-warning-light-9) 0%, #fffcf8 40%, var(--el-bg-color) 100%);
 }
 
 .panel-card--info {
@@ -406,7 +406,7 @@ onMounted(loadProfile);
 }
 
 .panel-card--info .panel-head {
-  background: linear-gradient(90deg, rgba(64, 158, 255, 0.07) 0%, transparent 70%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--el-color-primary) 7%, transparent) 0%, transparent 70%);
 }
 
 .panel-card--signature .panel-head {
@@ -431,15 +431,15 @@ onMounted(loadProfile);
 }
 
 .panel-head__mark--blue {
-  background: linear-gradient(180deg, #409eff, #79bbff);
+  background: linear-gradient(180deg, var(--el-color-primary), var(--el-color-primary-light-3));
 }
 
 .panel-head__mark--green {
-  background: linear-gradient(180deg, #67c23a, #95d475);
+  background: linear-gradient(180deg, var(--el-color-success), var(--el-color-success-light-3));
 }
 
 .panel-head__mark--amber {
-  background: linear-gradient(180deg, #e6a23c, #f3d19e);
+  background: linear-gradient(180deg, var(--el-color-warning), var(--el-color-warning-light-5));
 }
 
 .panel-head__title {
@@ -478,8 +478,8 @@ onMounted(loadProfile);
   flex-shrink: 0;
   padding: 2px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #409eff, #79bbff);
-  box-shadow: 0 4px 14px rgba(64, 158, 255, 0.22);
+  background: linear-gradient(135deg, var(--el-color-primary), var(--el-color-primary-light-3));
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--el-color-primary) 22%, transparent);
 }
 
 .hero-avatar {
@@ -488,7 +488,7 @@ onMounted(loadProfile);
   height: 76px;
   border-radius: 12px;
   object-fit: cover;
-  border: 2px solid #fff;
+  border: 2px solid var(--el-bg-color);
 }
 
 .hero-meta {
@@ -515,7 +515,7 @@ onMounted(loadProfile);
   margin: 6px 0 0;
   font-size: 14px;
   font-weight: 500;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 .hero-org {
@@ -574,7 +574,7 @@ onMounted(loadProfile);
 .info-table__label {
   flex-shrink: 0;
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .info-table__value {
@@ -582,7 +582,7 @@ onMounted(loadProfile);
   min-width: 0;
   font-size: 13px;
   font-weight: 500;
-  color: #303133;
+  color: var(--el-text-color-primary);
   text-align: right;
   word-break: break-word;
 }
@@ -595,8 +595,8 @@ onMounted(loadProfile);
 }
 
 .signature-input :deep(.el-textarea__inner:focus) {
-  border-color: #67c23a;
-  background: #fff;
+  border-color: var(--el-color-success);
+  background: var(--el-bg-color);
 }
 
 .password-fields {
@@ -614,7 +614,7 @@ onMounted(loadProfile);
 .form-row__label {
   font-size: 13px;
   font-weight: 500;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 .form-row--error :deep(.el-input__wrapper) {
@@ -642,5 +642,30 @@ onMounted(loadProfile);
 .card-actions .el-button {
   min-width: 108px;
   border-radius: 8px;
+}
+
+html.dark .profile-shell {
+  background: var(--el-bg-color-page);
+}
+
+html.dark .panel-card--hero :deep(.el-card__body),
+html.dark .panel-card--signature :deep(.el-card__body),
+html.dark .panel-card--password :deep(.el-card__body) {
+  background: var(--el-bg-color);
+}
+
+html.dark .panel-head,
+html.dark .info-table__row {
+  border-color: var(--el-border-color-lighter);
+}
+
+html.dark .panel-head__title,
+html.dark .hero-name {
+  color: var(--el-text-color-primary);
+}
+
+html.dark .signature-input :deep(.el-textarea__inner),
+html.dark .form-row :deep(.el-input__wrapper) {
+  background: var(--el-fill-color-blank);
 }
 </style>

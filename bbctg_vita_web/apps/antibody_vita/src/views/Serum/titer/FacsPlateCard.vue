@@ -37,7 +37,7 @@
                     :value="file.id"
                   >
                     <span style="float: left">{{ file.file_name }}</span>
-                    <span style="float: right; color: #8492a6; font-size: 13px">{{ file.created_time }}</span>
+                    <span style="float: right; color: var(--el-text-color-secondary); font-size: 13px">{{ file.created_time }}</span>
                   </el-option>
                 </el-select>
               </el-form-item>
@@ -66,7 +66,7 @@
                     :value="file.id"
                   >
                     <span style="float: left">{{ file.file_name }}</span>
-                    <span style="float: right; color: #8492a6; font-size: 13px">{{ file.created_time }}</span>
+                    <span style="float: right; color: var(--el-text-color-secondary); font-size: 13px">{{ file.created_time }}</span>
                   </el-option>
                 </el-select>
               </el-form-item>
@@ -1472,9 +1472,9 @@ $plate-legend-gap: 12px;
     min-width: 0;
     padding: 16px;
     box-sizing: border-box;
-    background: #fff;
+    background: var(--el-bg-color);
     border-radius: 8px;
-    border: 1px solid #e4e7ed;
+    border: 1px solid var(--el-border-color-light);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     display: grid;
     grid-template-columns: #{$plate-form-cols};
@@ -1489,10 +1489,10 @@ $plate-legend-gap: 12px;
       gap: 8px;
       margin-bottom: 2px;
       padding-bottom: 12px;
-      border-bottom: 1px solid #ebeef5;
+      border-bottom: 1px solid var(--el-border-color-lighter);
       font-size: 15px;
       font-weight: 700;
-      color: #303133;
+      color: var(--el-text-color-primary);
 
       .header-left {
         display: flex;
@@ -1505,7 +1505,7 @@ $plate-legend-gap: 12px;
         align-items: center;
         gap: 4px;
         font-size: 12px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
 
         .el-icon {
           font-size: 14px;
@@ -1513,7 +1513,7 @@ $plate-legend-gap: 12px;
       }
 
       .el-icon {
-        color: #409EFF;
+        color: var(--el-color-primary);
         font-size: 14px;
       }
     }
@@ -1553,7 +1553,7 @@ $plate-legend-gap: 12px;
         font-size: 14px;
         font-weight: 700;
         line-height: 32px;
-        color: #606266;
+        color: var(--el-text-color-regular);
         white-space: nowrap;
       }
 
@@ -1612,7 +1612,7 @@ $plate-legend-gap: 12px;
     gap: 8px;
     font-size: 15px;
     font-weight: 700;
-    color: #303133;
+    color: var(--el-text-color-primary);
     margin-bottom: 8px;
     padding: 0 10px;
 
@@ -1629,12 +1629,12 @@ $plate-legend-gap: 12px;
     }
 
     .el-icon {
-      color: #409EFF;
+      color: var(--el-color-primary);
       font-size: 14px;
     }
 
     .delete-btn {
-      color: #F56C6C;
+      color: var(--el-color-danger);
       height: auto;
       font-size: 14px;
       line-height: 1;
@@ -1642,7 +1642,7 @@ $plate-legend-gap: 12px;
     }
 
     .mask-toggle-btn {
-      color: #409EFF;
+      color: var(--el-color-primary);
       height: auto;
       font-size: 14px;
       line-height: 1;
@@ -1660,7 +1660,7 @@ $plate-legend-gap: 12px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    background: #fafafa;
+    background: var(--el-fill-color-lighter);
     border-radius: 8px;
     padding: 12px;
     min-height: 0;
@@ -1718,9 +1718,9 @@ $plate-legend-gap: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid #409EFF;
+    border: 1px solid var(--el-color-primary);
     border-radius: 8px;
-    background: rgba(64, 158, 255, 0.1);
+    background: color-mix(in srgb, var(--el-color-primary) 10%, transparent);
     color: #306cb3;
     overflow: hidden;
 
@@ -1743,7 +1743,7 @@ $plate-legend-gap: 12px;
 
     &.drag-preview {
       border-style: dashed;
-      background: rgba(64, 158, 255, 0.18);
+      background: color-mix(in srgb, var(--el-color-primary) 18%, transparent);
       font-size: 12px;
       font-weight: 600;
       pointer-events: none;
@@ -1786,22 +1786,22 @@ $plate-legend-gap: 12px;
 
       &.corner-well {
         :deep(.el-input__wrapper) {
-          background: #f4f4f5;
-          box-shadow: 0 0 0 1px #dcdfe6 inset;
+          background: var(--el-color-info-light-9);
+          box-shadow: 0 0 0 1px var(--el-border-color) inset;
         }
 
         :deep(.el-input__inner) {
-          background: #f4f4f5;
-          color: #606266;
+          background: var(--el-color-info-light-9);
+          color: var(--el-text-color-regular);
           font-weight: 600;
-          -webkit-text-fill-color: #606266;
+          -webkit-text-fill-color: var(--el-text-color-regular);
         }
       }
 
       &.drag-selected {
         :deep(.el-input__wrapper) {
-          box-shadow: 0 0 0 1px #409EFF inset, 0 0 0 2px rgba(64, 158, 255, 0.15);
-          background: #ecf5ff;
+          box-shadow: 0 0 0 1px var(--el-color-primary) inset, 0 0 0 2px color-mix(in srgb, var(--el-color-primary) 15%, transparent);
+          background: var(--el-color-primary-light-9);
         }
       }
     }
@@ -1812,8 +1812,8 @@ $plate-legend-gap: 12px;
     pointer-events: none;
     flex-shrink: 0;
     z-index: 11;
-    background: #fff;
-    border: 1px solid #e4e7ed;
+    background: var(--el-bg-color);
+    border: 1px solid var(--el-border-color-light);
     border-radius: 8px;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 
@@ -1828,9 +1828,9 @@ $plate-legend-gap: 12px;
       padding: 0 15px;
       font-size: 13px;
       font-weight: 600;
-      color: #303133;
-      border-bottom: 1px solid #ebeef5;
-      background: #fff;
+      color: var(--el-text-color-primary);
+      border-bottom: 1px solid var(--el-border-color-lighter);
+      background: var(--el-bg-color);
       border-radius: 8px 8px 0 0;
     }
 
@@ -1846,7 +1846,7 @@ $plate-legend-gap: 12px;
       z-index: 0;
       height: 1px;
       transform: translateY(-50%);
-      background: linear-gradient(90deg, transparent, #dcdfe6 15%, #dcdfe6 85%, transparent);
+      background: linear-gradient(90deg, transparent, var(--el-border-color) 15%, var(--el-border-color) 85%, transparent);
     }
 
     &__row {
@@ -1858,7 +1858,7 @@ $plate-legend-gap: 12px;
       align-items: center;
       justify-content: space-between;
       font-size: 13px;
-      color: #606266;
+      color: var(--el-text-color-regular);
 
       span:first-child {
         font-weight: 600;
@@ -1869,8 +1869,8 @@ $plate-legend-gap: 12px;
         font-variant-numeric: tabular-nums;
       }
 
-      &.is-upper span:last-child { color: #409EFF; }
-      &.is-lower span:last-child { color: #67C23A; }
+      &.is-upper span:last-child { color: var(--el-color-primary); }
+      &.is-lower span:last-child { color: var(--el-color-success); }
     }
   }
 
@@ -1878,9 +1878,9 @@ $plate-legend-gap: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #fff;
+    background: var(--el-bg-color);
     border-radius: 8px;
-    border: 2px dashed #e4e7ed;
+    border: 2px dashed var(--el-border-color-light);
     position: relative;
     width: 100%;
     max-width: 800px;
@@ -1889,7 +1889,7 @@ $plate-legend-gap: 12px;
 
     .empty-image {
       text-align: center;
-      color: #c0c4cc;
+      color: var(--el-text-color-disabled);
 
       .el-icon {
         font-size: 64px;
@@ -1936,13 +1936,13 @@ $plate-legend-gap: 12px;
         gap: 8px;
         font-size: 13px;
         font-weight: 600;
-        color: #303133;
+        color: var(--el-text-color-primary);
         margin-bottom: 12px;
         padding-bottom: 8px;
-        border-bottom: 1px solid #ebeef5;
+        border-bottom: 1px solid var(--el-border-color-lighter);
 
         .el-icon {
-          color: #409EFF;
+          color: var(--el-color-primary);
         }
       }
 
@@ -1959,7 +1959,7 @@ $plate-legend-gap: 12px;
 
         span {
           font-size: 12px;
-          color: #606266;
+          color: var(--el-text-color-regular);
           min-width: 24px;
         }
 
@@ -1985,11 +1985,11 @@ $plate-legend-gap: 12px;
         gap: 8px;
         margin-top: 8px;
         padding-top: 8px;
-        border-top: 1px solid #ebeef5;
+        border-top: 1px solid var(--el-border-color-lighter);
 
         .preset-label {
           font-size: 12px;
-          color: #606266;
+          color: var(--el-text-color-regular);
           min-width: 60px;
         }
       }
@@ -2050,14 +2050,14 @@ $plate-legend-gap: 12px;
       }
 
       &.well-drag-add {
-        background: rgba(64, 158, 255, 0.45);
-        border-color: #409EFF;
-        box-shadow: inset 0 0 0 1px rgba(64, 158, 255, 0.6);
+        background: color-mix(in srgb, var(--el-color-primary) 45%, transparent);
+        border-color: var(--el-color-primary);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--el-color-primary) 60%, transparent);
       }
 
       &.well-drag-remove {
         background: rgba(245, 108, 108, 0.35);
-        border-color: #f56c6c;
+        border-color: var(--el-color-danger);
         box-shadow: inset 0 0 0 1px rgba(245, 108, 108, 0.5);
       }
     }
@@ -2076,6 +2076,11 @@ $plate-legend-gap: 12px;
     user-select: text;
     color: var(--el-text-color-regular);
   }
+}
+
+html.dark .slot-group-block,
+html.dark .slot-group-block :deep(.el-input__inner) {
+  color: var(--el-color-primary);
 }
 
 </style>

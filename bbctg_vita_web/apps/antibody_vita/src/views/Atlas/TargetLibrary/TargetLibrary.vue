@@ -622,8 +622,8 @@ onMounted(loadTargets);
 .target-page {
   --target-text: #27303f;
   --target-muted: #7b8492;
-  --target-border: #e4e9f0;
-  --target-soft: #f6f8fb;
+  --target-border: var(--el-border-color-light);
+  --target-soft: var(--el-fill-color-light);
 
   box-sizing: border-box;
   display: flex;
@@ -677,7 +677,7 @@ onMounted(loadTargets);
 .search-hero-card,
 .status-filter-card {
   padding: 13px 15px;
-  background: #fff;
+  background: var(--el-bg-color);
   border: 1px solid var(--target-border);
   border-radius: var(--list-surface-radius);
   box-shadow: var(--list-surface-shadow);
@@ -686,7 +686,7 @@ onMounted(loadTargets);
 .search-hero-card {
   background:
     radial-gradient(circle at 96% 4%, rgb(64 158 255 / 9%), transparent 42%),
-    #fff;
+    var(--el-bg-color);
 }
 
 .hero-title-row,
@@ -721,7 +721,7 @@ onMounted(loadTargets);
 .spotlight-card,
 .archive-toggle-card,
 .inline-archive {
-  background: #fff;
+  background: var(--el-bg-color);
   border: 1px solid var(--target-border);
   border-radius: var(--list-surface-radius);
   box-shadow: var(--list-surface-shadow);
@@ -750,14 +750,14 @@ onMounted(loadTargets);
   height: 36px;
   align-items: center;
   overflow: hidden;
-  background: #fff;
-  border: 1px solid #d9e0e8;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
   border-radius: var(--list-mid-radius);
   box-shadow: var(--list-surface-shadow);
 }
 
 .search-control:focus-within {
-  background: #fff;
+  background: var(--el-bg-color);
   border-color: var(--el-color-primary);
   box-shadow: 0 0 0 2px var(--el-color-primary-light-9);
 }
@@ -922,17 +922,17 @@ onMounted(loadTargets);
   color: var(--target-text);
   text-align: left;
   cursor: pointer;
-  background: #fff;
+  background: var(--el-bg-color);
   border: 0;
-  border-bottom: 1px solid #eff2f5;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .target-row:hover {
-  background: #f9fbfd;
+  background: var(--el-fill-color-extra-light);
 }
 
 .target-row.selected {
-  background: #eef5ff;
+  background: var(--el-color-primary-light-9);
   box-shadow: inset 3px 0 0 var(--el-color-primary);
 }
 
@@ -993,7 +993,7 @@ onMounted(loadTargets);
   padding: 8px 14px;
   color: var(--target-muted);
   font-size: 12px;
-  background: #fff;
+  background: var(--el-bg-color);
   border-top: 1px solid var(--target-border);
 }
 
@@ -1010,7 +1010,7 @@ onMounted(loadTargets);
   padding: 0 9px;
   color: #596273;
   font: inherit;
-  background: #fff;
+  background: var(--el-bg-color);
   border: 1px solid var(--target-border);
   border-radius: 6px;
 }
@@ -1027,7 +1027,7 @@ onMounted(loadTargets);
 .page-controls button:disabled {
   color: #b8bec7;
   cursor: not-allowed;
-  background: #f6f7f9;
+  background: var(--el-fill-color-light);
 }
 
 .page-controls strong {
@@ -1188,7 +1188,7 @@ onMounted(loadTargets);
   padding: 5px 7px;
   color: #596273;
   font-size: 11px;
-  background: #f1f4f7;
+  background: var(--el-fill-color);
   border-radius: 6px;
 }
 
@@ -1231,7 +1231,7 @@ onMounted(loadTargets);
   left: 3px;
   width: 16px;
   height: 16px;
-  background: #fff;
+  background: var(--el-bg-color);
   border-radius: 50%;
   box-shadow: 0 1px 3px rgb(31 41 55 / 22%);
   transition: transform 0.2s ease;
@@ -1295,7 +1295,7 @@ onMounted(loadTargets);
 
 .archive-group {
   padding: 14px;
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
   border: 1px solid var(--target-border);
   border-radius: var(--list-mid-radius);
 }
@@ -1419,5 +1419,33 @@ onMounted(loadTargets);
   .archive-groups {
     grid-template-columns: 1fr;
   }
+}
+
+html.dark .target-page {
+  --target-text: var(--el-text-color-primary);
+  --target-muted: var(--el-text-color-secondary);
+}
+
+html.dark .search-control input::placeholder {
+  color: var(--el-text-color-placeholder);
+}
+
+html.dark .status-card,
+html.dark .pagination-bar select,
+html.dark .page-controls button,
+html.dark .function-summary p,
+html.dark .fact-tags span,
+html.dark .archive-remark p {
+  color: var(--el-text-color-regular);
+}
+
+html.dark .load-error {
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning-light-7);
+}
+
+html.dark .page-controls button:disabled {
+  color: var(--el-text-color-disabled);
 }
 </style>

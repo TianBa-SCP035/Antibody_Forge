@@ -122,7 +122,7 @@ export default {
 .ops-title {
   display: flex;
   align-items: center;
-  color: #303133;
+  color: var(--el-text-color-primary);
   font-weight: 700;
 }
 
@@ -177,5 +177,9 @@ export default {
 .ops-slide-leave-to {
   transform: translate3d(0, -108%, 0);
   opacity: 0;
+}
+
+html.dark .advanced-ops-bar {
+  background: var(--el-bg-color);
 }
 </style>

@@ -455,6 +455,7 @@
             :header-cell-class-name="sheetHeaderCellClassName"
             :cell-class-name="sheetCellClassName"
             @scroll="onSheetScroll"
+            @column-resizable-change="onSheetColumnResize"
             @edit-actived="onSheetEditActived"
             @edit-closed="onSheetEditClosed"
             @cell-delete-value="onSheetEditClosed"
@@ -465,7 +466,7 @@
                 v-if="column.edit === 'target'"
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
-                :width="column.width"
+                :width="sheetColumnWidth(column)"
                 :min-width="column.minWidth || column.width || 120"
                 :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
@@ -504,7 +505,7 @@
                 v-else-if="isSheetChoiceColumn(column)"
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
-                :width="column.width"
+                :width="sheetColumnWidth(column)"
                 :min-width="column.minWidth || column.width || 120"
                 :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
@@ -566,7 +567,7 @@
                 v-else
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
-                :width="column.width"
+                :width="sheetColumnWidth(column)"
                 :min-width="column.minWidth || column.width || 120"
                 :edit-render="sheetEditRender(column)"
                 :formatter="sheetFormatter(column)"
@@ -2060,6 +2061,7 @@ export default {
         SHEET_COLUMN_ORDER.clear()
         this.sheetColumns = [...SHEET_COLUMNS]
         this.persistSheetColumnOrder(this.sheetColumns)
+        this.resetSheetColumnWidths()
         this.clearSheetRange()
         return
       }
@@ -2070,6 +2072,9 @@ export default {
     },
     persistSheetColumnOrder(columns) {
       SHEET_COLUMN_ORDER.save(columns)
+    },
+    sheetColumnStore() {
+      return SHEET_COLUMN_ORDER
     },
     isQueueTerminalRow(row) {
       return QUEUE_TERMINAL_STATUSES.includes(String(row?.status || '').trim())

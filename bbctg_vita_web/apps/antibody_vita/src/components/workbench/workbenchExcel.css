@@ -75,6 +75,9 @@
 .sheet-wrap.is-column-moving :deep(.sheet-selectable-header) {
   cursor: grabbing;
 }
+.sheet-wrap :deep(.vxe-table--render-default.col-drag--resize *) {
+  cursor: col-resize;
+}
 .sheet-wrap :deep(.is-column-from) {
   opacity: 0.4;
 }
@@ -173,4 +176,4 @@
 .sheet-wrap :deep(.sheet-tone-warning) { color: var(--el-color-warning); }
 .sheet-wrap :deep(.sheet-tone-success) { color: var(--el-color-success); }
 .sheet-wrap :deep(.sheet-tone-danger) { color: var(--el-color-danger); }
-.sheet-wrap :deep(.sheet-tone-king) { color: #6f4d9c; }
+.sheet-wrap :deep(.sheet-tone-king) { color: var(--vita-king-text); }

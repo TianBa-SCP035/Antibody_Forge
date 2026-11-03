@@ -765,7 +765,7 @@ export default {
 
 .section-card {
   border-radius: 12px;
-  border: 1px solid #eef2f7;
+  border: 1px solid var(--el-border-color-extra-light);
   box-shadow: 0 6px 18px rgba(16, 24, 40, 0.05);
 }
 
@@ -795,7 +795,7 @@ export default {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px dashed #dfe6ef;
-  background: #fbfcfe;
+  background: var(--el-fill-color-extra-light);
   color: #6b7a88;
   font-size: 12px;
 }
@@ -819,7 +819,7 @@ export default {
 
 .table-card {
   border-radius: 12px;
-  border: 1px solid #eef2f7;
+  border: 1px solid var(--el-border-color-extra-light);
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
 
   &.full-height {
@@ -831,7 +831,7 @@ export default {
 
   :deep(.el-card__header) {
     padding: 14px 20px;
-    border-bottom: 1px solid #f0f2f5;
+    border-bottom: 1px solid var(--el-border-color-lighter);
   }
 
   :deep(.el-card__body) {
@@ -856,10 +856,10 @@ export default {
   gap: 6px;
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 
   .el-icon {
-    color: #409eff;
+    color: var(--el-color-primary);
   }
 }
 
@@ -868,25 +868,25 @@ export default {
   overflow: hidden;
 
   :deep(.el-table) {
-    --el-table-border-color: #ebeef5;
+    --el-table-border-color: var(--el-border-color-lighter);
   }
 
   :deep(.el-table--border::before),
   :deep(.el-table--border::after) {
-    background-color: #ebeef5;
+    background-color: var(--el-border-color-lighter);
   }
 
   :deep(.el-table__header-wrapper th) {
-    background-color: #f8f9fb;
+    background-color: var(--el-fill-color-light);
     color: #444;
     font-weight: 600;
     height: 32px;
-    border-bottom: 1px solid #eef1f6;
+    border-bottom: 1px solid var(--el-border-color-lighter);
   }
 
   :deep(.el-table__row td) {
     height: 32px;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid var(--el-border-color-lighter);
   }
 
   :deep(.el-table__cell) {
@@ -913,7 +913,7 @@ export default {
 
   .empty-content {
     text-align: center;
-    color: #c0c4cc;
+    color: var(--el-text-color-disabled);
 
     .el-icon {
       font-size: 48px;
@@ -924,7 +924,7 @@ export default {
     p {
       margin: 0;
       font-size: 15px;
-      color: #909399;
+      color: var(--el-text-color-secondary);
       font-weight: 500;
     }
 
@@ -951,8 +951,8 @@ export default {
 }
 
 .file-card {
-  background: #fff;
-  border: 1px solid #eef2f7;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-extra-light);
   border-radius: 10px;
   overflow: hidden;
   cursor: pointer;
@@ -961,7 +961,7 @@ export default {
   &:hover {
     transform: translateY(-3px);
     box-shadow: 0 8px 16px rgba(16, 24, 40, 0.08);
-    border-color: #409eff;
+    border-color: var(--el-color-primary);
 
     .file-overlay {
       opacity: 1;
@@ -972,7 +972,7 @@ export default {
 .file-preview-area {
   height: 120px;
   position: relative;
-  background: #f7f9fc;
+  background: var(--el-fill-color-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -989,7 +989,7 @@ export default {
 
     .type-icon {
       font-size: 40px;
-      color: #909399;
+      color: var(--el-text-color-secondary);
       margin-bottom: 6px;
     }
 
@@ -997,7 +997,7 @@ export default {
       font-size: 11px;
       font-weight: 700;
       color: #fff;
-      background: #909399;
+      background: var(--el-color-info);
       padding: 2px 6px;
       border-radius: 4px;
     }
@@ -1029,7 +1029,7 @@ export default {
 
 .file-info-area {
   padding: 10px 12px;
-  border-top: 1px solid #f0f2f5;
+  border-top: 1px solid var(--el-border-color-lighter);
 
   .file-name-text {
     font-size: 12px;
@@ -1053,21 +1053,21 @@ export default {
   justify-content: center;
   width: 100%;
   height: 100%;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .excel-color { color: #217346 !important; }
 .word-color { color: #2b579a !important; }
 .ppt-color { color: #d24726 !important; }
 .pdf-color { color: #b30b00 !important; }
-.zip-color { color: #e6a23c !important; }
+.zip-color { color: var(--el-color-warning) !important; }
 
 .plates-tabs :deep(.el-tabs__header) {
   margin-bottom: 12px;
 }
 
 .plates-tabs :deep(.el-tabs__item:has(.is-stage-end)) {
-  border-right: 3px solid #67c23a;
+  border-right: 3px solid var(--el-color-success);
 }
 
 /* 文件详情弹窗（与 SerumTiter 同源，右侧只读且无重命名/替换/删除） */
@@ -1087,7 +1087,7 @@ export default {
 
 :global(.el-dialog.serum-detail-dialog .el-dialog__header) {
   padding: 20px 24px;
-  border-bottom: 1px solid #f0f2f5;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 :global(.el-dialog.serum-detail-dialog .el-dialog__title) {
@@ -1106,11 +1106,11 @@ export default {
 .dialog-preview-side {
   flex: 1;
   min-width: 0;
-  background: #f8fafc;
+  background: var(--el-fill-color-extra-light);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-right: 1px solid #f0f2f5;
+  border-right: 1px solid var(--el-border-color-lighter);
   overflow: hidden;
 
   .preview-container,
@@ -1136,13 +1136,13 @@ export default {
 
     .huge-icon {
       font-size: 120px;
-      color: #dcdfe6;
+      color: var(--el-border-color);
     }
 
     .huge-ext {
       font-size: 24px;
       font-weight: bold;
-      color: #c0c4cc;
+      color: var(--el-text-color-disabled);
       margin-top: 10px;
     }
   }
@@ -1156,12 +1156,12 @@ export default {
   flex-direction: column;
   overflow-y: auto;
   box-sizing: border-box;
-  background: #fff;
+  background: var(--el-bg-color);
 
   .side-title {
     margin: 0 0 16px;
     font-size: 16px;
-    color: #303133;
+    color: var(--el-text-color-primary);
     display: flex;
     align-items: baseline;
     justify-content: space-between;
@@ -1169,7 +1169,7 @@ export default {
     small {
       font-weight: normal;
       font-size: 12px;
-      color: #909399;
+      color: var(--el-text-color-secondary);
     }
   }
 
@@ -1177,7 +1177,7 @@ export default {
     margin-bottom: 0;
 
     .meta-list {
-      background: #f9fafc;
+      background: var(--el-fill-color-extra-light);
       padding: 16px;
       border-radius: 8px;
     }
@@ -1197,13 +1197,13 @@ export default {
 
       .m-label {
         flex-shrink: 0;
-        color: #909399;
+        color: var(--el-text-color-secondary);
         white-space: nowrap;
       }
 
       .m-value {
         flex-shrink: 0;
-        color: #303133;
+        color: var(--el-text-color-primary);
         font-weight: 500;
         text-align: right;
         white-space: nowrap;
@@ -1232,23 +1232,23 @@ export default {
 .modern-excel-table {
   border-collapse: collapse;
   width: max-content;
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
   font-size: 12px;
 
   td {
-    border: 1px solid #ebeef5;
+    border: 1px solid var(--el-border-color-lighter);
     padding: 10px 14px;
     white-space: nowrap;
-    color: #606266;
+    color: var(--el-text-color-regular);
   }
 
   tr:nth-child(even) {
-    background-color: #fafbfc;
+    background-color: var(--el-fill-color-lighter);
   }
 
   tr:hover td {
-    background-color: #ecf5ff;
+    background-color: var(--el-color-primary-light-9);
   }
 }
 
@@ -1258,11 +1258,22 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 
   .el-icon {
     font-size: 40px;
     margin-bottom: 12px;
   }
+}
+
+html.dark .section-title,
+html.dark .refined-table :deep(.el-table__header-wrapper th),
+html.dark .file-info-area .file-name-text {
+  color: var(--el-text-color-primary);
+}
+
+html.dark .empty-inline {
+  color: var(--el-text-color-secondary);
+  border-color: var(--el-border-color);
 }
 </style>

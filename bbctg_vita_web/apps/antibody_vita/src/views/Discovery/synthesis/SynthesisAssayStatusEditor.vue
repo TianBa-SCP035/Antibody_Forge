@@ -166,21 +166,31 @@ export default {
 .assay-split-half.is-wait {
   color: #d48806;
   background: #fffdf8;
-  border-color: #f3d19e;
+  border-color: var(--el-color-warning-light-5);
 }
 
 .assay-split-half.is-run {
-  color: #409eff;
-  background: #f5faff;
-  border-color: #a0cfff;
+  color: var(--el-color-primary);
+  background: var(--el-fill-color-extra-light);
+  border-color: var(--el-color-primary-light-5);
   z-index: 2;
 }
 
 .assay-split-half.is-done {
-  color: #529b2e;
+  color: var(--el-color-success-dark-2);
   background: #f6ffed;
-  border-color: #b3e19d;
+  border-color: var(--el-color-success-light-5);
   z-index: 1;
+}
+
+html.dark .assay-split-half.is-wait {
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
+}
+
+html.dark .assay-split-half.is-done {
+  color: var(--el-color-success);
+  background: var(--el-color-success-light-9);
 }
 
 </style>

@@ -123,20 +123,20 @@ export default {
   cursor: pointer;
 }
 .el-tag.workbench-status-tag.status-tone-king {
-  --el-tag-text-color: #6f4d9c;
-  --el-tag-bg-color: #efe8f6;
-  --el-tag-border-color: #d4c4ea;
-  color: #6f4d9c;
-  background-color: #efe8f6;
-  border-color: #d4c4ea;
+  --el-tag-text-color: var(--vita-king-text);
+  --el-tag-bg-color: var(--vita-king-bg);
+  --el-tag-border-color: var(--vita-king-border);
+  color: var(--vita-king-text);
+  background-color: var(--vita-king-bg);
+  border-color: var(--vita-king-border);
 }
 .el-tag.workbench-status-tag.status-tone-library {
-  --el-tag-text-color: #12bbc0;
+  --el-tag-text-color: var(--vita-library-text);
   --el-tag-bg-color: var(--el-fill-color-blank);
-  --el-tag-border-color: #89dde0;
-  color: #12bbc0;
+  --el-tag-border-color: var(--vita-library-border);
+  color: var(--vita-library-text);
   background-color: var(--el-fill-color-blank);
-  border-color: #89dde0;
+  border-color: var(--vita-library-border);
 }
 .workbench-status-option-list {
   display: flex;

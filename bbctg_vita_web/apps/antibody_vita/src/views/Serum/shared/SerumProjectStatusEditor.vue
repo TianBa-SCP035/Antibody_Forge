@@ -161,8 +161,8 @@ export default {
 
 .serum-status-option:hover,
 .serum-status-option.is-current {
-  background-color: #f5f7fa;
-  color: #409EFF;
+  background-color: var(--el-fill-color-light);
+  color: var(--el-color-primary);
 }
 
 .serum-status-option.is-current {

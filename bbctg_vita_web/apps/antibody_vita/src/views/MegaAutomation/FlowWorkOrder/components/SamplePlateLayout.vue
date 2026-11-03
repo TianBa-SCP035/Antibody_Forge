@@ -379,10 +379,10 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-$primary: #409eff;
+$primary: var(--el-color-primary);
 $title-color: #1f2937;
-$label-color: #606266;
-$muted-color: #909399;
+$label-color: var(--el-text-color-regular);
+$muted-color: var(--el-text-color-secondary);
 
 .plate-current-bar {
   display: flex;
@@ -432,15 +432,15 @@ $muted-color: #909399;
 .legend-dot {
   width: 10px;
   height: 10px;
-  border: 1px solid #d0d5dd;
+  border: 1px solid var(--el-border-color-dark);
   border-radius: 3px;
 
-  &.well-sample { background: #eef5ff; }
+  &.well-sample { background: var(--el-color-primary-light-9); }
   &.well-pc { background: #fff2e6; }
   &.well-nc { background: #eef2ff; }
   &.well-iso { background: #eafbf1; }
   &.well-tag { background: #f3effe; }
-  &.well-blank { background: #f8fafc; }
+  &.well-blank { background: var(--el-fill-color-extra-light); }
 }
 
 .well-editor {
@@ -451,8 +451,8 @@ $muted-color: #909399;
   min-height: 40px;
   padding: 8px 10px;
   margin-bottom: 10px;
-  background: #f7f9fc;
-  border: 1px solid #e8ebf1;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 6px;
 }
 
@@ -487,7 +487,7 @@ $muted-color: #909399;
 .plate-grid-wrap {
   width: 100%;
   overflow-x: auto;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--el-border-color);
   border-radius: 6px;
   user-select: none;
 }
@@ -497,11 +497,11 @@ $muted-color: #909399;
   min-width: 560px;
   border-collapse: collapse;
   table-layout: fixed;
-  background: #fff;
+  background: var(--el-bg-color);
 
   th,
   td {
-    border: 1px solid #e6e9ef;
+    border: 1px solid var(--el-border-color-light);
   }
 
   thead th {
@@ -509,7 +509,7 @@ $muted-color: #909399;
     font-size: 11px;
     font-weight: 600;
     color: $label-color;
-    background: #f5f7fa;
+    background: var(--el-fill-color-light);
   }
 
   .corner,
@@ -521,7 +521,7 @@ $muted-color: #909399;
     font-size: 11px;
     font-weight: 600;
     color: $label-color;
-    background: #f5f7fa;
+    background: var(--el-fill-color-light);
   }
 }
 
@@ -544,12 +544,12 @@ $muted-color: #909399;
     white-space: nowrap;
   }
 
-  &.well-sample { background: #f4f9ff; }
+  &.well-sample { background: var(--el-color-primary-light-9); }
   &.well-pc { background: #fff2e6; }
   &.well-nc { background: #eef2ff; }
   &.well-iso { background: #eafbf1; }
   &.well-tag { background: #f3effe; }
-  &.well-blank { background: #fbfcfe; }
+  &.well-blank { background: var(--el-fill-color-extra-light); }
 
   &.well-pc .well-text,
   &.well-nc .well-text,
@@ -560,11 +560,11 @@ $muted-color: #909399;
   }
 
   &.is-drag-preview:not(.is-selected) {
-    box-shadow: inset 0 0 0 1px rgb(111 183 255 / 80%);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--el-color-primary) 60%, transparent);
   }
 
   &.is-selected {
-    box-shadow: inset 0 0 0 1px rgb(62 158 255 / 80%);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--el-color-primary) 80%, transparent);
   }
 }
 
@@ -575,5 +575,30 @@ $muted-color: #909399;
   font-size: 13px;
   color:rgb(240, 198, 121);
   pointer-events: none;
+}
+
+html.dark .current-info:not(.is-empty),
+html.dark .well-cell .well-text {
+  color: var(--el-text-color-primary);
+}
+
+html.dark .legend-dot.well-pc,
+html.dark .well-cell.well-pc {
+  background: var(--el-color-warning-light-9);
+}
+
+html.dark .legend-dot.well-nc,
+html.dark .well-cell.well-nc {
+  background: var(--el-color-info-light-9);
+}
+
+html.dark .legend-dot.well-iso,
+html.dark .well-cell.well-iso {
+  background: var(--el-color-success-light-9);
+}
+
+html.dark .legend-dot.well-tag,
+html.dark .well-cell.well-tag {
+  background: var(--vita-king-bg);
 }
 </style>

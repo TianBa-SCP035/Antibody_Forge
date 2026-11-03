@@ -461,15 +461,15 @@
     <!-- Pie Chart Dialog (Replaced with CSS Bar Chart to standard) -->
     <el-dialog v-model="chartVisible" title="☝️🤓疯狂牛马榜🐮🐴 o((>ω< ))o" width="500px" append-to-body>
         <div style="padding: 0px 20px 20px 20px;">
-           <div v-if="stats.owner_counts.length === 0" style="text-align: center; color: #999;">暂无数据</div>
+           <div v-if="stats.owner_counts.length === 0" style="text-align: center; color: var(--el-text-color-secondary);">暂无数据</div>
            <div v-else>
                <div v-for="(item, index) in stats.owner_counts.slice(0, 10)" :key="index" style="margin-bottom: 15px;">
                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                       <span style="font-weight: bold; color: #333;">{{ item.name }}</span>
-                       <span style="color: #666;">{{ item.value }} 单</span>
+                       <span style="font-weight: bold; color: var(--el-text-color-primary);">{{ item.name }}</span>
+                       <span style="color: var(--el-text-color-regular);">{{ item.value }} 单</span>
                    </div>
-                   <div style="height: 10px; background: #f0f0f0; border-radius: 5px; overflow: hidden;">
-                       <div :style="{width: (stats.total > 0 ? (item.value / stats.total * 100) : 0) + '%', background: '#409EFF', height: '100%'}"></div>
+                   <div style="height: 10px; background: var(--el-fill-color); border-radius: 5px; overflow: hidden;">
+                       <div :style="{width: (stats.total > 0 ? (item.value / stats.total * 100) : 0) + '%', background: 'var(--el-color-primary)', height: '100%'}"></div>
                    </div>
                </div>
            </div>
@@ -1461,11 +1461,11 @@ export default {
 }
 .advanced-filters {
     padding-top: 10px;
-    border-top: 1px dashed #e8e8e8;
+    border-top: 1px dashed var(--el-border-color-light);
 }
 .project-name {
     font-weight: 500;
-    color: #333;
+    color: var(--el-text-color-primary);
 }
 
 /* Dashboard Panel Styles */
@@ -1483,7 +1483,7 @@ export default {
   position: relative;
   overflow: hidden;
   color: #fff;
-  background: #fff;
+  background: var(--el-bg-color);
   box-shadow: 4px 4px 40px rgba(0, 0, 0, .05);
   border-radius: var(--list-mid-radius);
   display: flex;
@@ -1498,7 +1498,7 @@ export default {
     box-shadow: 0 15px 30px rgba(0,0,0,0.1);
 }
 .active-card {
-    border: 2px solid #333;
+    border: 2px solid var(--el-text-color-primary);
     transform: scale(1.02);
     box-shadow: 0 10px 20px rgba(0,0,0,0.2);
 }
@@ -1540,4 +1540,6 @@ export default {
 .green-panel { background: linear-gradient(135deg, #58d68d 0%, #2ecc71 100%); }
 .red-panel { background: linear-gradient(135deg, #8e44ad 0%, #9b59b6 100%); }
 .orange-panel { background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); }
+
+html.dark .card-panel { filter: brightness(0.86) saturate(0.9); }
 </style>

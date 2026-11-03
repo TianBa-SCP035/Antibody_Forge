@@ -293,6 +293,7 @@
             :header-cell-class-name="sheetHeaderCellClassName"
             :cell-class-name="sheetCellClassName"
             @scroll="onSheetScroll"
+            @column-resizable-change="onSheetColumnResize"
             @edit-actived="onSheetEditActived"
             @edit-closed="onSheetEditClosed"
             @cell-delete-value="onSheetEditClosed"
@@ -303,6 +304,7 @@
                 v-if="column.edit === 'target'"
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
+                :width="sheetColumnWidth(column)"
                 :min-width="column.minWidth || 120"
                 :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
@@ -336,6 +338,7 @@
                 v-else-if="isSheetChoiceColumn(column)"
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
+                :width="sheetColumnWidth(column)"
                 :min-width="column.minWidth || 120"
                 :edit-render="sheetCustomEditRender"
                 :formatter="sheetFormatter(column)"
@@ -390,6 +393,7 @@
                 v-else-if="column.edit === 'catalog'"
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
+                :width="sheetColumnWidth(column)"
                 :min-width="column.minWidth || 150"
                 :edit-render="sheetCustomEditRender"
               >
@@ -421,6 +425,7 @@
                 v-else
                 :field="column.key"
                 :title="sheetColumnTitle(column)"
+                :width="sheetColumnWidth(column)"
                 :min-width="column.minWidth || column.width || 120"
                 :edit-render="sheetEditRender(column)"
                 :formatter="sheetFormatter(column)"
@@ -1379,22 +1384,19 @@ export default {
       if (key === 'build_type') return !this.activeType && (row?.status || '待处理') === '待处理'
       return true
     },
-    isSheetCellLocked(row, key) {
-      if (!this.canEditField(row, key)) return true
-      if (!isSheetFieldApplicable(row?.build_type, key)) return true
-      if (!isIndexFieldRecorded(row?.build_type, row?.index_mode, key)) return true
-      const column = this.sheetColumnByKey.get(key)?.column
-      return column?.edit === 'readonly'
-    },
-    onLockedSheetDblClick(row, key) {
-      const label = this.sheetColumns.find((item) => item.key === key)?.label || '该字段'
+    sheetCellLockReason(row, key) {
+      const label = this.sheetColumnLabel(key)
+      if (!this.canEdit) return '你没有编辑权限'
+      if (!this.canEditField(row, key)) {
+        return this.activeType ? '按建库类型筛选时不能改建库类型' : '只有待处理的工单能改建库类型'
+      }
       if (!isSheetFieldApplicable(row?.build_type, key)) {
-        ElMessage.info(`${buildTypeLabel(row.build_type) || '当前建库类型'}没有「${label}」`)
-        return
+        return `${buildTypeLabel(row.build_type) || '当前建库类型'}没有「${label}」`
       }
       if (!isIndexFieldRecorded(row?.build_type, row?.index_mode, key)) {
-        ElMessage.info(`当前 Barcode 方式不填写「${label}」`)
+        return `当前 Barcode 方式不填写「${label}」`
       }
+      return this.sheetReadonlyLockReason(key)
     },
     async onBuildTypeFilter(value) {
       if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
@@ -1648,12 +1650,16 @@ export default {
       if (visibleIndex < next.length) merged.push(...next.slice(visibleIndex))
       SHEET_COLUMN_ORDER.save(merged)
     },
+    sheetColumnStore() {
+      return SHEET_COLUMN_ORDER
+    },
     async resetSheetColumnOrder() {
       if (this.isExcelMode) {
         if (!await this.flushPendingSheetEdits()) return
         SHEET_COLUMN_ORDER.clear()
         this.rebuildSheetColumns()
         this.persistSheetColumnOrder(this.sheetColumns)
+        this.resetSheetColumnWidths()
         this.clearSheetRange()
         return
       }
@@ -1782,8 +1788,9 @@ export default {
       if (next) this.openDrawer(next)
     },
     onWorkbenchRowContextMenu(_row, _column, event) {
+      if (!this.drawerVisible) return
       event?.preventDefault?.()
-      if (this.drawerVisible) this.closeDrawer()
+      this.closeDrawer()
     },
     onDocumentPointerDown(event) {
       if (!this.drawerVisible) return
@@ -2433,7 +2440,7 @@ export default {
   pointer-events: auto;
   cursor: crosshair;
   background: var(--el-color-primary);
-  border: 1px solid #fff;
+  border: 1px solid var(--el-bg-color);
 }
 
 .library-order-page {
@@ -2483,7 +2490,7 @@ export default {
   padding: 12px 16px;
   border: 1px solid rgb(191 219 254 / 45%);
   border-radius: var(--list-mid-radius);
-  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, #ffffff 100%);
+  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, var(--el-bg-color) 100%);
 }
 
 .title-group {
@@ -2546,13 +2553,13 @@ export default {
 .stat-tile-interactive:hover {
   transform: translateY(-2px);
   border-color: #dce3ec;
-  background: #fff;
+  background: var(--el-bg-color);
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07);
 }
 
 .stat-tile-interactive:active {
   transform: translateY(0) scale(0.985);
-  background: #fff;
+  background: var(--el-bg-color);
   border-color: transparent;
   box-shadow: 0 3px 10px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
   transition-duration: 0.08s;
@@ -2560,7 +2567,7 @@ export default {
 
 .stat-tile-active {
   border-color: transparent;
-  background: #fff;
+  background: var(--el-bg-color);
   box-shadow: 0 6px 18px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
 }
 
@@ -2648,7 +2655,7 @@ export default {
   align-items: center;
   min-width: 0;
   padding-top: 10px;
-  border-top: 1px solid #edf1f7;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .filter-item {
@@ -2664,7 +2671,7 @@ export default {
 .catalog-sequence {
   float: right;
   margin-left: 16px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 12px;
 }
@@ -2727,10 +2734,10 @@ export default {
   color: var(--el-color-danger);
 }
 .table-card :deep(.priority-select.status-tone-king .el-select__wrapper) {
-  background-color: #efe8f6;
+  background-color: var(--vita-king-bg);
 }
 .table-card :deep(.priority-select.status-tone-king .el-select__selected-item) {
-  color: #6f4d9c;
+  color: var(--vita-king-text);
 }
 
 .drawer-heading {
@@ -2767,8 +2774,8 @@ export default {
   color: #4e5969;
   font-weight: 500;
   line-height: 20px;
-  background: #f4f6f8;
-  border: 1px solid #e5e9ef;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-light);
   border-radius: 5px;
 }
 
@@ -2797,7 +2804,7 @@ export default {
   margin-bottom: 8px;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #eef0f4;
+  border-bottom: 1px solid var(--el-border-color-lighter);
   border-radius: 0;
 }
 
@@ -2819,7 +2826,7 @@ export default {
   gap: 7px;
   align-items: center;
   margin: 0 0 10px;
-  color: #303133;
+  color: var(--el-text-color-primary);
   font-size: 13px;
   font-weight: 650;
   letter-spacing: 0.02em;
@@ -2834,7 +2841,7 @@ export default {
 }
 
 .drawer-card.is-queue .drawer-card-title {
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .drawer-card-grid {
@@ -2860,7 +2867,7 @@ export default {
 }
 
 .drawer-form :deep(.el-form-item__label) {
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 13px;
   white-space: nowrap;
 }
@@ -2879,14 +2886,14 @@ export default {
 }
 
 .primer-matrix-heading {
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 20px;
   text-align: center;
 }
 
 .primer-chain {
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 13px;
   text-align: center;
 }
@@ -2936,6 +2943,23 @@ export default {
   border-color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
+}
+
+html.dark .page-header-band {
+  background: var(--el-fill-color-extra-light);
+  border-color: var(--el-border-color-light);
+}
+
+html.dark .stat-tile-interactive:hover {
+  border-color: var(--el-border-color-light);
+}
+
+html.dark .drawer-title {
+  color: var(--el-text-color-primary);
+}
+
+html.dark .drawer-header-facts .is-type {
+  color: var(--el-text-color-regular);
 }
 
 </style>

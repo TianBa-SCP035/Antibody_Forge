@@ -2463,8 +2463,8 @@ export default {
   align-items: center;
   min-height: 68px;
   padding: 10px 18px;
-  background: #fff;
-  border-bottom: 1px solid #edf0f4;
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .back-button {
@@ -2472,7 +2472,7 @@ export default {
   height: 32px;
   padding: 0 14px 0 2px;
   color: var(--el-text-color-regular);
-  border-right: 1px solid #e4e9f0;
+  border-right: 1px solid var(--el-border-color-light);
   border-radius: 0;
 }
 
@@ -2614,8 +2614,8 @@ export default {
 
 .save-hint.is-readonly {
   color: var(--el-text-color-secondary);
-  background: #f4f6f8;
-  border-color: #e6e9ed;
+  background: var(--el-fill-color-light);
+  border-color: var(--el-border-color-light);
 }
 
 .save-hint.is-readonly i {
@@ -2631,13 +2631,13 @@ export default {
   align-items: center;
   min-height: 54px;
   padding: 8px 18px;
-  background: #fafbfd;
+  background: var(--el-fill-color-extra-light);
 }
 
 .strip-label {
   flex: none;
   padding-right: 16px;
-  border-right: 1px solid #e4e9f0;
+  border-right: 1px solid var(--el-border-color-light);
 }
 
 .strip-label strong {
@@ -2697,7 +2697,7 @@ export default {
   justify-content: space-between;
   min-height: 50px;
   padding: 8px 16px;
-  border-bottom: 1px solid #eef0f4;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .caption-copy {
@@ -2762,8 +2762,8 @@ export default {
   justify-content: space-between;
   min-height: 44px;
   padding: 6px 12px;
-  background: #f8fafc;
-  border-bottom: 1px solid #eef0f4;
+  background: var(--el-fill-color-extra-light);
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .image-adjustments {
@@ -2815,7 +2815,7 @@ export default {
   gap: 4px;
   align-items: center;
   padding-left: 9px;
-  border-left: 1px solid #e4e8ee;
+  border-left: 1px solid var(--el-border-color-light);
 }
 
 .tool-buttons button,
@@ -2830,8 +2830,8 @@ export default {
   color: var(--el-text-color-regular);
   font-size: 12px;
   cursor: pointer;
-  background: #fff;
-  border: 1px solid #dfe4ea;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-light);
   border-radius: var(--list-inner-radius);
   transition: color 0.16s ease, border-color 0.16s ease;
 }
@@ -2871,7 +2871,7 @@ export default {
   justify-content: center;
   min-height: 0;
   overflow: hidden;
-  background: #f5f7f9;
+  background: var(--el-fill-color-light);
 }
 
 .viewer-panel.is-dark .viewer-stage {
@@ -2994,7 +2994,7 @@ export default {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: #fff;
+  background: var(--el-bg-color);
   border: 1px solid var(--el-border-color);
   border-radius: 6px;
 }
@@ -3066,7 +3066,7 @@ export default {
   padding: 8px 12px;
   text-align: left;
   cursor: pointer;
-  background: #fff;
+  background: var(--el-bg-color);
   border: 0;
   border-bottom: 1px solid var(--el-border-color-extra-light);
 }
@@ -3173,7 +3173,7 @@ export default {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #fff;
+  background: var(--el-bg-color);
 }
 
 .stage-empty {
@@ -3210,8 +3210,8 @@ export default {
   justify-content: space-between;
   min-height: 40px;
   padding: 5px 10px;
-  background: #fff;
-  border-top: 1px solid #e8ebef;
+  background: var(--el-bg-color);
+  border-top: 1px solid var(--el-border-color-light);
 }
 
 .viewer-gesture-hint {
@@ -3247,7 +3247,7 @@ export default {
   width: 1px;
   height: 16px;
   margin: 0 3px;
-  background: #e4e7eb;
+  background: var(--el-fill-color-darker);
 }
 
 .viewer-panel.is-fullscreen {
@@ -3256,7 +3256,7 @@ export default {
   z-index: 1990;
   width: 100vw;
   height: 100vh;
-  background: #fff;
+  background: var(--el-bg-color);
   border: 0;
 }
 
@@ -3268,7 +3268,7 @@ export default {
   gap: 10px 16px;
   margin: 0 0 16px;
   padding-bottom: 14px;
-  border-bottom: 1px solid #eef0f4;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .metric-list div {
@@ -3465,8 +3465,8 @@ export default {
   color: inherit;
   text-align: left;
   cursor: pointer;
-  background: #fff;
-  border: 1px solid #e1e6ec;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-light);
   border-radius: var(--list-chip-radius);
   transition: transform 0.16s ease;
 }
@@ -3521,7 +3521,7 @@ export default {
   height: 46px;
   overflow: hidden;
   color: #728196;
-  background: #edf1f5;
+  background: var(--el-fill-color);
   border-radius: var(--list-inner-radius);
 }
 
@@ -3536,7 +3536,7 @@ export default {
   justify-content: center;
   width: 100%;
   height: 100%;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 22px;
 }
 
@@ -3623,7 +3623,7 @@ export default {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #f7f9fb;
+  background: var(--el-fill-color-light);
   border: var(--list-surface-border);
   border-radius: var(--list-surface-radius);
   box-shadow: var(--list-surface-shadow);
@@ -3632,8 +3632,8 @@ export default {
 .inspector-heading {
   flex: none;
   padding: 0 16px;
-  background: #fff;
-  border-bottom: 1px solid #e9edf2;
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .inspector-tabs {
@@ -3643,8 +3643,8 @@ export default {
   min-height: 42px;
   padding: 0 8px;
   overflow-x: auto;
-  background: #fff;
-  border-bottom: 1px solid #e7ebf0;
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-light);
 }
 
 .inspector-tabs button {
@@ -3688,7 +3688,7 @@ export default {
   justify-content: space-between;
   padding-bottom: 10px;
   margin-bottom: 13px;
-  border-bottom: 1px solid #e9edf2;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .section-heading strong {
@@ -3766,8 +3766,8 @@ export default {
 .record-inspector .inspector-form :deep(.el-input__wrapper),
 .record-inspector .inspector-form :deep(.el-select__wrapper) {
   min-height: 32px;
-  background: #fff;
-  box-shadow: 0 0 0 1px #dfe4ea inset;
+  background: var(--el-bg-color);
+  box-shadow: 0 0 0 1px var(--el-border-color-light) inset;
   transition: box-shadow 0.16s ease, background-color 0.16s ease;
 }
 
@@ -3784,13 +3784,13 @@ export default {
 
 .record-inspector .inspector-form :deep(.is-disabled .el-input__wrapper),
 .record-inspector .inspector-form :deep(.el-select__wrapper.is-disabled) {
-  background: #f5f7f9;
-  box-shadow: 0 0 0 1px #e7eaee inset;
+  background: var(--el-fill-color-light);
+  box-shadow: 0 0 0 1px var(--el-border-color-light) inset;
 }
 
 .inspector-section {
   padding: 14px;
-  background: #fff;
+  background: var(--el-bg-color);
   border-radius: var(--list-mid-radius);
   animation: inspector-section-enter 0.16s ease-out;
 }
@@ -3933,5 +3933,16 @@ export default {
     animation: none;
     transition: none;
   }
+}
+
+html.dark .save-hint {
+  color: var(--el-color-success);
+  background: var(--el-color-success-light-9);
+  border-color: var(--el-color-success-light-7);
+}
+
+html.dark .tile-final {
+  color: var(--el-color-success);
+  background: var(--el-color-success-light-9);
 }
 </style>

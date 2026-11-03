@@ -600,8 +600,8 @@ export default {
 }
 
 .batch-table :deep(.el-table__header th) {
-  background: #f5f7fa;
-  color: #606266;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-regular);
   font-weight: 600;
 }
 
@@ -661,7 +661,7 @@ export default {
 }
 
 .text-hint {
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .batch-table-readonly {
@@ -702,6 +702,6 @@ body:has(.titer-order-create-dialog) .el-popper:has(.species-wrap) {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: #a8abb2;
+  color: var(--el-text-color-placeholder);
 }
 </style>

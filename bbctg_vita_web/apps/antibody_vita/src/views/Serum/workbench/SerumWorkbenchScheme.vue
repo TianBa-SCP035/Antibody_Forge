@@ -11,7 +11,7 @@
           <span class="header-hint">核对抗原 / 小鼠 / 步骤后再开展；开展前不写入免疫实验主表</span>
           <div style="float: right;">
               <span v-if="!canEdit" class="readonly-hint">只读</span>
-              <span v-if="autoSaving" style="margin-right: 10px; color: #409EFF; font-size: 12px;">
+              <span v-if="autoSaving" style="margin-right: 10px; color: var(--el-color-primary); font-size: 12px;">
                   <el-icon class="is-loading"><Loading /></el-icon> 自动保存中...
               </span>
               <el-button size="small" type="primary" @click="submitForm" :loading="loading" :disabled="loading || autoSaving || !canEdit">保存</el-button>
@@ -465,7 +465,7 @@
         </div>
       </template>
 
-      <div v-if="postForm.mouse_groups.length === 0" style="text-align: center; color: #999; padding: 20px;">
+      <div v-if="postForm.mouse_groups.length === 0" style="text-align: center; color: var(--el-text-color-secondary); padding: 20px;">
           请先在上方添加小鼠分组
       </div>
 
@@ -614,7 +614,7 @@
         </template>
         <el-form label-width="85px">
           <el-form-item label="来源分组">
-            <el-input :value="copyFromGroup" disabled style="background-color: #f5f7fa;" />
+            <el-input :value="copyFromGroup" disabled style="background-color: var(--el-fill-color-light);" />
           </el-form-item>
 
           <el-form-item label="目标分组">
@@ -1414,7 +1414,7 @@ export default {
 <style scoped>
 .workbench-scheme-page {
   padding: 10px 20px;
-  background-color: #f5f7fa;
+  background-color: var(--el-fill-color-light);
   min-height: 100vh;
 }
 .box-card {
@@ -1457,13 +1457,13 @@ export default {
 }
 .header-hint {
   margin-left: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
   font-weight: normal;
 }
 .readonly-hint {
   margin-right: 10px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 .basic-info-card :deep(.el-form-item__label) {
@@ -1533,11 +1533,11 @@ export default {
     margin-bottom: 5px;
     font-size: 13px;
     font-weight: bold;
-    color: #606266;
+    color: var(--el-text-color-regular);
 }
 .delete-btn {
     cursor: pointer;
-    color: #f56c6c;
+    color: var(--el-color-danger);
     font-size: 16px;
     vertical-align: middle;
 }
@@ -1547,7 +1547,7 @@ export default {
 
 /* Keep border on active tab for better visual consistency */
 .el-tabs--card :deep(.el-tabs__item.is-active) {
-    border-bottom-color: #e4e7ed !important;
+    border-bottom-color: var(--el-border-color-light) !important;
 }
 
 /* Set tab width */
@@ -1558,12 +1558,12 @@ export default {
 
 /* Remark icon styling */
 .remark-icon {
-    color: #909399;
+    color: var(--el-text-color-secondary);
     vertical-align: middle;
 }
 
 .remark-icon.has-remark {
-    color: #409EFF;
+    color: var(--el-color-primary);
 }
 
 .remark-icon:hover {

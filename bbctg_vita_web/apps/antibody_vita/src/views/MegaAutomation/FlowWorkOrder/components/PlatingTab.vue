@@ -212,9 +212,9 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-$title-color: #303133;
-$label-color: #606266;
-$muted-color: #909399;
+$title-color: var(--el-text-color-primary);
+$label-color: var(--el-text-color-regular);
+$muted-color: var(--el-text-color-secondary);
 
 .plating-toolbar,
 .plating-toolbar-left,
@@ -246,7 +246,7 @@ $muted-color: #909399;
   padding: 2px 8px;
   font-size: 12px;
   color: $label-color;
-  background: #f2f5f9;
+  background: var(--el-fill-color-light);
   border-radius: 999px;
 }
 
@@ -311,7 +311,7 @@ $muted-color: #909399;
 .plating-nav-group + .plating-nav-group {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .plating-nav-label {
@@ -332,8 +332,8 @@ $muted-color: #909399;
   padding: 8px;
   text-align: left;
   cursor: pointer;
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 6px;
 
   &:hover {
@@ -341,7 +341,7 @@ $muted-color: #909399;
   }
 
   &.is-active {
-    background: #f5f9ff;
+    background: var(--el-color-primary-light-9);
     border-color: #b3d8ff;
   }
 }
@@ -374,7 +374,7 @@ $muted-color: #909399;
     background: #dcc9ff;
   }
   &.well-blank {
-    background: #e8ebf0;
+    background: var(--el-fill-color-dark);
   }
 }
 
@@ -411,7 +411,7 @@ $muted-color: #909399;
 .nav-mini-col {
   display: block;
   height: 100%;
-  background: #e8ebf0;
+  background: var(--el-fill-color-dark);
   border-radius: 999px;
 
   &.is-normal {
@@ -432,5 +432,14 @@ $muted-color: #909399;
   .plating-nav {
     max-height: none;
   }
+}
+
+html.dark .plating-plate-wrap.is-plating-focus .plating-plate,
+html.dark .nav-sample-tile.is-active {
+  border-color: var(--el-color-primary-light-5);
+}
+
+html.dark .nav-sample-tile:hover {
+  border-color: var(--el-color-primary-light-7);
 }
 </style>

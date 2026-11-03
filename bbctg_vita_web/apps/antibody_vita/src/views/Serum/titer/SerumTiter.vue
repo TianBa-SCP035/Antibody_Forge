@@ -1730,7 +1730,7 @@ export default {
 <style lang="scss" scoped>
 .serum-titer-page {
   padding: clamp(8px, 1vw, 16px);
-  background-color: #f5f7fa;
+  background-color: var(--el-fill-color-light);
   min-height: 100vh;
   position: relative;
 
@@ -1805,7 +1805,7 @@ export default {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
-  background: #fff;
+  background: var(--el-bg-color);
   padding: 12px 16px;
   border-radius: 12px;
   box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05);
@@ -1821,12 +1821,12 @@ export default {
       width: 36px;
       height: 36px;
       margin-right: 12px;
-      background: #ecf5ff;
+      background: var(--el-color-primary-light-9);
       border-radius: 8px;
 
       .el-icon {
         margin: 0;
-        color: #409EFF;
+        color: var(--el-color-primary);
         font-size: 20px;
       }
     }
@@ -1835,11 +1835,11 @@ export default {
       margin: 0;
       font-size: 18px;
       font-weight: 600;
-      color: #303133;
+      color: var(--el-text-color-primary);
       
       .sub-title {
         font-size: 13px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
         font-weight: normal;
         margin-left: 8px;
       }
@@ -1910,7 +1910,7 @@ export default {
   align-items: center;
   font-weight: 700;
   font-size: 15px;
-  color: #303133;
+  color: var(--el-text-color-primary);
   width: 100%;
   
   &.space-between {
@@ -1919,7 +1919,7 @@ export default {
 
   .el-icon {
     margin-right: 8px;
-    color: #409EFF;
+    color: var(--el-color-primary);
   }
 }
 
@@ -1938,8 +1938,8 @@ export default {
 .table-title {
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
-  .el-icon { margin-right: 6px; color: #409EFF; }
+  color: var(--el-text-color-primary);
+  .el-icon { margin-right: 6px; color: var(--el-color-primary); }
 }
 
 .add-btn {
@@ -1957,25 +1957,25 @@ export default {
   flex: 1;
 }
 
-.danger-text { color: #F56C6C; }
+.danger-text { color: var(--el-color-danger); }
 
 /* Custom Table Refined Styles */
 .refined-table {
   border-radius: 4px;
   overflow: hidden;
-  border-color: #f0f0f0;
+  border-color: var(--el-border-color-lighter);
 
   :deep(.el-table__header-wrapper th) {
-    background-color: #f8f9fb;
+    background-color: var(--el-fill-color-light);
     color: #444;
     font-weight: 600;
     height: 32px;
-    border-bottom: 1px solid #eef1f6;
+    border-bottom: 1px solid var(--el-border-color-lighter);
   }
 
   :deep(.el-table__row td) {
     height: 32px;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid var(--el-border-color-lighter);
   }
 
   :deep(.el-input--small),
@@ -2008,16 +2008,16 @@ export default {
 
   :deep(.el-input__wrapper:hover),
   :deep(.el-select__wrapper:hover) {
-    background: rgba(64, 158, 255, 0.04);
-    box-shadow: 0 0 0 1px #dcdfe6 inset;
+    background: color-mix(in srgb, var(--el-color-primary) 4%, transparent);
+    box-shadow: 0 0 0 1px var(--el-border-color) inset;
   }
 
   :deep(.el-input__wrapper.is-focus),
   :deep(.el-select__wrapper.is-focused) {
-    background: #fff;
+    background: var(--el-bg-color);
     box-shadow:
-      0 0 0 1px #409eff inset,
-      0 0 0 2px rgba(64, 158, 255, 0.1);
+      0 0 0 1px var(--el-color-primary) inset,
+      0 0 0 2px color-mix(in srgb, var(--el-color-primary) 10%, transparent);
   }
 
   :deep(.el-select) {
@@ -2054,16 +2054,16 @@ export default {
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      border: 2px dashed #e0e6ed;
+      border: 2px dashed var(--el-border-color-light);
       border-radius: 10px;
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      background-color: #fbfcfd;
+      background-color: var(--el-fill-color-lighter);
 
       &:hover {
-        background-color: #f0f7ff;
-        border-color: #409EFF;
+        background-color: var(--el-color-primary-light-9);
+        border-color: var(--el-color-primary);
         .upload-icon {
-          color: #409EFF;
+          color: var(--el-color-primary);
           transform: translateY(-5px);
         }
       }
@@ -2076,16 +2076,16 @@ export default {
       .upload-icon {
         margin-bottom: 16px;
         font-size: 54px;
-        color: #a0cfff;
+        color: var(--el-color-primary-light-5);
         transition: all 0.3s;
       }
       
       .el-upload__text {
         font-size: 15px;
-        color: #606266;
+        color: var(--el-text-color-regular);
         line-height: 1.6;
         em {
-          color: #409EFF;
+          color: var(--el-color-primary);
           font-style: normal;
           font-weight: 500;
         }
@@ -2094,7 +2094,7 @@ export default {
       .el-upload__tip {
         margin-top: 8px;
         font-size: 12px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
       }
     }
   }
@@ -2104,13 +2104,13 @@ export default {
 .project-info-content {
   :deep(.el-descriptions__label.is-bordered-label) {
     width: 120px;
-    color: #606266;
+    color: var(--el-text-color-regular);
     font-weight: bold;
-    background: #f9fafc;
+    background: var(--el-fill-color-extra-light);
   }
 
   :deep(.el-descriptions__content.is-bordered-content) {
-    color: #303133;
+    color: var(--el-text-color-primary);
   }
 }
 
@@ -2130,7 +2130,7 @@ export default {
       margin: 0;
       font-size: 18px;
       font-weight: 700;
-      color: #333;
+      color: var(--el-text-color-primary);
       display: flex;
       align-items: center;
       gap: 12px;
@@ -2139,12 +2139,12 @@ export default {
         display: flex;
         align-items: baseline;
         gap: 8px;
-        .el-icon { color: #409EFF; }
+        .el-icon { color: var(--el-color-primary); }
         .eng { font-size: 13px; color: #999; font-weight: 400; }
       }
 
       .custom-file-badge { 
-        background: #f0f2f5;
+        background: var(--el-fill-color);
         color: #666;
         font-size: 13px;
         font-weight: bold;
@@ -2152,7 +2152,7 @@ export default {
         border-radius: 10px;
         height: 22px;
         line-height: 22px;
-        border: 1px solid #e4e7ed;
+        border: 1px solid var(--el-border-color-light);
       }
     }
   }
@@ -2176,8 +2176,8 @@ export default {
 }
 
 .file-card {
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 10px;
   overflow: hidden;
   cursor: pointer;
@@ -2186,7 +2186,7 @@ export default {
   &:hover {
     transform: translateY(-5px);
     box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-    border-color: #409EFF;
+    border-color: var(--el-color-primary);
 
     .file-overlay {
       opacity: 1;
@@ -2196,7 +2196,7 @@ export default {
   .file-preview-area {
     height: 140px;
     position: relative;
-    background: #f5f7fa;
+    background: var(--el-fill-color-light);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2213,7 +2213,7 @@ export default {
       
       .type-icon {
         font-size: 48px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
         margin-bottom: 8px;
       }
       
@@ -2221,7 +2221,7 @@ export default {
         font-size: 12px;
         font-weight: 700;
         color: #fff;
-        background: #909399;
+        background: var(--el-color-info);
         padding: 2px 6px;
         border-radius: 4px;
         text-transform: uppercase;
@@ -2251,11 +2251,11 @@ export default {
 
   .file-info-area {
     padding: 12px;
-    border-top: 1px solid #f0f2f5;
+    border-top: 1px solid var(--el-border-color-lighter);
 
     .file-name-text {
       font-size: 13px;
-      color: #303133;
+      color: var(--el-text-color-primary);
       font-weight: 500;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -2265,7 +2265,7 @@ export default {
 
     .file-meta-text {
       font-size: 12px;
-      color: #909399;
+      color: var(--el-text-color-secondary);
     }
   }
 }
@@ -2275,7 +2275,7 @@ export default {
 .word-color { color: #2b579a !important; }
 .ppt-color { color: #d24726 !important; }
 .pdf-color { color: #b30b00 !important; }
-.zip-color { color: #e6a23c !important; }
+.zip-color { color: var(--el-color-warning) !important; }
 
 /* Empty State */
 .empty-state {
@@ -2287,10 +2287,10 @@ export default {
 
   .empty-content {
     text-align: center;
-    color: #c0c4cc;
+    color: var(--el-text-color-disabled);
 
     .el-icon { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
-    p { margin: 0; font-size: 16px; color: #909399; font-weight: 500; }
+    p { margin: 0; font-size: 16px; color: var(--el-text-color-secondary); font-weight: 500; }
     .sub-text { font-size: 13px; margin-top: 8px; display: block; }
   }
 }
@@ -2307,7 +2307,7 @@ export default {
 
 :global(.el-dialog.serum-detail-dialog .el-dialog__header) {
   padding: 20px 24px;
-  border-bottom: 1px solid #f0f2f5;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 :global(.el-dialog.serum-detail-dialog .el-dialog__title) {
@@ -2325,11 +2325,11 @@ export default {
 
 .dialog-preview-side {
   flex: 1.5;
-  background: #f8fafc;
+  background: var(--el-fill-color-extra-light);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-right: 1px solid #f0f2f5;
+  border-right: 1px solid var(--el-border-color-lighter);
   overflow: hidden;
 
   .preview-container, .full-image { width: 100%; height: 100%; }
@@ -2347,8 +2347,8 @@ export default {
   
   .generic-preview-area {
     text-align: center;
-    .huge-icon { font-size: 120px; color: #dcdfe6; }
-    .huge-ext { font-size: 24px; font-weight: bold; color: #c0c4cc; margin-top: 10px; }
+    .huge-icon { font-size: 120px; color: var(--el-border-color); }
+    .huge-ext { font-size: 24px; font-weight: bold; color: var(--el-text-color-disabled); margin-top: 10px; }
   }
 }
 
@@ -2362,19 +2362,19 @@ export default {
   .side-title {
     margin: 0 0 16px;
     font-size: 16px;
-    color: #303133;
+    color: var(--el-text-color-primary);
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     
-    small { font-weight: normal; font-size: 12px; color: #909399; }
+    small { font-weight: normal; font-size: 12px; color: var(--el-text-color-secondary); }
   }
 
   .meta-section {
     margin-bottom: 30px;
     
     .meta-list {
-      background: #f9fafc;
+      background: var(--el-fill-color-extra-light);
       padding: 16px;
       border-radius: 8px;
     }
@@ -2387,8 +2387,8 @@ export default {
       
       &:last-child { margin-bottom: 0; }
       
-      .m-label { color: #909399; }
-      .m-value { color: #303133; font-weight: 500; }
+      .m-label { color: var(--el-text-color-secondary); }
+      .m-value { color: var(--el-text-color-primary); font-weight: 500; }
     }
   }
 
@@ -2421,19 +2421,19 @@ export default {
 .modern-excel-table {
   border-collapse: collapse;
   width: max-content;
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
   font-size: 12px;
 
   td {
-    border: 1px solid #ebeef5;
+    border: 1px solid var(--el-border-color-lighter);
     padding: 10px 14px;
     white-space: nowrap;
-    color: #606266;
+    color: var(--el-text-color-regular);
   }
 
-  tr:nth-child(even) { background-color: #fafbfc; }
-  tr:hover td { background-color: #ecf5ff; }
+  tr:nth-child(even) { background-color: var(--el-fill-color-lighter); }
+  tr:hover td { background-color: var(--el-color-primary-light-9); }
 }
 
 .excel-error {
@@ -2442,7 +2442,7 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   .el-icon { font-size: 40px; margin-bottom: 12px; }
 }
 
@@ -2458,7 +2458,7 @@ export default {
       margin: 0;
       font-size: 18px;
       font-weight: 600;
-      color: #333;
+      color: var(--el-text-color-primary);
       display: flex;
       align-items: center;
       gap: 12px;
@@ -2467,7 +2467,7 @@ export default {
         display: flex;
         align-items: baseline;
         gap: 8px;
-        .el-icon { color: #409EFF; }
+        .el-icon { color: var(--el-color-primary); }
         .eng { font-size: 13px; color: #999; font-weight: normal; }
       }
     }
@@ -2500,17 +2500,17 @@ export default {
       padding: 0 20px;
 
       &:hover {
-        color: #409EFF;
+        color: var(--el-color-primary);
       }
 
       &.is-active {
-        color: #409EFF;
+        color: var(--el-color-primary);
         font-weight: 600;
       }
     }
 
     :deep(.el-tabs__item:has(.is-stage-end)) {
-      border-right: 3px solid #67c23a;
+      border-right: 3px solid var(--el-color-success);
     }
 
     :deep(.el-tabs__content) {
@@ -2527,10 +2527,10 @@ export default {
 
     .empty-content {
       text-align: center;
-      color: #c0c4cc;
+      color: var(--el-text-color-disabled);
 
       .el-icon { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
-      p { margin: 0; font-size: 16px; color: #909399; font-weight: 500; }
+      p { margin: 0; font-size: 16px; color: var(--el-text-color-secondary); font-weight: 500; }
       .sub-text { font-size: 13px; margin-top: 8px; display: block; }
     }
   }
@@ -2546,7 +2546,7 @@ export default {
       margin: 0;
       font-size: 18px;
       font-weight: 700;
-      color: #333;
+      color: var(--el-text-color-primary);
       display: flex;
       align-items: center;
       gap: 12px;
@@ -2555,7 +2555,7 @@ export default {
         display: flex;
         align-items: baseline;
         gap: 8px;
-        .el-icon { color: #409EFF; }
+        .el-icon { color: var(--el-color-primary); }
         .eng { font-size: 13px; color: #999; font-weight: 400; }
       }
     }
@@ -2570,5 +2570,10 @@ export default {
       padding: 16px 18px;
     }
   }
+}
+
+html.dark .refined-table :deep(.el-table__header-wrapper th),
+html.dark .file-preview-section .section-header .section-title .custom-file-badge {
+  color: var(--el-text-color-primary);
 }
 </style>

@@ -2579,18 +2579,15 @@ export default {
       return formatWorkloadPlate(value);
     },
     ownerStatsZone(prop = '') {
-      if (prop.startsWith('total_')) {
-        return { bg: '#fff8f9', headerBg: '#fff0f3', color: '#606266' };
-      }
-      if (prop.startsWith('completed_')) {
-        return { bg: '#f6ffed', headerBg: '#edf9f0', color: '#389e6b' };
-      }
-      if (prop.startsWith('remaining_')) {
-        return { bg: '#fffbe6', headerBg: '#fff7e8', color: '#d48806' };
-      }
-      if (prop.startsWith('period_')) {
-        return { bg: '#f5faff', headerBg: '#eef6ff', color: '#337ecc' };
-      }
+      const zone = (tone, color) => ({
+        bg: `color-mix(in srgb, var(--el-color-${tone}-light-9) 50%, var(--el-bg-color))`,
+        headerBg: `var(--el-color-${tone}-light-9)`,
+        color,
+      });
+      if (prop.startsWith('total_')) return zone('danger', 'var(--el-text-color-regular)');
+      if (prop.startsWith('completed_')) return zone('success', '#389e6b');
+      if (prop.startsWith('remaining_')) return zone('warning', '#d48806');
+      if (prop.startsWith('period_')) return zone('primary', '#337ecc');
       return null;
     },
     ownerStatsRowClassName({ row }) {
@@ -2599,8 +2596,8 @@ export default {
     ownerStatsHeaderStyle({ column }) {
       const zone = this.ownerStatsZone(column?.property || '');
       return {
-        background: zone?.headerBg || '#F5F7FA',
-        color: zone?.color || '#606266',
+        background: zone?.headerBg || 'var(--el-fill-color-light)',
+        color: zone?.color || 'var(--el-text-color-regular)',
         fontWeight: 'bold',
       };
     },
@@ -2609,8 +2606,8 @@ export default {
       if (row.isTotal) {
         return {
           fontWeight: 700,
-          background: '#eaf4ff',
-          color: zone?.color || '#303133',
+          background: 'var(--el-color-primary-light-9)',
+          color: zone?.color || 'var(--el-text-color-primary)',
         };
       }
       if (!zone) {
@@ -3032,7 +3029,7 @@ export default {
   margin: 0;
   border: 1px solid rgb(191 219 254 / 45%);
   border-radius: var(--list-mid-radius);
-  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, #ffffff 100%);
+  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, var(--el-bg-color) 100%);
 }
 
 .title-group {
@@ -3095,13 +3092,13 @@ export default {
 .stat-tile-interactive:hover {
   transform: translateY(-2px);
   border-color: #dce3ec;
-  background: #fff;
+  background: var(--el-bg-color);
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07);
 }
 
 .stat-tile-interactive:active {
   transform: translateY(0) scale(0.985);
-  background: #fff;
+  background: var(--el-bg-color);
   border-color: transparent;
   box-shadow: 0 3px 10px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
   transition-duration: 0.08s;
@@ -3109,7 +3106,7 @@ export default {
 
 .stat-tile-active {
   border-color: transparent;
-  background: #fff;
+  background: var(--el-bg-color);
   box-shadow: 0 6px 18px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
 }
 
@@ -3214,7 +3211,7 @@ export default {
   gap: 8px var(--list-filter-action-gap);
   align-items: center;
   padding-top: 10px;
-  border-top: 1px solid #edf1f7;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .filter-strip .filter-item {
@@ -3294,8 +3291,8 @@ export default {
   position: absolute;
   box-sizing: border-box;
   pointer-events: none;
-  background: rgba(64, 158, 255, 0.16);
-  border: 1px solid rgba(64, 158, 255, 0.45);
+  background: color-mix(in srgb, var(--el-color-primary) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--el-color-primary) 45%, transparent);
   transition:
     top 0.12s ease,
     height 0.12s ease;
@@ -3345,7 +3342,7 @@ export default {
   background: rgba(236, 245, 255, 0.94);
   border: 1px solid #b3d8ff;
   border-radius: var(--list-mid-radius);
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.18);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--el-color-primary) 18%, transparent);
   opacity: 0;
   visibility: hidden;
   will-change: transform, opacity;
@@ -3435,11 +3432,11 @@ export default {
 }
 
 .table-card :deep(.priority-select.status-tone-king .el-select__wrapper) {
-  background-color: #efe8f6;
+  background-color: var(--vita-king-bg);
 }
 
 .table-card :deep(.priority-select.status-tone-king .el-select__selected-item) {
-  color: #6f4d9c;
+  color: var(--vita-king-text);
 }
 
 .table-card :deep(.status-column-cell .cell) {
@@ -3523,7 +3520,7 @@ export default {
 }
 
 .owner-stats-filter-label {
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
@@ -3545,15 +3542,15 @@ export default {
 }
 
 :global(.owner-stats-dialog .owner-stats-summary-row > td.el-table__cell) {
-  border-top: 2px solid #79bbff !important;
+  border-top: 2px solid var(--el-color-primary-light-3) !important;
 }
 
 :global(.owner-stats-dialog .owner-stats-table .el-table__body tr:not(.owner-stats-summary-row):hover > td.el-table__cell) {
-  box-shadow: inset 0 0 0 9999px rgba(64, 158, 255, 0.06);
+  box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--el-color-primary) 6%, transparent);
 }
 
 :global(.owner-stats-dialog .owner-stats-table .el-table__body tr.current-row:not(.owner-stats-summary-row) > td.el-table__cell) {
-  box-shadow: inset 0 0 0 9999px rgba(64, 158, 255, 0.12);
+  box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--el-color-primary) 12%, transparent);
 }
 
 :global(.titer-select-dropdown .el-select-dropdown__wrap) {
@@ -3580,5 +3577,19 @@ export default {
   .stats-strip {
     grid-template-columns: 1fr;
   }
+}
+
+html.dark .page-header-band {
+  background: linear-gradient(90deg, var(--el-color-primary-light-9) 0%, var(--el-fill-color-light) 46%, var(--el-bg-color) 100%);
+}
+
+html.dark .stat-tile-interactive:hover {
+  border-color: var(--el-border-color);
+}
+
+html.dark .plate-select-bubble {
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-7);
 }
 </style>

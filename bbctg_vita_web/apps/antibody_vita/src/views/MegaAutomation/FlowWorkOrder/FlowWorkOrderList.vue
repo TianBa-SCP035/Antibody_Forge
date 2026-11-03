@@ -564,7 +564,7 @@ export default {
   min-height: 100%;
   padding: var(--list-page-padding);
   font-size: 14px;
-  color: #303133;
+  color: var(--el-text-color-primary);
   background: var(--list-page-bg);
 }
 
@@ -588,7 +588,7 @@ export default {
   margin: 0;
   border: 1px solid rgb(191 219 254 / 45%);
   border-radius: var(--list-mid-radius);
-  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, #ffffff 100%);
+  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, var(--el-bg-color) 100%);
 }
 
 .page-title {
@@ -614,7 +614,7 @@ export default {
 
 .total-count {
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   white-space: nowrap;
 }
 
@@ -634,7 +634,7 @@ export default {
   gap: 8px;
   padding: 12px 0;
   margin: 0;
-  border-bottom: 1px solid #eef0f4;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .stat-tile {
@@ -666,8 +666,8 @@ export default {
 }
 
 .stat-tile:hover {
-  background: #fff;
-  border-color: color-mix(in srgb, var(--stat-accent) 38%, #fff);
+  background: var(--el-bg-color);
+  border-color: color-mix(in srgb, var(--stat-accent) 38%, var(--el-bg-color));
   box-shadow: 0 4px 12px rgb(15 23 42 / 6%);
   transform: translateY(-1px);
 }
@@ -677,18 +677,18 @@ export default {
 }
 
 .stat-tile-active {
-  background: color-mix(in srgb, var(--stat-accent) 14%, #fff);
-  border-color: color-mix(in srgb, var(--stat-accent) 42%, #fff);
+  background: color-mix(in srgb, var(--stat-accent) 14%, var(--el-bg-color));
+  border-color: color-mix(in srgb, var(--stat-accent) 42%, var(--el-bg-color));
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--stat-accent) 28%, #fff),
+    0 0 0 1px color-mix(in srgb, var(--stat-accent) 28%, var(--el-bg-color)),
     0 4px 12px rgb(15 23 42 / 6%);
 }
 
 .stat-tile-active:hover {
-  background: color-mix(in srgb, var(--stat-accent) 14%, #fff);
-  border-color: color-mix(in srgb, var(--stat-accent) 42%, #fff);
+  background: color-mix(in srgb, var(--stat-accent) 14%, var(--el-bg-color));
+  border-color: color-mix(in srgb, var(--stat-accent) 42%, var(--el-bg-color));
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--stat-accent) 28%, #fff),
+    0 0 0 1px color-mix(in srgb, var(--stat-accent) 28%, var(--el-bg-color)),
     0 4px 12px rgb(15 23 42 / 6%);
   transform: translateY(-1px);
 }
@@ -738,12 +738,12 @@ export default {
 .stat-label {
   display: block;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .stat-tile-active .stat-label {
   font-weight: 600;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 .stat-value {
@@ -752,7 +752,7 @@ export default {
   font-size: 22px;
   font-weight: 700;
   line-height: 1.15;
-  color: #303133;
+  color: var(--el-text-color-primary);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
@@ -796,5 +796,16 @@ export default {
   .stat-tile-active:hover {
     transform: none;
   }
+}
+
+html.dark .page-header-band {
+  background: var(--el-fill-color-extra-light);
+  border-color: var(--el-border-color-light);
+}
+
+html.dark .preview-banner {
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning-light-7);
 }
 </style>

@@ -8,6 +8,7 @@
       v-bind="$attrs"
       :header-cell-class-name="headerCellClassName"
       @header-click="onHeaderClick"
+      @header-dragend="onHeaderDragEnd"
     >
       <el-table-column
         v-for="col in displayColumns"
@@ -15,7 +16,7 @@
         :column-key="col.key"
         :prop="col.prop"
         :label="col.label"
-        :width="col.width"
+        :width="columnWidths[col.key] || col.width"
         :min-width="col.minWidth"
         :align="col.align || 'center'"
         :class-name="col.className"
@@ -25,10 +26,9 @@
         <template #header>
           <div
             class="wb-col-hd"
-            :class="{ 'is-movable': !isPinned(col.key) }"
+            :class="{ 'is-movable': !isPinned(col.key), 'has-menu': Boolean(headerMenuStates?.[col.key]) }"
             :data-col-key="col.key"
             @mousedown="onHeaderMouseDown($event, col)"
-            @contextmenu="onHeaderContextMenu($event, col)"
           >
             <WorkbenchHeaderLabel
               v-if="headerMenuStates?.[col.key]"
@@ -100,6 +100,7 @@ import { ArrowDown, Calendar } from '@element-plus/icons-vue'
 import { ElButton, ElCheckbox, ElCheckboxGroup, ElDatePicker, ElDialog, ElIcon, ElOption, ElSelect, ElTable, ElTableColumn, ElTooltip } from 'element-plus'
 
 import { createColumnOrder } from './columnOrder'
+import './shiftHeld'
 import { WorkbenchHeaderLabel } from './workbenchHeaderMenu'
 
 export const WorkbenchInlineSelect = defineComponent({
@@ -338,11 +339,12 @@ export default {
     pinLast: { type: String, default: 'actions' },
     headerMenuStates: { type: Object, default: null },
   },
-  emits: ['reorder', 'header-contextmenu', 'header-menu'],
+  emits: ['reorder', 'header-menu'],
   data() {
     return {
       orderedColumns: [],
       hiddenKeys: [],
+      columnWidths: {},
       pickerOpen: false,
       visibleDraft: [],
       orderDraft: [],
@@ -379,6 +381,7 @@ export default {
       const order = this.columnOrder()
       this.orderedColumns = order.load()
       this.hiddenKeys = order.loadHidden()
+      this.columnWidths = order.loadWidths()
     },
     resetColumnOrder() {
       this.columnOrder().clear()
@@ -445,8 +448,12 @@ export default {
       if (event.shiftKey || this.drag || !this.headerMenuStates?.[column.columnKey]) return
       this.$emit('header-menu', column.columnKey, event.target.closest('th'))
     },
-    onHeaderContextMenu(event, column) {
-      this.$emit('header-contextmenu', column, event)
+    onHeaderDragEnd(newWidth, _oldWidth, column) {
+      const key = column?.columnKey
+      const width = Math.round(Number(newWidth))
+      if (!key || !width) return
+      this.columnWidths = { ...this.columnWidths, [key]: width }
+      this.columnOrder().saveWidth(key, width)
     },
     onHeaderMouseDown(event, column) {
       if (event.button !== 0 || !event.shiftKey || this.isPinned(column.key)) return
@@ -574,10 +581,11 @@ export default {
   align-items: center;
   justify-content: center;
   min-height: 22px;
+  cursor: default;
 }
 
-.wb-col-hd.is-movable {
-  cursor: grab;
+.wb-col-hd.has-menu {
+  cursor: pointer;
 }
 
 .workbench-data-table.is-column-moving .wb-col-hd {
@@ -616,7 +624,7 @@ export default {
   line-height: 1.3;
   white-space: nowrap;
   text-overflow: ellipsis;
-  background: #fff;
+  background: var(--el-bg-color);
   border: 1px solid var(--el-color-primary-light-5);
   border-radius: 4px;
   box-shadow: 0 6px 16px rgb(15 23 42 / 12%);

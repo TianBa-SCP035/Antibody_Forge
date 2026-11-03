@@ -1,0 +1,5 @@
+/* 按住 Shift 时可拖动的业务列表头显示抓手；拖动中的 grabbing 由各表格样式负责，优先级更高 */
+html.vita-shift-held .wb-col-hd.is-movable,
+html.vita-shift-held .sheet-wrap .sheet-movable-header {
+  cursor: grab;
+}

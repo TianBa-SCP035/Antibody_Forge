@@ -17,7 +17,7 @@
 
 :root {
   /* 页面壳 */
-  --list-page-bg: #f5f7fa;
+  --list-page-bg: var(--el-fill-color-light);
   --list-page-padding: 16px;
   --list-page-gap: 12px;
 
@@ -41,13 +41,13 @@
   --list-advanced-trigger-size: 28px;
 
   /* 表头；正文 14px 随 EP large，勿再叠单元格 padding */
-  --list-table-header-bg: #f5f7fa;
-  --list-table-header-color: #606266;
+  --list-table-header-bg: var(--el-fill-color-light);
+  --list-table-header-color: var(--el-text-color-regular);
   --list-table-header-weight: bold;
 
   /* 白底面板 */
-  --list-surface-bg: #fff;
-  --list-surface-border-color: #e6e8ee;
+  --list-surface-bg: var(--el-bg-color);
+  --list-surface-border-color: var(--el-border-color-light);
   --list-surface-border: 1px solid var(--list-surface-border-color);
   --list-surface-radius: 8px;
   --list-surface-shadow: 0 1px 3px rgb(15 23 42 / 4%);
@@ -55,12 +55,17 @@
   --list-surface-padding-x: 16px;
 
   /* 中层块 */
-  --list-mid-bg: #fafbfd;
-  --list-mid-border: 1px solid #e8ebf0;
+  --list-mid-bg: var(--el-fill-color-extra-light);
+  --list-mid-border: 1px solid var(--el-border-color-light);
   --list-mid-radius: 6px;
 
   --list-inner-radius: 4px;
   --list-chip-radius: 6px;
+}
+
+html.dark {
+  --list-page-bg: var(--el-bg-color-page);
+  --list-surface-shadow: none;
 }
 
 /* 表格 */
@@ -265,7 +270,7 @@ html body .is-list-table-locked.is-list-table-locked {
 .list-code-text {
   font-family: Consolas, monospace;
   font-weight: 600;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .list-code-text.is-clickable {

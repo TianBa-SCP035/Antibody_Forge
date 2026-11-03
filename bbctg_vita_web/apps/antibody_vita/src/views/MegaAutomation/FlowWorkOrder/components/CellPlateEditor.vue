@@ -330,7 +330,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-$border-color: #e4e7ed;
+$border-color: var(--el-border-color-light);
 
 .cell-plate-barcode,
 .tab-label {
@@ -359,8 +359,8 @@ $border-color: #e4e7ed;
   :deep(th.el-table__cell) {
     font-size: 12px;
     font-weight: 600;
-    color: #606266;
-    background: #f5f7fa;
+    color: var(--el-text-color-regular);
+    background: var(--el-fill-color-light);
   }
 
   :deep(.el-input__wrapper),
@@ -387,18 +387,18 @@ $border-color: #e4e7ed;
   padding: 0 4px;
   font-size: 12px;
   line-height: 18px;
-  color: #909399;
-  background: #f4f4f5;
+  color: var(--el-text-color-secondary);
+  background: var(--el-color-info-light-9);
   border-radius: 2px;
 
   &.is-locked {
-    color: #e6a23c;
-    background: #fdf6ec;
+    color: var(--el-color-warning);
+    background: var(--el-color-warning-light-9);
   }
 
   &.is-diff {
-    color: #f56c6c;
-    background: #fef0f0;
+    color: var(--el-color-danger);
+    background: var(--el-color-danger-light-9);
   }
 }
 
@@ -424,10 +424,10 @@ $border-color: #e4e7ed;
 
 .tab-close {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 
   &:hover {
-    color: #f56c6c;
+    color: var(--el-color-danger);
   }
 }
 

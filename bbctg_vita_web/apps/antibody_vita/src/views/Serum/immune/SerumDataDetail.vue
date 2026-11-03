@@ -836,7 +836,7 @@ export default {
 <style scoped>
 .serum-detail {
   padding: 14px 18px 26px;
-  background: linear-gradient(180deg, #f6f9ff 0%, #ffffff 40%);
+  background: linear-gradient(180deg, var(--el-fill-color-light) 0%, var(--el-bg-color) 40%);
   min-height: calc(100vh - 40px);
 }
 
@@ -848,8 +848,8 @@ export default {
   padding: 12px 18px;
   margin-bottom: 14px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(64, 158, 255, 0.10), rgba(103, 194, 58, 0.06));
-  border: 1px solid rgba(64, 158, 255, 0.12);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--el-color-primary) 10%, transparent), rgba(103, 194, 58, 0.06));
+  border: 1px solid color-mix(in srgb, var(--el-color-primary) 12%, transparent);
 }
 
 .title-row {
@@ -904,8 +904,8 @@ export default {
 }
 
 .kpi-card {
-  background: #ffffff;
-  border: 1px solid #eef2f7;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-extra-light);
   border-radius: 12px;
   padding: 12px 14px;
   box-shadow: 0 6px 18px rgba(16, 24, 40, 0.05);
@@ -932,7 +932,7 @@ export default {
 /* Sections */
 .section-card {
   border-radius: 12px;
-  border: 1px solid #eef2f7;
+  border: 1px solid var(--el-border-color-extra-light);
   box-shadow: 0 6px 18px rgba(16, 24, 40, 0.05);
   margin-bottom: 14px;
 }
@@ -975,9 +975,9 @@ export default {
 }
 
 .desc :deep(.el-descriptions__label.is-bordered-label) {
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-weight: 700;
-  background: #fafafa;
+  background: var(--el-fill-color-lighter);
 }
 
 .desc :deep(.el-descriptions__content) {
@@ -994,19 +994,19 @@ export default {
   font-size: 14px;
   font-weight: 500;
   line-height: 40px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .main-tabs :deep(.el-tabs__item.is-active),
 .main-tabs :deep(.el-tabs__item:hover) {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .long-text {
   margin-top: 12px;
   border-radius: 10px;
   padding: 12px 14px;
-  background: #f7f9fc;
+  background: var(--el-fill-color-light);
   border: 1px dashed #dfe6ef;
 }
 
@@ -1035,7 +1035,7 @@ export default {
 
 .group-card {
   border-radius: 12px;
-  border: 1px solid #eef2f7;
+  border: 1px solid var(--el-border-color-extra-light);
   box-shadow: 0 6px 18px rgba(16, 24, 40, 0.05);
 }
 
@@ -1061,7 +1061,7 @@ export default {
   font-size: 12px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #409eff, #67c23a);
+  background: linear-gradient(135deg, var(--el-color-primary), var(--el-color-success));
 }
 
 .group-name {
@@ -1102,7 +1102,7 @@ export default {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #409eff;
+  background: var(--el-color-primary);
   box-shadow: 0 0 0 4px rgba(64, 158, 255, 0.15);
 }
 
@@ -1110,8 +1110,8 @@ export default {
   margin-left: 10px;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid #eef2f7;
-  background: #ffffff;
+  border: 1px solid var(--el-border-color-extra-light);
+  background: var(--el-bg-color);
   width: 100%;
 }
 
@@ -1147,8 +1147,8 @@ export default {
   border-radius: 999px;
   font-size: 12px;
   color: #4a5a68;
-  background: #f2f6fc;
-  border: 1px solid #e6edf5;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
 }
 
 .tl-bottom {
@@ -1167,7 +1167,7 @@ export default {
 /* Sub cards */
 .sub-card {
   border-radius: 12px;
-  border: 1px solid #eef2f7;
+  border: 1px solid var(--el-border-color-extra-light);
   box-shadow: 0 6px 18px rgba(16, 24, 40, 0.05);
 }
 
@@ -1190,7 +1190,7 @@ export default {
   text-align: center;
   border-radius: 12px;
   border: 1px dashed #dfe6ef;
-  background: #fbfcfe;
+  background: var(--el-fill-color-extra-light);
   color: #6b7a88;
 }
 
@@ -1214,7 +1214,7 @@ export default {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px dashed #dfe6ef;
-  background: #fbfcfe;
+  background: var(--el-fill-color-extra-light);
   color: #6b7a88;
   font-size: 12px;
 }
@@ -1227,14 +1227,53 @@ export default {
 .group-subtitle {
   margin-bottom: 10px;
   padding: 8px 12px;
-  background: #f7f9fc;
+  background: var(--el-fill-color-light);
   border-radius: 8px;
-  border-left: 4px solid #409eff;
+  border-left: 4px solid var(--el-color-primary);
 }
 
 .group-info {
   font-size: 14px;
   color: #1f2d3d;
   font-weight: 600;
+}
+
+html.dark .page-title,
+html.dark .kpi-value,
+html.dark .section-title,
+html.dark .long-body,
+html.dark .group-name,
+html.dark .subsection-title,
+html.dark .tl-top,
+html.dark .sub-card-header,
+html.dark .empty-title,
+html.dark .group-info {
+  color: var(--el-text-color-primary);
+}
+
+html.dark .sub-row,
+html.dark .tl-chip {
+  color: var(--el-text-color-regular);
+}
+
+html.dark .sub-item :deep(.el-icon),
+html.dark .kpi-label,
+html.dark .long-title,
+html.dark .tl-date,
+html.dark .tl-bottom,
+html.dark .empty-block,
+html.dark .empty-inline {
+  color: var(--el-text-color-secondary);
+}
+
+html.dark .kpi-hint,
+html.dark .empty-sub {
+  color: var(--el-text-color-placeholder);
+}
+
+html.dark .long-text,
+html.dark .empty-block,
+html.dark .empty-inline {
+  border-color: var(--el-border-color);
 }
 </style>

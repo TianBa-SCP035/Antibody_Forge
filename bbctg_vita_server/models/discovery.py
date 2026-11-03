@@ -127,6 +127,7 @@ class DiscoverySynthesisOrder(Base):
     synthetic_corp: Mapped[str | None] = mapped_column(String(64), comment="合成公司")
     synthetic_count: Mapped[int | None] = mapped_column(Integer, comment="合成个数")
     synthetic_date: Mapped[str | None] = mapped_column(DateString, comment="合成日期")
+    order_sender: Mapped[str | None] = mapped_column(String(128), comment="下单人")
     arrival_count: Mapped[int | None] = mapped_column(Integer, comment="到货个数")
     arrival_date: Mapped[str | None] = mapped_column(DateString, comment="到货日期")
     affinity_status: Mapped[str | None] = mapped_column(String(32), comment="亲和力检测状态")
@@ -188,6 +189,7 @@ class DiscoverySynthesisOrder(Base):
             "synthetic_corp": self.synthetic_corp,
             "synthetic_count": self.synthetic_count,
             "synthetic_date": self.synthetic_date,
+            "order_sender": self.order_sender,
             "arrival_count": self.arrival_count,
             "arrival_date": self.arrival_date,
             "affinity_status": self.affinity_status,

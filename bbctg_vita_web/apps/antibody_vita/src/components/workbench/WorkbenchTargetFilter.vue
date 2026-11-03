@@ -123,7 +123,7 @@ export default defineComponent({
 <style scoped>
 .target-option-code {
   margin-left: 8px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 </style>

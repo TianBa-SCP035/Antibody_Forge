@@ -115,7 +115,7 @@ onBeforeUnmount(() => listen(false))
 .target-option-code {
   float: right;
   margin-left: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 .target-selected-text {

@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from models.discovery import DiscoverySynthesisOrder
 from models.target import Target
-from modules.discovery.synthesis_progress import service
+from modules.discovery.synthesis_progress import one_sync, service
 from support import DbTestCase
 
 
@@ -240,6 +240,7 @@ class SynthesisProgressServiceTests(DbTestCase):
             "synthetic_date": "2026-02-12",
             "arrival_count": None,
             "arrival_date": None,
+            "order_sender": "陶俊先 Junxian Tao",
             "order_state": "进行中",
         }
         with self.Session() as db:
@@ -273,11 +274,13 @@ class SynthesisProgressServiceTests(DbTestCase):
             self.assertEqual(items[0]["status"], "合成中")
             self.assertEqual(items[0]["order_no"], "CN2602120001585")
             self.assertEqual(items[0]["batch_label"], "CD6_RN_B_K_01_20260208_1")
+            self.assertEqual(items[0]["order_sender"], "陶俊先 Junxian Tao")
             self.assertFalse(items[0]["has_drift"])
 
             updated_remote = {
                 ("ngs", 101): {
                     **fake_snap,
+                    "order_sender": "任鸿滨 Hongbin Ren",
                     "synthetic_count": 120,
                     "arrival_count": 115,
                     "arrival_date": "2026-03-17",
@@ -297,6 +300,7 @@ class SynthesisProgressServiceTests(DbTestCase):
                 self.assertEqual(patched["arrival_date"], "2026-03-17")
                 self.assertEqual(patched["status"], "待检测")
                 self.assertEqual(patched["synthetic_count"], 118)
+                self.assertEqual(patched["order_sender"], "任鸿滨 Hongbin Ren")
                 self.assertTrue(patched["has_drift"])
                 self.assertEqual(patched["drift_fields"][0]["field"], "synthetic_count")
                 self.assertEqual(patched["drift_fields"][0]["remote"], "120")
@@ -304,6 +308,8 @@ class SynthesisProgressServiceTests(DbTestCase):
             adopted = service.adopt_source(db, row_id, ["synthetic_count"])
             self.assertEqual(adopted["synthetic_count"], 120)
             self.assertFalse(adopted["has_drift"])
+            manual_sender = service.save(db, {"id": row_id, "order_sender": "手填"})
+            self.assertEqual(manual_sender["order_sender"], "任鸿滨 Hongbin Ren")
 
             # A no-op background remote check must not overwrite a manually chosen main status.
             service.save(db, {"id": row_id, "status": "已完成"})
@@ -379,6 +385,12 @@ class SynthesisProgressServiceTests(DbTestCase):
                 self.assertEqual(switched_item["source_one_id"], 102)
                 self.assertEqual(switched_item["synthetic_corp"], "擎科")
                 self.assertEqual(switched_item["synthetic_date"], "2026-03-01")
+                self.assertIsNone(switched_item["order_sender"])
+
+    def test_remote_snapshot_keeps_uploader_as_order_sender(self):
+        snap = one_sync.build_remote_snapshot("beacon", {"id": 7, "uploader": "任鸿滨 Hongbin Ren"})
+        self.assertEqual(snap["order_sender"], "任鸿滨 Hongbin Ren")
+        self.assertIsNone(one_sync.build_remote_snapshot("ngs", {"id": 8})["order_sender"])
 
 
 class SynthesisHeaderFilterTests(DbTestCase):

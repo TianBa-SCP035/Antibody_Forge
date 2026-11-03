@@ -40,7 +40,7 @@
 | `status`、`priority` | 状态与优先级 | 状态见 §3；优先级为 `正常`、`加急`、`非常紧急`、`吉吉国王`（新建默认 `正常`，列表默认按 `id` 倒序） |
 | `owner`、`notebook_no`、`library_batch_no` | 负责人、实验记录本号、建库批号 | 最长 64 字符；`library_batch_no` 仅噬菌体展示和噬菌体 NGS 使用 |
 | `received_on`、`instrument_on`、`blood_collected_on`、`started_at`、`finished_at`、`qc_on` | 实验与排程日期 | `DATE`（`YYYY-MM-DD`） |
-| `positive_cell_count`、`fragment_size_bp` | 阳性细胞数、片段大小 | 自由文本（最长 64 字符），按实验员原文保存并保留换行；抽屉与详情页并排时两框同高 |
+| `positive_cell_count`、`fragment_size_bp` | 阳性细胞数、片段大小 | 自由文本（阳性细胞数最长 255 字符，片段大小 64 字符），按实验员原文保存并保留换行；抽屉与详情页并排时两框同高 |
 | `plate_nos` | 板号 | JSON 字符串数组；前端单框输入，回车、中英文逗号、顿号、制表符均按分隔符解析去重 |
 | `cell_type` | 细胞类型 | 最长 64 字符；`plasma_ngs` 与 `phage_display` 限定为 `全细胞`、`浆细胞`、`流穿液`（`plasma_ngs` 为空时默认写入 `浆细胞`） |
 | `target_forms` | 靶点形式 | 仅 `phage_display` 使用，单选：`多穿`、`分泌`、`I型`、`II型` |

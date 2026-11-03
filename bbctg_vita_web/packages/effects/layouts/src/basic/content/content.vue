@@ -22,6 +22,7 @@ const tabbarStore = useTabbarStore();
 const { keepAlive, sidebarCollapsed } = usePreferences();
 const contentWrapRef = ref<HTMLElement | null>(null);
 let sidebarResizeTimer = 0;
+let pausedVxeTables: any[] = [];
 
 const { getCachedTabs, getExcludeCachedTabs, renderRouteView } =
   storeToRefs(tabbarStore);
@@ -55,10 +56,10 @@ function bindPageVm(vnode: any) {
 }
 
 /**
- * 递归从组件公开 subTree 中收集所有 ElTable 内部实例（包含 state.doLayout）。
+ * 递归从组件公开 subTree 中收集符合条件的组件实例。
  * 不依赖仅开发模式存在的 el.__vueParentComponent，保证生产构建（PROD）同样 100% 生效。
  */
-function collectElTableInstances(root: Element): any[] {
+function collectInstances(root: Element, match: (comp: any) => boolean) {
   const result = new Set<any>();
   const pageVm = (root as AnimatablePageEl)._vbenPageVm;
 
@@ -66,7 +67,7 @@ function collectElTableInstances(root: Element): any[] {
     if (!vnode || typeof vnode !== 'object') return;
     const comp = vnode.component;
     if (comp) {
-      if (comp.state?.doLayout && comp.layout) {
+      if (match(comp)) {
         result.add(comp);
       }
       if (comp.subTree) {
@@ -91,6 +92,15 @@ function collectElTableInstances(root: Element): any[] {
       }
     }
   }
+  return result;
+}
+
+/** 收集所有 ElTable 内部实例（包含 state.doLayout）。 */
+function collectElTableInstances(root: Element): any[] {
+  const result = collectInstances(
+    root,
+    (comp) => comp.state?.doLayout && comp.layout,
+  );
 
   // 开发模式或兜底补充
   const tables = root.querySelectorAll('.el-table');
@@ -244,8 +254,16 @@ function onLeave(el: Element, done: () => void) {
   done();
 }
 
-// 侧边栏折叠/展开（150ms 宽度过渡）期间暂时冻结当前页 ElTable.$ready，
-// 避免过渡每一帧触发 ResizeObserver -> doLayout() 重算 500 行，待侧边栏定格后再一次性更新列宽。
+function resumeVxeTables() {
+  for (const vm of pausedVxeTables) {
+    vm.props.autoResize = true;
+    if (vm.vnode?.el?.isConnected) vm.proxy?.recalculate?.(true);
+  }
+  pausedVxeTables = [];
+}
+
+// 侧边栏折叠/展开（150ms 宽度过渡）期间暂时冻结当前页 ElTable.$ready 与 VxeTable 的 autoResize，
+// 避免过渡每一帧触发 ResizeObserver -> 重算列宽并重渲染表体，待侧边栏定格后再一次性更新列宽。
 watch(sidebarCollapsed, () => {
   const wrap = contentWrapRef.value;
   if (!wrap) return;
@@ -260,11 +278,19 @@ watch(sidebarCollapsed, () => {
       vm._vbenPausedReady = true;
     }
   }
+  // VxeTable 的 ResizeObserver 回调里实时读 props.autoResize，关掉即跳过
+  for (const vm of collectInstances(wrap, (c) => c.type?.name === 'VxeTable')) {
+    if (vm.props.autoResize && !pausedVxeTables.includes(vm)) {
+      vm.props.autoResize = false;
+      pausedVxeTables.push(vm);
+    }
+  }
   sidebarResizeTimer = window.setTimeout(() => {
     sidebarResizeTimer = 0;
     if (contentWrapRef.value) {
       resumeElTablesIn(contentWrapRef.value);
     }
+    resumeVxeTables();
   }, 180);
 });
 
@@ -273,6 +299,7 @@ onBeforeUnmount(() => {
     window.clearTimeout(sidebarResizeTimer);
     sidebarResizeTimer = 0;
   }
+  resumeVxeTables();
 });
 </script>
 

@@ -29,7 +29,7 @@
 | `screening_methods` | 筛选方式 | `达普`、`噬菌体`、`Beacon`、`NGS` 多选，英文逗号存储 |
 | `harvest_date` | 剖鼠日期 | `YYYY-MM-DD`；文库交接时作为上机日期 |
 | `boost_date` | 冲击日期 | 修改剖鼠日期时自动设为剖鼠日期前 5 天；之后可单独修改 |
-| `positive_cell_count` | 阳性细胞数 | 保留换行，最长 64 字符 |
+| `positive_cell_count` | 阳性细胞数 | 保留换行，最长 255 字符 |
 | `immune_antigen` / `screening_antigen` / `boost_antigen` / `boost_cells` | 抗原与冲击免细胞 | 保留换行 |
 | `priority` / `sort_order` | 优先级与队列位 | 规则见[共用约定](../workbench.md) |
 

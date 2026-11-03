@@ -25,8 +25,8 @@
     <template #reference>
       <el-tag
         class="list-status-tag workbench-status-tag"
-        :class="[tagClass, { 'is-editable': editable }]"
-        :type="type"
+        :class="[tagClass, toneClass, { 'is-editable': editable }]"
+        :type="tagType"
         effect="plain"
         disable-transitions
         @click.stop
@@ -38,8 +38,8 @@
   <el-tag
     v-else
     class="list-status-tag workbench-status-tag"
-    :class="[tagClass, { 'is-editable': editable }]"
-    :type="type"
+    :class="[tagClass, toneClass, { 'is-editable': editable }]"
+    :type="tagType"
     effect="plain"
     disable-transitions
     @click.stop="activateAndOpen"
@@ -50,6 +50,8 @@
 
 <script>
 import { ElPopover, ElTag } from 'element-plus'
+
+const EL_TAG_TYPES = ['primary', 'success', 'info', 'warning', 'danger']
 
 export default {
   name: 'WorkbenchStatusEditor',
@@ -68,6 +70,13 @@ export default {
   computed: {
     displayValue() {
       return String(this.value ?? '').trim() || '—'
+    },
+    // el-tag 只认 5 种 type，其余色调（如 library）走 status-tone-* 样式。
+    tagType() {
+      return EL_TAG_TYPES.includes(this.type) ? this.type : 'info'
+    },
+    toneClass() {
+      return EL_TAG_TYPES.includes(this.type) ? '' : `status-tone-${this.type}`
     },
   },
   watch: {
@@ -120,6 +129,14 @@ export default {
   color: #6f4d9c;
   background-color: #efe8f6;
   border-color: #d4c4ea;
+}
+.el-tag.workbench-status-tag.status-tone-library {
+  --el-tag-text-color: #12bbc0;
+  --el-tag-bg-color: var(--el-fill-color-blank);
+  --el-tag-border-color: #89dde0;
+  color: #12bbc0;
+  background-color: var(--el-fill-color-blank);
+  border-color: #89dde0;
 }
 .workbench-status-option-list {
   display: flex;

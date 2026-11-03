@@ -704,6 +704,10 @@ class LibraryOrderTests(DbTestCase):
         self.assertEqual(saved["fragment_size_bp"], "450\n380")
         with self.assertRaisesRegex(ValueError, "不能超过 64"):
             service.save(self.db, {"id": saved["id"], "fragment_size_bp": "1" * 65})
+        long_count = "\n".join(f"达普打管-{i}：8.6E3" for i in range(1, 16))
+        self.assertEqual(service.save(self.db, {"id": saved["id"], "positive_cell_count": long_count})["positive_cell_count"], long_count)
+        with self.assertRaisesRegex(ValueError, "不能超过 255"):
+            service.save(self.db, {"id": saved["id"], "positive_cell_count": "1" * 256})
 
     def test_target_forms_stay_a_single_choice(self):
         saved = service.save(self.db, {"build_type": service.BUILD_PHAGE_DISPLAY, "target_forms": "分泌"})

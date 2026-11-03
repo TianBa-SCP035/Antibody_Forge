@@ -61,6 +61,12 @@
 .workbench-drawer .status-select.status-tone-primary .el-select__selected-item {
   color: var(--el-color-primary);
 }
+.workbench-drawer .status-select.status-tone-library .el-select__wrapper {
+  background-color: #e7f8f9;
+}
+.workbench-drawer .status-select.status-tone-library .el-select__selected-item {
+  color: #12bbc0;
+}
 .workbench-drawer .status-select.status-tone-warning .el-select__wrapper,
 .workbench-drawer .priority-select.status-tone-warning .el-select__wrapper {
   background-color: var(--el-color-warning-light-9);

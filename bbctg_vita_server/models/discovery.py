@@ -29,7 +29,7 @@ class DiscoveryWorkbench(Base):
     immune_antigen: Mapped[str | None] = mapped_column(String(1000), comment="免疫用抗原")
     screening_methods: Mapped[str | None] = mapped_column(String(64), comment="筛选方式")
     screening_antigen: Mapped[str | None] = mapped_column(String(1000), comment="筛选抗原")
-    positive_cell_count: Mapped[str | None] = mapped_column(String(64), comment="阳性细胞数")
+    positive_cell_count: Mapped[str | None] = mapped_column(String(255), comment="阳性细胞数")
     plate_nos: Mapped[str | None] = mapped_column(String(1000), comment="板号")
     harvest_date: Mapped[str | None] = mapped_column(DateString, comment="剖鼠取细胞日")
     boost_date: Mapped[str | None] = mapped_column(DateString, comment="冲击免日期")

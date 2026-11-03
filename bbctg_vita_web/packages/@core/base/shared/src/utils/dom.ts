@@ -76,7 +76,10 @@ export function getScrollbarWidth() {
   const innerDiv = document.createElement('div');
   scrollDiv.append(innerDiv);
 
-  const scrollbarWidth = scrollDiv.offsetWidth - innerDiv.offsetWidth;
+  // 缩放屏上滚动条宽度常是小数（如 125% 下 9.6px），offsetWidth 取整后补偿的 padding 会让内容宽度变化，触发大表格重排
+  const scrollbarWidth =
+    scrollDiv.getBoundingClientRect().width -
+    innerDiv.getBoundingClientRect().width;
 
   scrollDiv.remove();
   return scrollbarWidth;

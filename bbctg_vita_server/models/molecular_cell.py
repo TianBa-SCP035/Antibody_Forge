@@ -56,7 +56,7 @@ class MolecularLibraryOrder(Base):
     received_on: Mapped[date | None] = mapped_column(Date, comment="样品交接日期")
     instrument_on: Mapped[date | None] = mapped_column(Date, comment="上机日期")
     blood_collected_on: Mapped[date | None] = mapped_column(Date, comment="采血日期")
-    positive_cell_count: Mapped[str | None] = mapped_column(String(64), comment="阳性细胞数")
+    positive_cell_count: Mapped[str | None] = mapped_column(String(255), comment="阳性细胞数")
     plate_nos: Mapped[list[str] | None] = mapped_column(JSON, comment="孔板编号列表")
     cell_type: Mapped[str | None] = mapped_column(String(64), comment="细胞类型")
     target_forms: Mapped[str | None] = mapped_column(String(16), comment="靶点形式")

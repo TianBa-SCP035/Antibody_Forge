@@ -1807,6 +1807,7 @@ export default {
       if (value === '已取消') return 'info'
       if (value === '已完成') return 'success'
       if (value === '待测序') return 'warning'
+      if (value === '待建库' || value === '待噬菌体') return 'library'
       if (value.startsWith('待')) return 'primary'
       return 'info'
     },

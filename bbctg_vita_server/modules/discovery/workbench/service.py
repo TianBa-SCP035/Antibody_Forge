@@ -86,7 +86,7 @@ STRING_FIELDS = {
     "serum_titer": 1000,
     "immune_antigen": 1000,
     "screening_antigen": 1000,
-    "positive_cell_count": 64,
+    "positive_cell_count": 255,
     "plate_nos": 1000,
     "boost_antigen": 1000,
     "boost_cells": 1000,

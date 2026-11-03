@@ -23,6 +23,9 @@ function updateCSSVariables(preferences: Preferences) {
   // html 设置 dark 类
   if (Reflect.has(theme, 'mode')) {
     const dark = isDarkTheme(mode);
+    if (root.classList.contains('dark') !== dark) {
+      pauseTransitions(root);
+    }
     root.classList.toggle('dark', dark);
   }
 
@@ -116,6 +119,17 @@ function updateMainColorVariables(preference: Preferences) {
   });
 
   executeUpdateCSSVariables(colorVariables);
+}
+
+/**
+ * 明暗切换时全页颜色同时变化，元素自带的颜色过渡会让大表格逐帧重绘。
+ * 切换的这一帧先关掉过渡，两帧后恢复。
+ */
+function pauseTransitions(root: HTMLElement) {
+  root.classList.add('theme-switching');
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => root.classList.remove('theme-switching')),
+  );
 }
 
 function isDarkTheme(theme: string) {

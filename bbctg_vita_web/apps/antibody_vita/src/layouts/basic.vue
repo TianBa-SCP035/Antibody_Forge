@@ -97,7 +97,11 @@ watch(
         v-model:open="accessStore.loginExpired"
         :avatar
       >
-        <LoginForm />
+        <LoginForm
+          :show-code-login="false"
+          :show-qrcode-login="false"
+          :show-third-party-login="false"
+        />
       </AuthenticationLoginExpiredModal>
     </template>
     <template #lock-screen>

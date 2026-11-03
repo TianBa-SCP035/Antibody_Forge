@@ -359,7 +359,7 @@ STRING_FIELDS = {
     "target_name": 128,
     "pm": 64,
     "mouse_strain": 128,
-    "positive_cell_count": 64,
+    "positive_cell_count": 255,
     "fragment_size_bp": 64,
     "cell_type": 64,
     "notebook_no": 64,

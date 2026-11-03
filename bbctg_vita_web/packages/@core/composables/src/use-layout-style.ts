@@ -10,7 +10,6 @@ export const contentOverlayBlocking = ref(false);
 
 import {
   CSS_VARIABLE_LAYOUT_CONTENT_HEIGHT,
-  CSS_VARIABLE_LAYOUT_CONTENT_WIDTH,
   CSS_VARIABLE_LAYOUT_FOOTER_HEIGHT,
   CSS_VARIABLE_LAYOUT_HEADER_HEIGHT,
 } from '@vben-core/shared/constants';
@@ -26,14 +25,13 @@ export function useLayoutContentStyle() {
   const contentElement = ref<HTMLDivElement | null>(null);
   const visibleDomRect = ref<null | VisibleDomRect>(null);
   const contentHeight = useCssVar(CSS_VARIABLE_LAYOUT_CONTENT_HEIGHT);
-  const contentWidth = useCssVar(CSS_VARIABLE_LAYOUT_CONTENT_WIDTH);
   const headerHeightVar = useCssVar(CSS_VARIABLE_LAYOUT_HEADER_HEIGHT);
 
   const syncVisibleRect = () => {
     if (!contentElement.value) return;
     visibleDomRect.value = getElementVisibleRect(contentElement.value);
+    // 变量写在根元素上，一变全页重算样式，只同步有页面在用的高度
     contentHeight.value = `${visibleDomRect.value.height}px`;
-    contentWidth.value = `${visibleDomRect.value.width}px`;
   };
 
   watch(contentOverlayActive, (active) => {

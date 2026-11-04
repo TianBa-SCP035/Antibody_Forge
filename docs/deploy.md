@@ -186,7 +186,7 @@ sudo apt install -y libreoffice
 - 调度：只在一个后端进程开（prod 默认开，test/local 默认关）。
 - 外部接口：镁伽回调、工单数据回传按需配置令牌或 IP 白名单；经 Nginx 转发时后端看到的来源 IP 来自 `X-Forwarded-For`（样例配置已带）。
 - 索引命名：普通索引 `idx_<表>_<列>`，唯一键 `uk_<表>_<列>`。已有表改索引要手写 `ALTER`（`create_all` 不会给已存在的表加索引），只是改名用 `RENAME INDEX`，不要 `DROP` 后重建。
-- 上传：Nginx `client_max_body_size` 不小于 `UPLOAD_MAX_MB`。文库批量上传一次请求后端最多收 500MB，样例 Nginx 配的是 200m，超过 200MB 的一批会被 Nginx 拒掉（413）；需要更大时把 Nginx 调到 500m。
+- 上传：Nginx `client_max_body_size` 不小于 `UPLOAD_MAX_MB`。文库批量上传一次请求后端最多收 500MB、990 个文件，样例 Nginx 与线上均配 500m；调小会让大批次被 Nginx 拒掉（413）。
 
 ## 验收清单
 

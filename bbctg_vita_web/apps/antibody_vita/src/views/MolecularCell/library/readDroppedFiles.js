@@ -1,6 +1,6 @@
 import { unzipSync } from 'fflate'
 
-const MAX_FILE_COUNT = 400
+const MAX_FILE_COUNT = 990
 const MAX_FILE_BYTES = 50 * 1024 * 1024
 const MAX_BATCH_BYTES = 500 * 1024 * 1024
 

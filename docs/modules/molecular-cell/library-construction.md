@@ -187,7 +187,7 @@
 | `molecular_library_result_file`（包外其他单文件） | 无 `package_id`、无 `dedupe_key` | `library_results/others/{YYYY}/{library_order_id}/{文件名}` | 包外 `.ab1`/`.abi`/`.seq` 及质检页上传的其他单文件 |
 | `molecular_library_result_link` | `(file_id, order_id)` 唯一；外键关联文件与工单 | 引用 `molecular_library_result_file.storage_path` | 工单级文件视图：存 `original_name`、`is_final_qc`、`qc_regions`、`sequence_status`、`sequence_target` |
 
-- **大小与数量限制**：单文件不超过 `50MB`（`MAX_FILE_BYTES`），单次上传最多 `400` 个文件（`MAX_UPLOAD_FILES`）且总大小不超过 `500MB`（`MAX_BATCH_BYTES`）。
+- **大小与数量限制**：单文件不超过 `50MB`（`MAX_FILE_BYTES`），单次上传最多 `990` 个文件（`MAX_UPLOAD_FILES`，留余量给框架“一次请求最多 1000 个文件 / 1000 个字段”的默认上限）且总大小不超过 `500MB`（`MAX_BATCH_BYTES`）。
 - **文件类型推导（`result_kind`）**：按 `original_name` 扩展名实时计算——图片为 `胶图`；`.ab1`/`.abi`/`.seq`/`.clc`/`.fasta`/`.fa` 为 `引物质检文件`；`.xlsx`/`.xls`/`.csv`/`.ppt`/`.pptx` 为 `PCR检测报告`；其余为 `其他`。
 
 ### 5.2 拆包、匹配与删除规则

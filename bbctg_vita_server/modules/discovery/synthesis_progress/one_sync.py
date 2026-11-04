@@ -146,10 +146,10 @@ def sync_derived_statuses(
         or (row.affinity_status == AFFINITY_STATUS_COMPLETED and not ("affinity_date" in changed and not row.affinity_date))
         or (row.flow_status == FLOW_STATUS_COMPLETED and not ("flow_date" in changed and not row.flow_date))
     )
+    external = (row.supply_mode or SUPPLY_MODE_ARRIVAL) == SUPPLY_MODE_ARRIVAL
     # 外送合成还没到货时，误填的检测数据删干净就退回合成阶段；内部转染 / 改亚型手动推进的阶段不动
-    awaiting_arrival = (row.supply_mode or SUPPLY_MODE_ARRIVAL) == SUPPLY_MODE_ARRIVAL and not explicit_status
     if (
-        ("arrival_date" in changed or (awaiting_arrival and ASSAY_DATA_FIELDS & changed))
+        ("arrival_date" in changed or (external and not explicit_status and ASSAY_DATA_FIELDS & changed))
         and not has_assay_data
         and not manual_assay
     ):
@@ -188,7 +188,10 @@ def sync_derived_statuses(
             FLOW_STATUS_COMPLETED,
             FLOW_STATUS_NOT_REQUIRED,
         }:
-            derived = STATUS_COMPLETED
+            # 外送合成没录到货时，填日期不自动完成：多半是到货前误填，完成后实验员自己打不回；
+            # 补上到货日期即完成，手动标子状态照常完成
+            awaiting = external and not row.arrival_date and not explicit_status and current_status != STATUS_COMPLETED
+            derived = STATUS_ASSAYING if awaiting else STATUS_COMPLETED
         elif (
             row.affinity_status in {AFFINITY_STATUS_ASSAYING, AFFINITY_STATUS_COMPLETED}
             or row.flow_status == FLOW_STATUS_COMPLETED

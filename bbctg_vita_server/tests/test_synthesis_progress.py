@@ -182,6 +182,16 @@ class SynthesisProgressServiceTests(DbTestCase):
             service.save(db, {"id": internal, "flow_date": "2026-11-03"})
             row = service.save(db, {"id": internal, "flow_date": None})
             self.assertEqual((row["status"], row["flow_status"]), ("待检测", "流式待检测"))
+            # 分泌型没到货填了亲和力日期不自动完成，删掉还能退；补上到货日期才完成
+            secreted = service.save(db, {"target_name": "IL2", "order_no": "CN2", "target_type": "分泌型"})["id"]
+            row = service.save(db, {"id": secreted, "affinity_date": "2026-11-01"}, scopes=aff, created_by="张赞")
+            self.assertEqual((row["status"], row["affinity_status"]), ("检测中", "亲和力已完成"))
+            service.save(db, {"id": secreted, "affinity_date": None}, scopes=aff, created_by="张赞")
+            row = service.save(db, {"id": secreted, "affinity_owner": None}, scopes=aff, created_by="张赞")
+            self.assertEqual(row["status"], "合成中")
+            service.save(db, {"id": secreted, "affinity_date": "2026-11-01"}, scopes=aff, created_by="张赞")
+            row = service.save(db, {"id": secreted, "arrival_date": "2026-10-30"}, confirm_complete=True)
+            self.assertEqual(row["status"], "已完成")
 
     def test_person_options_use_own_field_by_frequency(self):
         with self.Session() as db:

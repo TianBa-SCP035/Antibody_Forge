@@ -1,7 +1,7 @@
 <template>
   <ElDialog v-model="visible" title="批量导入" width="760px" append-to-body @open="reset">
     <ElAlert
-      title="表头按本页导出：名称、系列、方向、显示序列、核对序列、备注、状态。同名记录会被更新。"
+      title="表头按本页导出：名称、系列、方向、显示序列、核对序列、备注、状态。显示序列和核对序列填一个即可，另一个自动换算；两个都填会校验是否一致。同名记录会被更新。"
       type="info"
       :closable="false"
       show-icon
@@ -33,6 +33,9 @@
           <template #default="{ row }">{{ directionLabel(row.direction) || '—' }}</template>
         </ElTableColumn>
         <ElTableColumn prop="short_sequence" label="显示序列" min-width="112" show-overflow-tooltip />
+        <ElTableColumn label="核对序列" min-width="112" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.short_sequence ? checkSequence(row.short_sequence) : '' }}</template>
+        </ElTableColumn>
         <ElTableColumn prop="error" label="校验" min-width="120">
           <template #default="{ row }">
             <span :class="row.error ? 'error' : 'success'">{{ row.error || '通过' }}</span>
@@ -94,7 +97,7 @@ const HEADER_MAP: Record<string, ColumnKey> = {
   备注: 'note',
   状态: 'active',
 };
-const REQUIRED_HEADERS: Field[] = ['name', 'family', 'direction', 'short_sequence'];
+const REQUIRED_HEADERS: Field[] = ['name', 'family', 'direction'];
 
 const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits<{
@@ -137,7 +140,7 @@ function validate(item: PrimerSavePayload, check = '') {
   if (!item.name) return '名称不能为空';
   if (!item.family) return '请填写系列';
   if (item.family.length > 32) return '系列不能超过 32 个字符';
-  if (!item.short_sequence) return '显示序列不能为空';
+  if (!item.short_sequence) return '显示序列和核对序列至少填一个';
   if (item.direction !== 'F' && item.direction !== 'R') return '方向只能是正向或反向';
   if (!/^[ACGTN]+$/.test(item.short_sequence)) return '序列格式不正确';
   if (check && check !== checkSequence(item.short_sequence)) return '核对序列与显示序列不一致';
@@ -172,21 +175,24 @@ function parseFlat(sheetName: string, source: unknown[][]) {
     if (field) columns.set(field, index);
   });
   if (REQUIRED_HEADERS.some((field) => !columns.has(field))) return null;
+  if (!columns.has('short_sequence') && !columns.has('check')) return null;
   const names = new Set<string>();
   const collected: ImportRow[] = [];
   content.slice(1).forEach((row, index) => {
     const read = (field: ColumnKey) => row[columns.get(field) ?? -1];
     const item = blankItem(`${sheetName} 第 ${index + 2} 行`);
+    const shown = sequence(read('short_sequence'));
+    const check = sequence(read('check'));
     Object.assign(item, {
       name: text(read('name')),
       family: text(read('family')),
       direction: directionOf(read('direction')) || null,
-      short_sequence: sequence(read('short_sequence')),
+      short_sequence: shown || (check ? checkSequence(check) : ''),
       note: text(read('note')) || null,
       active: columns.has('active') ? active(read('active')) : true,
     });
     if (!item.name && !item.short_sequence) return;
-    item.error = validate(item, columns.has('check') ? sequence(read('check')) : '');
+    item.error = validate(item, shown ? check : '');
     pushItem(collected, names, item);
   });
   return collected;
@@ -209,7 +215,7 @@ function parseWorkbook(
     matched = true;
     parsed.push(...result);
   }
-  if (!matched) throw new Error('第一行表头需要包含名称、系列、方向、显示序列');
+  if (!matched) throw new Error('第一行表头需要包含名称、系列、方向，以及显示序列或核对序列');
   if (!parsed.length) throw new Error('文件中没有可导入的引物');
   if (parsed.length > 1000) throw new Error('单次最多导入 1000 条引物');
   rows.value = parsed;

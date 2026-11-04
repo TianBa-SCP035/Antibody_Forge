@@ -2575,7 +2575,7 @@ class LibraryFileTests(DbTestCase):
         flipped = _long_enough(f"NN{primer_check_sequence(assembled_primer('AAAA', 'F'))}NN")
         other_strand = self._upload("HC223-3_M13F.seq", flipped, order["id"])
         self.assertEqual(other_strand["sequence_status"], "matched_rc")
-        self.assertEqual(other_strand["sequence_check"], "H链正向 匹配-反补")
+        self.assertEqual(other_strand["sequence_check"], "H链 i5 匹配-反补")
         other = self._upload("KC223-1_M13F.seq", _read("AAAA"), order["id"])
         self.assertEqual(other["sequence_target"], "kF")
         self.assertEqual(other["sequence_status"], "arm_only")

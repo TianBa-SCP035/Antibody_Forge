@@ -46,12 +46,12 @@ REVERSE_ARM_2 = "GTGACTGGAGTT"
 PRIMER_TARGET_LABELS = {
     "i5": "i5",
     "i7": "i7",
-    "hF": "H链正向",
-    "hR": "H链反向",
-    "kF": "K链正向",
-    "kR": "K链反向",
-    "lF": "L链正向",
-    "lR": "L链反向",
+    "hF": "H链 i5",
+    "hR": "H链 i7",
+    "kF": "K链 i5",
+    "kR": "K链 i7",
+    "lF": "L链 i5",
+    "lR": "L链 i7",
 }
 
 

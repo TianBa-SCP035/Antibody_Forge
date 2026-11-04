@@ -43,11 +43,15 @@
           />
         </ElFormItem>
         <ElFormItem label="核对序列">
-          <div class="check-value" :class="{ 'is-empty': !checked }">
-            {{ checked || '由显示序列自动算出' }}
-          </div>
+          <ElInput
+            v-model="checked"
+            class="sequence-input"
+            maxlength="64"
+            placeholder="测序文件里的那串"
+          />
         </ElFormItem>
       </div>
+      <p class="field-hint sequence-hint">两个填一个即可，另一个自动换算。核对序列就是测序文件里实际读到的那串。</p>
       <ElFormItem label="备注">
         <ElInput v-model="form.note" type="textarea" :rows="2" maxlength="500" show-word-limit />
       </ElFormItem>
@@ -112,7 +116,12 @@ const visible = computed({
 });
 const saving = ref(false);
 const form = reactive<Draft>(blank());
-const checked = computed(() => checkSequence(form.short_sequence));
+const checked = computed({
+  get: () => checkSequence(form.short_sequence),
+  set: (value: string) => {
+    form.short_sequence = checkSequence(value);
+  },
+});
 const libraryOptions = computed(() => {
   const names = [...props.libraries];
   const current = form.family.trim();
@@ -161,7 +170,7 @@ function validate(data: PrimerSavePayload) {
   if (!data.family) return '请选择或输入系列';
   if (data.family.length > 32) return '系列不能超过 32 个字符';
   if (!data.direction) return '请选择方向';
-  if (!data.short_sequence) return '请输入显示序列';
+  if (!data.short_sequence) return '请输入显示序列或核对序列';
   if (!/^[ACGTN]+$/.test(data.short_sequence)) return '序列仅支持 A、C、G、T、N';
   return '';
 }
@@ -225,22 +234,7 @@ async function submit() {
   text-transform: uppercase;
 }
 
-.check-value {
-  min-height: 32px;
-  padding: 5px 11px;
-  font-family: Consolas, ui-monospace, monospace;
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--el-text-color-regular);
-  letter-spacing: 0.06em;
-  word-break: break-all;
-  background: var(--el-fill-color-light);
-  border-radius: 4px;
-}
-
-.check-value.is-empty {
-  font-family: inherit;
-  color: var(--el-text-color-placeholder);
-  letter-spacing: 0;
+.sequence-hint {
+  margin: -8px 0 14px;
 }
 </style>

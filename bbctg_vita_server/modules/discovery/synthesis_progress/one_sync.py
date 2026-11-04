@@ -46,6 +46,7 @@ SNAPSHOT_STORED_FIELDS = (*DRIFT_COMPARE_FIELDS, "synthesis_code", "batch_label"
 _CLONES_PREFIX_RE = re.compile(r"^(.*?)_\d+clones", re.IGNORECASE)
 _MANUAL_BATCH_SEGMENT_RE = re.compile(r"M\d+", re.IGNORECASE)
 _TARGET_CODE_RE = re.compile(r"\d{2}R\d{3}", re.IGNORECASE)
+ASSAY_DATA_FIELDS = frozenset({"arrival_date", "affinity_owner", "affinity_date", "report_reason", "flow_date"})
 
 
 def _clean_str(value: Any, max_len: int | None = None) -> str | None:
@@ -137,11 +138,20 @@ def sync_derived_statuses(
     has_assay_data = bool(
         row.arrival_date or row.affinity_owner or row.affinity_date or has_reason or row.flow_date
     )
+    explicit_status = bool({"affinity_status", "flow_status"} & changed)
+    owner_cleared = "affinity_owner" in changed and not str(row.affinity_owner or "").strip()
+    # 检测中 / 已完成若不是这次清掉的人员、日期带出来的，就是手动标的，要保留
+    manual_assay = (
+        (row.affinity_status == AFFINITY_STATUS_ASSAYING and not owner_cleared)
+        or (row.affinity_status == AFFINITY_STATUS_COMPLETED and not ("affinity_date" in changed and not row.affinity_date))
+        or (row.flow_status == FLOW_STATUS_COMPLETED and not ("flow_date" in changed and not row.flow_date))
+    )
+    # 外送合成还没到货时，误填的检测数据删干净就退回合成阶段；内部转染 / 改亚型手动推进的阶段不动
+    awaiting_arrival = (row.supply_mode or SUPPLY_MODE_ARRIVAL) == SUPPLY_MODE_ARRIVAL and not explicit_status
     if (
-        "arrival_date" in changed
+        ("arrival_date" in changed or (awaiting_arrival and ASSAY_DATA_FIELDS & changed))
         and not has_assay_data
-        and row.affinity_status not in {AFFINITY_STATUS_ASSAYING, AFFINITY_STATUS_COMPLETED}
-        and row.flow_status != FLOW_STATUS_COMPLETED
+        and not manual_assay
     ):
         row.affinity_status = None
         row.flow_status = None
@@ -158,7 +168,11 @@ def sync_derived_statuses(
         elif has_reason:
             row.affinity_status = AFFINITY_STATUS_WAIT
         elif row.affinity_status not in AFFINITY_STATUS_OPTIONS or (
-            "affinity_status" not in changed and {"affinity_date", "report_reason"} & changed
+            "affinity_status" not in changed
+            and (
+                {"affinity_date", "report_reason"} & changed
+                or (owner_cleared and row.affinity_status == AFFINITY_STATUS_ASSAYING)
+            )
         ):
             row.affinity_status = _default_affinity_status(row)
 

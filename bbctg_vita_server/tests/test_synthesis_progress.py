@@ -157,6 +157,32 @@ class SynthesisProgressServiceTests(DbTestCase):
             row = service.save(db, {"id": rid, "status": "检测中"})
             self.assertEqual((row["affinity_status"], row["flow_status"]), ("亲和力待检测", "流式待检测"))
 
+    def test_assay_data_entered_before_arrival_can_be_undone(self):
+        aff = frozenset({"affinity"})
+        with self.Session() as db:
+            rid = service.save(db, {"target_name": "CD9", "order_no": "CN9", "target_type": "I型跨膜"})["id"]
+            row = service.save(db, {"id": rid, "affinity_owner": "张赞"}, scopes=aff, created_by="张赞")
+            self.assertEqual((row["status"], row["affinity_status"]), ("检测中", "亲和力检测中"))
+            row = service.save(db, {"id": rid, "affinity_owner": None}, scopes=aff, created_by="张赞")
+            self.assertEqual((row["status"], row["affinity_status"], row["flow_status"]), ("合成中", None, None))
+            # 填日期会补上本人，删掉日期还剩人员，再删人员才退回合成中
+            service.save(db, {"id": rid, "affinity_date": "2026-11-01"}, scopes=aff, created_by="张赞")
+            row = service.save(db, {"id": rid, "affinity_date": None}, scopes=aff, created_by="张赞")
+            self.assertEqual((row["status"], row["affinity_status"]), ("检测中", "亲和力检测中"))
+            row = service.save(db, {"id": rid, "affinity_owner": None}, scopes=aff, created_by="张赞")
+            self.assertEqual(row["status"], "合成中")
+            # 已到货时清掉人员，检测中退回待检测
+            service.save(db, {"id": rid, "arrival_date": "2026-11-02"})
+            service.save(db, {"id": rid, "affinity_owner": "张赞"}, scopes=aff, created_by="张赞")
+            row = service.save(db, {"id": rid, "affinity_owner": None}, scopes=aff, created_by="张赞")
+            self.assertEqual((row["status"], row["affinity_status"]), ("待检测", "亲和力待检测"))
+            # 内部转染手动推进的待检测不因删掉误填的日期退回
+            internal = service.save(db, {"target_name": "CD7", "supply_mode": "内部转染"})["id"]
+            service.save(db, {"id": internal, "status": "待检测"})
+            service.save(db, {"id": internal, "flow_date": "2026-11-03"})
+            row = service.save(db, {"id": internal, "flow_date": None})
+            self.assertEqual((row["status"], row["flow_status"]), ("待检测", "流式待检测"))
+
     def test_person_options_use_own_field_by_frequency(self):
         with self.Session() as db:
             for pm, affinity_owner in (("兰维秋", "赵雨蕾"), ("安高", "黄志诚"), ("安高", "黄志诚")):

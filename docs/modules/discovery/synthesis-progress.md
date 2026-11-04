@@ -68,18 +68,18 @@
    - 将 `affinity_status` 打回 `亲和力待检测` 时保留 `affinity_owner`（与整单打回一致，留作记录）。
    - 亲和力实验员（无全部编辑）将 `affinity_status` 设为 `亲和力检测中` 或填写 `affinity_date` 时，若 `affinity_owner` 为空且未同时传入，自动填为当前操作人姓名首词；已有人员时不覆盖也不追加，全部编辑权限操作不自动填。
    - 手动设置的 `affinity_status`、`flow_status` 与 `status` 会被保留，修改备注等普通字段不会将其覆盖回退。
-   - 手动把 `status` 设为 `待检测` / `检测中` 时，为空的 `affinity_status` 设为 `亲和力待检测`、`flow_status` 设为 `流式待检测`（分泌型为 `流式不适用`），状态列随即显示实验状态胶囊；之后改订单号、供应方式或 One 回填不会退回合成阶段，只有清空 `arrival_date` 才会回去。
+   - 手动把 `status` 设为 `待检测` / `检测中` 时，为空的 `affinity_status` 设为 `亲和力待检测`、`flow_status` 设为 `流式待检测`（分泌型为 `流式不适用`），状态列随即显示实验状态胶囊；之后改订单号、供应方式或 One 回填不会退回合成阶段，只有清空验证数据后没有任何数据才会回去（见下一条）。
    - **没出报告 / 不做了**：全部编辑或同时具备亲和力、流式权限者可在有未出原因时把亲和力标为 `亲和力已完成`（结案、不出报告）；流式不做时把 `flow_status` 标为 `流式不适用`（细胞型也可）。两项都结束后整单自动完成。
    - **打回待检测**：把 `status` 从 `已完成` 手动改为 `待检测`（全部编辑等也可改为 `检测中`）即重做，`affinity_status` 与 `flow_status`（`流式不适用` 除外）一并回到待检测，日期与人员保留作记录。
    - **整单完成确认**：页面修改已有工单时，若本次保存会让 `status` 从非 `已完成` 自动推导为 `已完成`（填日期、改实验状态、粘贴等；请求里直接传 `status` 的手动修改不弹），接口不落库、返回 `{needs_confirm: true, message}`；前端弹窗确认后带 `confirm_complete: true` 重提，取消则不保存并刷新。无法打回的人，提示中会写明完成后不能再改回。新建与 One 同步不弹。
-2. **验证前阶段**（`arrival_date`、`affinity_owner`、`affinity_date`、`report_reason`、`flow_date`、`affinity_status`、`flow_status` 均为空；或当次清空 `arrival_date` 且其余验证数据为空、子状态均未处于检测中/已完成）：
+2. **验证前阶段**（`arrival_date`、`affinity_owner`、`affinity_date`、`report_reason`、`flow_date`、`affinity_status`、`flow_status` 均为空；或当次清空了其中的验证数据、清完后五项数据都为空，且检测中 / 已完成的子状态不是手动标的。清空 `arrival_date` 任何供应方式都适用；清空人员、日期、未出原因只适用于 `合成到货`（还没到货时误填的检测数据删干净就退回），`内部转染` / `改亚型` 手动推进的阶段不动。「手动标的」指 `亲和力检测中` 不是这次清掉 `affinity_owner` 带出的、`亲和力已完成` / `流式已完成` 不是这次清掉对应日期带出的；当次显式传了子状态时也不退回）：
    - `affinity_status` 与 `flow_status` 置为 `NULL`。
    - 若 `order_no` 非空，或 `supply_mode` 非空且不等于 `合成到货`（即 `内部转染` 或 `改亚型`），主状态推导为 `合成中`；否则为 `待下单`。
 3. **验证阶段子状态推导**：
    - **亲和力子状态**：
      - 已为 `亲和力已完成` 时保持（有未出原因即结案，改原因文字不影响）；当次未显式传 `affinity_status` 时有两种回退：原本没有未出原因、这次新填了（报告卡住）回到 `亲和力待检测`；清空了 `affinity_date` 且没有未出原因时回到 `亲和力检测中`（有 `affinity_owner`）或 `亲和力待检测`。
      - 否则若 `report_reason` 非空，设为 `亲和力待检测`（保留原 `affinity_owner`）。
-     - 否则当 `affinity_status` 未设置，或当次未显式传 `affinity_status` 但修改了 `affinity_date` / `report_reason` 时，按优先级推导：`affinity_date` 非空 → `亲和力已完成`；`affinity_owner` 非空 → `亲和力检测中`；其余 → `亲和力待检测`。
+     - 否则当 `affinity_status` 未设置，或当次未显式传 `affinity_status` 但修改了 `affinity_date` / `report_reason`、或在 `亲和力检测中` 时清空了 `affinity_owner` 时，按优先级推导：`affinity_date` 非空 → `亲和力已完成`；`affinity_owner` 非空 → `亲和力检测中`；其余 → `亲和力待检测`。
    - **流式子状态**：若 `target_type == '分泌型'`，强制设为 `流式不适用`；否则当 `flow_status` 未设置，或当次未显式传 `flow_status` 但修改了 `flow_date`（或从分泌型改为非分泌型且原为 `流式不适用`）时，有 `flow_date` 为 `流式已完成`，无则为 `流式待检测`。
 4. **验证阶段主状态推导**：只看两个子状态，不再要求日期。
    - `affinity_status == '亲和力已完成'` 且 `flow_status` 为 `流式已完成` / `流式不适用` 时，主状态为 `已完成`。

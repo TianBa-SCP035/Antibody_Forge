@@ -17,6 +17,7 @@ from models.target import Target
 from modules.discovery.synthesis_progress.constants import (
     ACTIVE_STATUSES,
     AFFINITY_STATUS_ASSAYING,
+    AFFINITY_STATUS_COMPLETED,
     AFFINITY_STATUS_OPTIONS,
     AFFINITY_STATUS_WAIT,
     AFFINITY_RESULT_OPTIONS,
@@ -24,7 +25,10 @@ from modules.discovery.synthesis_progress.constants import (
     DRIFT_COMPARE_FIELDS,
     ENG_METHOD_OPTIONS,
     ENG_TYPE_OPTIONS,
+    FLOW_STATUS_NOT_REQUIRED,
     FLOW_STATUS_OPTIONS,
+    FLOW_STATUS_WAIT,
+    INTERNAL_CORP,
     MOUSE_STRAIN_OPTIONS,
     ONE_AUTO_CREATE_SINCE,
     ONE_AUTO_CREATED_BY,
@@ -40,6 +44,8 @@ from modules.discovery.synthesis_progress.constants import (
     STATUS_WAIT_ASSAY,
     STATUS_WAIT_ORDER,
     SUPPLY_MODE_ARRIVAL,
+    SUPPLY_MODE_INTERNAL,
+    SUPPLY_MODE_ISOTYPE,
     SUPPLY_MODE_OPTIONS,
     SYNTHETIC_CORP_OPTIONS,
     TARGET_COLOR_OPTIONS,
@@ -64,6 +70,7 @@ from utils.header_filters import (
     header_filter_clauses,
     header_sort_clauses,
     target_column,
+    without_header_fields,
 )
 from utils.normalize import (
     join_tokens,
@@ -133,7 +140,6 @@ STRING_FIELDS: dict[str, int] = {
     "order_no": 64,
     "synthetic_corp": 64,
     "owner": 64,
-    "affinity_owner": 64,
     "batch_label": 255,
     "project_code": 64,
     "experiment_id": 64,
@@ -152,6 +158,7 @@ CSV_JOINED_FIELDS: dict[str, tuple[tuple[str, ...], int, str]] = {
     "selection_method": (SELECTION_METHOD_OPTIONS, 128, "挑选方式"),
     "eng_type": (ENG_TYPE_OPTIONS, 128, "改造类型"),
     "eng_method": (ENG_METHOD_OPTIONS, 128, "改造方式"),
+    "affinity_owner": ((), 64, "亲和力人员"),
 }
 
 INT_COUNT_FIELDS: dict[str, str] = {
@@ -190,13 +197,10 @@ PM_EDIT_FIELDS = frozenset(
         "order_kind",
         "supply_mode",
         "owner",
-        "pm",
         "project_code",
-        "experiment_id",
         "study_type",
         "target_name",
         "target_codes",
-        "target_type",
         "mouse_strain",
         "eng_type",
         "eng_method",
@@ -218,9 +222,49 @@ AFFINITY_EDIT_FIELDS = frozenset(
 
 FLOW_EDIT_FIELDS = frozenset({"flow_status", "flow_date", "flow_note"})
 
-SCOPE_EDIT_FIELDS = {"pm": PM_EDIT_FIELDS, "affinity": AFFINITY_EDIT_FIELDS, "flow": FLOW_EDIT_FIELDS}
-PM_OWNERSHIP_MESSAGE = "只能操作 PM 或负责人是本人的工单"
-CLAIM_RETURN_EXPIRED_MESSAGE = f"认领已超过 {CLAIM_RETURN_DAYS} 天，不能退回「无人问津」，可转让给其他人"
+ASSAY_EDIT_FIELDS = AFFINITY_EDIT_FIELDS | FLOW_EDIT_FIELDS
+# 改造实验员只能改改造 / 内部转染 / 改亚型的工单，字段上除检测、负责人和靶点底色外都能改
+ENG_EDIT_FIELDS = frozenset(WRITABLE_FIELDS) - ASSAY_EDIT_FIELDS - {"owner", "target_color"}
+ENG_SUPPLY_MODES = frozenset({SUPPLY_MODE_INTERNAL, SUPPLY_MODE_ISOTYPE})
+ENG_ROW_MESSAGE = "改造实验员只能操作改造、内部转染或改亚型的工单"
+SCOPE_EDIT_FIELDS = {
+    "pm": PM_EDIT_FIELDS,
+    "eng": ENG_EDIT_FIELDS,
+    "affinity": AFFINITY_EDIT_FIELDS,
+    "flow": FLOW_EDIT_FIELDS,
+}
+# 同时有亲和力和流式权限的实验员：可把已完成的工单打回待检测
+ASSAY_SCOPES = frozenset({"affinity", "flow"})
+ASSAY_MAIN_STATUS_MESSAGE = "实验员只能把已完成的工单打回待检测"
+COMPLETED_ASSAY_MESSAGE = "工单已完成，不能再改实验状态；需要重新检测请先打回待检测"
+CLAIM_RETURN_EXPIRED_MESSAGE = f"认领已超过 {CLAIM_RETURN_DAYS} 天，不能退回「无人问津」"
+CREATE_REQUIRED_FIELDS = (
+    ("order_kind", "订单性质"),
+    ("supply_mode", "供应方式"),
+    ("mouse_strain", "小鼠品系"),
+    ("pm", "PM"),
+)
+ENGINEERING_REQUIRED_FIELDS = (
+    ("eng_type", "改造类型"),
+    ("eng_method", "改造方式"),
+    ("eng_parent_seq", "母本序列"),
+    ("eng_requirement", "改造要求"),
+)
+CORP_MASK = "***"
+
+
+class CompletionConfirmRequired(Exception):
+    """保存会让工单整单变为已完成，需用户确认后带 confirm_complete 重提。"""
+
+
+def _completion_confirm_message(row: DiscoverySynthesisOrder, scopes: frozenset[str]) -> str:
+    label = " · ".join(
+        part for part in (row.target_name, row.order_no or row.synthesis_code or row.batch_label) if part
+    )
+    subject = f"工单「{label}」" if label else "该工单"
+    can_reopen = "full" in scopes or ASSAY_SCOPES <= scopes or _eng_covers(row, scopes)
+    tail = "" if can_reopen else "完成后你将不能再改回，"
+    return f"保存后{subject}将整单标记为「已完成」并移出排队，{tail}确认保存吗？"
 
 
 def clean_actor_person_name(name: str | None) -> str | None:
@@ -231,11 +275,47 @@ def clean_actor_person_name(name: str | None) -> str | None:
     return first[:64] if first else None
 
 
+def _claimed_owner(row: DiscoverySynthesisOrder) -> str:
+    owner = str(row.owner or "").strip()
+    return "" if owner == UNCLAIMED_OWNER else owner
+
+
 def pm_owns_row(row: DiscoverySynthesisOrder, actor_person: str | None) -> bool:
-    return bool(actor_person) and actor_person in {
-        str(row.pm or "").strip(),
-        str(row.owner or "").strip(),
-    }
+    """已认领的工单归负责人；没有负责人或「无人问津」时归 PM。"""
+    if not actor_person:
+        return False
+    return actor_person == (_claimed_owner(row) or str(row.pm or "").strip())
+
+
+def pm_ownership_message(row: DiscoverySynthesisOrder) -> str:
+    owner = _claimed_owner(row)
+    if owner:
+        return f"该工单由 {owner} 负责，只有负责人可以操作"
+    return "该工单还没有负责人，只有本人是 PM 时可以操作"
+
+
+def _is_engineering_kind(order_kind: Any, supply_mode: Any) -> bool:
+    return order_kind == ORDER_KIND_ENGINEERING or supply_mode in ENG_SUPPLY_MODES
+
+
+def is_engineering_row(row: DiscoverySynthesisOrder) -> bool:
+    """改造实验员负责的工单：订单性质为改造，或供应方式为内部转染 / 改亚型。"""
+    return _is_engineering_kind(row.order_kind, row.supply_mode)
+
+
+def _eng_covers(row: DiscoverySynthesisOrder, scopes: frozenset[str]) -> bool:
+    return "eng" in scopes and is_engineering_row(row)
+
+
+def _row_manage_error(
+    row: DiscoverySynthesisOrder, scopes: frozenset[str], actor_person: str | None
+) -> str | None:
+    """删除、排序：全部编辑不限；改造实验员管改造类工单；PM 管归属本人的工单。"""
+    if "full" in scopes or _eng_covers(row, scopes):
+        return None
+    if "pm" in scopes:
+        return None if pm_owns_row(row, actor_person) else pm_ownership_message(row)
+    return ENG_ROW_MESSAGE
 
 
 def _touch_owner_claim(row: DiscoverySynthesisOrder, previous_owner: str | None) -> None:
@@ -255,14 +335,31 @@ def _check_pm_owner_change(
     next_owner: str,
     actor_person: str | None,
 ) -> None:
-    """PM 认领「无人问津」；本人负责的批次可转让给他人，认领 7 天内还可退回「无人问津」。"""
+    """PM 只能认领「无人问津」，或在认领 7 天内把本人负责的批次退回「无人问津」。"""
     if actor_person and cur_owner == UNCLAIMED_OWNER and next_owner == actor_person:
         return
-    if actor_person and cur_owner == actor_person and next_owner:
-        if next_owner != UNCLAIMED_OWNER or _can_return_claim(row):
+    if actor_person and cur_owner == actor_person and next_owner == UNCLAIMED_OWNER:
+        if _can_return_claim(row):
             return
         raise PermissionError(CLAIM_RETURN_EXPIRED_MESSAGE)
-    raise PermissionError("仅可认领「无人问津」的批次，或转让、退回本人负责的批次")
+    raise PermissionError("负责人只能认领「无人问津」，或把本人负责的批次退回「无人问津」")
+
+
+def _missing_create_fields(row: DiscoverySynthesisOrder, payload: dict[str, Any]) -> list[str]:
+    def blank(value: Any) -> bool:
+        return not str(value or "").strip()
+
+    missing = []
+    for key, label in CREATE_REQUIRED_FIELDS:
+        # 订单性质、供应方式建行时有默认值，必须在本次提交里明确传入
+        value = payload.get(key) if key in {"order_kind", "supply_mode"} else getattr(row, key)
+        if blank(value):
+            missing.append(label)
+    if blank(row.target_name) and not row.target_codes:
+        missing.append("靶点")
+    if row.order_kind == ORDER_KIND_ENGINEERING:
+        missing.extend(label for key, label in ENGINEERING_REQUIRED_FIELDS if blank(getattr(row, key)))
+    return missing
 
 
 def generate_synthesis_order_id(now: datetime | None = None) -> str:
@@ -292,6 +389,41 @@ def serialize_order(row: DiscoverySynthesisOrder) -> dict[str, Any]:
     data["drift_fields"] = drifts
     data["has_drift"] = bool(drifts)
     return data
+
+
+def mask_synthetic_corp(value: Any, *, keep_engineering_rows: bool = False) -> Any:
+    """没有全部编辑权限时，行数据、来源快照、差异提示和 One 候选里的合成公司都换成 ***；
+    改造实验员（keep_engineering_rows）保留改造类工单整行原值。"""
+    if isinstance(value, list):
+        return [mask_synthetic_corp(item, keep_engineering_rows=keep_engineering_rows) for item in value]
+    if not isinstance(value, dict):
+        return value
+    if (
+        keep_engineering_rows
+        and "order_kind" in value
+        and _is_engineering_kind(value.get("order_kind"), value.get("supply_mode"))
+    ):
+        return value
+    masked = {
+        key: CORP_MASK
+        if key == "synthetic_corp" and item not in (None, "")
+        else mask_synthetic_corp(item, keep_engineering_rows=keep_engineering_rows)
+        for key, item in value.items()
+    }
+    if masked.get("field") == "synthetic_corp":
+        for key in ("current", "remote"):
+            if masked.get(key) not in (None, ""):
+                masked[key] = CORP_MASK
+    return masked
+
+
+def without_corp_query(data: dict[str, Any] | None) -> dict[str, Any]:
+    """看不到合成公司的人也不能按它筛选或排序，避免从结果反推。"""
+    payload = without_header_fields(data or {}, {"synthetic_corp"})
+    payload.pop("synthetic_corp", None)
+    if payload.get("sort_field") == "synthetic_corp":
+        payload.pop("sort_field")
+    return payload
 
 
 BREAK_FIELDS = frozenset({
@@ -328,24 +460,19 @@ def _normalize_flow_status(value: Any) -> str:
     return normalize_choice(value, FLOW_STATUS_OPTIONS, "流式状态")
 
 
-def _prepare_assay_status_edits(
+def _validate_assay_status_edits(
     row: DiscoverySynthesisOrder,
     payload: dict[str, Any],
-    actor_person: str | None,
+    *,
+    can_close_with_reason: bool = False,
 ) -> None:
-    """Validate manual assay transitions; completion remains evidence-derived."""
     reason = payload["report_reason"] if "report_reason" in payload else row.report_reason
     target_type = payload["target_type"] if "target_type" in payload else row.target_type
     if "affinity_status" in payload:
         next_status = _normalize_affinity_status(payload["affinity_status"])
-        if next_status != AFFINITY_STATUS_WAIT and str(reason or "").strip():
+        closing = can_close_with_reason and next_status == AFFINITY_STATUS_COMPLETED
+        if next_status != AFFINITY_STATUS_WAIT and str(reason or "").strip() and not closing:
             raise ValueError("请先清除未出报告原因，再修改亲和力状态")
-        if next_status == AFFINITY_STATUS_ASSAYING:
-            if not actor_person:
-                raise ValueError("无法识别当前亲和力人员姓名")
-            row.affinity_owner = actor_person
-        elif next_status == AFFINITY_STATUS_WAIT:
-            row.affinity_owner = None
 
     if "flow_status" in payload:
         _normalize_flow_status(payload["flow_status"])
@@ -413,6 +540,11 @@ def _status_filter_clause(data: dict[str, Any]):
     ]
     if not raw_terms:
         return None
+    return _status_terms_clause(raw_terms)
+
+
+def _status_terms_clause(raw_terms: list[str]):
+    """主状态之间取或；检测子状态只看待检测/检测中的行，亲和力与流式同时选时两者都要满足。"""
     main_vals: list[str] = []
     aff_vals: list[str] = []
     flow_vals: list[str] = []
@@ -494,10 +626,37 @@ def _target_clause(db: Session | None, names: Any):
     )
 
 
+def _status_header_values(db: Session, scoped, keyword: str) -> list[dict[str, Any]]:
+    """主状态之后列出检测中/待检测行的亲和力、流式子状态，计数口径与筛选一致。"""
+    columns = (
+        DiscoverySynthesisOrder.status,
+        DiscoverySynthesisOrder.affinity_status,
+        DiscoverySynthesisOrder.flow_status,
+    )
+    counts: Counter[str] = Counter()
+    for status, affinity, flow, count in db.execute(scoped(select(*columns, func.count()).group_by(*columns))).all():
+        counts[status] += count
+        if status in (STATUS_WAIT_ASSAY, STATUS_ASSAYING):
+            counts[affinity] += count
+            counts[flow] += count
+    text = keyword.lower()
+    return [
+        {"value": value, "count": counts[value]}
+        for value in (*STATUS_OPTIONS, *AFFINITY_STATUS_OPTIONS, *FLOW_STATUS_OPTIONS)
+        if counts.get(value) and (not text or text in value.lower())
+    ]
+
+
 _O = DiscoverySynthesisOrder
 HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "priority": HeaderColumn(_O.priority, "enum", order=tuple(PRIORITY_ORDER)),
-    "status": HeaderColumn(_O.status, "enum", order=tuple(STATUS_OPTIONS)),
+    "status": HeaderColumn(
+        _O.status,
+        "multi",
+        order=tuple(STATUS_OPTIONS),
+        match=lambda _db, terms: _status_terms_clause(terms),
+        values=_status_header_values,
+    ),
     "target_name": target_column(_O.target_name, _O.target_codes, colors=_target_color_clause),
     "target_type": HeaderColumn(_O.target_type, "enum", order=tuple(TARGET_TYPE_OPTIONS)),
     "mouse_strain": csv_column(_O.mouse_strain, tuple(MOUSE_STRAIN_OPTIONS)),
@@ -511,7 +670,7 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "arrival_date": HeaderColumn(_O.arrival_date, "date"),
     "affinity_date": HeaderColumn(_O.affinity_date, "date"),
     "flow_date": HeaderColumn(_O.flow_date, "date"),
-    "affinity_owner": HeaderColumn(_O.affinity_owner, "enum"),
+    "affinity_owner": csv_column(_O.affinity_owner),
     "affinity_result": HeaderColumn(_O.affinity_result, "enum", order=tuple(AFFINITY_RESULT_OPTIONS)),
     "owner": HeaderColumn(_O.owner, "enum", order=(UNCLAIMED_OWNER,)),
     "remark": HeaderColumn(_O.remark),
@@ -959,6 +1118,15 @@ def get_options(db: Session) -> dict[str, Any]:
         extras = sorted(item for item in found if item not in set(presets))
         return [*ordered, *extras]
 
+    def used_names(column, presets: tuple[str, ...] = ()) -> list[str]:
+        counts: Counter[str] = Counter()
+        rows = db.execute(select(column, func.count()).where(func.coalesce(column, "") != "").group_by(column))
+        for raw, count in rows.all():
+            for name in split_tokens(raw):
+                counts[name] += count
+        ordered = sorted(counts, key=lambda name: (-counts[name], name))
+        return [*presets, *(name for name in ordered if name not in presets)]
+
     return {
         "statuses": list(STATUS_OPTIONS),
         "affinity_statuses": list(AFFINITY_STATUS_OPTIONS),
@@ -979,8 +1147,9 @@ def get_options(db: Session) -> dict[str, Any]:
         ),
         "eng_types": distinct_csv_tokens(DiscoverySynthesisOrder.eng_type, ENG_TYPE_OPTIONS),
         "eng_methods": distinct_csv_tokens(DiscoverySynthesisOrder.eng_method, ENG_METHOD_OPTIONS),
-        "owners": distinct_values(DiscoverySynthesisOrder.owner, (UNCLAIMED_OWNER,)),
-        "pms": distinct_values(DiscoverySynthesisOrder.pm),
+        "owners": used_names(DiscoverySynthesisOrder.owner, (UNCLAIMED_OWNER,)),
+        "pms": used_names(DiscoverySynthesisOrder.pm),
+        "affinity_owners": used_names(DiscoverySynthesisOrder.affinity_owner),
     }
 
 
@@ -1075,6 +1244,8 @@ def save(
     commit: bool = True,
     lock_queue: bool = True,
     scopes: frozenset[str] = frozenset({"full"}),
+    require_fields: bool = False,
+    confirm_complete: bool = True,
 ) -> dict[str, Any]:
     payload = dict(data or {})
     payload.pop("synthesis_order_id", None)
@@ -1084,21 +1255,20 @@ def save(
 
     actor_person = clean_actor_person_name(created_by)
     is_new = row_id is None
+    writable_keys = {key for key in payload if key != "id" and key in WRITABLE_FIELDS}
+    eng_keys: set[str] = set()
     if "full" not in scopes:
-        if is_new and "pm" not in scopes:
+        if is_new and not scopes.intersection({"pm", "eng"}):
             raise PermissionError("当前权限不能新建合成与验证工单")
         allowed_fields: set[str] = set()
         for scope, fields in SCOPE_EDIT_FIELDS.items():
             if scope in scopes:
                 allowed_fields.update(fields)
+        if ASSAY_SCOPES <= scopes and not is_new:
+            allowed_fields.add("status")
         if not allowed_fields:
             raise PermissionError("没有权限编辑合成与验证工单")
-        disallowed = [
-            key
-            for key in payload
-            if key != "id" and key in WRITABLE_FIELDS and key not in allowed_fields
-        ]
-        if disallowed:
+        if writable_keys - allowed_fields:
             raise PermissionError("当前权限不可修改该字段")
         if is_new and normalize_text(payload.get("owner"), STRING_FIELDS["owner"]):
             raise PermissionError("负责人需通过认领设置")
@@ -1124,8 +1294,27 @@ def save(
         if not row:
             raise ValueError(MISSING_ROW)
         if "full" not in scopes:
-            if any(key in PM_EDIT_FIELDS and key != "owner" for key in payload) and not pm_owns_row(row, actor_person):
-                raise PermissionError(PM_OWNERSHIP_MESSAGE)
+            pm_fields: frozenset[str] = frozenset()
+            if "pm" in scopes:
+                pm_fields = PM_EDIT_FIELDS if pm_owns_row(row, actor_person) else frozenset({"owner"})
+            pm_keys = writable_keys & pm_fields
+            if _eng_covers(row, scopes):
+                eng_keys = (writable_keys - pm_keys) & ENG_EDIT_FIELDS
+            assay_keys = set()
+            if "affinity" in scopes:
+                assay_keys |= AFFINITY_EDIT_FIELDS
+            if "flow" in scopes:
+                assay_keys |= FLOW_EDIT_FIELDS
+            if ASSAY_SCOPES <= scopes and "status" in writable_keys - eng_keys:
+                if (row.status or "").strip() != STATUS_COMPLETED or _normalize_status(
+                    payload["status"]
+                ) != STATUS_WAIT_ASSAY:
+                    raise PermissionError(ASSAY_MAIN_STATUS_MESSAGE)
+                assay_keys.add("status")
+            denied = writable_keys - pm_keys - eng_keys - assay_keys
+            if denied:
+                pm_denied = "pm" in scopes and denied <= PM_EDIT_FIELDS
+                raise PermissionError(pm_ownership_message(row) if pm_denied else ENG_ROW_MESSAGE)
             if "owner" in payload:
                 cur_owner = str(row.owner or "").strip()
                 next_owner = normalize_text(payload.get("owner"), STRING_FIELDS["owner"]) or ""
@@ -1139,27 +1328,76 @@ def save(
             raise ValueError("请先创建工单，再修改实验状态")
         if (row.status or "").strip() == STATUS_CANCELLED:
             raise ValueError("已取消工单不可修改实验状态")
-        _prepare_assay_status_edits(row, payload, actor_person)
+        if (row.status or "").strip() == STATUS_COMPLETED and "status" not in payload:
+            raise ValueError(COMPLETED_ASSAY_MESSAGE)
+        _validate_assay_status_edits(
+            row, payload, can_close_with_reason="full" in scopes or ASSAY_SCOPES <= scopes
+        )
 
     previous_target_type = (row.target_type or "").strip()
     previous_owner = row.owner
+    previous_status = (row.status or "").strip()
+    had_reason = bool(str(row.report_reason or "").strip())
     _apply_fields(row, payload)
     _touch_owner_claim(row, previous_owner)
+    # 只替亲和力实验员补空的亲和力人员，管理员改状态不会把自己加进去
+    if (
+        actor_person
+        and "affinity" in scopes
+        and "full" not in scopes
+        and "affinity_owner" not in payload
+        and not row.affinity_owner
+        and (
+            ("affinity_date" in payload and row.affinity_date)
+            or ("affinity_status" in payload and row.affinity_status == AFFINITY_STATUS_ASSAYING)
+        )
+    ):
+        row.affinity_owner = actor_person
     if "target_codes" in payload and "target_type" not in payload:
         row.target_type = _infer_target_type(db, row.target_codes)
+    secreted = (row.target_type or "").strip() == "分泌型"
+    if "status" in payload and row.status in {STATUS_WAIT_ASSAY, STATUS_ASSAYING}:
+        # 手动进入检测阶段时两项实验从待测开始，之后改订单号、One 回填等不会退回合成阶段；
+        # 从已完成打回即重做，两项一并回到待测（流式不做的保留），日期和人员留作记录
+        reopen = previous_status == STATUS_COMPLETED
+        if reopen or not row.affinity_status:
+            row.affinity_status = AFFINITY_STATUS_WAIT
+        if not row.flow_status or (reopen and row.flow_status != FLOW_STATUS_NOT_REQUIRED):
+            row.flow_status = FLOW_STATUS_NOT_REQUIRED if secreted else FLOW_STATUS_WAIT
     if "status" not in payload and (is_new or AUTO_STATUS_FIELDS.intersection(payload)):
         changed = set(payload) - {"target_type"}
-        if (row.target_type or "").strip() != previous_target_type:
+        if secreted != (previous_target_type == "分泌型"):
+            # 只有要不要做流式变了才算靶点类型变化
             changed.add("target_type")
-        sync_derived_statuses(row, changed_fields=changed)
+        reason_added = not had_reason and bool(str(row.report_reason or "").strip())
+        sync_derived_statuses(row, changed_fields=changed, reason_added=reason_added)
+    if "full" not in scopes and not is_engineering_row(row) and (
+        eng_keys or (is_new and ("pm" not in scopes or (writable_keys & ENG_EDIT_FIELDS) - PM_EDIT_FIELDS))
+    ):
+        raise PermissionError(ENG_ROW_MESSAGE)
 
-    if actor_person and is_new and "full" not in scopes:
+    eng_create = is_new and "full" not in scopes and _eng_covers(row, scopes)
+    if eng_create:
+        row.order_sender = (created_by or "").strip()[:128] or None
+    if is_new and is_engineering_row(row) and not row.synthetic_corp:
+        row.synthetic_corp = INTERNAL_CORP
+    if actor_person and is_new and "full" not in scopes and not (eng_create and row.pm):
         row.pm = actor_person
     elif actor_person and not row.pm and (
         (is_new and row.order_kind == ORDER_KIND_ENGINEERING)
         or payload.get("order_kind") == ORDER_KIND_ENGINEERING
     ):
         row.pm = actor_person
+    if is_new and require_fields:
+        missing = _missing_create_fields(row, payload)
+        if missing:
+            raise ValueError(f"请先填写必填项：{'、'.join(missing)}")
+    if (
+        not (confirm_complete or is_new or "status" in payload)
+        and previous_status != STATUS_COMPLETED
+        and row.status == STATUS_COMPLETED
+    ):
+        raise CompletionConfirmRequired(_completion_confirm_message(row, scopes))
 
     _apply_queue(
         db,
@@ -1184,6 +1422,8 @@ def save_batch(
     created_by: str | None = None,
     *,
     scopes: frozenset[str] = frozenset({"full"}),
+    require_fields: bool = False,
+    confirm_complete: bool = True,
 ) -> dict[str, Any]:
     raw_items = data.get("items") or []
     if not isinstance(raw_items, list) or not raw_items:
@@ -1217,6 +1457,8 @@ def save_batch(
                 commit=False,
                 lock_queue=False,
                 scopes=scopes,
+                require_fields=require_fields,
+                confirm_complete=confirm_complete,
             )["id"]
         )
         for item in items
@@ -1279,11 +1521,11 @@ def delete(
         raise ValueError(MISSING_ROW)
     if row.source_one_id is not None:
         raise ValueError("该工单已关联 One 订单，不能删除；不再需要时请把状态改为「已取消」")
-    if "full" not in scopes:
-        if not pm_owns_row(row, clean_actor_person_name(actor_name)):
-            raise PermissionError(PM_OWNERSHIP_MESSAGE)
-        if row.status != STATUS_WAIT_ORDER:
-            raise PermissionError("PM 权限只能删除待下单状态的工单")
+    error = _row_manage_error(row, scopes, clean_actor_person_name(actor_name))
+    if error:
+        raise PermissionError(error)
+    if "full" not in scopes and not _eng_covers(row, scopes) and row.status != STATUS_WAIT_ORDER:
+        raise PermissionError("PM 权限只能删除待下单状态的工单")
     db.delete(row)
     db.flush()
     renumber_queue(_queue_rows(db))
@@ -1307,8 +1549,9 @@ def reorder(
     target = db.get(DiscoverySynthesisOrder, parsed_target_id)
     if not moved or not target:
         raise ValueError(MISSING_ROW)
-    if "full" not in scopes and not pm_owns_row(moved, clean_actor_person_name(actor_name)):
-        raise PermissionError(PM_OWNERSHIP_MESSAGE)
+    error = _row_manage_error(moved, scopes, clean_actor_person_name(actor_name))
+    if error:
+        raise PermissionError(error)
     if parsed_moved_id == parsed_target_id:
         return {"items": [serialize_order(moved)]}
     for row in (moved, target):
@@ -1324,13 +1567,6 @@ def adopt_source(
     row_id: int,
     fields: list[str] | None = None,
 ) -> dict[str, Any]:
-    row = db.get(DiscoverySynthesisOrder, int(row_id))
-    if not row:
-        raise ValueError(MISSING_ROW)
-    snapshot = row.source_snapshot if isinstance(row.source_snapshot, dict) else {}
-    if not snapshot:
-        raise ValueError("该记录没有可用的外部来源快照")
-
     target_fields = (
         [f for f in fields if f in DRIFT_COMPARE_FIELDS]
         if fields
@@ -1338,6 +1574,15 @@ def adopt_source(
     )
     if not target_fields:
         raise ValueError("未指定可采用的来源字段")
+    rederive = bool({"order_no", "arrival_date"}.intersection(target_fields))
+    if rederive:
+        _lock_queue(db)
+    row = db.get(DiscoverySynthesisOrder, int(row_id))
+    if not row:
+        raise ValueError(MISSING_ROW)
+    snapshot = row.source_snapshot if isinstance(row.source_snapshot, dict) else {}
+    if not snapshot:
+        raise ValueError("该记录没有可用的外部来源快照")
 
     for field in target_fields:
         remote_val = snapshot.get(field)
@@ -1345,8 +1590,17 @@ def adopt_source(
             continue
         setattr(row, field, remote_val)
 
-    if {"order_no", "arrival_date"}.intersection(target_fields):
+    if rederive:
+        previous_sort = queued_sort(row.sort_order)
         sync_derived_statuses(row)
+        _apply_queue(
+            db,
+            row,
+            previous_sort=previous_sort,
+            previous_priority=row.priority,
+            payload={},
+            is_new=False,
+        )
     db.commit()
     db.refresh(row)
     return serialize_order(row)
@@ -1560,15 +1814,24 @@ EXPORT_COLUMNS = (
 )
 
 
-def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, str]:
+def export_list_workbook(
+    db: Session,
+    data: dict[str, Any],
+    *,
+    hide_corp: bool = False,
+    keep_engineering_rows: bool = False,
+) -> tuple[BytesIO, str]:
     payload = data or {}
     stmt = _apply_list_filters(select(DiscoverySynthesisOrder), payload, db=db)
     rows = db.scalars(stmt.order_by(*_list_order(payload))).all()
     headers = [header for header, _ in EXPORT_COLUMNS]
-    body = [
-        [getattr(row, field) for _, field in EXPORT_COLUMNS]
-        for row in rows
-    ]
+
+    def cell(row: DiscoverySynthesisOrder, field: str) -> Any:
+        value = getattr(row, field)
+        masked = hide_corp and not (keep_engineering_rows and is_engineering_row(row))
+        return CORP_MASK if masked and field == "synthetic_corp" and value else value
+
+    body = [[cell(row, field) for _, field in EXPORT_COLUMNS] for row in rows]
     return build_list_workbook(
         sheet_title="合成与验证",
         filename_prefix="合成与验证",
@@ -1579,6 +1842,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, st
 
 __all__ = [
     "AFFINITY_EDIT_FIELDS",
+    "CompletionConfirmRequired",
     "FLOW_EDIT_FIELDS",
     "MISSING_ROW",
     "PM_EDIT_FIELDS",
@@ -1589,9 +1853,11 @@ __all__ = [
     "export_list_workbook",
     "get_list",
     "get_options",
+    "mask_synthetic_corp",
     "reorder",
     "save",
     "save_batch",
     "serialize_order",
     "sync_from_one",
+    "without_corp_query",
 ]

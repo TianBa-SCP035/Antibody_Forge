@@ -21,10 +21,10 @@ export const FLOW_STATUS_OPTIONS = [
   '流式已完成',
   '流式不适用',
 ];
-export const STATUS_FILTER_OPTIONS = [
-  ...STATUS_OPTIONS,
-  ...AFFINITY_STATUS_OPTIONS,
-  ...FLOW_STATUS_OPTIONS,
+export const STATUS_FILTER_GROUPS = [
+  { label: '主状态', options: STATUS_OPTIONS },
+  { label: '亲和力', options: AFFINITY_STATUS_OPTIONS },
+  { label: '流式', options: FLOW_STATUS_OPTIONS },
 ];
 export const PRIORITY_OPTIONS = [...WORKBENCH_PRIORITY_OPTIONS];
 export const ORDER_KIND_OPTIONS = ['常规合成', '改造'];
@@ -32,7 +32,7 @@ export const SUPPLY_MODE_OPTIONS = ['合成到货', '内部转染', '改亚型']
 export const AFFINITY_RESULT_OPTIONS = ['正常', '阳性极少', '全阴'];
 export const MOUSE_STRAIN_OPTIONS = [...SERUM_MOUSE_STRAIN_OPTIONS];
 export const STUDY_TYPE_OPTIONS = [...WORKBENCH_STUDY_TYPE_OPTIONS];
-export const DEFAULT_CORP_OPTIONS = ['君跻', '擎科', '金斯瑞', '百奥', '内部'];
+export const DEFAULT_CORP_OPTIONS = ['君跻', '擎科', '金斯瑞', '内部'];
 export const DEFAULT_TARGET_TYPE_OPTIONS = [
   '分泌型',
   'I型跨膜',
@@ -93,6 +93,7 @@ export const CSV_FIELD_OPTIONS = {
   selection_method: DEFAULT_SELECTION_METHOD_OPTIONS,
   eng_type: DEFAULT_ENG_TYPE_OPTIONS,
   eng_method: DEFAULT_ENG_METHOD_OPTIONS,
+  affinity_owner: [],
 };
 
 export const DATE_KEYS = [
@@ -146,7 +147,7 @@ export const BREAK_FIELDS = new Set([
 export const CLAIM_RETURN_DAYS = 7;
 
 export const USER_OPTION_LIST = {
-  affinity_owner: 'owners',
+  affinity_owner: 'affinity_owners',
   owner: 'owners',
   pm: 'pms',
 };
@@ -200,13 +201,11 @@ export const PM_EDIT_FIELD_KEYS = new Set([
   'order_kind',
   'supply_mode',
   'owner',
-  'pm',
   'project_code',
   'study_type',
   'target',
   'target_name',
   'target_codes',
-  'target_type',
   'mouse_strain',
   'eng_type',
   'eng_method',
@@ -227,6 +226,48 @@ export const FLOW_EDIT_FIELD_KEYS = new Set([
   'flow_status',
   'flow_date',
   'flow_note',
+]);
+
+/** 改造实验员只管改造 / 内部转染 / 改亚型的工单，下列字段之外都能改。 */
+export const ENG_LOCKED_FIELD_KEYS = new Set([
+  'owner',
+  'target_color',
+  'synthesis_order_id',
+  'order_sender',
+  ...AFFINITY_EDIT_FIELD_KEYS,
+  ...FLOW_EDIT_FIELD_KEYS,
+]);
+const ENG_SUPPLY_MODES = new Set(['内部转染', '改亚型']);
+export const ENG_ROW_MESSAGE = '改造实验员只能操作改造、内部转染或改亚型的工单';
+
+export function isEngineeringRow(row) {
+  return row?.order_kind === '改造' || ENG_SUPPLY_MODES.has(row?.supply_mode);
+}
+
+/** 新建时先在页面上填，下列字段齐了才真正保存；target 指靶点名称或编号任填其一。 */
+export const CREATE_REQUIRED_FIELDS = [
+  ['order_kind', '订单性质'],
+  ['supply_mode', '供应方式'],
+  ['mouse_strain', '小鼠品系'],
+  ['pm', 'PM'],
+  ['target', '靶点'],
+];
+
+export const ENGINEERING_REQUIRED_FIELDS = [
+  ['eng_type', '改造类型'],
+  ['eng_method', '改造方式'],
+  ['eng_parent_seq', '母本序列'],
+  ['eng_requirement', '改造要求'],
+];
+
+/** 工单保存前不能填的字段：检测进度、状态和排序都要等工单存在后再改。 */
+export const DRAFT_LOCKED_FIELD_KEYS = new Set([
+  'status',
+  'sort_order',
+  'synthesis_order_id',
+  'order_sender',
+  ...AFFINITY_EDIT_FIELD_KEYS,
+  ...FLOW_EDIT_FIELD_KEYS,
 ]);
 
 export const BASE_EDITOR_SECTIONS = [
@@ -307,7 +348,7 @@ export const BASE_EDITOR_SECTIONS = [
     fields: [
       { key: 'arrival_count', label: '到货个数', type: 'number' },
       { key: 'arrival_date', label: '到货日期', type: 'date' },
-      { key: 'affinity_owner', label: '亲和力人员', type: 'user' },
+      { key: 'affinity_owner', label: '亲和力人员', type: 'user', multiple: true },
       {
         key: 'affinity_result',
         label: '亲和力结果',
@@ -437,7 +478,7 @@ export const WORKBENCH_COLUMNS = [
     label: '合成日期',
     defaultVisible: true,
     prop: 'synthetic_date',
-    minWidth: 106,
+    minWidth: 110,
     showOverflowTooltip: true,
   },
   {
@@ -461,7 +502,7 @@ export const WORKBENCH_COLUMNS = [
     label: '亲和力日期',
     defaultVisible: true,
     prop: 'affinity_date',
-    minWidth: 120,
+    minWidth: 110,
     showOverflowTooltip: true,
   },
   {
@@ -645,11 +686,7 @@ export const WORKBENCH_COLUMNS = [
  */
 export const HEADER_MENU_COLUMNS = Object.freeze({
   priority: { type: 'enum', values: 'all', top: { query: 'priority' } },
-  status: {
-    type: 'enum',
-    values: 'all',
-    top: { query: 'status', topOnly: [...AFFINITY_STATUS_OPTIONS, ...FLOW_STATUS_OPTIONS] },
-  },
+  status: { type: 'enum', values: 'all', top: { query: 'status' } },
   target_name: { type: 'text', label: '靶点', values: 'all', search: 'target', color: true, top: { query: 'target_name' } },
   target_type: { type: 'enum', values: 'all', top: { query: 'target_type', topOnly: ['非分泌型'] } },
   mouse_strain: { type: 'csv', values: 'all', top: { query: 'mouse_strain' } },
@@ -663,7 +700,7 @@ export const HEADER_MENU_COLUMNS = Object.freeze({
   arrival_date: { type: 'date', values: 'all', top: { range: 'arrivalDateRange' } },
   affinity_date: { type: 'date', values: 'all', top: { range: 'affinityDateRange' } },
   flow_date: { type: 'date', values: 'all', top: { range: 'flowDateRange' } },
-  affinity_owner: { type: 'enum', values: 'all' },
+  affinity_owner: { type: 'csv', values: 'all' },
   affinity_result: { type: 'enum', values: 'all', top: { query: 'affinity_result' } },
   owner: { type: 'enum', values: 'all', top: { query: 'owner' } },
   remark: { type: 'text', values: 'search', top: { query: 'remark', kind: 'contains' } },
@@ -698,7 +735,7 @@ export const SHEET_COLUMNS = [
   { key: 'arrival_count', label: '到货个数', edit: 'text', width: 92 },
   { key: 'arrival_date', label: '到货日期', edit: 'date', width: 120 },
   { key: 'remark', label: '检测备注', edit: 'text', minWidth: 160 },
-  { key: 'affinity_owner', label: '亲和力人员', edit: 'select', width: 105 },
+  { key: 'affinity_owner', label: '亲和力人员', edit: 'multi', width: 105 },
   { key: 'affinity_date', label: '亲和力日期', edit: 'date', width: 120 },
   { key: 'affinity_result', label: '亲和力结果', edit: 'select', width: 100 },
   { key: 'report_reason', label: '未出原因', edit: 'text', minWidth: 170 },

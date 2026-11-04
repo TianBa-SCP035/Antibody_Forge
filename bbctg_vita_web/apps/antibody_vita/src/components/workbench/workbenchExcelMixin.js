@@ -309,24 +309,38 @@ export default {
       this.listQuery.page = 1
       this.getList()
     },
-    async revealCreatedRow(saved) {
+    async revealCreatedRow(saved, { skipRemoteCheck = false } = {}) {
       if (!saved?.id) return saved
-      const limit = Math.max(1, Number(this.listQuery.limit) || 20)
-      if (!this.isQueueSorted) {
-        this.listQuery.page = 1
-      } else {
+      const loadPageOfSaved = () => {
+        const limit = Math.max(1, Number(this.listQuery.limit) || 20)
         const n = Number(saved.sort_order)
-        this.listQuery.page = Number.isInteger(n) && n > 0 ? Math.ceil(n / limit) : 1
+        this.listQuery.page = this.isQueueSorted && Number.isInteger(n) && n > 0 ? Math.ceil(n / limit) : 1
+        return this.getList({ skipRemoteCheck })
       }
-      await this.getList()
-      const row = this.list.find((item) => item.id === saved.id) || saved
-      if (this.viewMode === 'workbench') this.openEditor(row)
-      this.$nextTick(() => {
-        this.$refs.workbenchTable?.$el
-          ?.querySelector('.el-table__row.is-editing')
-          ?.scrollIntoView?.({ block: 'nearest' })
-      })
-      return row
+      await loadPageOfSaved()
+      let row = this.list.find((item) => item.id === saved.id)
+      if (this.viewMode === 'workbench') {
+        this.openEditor(row || saved)
+        this.$nextTick(() => {
+          this.$refs.workbenchTable?.$el
+            ?.querySelector('.el-table__row.is-editing')
+            ?.scrollIntoView?.({ block: 'nearest' })
+        })
+        return row || saved
+      }
+      if (!row && typeof this.resetFilters === 'function') {
+        this.resetFilters()
+        await loadPageOfSaved()
+        row = this.list.find((item) => item.id === saved.id)
+        ElMessage.info(row ? '已清空筛选和表头排序，显示新建的行' : '新建的行不在当前视图里')
+      }
+      if (row) {
+        const rowIndex = this.list.indexOf(row)
+        await this.$nextTick()
+        await this.$refs.sheetTable?.scrollToRow?.(row)
+        await this.selectSheetRange({ r1: rowIndex, c1: 0, r2: rowIndex, c2: this.sheetColumns.length - 1 })
+      }
+      return row || saved
     },
     sheetColumnTitle(column) {
       if (this.isExcelRowSelectField(column?.key)) return this.sortColumnLabel

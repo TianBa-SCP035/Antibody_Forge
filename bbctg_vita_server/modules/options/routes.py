@@ -25,6 +25,7 @@ OPTION_ACCESS_PERMISSIONS = {
     "discovery.page.synthesis_progress",
     "discovery.synthesis_progress.edit",
     "discovery.synthesis_progress.pm_edit",
+    "discovery.synthesis_progress.eng_edit",
     "discovery.synthesis_progress.affinity_edit",
     "discovery.synthesis_progress.flow_edit",
     "molecular.page.library",

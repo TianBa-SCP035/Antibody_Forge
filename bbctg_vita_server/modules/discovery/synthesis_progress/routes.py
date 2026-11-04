@@ -18,9 +18,17 @@ router = APIRouter()
 SYNTHESIS_VIEW_PERMISSION = "discovery.page.synthesis_progress"
 SYNTHESIS_EDIT_PERMISSION = "discovery.synthesis_progress.edit"
 SYNTHESIS_PM_EDIT_PERMISSION = "discovery.synthesis_progress.pm_edit"
+SYNTHESIS_ENG_EDIT_PERMISSION = "discovery.synthesis_progress.eng_edit"
 SYNTHESIS_AFFINITY_EDIT_PERMISSION = "discovery.synthesis_progress.affinity_edit"
 SYNTHESIS_FLOW_EDIT_PERMISSION = "discovery.synthesis_progress.flow_edit"
-ALL_EDIT_SCOPES = {"full", "pm", "affinity", "flow"}
+ALL_EDIT_SCOPES = {"full", "pm", "eng", "affinity", "flow"}
+PERMISSION_SCOPES = {
+    SYNTHESIS_EDIT_PERMISSION: "full",
+    SYNTHESIS_PM_EDIT_PERMISSION: "pm",
+    SYNTHESIS_ENG_EDIT_PERMISSION: "eng",
+    SYNTHESIS_AFFINITY_EDIT_PERMISSION: "affinity",
+    SYNTHESIS_FLOW_EDIT_PERMISSION: "flow",
+}
 
 
 class SynthesisSaveRequest(BaseModel):
@@ -48,6 +56,7 @@ class SynthesisColumnValuesRequest(SynthesisListRequest):
 
 class SynthesisBatchSaveRequest(BaseModel):
     items: list[dict] = Field(min_length=1)
+    confirm_complete: bool = False
 
 
 class SynthesisIdRequest(BaseModel):
@@ -72,34 +81,40 @@ def _actor_name(user: SysUser) -> str:
     return (user.display_name or user.username or "").strip()
 
 
+def _user_scopes(db: Session, user: SysUser) -> frozenset[str]:
+    context = build_user_context(db, user)
+    return frozenset(
+        scope
+        for permission, scope in PERMISSION_SCOPES.items()
+        if context.is_superuser or permission in context.permissions
+    )
+
+
 def _require_edit_scopes(
     db: Session,
     user: SysUser,
     allowed_scopes: set[str] | None = None,
 ) -> frozenset[str]:
-    allowed = allowed_scopes or ALL_EDIT_SCOPES
-    context = build_user_context(db, user)
-    permission_scopes = {
-        SYNTHESIS_EDIT_PERMISSION: "full",
-        SYNTHESIS_PM_EDIT_PERMISSION: "pm",
-        SYNTHESIS_AFFINITY_EDIT_PERMISSION: "affinity",
-        SYNTHESIS_FLOW_EDIT_PERMISSION: "flow",
-    }
-    scopes = frozenset(
-        scope
-        for permission, scope in permission_scopes.items()
-        if context.is_superuser or permission in context.permissions
-    )
-    if not scopes.intersection(allowed):
+    scopes = _user_scopes(db, user)
+    if not scopes.intersection(allowed_scopes or ALL_EDIT_SCOPES):
         raise HTTPException(status_code=403, detail="没有权限执行该合成与验证操作")
     return scopes
 
 
-def _run_write(db: Session, fn):
+def _visible(data, scopes: frozenset[str]):
+    if "full" in scopes:
+        return data
+    return service.mask_synthetic_corp(data, keep_engineering_rows="eng" in scopes)
+
+
+def _run_write(db: Session, fn, *, scopes: frozenset[str] = frozenset({"full"})):
     try:
-        return success(fn())
+        return success(_visible(fn(), scopes))
     except HTTPException:
         raise
+    except service.CompletionConfirmRequired as exc:
+        db.rollback()
+        return success({"needs_confirm": True, "message": str(exc)})
     except PermissionError as exc:
         db.rollback()
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -120,8 +135,11 @@ def list_synthesis_orders(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, SYNTHESIS_VIEW_PERMISSION)
+    scopes = _user_scopes(db, current_user)
+    payload = data.model_dump() if data else {}
     try:
-        return success(service.get_list(db, data.model_dump() if data else {}))
+        result = service.get_list(db, payload if "full" in scopes else service.without_corp_query(payload))
+        return success(_visible(result, scopes))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -133,8 +151,13 @@ def synthesis_column_values(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, SYNTHESIS_VIEW_PERMISSION)
+    payload = data.model_dump()
+    if "full" not in _user_scopes(db, current_user):
+        if payload["field"] == "synthetic_corp":
+            raise HTTPException(status_code=403, detail="没有权限查看合成公司")
+        payload = service.without_corp_query(payload)
     try:
-        return success(service.get_column_values(db, data.model_dump()))
+        return success(service.get_column_values(db, payload))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -145,7 +168,10 @@ def synthesis_options(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, SYNTHESIS_VIEW_PERMISSION)
-    return success(service.get_options(db))
+    options = service.get_options(db)
+    if not _user_scopes(db, current_user).intersection({"full", "eng"}):
+        options["synthetic_corps"] = []
+    return success(options)
 
 
 @router.get("/recorded_targets")
@@ -166,7 +192,8 @@ def check_remote_orders(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     require_permission(db, current_user, SYNTHESIS_VIEW_PERMISSION)
-    return success(service.check_remote_for_local_rows(db, data.ids))
+    result = service.check_remote_for_local_rows(db, data.ids)
+    return success(_visible(result, _user_scopes(db, current_user)))
 
 
 @router.post("/save")
@@ -177,6 +204,7 @@ def save_synthesis_order(
 ) -> dict:
     scopes = _require_edit_scopes(db, current_user, ALL_EDIT_SCOPES)
     payload = data.model_dump(exclude_unset=True)
+    confirm_complete = bool(payload.pop("confirm_complete", False))
     return _run_write(
         db,
         lambda: service.save(
@@ -184,7 +212,10 @@ def save_synthesis_order(
             payload,
             created_by=_actor_name(current_user),
             scopes=scopes,
+            require_fields=True,
+            confirm_complete=confirm_complete,
         ),
+        scopes=scopes,
     )
 
 
@@ -203,7 +234,10 @@ def save_synthesis_order_batch(
             payload,
             created_by=_actor_name(current_user),
             scopes=scopes,
+            require_fields=True,
+            confirm_complete=data.confirm_complete,
         ),
+        scopes=scopes,
     )
 
 
@@ -217,6 +251,7 @@ def claim_synthesis_order(
     return _run_write(
         db,
         lambda: service.claim_order(db, data.id, _actor_name(current_user), scopes=scopes),
+        scopes=scopes,
     )
 
 
@@ -226,12 +261,13 @@ def reorder_synthesis_orders(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    scopes = _require_edit_scopes(db, current_user, {"full", "pm"})
+    scopes = _require_edit_scopes(db, current_user, {"full", "pm", "eng"})
     return _run_write(
         db,
         lambda: service.reorder(
             db, data.moved_id, data.target_id, scopes=scopes, actor_name=_actor_name(current_user)
         ),
+        scopes=scopes,
     )
 
 
@@ -241,7 +277,7 @@ def delete_synthesis_order(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    scopes = _require_edit_scopes(db, current_user, {"full", "pm"})
+    scopes = _require_edit_scopes(db, current_user, {"full", "pm", "eng"})
 
     def _delete():
         service.delete(db, data.id, scopes=scopes, actor_name=_actor_name(current_user))
@@ -284,10 +320,15 @@ def export_synthesis_order_list(
     from utils.excel import xlsx_response
 
     require_permission(db, current_user, SYNTHESIS_VIEW_PERMISSION)
+    scopes = _user_scopes(db, current_user)
+    hide_corp = "full" not in scopes
+    payload = data.model_dump() if data else {}
     try:
         output, filename = service.export_list_workbook(
             db,
-            data.model_dump() if data else {},
+            service.without_corp_query(payload) if hide_corp else payload,
+            hide_corp=hide_corp,
+            keep_engineering_rows="eng" in scopes,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

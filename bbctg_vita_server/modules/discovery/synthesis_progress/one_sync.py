@@ -19,7 +19,9 @@ from modules.discovery.synthesis_progress.constants import (
     DRIFT_FIELD_LABELS,
     FLOW_STATUS_COMPLETED,
     FLOW_STATUS_NOT_REQUIRED,
+    FLOW_STATUS_OPTIONS,
     FLOW_STATUS_WAIT,
+    INTERNAL_CORP,
     STATUS_ASSAYING,
     STATUS_CANCELLED,
     STATUS_COMPLETED,
@@ -114,23 +116,7 @@ def normalize_synthetic_corp(raw_corp: Any, refstr: Any = None, order_no: Any = 
     return None
 
 
-# 已完成的工单只有这些字段变动时才重新推导总状态；靶点类型决定要不要做流式。
-ASSAY_EVIDENCE_FIELDS = frozenset(
-    {
-        "affinity_status",
-        "flow_status",
-        "affinity_date",
-        "flow_date",
-        "report_reason",
-        "arrival_date",
-        "target_type",
-    }
-)
-
-
 def _default_affinity_status(row: DiscoverySynthesisOrder) -> str:
-    if str(row.report_reason or "").strip():
-        return AFFINITY_STATUS_WAIT
     if row.affinity_date:
         return AFFINITY_STATUS_COMPLETED
     if str(row.affinity_owner or "").strip():
@@ -138,10 +124,15 @@ def _default_affinity_status(row: DiscoverySynthesisOrder) -> str:
     return AFFINITY_STATUS_WAIT
 
 
-def sync_derived_statuses(row: DiscoverySynthesisOrder, *, changed_fields: Any = ()) -> str:
+def sync_derived_statuses(
+    row: DiscoverySynthesisOrder, *, changed_fields: Any = (), reason_added: bool = False
+) -> str:
     """Derive the two assay states and the aggregate workflow state; cancelled rows keep their status."""
     changed = set(changed_fields)
     current_status = (row.status or "").strip()
+    if current_status == STATUS_COMPLETED and "target_type" not in changed:
+        # 已完成只在要不要做流式变了（是否分泌型）时重算，其余重新检测要先打回待检测
+        return current_status
     has_reason = bool(str(row.report_reason or "").strip())
     has_assay_data = bool(
         row.arrival_date or row.affinity_owner or row.affinity_date or has_reason or row.flow_date
@@ -156,27 +147,33 @@ def sync_derived_statuses(row: DiscoverySynthesisOrder, *, changed_fields: Any =
         row.flow_status = None
 
     if has_assay_data or row.affinity_status or row.flow_status:
-        if (
-            has_reason
-            or row.affinity_status not in AFFINITY_STATUS_OPTIONS
-            or ("affinity_status" not in changed and {"affinity_date", "report_reason"} & changed)
+        if row.affinity_status == AFFINITY_STATUS_COMPLETED:
+            # 带未出原因的已完成是结案（先填原因再标完成），改原因文字不影响；
+            # 新填原因表示报告卡住，回到待检测；清掉日期且没有原因时按其余数据回退
+            if "affinity_status" not in changed:
+                if reason_added and current_status != STATUS_COMPLETED:
+                    row.affinity_status = AFFINITY_STATUS_WAIT
+                elif "affinity_date" in changed and not row.affinity_date and not has_reason:
+                    row.affinity_status = _default_affinity_status(row)
+        elif has_reason:
+            row.affinity_status = AFFINITY_STATUS_WAIT
+        elif row.affinity_status not in AFFINITY_STATUS_OPTIONS or (
+            "affinity_status" not in changed and {"affinity_date", "report_reason"} & changed
         ):
             row.affinity_status = _default_affinity_status(row)
 
-        target_is_secreted = str(row.target_type or "").strip() == "分泌型"
-        if target_is_secreted:
+        if str(row.target_type or "").strip() == "分泌型":
             row.flow_status = FLOW_STATUS_NOT_REQUIRED
-        elif row.flow_status not in {FLOW_STATUS_WAIT, FLOW_STATUS_COMPLETED} or (
-            "flow_status" not in changed and "flow_date" in changed
+        elif row.flow_status not in FLOW_STATUS_OPTIONS or (
+            "flow_status" not in changed
+            and ("flow_date" in changed or ("target_type" in changed and row.flow_status == FLOW_STATUS_NOT_REQUIRED))
         ):
             row.flow_status = FLOW_STATUS_COMPLETED if row.flow_date else FLOW_STATUS_WAIT
 
-        # 有未出原因时上面已回到待检测，这里不必再判断原因。
-        affinity_completed = row.affinity_status == AFFINITY_STATUS_COMPLETED and bool(row.affinity_date)
-        flow_completed = target_is_secreted or (
-            row.flow_status == FLOW_STATUS_COMPLETED and bool(row.flow_date)
-        )
-        if affinity_completed and flow_completed:
+        if row.affinity_status == AFFINITY_STATUS_COMPLETED and row.flow_status in {
+            FLOW_STATUS_COMPLETED,
+            FLOW_STATUS_NOT_REQUIRED,
+        }:
             derived = STATUS_COMPLETED
         elif (
             row.affinity_status in {AFFINITY_STATUS_ASSAYING, AFFINITY_STATUS_COMPLETED}
@@ -193,10 +190,8 @@ def sync_derived_statuses(row: DiscoverySynthesisOrder, *, changed_fields: Any =
         else:
             derived = STATUS_WAIT_ORDER
 
-    keep_current = current_status == STATUS_CANCELLED or (
-        current_status == STATUS_COMPLETED and not ASSAY_EVIDENCE_FIELDS & changed
-    )
-    row.status = current_status if keep_current else derived
+    if current_status != STATUS_CANCELLED:
+        row.status = derived
     return row.status
 
 
@@ -346,7 +341,8 @@ def apply_remote_snapshot_to_row(
         if remote_val in (None, ""):
             continue
         current_val = getattr(row, field, None)
-        should_fill = current_val in (None, "") or (
+        # 「内部」只是改造类新建时的默认值，关联到 One 订单后按 One 的合成公司走
+        should_fill = current_val in (None, "") or (field == "synthetic_corp" and current_val == INTERNAL_CORP) or (
             replace_from_snapshot is not None
             and replace_from_snapshot.get(field) not in (None, "")
             and current_val == replace_from_snapshot.get(field)

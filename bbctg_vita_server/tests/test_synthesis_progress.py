@@ -2,11 +2,14 @@ from datetime import timedelta
 import unittest
 from unittest.mock import patch
 
+from sqlalchemy import event, select, update
+
 from models.discovery import DiscoverySynthesisOrder
 from models.target import Target
 from modules.discovery.synthesis_progress import one_sync, service
 from support import DbTestCase
 from utils.clock import now_local
+from utils.workbench_queue import lock_queue
 
 
 class SynthesisProgressServiceTests(DbTestCase):
@@ -61,10 +64,126 @@ class SynthesisProgressServiceTests(DbTestCase):
                 created_by="张赞",
             )
             self.assertEqual(row["affinity_status"], "亲和力检测中")
-            self.assertEqual(row["affinity_owner"], "张赞")
+            self.assertIsNone(row["affinity_owner"])
 
             with self.assertRaisesRegex(ValueError, "分泌型靶点不需要流式实验"):
                 service.save(db, {"id": row["id"], "target_type": "分泌型", "flow_status": "流式待检测"})
+
+    def test_close_with_reason_and_rollback(self):
+        both = frozenset({"affinity", "flow"})
+        msg = "实验员只能把已完成的工单打回待检测"
+        with self.Session() as db:
+            row = service.save(db, {"target_name": "CD6", "order_no": "CN1", "arrival_date": "2026-03-17"})
+            rid = row["id"]
+            row = service.save(db, {"id": rid, "report_reason": "3个克隆以下"}, created_by="张赞")
+            self.assertEqual((row["affinity_status"], row["status"]), ("亲和力待检测", "待检测"))
+            # 单项实验员不能改主状态，有原因时也不能把亲和力标为已完成
+            with self.assertRaisesRegex(PermissionError, "不可修改该字段"):
+                service.save(db, {"id": rid, "status": "已完成"}, scopes=frozenset({"affinity"}))
+            with self.assertRaisesRegex(ValueError, "请先清除未出报告原因"):
+                service.save(db, {"id": rid, "affinity_status": "亲和力已完成"}, scopes=frozenset({"affinity"}))
+            with self.assertRaisesRegex(ValueError, "请先清除未出报告原因"):
+                service.save(db, {"id": rid, "affinity_status": "亲和力检测中"}, created_by="张赞")
+            # 双权限实验员也不能直接把未完成的工单改成已完成
+            with self.assertRaisesRegex(PermissionError, msg):
+                service.save(db, {"id": rid, "status": "已完成"}, scopes=both)
+            # 带原因结案，改原因文字不影响；流式不做标不适用后整单自动完成
+            row = service.save(db, {"id": rid, "affinity_status": "亲和力已完成"}, scopes=both)
+            self.assertEqual((row["affinity_status"], row["status"]), ("亲和力已完成", "检测中"))
+            row = service.save(db, {"id": rid, "report_reason": "3个克隆以下（复核）"}, scopes=both)
+            self.assertEqual(row["affinity_status"], "亲和力已完成")
+            row = service.save(db, {"id": rid, "flow_status": "流式不适用"}, scopes=both)
+            self.assertEqual((row["flow_status"], row["status"]), ("流式不适用", "已完成"))
+            # 已完成后改日期、原因不回退；实验状态要先打回才能改
+            row = service.save(db, {"id": rid, "arrival_date": "2026-03-18"})
+            row = service.save(db, {"id": rid, "report_reason": "全阴"}, scopes=frozenset({"affinity"}))
+            self.assertEqual((row["status"], row["affinity_status"]), ("已完成", "亲和力已完成"))
+            with self.assertRaisesRegex(ValueError, "先打回待检测"):
+                service.save(db, {"id": rid, "flow_status": "流式待检测"}, scopes=both)
+            for status in ("检测中", "已取消"):
+                with self.assertRaisesRegex(PermissionError, msg):
+                    service.save(db, {"id": rid, "status": status}, scopes=both)
+            # 打回待检测：两项实验一并回到待检测，流式不适用保留
+            row = service.save(db, {"id": rid, "status": "待检测"}, scopes=both)
+            self.assertEqual((row["status"], row["affinity_status"], row["flow_status"]), ("待检测", "亲和力待检测", "流式不适用"))
+            pending = service.save(db, {"target_name": "CD7", "order_no": "CN2"})
+            with self.assertRaisesRegex(PermissionError, msg):
+                service.save(db, {"id": pending["id"], "status": "已完成"}, scopes=both)
+
+    def test_manual_flow_skip_and_affinity_date_clear(self):
+        with self.Session() as db:
+            rid = service.save(
+                db, {"target_name": "CD9", "order_no": "CN9", "arrival_date": "2026-03-17", "target_type": "I型跨膜"}
+            )["id"]
+            # 细胞型也能手动标流式不适用；细胞型之间换类型不影响，分泌型改回细胞型才重新判断
+            row = service.save(db, {"id": rid, "flow_status": "流式不适用"})
+            self.assertEqual(row["flow_status"], "流式不适用")
+            row = service.save(db, {"id": rid, "target_type": "II型跨膜"})
+            self.assertEqual(row["flow_status"], "流式不适用")
+            service.save(db, {"id": rid, "target_type": "分泌型"})
+            row = service.save(db, {"id": rid, "target_type": "I型跨膜"})
+            self.assertEqual(row["flow_status"], "流式待检测")
+            # 清掉亲和力日期，亲和力已完成随之回退
+            row = service.save(db, {"id": rid, "affinity_date": "2026-03-20"})
+            self.assertEqual((row["affinity_status"], row["status"]), ("亲和力已完成", "检测中"))
+            row = service.save(db, {"id": rid, "affinity_date": None})
+            self.assertEqual((row["affinity_status"], row["status"]), ("亲和力待检测", "待检测"))
+            # 已完成后新填未出原因 = 报告卡住，回到待检测；单项实验员不能借此结案
+            service.save(db, {"id": rid, "affinity_date": "2026-03-21"})
+            row = service.save(db, {"id": rid, "report_reason": "抗原重检"}, scopes=frozenset({"affinity"}))
+            self.assertEqual(row["affinity_status"], "亲和力待检测")
+
+    def test_manual_assay_stage_starts_badges(self):
+        with self.Session() as db:
+            rid = service.save(db, {"target_name": "CD1"})["id"]
+            row = service.save(db, {"id": rid, "status": "待检测"})
+            self.assertEqual((row["affinity_status"], row["flow_status"]), ("亲和力待检测", "流式待检测"))
+            # 改订单号、One 回填订单号都不会退回合成阶段；清空到货日期才回去
+            row = service.save(db, {"id": rid, "order_no": "CN100"})
+            self.assertEqual(row["status"], "待检测")
+            obj = db.get(DiscoverySynthesisOrder, rid)
+            one_sync.apply_remote_snapshot_to_row(obj, {"order_no": "CN200"})
+            self.assertEqual(obj.status, "待检测")
+            row = service.save(db, {"id": rid, "arrival_date": None})
+            self.assertEqual((row["status"], row["affinity_status"]), ("合成中", None))
+            secreted = service.save(db, {"target_name": "IL2", "target_type": "分泌型"})["id"]
+            row = service.save(db, {"id": secreted, "status": "检测中"})
+            self.assertEqual((row["status"], row["flow_status"]), ("检测中", "流式不适用"))
+            # 全部编辑把已完成改回检测中也算打回，两项实验回到待测
+            service.save(db, {"id": rid, "status": "检测中"})
+            service.save(db, {"id": rid, "affinity_status": "亲和力已完成"})
+            row = service.save(db, {"id": rid, "flow_status": "流式已完成"})
+            self.assertEqual(row["status"], "已完成")
+            row = service.save(db, {"id": rid, "status": "检测中"})
+            self.assertEqual((row["affinity_status"], row["flow_status"]), ("亲和力待检测", "流式待检测"))
+
+    def test_person_options_use_own_field_by_frequency(self):
+        with self.Session() as db:
+            for pm, affinity_owner in (("兰维秋", "赵雨蕾"), ("安高", "黄志诚"), ("安高", "黄志诚")):
+                service.save(db, {"target_name": "CD1", "pm": pm, "affinity_owner": affinity_owner})
+            options = service.get_options(db)
+            self.assertEqual(options["affinity_owners"], ["黄志诚", "赵雨蕾"])
+            self.assertEqual(options["pms"], ["安高", "兰维秋"])
+            self.assertEqual(options["owners"], ["无人问津"])
+
+    def test_completion_requires_confirm(self):
+        affinity = frozenset({"affinity"})
+        with self.Session() as db:
+            rid = service.save(db, {"target_name": "CD8", "order_no": "CN3", "arrival_date": "2026-03-17"})["id"]
+            service.save(db, {"id": rid, "flow_date": "2026-03-19"})
+            payload = {"id": rid, "affinity_date": "2026-03-20"}
+            with self.assertRaisesRegex(service.CompletionConfirmRequired, "CD8 · CN3.*完成后你将不能再改回"):
+                service.save(db, dict(payload), scopes=affinity, confirm_complete=False)
+            db.rollback()
+            self.assertEqual(db.get(DiscoverySynthesisOrder, rid).status, "检测中")
+            row = service.save(db, dict(payload), scopes=affinity)
+            self.assertEqual(row["status"], "已完成")
+            row = service.save(db, {"id": rid, "affinity_owner": "张赞"}, scopes=affinity, confirm_complete=False)
+            self.assertEqual(row["status"], "已完成")
+            # 手动选主状态已完成是明确操作，不再二次确认
+            other = service.save(db, {"target_name": "CD10", "order_no": "CN4"})["id"]
+            row = service.save(db, {"id": other, "status": "已完成"}, confirm_complete=False)
+            self.assertEqual(row["status"], "已完成")
 
     def test_status_machine_and_save_workflow(self):
         with self.Session() as db:
@@ -184,42 +303,42 @@ class SynthesisProgressServiceTests(DbTestCase):
             )
             self.assertEqual((pm_created["pm"], pm_created["owner"]), ("兰维秋", None))
 
-            # Reopening affinity via pill on a completed row moves status back to 检测中 without snapping back to 已完成
-            reopened = service.save(
-                db,
-                {"id": row1["id"], "affinity_status": "亲和力检测中"},
-                created_by="张赞",
-                scopes=frozenset({"affinity"}),
-            )
-            self.assertEqual(reopened["status"], "检测中")
-            self.assertEqual(reopened["affinity_status"], "亲和力检测中")
+            # 整单已完成后改实验状态要先打回，全部编辑也一样；单项实验员不能打回
+            for scopes in (frozenset({"affinity"}), frozenset({"full"})):
+                with self.assertRaisesRegex(ValueError, "先打回待检测"):
+                    service.save(
+                        db, {"id": row1["id"], "affinity_status": "亲和力检测中"}, created_by="张赞", scopes=scopes
+                    )
             with self.assertRaises(PermissionError):
-                service.save(
-                    db,
-                    {"id": row1["id"], "status": "待检测"},
-                    scopes=frozenset({"affinity", "flow"}),
-                )
+                service.save(db, {"id": row1["id"], "status": "待检测"}, scopes=frozenset({"flow"}))
+            reopened = service.save(db, {"id": row1["id"], "status": "待检测"})
+            self.assertEqual(
+                (reopened["status"], reopened["affinity_status"], reopened["flow_status"]),
+                ("待检测", "亲和力待检测", "流式待检测"),
+            )
+            service.save(db, {"id": row1["id"], "affinity_status": "亲和力检测中"}, created_by="张赞")
+            reopened = service.save(db, {"id": row1["id"], "flow_status": "流式已完成"})
+            self.assertEqual(reopened["status"], "检测中")
+            self.assertEqual(
+                service.get_list(db, {"status": ["亲和力检测中", "流式已完成"]})["total"],
+                1,
+            )
 
-            # Manual assay completion without dates keeps main status in 检测中; manual main status is preserved across note edits
-            service.save(
+            # 两项实验手动标完成（不填日期）也整单完成，之后改备注保持已完成
+            manual = service.save(
                 db,
                 {"id": pm_created["id"], "affinity_status": "亲和力已完成", "flow_status": "流式已完成"},
                 created_by="兰维秋",
                 scopes=frozenset({"affinity", "flow"}),
             )
-            self.assertEqual(
-                service.get_list(db, {"status": ["亲和力检测中", "流式已完成"]})["total"],
-                1,
-            )
-            manual_main = service.save(db, {"id": pm_created["id"], "status": "已完成"})
-            self.assertEqual(manual_main["status"], "已完成")
-            manual_main = service.save(db, {"id": pm_created["id"], "remark": "手工状态保持"})
-            self.assertEqual(manual_main["status"], "已完成")
+            self.assertEqual(manual["status"], "已完成")
+            manual = service.save(db, {"id": pm_created["id"], "remark": "手工状态保持"})
+            self.assertEqual(manual["status"], "已完成")
 
     def test_claim_and_scope_rules(self):
         pm = frozenset({"pm"})
         with self.Session() as db:
-            rid = service.save(db, {"target_name": "CD6"})["id"]
+            rid = service.save(db, {"target_name": "CD6", "pm": "兰维秋"})["id"]
             # 空负责人不能认领；全部编辑在空与无人问津间切换
             with self.assertRaisesRegex(ValueError, "尚未开放认领"):
                 service.claim_order(db, rid, "张赞", scopes=pm)
@@ -229,29 +348,150 @@ class SynthesisProgressServiceTests(DbTestCase):
             with self.assertRaisesRegex(ValueError, "不可重复认领"):
                 service.claim_order(db, rid, "兰维秋", scopes=pm)
             self.assertEqual(service.claim_order(db, rid, "张赞", scopes=pm)["owner"], "无人问津")
-            # 超过 7 天不能退回，只能转让
+            # 超过 7 天不能退回，也不能转给别人
             service.claim_order(db, rid, "张赞", scopes=pm)
             db.get(DiscoverySynthesisOrder, rid).owner_claimed_at = now_local() - timedelta(days=8)
             with self.assertRaisesRegex(ValueError, "超过 7 天"):
                 service.claim_order(db, rid, "张赞", scopes=pm)
             with self.assertRaisesRegex(PermissionError, "超过 7 天"):
                 service.save(db, {"id": rid, "owner": "无人问津"}, created_by="张赞", scopes=pm)
-            self.assertEqual(service.save(db, {"id": rid, "owner": "兰维秋"}, created_by="张赞", scopes=pm)["owner"], "兰维秋")
-            with self.assertRaisesRegex(ValueError, "已由 兰维秋 负责"):
+            with self.assertRaisesRegex(PermissionError, "只能认领"):
+                service.save(db, {"id": rid, "owner": "兰维秋"}, created_by="张赞", scopes=pm)
+            with self.assertRaisesRegex(ValueError, "已由 张赞 负责"):
                 service.claim_order(db, rid, None)
-            # PM 只能操作 pm 或负责人是本人的工单，新建不能填负责人
-            with self.assertRaisesRegex(PermissionError, "PM 或负责人是本人"):
-                service.save(db, {"id": rid, "remark": "x"}, created_by="张赞", scopes=pm)
-            with self.assertRaisesRegex(PermissionError, "PM 或负责人是本人"):
-                service.delete(db, rid, scopes=pm, actor_name="张赞")
-            service.save(db, {"id": rid, "remark": "x"}, created_by="兰维秋", scopes=pm)
+            # 已认领的工单只归负责人，PM 本人也不能改；PM 字段、靶点类型 PM 都不能改
+            with self.assertRaisesRegex(PermissionError, "只有负责人"):
+                service.save(db, {"id": rid, "remark": "x"}, created_by="兰维秋", scopes=pm)
+            with self.assertRaisesRegex(PermissionError, "只有负责人"):
+                service.delete(db, rid, scopes=pm, actor_name="兰维秋")
+            service.save(db, {"id": rid, "remark": "x"}, created_by="张赞", scopes=pm)
+            for field in ("pm", "target_type", "experiment_id"):
+                with self.assertRaisesRegex(PermissionError, "不可修改该字段"):
+                    service.save(db, {"id": rid, field: "x"}, created_by="张赞", scopes=pm)
             with self.assertRaisesRegex(PermissionError, "需通过认领"):
                 service.save(db, {"target_name": "CD7", "owner": "兰维秋"}, created_by="兰维秋", scopes=pm)
+            # 没有负责人时归 PM
+            other = service.save(db, {"target_name": "CD7", "pm": "兰维秋"})["id"]
+            with self.assertRaisesRegex(PermissionError, "只有本人是 PM"):
+                service.save(db, {"id": other, "remark": "x"}, created_by="张赞", scopes=pm)
+            service.save(db, {"id": other, "remark": "x"}, created_by="兰维秋", scopes=pm)
             # 实验员权限按亲和力 / 流式拆分
             with self.assertRaises(PermissionError):
                 service.save(db, {"id": rid, "flow_note": "x"}, scopes=frozenset({"affinity"}))
             with self.assertRaises(PermissionError):
                 service.save(db, {"id": rid, "affinity_result": "x"}, scopes=frozenset({"flow"}))
+            # 亲和力实验员填日期时，空的亲和力人员自动填本人，已有人员不覆盖
+            affinity = frozenset({"affinity"})
+            row = service.save(db, {"id": other, "affinity_date": "2026-11-03"}, created_by="张赞 Zan", scopes=affinity)
+            self.assertEqual(row["affinity_owner"], "张赞")
+            row = service.save(db, {"id": other, "affinity_date": "2026-11-04"}, created_by="兰维秋", scopes=affinity)
+            self.assertEqual(row["affinity_owner"], "张赞")
+
+    def test_affinity_owner_multi_and_autofill(self):
+        affinity = frozenset({"affinity"})
+        with self.Session() as db:
+            rid = service.save(db, {"target_name": "CD8", "order_no": "CN8", "arrival_date": "2026-11-01"})["id"]
+            row = service.save(db, {"id": rid, "affinity_owner": ["张赞", "黄志诚", "张赞"]})
+            self.assertEqual(row["affinity_owner"], "张赞、黄志诚")
+            # 已有人员时实验员改检测中不追加本人
+            row = service.save(db, {"id": rid, "affinity_status": "亲和力检测中"}, created_by="兰维秋", scopes=affinity)
+            self.assertEqual(row["affinity_owner"], "张赞、黄志诚")
+            # 打回待检测保留人员
+            row = service.save(db, {"id": rid, "affinity_status": "亲和力待检测"})
+            self.assertEqual(row["affinity_owner"], "张赞、黄志诚")
+            # 管理员改检测中不填本人，实验员在为空时填本人
+            service.save(db, {"id": rid, "affinity_owner": None})
+            row = service.save(db, {"id": rid, "affinity_status": "亲和力检测中"}, created_by="管理员")
+            self.assertIsNone(row["affinity_owner"])
+            service.save(db, {"id": rid, "affinity_status": "亲和力待检测"})
+            row = service.save(db, {"id": rid, "affinity_status": "亲和力检测中"}, created_by="兰维秋", scopes=affinity)
+            self.assertEqual(row["affinity_owner"], "兰维秋")
+
+            options = service.get_options(db)
+            self.assertEqual(options["affinity_owners"], ["兰维秋"])
+            values = service.get_column_values(db, {"field": "affinity_owner"})["items"]
+            self.assertEqual([item["value"] for item in values], ["兰维秋"])
+            service.save(db, {"id": rid, "affinity_owner": "张赞+黄志诚"})
+            found = service.get_list(db, {"field_filters": [{"field": "affinity_owner", "values": ["黄志诚"]}]})
+            self.assertEqual([item["id"] for item in found["items"]], [rid])
+
+    def test_create_requires_fields(self):
+        pm = frozenset({"pm"})
+        base = {"order_kind": "改造", "supply_mode": "合成到货", "mouse_strain": "RM", "target_name": "CD6"}
+        eng = {"eng_type": "Tm", "eng_method": "AI", "eng_parent_seq": "VH1", "eng_requirement": "提高Tm"}
+        with self.Session() as db:
+            with self.assertRaisesRegex(ValueError, "订单性质、供应方式、小鼠品系、PM、靶点$"):
+                service.save(db, {}, require_fields=True)
+            db.rollback()
+            with self.assertRaisesRegex(ValueError, "改造类型、改造方式、母本序列、改造要求$"):
+                service.save(db, base, created_by="兰维秋", scopes=pm, require_fields=True)
+            db.rollback()
+            row = service.save(db, {**base, **eng}, created_by="兰维秋", scopes=pm, require_fields=True)
+            self.assertEqual(row["pm"], "兰维秋")
+
+    def test_engineering_experimenter_rules(self):
+        eng = frozenset({"eng"})
+        need = {"order_kind": "常规合成", "mouse_strain": "RM", "target_name": "CD6"}
+        with self.Session() as db:
+            with self.assertRaisesRegex(PermissionError, "只能操作改造"):
+                service.save(db, {**need, "supply_mode": "合成到货"}, created_by="李四 Li Si", scopes=eng, require_fields=True)
+            db.rollback()
+            row = service.save(
+                db, {**need, "supply_mode": "内部转染"}, created_by="李四 Li Si", scopes=eng, require_fields=True
+            )
+            self.assertEqual((row["pm"], row["order_sender"], row["synthetic_corp"]), ("李四", "李四 Li Si", "内部"))
+            rid = row["id"]
+            saved = service.save(
+                db, {"id": rid, "pm": "张赞", "arrival_date": "2026-11-03", "synthetic_corp": "擎科"}, scopes=eng
+            )
+            self.assertEqual((saved["pm"], saved["synthetic_corp"]), ("张赞", "擎科"))
+            for field in ("owner", "flow_note", "affinity_result"):
+                with self.assertRaisesRegex(PermissionError, "不可修改该字段"):
+                    service.save(db, {"id": rid, field: "x"}, created_by="李四", scopes=eng)
+                db.rollback()
+            with self.assertRaisesRegex(PermissionError, "只能操作改造"):
+                service.save(db, {"id": rid, "supply_mode": "合成到货"}, created_by="李四", scopes=eng)
+            db.rollback()
+            normal = service.save(db, {"target_name": "CD7"})["id"]
+            with self.assertRaisesRegex(PermissionError, "只能操作改造"):
+                service.save(db, {"id": normal, "remark": "x"}, created_by="李四", scopes=eng)
+            db.rollback()
+            with self.assertRaisesRegex(PermissionError, "只能操作改造"):
+                service.delete(db, normal, scopes=eng, actor_name="李四")
+            db.rollback()
+            service.save(db, {"id": rid, "status": "已取消"}, scopes=eng)
+            service.delete(db, rid, scopes=eng, actor_name="李四")
+            self.assertIsNone(db.get(DiscoverySynthesisOrder, rid))
+            # 改造类新建默认内部，关联 One 后按 One 的合成公司走；兼有 PM 权限时负责人可把本人工单改回常规
+            arrival = service.save(db, {"order_kind": "改造", "target_name": "CD8"}, created_by="李四", scopes=eng)
+            self.assertEqual(arrival["synthetic_corp"], "内部")
+            linked = db.get(DiscoverySynthesisOrder, arrival["id"])
+            one_sync.apply_remote_snapshot_to_row(linked, {"order_no": "CN1", "synthetic_corp": "君跻"})
+            self.assertEqual(linked.synthetic_corp, "君跻")
+            both = frozenset({"pm", "eng"})
+            saved = service.save(db, {"id": arrival["id"], "order_kind": "常规合成"}, created_by="李四", scopes=both)
+            self.assertEqual(saved["order_kind"], "常规合成")
+
+    def test_corp_hidden_without_full_edit(self):
+        drift = {"field": "synthetic_corp", "current": "擎科", "remote": "金斯瑞"}
+        row = {"synthetic_corp": "擎科", "source_snapshot": {"synthetic_corp": "擎科"}, "drift_fields": [drift]}
+        masked = service.mask_synthetic_corp({"items": [row, {"synthetic_corp": None}]})["items"]
+        self.assertEqual(masked[0]["synthetic_corp"], "***")
+        self.assertEqual(masked[0]["source_snapshot"]["synthetic_corp"], "***")
+        self.assertEqual((masked[0]["drift_fields"][0]["current"], masked[0]["drift_fields"][0]["remote"]), ("***", "***"))
+        self.assertIsNone(masked[1]["synthetic_corp"])
+        rows = [
+            {"order_kind": "常规合成", "supply_mode": "合成到货", "synthetic_corp": "擎科"},
+            {"order_kind": "常规合成", "supply_mode": "改亚型", "synthetic_corp": "内部"},
+        ]
+        kept = service.mask_synthetic_corp(rows, keep_engineering_rows=True)
+        self.assertEqual([item["synthetic_corp"] for item in kept], ["***", "内部"])
+        query = service.without_corp_query({
+            "synthetic_corp": "擎科",
+            "sort_field": "synthetic_corp",
+            "field_filters": [{"field": "synthetic_corp", "values": ["擎科"]}, {"field": "owner", "values": ["张赞"]}],
+        })
+        self.assertEqual(query, {"field_filters": [{"field": "owner", "values": ["张赞"]}]})
 
     def test_one_batch_and_target_parsing(self):
         self.assertTrue(one_sync.is_manual_batch("23R037_RM_C_W_M1_20261102_20clones_20261103_to君跻_M.xlsx"))
@@ -542,6 +782,47 @@ class SynthesisProgressServiceTests(DbTestCase):
         self.assertEqual(snap["order_sender"], "任鸿滨 Hongbin Ren")
         self.assertIsNone(one_sync.build_remote_snapshot("ngs", {"id": 8})["order_sender"])
 
+    def test_queue_shift_is_one_bulk_update(self):
+        with self.Session() as db:
+            ids = [service.save(db, {"target_name": f"T{i}"}, created_by="测试员")["id"] for i in range(4)]
+            statements = []
+
+            def capture(_conn, _cursor, statement, parameters, _context, executemany):
+                if statement.lstrip().upper().startswith("UPDATE DISCOVERY_SYNTHESIS_ORDER"):
+                    statements.append(len(parameters) if executemany else 1)
+
+            event.listen(self.engine, "before_cursor_execute", capture)
+            try:
+                service.save(db, {"id": ids[0], "status": "已取消"})
+            finally:
+                event.remove(self.engine, "before_cursor_execute", capture)
+            # 出队行自己一条，后面三行顺移合成一条
+            self.assertEqual(statements, [1, 1])
+        with self.Session() as db:
+            orders = dict(db.execute(select(DiscoverySynthesisOrder.id, DiscoverySynthesisOrder.sort_order)).all())
+        self.assertEqual([orders[i] for i in ids], [None, 1, 2, 3])
+
+    def test_lock_queue_renews_snapshot_only_before_writes(self):
+        with self.Session() as db:
+            rid = service.save(db, {"target_name": "T1"}, created_by="测试员")["id"]
+            commits = []
+            event.listen(db, "after_commit", commits.append)
+            # 只读过（如登录校验）就先提交，加锁后的读取不再用等锁前的快照
+            db.get(DiscoverySynthesisOrder, rid)
+            lock_queue(db, DiscoverySynthesisOrder)
+            self.assertEqual(len(commits), 1)
+            # 已有未提交的改动、flush 过或批量 UPDATE 过都不能提前提交
+            db.get(DiscoverySynthesisOrder, rid).remark = "未提交"
+            lock_queue(db, DiscoverySynthesisOrder)
+            db.flush()
+            lock_queue(db, DiscoverySynthesisOrder)
+            db.rollback()
+            db.execute(update(DiscoverySynthesisOrder).values(remark="批量"))
+            lock_queue(db, DiscoverySynthesisOrder)
+            db.rollback()
+            self.assertEqual(len(commits), 1)
+            self.assertIsNone(db.get(DiscoverySynthesisOrder, rid).remark)
+
 
 class SynthesisHeaderFilterTests(DbTestCase):
     tables = (Target, DiscoverySynthesisOrder)
@@ -657,6 +938,33 @@ class SynthesisHeaderFilterTests(DbTestCase):
             self.codes({"field": "target_name", "colors": ["red"]}),
             ["S001"],
         )
+
+    def test_status_header_includes_assay_sub_statuses(self):
+        with self.Session() as db:
+            for code, status, affinity, flow in (
+                ("S005", "检测中", "亲和力已完成", "流式待检测"),
+                ("S006", "待检测", "亲和力待检测", "流式待检测"),
+                ("S007", "已完成", "亲和力已完成", "流式已完成"),
+            ):
+                db.add(DiscoverySynthesisOrder(
+                    synthesis_order_id=f"SO{code}", order_kind="常规", supply_mode="自合成",
+                    synthesis_code=code, status=status, affinity_status=affinity, flow_status=flow,
+                ))
+            db.commit()
+        listed = [(item["value"], item["count"]) for item in self.values("status")["items"]]
+        self.assertEqual(listed, [
+            ("待下单", 1), ("合成中", 2), ("待检测", 1), ("检测中", 1), ("已完成", 2),
+            ("亲和力待检测", 1), ("亲和力已完成", 1), ("流式待检测", 2),
+        ])
+        # 已完成行的子状态不计入，也不被子状态筛中
+        self.assertEqual(self.codes({"field": "status", "values": ["亲和力已完成"]}), ["S005"])
+        self.assertEqual(self.codes({"field": "status", "values": ["亲和力已完成", "流式待检测"]}), ["S005"])
+        self.assertEqual(self.codes({"field": "status", "values": ["待下单", "流式待检测"]}), ["S001", "S005", "S006"])
+        self.assertEqual(
+            self.codes({"field": "status", "exclude": ["流式待检测"]}),
+            ["S001", "S002", "S003", "S004", "S007"],
+        )
+        self.assertEqual(self.codes(status="亲和力待检测"), ["S006"])
 
     def test_value_list_ignores_own_header_filter_and_keeps_others(self):
         own = {"field": "owner", "values": ["甲"]}

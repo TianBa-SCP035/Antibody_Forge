@@ -803,6 +803,7 @@ VALUES
   ('discovery.synthesis_progress.pm_edit', 'PM操作合成与验证', 'action', 'discovery', 'synthesis_progress', 'pm_edit', NULL, 'discovery.synthesis_progress.pm_edit_button', 'discovery.page.synthesis_progress', 407),
   ('discovery.synthesis_progress.affinity_edit', '亲和力操作合成与验证', 'action', 'discovery', 'synthesis_progress', 'affinity_edit', NULL, 'discovery.synthesis_progress.affinity_edit_button', 'discovery.page.synthesis_progress', 408),
   ('discovery.synthesis_progress.flow_edit', '流式操作合成与验证', 'action', 'discovery', 'synthesis_progress', 'flow_edit', NULL, 'discovery.synthesis_progress.flow_edit_button', 'discovery.page.synthesis_progress', 409),
+  ('discovery.synthesis_progress.eng_edit', '改造实验员操作合成与验证', 'action', 'discovery', 'synthesis_progress', 'eng_edit', NULL, 'discovery.synthesis_progress.eng_edit_button', 'discovery.page.synthesis_progress', 410),
   ('molecular.page.library', '文库构建', 'page', 'molecular', 'library', 'view', '/molecular-cell/library-construction', NULL, NULL, 430),
   ('molecular.library.edit', '编辑文库构建工单', 'action', 'molecular', 'library', 'edit', NULL, 'molecular.library.edit_button', 'molecular.page.library', 431),
   ('molecular.page.library_detail', '文库构建详情', 'page', 'molecular', 'library_detail', 'view', '/molecular-cell/library-construction/result', NULL, 'molecular.page.library', 433),

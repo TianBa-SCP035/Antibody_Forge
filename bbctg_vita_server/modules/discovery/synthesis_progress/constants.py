@@ -146,9 +146,9 @@ SYNTHETIC_CORP_OPTIONS = (
     "君跻",
     "擎科",
     "金斯瑞",
-    "百奥",
     "内部",
 )
+INTERNAL_CORP = "内部"
 
 DRIFT_COMPARE_FIELDS = (
     "order_no",

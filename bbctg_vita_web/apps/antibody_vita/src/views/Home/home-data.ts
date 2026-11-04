@@ -137,7 +137,7 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
     titleKey: 'page.home.presetDiscoverySynthesisTitle',
     subtitleKey: 'page.home.presetDiscoverySynthesisSubtitle',
     icon: 'lucide:list-checks',
-    iconClass: 'bg-purple-500/15 text-purple-600',
+    iconClass: 'bg-orange-500/15 text-orange-600',
     url: '/discovery/synthesis-progress',
   },
   {
@@ -218,7 +218,7 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
 
 export const defaultQuickNavPresetIds: Array<string | null> = [
   'serum-list',
-  'flow-work-order-list',
+  'discovery-synthesis',
   'system',
   'titer-order-list',
   'profile',

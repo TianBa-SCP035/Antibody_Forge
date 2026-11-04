@@ -8,7 +8,7 @@
         trigger="click"
         :transition="popoverTransition(badge)"
         :width="132"
-        :disabled="!editable || !badge.editable"
+        :disabled="!canOpen(badge)"
         :teleported="true"
         @hide="scheduleDeactivate"
       >
@@ -37,8 +37,8 @@
       <span
         v-else
         class="assay-split-half"
-        :class="[`is-${badge.tone}`, { 'is-editable': editable && badge.editable }]"
-        :title="editable && badge.editable ? `${badge.full}（点击修改）` : badge.full"
+        :class="[`is-${badge.tone}`, { 'is-editable': canOpen(badge) }]"
+        :title="canOpen(badge) ? `${badge.full}（点击修改）` : badge.full"
         @click.stop="activateAndOpen(badge)"
       >
         {{ badge.text }}
@@ -58,7 +58,7 @@ export default {
     editable: { type: Boolean, default: false },
     compact: { type: Boolean, default: false },
   },
-  emits: ['change'],
+  emits: ['change', 'locked'],
   data() {
     return {
       activeKey: '',
@@ -83,8 +83,14 @@ export default {
     if (this.deactivateTimer) clearTimeout(this.deactivateTimer)
   },
   methods: {
+    canOpen(badge) {
+      return this.editable && badge.editable
+    },
     activateAndOpen(badge) {
-      if (!this.editable || !badge.editable) return
+      if (!this.canOpen(badge)) {
+        this.$emit('locked', badge)
+        return
+      }
       if (this.deactivateTimer) {
         clearTimeout(this.deactivateTimer)
         this.deactivateTimer = 0

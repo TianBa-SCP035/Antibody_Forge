@@ -12,6 +12,10 @@ export function canPmEditDiscoverySynthesis(userInfo: any): boolean {
   return hasAccessCode(userInfo, 'discovery.synthesis_progress.pm_edit');
 }
 
+export function canEngEditDiscoverySynthesis(userInfo: any): boolean {
+  return hasAccessCode(userInfo, 'discovery.synthesis_progress.eng_edit');
+}
+
 export function canAffinityEditDiscoverySynthesis(userInfo: any): boolean {
   return hasAccessCode(userInfo, 'discovery.synthesis_progress.affinity_edit');
 }

@@ -1,9 +1,9 @@
 <script lang="ts" setup>
 import type { VbenFormSchema } from '@vben/common-ui';
 
-import { computed, defineComponent, h, onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
-import { AuthenticationLogin, VbenButton, z } from '@vben/common-ui';
+import { AuthenticationLogin, z } from '@vben/common-ui';
 import { $t } from '@vben/locales';
 
 import { RECENT_LOGIN_ACCOUNTS_KEY } from '#/constants/storageKeys';
@@ -16,39 +16,22 @@ const authStore = useAuthStore();
 const loginRef = ref<any>(null);
 const recentAccounts = ref<Array<{ lastLoginAt?: string; realName?: string; username: string }>>([]);
 
-// 用按钮而不是下拉：下拉层级低于登录过期弹窗会被盖住，且只有一个账号时选了也不触发变化。
-const RecentAccounts = defineComponent({
-  name: 'RecentAccounts',
-  inheritAttrs: false,
-  setup() {
-    return () =>
-      h('div', { class: 'flex w-full flex-wrap items-center gap-2' }, [
-        h('span', { class: 'text-muted-foreground text-sm' }, '最近登录'),
-        ...recentAccounts.value.map((account) =>
-          h(
-            VbenButton,
-            {
-              class: 'h-7 px-3',
-              size: 'sm',
-              title: account.username,
-              type: 'button',
-              variant: 'outline',
-              onClick: () => selectRecentAccount(account.username),
-            },
-            () => account.realName || account.username,
-          ),
-        ),
-      ]);
-  },
-});
-
 const formSchema = computed((): VbenFormSchema[] => {
   const recentAccountSchema: VbenFormSchema[] = recentAccounts.value.length
     ? [
         {
-          component: RecentAccounts,
+          component: 'VbenSelect',
+          componentProps: {
+            allowClear: true,
+            options: recentAccounts.value.map((account) => ({
+              label: account.realName || account.username,
+              value: account.username,
+            })),
+            placeholder: '快速选择账号',
+            'onUpdate:modelValue': selectRecentAccount,
+          },
           fieldName: 'recentAccount',
-          label: '最近登录',
+          label: '快速选择账号',
         },
       ]
     : [];
@@ -81,9 +64,9 @@ function loadRecentAccounts() {
   recentAccounts.value = raw ? JSON.parse(raw) : [];
 }
 
-function selectRecentAccount(username: string) {
+function selectRecentAccount(username?: string) {
   const formApi = loginRef.value?.getFormApi?.();
-  if (!formApi) return;
+  if (!username || !formApi) return;
   formApi.setFieldValue('username', username);
   const passwordEl = formApi.getFieldComponentRef('password')?.$el;
   (passwordEl?.querySelector?.('input') ?? passwordEl)?.focus?.();
@@ -103,3 +86,13 @@ onMounted(loadRecentAccounts);
     />
   </div>
 </template>
+
+<style>
+/*
+ * 登录过期弹窗的层级取页面最大 z-index + 1，可能顶到 2147483647，下拉固定 2000 会被盖住。
+ * 下拉层同取最大值、又挂在 body 末尾，同层级时排在后面的在上面；包装层是行内 z-index，只能 !important。
+ */
+[data-reka-popper-content-wrapper]:has(> [role='listbox']) {
+  z-index: 2147483647 !important;
+}
+</style>

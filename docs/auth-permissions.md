@@ -126,10 +126,11 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `discovery.page.workbench` | page | 抗体发现项目工作台列表 |
 | `discovery.workbench.edit` | action | 新增、保存、删除、排序安排 |
 | `discovery.page.synthesis_progress` | page | 合成与验证列表与外部订单比对 |
-| `discovery.synthesis_progress.edit` | action | 合成与验证全部编辑：新增、保存、批量粘贴、把负责人标记为「无人问津」（或取消标记）、删除、采用来源变更及手动同步合成订单 |
-| `discovery.synthesis_progress.pm_edit` | action | PM操作合成与验证：新建工单（PM 自动填本人，负责人不可填）、认领「无人问津」合成结果（不限工单归属），本人负责的批次可转让给他人，认领 7 天内还可改回「无人问津」；仅限 PM 或负责人是本人的工单可编辑项目与改造需求字段（项目编号、实验号、PM、课题类型、靶点、靶点类型、小鼠品系、优先级、排序、订单性质、供应方式、改造类型/方式/母本/要求、备注）、调整排序及删除待下单工单 |
-| `discovery.synthesis_progress.affinity_edit` | action | 亲和力操作合成与验证：在状态列往返修改亲和力实验状态（待检测/检测中/已完成），并编辑亲和力人员、亲和力结果、亲和力日期、未出原因 |
-| `discovery.synthesis_progress.flow_edit` | action | 流式操作合成与验证：在状态列往返修改流式实验状态（待检测/已完成），并编辑流式日期、流式说明 |
+| `discovery.synthesis_progress.edit` | action | 合成与验证全部编辑：新增、保存、批量粘贴、把负责人标记为「无人问津」（或取消标记）、删除、采用来源变更及手动同步合成订单；只有此权限能看到全部合成公司（其他人看到 `***`，改造实验员只能看到改造类工单的） |
+| `discovery.synthesis_progress.pm_edit` | action | PM操作合成与验证：新建工单（PM 自动填本人且不可改，负责人不可填）、认领「无人问津」合成结果（不限工单归属），认领 7 天内可改回「无人问津」，不能改给他人；仅限归属本人的工单（有负责人时只归负责人，负责人为空或「无人问津」时归 PM）可编辑项目与改造需求字段（项目编号、课题类型、靶点、小鼠品系、优先级、排序、订单性质、供应方式、改造类型/方式/母本/要求、备注）、调整排序及删除待下单工单；不能改 PM、实验号、靶点类型 |
+| `discovery.synthesis_progress.eng_edit` | action | 改造实验员操作合成与验证：只管改造、内部转染、改亚型的工单。可新建这类工单（下单人填本人，PM 默认本人可改，负责人不可填），可修改其中除负责人、靶点底色、亲和力与流式外的全部字段（含状态、合成订单与到货信息、合成公司），可调整排序、删除未关联 One 的工单；能看到这类工单的合成公司。不能认领 |
+| `discovery.synthesis_progress.affinity_edit` | action | 亲和力操作合成与验证：在状态列往返修改亲和力实验状态（待检测/检测中/已完成），并编辑亲和力人员、亲和力结果、亲和力日期、未出原因（填亲和力日期时亲和力人员为空会自动填本人）；不能打回已完成的工单 |
+| `discovery.synthesis_progress.flow_edit` | action | 流式操作合成与验证：在状态列往返修改流式实验状态（待检测/已完成/不做），并编辑流式日期、流式说明；不能打回已完成的工单。与亲和力权限同时具备时，可在有未出原因时把亲和力标为已完成（结案），也可把已完成的工单打回待检测重做 |
 
 写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/delete`、`/reorder` 及 `/api/discovery/synthesis-progress/save`、`/save_batch`、`/claim`、`/reorder`、`/delete`、`/adopt_source`、`/sync_now` 登记 `sys_permission_api`。字段与规则见 [modules/discovery/workbench.md](./modules/discovery/workbench.md) 与 [modules/discovery/synthesis-progress.md](./modules/discovery/synthesis-progress.md)。权限码在 `sys_permission`，菜单开关在 `sys_feature_flag`（`menu.discovery` / `menu.discovery.workbench` / `menu.discovery.synthesis_progress`）。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。选靶点 / 人名时复用公共选项接口 `GET /api/options/targets` 与 `/api/options/users`（见 `modules/options/routes.py` 的 `OPTION_ACCESS_PERMISSIONS`），任一业务页权限即可访问。
 

@@ -19,6 +19,7 @@
         @clear="handleFilter"
       />
       <ListFilterSelect
+        v-if="canFullEdit"
         v-model="listQuery.synthetic_corp"
         clearable
         v-bind="headerTop('synthetic_corp', '合成公司')"
@@ -105,7 +106,9 @@
         v-bind="headerTop('status', '状态')"
         @change="handleFilter"
       >
-        <el-option v-for="item in statusFilterOptions" :key="item" :label="item" :value="item" />
+        <el-option-group v-for="group in statusFilterGroups" :key="group.label" :label="group.label">
+          <el-option v-for="item in group.options" :key="item" :label="item" :value="item" />
+        </el-option-group>
       </ListFilterSelect>
       <el-date-picker
         v-model="arrivalDateRange"
@@ -214,11 +217,12 @@
         <button
           v-for="item in statusViews"
           :key="item.key || 'all'"
+          :ref="item.key === 'assay' ? setAssayCardEl : undefined"
           type="button"
           class="lifecycle-item"
           :class="[`stage-${item.tone}`, { 'is-active': activeViewGroup === item.key }]"
           :aria-pressed="activeViewGroup === item.key"
-          :title="item.hint"
+          :title="item.key === 'assay' ? `${item.hint}；选中后再点一次看子状态分布` : item.hint"
           @click="handleViewGroup(item.key)"
         >
           <span class="stage-marker">{{ item.step }}</span>
@@ -229,6 +233,40 @@
           <span class="stage-count">{{ stats[item.valueKey] || 0 }}</span>
         </button>
       </nav>
+      <el-popover
+        v-if="activeViewGroup === 'assay' && assayCardEl"
+        v-model:visible="assayBreakdownVisible"
+        :virtual-ref="assayCardEl"
+        virtual-triggering
+        trigger="click"
+        placement="bottom"
+        :width="300"
+        transition="el-zoom-in-top"
+        @show="loadAssayBreakdown"
+      >
+        <div class="assay-breakdown">
+          <div v-for="group in assayBreakdownGroups" :key="group.label" class="assay-breakdown-group">
+            <span class="assay-breakdown-label">{{ group.label }}</span>
+            <div class="assay-breakdown-items">
+              <button
+                v-for="opt in group.items"
+                :key="opt.value"
+                type="button"
+                class="assay-breakdown-item"
+                :class="[`is-${opt.tone}`, { 'is-active': statusTerms.includes(opt.value) }]"
+                @click="pickAssayBreakdown(opt.value)"
+                @contextmenu.prevent="pickAssayBreakdown(opt.value, true)"
+              >
+                <span>{{ opt.label }}</span>
+                <strong :class="{ 'is-pending': !assayBreakdownCounts }">
+                  {{ assayBreakdownCounts ? assayBreakdownCounts[opt.value] || 0 : '' }}
+                </strong>
+              </button>
+            </div>
+          </div>
+          <p class="assay-breakdown-tip">左键只看这一项，右键追加或取消；亲和力和流式同时选时两项都要满足</p>
+        </div>
+      </el-popover>
     </section>
 
     <div class="filter-panel">
@@ -301,6 +339,16 @@
           />
         </div>
         <div class="data-view-controls list-filter-actions">
+          <button
+            v-if="listQuery.quick_filter"
+            type="button"
+            class="wb-hf-chip"
+            title="右上角快捷筛选，点击取消"
+            @click="toggleQuickFilter(listQuery.quick_filter)"
+          >
+            {{ listQuery.quick_filter === 'has_issue' ? '只看异常' : '只看无人问津' }}
+            <span class="wb-hf-chip-x">×</span>
+          </button>
           <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
           <button
             type="button"
@@ -387,8 +435,8 @@
                 v-else
                 type="button"
                 class="sort-order-value"
-                :disabled="!canEditSortCell(row)"
-                @click.stop="startSortEdit(row)"
+                :class="{ 'is-locked': !canEditSortCell(row) }"
+                @click.stop="onSortValueClick(row)"
               >
                 {{ formatSortColumn(row, $index) }}
               </button>
@@ -409,6 +457,7 @@
               :class="{ 'status-tone-king': priorityTone(row) === 'king' }"
               :type="priorityTone(row) === 'king' ? 'info' : priorityTone(row)"
               effect="plain"
+              @click.stop="notifyLocked(fieldLockReason(row, 'priority'))"
             >
               {{ rowPriority(row) }}
             </el-tag>
@@ -420,14 +469,16 @@
               :editable="canEditAssayStatuses(row)"
               compact
               @change="(change) => updateAssayStatus(row, change)"
+              @locked="(badge) => notifyLocked(badge.lockReason)"
             />
             <WorkbenchStatusEditor
               v-else
               :value="row.status || '待下单'"
-              :options="statusOptions"
+              :options="mainStatusOptions(row)"
               :type="statusTone(row.status)"
               :editable="canEditField(row, 'status')"
               @change="(val) => updateOrderStatus(row, val)"
+              @locked="notifyLocked(fieldLockReason(row, 'status'))"
             />
           </template>
           <template #target_name="{ row }">
@@ -454,6 +505,7 @@
               :tag-class="targetTypeTone(row.target_type) ? `target-tone-${targetTypeTone(row.target_type)}` : ''"
               :editable="canEditField(row, 'target_type')"
               @change="(val) => { row.target_type = val; persistRow(row, 'target_type') }"
+              @locked="notifyLocked(fieldLockReason(row, 'target_type'))"
             />
           </template>
           <template #mouse_strain="{ row }">
@@ -477,7 +529,8 @@
               :can-claim="canClaimRow(row)"
               :claim-title="claimButtonTitle(row)"
               :can-delete="canDeleteRow(row)"
-              :delete-title="deleteBlockReason(row)"
+              :delete-title="deleteButtonTitle(row)"
+              :cancel-mode="Boolean(row.source_one_id)"
               @detail="openSerumProject"
               @claim="handleClaim"
               @delete="handleDelete"
@@ -659,7 +712,8 @@
                     :can-claim="canClaimRow(row)"
                     :claim-title="claimButtonTitle(row)"
                     :can-delete="canDeleteRow(row)"
-                    :delete-title="deleteBlockReason(row)"
+                    :delete-title="deleteButtonTitle(row)"
+                    :cancel-mode="Boolean(row.source_one_id)"
                     @detail="openSerumProject"
                     @claim="handleClaim"
                     @delete="handleDelete"
@@ -737,10 +791,13 @@
         <div class="drawer-toolbar-actions">
           <SynthesisRowActions
             :row="editingRow"
+            :disabled="!editingRow.id"
+            :disabled-title="DRAFT_ACTION_TITLE"
             :can-claim="canClaimRow(editingRow)"
             :claim-title="claimButtonTitle(editingRow)"
             :can-delete="canDeleteRow(editingRow)"
-            :delete-title="deleteBlockReason(editingRow)"
+            :delete-title="deleteButtonTitle(editingRow)"
+            :cancel-mode="Boolean(editingRow.source_one_id)"
             @detail="openSerumProject"
             @claim="handleClaim"
             @delete="handleDelete"
@@ -751,7 +808,12 @@
             type="primary"
             plain
             :icon="CopyDocument"
-            title="复制当前工单的基础与改造需求信息，新建一笔合成单（若同转码在 One 库有未关联新单将自动拉取）"
+            :disabled="!editingRow.id"
+            :title="
+              editingRow.id
+                ? '复制当前工单的基础与改造需求信息，新建一笔合成单（若同转码在 One 库有未关联新单将自动拉取）'
+                : DRAFT_ACTION_TITLE
+            "
             @click="handleDuplicateTask(editingRow)"
           >
             加单
@@ -775,7 +837,7 @@
       <fieldset
         v-if="editingRow"
         class="drawer-fieldset"
-        :disabled="!canEdit"
+        :disabled="!canEdit || draftSaving"
         @mouseover="syncDrawerControlTooltip"
       >
         <el-form label-width="82px" size="small" class="drawer-form" @submit.prevent>
@@ -791,134 +853,156 @@
                 v-for="field in section.fields"
                 :key="field.key"
                 :label="field.label"
+                :required="draftRequiredKeys.has(field.key)"
                 :class="['drawer-field', field.wide ? 'is-wide' : '', field.solo ? 'is-solo' : '']"
               >
                 <div class="drawer-field-stack">
-                  <el-date-picker
-                    v-if="field.type === 'date'"
-                    v-model="editingRow[field.key]"
-                    type="date"
-                    value-format="YYYY-MM-DD"
-                    format="YYYY-MM-DD"
-                    placeholder="选择日期"
-                    style="width: 100%;"
-                    :disabled="!canEditField(editingRow, field.key)"
-                    @change="persistRow(editingRow, field.key)"
-                  />
-                  <WorkbenchTargetSelect
-                    v-else-if="field.type === 'target'"
-                    v-model="editingRow.target_codes"
-                    :display-name="editingRow.target_name"
-                    :placeholder="editingRow.target_name ? '' : '搜索靶点'"
-                    :disabled="!canEditField(editingRow, field.key)"
-                    @change="onDrawerTargetChange(editingRow, $event)"
-                  />
-                  <el-input
-                    v-else-if="field.type === 'target_codes'"
-                    :model-value="formatCodesText(editingRow.target_codes)"
-                    disabled
-                    placeholder="自动带出"
-                  />
-                  <UserSelect
-                    v-else-if="field.type === 'user'"
-                    v-model="editingRow[field.key]"
-                    :options="usedUserOptions(field)"
-                    :placeholder="`选择${field.label}`"
-                    :disabled="!canEditField(editingRow, field.key)"
-                    clearable
-                    @change="persistRow(editingRow, field.key)"
-                  />
-                  <ListFilterSelect
-                    v-else-if="field.type === 'csv'"
-                    :model-value="splitCategories(editingRow[field.key])"
-                    joined
-                    filterable
-                    allow-create
-                    default-first-option
-                    clearable
-                    :placeholder="`选择${field.label}`"
-                    style="width: 100%;"
-                    :disabled="!canEditField(editingRow, field.key)"
-                    @change="onCsvFieldChange(editingRow, field.key, $event)"
-                  >
-                    <el-option
-                      v-for="item in fieldOptions(field)"
-                      :key="item"
-                      :label="item"
-                      :value="item"
+                  <div class="drawer-control">
+                    <el-date-picker
+                      v-if="field.type === 'date'"
+                      v-model="editingRow[field.key]"
+                      type="date"
+                      value-format="YYYY-MM-DD"
+                      format="YYYY-MM-DD"
+                      placeholder="选择日期"
+                      style="width: 100%;"
+                      :disabled="!canEditField(editingRow, field.key)"
+                      @change="persistRow(editingRow, field.key)"
                     />
-                    <el-option
-                      v-for="item in extraCsvOptions(field.key, editingRow[field.key])"
-                      :key="`extra-${item}`"
-                      :label="item"
-                      :value="item"
+                    <WorkbenchTargetSelect
+                      v-else-if="field.type === 'target'"
+                      v-model="editingRow.target_codes"
+                      :display-name="editingRow.target_name"
+                      :placeholder="editingRow.target_name ? '' : '搜索靶点'"
+                      :disabled="!canEditField(editingRow, field.key)"
+                      @change="onDrawerTargetChange(editingRow, $event)"
                     />
-                  </ListFilterSelect>
-                  <SynthesisAssayStatusEditor
-                    v-else-if="field.key === 'status' && assayStatusBadges(editingRow).length"
-                    :badges="assayStatusBadges(editingRow)"
-                    :editable="canEditAssayStatuses(editingRow)"
-                    @change="(change) => updateAssayStatus(editingRow, change)"
-                  />
-                  <el-select
-                    v-else-if="field.type === 'select' || field.type === 'corp_select'"
-                    v-model="editingRow[field.key]"
-                    class="drawer-select"
-                    :class="drawerSelectClass(field)"
-                    :clearable="
-                      field.key !== 'status' &&
-                      field.key !== 'priority' &&
-                      field.key !== 'order_kind' &&
-                      field.key !== 'supply_mode'
-                    "
-                    :filterable="field.type !== 'select'"
-                    :allow-create="field.type !== 'select'"
-                    default-first-option
-                    style="width: 100%;"
-                    :disabled="!canEditField(editingRow, field.key)"
-                    @change="persistRow(editingRow, field.key)"
-                  >
-                    <el-option
-                      v-for="item in fieldOptions(field)"
-                      :key="item"
-                      :label="item"
-                      :value="item"
+                    <el-input
+                      v-else-if="field.type === 'target_codes'"
+                      :model-value="formatCodesText(editingRow.target_codes)"
+                      disabled
+                      placeholder="自动带出"
                     />
-                  </el-select>
-                  <el-input
-                    v-else-if="field.type === 'textarea'"
-                    v-model="editingRow[field.key]"
-                    type="textarea"
-                    :autosize="{ minRows: 1, maxRows: 4 }"
-                    :disabled="!canEditField(editingRow, field.key)"
-                    @blur="persistRow(editingRow, field.key)"
-                  />
-                  <span v-else-if="field.key === 'sort_order' && isQueueTerminalRow(editingRow)">-</span>
-                  <el-autocomplete
-                    v-else-if="isCodeField(field.key)"
-                    v-model="editingRow[field.key]"
-                    style="width: 100%;"
-                    :debounce="0"
-                    :disabled="!canEditField(editingRow, field.key)"
-                    :fetch-suggestions="(q, cb) => fetchCodeSuggestions(field.key, q, cb)"
-                    @select="persistRow(editingRow, field.key)"
-                    @blur="persistRow(editingRow, field.key)"
-                  >
-                    <template #default="{ item }">
-                      <div class="code-suggest-row">
-                        <span class="code-suggest-val">{{ item.value }}</span>
-                        <span v-if="item.hint" class="code-suggest-hint">{{ item.hint }}</span>
-                      </div>
-                    </template>
-                  </el-autocomplete>
-                  <el-input
-                    v-else
-                    v-model="editingRow[field.key]"
-                    :type="field.type === 'number' ? 'number' : 'text'"
-                    :min="field.key === 'sort_order' ? 1 : (field.type === 'number' ? 0 : undefined)"
-                    :disabled="!canEditField(editingRow, field.key)"
-                    @blur="persistRow(editingRow, field.key)"
-                  />
+                    <UserSelect
+                      v-else-if="field.type === 'user' && field.multiple"
+                      :model-value="splitCategories(editingRow[field.key])"
+                      multi-gesture
+                      joined
+                      :options="usedUserOptions(field)"
+                      :placeholder="`选择${field.label}`"
+                      :disabled="!canEditField(editingRow, field.key)"
+                      clearable
+                      title="左键单选，右键追加"
+                      @change="onCsvFieldChange(editingRow, field.key, $event)"
+                    />
+                    <UserSelect
+                      v-else-if="field.type === 'user'"
+                      v-model="editingRow[field.key]"
+                      :options="usedUserOptions(field)"
+                      :placeholder="`选择${field.label}`"
+                      :disabled="!canEditField(editingRow, field.key)"
+                      clearable
+                      @change="persistRow(editingRow, field.key)"
+                    />
+                    <ListFilterSelect
+                      v-else-if="field.type === 'csv'"
+                      :model-value="splitCategories(editingRow[field.key])"
+                      joined
+                      filterable
+                      allow-create
+                      default-first-option
+                      clearable
+                      :placeholder="`选择${field.label}`"
+                      style="width: 100%;"
+                      :disabled="!canEditField(editingRow, field.key)"
+                      @change="onCsvFieldChange(editingRow, field.key, $event)"
+                    >
+                      <el-option
+                        v-for="item in fieldOptions(field)"
+                        :key="item"
+                        :label="item"
+                        :value="item"
+                      />
+                      <el-option
+                        v-for="item in extraCsvOptions(field.key, editingRow[field.key])"
+                        :key="`extra-${item}`"
+                        :label="item"
+                        :value="item"
+                      />
+                    </ListFilterSelect>
+                    <SynthesisAssayStatusEditor
+                      v-else-if="field.key === 'status' && assayStatusBadges(editingRow).length"
+                      :badges="assayStatusBadges(editingRow)"
+                      :editable="canEditAssayStatuses(editingRow)"
+                      @change="(change) => updateAssayStatus(editingRow, change)"
+                      @locked="(badge) => notifyLocked(badge.lockReason)"
+                    />
+                    <el-select
+                      v-else-if="field.type === 'select' || field.type === 'corp_select'"
+                      v-model="editingRow[field.key]"
+                      class="drawer-select"
+                      :class="drawerSelectClass(field)"
+                      :clearable="
+                        field.key !== 'status' &&
+                        field.key !== 'priority' &&
+                        field.key !== 'order_kind' &&
+                        field.key !== 'supply_mode'
+                      "
+                      :filterable="field.type !== 'select'"
+                      :allow-create="field.type !== 'select'"
+                      default-first-option
+                      style="width: 100%;"
+                      :disabled="!canEditField(editingRow, field.key)"
+                      @change="persistRow(editingRow, field.key)"
+                    >
+                      <el-option
+                        v-for="item in fieldOptions(field)"
+                        :key="item"
+                        :label="item"
+                        :value="item"
+                      />
+                    </el-select>
+                    <el-input
+                      v-else-if="field.type === 'textarea'"
+                      v-model="editingRow[field.key]"
+                      type="textarea"
+                      :autosize="{ minRows: 1, maxRows: 4 }"
+                      :disabled="!canEditField(editingRow, field.key)"
+                      @blur="persistRow(editingRow, field.key)"
+                    />
+                    <span v-else-if="field.key === 'sort_order' && isQueueTerminalRow(editingRow)">-</span>
+                    <el-autocomplete
+                      v-else-if="isCodeField(field.key)"
+                      v-model="editingRow[field.key]"
+                      style="width: 100%;"
+                      :debounce="0"
+                      :disabled="!canEditField(editingRow, field.key)"
+                      :fetch-suggestions="(q, cb) => fetchCodeSuggestions(field.key, q, cb)"
+                      @select="persistRow(editingRow, field.key)"
+                      @blur="persistRow(editingRow, field.key)"
+                    >
+                      <template #default="{ item }">
+                        <div class="code-suggest-row">
+                          <span class="code-suggest-val">{{ item.value }}</span>
+                          <span v-if="item.hint" class="code-suggest-hint">{{ item.hint }}</span>
+                        </div>
+                      </template>
+                    </el-autocomplete>
+                    <el-input
+                      v-else
+                      v-model="editingRow[field.key]"
+                      :type="field.type === 'number' ? 'number' : 'text'"
+                      :min="field.key === 'sort_order' ? 1 : (field.type === 'number' ? 0 : undefined)"
+                      :disabled="!canEditField(editingRow, field.key)"
+                      @blur="persistRow(editingRow, field.key)"
+                    />
+                    <span
+                      v-if="drawerLockReason(field)"
+                      class="drawer-lock-mask"
+                      @mouseenter="syncDrawerLockTitle($event, drawerLockReason(field))"
+                      @click="notifyLocked(drawerLockReason(field))"
+                    />
+                  </div>
 
                   <div
                     v-if="fieldDrift(editingRow, field.key)"
@@ -979,7 +1063,9 @@ import {
   ElMessage,
   ElMessageBox,
   ElOption,
+  ElOptionGroup,
   ElPagination,
+  ElPopover,
   ElSelect,
   ElTag,
 } from 'element-plus'
@@ -1039,6 +1125,7 @@ import { fetchSerumDetailByExperimentId } from '#/api/serum'
 import {
   canAffinityEditDiscoverySynthesis,
   canEditDiscoverySynthesis,
+  canEngEditDiscoverySynthesis,
   canFlowEditDiscoverySynthesis,
   canPmEditDiscoverySynthesis,
 } from '#/utils/discoveryPermission'
@@ -1064,6 +1151,7 @@ import {
   BASE_EDITOR_SECTIONS,
   BREAK_FIELDS,
   CLAIM_RETURN_DAYS,
+  CREATE_REQUIRED_FIELDS,
   CSV_FIELD_OPTIONS,
   DATE_KEYS,
   DEFAULT_CORP_OPTIONS,
@@ -1071,12 +1159,17 @@ import {
   DEFAULT_ENG_TYPE_OPTIONS,
   DEFAULT_SELECTION_METHOD_OPTIONS,
   DEFAULT_TARGET_TYPE_OPTIONS,
+  DRAFT_LOCKED_FIELD_KEYS,
   EDITABLE_FIELDS,
+  ENG_LOCKED_FIELD_KEYS,
+  ENG_ROW_MESSAGE,
   ENGINEERING_EDITOR_SECTION,
+  ENGINEERING_REQUIRED_FIELDS,
   FLOW_EDIT_FIELD_KEYS,
   FLOW_STATUS_OPTIONS,
   HEADER_MENU_COLUMNS,
   INT_COUNT_KEYS,
+  isEngineeringRow,
   MOUSE_STRAIN_OPTIONS,
   ORDER_KIND_OPTIONS,
   PM_EDIT_FIELD_KEYS,
@@ -1085,7 +1178,7 @@ import {
   SHEET_COLUMN_ORDER,
   SHEET_COLUMNS,
   SHEET_HEADER_ALIASES,
-  STATUS_FILTER_OPTIONS,
+  STATUS_FILTER_GROUPS,
   STATUS_OPTIONS,
   STATUS_VIEWS,
   STRING_MAX,
@@ -1103,16 +1196,46 @@ const BADGE_TEXT = Object.freeze({
   亲和力已完成: '完成',
   流式待检测: '待测',
   流式已完成: '完成',
+  流式不适用: '不做',
 })
 const badgeOptions = (values) =>
   Object.freeze(values.filter((value) => BADGE_TEXT[value]).map((value) => ({ value, label: BADGE_TEXT[value] })))
 const AFFINITY_BADGE_OPTIONS = badgeOptions(AFFINITY_STATUS_OPTIONS)
 const FLOW_BADGE_OPTIONS = badgeOptions(FLOW_STATUS_OPTIONS)
+const FIELD_LABELS = Object.freeze(
+  Object.fromEntries([
+    ...SHEET_COLUMNS.map((column) => [column.key, column.label]),
+    ...[...BASE_EDITOR_SECTIONS, ENGINEERING_EDITOR_SECTION].flatMap((section) =>
+      section.fields.map((field) => [field.key, field.label]),
+    ),
+    ['affinity_status', '亲和力状态'],
+    ['flow_status', '流式状态'],
+  ]),
+)
+const COMPLETED_ASSAY_MESSAGE = '工单已完成，不能再改实验状态；需要重新检测请先打回待检测'
+const ASSAY_MAIN_STATUS_MESSAGE = '实验员只能把已完成的工单打回待检测'
+const ASSAY_STATUS_KEYS = new Set(['affinity_status', 'flow_status'])
+const ASSAY_ROLLBACK_OPTIONS = Object.freeze(['已完成', '待检测'])
+const DRAFT_ACTION_TITLE = '工单保存后才能操作'
+const UNCLAIMED_OWNER = '无人问津'
 function badgeTone(status) {
-  if (status?.endsWith('已完成')) return 'done'
+  if (status?.endsWith('已完成') || status === '流式不适用') return 'done'
   if (status?.endsWith('检测中')) return 'run'
   return 'wait'
 }
+const breakdownItem = (value, label, tone = badgeTone(value)) => ({ value, label, tone })
+const ASSAY_BREAKDOWN_GROUPS = Object.freeze([
+  { label: '整单', items: [breakdownItem('待检测', '待检测'), breakdownItem('检测中', '检测中')] },
+  { label: '亲和力', items: AFFINITY_STATUS_OPTIONS.map((value) => breakdownItem(value, value.replace('亲和力', ''))) },
+  {
+    label: '流式',
+    items: [
+      breakdownItem('流式待检测', '待检测'),
+      breakdownItem('流式不适用', '不做', 'skip'),
+      breakdownItem('流式已完成', '已完成'),
+    ],
+  },
+])
 
 function splitCsv(value) {
   return String(value || '')
@@ -1191,7 +1314,9 @@ export default {
     ElIcon,
     ElInput,
     ElOption,
+    ElOptionGroup,
     ElPagination,
+    ElPopover,
     ElSelect,
     ElTag,
     ListFilterSelect,
@@ -1217,7 +1342,7 @@ export default {
   },
   setup() {
     const userStore = useUserStore()
-    return { CopyDocument, Download, Refresh, userStore }
+    return { CopyDocument, DRAFT_ACTION_TITLE, Download, Refresh, userStore }
   },
   data() {
     return {
@@ -1242,6 +1367,8 @@ export default {
       drawerVisible: false,
       editingId: null,
       editingRowData: null,
+      draftRow: null,
+      draftSaving: false,
       syntheticDateRange: [],
       arrivalDateRange: [],
       flowDateRange: [],
@@ -1250,6 +1377,7 @@ export default {
       optionLists: {
         owners: [],
         pms: [],
+        affinity_owners: [],
         synthetic_corps: [...DEFAULT_CORP_OPTIONS],
         target_types: [...DEFAULT_TARGET_TYPE_OPTIONS],
         selection_methods: [...DEFAULT_SELECTION_METHOD_OPTIONS],
@@ -1257,7 +1385,7 @@ export default {
         eng_methods: [...DEFAULT_ENG_METHOD_OPTIONS],
       },
       statusOptions: [...STATUS_OPTIONS],
-      statusFilterOptions: [...STATUS_FILTER_OPTIONS],
+      statusFilterGroups: STATUS_FILTER_GROUPS,
       priorityOptions: [...PRIORITY_OPTIONS],
       orderKindOptions: [...ORDER_KIND_OPTIONS],
       supplyModeOptions: [...SUPPLY_MODE_OPTIONS],
@@ -1265,6 +1393,10 @@ export default {
       mouseStrainOptions: [...MOUSE_STRAIN_OPTIONS],
       studyTypeOptions: [...STUDY_TYPE_OPTIONS],
       statusViews: STATUS_VIEWS,
+      assayCardEl: null,
+      assayBreakdownVisible: false,
+      assayBreakdownGroups: ASSAY_BREAKDOWN_GROUPS,
+      assayBreakdownCounts: null,
       sheetColumns: SHEET_COLUMN_ORDER.load(),
       workbenchColumns: WORKBENCH_COLUMNS,
       headerMenuColumns: HEADER_MENU_COLUMNS,
@@ -1285,17 +1417,23 @@ export default {
     canPmEdit() {
       return canPmEditDiscoverySynthesis(this.userStore.userInfo || {})
     },
+    canEngEdit() {
+      return canEngEditDiscoverySynthesis(this.userStore.userInfo || {})
+    },
     canAffinityEdit() {
       return canAffinityEditDiscoverySynthesis(this.userStore.userInfo || {})
     },
     canFlowEdit() {
       return canFlowEditDiscoverySynthesis(this.userStore.userInfo || {})
     },
+    canAssayMainEdit() {
+      return this.canAffinityEdit && this.canFlowEdit
+    },
     canEdit() {
-      return this.canFullEdit || this.canPmEdit || this.canAffinityEdit || this.canFlowEdit
+      return this.canFullEdit || this.canPmEdit || this.canEngEdit || this.canAffinityEdit || this.canFlowEdit
     },
     canCreate() {
-      return this.canFullEdit || this.canPmEdit
+      return this.canFullEdit || this.canPmEdit || this.canEngEdit
     },
     canClaim() {
       return this.canFullEdit || this.canPmEdit
@@ -1310,6 +1448,10 @@ export default {
     },
     activeViewGroup() {
       return this.listQuery.view_group || ''
+    },
+    statusTerms() {
+      const status = this.listQuery.status
+      return (Array.isArray(status) ? status : [status]).filter(Boolean)
     },
     quickFilterTitle() {
       if (this.listQuery.quick_filter === 'has_issue') {
@@ -1342,9 +1484,19 @@ export default {
       }
       return BASE_EDITOR_SECTIONS
     },
+    isDraftEditing() {
+      return Boolean(this.draftRow && this.editingRowData === this.draftRow)
+    },
+    draftRequiredKeys() {
+      if (!this.isDraftEditing) return new Set()
+      const keys = CREATE_REQUIRED_FIELDS.map(([key]) => key)
+      if (this.draftRow.order_kind === '改造') keys.push(...ENGINEERING_REQUIRED_FIELDS.map(([key]) => key))
+      return new Set(keys)
+    },
     drawerTitle() {
       const row = this.editingRow
       if (!row) return '工单详情'
+      if (!row.id) return ['新建工单', String(row.target_name || '').trim()].filter(Boolean).join(' · ')
       const target = String(row.target_name || '').trim()
       const orderNo = String(row.order_no || '').trim()
       const synCode = String(row.synthesis_code || '').trim()
@@ -1354,6 +1506,11 @@ export default {
     drawerMeta() {
       const row = this.editingRow
       if (!row) return ''
+      if (!row.id) {
+        const missing = this.draftMissingFields(row)
+        if (missing.length) return `填完必填项后自动保存，还差：${missing.join('、')}`
+        return this.draftTypeError(row) || '正在保存…'
+      }
       return [
         row.synthesis_order_id,
         row.synthesis_code,
@@ -1426,6 +1583,11 @@ export default {
     },
   },
   created() {
+    if (!this.canFullEdit) {
+      this.headerMenuColumns = Object.freeze(
+        Object.fromEntries(Object.entries(HEADER_MENU_COLUMNS).filter(([key]) => key !== 'synthetic_corp')),
+      )
+    }
     this.loading = true
     this.loadOptions()
     this.getList().finally(() => {
@@ -1463,6 +1625,7 @@ export default {
       }
     },
     drawerVisible(open) {
+      if (!open) this.releaseDraftEditor()
       if (!open && this.editingId) {
         this.rememberDrawerSave(this.flushDirtyEditor())
         this.editingId = null
@@ -1597,12 +1760,8 @@ export default {
       const owner = String(base.owner || '').trim()
       const me = this.currentPersonName
       if (!me) return []
-      if (owner === '无人问津') return [me, '无人问津']
-      if (owner !== me) return []
-      const others = this.uniq([...(this.optionLists.owners || []), ...this.allUserOptions]).filter(
-        (name) => name !== '无人问津',
-      )
-      return this.canReturnClaim(base) ? [...others, '无人问津'] : others
+      if (owner === '无人问津' || (owner === me && this.canReturnClaim(base))) return [me, '无人问津']
+      return []
     },
     claimButtonTitle(row) {
       if (!this.canClaim) return '您没有权限认领合成结果'
@@ -1617,43 +1776,145 @@ export default {
       if (this.currentPersonName && owner === this.currentPersonName) {
         return this.canReturnClaim(row)
           ? '将该批次改回无人问津'
-          : `认领已超过 ${CLAIM_RETURN_DAYS} 天，不能退回「无人问津」，可在负责人中转让给他人`
+          : `认领已超过 ${CLAIM_RETURN_DAYS} 天，不能退回「无人问津」`
       }
       return `该批次已被 ${owner} 认领，不可重复认领`
+    },
+    claimedOwner(row) {
+      const base = (row?.id && this.rowBaselines.get(row.id)) || row || {}
+      const owner = String(base.owner || '').trim()
+      return owner === '无人问津' ? '' : owner
     },
     pmOwnsRow(row) {
       if (!row?.id) return true
       const base = this.rowBaselines.get(row.id) || row
       const me = this.currentPersonName
-      return Boolean(me) && [base.pm, base.owner].some((name) => String(name || '').trim() === me)
+      return Boolean(me) && me === (this.claimedOwner(base) || String(base.pm || '').trim())
+    },
+    pmOwnershipReason(row) {
+      const owner = this.claimedOwner(row)
+      if (owner) return `该工单由 ${owner} 负责，只有负责人可以操作`
+      return '该工单还没有负责人，只有本人是 PM 时可以操作'
+    },
+    canSetOnCreate(fieldKey, draft) {
+      if (DRAFT_LOCKED_FIELD_KEYS.has(fieldKey)) return false
+      if (this.canFullEdit) return true
+      // 兼有 PM 权限时，非改造类工单按 PM 新建，改造实验员的字段要等选成改造类才放开
+      const engDraft = this.canEngEdit && (!this.canPmEdit || isEngineeringRow(draft))
+      if (engDraft && !ENG_LOCKED_FIELD_KEYS.has(fieldKey)) return true
+      return this.canPmEdit && PM_EDIT_FIELD_KEYS.has(fieldKey) && fieldKey !== 'owner'
+    },
+    engCoversRow(row) {
+      return this.canEngEdit && isEngineeringRow((row?.id && this.rowBaselines.get(row.id)) || row)
     },
     canEditField(row, fieldKey) {
+      if (row && !row.id) return this.canSetOnCreate(fieldKey, row)
       if (fieldKey === 'synthesis_order_id' || fieldKey === 'order_sender') {
         return false
       }
       if (fieldKey === 'sort_order' && this.isQueueTerminalRow(row)) {
         return false
       }
+      if (ASSAY_STATUS_KEYS.has(fieldKey) && this.isCompletedRow(row)) return false
       if (this.canFullEdit) return true
+      if (!ENG_LOCKED_FIELD_KEYS.has(fieldKey) && this.engCoversRow(row)) return true
       if (this.canPmEdit && PM_EDIT_FIELD_KEYS.has(fieldKey)) {
         if (fieldKey === 'owner') return this.pmOwnerChoices(row).length > 0
         if (this.pmOwnsRow(row)) return true
       }
       if (this.canAffinityEdit && AFFINITY_EDIT_FIELD_KEYS.has(fieldKey)) return true
       if (this.canFlowEdit && FLOW_EDIT_FIELD_KEYS.has(fieldKey)) return true
+      if (fieldKey === 'status' && this.canAssayMainEdit) return this.isCompletedRow(row)
       return false
     },
+    isCompletedRow(row) {
+      const base = (row?.id && this.rowBaselines.get(row.id)) || row
+      return String(base?.status || '').trim() === '已完成'
+    },
+    mainStatusOptions(row) {
+      return this.canFullEdit || this.engCoversRow(row) ? this.statusOptions : ASSAY_ROLLBACK_OPTIONS
+    },
     deleteBlockReason(row) {
-      if (row?.source_one_id) return '已关联 One 订单，不能删除，不再需要请改为"已取消"'
-      if (this.canFullEdit) return ''
+      if (row?.source_one_id) {
+        if (String(row.status || '').trim() === '已取消') return '工单已取消'
+        const canCancel = this.canEditField(row, 'status') && this.mainStatusOptions(row).includes('已取消')
+        return canCancel ? '' : '已关联 One 合成订单，不能删除；你没有取消该工单的权限'
+      }
+      if (this.canFullEdit || this.engCoversRow(row)) return ''
       if (this.canPmEdit) {
-        if (!this.pmOwnsRow(row)) return '只能删除 PM 或负责人是本人的工单'
+        if (!this.pmOwnsRow(row)) return this.pmOwnershipReason(row)
         return String(row?.status || '').trim() === '待下单' ? '' : 'PM 权限只能删除待下单状态的工单'
       }
-      return '您没有权限删除合成与验证工单'
+      return this.canEngEdit ? ENG_ROW_MESSAGE : '您没有权限删除合成与验证工单'
     },
     canDeleteRow(row) {
       return !this.deleteBlockReason(row)
+    },
+    deleteButtonTitle(row) {
+      const reason = this.deleteBlockReason(row)
+      if (reason) return reason
+      return row?.source_one_id ? '已关联 One 合成订单，不能删除，可改为「已取消」' : '删除该工单'
+    },
+    rowConfirmSubject(row) {
+      const label = [
+        String(row?.target_name || '').trim(),
+        String(row?.order_no || row?.synthesis_code || row?.batch_label || '').trim(),
+      ]
+        .filter(Boolean)
+        .join(' · ')
+      return label ? `工单「${label}」` : '这条工单'
+    },
+    fieldLockReason(row, key) {
+      if (!row || this.canEditField(row, key)) return ''
+      const label = FIELD_LABELS[key] || '该字段'
+      if (key === 'synthesis_order_id' || key === 'order_sender') return `「${label}」由系统自动生成，不能修改`
+      if (key === 'sort_order' && this.isQueueTerminalRow(row)) return '已结束的记录不在队列里，不能改排序'
+      if (!row.id && DRAFT_LOCKED_FIELD_KEYS.has(key)) return `工单保存后才能填写「${label}」`
+      if (!this.canEdit) return '你没有编辑合成与验证的权限'
+      if (ASSAY_STATUS_KEYS.has(key) && this.isCompletedRow(row)) return COMPLETED_ASSAY_MESSAGE
+      if (key === 'pm' && this.canPmEdit) return 'PM 由新建人自动填写，不能修改'
+      if (key === 'owner' && this.canPmEdit) {
+        return row.id ? this.claimButtonTitle(row) : '负责人需在工单保存后通过认领设置'
+      }
+      if (key === 'owner' && this.canEngEdit) return '负责人通过认领设置，改造实验员不能修改'
+      if (row.id && this.canPmEdit && PM_EDIT_FIELD_KEYS.has(key)) return this.pmOwnershipReason(row)
+      if (row.id && this.canEngEdit && !ENG_LOCKED_FIELD_KEYS.has(key)) return ENG_ROW_MESSAGE
+      if (key === 'status') {
+        if (this.canAssayMainEdit) return ASSAY_MAIN_STATUS_MESSAGE
+        if (row.status === '已完成' && (this.canAffinityEdit || this.canFlowEdit)) {
+          return '工单已完成；需要重新检测请联系有全部编辑权限或同时有亲和力、流式权限的同事打回待检测'
+        }
+        return '状态随合成、到货和检测进度自动变化，只有全部编辑或同时有亲和力、流式权限的人可以手动修改'
+      }
+      if (key === 'target_type') return '靶点类型只有全部编辑权限可以修改'
+      return `你没有修改「${label}」的权限`
+    },
+    drawerLockReason(field) {
+      const row = this.editingRow
+      if (!row) return ''
+      if (field.type === 'target_codes') return '靶点编号随「靶点」自动带出，请修改靶点'
+      if (field.key === 'status' && this.assayStatusBadges(row).length) return ''
+      return this.fieldLockReason(row, field.key)
+    },
+    sortLockReason(row) {
+      return (
+        this.fieldLockReason(row, 'sort_order') ||
+        (this.isQueueSorted ? '' : '先点表头「序号」切到队列排序，再改排序')
+      )
+    },
+    onSortValueClick(row) {
+      if (this.canEditSortCell(row)) this.startSortEdit(row)
+      else this.notifyLocked(this.sortLockReason(row))
+    },
+    notifyLocked(reason) {
+      if (reason) ElMessage.info({ message: reason, grouping: true })
+    },
+    syncDrawerLockTitle(event, reason) {
+      const mask = event.currentTarget
+      const control = mask.parentElement?.querySelector('.el-input, .el-select')
+      if (control) syncDrawerControlTooltip({ target: control })
+      const value = control?.getAttribute('title')
+      mask.title = value ? `${value}\n${reason}` : reason
     },
     async openSerumProject(row) {
       const lookupCode = String(row?.experiment_id || row?.project_code || '').trim()
@@ -1700,7 +1961,7 @@ export default {
       }
     },
     async persistRow(row, field) {
-      if (!this.canEditField(row, field) || !row?.id) return
+      if (!row || !this.canEditField(row, field)) return
       if (typeof row[field] === 'string') {
         row[field] = cleanFieldText(row[field], {
           keepBreaks: BREAK_FIELDS.has(field),
@@ -1716,6 +1977,7 @@ export default {
         }
         row[field] = result.value
       }
+      if (!row.id) return row === this.draftRow ? this.commitDraft() : undefined
       const baseline = this.rowBaselines.get(row.id)
       if (baseline && this.fieldComparable(row, field) === this.fieldComparable(baseline, field)) {
         return
@@ -1737,7 +1999,11 @@ export default {
         }
       }
       try {
-        const saved = await saveDiscoverySynthesis(this.payloadRow(row, [field]))
+        const saved = await this.saveConfirmingCompletion(saveDiscoverySynthesis, this.payloadRow(row, [field]))
+        if (!saved) {
+          this.getList({ flushEditor: false })
+          return null
+        }
         this.applySavedFields(saved, [field])
         if (field === 'order_no' || field === 'synthesis_code' || field === 'batch_label') {
           this.scheduleRemoteCheck([saved], { triggerFields: [field] })
@@ -1748,6 +2014,21 @@ export default {
         this.getList({ flushEditor: false })
         return null
       }
+    },
+    async saveConfirmingCompletion(save, payload) {
+      const result = await save(payload)
+      if (!result?.needs_confirm) return result
+      try {
+        await ElMessageBox.confirm(result.message, '整单完成确认', {
+          type: 'warning',
+          confirmButtonText: '确认完成',
+          cancelButtonText: '再想想',
+        })
+      } catch {
+        ElMessage.info('已取消，本次修改未保存')
+        return null
+      }
+      return save({ ...payload, confirm_complete: true })
     },
     updateOrderStatus(row, value) {
       row.status = value
@@ -1769,23 +2050,29 @@ export default {
     },
     assayStatusBadges(row) {
       if (!row || !['待检测', '检测中'].includes(String(row.status || '').trim())) return []
-      const flowSkip = row.flow_status === '流式不适用'
+      const flowSkip = String(row.target_type || '').trim() === '分泌型'
       const affPrefix = flowSkip ? '亲和力·' : '亲·'
       const badges = []
       const affLabel = BADGE_TEXT[row.affinity_status]
       if (affLabel) {
+        const lockReason = this.assayLockReason(row, 'affinity_status')
+        const hasReason = Boolean(String(row.report_reason || '').trim())
         badges.push({
           key: 'affinity',
           kind: '亲和力',
           full: row.affinity_status,
           text: `${affPrefix}${affLabel}`,
-          options: AFFINITY_BADGE_OPTIONS,
+          options: hasReason
+            ? AFFINITY_BADGE_OPTIONS.filter((option) => option.value !== '亲和力检测中')
+            : AFFINITY_BADGE_OPTIONS,
           tone: badgeTone(row.affinity_status),
-          editable: this.canEditField(row, 'affinity_status') && !String(row.report_reason || '').trim(),
+          editable: !lockReason,
+          lockReason,
         })
       }
       const flowLabel = !flowSkip && BADGE_TEXT[row.flow_status]
       if (flowLabel) {
+        const lockReason = this.assayLockReason(row, 'flow_status')
         badges.push({
           key: 'flow',
           kind: '流式',
@@ -1793,10 +2080,19 @@ export default {
           text: `流·${flowLabel}`,
           options: FLOW_BADGE_OPTIONS,
           tone: badgeTone(row.flow_status),
-          editable: this.canEditField(row, 'flow_status'),
+          editable: !lockReason,
+          lockReason,
         })
       }
       return badges
+    },
+    assayLockReason(row, key) {
+      if (!this.canEditAssayStatuses(row) || !this.canEditField(row, key)) return this.fieldLockReason(row, key)
+      const canCloseWithReason = this.canFullEdit || this.canAssayMainEdit
+      if (key === 'affinity_status' && !canCloseWithReason && String(row.report_reason || '').trim()) {
+        return '请先清除未出原因，再修改亲和力状态'
+      }
+      return ''
     },
     canEditAssayStatuses(row) {
       if (!(this.canFullEdit || this.canAffinityEdit || this.canFlowEdit) || !row?.id) return false
@@ -1807,7 +2103,8 @@ export default {
       const field = change.key === 'affinity' ? 'affinity_status' : 'flow_status'
       if (!this.canEditField(row, field)) return
       try {
-        const saved = await saveDiscoverySynthesis({ id: row.id, [field]: change.value })
+        const saved = await this.saveConfirmingCompletion(saveDiscoverySynthesis, { id: row.id, [field]: change.value })
+        if (!saved) return
         this.applySavedFields(saved, [field])
         ElMessage.success('实验状态已更新')
       } catch (error) {
@@ -1833,7 +2130,7 @@ export default {
       if (field?.key === 'eng_method') return this.optionLists.eng_methods
       if (field?.options) return field.options
       if (field?.type === 'corp_select') return this.optionLists.synthetic_corps
-      if (field?.key === 'status') return this.statusOptions
+      if (field?.key === 'status') return this.mainStatusOptions(this.editingRow)
       if (field?.key === 'priority') return this.priorityOptions
       if (field?.key === 'order_kind') return this.orderKindOptions
       if (field?.key === 'supply_mode') return this.supplyModeOptions
@@ -1846,7 +2143,7 @@ export default {
       }
       return this.uniq([
         ...(this.optionLists[USER_OPTION_LIST[field?.key]] || []),
-        this.editingRow?.[field?.key],
+        ...splitCategories(this.editingRow?.[field?.key]),
       ])
     },
     fieldDrift(row, key) {
@@ -2046,6 +2343,7 @@ export default {
         const data = await fetchDiscoverySynthesisOptions(skipGlobalErrorHandler)
         this.optionLists.owners = this.uniq(data?.owners || [])
         this.optionLists.pms = this.uniq(data?.pms || [])
+        this.optionLists.affinity_owners = this.uniq(data?.affinity_owners || [])
         applyOptionLists(this.optionLists, data, [
           'synthetic_corps',
           'target_types',
@@ -2114,7 +2412,29 @@ export default {
         if (isLatest()) this.loading = false
       }
     },
+    setAssayCardEl(el) {
+      if (el && el !== this.assayCardEl) this.assayCardEl = el
+    },
+    async loadAssayBreakdown() {
+      this.assayBreakdownCounts = null
+      try {
+        const data = await this.loadHeaderMenuValues('status')
+        this.assayBreakdownCounts = Object.fromEntries((data?.items || []).map((item) => [item.value, item.count]))
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '子状态统计加载失败' } })
+      }
+    },
+    pickAssayBreakdown(value, append = false) {
+      const terms = this.statusTerms
+      const picked = terms.includes(value)
+      let next = picked && terms.length === 1 ? [] : [value]
+      if (append) next = picked ? terms.filter((term) => term !== value) : [...terms, value]
+      this.listQuery.status = next.length > 1 ? next : next[0] || ''
+      if (!append) this.assayBreakdownVisible = false
+      this.handleFilter()
+    },
     handleViewGroup(key) {
+      if (key === 'assay' && this.activeViewGroup === 'assay') return
       this.listQuery.status = ''
       this.dropHeaderFilter('status')
       this.listQuery.view_group = key || ''
@@ -2203,8 +2523,9 @@ export default {
       const row = this.editingRowData
       const fields = this.drawerDirtyFields(row)
       if (!fields.length) return null
-      return saveDiscoverySynthesis(this.payloadRow(row, fields))
+      return this.saveConfirmingCompletion(saveDiscoverySynthesis, this.payloadRow(row, fields))
         .then((saved) => {
+          if (!saved) return null
           this.applySavedFields(saved)
           const codeFields = fields.filter(
             (f) => f === 'order_no' || f === 'synthesis_code' || f === 'batch_label',
@@ -2242,6 +2563,7 @@ export default {
         this.closeEditor()
         return
       }
+      this.releaseDraftEditor()
       if (this.editingId) this.rememberDrawerSave(this.flushDirtyEditor())
       this.editingId = row.id
       this.editingRowData = this.normalizeRow(JSON.parse(JSON.stringify(row)))
@@ -2255,10 +2577,110 @@ export default {
       }
     },
     closeEditor() {
+      this.releaseDraftEditor()
       this.rememberDrawerSave(this.flushDirtyEditor())
       this.editingId = null
       this.editingRowData = null
       this.drawerVisible = false
+    },
+    releaseDraftEditor() {
+      if (!this.isDraftEditing) return
+      this.editingRowData = null
+      if (this.draftMissingFields(this.draftRow).length) {
+        ElMessage.info('必填项还没填完，草稿已保留，再点「新建工单」可继续')
+      } else if (this.draftTypeError(this.draftRow)) {
+        ElMessage.info(`${this.draftTypeError(this.draftRow)}，草稿已保留，再点「新建工单」可继续`)
+      }
+    },
+    draftTypeError(row) {
+      if (this.canFullEdit || this.canPmEdit || !this.canEngEdit || isEngineeringRow(row)) return ''
+      return '改造实验员只能新建改造、内部转染或改亚型的工单'
+    },
+    newDraft(values = {}) {
+      const engineering = this.listQuery.view_group === 'engineering'
+      const engOnly = this.canEngEdit && !this.canFullEdit && !this.canPmEdit
+      return {
+        id: null,
+        status: '待下单',
+        priority: canonicalizeWorkbenchPriority(''),
+        order_kind: engineering ? '改造' : '常规合成',
+        supply_mode: engOnly && !engineering ? '内部转染' : '合成到货',
+        owner: '',
+        pm: this.canFullEdit && !engineering ? '' : this.currentPersonName,
+        target_name: '',
+        target_codes: [],
+        drift_fields: [],
+        ...values,
+      }
+    },
+    openDraft(draft) {
+      if (this.editingId) this.closeEditor()
+      this.draftRow = draft
+      this.editingId = null
+      this.editingRowData = draft
+      this.drawerVisible = true
+    },
+    draftMissingFields(row) {
+      if (!row) return []
+      const filled = (key) =>
+        key === 'target'
+          ? Boolean(String(row.target_name || '').trim() || uniqueTargetCodes(row.target_codes).length)
+          : Boolean(String(row[key] ?? '').trim())
+      const required =
+        row.order_kind === '改造' ? [...CREATE_REQUIRED_FIELDS, ...ENGINEERING_REQUIRED_FIELDS] : CREATE_REQUIRED_FIELDS
+      return required.filter(([key]) => !filled(key)).map(([, label]) => label)
+    },
+    draftPayload(draft) {
+      const payload = {}
+      ;[...EDITABLE_FIELDS, 'experiment_id', 'target_type'].forEach((key) => {
+        if (!this.canEditField(draft, key)) return
+        if (key === 'target_codes') {
+          const codes = uniqueTargetCodes(draft.target_codes)
+          if (codes.length) payload.target_codes = codes
+          return
+        }
+        const value = draft[key]
+        if (value !== null && value !== undefined && String(value).trim() !== '') payload[key] = value
+      })
+      return payload
+    },
+    async commitDraft({ success = '工单已保存', linked = '已新建', failed = '新建工单失败' } = {}) {
+      const draft = this.draftRow
+      if (!draft || this.draftSaving || this.draftMissingFields(draft).length || this.draftTypeError(draft)) {
+        return null
+      }
+      this.draftSaving = true
+      try {
+        const saved = await saveDiscoverySynthesis(this.draftPayload(draft))
+        if (this.draftRow === draft) this.draftRow = null
+        if (this.editingRowData === draft && !this.isExcelMode) {
+          this.editingId = saved.id
+          this.editingRowData = this.normalizeRow(saved)
+          this.updateRowBaseline(this.editingRowData)
+          const limit = Math.max(1, Number(this.listQuery.limit) || 20)
+          const n = Number(saved.sort_order)
+          this.listQuery.page = this.isQueueSorted && Number.isInteger(n) && n > 0 ? Math.ceil(n / limit) : 1
+          await this.getList({ flushEditor: false, skipRemoteCheck: true })
+        } else {
+          if (this.editingRowData === draft) this.closeEditor()
+          await this.revealCreatedRow(saved, { skipRemoteCheck: true })
+        }
+        ElMessage.success(success)
+        if (saved?.id && (saved.synthesis_code || saved.batch_label)) {
+          this.scheduleRemoteCheck([saved]).then((res) => {
+            const fresh = res?.updated_items?.find((item) => item.id === saved.id)
+            if (res?.linked > 0 && fresh?.order_no) {
+              ElMessage.success(`${linked}，并自动关联下一笔订单：${fresh.order_no}`)
+            }
+          })
+        }
+        return saved
+      } catch (error) {
+        notifyApiError(error, { messages: { default: failed } })
+        return null
+      } finally {
+        this.draftSaving = false
+      }
     },
     shiftEditor(delta) {
       const next = this.list[this.editingIndex + delta]
@@ -2284,7 +2706,8 @@ export default {
       return row.id === this.editingId ? 'is-editing' : ''
     },
     workbenchCellClassName({ row, column }) {
-      return column?.property === 'target_name' ? cellColorClass(row?.target_color) : ''
+      if (column?.property === 'target_name') return cellColorClass(row?.target_color)
+      return column?.property === 'owner' && row?.owner === UNCLAIMED_OWNER ? 'owner-unclaimed' : ''
     },
     selectedSheetRowsForColor(clickedRow = null) {
       if (!this.canFullEdit || !this.isExcelMode || !this.sheetRange) return []
@@ -2352,16 +2775,8 @@ export default {
         return
       }
       if (!(await this.flushPendingSheetEdits())) return
-      this.loading = true
-      try {
-        const defaultKind = this.listQuery.view_group === 'engineering' ? '改造' : '常规合成'
-        const saved = await saveDiscoverySynthesis({ order_kind: defaultKind })
-        await this.revealCreatedRow(saved)
-      } catch (error) {
-        notifyApiError(error, { messages: { default: '新建工单失败' } })
-      } finally {
-        this.loading = false
-      }
+      if (this.isDraftEditing) return
+      this.openDraft(this.draftRow || this.newDraft())
     },
     async handleDuplicateTask(row) {
       if (!this.canCreate || !row?.id) return
@@ -2385,43 +2800,36 @@ export default {
         'eng_parent_seq',
         'eng_requirement',
         'remark',
+        'selection_method',
+        'synthesis_code',
+        'batch_label',
       ]
-      if (this.canFullEdit) {
-        baseKeys.push('selection_method', 'synthesis_code', 'batch_label')
-      }
-      const payload = {}
+      const values = {}
       baseKeys.forEach((key) => {
         const val = source[key]
-        if (key === 'owner' && (val === '无人问津' || !this.canFullEdit)) {
+        if (!this.canSetOnCreate(key, source) || (key === 'owner' && val === '无人问津')) {
           return
         }
         if (Array.isArray(val)) {
-          if (val.length) payload[key] = [...val]
+          if (val.length) values[key] = [...val]
         } else if (val !== null && val !== undefined && String(val).trim() !== '') {
-          payload[key] = val
+          values[key] = val
         }
       })
-      this.loading = true
-      try {
-        const saved = await saveDiscoverySynthesis(payload)
-        let linkedOrderNo = ''
-        if (saved?.id && (saved.synthesis_code || saved.batch_label)) {
-          const checkRes = await this.scheduleRemoteCheck([saved])
-          if (checkRes?.linked > 0 && checkRes.updated_items?.[0]?.order_no) {
-            linkedOrderNo = checkRes.updated_items[0].order_no
-          }
-        }
-        await this.revealCreatedRow(saved)
-        if (linkedOrderNo) {
-          ElMessage.success(`已加单，并自动关联下一笔订单：${linkedOrderNo}`)
-        } else {
-          ElMessage.success('已复制基础与改造信息生成新单，请填写新订单信息')
-        }
-      } catch (error) {
-        notifyApiError(error, { messages: { default: '加单失败' } })
-      } finally {
-        this.loading = false
+      const draft = this.newDraft(values)
+      const missing = this.draftMissingFields(draft)
+      const typeError = this.draftTypeError(draft)
+      if (missing.length || typeError) {
+        this.openDraft(draft)
+        ElMessage.info(missing.length ? `已复制基础信息，还需填写：${missing.join('、')}` : typeError)
+        return
       }
+      this.draftRow = draft
+      await this.commitDraft({
+        success: '已复制基础与改造信息生成新单，请填写新订单信息',
+        linked: '已加单',
+        failed: '加单失败',
+      })
     },
     async handleDelete(row) {
       const blockReason = this.deleteBlockReason(row)
@@ -2429,12 +2837,12 @@ export default {
         ElMessage.warning(blockReason)
         return
       }
-      const label = row.order_no || row.synthesis_code || row.target_name || `#${row.id}`
+      if (row.source_one_id) return this.handleCancelOrder(row)
       try {
-        await ElMessageBox.confirm(`确认删除订单 ${label}？删除后不可恢复。`, '删除确认', {
+        await ElMessageBox.confirm(`确认删除${this.rowConfirmSubject(row)}？删除后不可恢复。`, '删除确认', {
           type: 'warning',
           confirmButtonText: '删除',
-          cancelButtonText: '取消',
+          cancelButtonText: '再想想',
         })
       } catch {
         return
@@ -2452,6 +2860,19 @@ export default {
       } catch (error) {
         notifyApiError(error, { messages: { default: '删除失败' } })
       }
+    },
+    async handleCancelOrder(row) {
+      try {
+        await ElMessageBox.confirm(
+          `${this.rowConfirmSubject(row)}已关联 One 合成订单，不能删除。确认改为「已取消」吗？取消后移出排队，之后仍可在状态里改回。`,
+          '取消工单',
+          { type: 'warning', confirmButtonText: '改为已取消', cancelButtonText: '再想想' },
+        )
+      } catch {
+        return
+      }
+      if (!(await this.flushEditorForAction(row))) return
+      if (await this.updateOrderStatus(row, '已取消')) ElMessage.success('工单已取消')
     },
     async handleListExport() {
       try {
@@ -2479,14 +2900,18 @@ export default {
       if (key === 'eng_type') return this.optionLists.eng_types || DEFAULT_ENG_TYPE_OPTIONS
       if (key === 'eng_method') return this.optionLists.eng_methods || DEFAULT_ENG_METHOD_OPTIONS
       if (key === 'mouse_strain') return this.mouseStrainOptions
+      if (this.isUserColumn({ key })) return this.uniq([...(this.optionLists[USER_OPTION_LIST[key]] || []), ...this.allUserOptions])
       return CSV_FIELD_OPTIONS[key] || []
     },
     extraCsvOptions(key, value) {
       const known = new Set(this.csvFieldOptions(key))
       return splitCategories(value).filter((item) => !known.has(item))
     },
+    joinCsvValue(key, values) {
+      return joinCsvField(this.isUserColumn({ key }) ? [] : this.csvFieldOptions(key), values)
+    },
     onCsvFieldChange(row, key, values) {
-      row[key] = joinCsvField(this.csvFieldOptions(key), values)
+      row[key] = this.joinCsvValue(key, values)
       if (this.sheetEditSource === 'dblclick') return
       this.persistRow(row, key)
     },
@@ -2537,11 +2962,7 @@ export default {
     sheetCellLockReason(row, key) {
       if (!row?.id) return '记录还没保存'
       const fixed = this.sheetSortLockReason(row, key) || this.sheetReadonlyLockReason(key)
-      if (fixed) return fixed
-      if (this.canEditField(row, key)) return ''
-      if (key === 'owner' && this.canPmEdit && !this.canFullEdit) return this.claimButtonTitle(row)
-      if (this.canPmEdit && PM_EDIT_FIELD_KEYS.has(key)) return '只能修改 PM 或负责人是本人的工单'
-      return `你没有修改「${this.sheetColumnLabel(key)}」的权限`
+      return fixed || this.fieldLockReason(row, key)
     },
     sheetCellClassName({ row, column }) {
       const classes = []
@@ -2556,6 +2977,9 @@ export default {
       }
       if (column?.field === 'target_type' && row?.target_type) {
         classes.push(`sheet-tone-${this.targetTypeTone(row.target_type)}`)
+      }
+      if (column?.field === 'owner' && row?.owner === UNCLAIMED_OWNER) {
+        classes.push('owner-unclaimed')
       }
       return classes.join(' ')
     },
@@ -2657,10 +3081,10 @@ export default {
           return { ok: false, reason: 'option' }
         }
         if (!val) return { ok: true, value: null }
-        return this.matchSheetOption(
-          this.uniq([...(this.optionLists[USER_OPTION_LIST[key]] || []), ...this.allUserOptions]),
-          val,
-        )
+        const names = this.uniq([...(this.optionLists[USER_OPTION_LIST[key]] || []), ...this.allUserOptions])
+        if (!this.isCsvField(key)) return this.matchSheetOption(names, val)
+        const picked = splitCategories(val).map((name) => this.matchSheetOption(names, name))
+        return picked.find((item) => !item.ok) || { ok: true, value: this.joinCsvValue(key, picked.map((item) => item.value)) }
       }
       if (INT_COUNT_KEYS.includes(key)) {
         const cleaned = String(raw ?? '')
@@ -2671,7 +3095,7 @@ export default {
       }
       if (DATE_KEYS.includes(key)) return this.normalizeSheetDate(raw)
       if (this.isCsvField(key)) {
-        return { ok: true, value: joinCsvField(this.csvFieldOptions(key), raw) }
+        return { ok: true, value: this.joinCsvValue(key, raw) }
       }
       if (key === 'target_codes') {
         return { ok: true, value: uniqueTargetCodes(raw) }
@@ -2867,9 +3291,11 @@ export default {
         this.payloadRow(workingRows[rowIndex], [...fields]),
       )
       try {
-        const result = await saveDiscoverySynthesisBatch({ items })
-        const savedCount = result?.items?.length || 0
-        await this.getList({ flushEditor: false })
+        const result = await this.saveConfirmingCompletion(saveDiscoverySynthesisBatch, { items })
+        ;(result?.items || []).forEach((saved) => this.applySavedFields(saved))
+        await this.getList({ flushEditor: false, silent: true })
+        if (!result) return
+        const savedCount = result.items?.length || 0
         const selectedCells = touchedCells
           .map(({ rowId, key }) => ({
             rowIndex: this.list.findIndex((row) => row.id === rowId),
@@ -2948,6 +3374,71 @@ export default {
 .table-card :deep(.el-tag.target-tone-cell) { color: #0f766e; background: #f0fdfa; border-color: #99f6e4; }
 .sheet-wrap :deep(.sheet-tone-secreted) { color: #be185d; }
 .sheet-wrap :deep(.sheet-tone-cell) { color: #0f766e; }
+.table-card :deep(.owner-unclaimed .cell),
+.sheet-wrap :deep(.owner-unclaimed) {
+  color: #dd6b20;
+}
+.assay-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.assay-breakdown-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.assay-breakdown-label {
+  flex: 0 0 40px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 26px;
+}
+.assay-breakdown-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.assay-breakdown-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.assay-breakdown-item strong {
+  min-width: 3ch;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  transition: opacity 0.2s;
+}
+.assay-breakdown-item strong.is-pending {
+  opacity: 0;
+}
+.assay-breakdown-item.is-wait strong { color: var(--el-color-warning); }
+.assay-breakdown-item.is-run strong { color: var(--el-color-primary); }
+.assay-breakdown-item.is-done strong { color: var(--el-color-success); }
+.assay-breakdown-item.is-skip strong { color: var(--el-color-primary-light-3); }
+.assay-breakdown-item:hover {
+  border-color: var(--el-color-primary-light-5);
+}
+.assay-breakdown-item.is-active {
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary);
+}
+.assay-breakdown-tip {
+  margin: 0;
+  color: var(--el-text-color-placeholder);
+  font-size: 11px;
+  line-height: 16px;
+}
 .table-card :deep(.status-column-cell .cell) {
   padding-right: 4px;
   padding-left: 4px;
@@ -3007,6 +3498,20 @@ export default {
   width: 100%;
   min-width: 0;
 }
+.drawer-control {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+.drawer-lock-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  cursor: not-allowed;
+}
+.sort-order-value.is-locked {
+  cursor: default;
+}
 .drawer-field.is-solo + .drawer-field {
   grid-column-start: 1;
 }
@@ -3064,6 +3569,11 @@ export default {
     grid-template-columns: repeat(5, minmax(130px, 1fr));
     overflow-x: auto;
   }
+}
+
+html.dark .table-card :deep(.owner-unclaimed .cell),
+html.dark .sheet-wrap :deep(.owner-unclaimed) {
+  color: #f6ad55;
 }
 
 html.dark .table-card :deep(.el-tag.target-tone-secreted) {

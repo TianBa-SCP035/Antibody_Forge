@@ -63,7 +63,7 @@ export default {
     tagClass: { type: String, default: '' },
     editable: { type: Boolean, default: false },
   },
-  emits: ['change'],
+  emits: ['change', 'locked'],
   data() {
     return { activated: false, visible: false, deactivateTimer: 0 }
   },
@@ -92,7 +92,10 @@ export default {
   },
   methods: {
     activateAndOpen() {
-      if (!this.editable) return
+      if (!this.editable) {
+        this.$emit('locked')
+        return
+      }
       if (this.deactivateTimer) {
         clearTimeout(this.deactivateTimer)
         this.deactivateTimer = 0

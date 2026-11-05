@@ -34,7 +34,7 @@
         </ElTableColumn>
         <ElTableColumn prop="short_sequence" label="显示序列" min-width="112" show-overflow-tooltip />
         <ElTableColumn label="核对序列" min-width="112" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.short_sequence ? checkSequence(row.short_sequence) : '' }}</template>
+          <template #default="{ row }">{{ checkSequence(row.short_sequence) }}</template>
         </ElTableColumn>
         <ElTableColumn prop="error" label="校验" min-width="120">
           <template #default="{ row }">
@@ -143,6 +143,7 @@ function validate(item: PrimerSavePayload, check = '') {
   if (!item.short_sequence) return '显示序列和核对序列至少填一个';
   if (item.direction !== 'F' && item.direction !== 'R') return '方向只能是正向或反向';
   if (!/^[ACGTN]+$/.test(item.short_sequence)) return '序列格式不正确';
+  if (check && !/^[ACGTN]+$/.test(check)) return '核对序列格式不正确';
   if (check && check !== checkSequence(item.short_sequence)) return '核对序列与显示序列不一致';
   return '';
 }
@@ -187,12 +188,12 @@ function parseFlat(sheetName: string, source: unknown[][]) {
       name: text(read('name')),
       family: text(read('family')),
       direction: directionOf(read('direction')) || null,
-      short_sequence: shown || (check ? checkSequence(check) : ''),
+      short_sequence: shown || checkSequence(check),
       note: text(read('note')) || null,
       active: columns.has('active') ? active(read('active')) : true,
     });
     if (!item.name && !item.short_sequence) return;
-    item.error = validate(item, shown ? check : '');
+    item.error = validate(item, check);
     pushItem(collected, names, item);
   });
   return collected;

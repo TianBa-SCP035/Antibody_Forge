@@ -209,7 +209,7 @@
 发现工作台行操作「交接」（`LibraryHandoffDialog.vue`）调用 `GET /by-discovery` 与 `POST /handoff` 批量创建建库工单（`已完成`、`已取消` 的发现安排不可交接）：
 
 - **工艺矩阵与预选**：
-  - `达普` 行：单细胞孔板（`dapu_plate`）、混管 H/K/L（`dapu_tube`）、混管 Barcode（`dapu_tube`）；
+  - `达普` 行：单细胞孔板（`dapu_plate`）、混管 H/K/L（`dapu_tube`，交接弹窗显示为「打管加 Barcode」）、混管 Barcode（`dapu_tube`，交接弹窗显示为「打管」，标了 `NGS` 时也可选）；
   - `Beacon` 行：单细胞孔板（`beacon`）、Beacon+达普打板（`beacon_dapu`，与两侧单独的单细胞孔板互斥）；
   - `噬菌体` 行：噬菌体展示（`direct`）、噬菌体测序（`phage_ngs`，默认 `phage_panning`）；
   - `NGS` 行：眼眶血（`retro_orbital_blood`）、其他外周血（`other_blood`）、浆细胞 Nano（`plasma_ngs` + `spleen_grind` + `nano`）、浆细胞 Lite（`plasma_ngs` + `spleen_grind` + `lite`）。

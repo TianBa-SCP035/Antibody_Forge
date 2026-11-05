@@ -32,7 +32,7 @@
           @click="openExisting(item)"
         >
           {{ item.library_code || item.library_order_id }}
-          {{ buildTypeLabel(item.build_type) }}
+          {{ existingLabel(item) }}
           <em>{{ sourceLabel(item.sample_source) }}</em>
           <span>{{ item.status }}</span>
         </button>
@@ -56,7 +56,7 @@
               :title="pickTitle(row, pick)"
               @click="toggle(row, pick)"
             >
-              {{ pick.label }}
+              {{ pickLabel(pick) }}
               <em v-if="alreadyHas(pick)">已有</em>
             </button>
           </div>
@@ -64,7 +64,7 @@
       </div>
 
       <p v-if="needsInstrumentDate && !preview.instrument_on" class="gate-hint">
-        孔板、混管和噬菌体展示需要先在发现台填写剖鼠日期，交接后写入上机日期。
+        孔板、打管和噬菌体展示需要先在发现台填写剖鼠日期，交接后写入上机日期。
       </p>
     </div>
     <template #footer>
@@ -91,6 +91,12 @@ import {
   INSTRUMENT_DATE_BUILDS,
   sampleSourceLabel,
 } from './libraryColumns'
+
+// 只给发现台实验员看的叫法；文库构建页仍用工艺原名。
+const HANDOFF_LABELS = {
+  'dapu-tube': '打管加 Barcode',
+  'dapu-tube-barcode': '打管',
+}
 
 export default {
   name: 'LibraryHandoffDialog',
@@ -154,8 +160,14 @@ export default {
     },
   },
   methods: {
-    buildTypeLabel,
     sourceLabel: sampleSourceLabel,
+    pickLabel(pick) {
+      return HANDOFF_LABELS[pick.id] || pick.label
+    },
+    existingLabel(item) {
+      const pick = this.pickFor(item.build_type, item.sample_source)
+      return (pick && HANDOFF_LABELS[pick.id]) || buildTypeLabel(item.build_type)
+    },
     alreadyHas(pick) {
       return this.existing.some((item) => {
         if (item.status === '已取消' || item.build_type !== pick.buildType) return false
@@ -166,6 +178,7 @@ export default {
     },
     pickOpen(row, pick) {
       if (!this.methodNames.length) return true
+      if (pick.id === 'dapu-tube-barcode' && this.methodNames.includes('NGS')) return true
       if (!this.methodNames.includes(row.method)) return false
       if (pick.id !== 'both-plate') return true
       return this.methodNames.includes('达普') && this.methodNames.includes('Beacon')
@@ -301,6 +314,12 @@ export default {
   color: var(--el-text-color-secondary);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.meta-line > span {
+  display: flex;
+  align-items: baseline;
+  white-space: nowrap;
 }
 
 .meta-line b {

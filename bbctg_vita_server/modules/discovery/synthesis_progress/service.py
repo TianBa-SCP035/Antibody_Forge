@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from dataclasses import replace
 from datetime import datetime, timedelta
+from functools import partial
 from io import BytesIO
 import logging
 import re
@@ -543,11 +545,26 @@ def _status_filter_clause(data: dict[str, Any]):
     return _status_terms_clause(raw_terms)
 
 
+def _assay_combo_term(affinity: Any, flow: Any) -> str:
+    return f"{affinity}且{flow}"
+
+
+ASSAY_COMBO_TERMS = {
+    _assay_combo_term(affinity, flow): (affinity, flow)
+    for affinity in AFFINITY_STATUS_OPTIONS
+    for flow in FLOW_STATUS_OPTIONS
+}
+
+
 def _status_terms_clause(raw_terms: list[str]):
-    """主状态之间取或；检测子状态只看待检测/检测中的行，亲和力与流式同时选时两者都要满足。"""
+    """主状态之间取或；检测子状态只看待检测/检测中的行，亲和力与流式同时选时两者都要满足。
+
+    「亲和力X且流式Y」是组合项，各组合之间、组合与其他项之间取或。
+    """
     main_vals: list[str] = []
     aff_vals: list[str] = []
     flow_vals: list[str] = []
+    combos: list[tuple[str, str]] = []
     for val in raw_terms:
         if val in STATUS_OPTIONS:
             main_vals.append(val)
@@ -555,16 +572,23 @@ def _status_terms_clause(raw_terms: list[str]):
             aff_vals.append(val)
         elif val in FLOW_STATUS_OPTIONS:
             flow_vals.append(val)
+        elif val in ASSAY_COMBO_TERMS:
+            combos.append(ASSAY_COMBO_TERMS[val])
         else:
             raise ValueError("状态不在允许的选项中")
 
     branches = []
     if main_vals:
         branches.append(DiscoverySynthesisOrder.status.in_(tuple(main_vals)))
+    in_assay = DiscoverySynthesisOrder.status.in_((STATUS_WAIT_ASSAY, STATUS_ASSAYING))
+    for affinity, flow in combos:
+        branches.append(and_(
+            in_assay,
+            DiscoverySynthesisOrder.affinity_status == affinity,
+            DiscoverySynthesisOrder.flow_status == flow,
+        ))
     if aff_vals or flow_vals:
-        assay_parts = [
-            DiscoverySynthesisOrder.status.in_((STATUS_WAIT_ASSAY, STATUS_ASSAYING))
-        ]
+        assay_parts = [in_assay]
         if aff_vals:
             assay_parts.append(
                 DiscoverySynthesisOrder.affinity_status.in_(tuple(aff_vals))
@@ -626,8 +650,8 @@ def _target_clause(db: Session | None, names: Any):
     )
 
 
-def _status_header_values(db: Session, scoped, keyword: str) -> list[dict[str, Any]]:
-    """主状态之后列出检测中/待检测行的亲和力、流式子状态，计数口径与筛选一致。"""
+def _status_values(db: Session, scoped, keyword: str, *, combos: bool) -> list[dict[str, Any]]:
+    """主状态之后列出检测中/待检测行的亲和力、流式子状态，计数口径与筛选一致；combos 再列亲和力×流式组合。"""
     columns = (
         DiscoverySynthesisOrder.status,
         DiscoverySynthesisOrder.affinity_status,
@@ -639,10 +663,12 @@ def _status_header_values(db: Session, scoped, keyword: str) -> list[dict[str, A
         if status in (STATUS_WAIT_ASSAY, STATUS_ASSAYING):
             counts[affinity] += count
             counts[flow] += count
+            counts[_assay_combo_term(affinity, flow)] += count
+    values = (*STATUS_OPTIONS, *AFFINITY_STATUS_OPTIONS, *FLOW_STATUS_OPTIONS, *(ASSAY_COMBO_TERMS if combos else ()))
     text = keyword.lower()
     return [
         {"value": value, "count": counts[value]}
-        for value in (*STATUS_OPTIONS, *AFFINITY_STATUS_OPTIONS, *FLOW_STATUS_OPTIONS)
+        for value in values
         if counts.get(value) and (not text or text in value.lower())
     ]
 
@@ -655,7 +681,7 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
         "multi",
         order=tuple(STATUS_OPTIONS),
         match=lambda _db, terms: _status_terms_clause(terms),
-        values=_status_header_values,
+        values=partial(_status_values, combos=False),
     ),
     "target_name": target_column(_O.target_name, _O.target_codes, colors=_target_color_clause),
     "target_type": HeaderColumn(_O.target_type, "enum", order=tuple(TARGET_TYPE_OPTIONS)),
@@ -687,6 +713,12 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "eng_parent_seq": HeaderColumn(_O.eng_parent_seq),
     "eng_requirement": HeaderColumn(_O.eng_requirement),
     "eng_result": HeaderColumn(_O.eng_result),
+}
+# 待测视图子弹窗的计数：在状态列取值之外再按亲和力×流式组合计数，只供取值，不参与表头筛选和排序
+STATUS_BREAKDOWN_FIELD = "status_breakdown"
+VALUE_COLUMNS: dict[str, HeaderColumn] = {
+    **HEADER_COLUMNS,
+    STATUS_BREAKDOWN_FIELD: replace(HEADER_COLUMNS["status"], values=partial(_status_values, combos=True)),
 }
 
 
@@ -1083,9 +1115,11 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
 def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     return header_column_values(
         db,
-        HEADER_COLUMNS,
+        VALUE_COLUMNS,
         data,
-        lambda stmt, payload, field: _apply_list_filters(stmt, payload, db=db, header_except=field),
+        lambda stmt, payload, field: _apply_list_filters(
+            stmt, payload, db=db, header_except="status" if field == STATUS_BREAKDOWN_FIELD else field
+        ),
         id_column=DiscoverySynthesisOrder.id,
     )
 

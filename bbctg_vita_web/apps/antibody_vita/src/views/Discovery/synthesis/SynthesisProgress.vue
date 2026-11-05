@@ -240,31 +240,64 @@
         virtual-triggering
         trigger="click"
         placement="bottom"
-        :width="300"
+        :width="360"
         transition="el-zoom-in-top"
         @show="loadAssayBreakdown"
       >
-        <div class="assay-breakdown">
-          <div v-for="group in assayBreakdownGroups" :key="group.label" class="assay-breakdown-group">
-            <span class="assay-breakdown-label">{{ group.label }}</span>
-            <div class="assay-breakdown-items">
-              <button
-                v-for="opt in group.items"
-                :key="opt.value"
-                type="button"
-                class="assay-breakdown-item"
-                :class="[`is-${opt.tone}`, { 'is-active': statusTerms.includes(opt.value) }]"
-                @click="pickAssayBreakdown(opt.value)"
-                @contextmenu.prevent="pickAssayBreakdown(opt.value, true)"
-              >
-                <span>{{ opt.label }}</span>
-                <strong :class="{ 'is-pending': !assayBreakdownCounts }">
-                  {{ assayBreakdownCounts ? assayBreakdownCounts[opt.value] || 0 : '' }}
-                </strong>
-              </button>
-            </div>
+        <div v-loading="assayBreakdownSlow" class="assay-breakdown" :class="{ 'is-loading': assayBreakdownLoading }">
+          <div class="assay-breakdown-main">
+            <button
+              v-for="item in assayBreakdown.main"
+              :key="item.value"
+              type="button"
+              class="assay-breakdown-chip"
+              v-bind="assayPick(item)"
+            >
+              {{ item.label }}
+              <strong :class="assayCountClass(item.value)">{{ assayCount(item.value) }}</strong>
+            </button>
           </div>
-          <p class="assay-breakdown-tip">左键只看这一项，右键追加或取消；亲和力和流式同时选时两项都要满足</p>
+          <div class="assay-breakdown-table">
+            <span class="assay-breakdown-cell is-corner"><i>流式</i><i>亲和力</i></span>
+            <button
+              v-for="item in assayBreakdown.flows"
+              :key="item.value"
+              type="button"
+              class="assay-breakdown-cell is-head"
+              v-bind="assayPick(item)"
+            >
+              {{ item.label }}
+            </button>
+            <span class="assay-breakdown-cell is-head">合计</span>
+            <template v-for="row in assayBreakdown.affinities" :key="row.value">
+              <button type="button" class="assay-breakdown-cell is-head" v-bind="assayPick(row)">{{ row.label }}</button>
+              <button
+                v-for="item in row.combos"
+                :key="item.value"
+                type="button"
+                class="assay-breakdown-cell"
+                :title="item.label"
+                v-bind="assayPick(item)"
+              >
+                <strong :class="assayCountClass(item.value)">{{ assayCount(item.value) }}</strong>
+              </button>
+              <button type="button" class="assay-breakdown-cell is-total" v-bind="assayPick(row)">
+                <strong :class="assayCountClass(row.value)">{{ assayCount(row.value) }}</strong>
+              </button>
+            </template>
+            <span class="assay-breakdown-cell is-head">合计</span>
+            <button
+              v-for="item in [...assayBreakdown.flows, assayBreakdown.all]"
+              :key="item.value"
+              type="button"
+              class="assay-breakdown-cell is-total"
+              :title="item.label"
+              v-bind="assayPick(item)"
+            >
+              <strong :class="assayCountClass(item.value)">{{ assayCount(item.value) }}</strong>
+            </button>
+          </div>
+          <p class="assay-breakdown-tip">格子要两项都满足；左键只看这一项，右键追加或取消</p>
         </div>
       </el-popover>
     </section>
@@ -1148,6 +1181,7 @@ import {
   AFFINITY_EDIT_FIELD_KEYS,
   AFFINITY_RESULT_OPTIONS,
   AFFINITY_STATUS_OPTIONS,
+  assayComboTerm,
   BASE_EDITOR_SECTIONS,
   BREAK_FIELDS,
   CLAIM_RETURN_DAYS,
@@ -1224,18 +1258,27 @@ function badgeTone(status) {
   return 'wait'
 }
 const breakdownItem = (value, label, tone = badgeTone(value)) => ({ value, label, tone })
-const ASSAY_BREAKDOWN_GROUPS = Object.freeze([
-  { label: '整单', items: [breakdownItem('待检测', '待检测'), breakdownItem('检测中', '检测中')] },
-  { label: '亲和力', items: AFFINITY_STATUS_OPTIONS.map((value) => breakdownItem(value, value.replace('亲和力', ''))) },
-  {
-    label: '流式',
-    items: [
-      breakdownItem('流式待检测', '待检测'),
-      breakdownItem('流式不适用', '不做', 'skip'),
-      breakdownItem('流式已完成', '已完成'),
-    ],
-  },
-])
+const ASSAY_FLOW_ITEMS = [
+  breakdownItem('流式待检测', '流·待检'),
+  breakdownItem('流式不适用', '流·不做', 'skip'),
+  breakdownItem('流式已完成', '流·完成'),
+]
+/** 子弹窗：整单一排按钮，其下亲和力（行）× 流式（列）交叉表，格子是两项同时满足的组合，末行末列是合计。 */
+const ASSAY_BREAKDOWN = Object.freeze({
+  main: [breakdownItem('待检测', '待检测'), breakdownItem('检测中', '检测中')],
+  flows: ASSAY_FLOW_ITEMS,
+  affinities: [
+    breakdownItem('亲和力待检测', '亲·待检'),
+    breakdownItem('亲和力检测中', '亲·测中'),
+    breakdownItem('亲和力已完成', '亲·完成'),
+  ].map((row) => ({
+    ...row,
+    combos: ASSAY_FLOW_ITEMS.map((flow) =>
+      breakdownItem(assayComboTerm(row.value, flow.value), `${row.label} 且 ${flow.label}`, 'combo'),
+    ),
+  })),
+  all: breakdownItem('', '全部待检测、检测中', 'all'),
+})
 
 function splitCsv(value) {
   return String(value || '')
@@ -1395,8 +1438,10 @@ export default {
       statusViews: STATUS_VIEWS,
       assayCardEl: null,
       assayBreakdownVisible: false,
-      assayBreakdownGroups: ASSAY_BREAKDOWN_GROUPS,
+      assayBreakdown: ASSAY_BREAKDOWN,
       assayBreakdownCounts: null,
+      assayBreakdownLoading: false,
+      assayBreakdownSlow: false,
       sheetColumns: SHEET_COLUMN_ORDER.load(),
       workbenchColumns: WORKBENCH_COLUMNS,
       headerMenuColumns: HEADER_MENU_COLUMNS,
@@ -2415,19 +2460,53 @@ export default {
     setAssayCardEl(el) {
       if (el && el !== this.assayCardEl) this.assayCardEl = el
     },
+    /** 重开时保留上次的数字淡显着刷新，超过 300ms 才转圈，快的时候不闪。 */
     async loadAssayBreakdown() {
-      this.assayBreakdownCounts = null
+      this.assayBreakdownLoading = true
+      const slowTimer = setTimeout(() => {
+        this.assayBreakdownSlow = true
+      }, 300)
       try {
-        const data = await this.loadHeaderMenuValues('status')
+        const query = this.buildQuery()
+        delete query.page
+        delete query.limit
+        delete query.status
+        const data = await this.fetchHeaderValues({ ...query, field: 'status_breakdown' })
         this.assayBreakdownCounts = Object.fromEntries((data?.items || []).map((item) => [item.value, item.count]))
       } catch (error) {
+        this.assayBreakdownCounts = null
         notifyApiError(error, { messages: { default: '子状态统计加载失败' } })
+      } finally {
+        clearTimeout(slowTimer)
+        this.assayBreakdownLoading = false
+        this.assayBreakdownSlow = false
       }
+    },
+    /** 总合计的 value 为空：左右键都清空状态条件看全部。 */
+    assayPick(item) {
+      const active = item.value ? this.statusTerms.includes(item.value) : !this.statusTerms.length
+      return {
+        class: [`tone-${item.tone}`, { 'is-active': active }],
+        onClick: () => this.pickAssayBreakdown(item.value),
+        onContextmenu: (event) => {
+          event.preventDefault()
+          this.pickAssayBreakdown(item.value, Boolean(item.value))
+        },
+      }
+    },
+    /** 空值是右下角总合计：整单待检测加检测中。 */
+    assayCount(value) {
+      const counts = this.assayBreakdownCounts
+      if (!counts) return ''
+      return value ? counts[value] || 0 : (counts['待检测'] || 0) + (counts['检测中'] || 0)
+    },
+    assayCountClass(value) {
+      return { 'is-pending': !this.assayBreakdownCounts, 'is-zero': !this.assayCount(value) }
     },
     pickAssayBreakdown(value, append = false) {
       const terms = this.statusTerms
       const picked = terms.includes(value)
-      let next = picked && terms.length === 1 ? [] : [value]
+      let next = !value || (picked && terms.length === 1) ? [] : [value]
       if (append) next = picked ? terms.filter((term) => term !== value) : [...terms, value]
       this.listQuery.status = next.length > 1 ? next : next[0] || ''
       if (!append) this.assayBreakdownVisible = false
@@ -3383,55 +3462,96 @@ export default {
   flex-direction: column;
   gap: 8px;
 }
-.assay-breakdown-group {
-  display: flex;
-  align-items: flex-start;
+.assay-breakdown-main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-.assay-breakdown-label {
-  flex: 0 0 40px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 26px;
-}
-.assay-breakdown-items {
+.assay-breakdown-chip {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.assay-breakdown-item {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 26px;
-  padding: 0 8px;
+  justify-content: center;
+  gap: 8px;
+  height: 32px;
   color: var(--el-text-color-regular);
   font-size: 12px;
   background: var(--el-fill-color-light);
-  border: 1px solid var(--el-border-color-lighter);
+  border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
 }
-.assay-breakdown-item strong {
-  min-width: 3ch;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  transition: opacity 0.2s;
-}
-.assay-breakdown-item strong.is-pending {
-  opacity: 0;
-}
-.assay-breakdown-item.is-wait strong { color: var(--el-color-warning); }
-.assay-breakdown-item.is-run strong { color: var(--el-color-primary); }
-.assay-breakdown-item.is-done strong { color: var(--el-color-success); }
-.assay-breakdown-item.is-skip strong { color: var(--el-color-primary-light-3); }
-.assay-breakdown-item:hover {
-  border-color: var(--el-color-primary-light-5);
-}
-.assay-breakdown-item.is-active {
+.assay-breakdown-chip strong { font-size: 14px; }
+.assay-breakdown-chip:hover { border-color: var(--el-color-primary-light-5); }
+.assay-breakdown-chip.is-active {
   color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
   border-color: var(--el-color-primary);
+}
+/* 1px 间隙露出底色当表格线，所有格子同宽同高 */
+.assay-breakdown-table {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  background: var(--el-border-color-lighter);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+}
+.assay-breakdown-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 30px;
+  padding: 0 6px;
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  white-space: nowrap;
+  background: var(--el-bg-color);
+  border: 0;
+  border-radius: 0;
+}
+button.assay-breakdown-cell { cursor: pointer; }
+button.assay-breakdown-cell:hover { background: var(--el-fill-color); }
+.assay-breakdown-cell.is-head {
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light);
+}
+.assay-breakdown-cell.is-total { background: var(--el-fill-color-lighter); }
+.assay-breakdown-cell.is-corner {
+  position: relative;
+  background: linear-gradient(
+    to top right,
+    var(--el-fill-color-light) calc(50% - 0.5px),
+    var(--el-border-color) 50%,
+    var(--el-fill-color-light) calc(50% + 0.5px)
+  );
+}
+.assay-breakdown-cell.is-corner i {
+  position: absolute;
+  color: var(--el-text-color-secondary);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1;
+}
+.assay-breakdown-cell.is-corner i:first-child { top: 4px; right: 6px; }
+.assay-breakdown-cell.is-corner i:last-child { bottom: 4px; left: 6px; }
+.assay-breakdown strong {
+  font-variant-numeric: tabular-nums;
+  transition: opacity 0.2s;
+}
+.assay-breakdown .tone-wait strong { color: var(--el-color-warning); }
+.assay-breakdown .tone-run strong { color: var(--el-color-primary); }
+.assay-breakdown .tone-done strong { color: var(--el-color-success); }
+.assay-breakdown .tone-skip strong { color: var(--el-color-primary-light-3); }
+.assay-breakdown strong.is-zero { color: var(--el-text-color-placeholder); }
+.assay-breakdown strong.is-pending { opacity: 0; }
+.assay-breakdown.is-loading strong:not(.is-pending) { opacity: 0.35; }
+.assay-breakdown-cell.is-active,
+.assay-breakdown-cell.is-active:hover {
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  box-shadow: inset 0 0 0 1px var(--el-color-primary);
 }
 .assay-breakdown-tip {
   margin: 0;

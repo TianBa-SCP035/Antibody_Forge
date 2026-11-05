@@ -21,6 +21,11 @@ export const FLOW_STATUS_OPTIONS = [
   '流式已完成',
   '流式不适用',
 ];
+/** 状态筛选的组合项「亲和力X且流式Y」：两项都满足，与后端 _assay_combo_term 一致。 */
+export const assayComboTerm = (affinity, flow) => `${affinity}且${flow}`;
+export const ASSAY_COMBO_TERMS = AFFINITY_STATUS_OPTIONS.flatMap((affinity) =>
+  FLOW_STATUS_OPTIONS.map((flow) => assayComboTerm(affinity, flow)),
+);
 export const STATUS_FILTER_GROUPS = [
   { label: '主状态', options: STATUS_OPTIONS },
   { label: '亲和力', options: AFFINITY_STATUS_OPTIONS },
@@ -686,7 +691,7 @@ export const WORKBENCH_COLUMNS = [
  */
 export const HEADER_MENU_COLUMNS = Object.freeze({
   priority: { type: 'enum', values: 'all', top: { query: 'priority' } },
-  status: { type: 'enum', values: 'all', top: { query: 'status' } },
+  status: { type: 'enum', values: 'all', top: { query: 'status', topOnly: ASSAY_COMBO_TERMS } },
   target_name: { type: 'text', label: '靶点', values: 'all', search: 'target', color: true, top: { query: 'target_name' } },
   target_type: { type: 'enum', values: 'all', top: { query: 'target_type', topOnly: ['非分泌型'] } },
   mouse_strain: { type: 'csv', values: 'all', top: { query: 'mouse_strain' } },

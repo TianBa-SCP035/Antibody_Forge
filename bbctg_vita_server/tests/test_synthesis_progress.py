@@ -1002,6 +1002,15 @@ class SynthesisHeaderFilterTests(DbTestCase):
         )
         self.assertEqual(self.codes(status="亲和力待检测"), ["S006"])
 
+        # 组合项两项都要满足，多个组合之间取或；状态列取值不列组合，子弹窗的取值才列
+        self.assertEqual(self.codes(status="亲和力已完成且流式待检测"), ["S005"])
+        self.assertEqual(self.codes(status=["亲和力已完成且流式待检测", "亲和力待检测且流式待检测"]), ["S005", "S006"])
+        self.assertEqual(self.codes(status=["亲和力已完成且流式已完成", "待下单"]), ["S001"])
+        breakdown = self.values("status_breakdown", field_filters=[{"field": "status", "values": ["合成中"]}])
+        self.assertEqual([(item["value"], item["count"]) for item in breakdown["items"]], [
+            *listed, ("亲和力待检测且流式待检测", 1), ("亲和力已完成且流式待检测", 1),
+        ])
+
     def test_value_list_ignores_own_header_filter_and_keeps_others(self):
         own = {"field": "owner", "values": ["甲"]}
         listed = self.values("owner", field_filters=[own])["items"]

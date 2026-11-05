@@ -702,7 +702,7 @@ export const HEADER_MENU_COLUMNS = Object.freeze({
   batch_label: { type: 'text', values: 'recent', top: { query: 'batch_label', kind: 'codes' } },
   synthetic_count: { type: 'number', values: 'all' },
   synthetic_date: { type: 'date', values: 'all', top: { range: 'syntheticDateRange' } },
-  order_sender: { type: 'enum', values: 'all' },
+  order_sender: { type: 'enum', values: 'all', top: { query: 'order_sender' } },
   arrival_count: { type: 'number', values: 'all' },
   arrival_date: { type: 'date', values: 'all', top: { range: 'arrivalDateRange' } },
   affinity_date: { type: 'date', values: 'all', top: { range: 'affinityDateRange' } },

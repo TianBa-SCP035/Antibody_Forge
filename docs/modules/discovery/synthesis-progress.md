@@ -50,7 +50,7 @@
 | `flow_status` | 流式检测状态 | 枚举：`流式待检测`、`流式已完成`、`流式不适用`（无检测中状态）；验证前阶段为 `NULL` |
 | `flow_note` | 流式说明 | 最长 500，保留换行 |
 | `owner` | 负责人 | 最长 64；`无人问津` 是审核人标记的「可认领」状态，空值不可认领。仅具 `pm_edit` 新建工单时 `pm` 自动填为当前操作人姓名首词；新建 `改造` 单或保存将 `order_kind` 设为 `改造` 时，若 `pm` 为空同样自动填入。不再自动填 `owner` |
-| `owner_claimed_at` | 负责人认领时间 | 不可直接写入；`owner` 变成具体人员（认领、直接修改或自动建单沿用）时记为当前时间，变为空或 `无人问津` 时清空。PM 退回 `无人问津` 须在此时间后 `CLAIM_RETURN_DAYS`（7）天内，为空视为已超期 |
+| `owner_claimed_at` | 负责人认领时间 | 不可直接写入；`owner` 变成具体人员（认领或直接修改）时记为当前时间，变为空或 `无人问津` 时清空。PM 退回 `无人问津` 须在此时间后 `CLAIM_RETURN_DAYS`（7）天内，为空视为已超期 |
 | `remark` | 检测备注 | 最长 1000，保留换行 |
 | `eng_type` | 改造类型 | 最长 128；预设：`亲和力`、`人源化`、`去PTM`、`Tm`、`PI`、`亲水性`、`稳定性`、`CIC`、`HIC`、`Tagg`、`糖基化`、`氧化风险`、`脱酰胺风险`、`同家族交叉`、`VHH序列改造`、`改亚型`、`其他`，支持多选与自填，按预设顺序以顿号拼接 |
 | `eng_method` | 改造方式 | 最长 128；预设：`AI`、`NGS姐妹克隆`、`理性设计`、`饱和突变`、`其他`，支持多选与自填，按预设顺序以顿号拼接 |
@@ -141,7 +141,7 @@
 - **高级筛选区（齿轮展开，3 行）**：
   - 第 1 行：`工单批次`、`送测转码`、`合成公司`、`挑选方式`、`供应方式`、`检测备注`、`未出原因`、`流式说明`。
   - 第 2 行：`项目编号`（同时匹配 `project_code` 与 `experiment_id`）、`PM`、`课题类型`、`优先级`、`状态`（按「主状态 / 亲和力 / 流式」分组共 12 项；主状态之间取或，选中子状态时只看 `status IN ('待检测', '检测中')` 的行，同时选亲和力和流式子状态时两者都要满足；另接受子状态分布弹窗写入的「亲和力X且流式Y」组合项，组合之间及与其他项之间取或）、`到货日期区间`、`亲和力日期区间`、`流式日期区间`。
-  - 第 3 行：`订单性质`、`改造类型`、`改造方式`；右侧提供「重置全部筛选」按钮（右键点击「查询」按钮同样触发重置，保留阶段视图与队列排序模式）、「显示字段」（工作台视图）、「列表导出」。
+  - 第 3 行：`下单人`（左键单选、右键追加）、`订单性质`、`改造类型`、`改造方式`；右侧提供「重置全部筛选」按钮（右键点击「查询」按钮同样触发重置，保留阶段视图与队列排序模式）、「显示字段」（工作台视图）、「列表导出」。
 - **匹配规则**：单号类（`order_no`、`synthesis_code`、`batch_label`、`project_code`）填单个词按包含匹配，用逗号、空格、分号或换行分隔多个词按精确值 `IN` 匹配；顿号多值字段（`mouse_strain`、`selection_method`、`eng_type`、`eng_method`）按拆分后包含某项匹配；文本说明（`remark`、`report_reason`、`flow_note`）按包含匹配。
 - **表头筛选（`HEADER_MENU_COLUMNS`）**：除 `sort_order`、`actions` 外的 34 个业务列均开放表头菜单（单号类 `synthesis_code`/`order_no`/`batch_label`/`project_code` 为 `recent` 最近 200 项，长文本 `remark`/`report_reason`/`flow_note`/`eng_parent_seq`/`eng_requirement`/`eng_result` 为 `search` 输入后查询，其余为 `all`）。`status` 表头菜单在主状态后列出待检测/检测中行的亲和力、流式子状态及计数，选值与排除口径同顶部 `状态` 筛选，不列组合项，顶部条件含组合项时显示 `topOnly` 提示；`target_type` 表头菜单对 `非分泌型` 显示 `topOnly` 提示；`target_codes` 逐个编号列出，按含有任一编号匹配，未录编号（空数组）算空白。
 - **批量标记靶点底色**：需 `edit` 权限。在 Excel 视图下框选多行后，点击 `靶点名称` 表头菜单中的颜色圆点或点击选中行内的色点，调用 `POST /save_batch` 批量更新选中行的 `target_color`。
@@ -159,7 +159,7 @@
   - 分区顺序：`1. 状态 / 归属` → `2. 改造信息`（仅 `order_kind == '改造'` 时展开） → `3. 项目信息` → `4. 合成订单` → `5. 到货与验证`。
   - 顶部工具栏含 `详情`、`认领`、`删除`、`加单`、`全部采用`（`has_drift && canFullEdit` 时显示）及 `上一条 / 下一条`。
   - **删除 / 取消**：行操作与抽屉的删除按钮按工单自动切换：未关联 One 的显示「删除」，确认后删除；已关联 One 合成订单（`source_one_id` 非空）的显示「取消」，可改该工单 `status` 的人（`edit`，或 `eng_edit` 对改造类工单）可用，确认后把 `status` 改为 `已取消`（已取消的不可再点）。确认弹窗用靶点与订单号 / 转码 / 批次描述工单，都没有时写「这条工单」。
-  - **新建与「加单」**：右上角「新建工单」打开空白抽屉草稿（预选 `常规合成` + `合成到货`，「序列改造」视图下预选 `改造` + `合成到货`，仅有 `eng_edit` 的改造实验员在其他视图预选 `常规合成` + `内部转染`；PM 权限 `pm` 预填本人且不可改），必填项（订单性质、供应方式、小鼠品系、PM、靶点；改造单另加改造类型、改造方式、母本序列、改造要求）填齐后才真正保存，抽屉标题下提示还差哪些；中途关闭抽屉保留草稿，再点「新建工单」继续，状态、排序和检测字段要保存后才能填；草稿抽屉与普通抽屉布局一致，顶部详情/认领/删除/加单/上一条/下一条按钮置灰（提示「工单保存后才能操作」）。抽屉「加单」复制当前工单的项目、靶点、小鼠品系与改造需求等基础字段（`selection_method`、`synthesis_code`、`batch_label` 也在复制之列；只复制当前权限新建时可填的字段，`owner` 为 `无人问津` 时不复制），必填齐全时直接保存，否则以草稿打开补填；保存后先刷新列表显示新行，再在后台触发 `check_remote` 尝试自动绑定 One 库同转码/批次的下一笔未关联订单（绑定成功另行提示）。Excel 视图下新建保存后关闭抽屉并选中新行；新行被当前筛选或表头排序挡住时自动清空筛选与表头排序后再定位。
+  - **新建与「加单」**：右上角「新建工单」打开空白抽屉草稿（预选 `常规合成` + `合成到货`，「序列改造」视图下预选 `改造` + `合成到货`，仅有 `eng_edit` 的改造实验员在其他视图预选 `常规合成` + `内部转染`；PM 权限 `pm` 预填本人且不可改），必填项（订单性质、供应方式、小鼠品系、PM、靶点；改造单另加改造类型、改造方式、母本序列、改造要求）填齐后才真正保存，抽屉标题下提示还差哪些；中途关闭抽屉保留草稿，再点「新建工单」继续，状态、排序和检测字段要保存后才能填；草稿抽屉与普通抽屉布局一致，顶部详情/认领/删除/加单/上一条/下一条按钮置灰（提示「工单保存后才能操作」）。抽屉「加单」复制当前工单的项目、靶点、小鼠品系与改造需求等基础字段（`selection_method`、`synthesis_code`、`batch_label` 也在复制之列；只复制当前权限新建时可填的字段，不复制 `owner`），必填齐全时直接保存，否则以草稿打开补填；保存后先刷新列表显示新行，再在后台触发 `check_remote` 尝试自动绑定 One 库同转码/批次的下一笔未关联订单（绑定成功另行提示）。Excel 视图下新建保存后关闭抽屉并选中新行；新行被当前筛选或表头排序挡住时自动清空筛选与表头排序后再定位。
   - **不可修改时的提示**：状态标签、实验状态胶囊、靶点类型、优先级、排序号及抽屉中不可编辑的字段仍可点击，点击后提示不能修改的原因（无权限、不归本人、需全部编辑权限、已完成不能回退等），Excel 视图双击或键入锁定单元格同样提示。
   - 不具 `edit` 时，高级筛选区和表头菜单不显示「合成公司」筛选，该列显示 `***`。
 - **Excel 粘贴与导出**：Excel 粘贴支持标准列名与别名映射（`SHEET_HEADER_ALIASES`）及靶点名称/编号双向解析校验，通过 `POST /save_batch` 单事务保存；「列表导出」调用 `POST /export_list` 导出 38 列 Excel。
@@ -190,7 +190,7 @@
    - 范围：ngs 与 beacon 中 `a.created >= ONE_AUTO_CREATE_SINCE`（`2026-11-01`，此前的订单已按总工单 Excel 导入对齐）、未删除且未被本地工单关联的记录。
    - 跳过改造类批次：订单文件名（`refstr`）`_数字clones` 前的前缀（取不到时用 `t.projectcode`）按 `_` 拆分后第 5 段为 `M数字`（如 `23R037_RM_C_W_M1_20261102`）时不建，这类改造/改亚型/转染工单由人工先建空单，再经三轮匹配绑定。
    - 去重：有订单号的按订单号建一条，本地已有同订单号（不区分大小写）时不建；没有订单号的按文件只建一条 `待下单` 行，同文件已有订单号或已有记录在本地时不建。同文件先建了无订单号的 `待下单` 行、后来同文件另一条记录才下单时，改绑那一行（按上一版快照替换自动填入值）而不是再建。
-   - 字段：快照 8 个字段与下单人取 One；`priority`、`owner`、`pm`、`project_code`、`experiment_id`、`study_type`、`mouse_strain` 沿用同 `batch_label` 或同 `synthesis_code` 的最新本地行（`owner` 为 `无人问津` 时不沿用，留空待审核标记）；靶点编号取 `t.target` 中的 `[20R147]`，没有时取文件前缀或转码开头的 `数字数字R数字数字数字`，单个编号时名称取靶点库，否则用 One 的名称，都取不到时沿用同批次行的靶点；仍无小鼠品系时按转码品系标记（如 `RMCW`）取本地同标记行中最多的品系。`created_by` 为 `One同步`，状态按订单号与到货日期自动推导，并按优先级排到同优先级队尾。
+   - 字段：快照 8 个字段与下单人取 One；`priority`、`pm`、`project_code`、`experiment_id`、`study_type`、`mouse_strain` 沿用同 `batch_label` 或同 `synthesis_code` 的最新本地行，`owner` 不沿用，留空待审核标记；靶点编号取 `t.target` 中的 `[20R147]`，没有时取文件前缀或转码开头的 `数字数字R数字数字数字`，单个编号时名称取靶点库，否则用 One 的名称，都取不到时沿用同批次行的靶点；仍无小鼠品系时按转码品系标记（如 `RMCW`）取本地同标记行中最多的品系。`created_by` 为 `One同步`，状态按订单号与到货日期自动推导，并按优先级排到同优先级队尾。
    - 删除：已关联 One 的工单不能删除，只能改为 `已取消`；要彻底去掉需在 One 删除对应记录，否则下次同步会重新建出。
 
 ## 6. 接口
@@ -199,7 +199,7 @@
 |---|---|---|---|
 | `POST` | `/api/discovery/synthesis-progress/list` | `discovery.page.synthesis_progress` | 分页查询列表与顶部视图/胶囊统计（支持 `view_group`、`quick_filter`、`field_filters`、`sort_field`、`sort_dir`） |
 | `POST` | `/api/discovery/synthesis-progress/column_values` | `discovery.page.synthesis_progress` | 表头筛选取值列表（支持 `field`、`value_keyword`、`value_limit`、`value_order`） |
-| `GET` | `/api/discovery/synthesis-progress/options` | `discovery.page.synthesis_progress` | 获取下拉与校验选项：`statuses`、`affinity_statuses`、`flow_statuses`、`priorities`、`order_kinds`、`supply_modes`、`affinity_results`、`target_types`、`mouse_strains`、`selection_methods`（挑选方式）、`synthetic_corps`、`eng_types`、`eng_methods`、`owners`、`pms`、`affinity_owners`（人名三项取各自字段出现过的人，多人字段拆成单个人名，按使用次数排序，`owners` 首项固定 `无人问津`） |
+| `GET` | `/api/discovery/synthesis-progress/options` | `discovery.page.synthesis_progress` | 获取下拉与校验选项：`statuses`、`affinity_statuses`、`flow_statuses`、`priorities`、`order_kinds`、`supply_modes`、`affinity_results`、`target_types`、`mouse_strains`、`selection_methods`（挑选方式）、`synthetic_corps`、`eng_types`、`eng_methods`、`owners`、`pms`、`order_senders`、`affinity_owners`（人名四项取各自字段出现过的人，多人字段拆成单个人名，按使用次数排序，`owners` 首项固定 `无人问津`） |
 | `GET` | `/api/discovery/synthesis-progress/recorded_targets` | `discovery.page.synthesis_progress` | 顶部靶点筛选远程搜索本表已录入靶点（`keyword`、`limit` 默认 50、最大 200） |
 | `POST` | `/api/discovery/synthesis-progress/check_remote` | `discovery.page.synthesis_progress` | 按本地行 `ids` 核对 One 库快照，返回 `updated_items`、`linked`、`updated`、`duplicates`、`candidates`、`remote_available` |
 | `POST` | `/api/discovery/synthesis-progress/save` | `edit` / `pm_edit` / `eng_edit` / `affinity_edit` / `flow_edit` | 单条新增（无 `id`，需 `edit`、`pm_edit` 或 `eng_edit`，校验必填项）或按字段范围修改（有 `id`）；会使工单整单完成时需带 `confirm_complete: true`，否则返回 `needs_confirm` |

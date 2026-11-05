@@ -827,6 +827,10 @@ def _apply_list_filters(
     if pm_clause is not None:
         filters.append(pm_clause)
 
+    sender_clause = match_any(DiscoverySynthesisOrder.order_sender, data.get("order_sender"))
+    if sender_clause is not None:
+        filters.append(sender_clause)
+
     study_clause = match_any(DiscoverySynthesisOrder.study_type, data.get("study_type"))
     if study_clause is not None:
         filters.append(study_clause)
@@ -1186,6 +1190,7 @@ def get_options(db: Session) -> dict[str, Any]:
         "eng_methods": distinct_csv_tokens(DiscoverySynthesisOrder.eng_method, ENG_METHOD_OPTIONS),
         "owners": used_names(DiscoverySynthesisOrder.owner, (UNCLAIMED_OWNER,)),
         "pms": used_names(DiscoverySynthesisOrder.pm),
+        "order_senders": used_names(DiscoverySynthesisOrder.order_sender),
         "affinity_owners": used_names(DiscoverySynthesisOrder.affinity_owner),
     }
 
@@ -1643,7 +1648,7 @@ def adopt_source(
     return serialize_order(row)
 
 
-_SIBLING_COPY_FIELDS = ("priority", "owner", "pm", "project_code", "experiment_id", "study_type", "mouse_strain")
+_SIBLING_COPY_FIELDS = ("priority", "pm", "project_code", "experiment_id", "study_type", "mouse_strain")
 _STRAIN_KEY_TAIL_RE = re.compile(r"(?:[SAPCDM]\d+|\d+)$")
 
 
@@ -1699,7 +1704,7 @@ def _payload_from_snapshot(db: Session, snap: dict[str, Any], guess_strain) -> d
     if sibling is not None:
         for field in _SIBLING_COPY_FIELDS:
             value = getattr(sibling, field)
-            if value not in (None, "") and not (field == "owner" and value == UNCLAIMED_OWNER):
+            if value not in (None, ""):
                 payload[field] = value
 
     codes, name = parse_one_target(snap.get("task_target"), snap.get("task_projectcode"), snap.get("synthesis_code"))

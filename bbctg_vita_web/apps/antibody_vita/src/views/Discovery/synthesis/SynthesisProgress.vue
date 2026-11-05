@@ -138,7 +138,17 @@
         @change="handleFilter"
       />
 
-      <!-- 第 3 行（3 格 + 操作按钮）：订单性质与序列改造筛选项 -->
+      <!-- 第 3 行（4 格 + 操作按钮）：下单人、订单性质与序列改造筛选项 -->
+      <div class="ops-user-select">
+        <UserSelect
+          v-model="listQuery.order_sender"
+          multi-gesture
+          :options="optionLists.order_senders"
+          v-bind="headerTop('order_sender', '下单人')"
+          clearable
+          @change="handleFilter"
+        />
+      </div>
       <ListFilterSelect
         v-model="listQuery.order_kind"
         clearable
@@ -1321,6 +1331,7 @@ function emptyQuery() {
     affinity_result: '',
     owner: '',
     pm: '',
+    order_sender: '',
     status: '',
     priority: '',
     order_kind: '',
@@ -1420,6 +1431,7 @@ export default {
       optionLists: {
         owners: [],
         pms: [],
+        order_senders: [],
         affinity_owners: [],
         synthetic_corps: [...DEFAULT_CORP_OPTIONS],
         target_types: [...DEFAULT_TARGET_TYPE_OPTIONS],
@@ -1571,6 +1583,7 @@ export default {
           this.listQuery.synthesis_code ||
           this.listQuery.project_code ||
           this.listQuery.pm ||
+          this.listQuery.order_sender ||
           this.listQuery.study_type ||
           this.listQuery.priority ||
           this.listQuery.order_kind ||
@@ -2388,6 +2401,7 @@ export default {
         const data = await fetchDiscoverySynthesisOptions(skipGlobalErrorHandler)
         this.optionLists.owners = this.uniq(data?.owners || [])
         this.optionLists.pms = this.uniq(data?.pms || [])
+        this.optionLists.order_senders = this.uniq(data?.order_senders || [])
         this.optionLists.affinity_owners = this.uniq(data?.affinity_owners || [])
         applyOptionLists(this.optionLists, data, [
           'synthetic_corps',
@@ -2865,7 +2879,6 @@ export default {
         'priority',
         'order_kind',
         'supply_mode',
-        'owner',
         'pm',
         'project_code',
         'experiment_id',
@@ -2886,7 +2899,7 @@ export default {
       const values = {}
       baseKeys.forEach((key) => {
         const val = source[key]
-        if (!this.canSetOnCreate(key, source) || (key === 'owner' && val === '无人问津')) {
+        if (!this.canSetOnCreate(key, source)) {
           return
         }
         if (Array.isArray(val)) {

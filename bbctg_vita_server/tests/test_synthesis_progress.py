@@ -607,7 +607,7 @@ class SynthesisProgressServiceTests(DbTestCase):
             self.assertEqual(row_a.status, "合成中")
             self.assertEqual(row_a.order_no, "CN001")
             self.assertEqual(row_a.order_sender, "陶俊先 Junxian Tao")
-            self.assertEqual((row_a.owner, row_a.pm, row_a.project_code, row_a.priority), ("张三", "李四", "P001", "加急"))
+            self.assertEqual((row_a.owner, row_a.pm, row_a.project_code, row_a.priority), (None, "李四", "P001", "加急"))
             self.assertEqual((row_a.target_codes, row_a.target_name), (["20R430"], "PD-L1"))
 
             row_b = rows[202]
@@ -991,6 +991,7 @@ class SynthesisHeaderFilterTests(DbTestCase):
                        .values(order_sender="任鸿滨"))
             db.commit()
         self.assertEqual(self.codes({"field": "order_sender", "values": ["任鸿滨"]}), ["S001"])
+        self.assertEqual(self.codes(order_sender="任鸿滨"), ["S001"])
         self.assertEqual(self.values("order_sender")["items"], [{"value": "任鸿滨", "count": 1}, {"value": "", "count": 3}])
 
     def test_status_header_includes_assay_sub_statuses(self):

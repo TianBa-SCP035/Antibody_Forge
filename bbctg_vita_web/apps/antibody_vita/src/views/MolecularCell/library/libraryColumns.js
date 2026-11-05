@@ -18,7 +18,7 @@ const BARCODE_BUILD_TYPES = new Set([BUILD_POOLED_BARCODE, BUILD_PHAGE_NGS, BUIL
 export const BUILD_TYPE_OPTIONS = [
   { value: BUILD_PLATE, label: '单细胞孔板', hint: 'Beacon、达普打板的细胞恢复' },
   { value: BUILD_POOLED_BCR, label: '混管 H/K/L', hint: '达普打管，文库补 H/K/L 引物' },
-  { value: BUILD_POOLED_BARCODE, label: '混管 Barcode', hint: '达普打管，文库补测序 Barcode' },
+  { value: BUILD_POOLED_BARCODE, label: '混管 Barcode', hint: '达普打管或浆细胞直测，文库补测序 Barcode' },
   { value: BUILD_PERIPHERAL_BLOOD, label: '外周血 BCR', hint: '外周血样品 BCR 扩增' },
   { value: BUILD_PLASMA_NGS, label: '浆细胞 NGS', hint: 'Nano、Lite 样品 NGS 建库' },
   { value: BUILD_PHAGE_DISPLAY, label: '噬菌体展示', hint: '用于展示筛选的噬菌体建库' },
@@ -52,6 +52,7 @@ export const SAMPLE_SOURCE_OPTIONS = [
   { value: 'retro_orbital_blood', label: '眼眶血', builds: [BUILD_PERIPHERAL_BLOOD] },
   { value: 'other_blood', label: '其他外周血', builds: [BUILD_PERIPHERAL_BLOOD] },
   { value: 'spleen_grind', label: '脾脏研磨', builds: [BUILD_PLASMA_NGS] },
+  { value: 'plasma_direct', label: '浆细胞直测', builds: [BUILD_POOLED_BARCODE] },
 ]
 export const SAMPLE_TYPE_OPTIONS = [
   { value: 'nano', label: 'Nano' },
@@ -201,6 +202,13 @@ export const HANDOFF_METHOD_ROWS = [
       { id: 'blood-other', buildType: BUILD_PERIPHERAL_BLOOD, source: 'other_blood', label: '其他外周血' },
       { id: 'plasma-nano', buildType: BUILD_PLASMA_NGS, source: 'spleen_grind', sampleType: 'nano', label: '浆细胞 Nano' },
       { id: 'plasma-lite', buildType: BUILD_PLASMA_NGS, source: 'spleen_grind', sampleType: 'lite', label: '浆细胞 Lite' },
+      {
+        id: 'plasma-direct',
+        buildType: BUILD_POOLED_BARCODE,
+        source: 'plasma_direct',
+        label: '浆细胞直测',
+        hint: '不用试剂盒挑选，按打管工艺建库；Nano/Lite 按小鼠品系带出，可到文库构建里改',
+      },
     ],
   },
 ]

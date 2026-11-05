@@ -857,6 +857,20 @@ class LibraryOrderTests(DbTestCase):
         )
         self.assertEqual(phage["discovery_status"], service.DISCOVERY_WAIT_PHAGE)
 
+        direct = service.handoff(
+            self.db,
+            {
+                "discovery_workbench_id": row["id"],
+                "items": [
+                    {
+                        "build_type": service.BUILD_POOLED_BARCODE,
+                        "sample_source": service.SOURCE_PLASMA_DIRECT,
+                    }
+                ],
+            },
+        )["items"][0]
+        self.assertEqual((direct["sample_source"], direct["sample_type"]), (service.SOURCE_PLASMA_DIRECT, service.SAMPLE_NANO))
+
     def test_handoff_preserves_positive_cell_count_text(self):
         row = self._discovery(positive_cell_count="约120")
         result = service.handoff(

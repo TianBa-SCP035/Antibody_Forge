@@ -18,6 +18,7 @@ MOUSE_STRAIN_CATEGORY_OPTIONS = (
     "RN-VM",
     "RN-VR",
     "RN-VM-KO",
+    "RABBIT",
 )
 MOUSE_STRAIN_OPTIONS = (
     "RM",
@@ -36,6 +37,7 @@ MOUSE_STRAIN_OPTIONS = (
     "RNVR",
     "RNKO",
     "RNVMKO",
+    "RABBIT",
 )
 
 PLAN_STATUS_PLANNING = "规划中"

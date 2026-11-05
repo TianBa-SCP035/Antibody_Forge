@@ -118,11 +118,11 @@
 | 达普 | 单细胞孔板、打管加 Barcode（`pooled_bcr`，文库页称混管 H/K/L）、打管（`pooled_barcode`，文库页称混管 Barcode） |
 | Beacon | 单细胞孔板、Beacon+达普打板 |
 | 噬菌体 | 噬菌体展示、噬菌体测序 |
-| NGS | 眼眶血、其他外周血、浆细胞 Nano、浆细胞 Lite |
+| NGS | 眼眶血、其他外周血、浆细胞 Nano、浆细胞 Lite（试剂盒挑选）、浆细胞直测（不挑选，按打管工艺建 `pooled_barcode`，Nano/Lite 按品系带出、可在文库页改） |
 
 发现行存在 `screening_methods` 时，未标记方式对应的整行不可选；该字段为空时四行全部开放。例外：标了 NGS 时也开放达普行的「打管」。Beacon+达普打板要求同时标记达普和 Beacon，并与两个单路线孔板选项互斥。「打管加 Barcode」「打管」只是弹窗内（含「已有」工单）的叫法，文库构建页与其新建弹窗仍显示混管 H/K/L、混管 Barcode。
 
-单细胞孔板、打管加 Barcode、打管和噬菌体展示要求 `harvest_date`。弹窗允许重复创建，已有匹配工艺显示“已有”。默认建议为：Beacon+达普同时存在时选 Beacon+达普打板；仅 Beacon 时选 Beacon 单细胞孔板；噬菌体时选噬菌体展示；达普单独和 NGS 不预选。
+单细胞孔板、打管加 Barcode、打管、浆细胞直测和噬菌体展示要求 `harvest_date`。弹窗允许重复创建，已有匹配工艺显示“已有”。默认建议为：Beacon+达普同时存在时选 Beacon+达普打板；仅 Beacon 时选 Beacon 单细胞孔板；噬菌体时选噬菌体展示；达普单独和 NGS 不预选。
 
 默认建议只在对应建库类型尚无未取消工单时产生。有 `molecular.page.library` 时，创建后跳到文库构建并打开第一条新工单；否则停留在发现工作台。
 

@@ -32,6 +32,7 @@ from models.immunology import (
     SerumTiterTarget,
 )
 from models.target import Target
+from modules.discovery.workbench.constants import MOUSE_STRAIN_CATEGORY_OPTIONS
 from modules.immunology.serum.service import (
     EXPERIMENT_RELATED_MODELS,
     TERMINAL_PROJECT_STATUSES,
@@ -75,17 +76,6 @@ DEFAULT_REVIEW_STATUS = "未审"
 REVIEW_STATUS_OPTIONS = ("未审", "已通过", "驳回")
 DEFAULT_MOUSE_STATUS = "未定"
 MOUSE_STATUS_OPTIONS = ("未定", "扩繁中", "可运", "在途", "已到")
-MOUSE_STRAIN_CATEGORY_OPTIONS = (
-    "RL-KO",
-    "RN-KO",
-    "RM-KO",
-    "RL",
-    "RN",
-    "RM",
-    "RN-VM",
-    "RN-VR",
-    "RN-VM-KO",
-)
 MOUSE_REGION_OPTIONS = ("北京", "海门", "客户")
 REQUIRED_YES_NO_DEFAULTS = {"antigen_ready": "否", "can_start": "否"}
 SPECIES_CROSS_OPTIONS = ("人", "猴", "鼠", "狗", "猫", "空白")

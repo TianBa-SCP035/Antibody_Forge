@@ -64,7 +64,7 @@
       </div>
 
       <p v-if="needsInstrumentDate && !preview.instrument_on" class="gate-hint">
-        孔板、打管和噬菌体展示需要先在发现台填写剖鼠日期，交接后写入上机日期。
+        孔板、打管、浆细胞直测和噬菌体展示需要先在发现台填写剖鼠日期，交接后写入上机日期。
       </p>
     </div>
     <template #footer>

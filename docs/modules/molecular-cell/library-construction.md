@@ -60,7 +60,7 @@
 |---|---|---|---|
 | `plate_single_cell` | 单细胞孔板 | `beacon`（Beacon）、`dapu_plate`（达普打板）、`beacon_dapu`（Beacon+达普打板） | `instrument_on`、`positive_cell_count`、`plate_nos`、`cdna_location` |
 | `pooled_bcr` | 混管 H/K/L | `dapu_tube`（达普打管） | `instrument_on`、`positive_cell_count`、`rna_location`、`cdna_location`、`library_location`、`cdna_concentration`、`library_concentration`、`fragment_size_bp`、H/K/L 正反向引物及浓度 |
-| `pooled_barcode` | 混管 Barcode | `dapu_tube`（达普打管） | `instrument_on`、`positive_cell_count`、`rna_location`、`cdna_location`、`library_location`、`cdna_concentration`、`library_concentration`、`fragment_size_bp`、`index_mode` 及 i7/i5 字段 |
+| `pooled_barcode` | 混管 Barcode | `dapu_tube`（达普打管）、`plasma_direct`（浆细胞直测，不经试剂盒挑选） | `instrument_on`、`positive_cell_count`、`rna_location`、`cdna_location`、`library_location`、`cdna_concentration`、`library_concentration`、`fragment_size_bp`、`index_mode` 及 i7/i5 字段 |
 | `peripheral_blood_bcr` | 外周血 BCR | `retro_orbital_blood`（眼眶血）、`other_blood`（其他外周血） | `blood_collected_on`、`immunization_stage`、`positive_cell_count`、`rna_location`、`cdna_location`、`library_location`、`cdna_concentration`、`library_concentration`、`fragment_size_bp`、`index_mode` 及 i7/i5 字段 |
 | `plasma_ngs` | 浆细胞 NGS | `spleen_grind`（脾脏研磨） | `instrument_on`、`positive_cell_count`、`cell_type`（默认 `浆细胞`）、`rna_location`、`cdna_location`、`library_location`、`library_concentration`、`fragment_size_bp`；`sample_type` 仅限 `nano` 或 `lite` |
 | `phage_display` | 噬菌体展示 | `direct`（细胞/核酸） | `source_experiment_type`、`project_goal`、`instrument_on`、`library_batch_no`、`cell_type`、`target_forms`、`rna_location`、`cdna_location`、`library_location`、`initial_library_size`、`effective_library_size` |
@@ -212,7 +212,7 @@
   - `达普` 行：单细胞孔板（`dapu_plate`）、混管 H/K/L（`dapu_tube`，交接弹窗显示为「打管加 Barcode」）、混管 Barcode（`dapu_tube`，交接弹窗显示为「打管」，标了 `NGS` 时也可选）；
   - `Beacon` 行：单细胞孔板（`beacon`）、Beacon+达普打板（`beacon_dapu`，与两侧单独的单细胞孔板互斥）；
   - `噬菌体` 行：噬菌体展示（`direct`）、噬菌体测序（`phage_ngs`，默认 `phage_panning`）；
-  - `NGS` 行：眼眶血（`retro_orbital_blood`）、其他外周血（`other_blood`）、浆细胞 Nano（`plasma_ngs` + `spleen_grind` + `nano`）、浆细胞 Lite（`plasma_ngs` + `spleen_grind` + `lite`）。
+  - `NGS` 行：眼眶血（`retro_orbital_blood`）、其他外周血（`other_blood`）、浆细胞 Nano（`plasma_ngs` + `spleen_grind` + `nano`）、浆细胞 Lite（`plasma_ngs` + `spleen_grind` + `lite`）、浆细胞直测（`pooled_barcode` + `plasma_direct`，样品类型按品系推导）。
   - 发现安排已填 `screening_methods` 时仅开放对应行（`Beacon+达普打板` 需同时标 `达普` 与 `Beacon`），未填时四行均可选。当对应 `build_type` 尚无非取消工单时：同时含 `Beacon` 与 `达普` 预选 `Beacon+达普打板`，仅含 `Beacon` 预选 `Beacon` 单细胞孔板，含 `噬菌体` 预选 `噬菌体展示`，其余不预选。
 - **字段携带与品系推导样品类型**：
   - 新工单写入 `source_discovery_id = discovery_id`，并携带发现安排的 `project_code → source_project_code`、`study_type`、`target_name`、`target_codes`、`pm`、`mouse_strain`、`priority`；不复制发现台负责人和归类鼠型。

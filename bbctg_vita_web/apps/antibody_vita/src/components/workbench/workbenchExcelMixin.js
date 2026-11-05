@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus'
 import { loadAllUserNames } from '#/utils/userOptions'
 
 import { clipboardCell, readClipboardGrid } from './clipboardGrid'
+import { columnTextClass, createColumnOrder } from './columnOrder'
 import './shiftHeld'
 
 const SHEET_ROW_CONFIG = Object.freeze({ keyField: 'id', isHover: true })
@@ -77,6 +78,7 @@ export default {
       sheetPointerDown: false,
       sheetColumnMove: null,
       sheetColumnWidths: {},
+      sheetColumnColors: {},
       sheetLayoutVersion: 0,
       sortEditingId: null,
       sortInputRefs: {},
@@ -158,10 +160,12 @@ export default {
   watch: {
     viewMode() {
       this.clearSheetRange()
+      this.loadSheetColumnColors()
     },
   },
   created() {
     this.sheetColumnWidths = this.sheetColumnStore()?.loadWidths() || {}
+    this.loadSheetColumnColors()
   },
   mounted() {
     this.onWindowMouseUp = () => this.finishSheetPointer()
@@ -504,6 +508,15 @@ export default {
     },
     sheetCellClassName() {
       return ''
+    },
+    // 字体颜色在工作台视图「显示字段」里设置，与工作台表格共用 viewPrefsStorageKey。
+    loadSheetColumnColors() {
+      this.sheetColumnColors = this.viewPrefsStorageKey ? createColumnOrder(this.viewPrefsStorageKey, []).loadColors() : {}
+    },
+    sheetCellClass(params) {
+      return [this.sheetCellClassName(params), columnTextClass(this.sheetColumnColors[params.column?.field])]
+        .filter(Boolean)
+        .join(' ')
     },
     paintSheetColumnMove(event) {
       const wrap = this.$refs.sheetWrap

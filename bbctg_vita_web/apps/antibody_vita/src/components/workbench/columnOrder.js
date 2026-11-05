@@ -1,6 +1,29 @@
 const MIN_COLUMN_WIDTH = 40
 const MAX_COLUMN_WIDTH = 1200
 
+/** 个人设置的列字体颜色，只给固定色板；样式见 WorkbenchDataTable 的 wb-text-*。 */
+export const COLUMN_TEXT_COLORS = [
+  { value: 'red', label: '红' },
+  { value: 'orange', label: '橙' },
+  { value: 'green', label: '绿' },
+  { value: 'blue', label: '蓝' },
+  { value: 'purple', label: '紫' },
+]
+const TEXT_COLOR_VALUES = new Set(COLUMN_TEXT_COLORS.map((item) => item.value))
+
+export function columnTextClass(color) {
+  return TEXT_COLOR_VALUES.has(color) ? `wb-text-colored wb-text-${color}` : ''
+}
+
+function sanitizeColors(colors) {
+  const result = {}
+  if (!colors || typeof colors !== 'object') return result
+  for (const [key, value] of Object.entries(colors)) {
+    if (key && TEXT_COLOR_VALUES.has(value)) result[key] = value
+  }
+  return result
+}
+
 export function createColumnOrder(
   storageKey,
   defaultColumns,
@@ -62,6 +85,7 @@ export function createColumnOrder(
           order: Array.isArray(raw.order) ? raw.order : (Array.isArray(raw.keys) ? raw.keys : []),
           hidden: Array.isArray(raw.hidden) ? raw.hidden : undefined,
           widths: sanitizeWidths(raw.widths),
+          colors: sanitizeColors(raw.colors),
         }
       }
     } catch {
@@ -117,6 +141,10 @@ export function createColumnOrder(
     return readStore()?.widths || {}
   }
 
+  function loadColors() {
+    return readStore()?.colors || {}
+  }
+
   function save(columns, hidden) {
     const stored = readStore()
     write({
@@ -125,14 +153,22 @@ export function createColumnOrder(
         hidden !== undefined ? hidden : (Array.isArray(stored?.hidden) ? stored.hidden : defaultHidden),
       ),
       widths: stored?.widths || {},
+      colors: stored?.colors || {},
     })
   }
 
-  // 只调了列宽时不写 order/hidden，免得把默认列序和显示字段固化下来。
-  function saveWidth(key, width) {
+  // 只调了列宽或颜色时不写 order/hidden，免得把默认列序和显示字段固化下来。
+  function patch(fields) {
     const stored = readStore()
-    const widths = sanitizeWidths({ ...stored?.widths, [key]: width })
-    write(stored ? { order: stored.order, hidden: stored.hidden, widths } : { widths })
+    write(stored ? { order: stored.order, hidden: stored.hidden, widths: stored.widths, colors: stored.colors, ...fields } : fields)
+  }
+
+  function saveWidth(key, width) {
+    patch({ widths: sanitizeWidths({ ...readStore()?.widths, [key]: width }) })
+  }
+
+  function saveColors(colors) {
+    patch({ colors: sanitizeColors(colors) })
   }
 
   function clear() {
@@ -143,5 +179,5 @@ export function createColumnOrder(
     }
   }
 
-  return { clear, load, loadHidden, loadWidths, merge, move, save, saveWidth }
+  return { clear, load, loadColors, loadHidden, loadWidths, merge, move, save, saveColors, saveWidth }
 }

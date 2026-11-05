@@ -617,7 +617,7 @@
               :virtual-x-config="sheetVirtualXConfig"
               :edit-config="sheetEditConfig"
               :header-cell-class-name="sheetHeaderCellClassName"
-              :cell-class-name="sheetCellClassName"
+              :cell-class-name="sheetCellClass"
               @scroll="onSheetScroll"
               @column-resizable-change="onSheetColumnResize"
               @edit-actived="onSheetEditActived"

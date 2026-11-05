@@ -19,7 +19,7 @@
         :width="columnWidths[col.key] || col.width"
         :min-width="col.minWidth"
         :align="col.align || 'center'"
-        :class-name="col.className"
+        :class-name="[col.className, columnTextClass(columnColors[col.key])].filter(Boolean).join(' ')"
         :fixed="col.fixed"
         :show-overflow-tooltip="col.keepLineBreaks ? false : col.showOverflowTooltip"
       >
@@ -66,13 +66,13 @@
       :modal="false"
       :lock-scroll="false"
     >
-      <p class="wb-col-picker-hint">与 Excel 相同的字段。拖动可调序，序号和操作固定。</p>
+      <p class="wb-col-picker-hint">与 Excel 相同的字段。拖动可调序，序号和操作固定。点字段后的圆点切换字体颜色，只对自己生效。</p>
       <el-checkbox-group v-model="visibleDraft" class="wb-col-picker">
         <div
           v-for="col in orderDraft"
           :key="col.key"
           class="wb-col-picker-item"
-          :class="{ 'is-pinned': isPinned(col.key), 'is-dragging': pickerDragFrom === col.key }"
+          :class="[columnTextClass(colorDraft[col.key]), { 'is-pinned': isPinned(col.key), 'is-dragging': pickerDragFrom === col.key }]"
           :draggable="!isPinned(col.key)"
           @dragstart="onPickerDragStart($event, col)"
           @dragover.prevent="onPickerDragOver(col)"
@@ -84,6 +84,13 @@
           >
             {{ col.label }}
           </el-checkbox>
+          <button
+            v-if="!isPinned(col.key)"
+            type="button"
+            class="wb-col-color-dot"
+            title="老登模式~！启动~~！！"
+            @click="cycleColor(col.key)"
+          />
         </div>
       </el-checkbox-group>
       <template #footer>
@@ -99,7 +106,7 @@ import { defineComponent, h } from 'vue'
 import { ArrowDown, Calendar } from '@element-plus/icons-vue'
 import { ElButton, ElCheckbox, ElCheckboxGroup, ElDatePicker, ElDialog, ElIcon, ElOption, ElSelect, ElTable, ElTableColumn, ElTooltip } from 'element-plus'
 
-import { createColumnOrder } from './columnOrder'
+import { COLUMN_TEXT_COLORS, columnTextClass, createColumnOrder } from './columnOrder'
 import './shiftHeld'
 import { WorkbenchHeaderLabel } from './workbenchHeaderMenu'
 
@@ -345,6 +352,8 @@ export default {
       orderedColumns: [],
       hiddenKeys: [],
       columnWidths: {},
+      columnColors: {},
+      colorDraft: {},
       pickerOpen: false,
       visibleDraft: [],
       orderDraft: [],
@@ -382,6 +391,7 @@ export default {
       this.orderedColumns = order.load()
       this.hiddenKeys = order.loadHidden()
       this.columnWidths = order.loadWidths()
+      this.columnColors = order.loadColors()
     },
     resetColumnOrder() {
       this.columnOrder().clear()
@@ -408,8 +418,16 @@ export default {
       this.visibleDraft = this.orderDraft
         .filter((column) => this.isPinned(column.key) || !this.hiddenKeys.includes(column.key))
         .map((column) => column.key)
+      this.colorDraft = { ...this.columnColors }
       this.pickerDragFrom = ''
       this.pickerOpen = true
+    },
+    columnTextClass,
+    cycleColor(key) {
+      const values = ['', ...COLUMN_TEXT_COLORS.map((item) => item.value)]
+      const next = values[(values.indexOf(this.colorDraft[key] || '') + 1) % values.length]
+      const { [key]: _, ...rest } = this.colorDraft
+      this.colorDraft = next ? { ...rest, [key]: next } : rest
     },
     applyColumnPicker() {
       const visible = new Set(this.visibleDraft)
@@ -418,6 +436,8 @@ export default {
         .filter((column) => !this.isPinned(column.key) && !visible.has(column.key))
         .map((column) => column.key)
       this.persistColumns()
+      this.columnColors = this.colorDraft
+      this.columnOrder().saveColors(this.columnColors)
       this.pickerOpen = false
       this.$emit('reorder', this.orderedColumns)
     },
@@ -655,7 +675,45 @@ export default {
 }
 
 .wb-col-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
   cursor: grab;
+}
+.wb-col-picker-item .el-checkbox {
+  flex: 1;
+  min-width: 0;
+}
+
+.wb-col-color-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  padding: 0;
+  border: 1px dashed var(--el-border-color-darker);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.wb-text-colored .wb-col-color-dot {
+  border: 0;
+  background: var(--wb-text);
+}
+
+.wb-text-red { --wb-text: var(--el-color-danger); }
+.wb-text-orange { --wb-text: var(--el-color-warning); }
+.wb-text-green { --wb-text: var(--el-color-success); }
+.wb-text-blue { --wb-text: var(--el-color-primary); }
+.wb-text-purple { --wb-text: #7c5cf0; }
+html.dark .wb-text-purple { --wb-text: #a78bfa; }
+
+td.wb-text-colored .cell,
+td.wb-text-colored .vxe-cell,
+.wb-col-picker-item.wb-text-colored .el-checkbox .el-checkbox__label {
+  color: var(--wb-text);
 }
 
 .wb-col-picker-item.is-pinned {

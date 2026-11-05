@@ -1106,6 +1106,7 @@ const HEADER_MENU_COLUMNS = Object.freeze({
   project_code: { type: 'text', values: 'recent' },
   experiment_id: { type: 'text', values: 'recent' },
   target_name: { type: 'text', values: 'all', search: 'target', top: { query: 'target_name' } },
+  target_codes: { type: 'csv', values: 'all' },
   study_type: { type: 'enum', values: 'all', top: { query: 'study_type' } },
   mouse_strain_category: { type: 'csv', values: 'all', top: { query: 'mouse_strain_category' } },
   mouse_strain: { type: 'csv', values: 'all', top: { query: 'mouse_strain' } },

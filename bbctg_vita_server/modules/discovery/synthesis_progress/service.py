@@ -71,6 +71,7 @@ from utils.header_filters import (
     csv_token_clause,
     header_filter_clauses,
     header_sort_clauses,
+    json_array_column,
     target_column,
     without_header_fields,
 )
@@ -684,6 +685,7 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
         values=partial(_status_values, combos=False),
     ),
     "target_name": target_column(_O.target_name, _O.target_codes, colors=_target_color_clause),
+    "target_codes": json_array_column(_O.target_codes),
     "target_type": HeaderColumn(_O.target_type, "enum", order=tuple(TARGET_TYPE_OPTIONS)),
     "mouse_strain": csv_column(_O.mouse_strain, tuple(MOUSE_STRAIN_OPTIONS)),
     "selection_method": csv_column(_O.selection_method, tuple(SELECTION_METHOD_OPTIONS)),
@@ -692,6 +694,7 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "batch_label": HeaderColumn(_O.batch_label),
     "synthetic_count": HeaderColumn(_O.synthetic_count, "number"),
     "synthetic_date": HeaderColumn(_O.synthetic_date, "date"),
+    "order_sender": HeaderColumn(_O.order_sender, "enum"),
     "arrival_count": HeaderColumn(_O.arrival_count, "number"),
     "arrival_date": HeaderColumn(_O.arrival_date, "date"),
     "affinity_date": HeaderColumn(_O.affinity_date, "date"),

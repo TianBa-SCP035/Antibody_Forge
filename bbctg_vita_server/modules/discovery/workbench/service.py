@@ -34,6 +34,7 @@ from utils.header_filters import (
     csv_token_clause,
     header_filter_clauses,
     header_sort_clauses,
+    json_array_column,
     target_column,
 )
 
@@ -361,6 +362,7 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "project_code": HeaderColumn(_W.project_code),
     "experiment_id": HeaderColumn(_W.experiment_id),
     "target_name": target_column(_W.target_name, _W.target_codes),
+    "target_codes": json_array_column(_W.target_codes),
     "study_type": HeaderColumn(_W.study_type, "enum"),
     "mouse_strain_category": csv_column(_W.mouse_strain_category, tuple(MOUSE_STRAIN_CATEGORY_OPTIONS)),
     "mouse_strain": csv_column(_W.mouse_strain, tuple(MOUSE_STRAIN_OPTIONS)),

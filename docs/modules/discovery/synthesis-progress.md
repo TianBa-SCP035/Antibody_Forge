@@ -143,7 +143,7 @@
   - 第 2 行：`项目编号`（同时匹配 `project_code` 与 `experiment_id`）、`PM`、`课题类型`、`优先级`、`状态`（按「主状态 / 亲和力 / 流式」分组共 12 项；主状态之间取或，选中子状态时只看 `status IN ('待检测', '检测中')` 的行，同时选亲和力和流式子状态时两者都要满足；另接受子状态分布弹窗写入的「亲和力X且流式Y」组合项，组合之间及与其他项之间取或）、`到货日期区间`、`亲和力日期区间`、`流式日期区间`。
   - 第 3 行：`订单性质`、`改造类型`、`改造方式`；右侧提供「重置全部筛选」按钮（右键点击「查询」按钮同样触发重置，保留阶段视图与队列排序模式）、「显示字段」（工作台视图）、「列表导出」。
 - **匹配规则**：单号类（`order_no`、`synthesis_code`、`batch_label`、`project_code`）填单个词按包含匹配，用逗号、空格、分号或换行分隔多个词按精确值 `IN` 匹配；顿号多值字段（`mouse_strain`、`selection_method`、`eng_type`、`eng_method`）按拆分后包含某项匹配；文本说明（`remark`、`report_reason`、`flow_note`）按包含匹配。
-- **表头筛选（`HEADER_MENU_COLUMNS`）**：除 `sort_order`、`target_codes`、`order_sender`、`actions` 外的 32 个业务列均开放表头菜单（单号类 `synthesis_code`/`order_no`/`batch_label`/`project_code` 为 `recent` 最近 200 项，长文本 `remark`/`report_reason`/`flow_note`/`eng_parent_seq`/`eng_requirement`/`eng_result` 为 `search` 输入后查询，其余为 `all`）。`status` 表头菜单在主状态后列出待检测/检测中行的亲和力、流式子状态及计数，选值与排除口径同顶部 `状态` 筛选，不列组合项，顶部条件含组合项时显示 `topOnly` 提示；`target_type` 表头菜单对 `非分泌型` 显示 `topOnly` 提示。
+- **表头筛选（`HEADER_MENU_COLUMNS`）**：除 `sort_order`、`actions` 外的 34 个业务列均开放表头菜单（单号类 `synthesis_code`/`order_no`/`batch_label`/`project_code` 为 `recent` 最近 200 项，长文本 `remark`/`report_reason`/`flow_note`/`eng_parent_seq`/`eng_requirement`/`eng_result` 为 `search` 输入后查询，其余为 `all`）。`status` 表头菜单在主状态后列出待检测/检测中行的亲和力、流式子状态及计数，选值与排除口径同顶部 `状态` 筛选，不列组合项，顶部条件含组合项时显示 `topOnly` 提示；`target_type` 表头菜单对 `非分泌型` 显示 `topOnly` 提示；`target_codes` 逐个编号列出，按含有任一编号匹配，未录编号（空数组）算空白。
 - **批量标记靶点底色**：需 `edit` 权限。在 Excel 视图下框选多行后，点击 `靶点名称` 表头菜单中的颜色圆点或点击选中行内的色点，调用 `POST /save_batch` 批量更新选中行的 `target_color`。
 
 ### 状态胶囊、靶点角标与右侧抽屉

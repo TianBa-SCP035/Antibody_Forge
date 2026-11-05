@@ -1,4 +1,5 @@
 from datetime import timedelta
+import json
 import unittest
 from unittest.mock import patch
 
@@ -974,6 +975,23 @@ class SynthesisHeaderFilterTests(DbTestCase):
             self.codes({"field": "target_name", "colors": ["red"]}),
             ["S001"],
         )
+
+    def test_target_codes_and_order_sender_columns(self):
+        raw = self.db.connection().connection.dbapi_connection
+        raw.create_function("json_length", 1, lambda value: len(json.loads(value or "[]")))
+        raw.create_function(
+            "json_overlaps", 2, lambda left, right: bool(set(json.loads(left or "[]")) & set(json.loads(right or "[]")))
+        )
+        self.assertEqual(self.codes({"field": "target_codes", "values": ["20R002"]}), ["S003", "S004"])
+        self.assertEqual(self.codes({"field": "target_codes", "exclude": ["20R001"]}), ["S003"])
+        listed = self.values("target_codes")["items"]
+        self.assertEqual({item["value"]: item["count"] for item in listed}, {"20R001": 3, "20R002": 2})
+        with self.Session() as db:
+            db.execute(update(DiscoverySynthesisOrder).where(DiscoverySynthesisOrder.synthesis_code == "S001")
+                       .values(order_sender="任鸿滨"))
+            db.commit()
+        self.assertEqual(self.codes({"field": "order_sender", "values": ["任鸿滨"]}), ["S001"])
+        self.assertEqual(self.values("order_sender")["items"], [{"value": "任鸿滨", "count": 1}, {"value": "", "count": 3}])
 
     def test_status_header_includes_assay_sub_statuses(self):
         with self.Session() as db:

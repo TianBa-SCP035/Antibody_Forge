@@ -1212,7 +1212,6 @@ def _apply_fields(
     data: dict[str, Any],
 ) -> None:
     prev_order_no = row.order_no
-    prev_codes = (row.synthesis_code, row.batch_label)
     for field in WRITABLE_FIELDS:
         if field not in data:
             continue
@@ -1257,25 +1256,13 @@ def _apply_fields(
     if "affinity_date" in data and not row.affinity_date and "affinity_result" not in data:
         row.affinity_result = None
 
-    if row.source_one_id is not None:
-        old_snap = row.source_snapshot if isinstance(row.source_snapshot, dict) else {}
-        order_changed = "order_no" in data and row.order_no != prev_order_no
-        code_changed = ("batch_label" in data or "synthesis_code" in data) and (
-            row.synthesis_code,
-            row.batch_label,
-        ) != prev_codes
-        if order_changed or (
-            code_changed
-            and "order_no" not in data
-            and row.order_no == old_snap.get("order_no")
-        ):
-            if not order_changed:
-                row.order_no = None
-            row.source_one_type = None
-            row.source_one_id = None
-            row.order_sender = None
-            if not any((row.order_no, row.synthesis_code, row.batch_label)):
-                row.source_snapshot = None
+    # 订单号决定关联哪笔 One 订单；工单批次、送测转码允许与 One 不一致，改了不解除关联。
+    if row.source_one_id is not None and "order_no" in data and row.order_no != prev_order_no:
+        row.source_one_type = None
+        row.source_one_id = None
+        row.order_sender = None
+        if not any((row.order_no, row.synthesis_code, row.batch_label)):
+            row.source_snapshot = None
 
 
 def save(

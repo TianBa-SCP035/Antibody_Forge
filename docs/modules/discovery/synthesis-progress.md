@@ -184,8 +184,9 @@
 4. **本地重号提示与远端候选补全**：
    - `duplicates`（请求行数 ≤ 50 时返回）：检测当前行与本地其他工单在 `order_no`、`batch_label`、`synthesis_code` 上的重号（已绑定 One 的行前端仅提示 `order_no` 重号，未绑定行提示三项重号），抽屉横幅支持右键复制冲突编号。
    - `candidates`（单行点查 `len(rows) == 1` 时返回，最多 20 条）：返回同 `synthesis_code` 或同 `batch_label` 下尚未被占用的其他 One 库订单快照，供抽屉 `order_no`、`batch_label`、`synthesis_code` 输入框自动补全选择。
-5. **修改标识字段自动解绑（`_apply_fields`）**：
-   - 已绑定 `source_one_id` 的工单在保存时，若修改了 `order_no`，或修改了 `synthesis_code` / `batch_label`（且当次未传 `order_no`、当前 `order_no` 仍等于原快照 `order_no`，此时一并清空 `order_no`），后端自动将 `source_one_type` 与 `source_one_id` 置为 `NULL` 解除绑定并清空 `order_sender`；若解绑后 `order_no`、`synthesis_code`、`batch_label` 均为空，同时清空 `source_snapshot`。保存后前端立即调用 `check_remote` 按新值重新匹配。
+5. **修改订单号自动解绑（`_apply_fields`）**：
+   - 已绑定 `source_one_id` 的工单在保存时修改了 `order_no`（含清空），后端自动将 `source_one_type` 与 `source_one_id` 置为 `NULL` 解除绑定并清空 `order_sender`；若解绑后 `order_no`、`synthesis_code`、`batch_label` 均为空，同时清空 `source_snapshot`。保存后前端立即调用 `check_remote` 按新值重新匹配。
+   - `synthesis_code`、`batch_label` 允许与 One 不一致，修改后保持绑定；换绑其他 One 订单需改 `order_no`（抽屉输入框有 One 候选补全）。
 6. **One 新订单自动建单（`collect_new_remote_orders`，随定时任务与 `/sync_now` 执行）**：
    - 范围：ngs 与 beacon 中 `a.created >= ONE_AUTO_CREATE_SINCE`（`2026-11-01`，此前的订单已按总工单 Excel 导入对齐）、未删除且未被本地工单关联的记录。
    - 跳过改造类批次：订单文件名（`refstr`）`_数字clones` 前的前缀（取不到时用 `t.projectcode`）按 `_` 拆分后第 5 段为 `M数字`（如 `23R037_RM_C_W_M1_20261102`）时不建，这类改造/改亚型/转染工单由人工先建空单，再经三轮匹配绑定。

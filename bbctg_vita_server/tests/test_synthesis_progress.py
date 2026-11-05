@@ -707,6 +707,12 @@ class SynthesisProgressServiceTests(DbTestCase):
             self.assertFalse(adopted["has_drift"])
             manual_sender = service.save(db, {"id": row_id, "order_sender": "手填"})
             self.assertEqual(manual_sender["order_sender"], "任鸿滨 Hongbin Ren")
+            for label in ("CD6_RN_B_K_01_20260208_1（补挑）", "CD6_RN_B_K_01_20260208_1"):
+                relabeled = service.save(db, {"id": row_id, "batch_label": label})
+                self.assertEqual(
+                    (relabeled["source_one_id"], relabeled["order_no"], relabeled["order_sender"]),
+                    (101, "CN2602120001585", "任鸿滨 Hongbin Ren"),
+                )
 
             # A no-op background remote check must not overwrite a manually chosen main status.
             service.save(db, {"id": row_id, "status": "已完成"})

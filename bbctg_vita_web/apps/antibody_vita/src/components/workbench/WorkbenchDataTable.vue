@@ -710,8 +710,7 @@ export default {
 .wb-text-purple { --wb-text: #7c5cf0; }
 html.dark .wb-text-purple { --wb-text: #a78bfa; }
 
-td.wb-text-colored .cell,
-td.wb-text-colored .vxe-cell,
+td.wb-text-colored,
 .wb-col-picker-item.wb-text-colored .el-checkbox .el-checkbox__label {
   color: var(--wb-text);
 }

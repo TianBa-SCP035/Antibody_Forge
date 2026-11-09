@@ -1,0 +1,10 @@
+whale-girl.png — circular crop of improved-1.png from
+https://github.com/fornarwhal/deepseek-whale-girl-icon
+Character original: 上善无形 (OC「溟月」)
+DeepSeek-element design: ZipZipPipe
+Cleanup: QYQCAMIAO
+License: CC BY-NC-SA 4.0 (attribution, non-commercial, share-alike)
+Used as the FatFish desktop pet avatar in Antibody Vita (internal tool).
+
+cursor-hover.png / cursor-grabbing.png / cursor-hammer.png — original soft cartoon drawings
+for the pet pointer; see ../ATTRIBUTION.txt.

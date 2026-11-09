@@ -56,6 +56,11 @@ export default defineConfig(async (env) => {
       },
       server: {
         proxy: {
+          // Must be before '/api' — otherwise the whole /api prefix hits the business backend.
+          '/api/pet': {
+            changeOrigin: true,
+            target: 'http://127.0.0.1:18765',
+          },
           '/api': {
             changeOrigin: true,
             target: devBackend,

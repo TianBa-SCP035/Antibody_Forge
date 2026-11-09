@@ -23,6 +23,12 @@ bbctg_vita_server/integrations/drm/
 config/*/vita_server.env
 repository/
 
+# === 2b. FatFish pet-proxy ===
+pet-proxy/logs/
+pet-proxy/**/__pycache__/
+pet-proxy/**/*.pyc
+.demo-pids/
+
 # === 3. 前端规则 ===
 
 bbctg_vita_web/**/node_modules

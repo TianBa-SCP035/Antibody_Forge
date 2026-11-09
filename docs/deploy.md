@@ -116,6 +116,8 @@ rsync -a ~/backups/antibody_forge/prod/files/uploads/ <仓库>/repository/upload
 | prod | `1314` | `http://127.0.0.1:8848/api/` | 该环境的 `…/apps/antibody_vita/dist` |
 | test | `9958` | `http://127.0.0.1:9527/api/` | 同上，指向**本机该环境**的 dist |
 
+桌宠单独反代：`/api/pet/` → `http://127.0.0.1:18765`（样例 conf 已写在 `/api/` 之前，勿剥前缀）。需另起 `python pet-proxy/server.py`（工作目录 `pet-proxy`，只听本机）。说明见 `docs/fatfish.md`。
+
 未装 Nginx 时（Debian/Ubuntu）：
 ```bash
 sudo apt update && sudo apt install -y nginx

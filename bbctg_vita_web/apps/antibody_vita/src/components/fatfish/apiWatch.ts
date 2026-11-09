@@ -32,6 +32,8 @@ export type DataSource = {
   totalPath?: string[];
   /** Response field → column label on the page (matched by values); unmatched fields keep their key. */
   labels: Record<string, string>;
+  /** Code field → raw value → text the page shows for it (`status` 1 → 进行中); codes never shown stay raw. */
+  values?: Record<string, Record<string, string>>;
   fields: string[];
   total?: number;
   seenAt: number;
@@ -322,10 +324,61 @@ function sameValue(a: string, b: string): number {
   return a.length >= 8 && b.length >= 8 && (a.startsWith(b) || b.startsWith(a)) ? 1 : 0;
 }
 
+/** What pages render for an empty value. */
+const EMPTY_TEXT = /^(-+|—+|\/|无|暂无|n\/a)$/;
+const MAX_CODE_LEN = 32;
+const MAX_CODES_PER_FIELD = 60;
+const MAX_CODE_FIELDS = 20;
+
+function codeOf(v: unknown): string | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : null;
+  if (typeof v === 'boolean') return String(v);
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  return s && s.length <= MAX_CODE_LEN ? s : null;
+}
+
+/**
+ * Enum-like fields the page shows translated (`status` 1 → 进行中): a one-to-one mapping between a field's
+ * raw values and a column's texts, seen on at least 4 rows. Values must repeat, so an id ↔ name pair of
+ * unique columns is never taken for a code list.
+ */
+function matchCodes(items: any[], table: PageTable, n: number, keys: string[], labels: string[]) {
+  const out: Array<{ key: string; label: string; map: Record<string, string>; rows: number }> = [];
+  for (const label of labels) {
+    for (const key of keys) {
+      const fwd = new Map<string, string>();
+      const back = new Map<string, string>();
+      let rows = 0;
+      let ok = true;
+      for (let i = 0; i < n && ok; i += 1) {
+        const text = String(table.rows[i]![label] ?? '').trim();
+        const raw = items[i]?.[key];
+        // An empty value is shown as "-" or nothing by the page; it has no code to learn.
+        if (raw == null || raw === '') continue;
+        const code = codeOf(raw);
+        if (!text || code == null || text === '***') {
+          ok = false;
+          break;
+        }
+        rows += 1;
+        if ((fwd.get(code) ?? text) !== text || (back.get(text) ?? code) !== code) ok = false;
+        fwd.set(code, text);
+        back.set(text, code);
+      }
+      if (!ok || rows < 4 || fwd.size < 2 || fwd.size > rows / 2) continue;
+      // The page shows the value itself (only formatted differently): that is not a translation.
+      if ([...fwd].every(([c, t]) => norm(c) === norm(t))) continue;
+      out.push({ key, label, map: Object.fromEntries(fwd), rows });
+    }
+  }
+  return out.sort((a, b) => b.rows - a.rows);
+}
+
 /** Pairs page columns with response fields by comparing values row by row (no framework internals needed). */
-function matchLabels(items: any[], table: PageTable): Record<string, string> {
+function matchLabels(items: any[], table: PageTable): { labels: Record<string, string>; values: Record<string, Record<string, string>> } {
   const n = Math.min(items.length, table.rows.length, 30);
-  if (!n) return {};
+  if (!n) return { labels: {}, values: {} };
   const keys = [...new Set(items.slice(0, n).flatMap((it) => Object.keys(it || {})))];
   const scored: Array<{ key: string; label: string; score: number }> = [];
   for (const label of table.columns) {
@@ -336,7 +389,7 @@ function matchLabels(items: any[], table: PageTable): Record<string, string> {
       for (let i = 0; i < n; i += 1) {
         const a = norm(table.rows[i]![label]);
         const b = norm(items[i]?.[key]);
-        if (!a && !b) continue;
+        if (!b && (!a || EMPTY_TEXT.test(a))) continue;
         both += 1;
         const s = sameValue(a, b);
         if (s) hit += 1;
@@ -354,7 +407,16 @@ function matchLabels(items: any[], table: PageTable): Record<string, string> {
     out[s.key] = s.label;
     usedLabels.add(s.label);
   }
-  return out;
+  const values: Record<string, Record<string, string>> = {};
+  const freeKeys = keys.filter((k) => !(k in out) && !isSensitiveName(k));
+  const freeLabels = table.columns.filter((l) => !usedLabels.has(l) && !isSensitiveName(l));
+  for (const c of matchCodes(items, table, n, freeKeys, freeLabels)) {
+    if (c.key in out || usedLabels.has(c.label)) continue;
+    out[c.key] = c.label;
+    usedLabels.add(c.label);
+    values[c.key] = c.map;
+  }
+  return { labels: out, values };
 }
 
 /**
@@ -362,38 +424,51 @@ function matchLabels(items: any[], table: PageTable): Record<string, string> {
  * the table shows. Also refreshes the field → label map and the source name.
  */
 export function sourceForTable(table: PageTable): DataSource | null {
-  let best: { src: DataSource; labels: Record<string, string> } | null = null;
+  let best: { src: DataSource } & ReturnType<typeof matchLabels> | null = null;
   let bestResp: SeenResponse | undefined;
   for (const src of load()) {
     const resp = lastResponse.get(`${src.method} ${src.path}`);
     if (!resp?.items.length || resp.route !== location.pathname) continue;
-    const labels = matchLabels(resp.items, table);
-    const matched = Object.keys(labels).length;
+    const m = matchLabels(resp.items, table);
+    const matched = Object.keys(m.labels).length;
     if (matched >= Math.min(2, table.columns.length) && (!best || matched > Object.keys(best.labels).length)) {
-      best = { src, labels };
+      best = { src, ...m };
       bestResp = resp;
     }
   }
   if (!best || !bestResp) return null;
+  const src = best.src;
   // The table the user sees decides which page owns this API (it may first have been seen as a dropdown elsewhere).
-  if (best.src.route !== location.pathname) {
-    best.src.route = location.pathname;
-    best.src.labels = {};
+  if (src.route !== location.pathname) {
+    src.route = location.pathname;
+    src.labels = {};
+    src.values = {};
   }
-  best.src.lastParams = bestResp.params;
+  src.lastParams = bestResp.params;
   // One label per column name: a newer match takes the name over from an older (wrong) field.
-  const merged = { ...best.src.labels };
+  const merged = { ...src.labels };
+  const values = { ...src.values };
   for (const [key, label] of Object.entries(best.labels)) {
-    for (const k of Object.keys(merged)) if (merged[k] === label) delete merged[k];
+    for (const k of Object.keys(merged)) {
+      if (merged[k] === label && k !== key) {
+        delete merged[k];
+        delete values[k];
+      }
+    }
     merged[key] = label;
+    // Codes add up over visits (another page of the list shows other statuses); a plain match ends a code list.
+    const learned = best.values[key];
+    if (learned) values[key] = Object.fromEntries(Object.entries({ ...values[key], ...learned }).slice(-MAX_CODES_PER_FIELD));
+    else delete values[key];
   }
-  best.src.labels = merged;
-  if (table.title && !best.src.name.includes(table.title)) {
+  src.labels = merged;
+  src.values = Object.fromEntries(Object.entries(values).slice(0, MAX_CODE_FIELDS));
+  if (table.title && !src.name.includes(table.title)) {
     const page = document.title.split(/\s+-\s+/)[0]?.trim();
-    best.src.name = page && page !== table.title ? `${page} · ${table.title}` : table.title;
+    src.name = page && page !== table.title ? `${page} · ${table.title}` : table.title;
   }
   persist();
-  return best.src;
+  return src;
 }
 
 /**
@@ -530,9 +605,13 @@ function toTable(src: DataSource, items: any[]): DataTable {
   );
   const ordered = [...keys.filter((k) => k in src.labels), ...keys.filter((k) => !(k in src.labels))].slice(0, 60);
   const colOf = (k: string) => src.labels[k] || k;
+  const cell = (k: string, v: unknown) => {
+    const code = src.values?.[k] ? codeOf(v) : null;
+    return (code != null && src.values![k]![code]) || flatten(v);
+  };
   return {
     columns: ordered.map(colOf),
-    rows: items.map((it) => Object.fromEntries(ordered.map((k) => [colOf(k), flatten(it?.[k])])) as Row),
+    rows: items.map((it) => Object.fromEntries(ordered.map((k) => [colOf(k), cell(k, it?.[k])])) as Row),
   };
 }
 

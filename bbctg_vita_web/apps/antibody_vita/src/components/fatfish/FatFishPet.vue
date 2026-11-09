@@ -2535,6 +2535,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* The pet is a self-contained character skin with its own fixed palette; it does not follow the dark theme. */
 @property --ff-fade-top {
   syntax: '<length>';
   inherits: false;
@@ -2597,7 +2598,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   color: #38bdf8;
   text-shadow:
-    0 1px 0 #fff,
+    0 1px 0 #fff, /* theme-ok */
     0 0 4px rgba(255, 255, 255, 0.9);
   transform: translate(-50%, -100%);
   animation: ff-hit-rise 0.7s ease-out forwards;
@@ -2667,7 +2668,7 @@ onBeforeUnmount(() => {
 }
 button.ff-ball,
 .ff-ball {
-  --ff-plate: linear-gradient(180deg, #ffffff 0%, #f6f6f8 100%);
+  --ff-plate: linear-gradient(180deg, #ffffff 0%, #f6f6f8 100%); /* theme-ok */
   appearance: none;
   -webkit-appearance: none;
   pointer-events: auto;
@@ -2683,7 +2684,7 @@ button.ff-ball,
   background-color: transparent !important;
   background-image: none !important;
   box-shadow:
-    0 0 0 1.5px #ffffff,
+    0 0 0 1.5px #ffffff, /* theme-ok */
     0 1px 2px rgba(15, 23, 42, 0.10),
     0 3px 8px rgba(15, 23, 42, 0.10);
   line-height: 0;
@@ -2698,7 +2699,7 @@ button.ff-ball,
   padding: 2px;
   overflow: hidden;
   background: var(--ff-plate) !important;
-  background-color: #ffffff !important;
+  background-color: #ffffff !important; /* theme-ok */
   background-image: var(--ff-plate) !important;
   box-shadow:
     0 0 0 1px rgba(15, 23, 42, 0.04),
@@ -2859,7 +2860,7 @@ button.ff-ball:active {
   font-size: 18px;
   font-weight: 700;
   color: #0f172a;
-  background: #fff;
+  background: #fff; /* theme-ok */
   box-shadow: 0 4px 12px rgba(14, 165, 233, 0.35);
 }
 .ff-fall.dance .ff-fall-note {
@@ -2979,7 +2980,7 @@ button.ff-ball:active {
   border-color: rgba(125, 211, 252, 0.7);
 }
 .ff-bubble.sys {
-  background: #f8fafc;
+  background: #f8fafc; /* theme-ok */
   color: #64748b;
 }
 .ff-bubbles.has-card {
@@ -3066,7 +3067,7 @@ button.ff-ball:active {
 }
 .ff-card-actions button {
   border: 1px solid #bae6fd;
-  background: #fff;
+  background: #fff; /* theme-ok */
   color: #0369a1;
   border-radius: 999px;
   padding: 3px 12px;
@@ -3113,7 +3114,7 @@ button.ff-ball:active {
   padding: 8px 10px;
   text-align: left;
   font-size: 12px;
-  color: #f8fafc;
+  color: #f8fafc; /* theme-ok */
   background: transparent;
   cursor: pointer;
 }
@@ -3136,7 +3137,7 @@ button.ff-ball:active {
 }
 .ff-status-state {
   font-weight: 600;
-  color: #f8fafc;
+  color: #f8fafc; /* theme-ok */
 }
 .ff-status.is-happy .ff-status-state {
   color: #fcd34d;

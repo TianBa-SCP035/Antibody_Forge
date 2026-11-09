@@ -10,7 +10,7 @@
     title="左键单选，右键追加"
     :remote-method="search"
     :loading="loading"
-    :placeholder="placeholder"
+    :placeholder="displayName ? '' : placeholder"
     :disabled="disabled"
     style="width: 100%;"
     @focus="search('')"
@@ -18,7 +18,7 @@
     @visible-change="listen"
   >
     <template #tag>
-      <span class="target-selected-text">{{ displayName }}</span>
+      <span class="target-selected-text" :title="displayName">{{ displayName }}</span>
     </template>
     <el-option
       v-for="item in options"

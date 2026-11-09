@@ -778,6 +778,7 @@
                         :key="item"
                         type="button"
                         class="line-suggest-item"
+                        :title="item"
                         @mousedown.prevent="fillAntigenLine(field, item)"
                       >
                         {{ item }}
@@ -2641,12 +2642,15 @@ export default {
   width: 100%;
   height: 34px;
   padding: 0 16px;
+  overflow: hidden;
   border: 0;
   background: transparent;
   color: var(--el-text-color-regular);
   font-size: 14px;
   line-height: 34px;
   text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
 }
 .line-suggest-item:hover {

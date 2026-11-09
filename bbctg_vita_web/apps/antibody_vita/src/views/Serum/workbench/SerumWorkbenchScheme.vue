@@ -80,7 +80,7 @@
                 @keydown.shift.enter.capture.prevent.stop="commitFreeTargetName"
               >
                 <template #tag>
-                  <span class="target-selected-text">{{ postForm.target_name }}</span>
+                  <span class="target-selected-text" :title="postForm.target_name">{{ postForm.target_name }}</span>
                 </template>
                 <el-option
                   v-for="item in targetOptions"

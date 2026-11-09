@@ -58,15 +58,15 @@ Windows： 无需路径约定，固定环境为 local。
 
 | 脚本 | 用途 |
 |------|------|
-| `start_dev.bat` | **Windows 本地**：后端 `8888` + Vite `5555`，各开一个窗口 |
-| `start_dev.sh` | **Linux test/prod**：构建前端 dist + nohup 起后端（带 `LD_LIBRARY_PATH`）；不启 Vite |
+| `start_dev.bat` | **Windows 本地**：后端 `8888` + Vite `5555` + 桌宠代理 `18765`，各开一个窗口 |
+| `start_dev.sh` | **Linux test/prod**：构建前端 dist + nohup 起后端（带 `LD_LIBRARY_PATH`）和桌宠代理（prod `18765` / test `18766`）；不启 Vite |
 
 | 命令 | 作用 |
 |------|------|
 | 不带参数 / `restart` / `start` | 补依赖 → 停掉旧进程 → 启动。Linux 先构建前端再停后端，构建期间旧后端照常服务，并顺带补齐 crontab 条目（同 `cron`）；`backend.nohup.log` 超过 50MB 时改名为 `.1` |
-| `stop` | 只停止。Windows 关掉两个窗口及其进程；Linux 先正常结束后端，10 秒未退出再强杀，并暂停看门狗 |
+| `stop` | 只停止。Windows 关掉各窗口及其进程；Linux 先正常结束后端，10 秒未退出再强杀，同时停桌宠代理，并暂停看门狗 |
 | `status` | 查看端口是否在监听；Linux 同时请求 `GET /api/health` |
-| `ensure`（仅 Linux） | 看门狗：后端没在监听就只启动后端（不构建、不补依赖），5 分钟内最多拉起一次；`stop` 后不拉起 |
+| `ensure`（仅 Linux） | 看门狗：后端或桌宠代理没在监听就只启动它（不构建、不补依赖），各自 5 分钟内最多拉起一次；`stop` 后不拉起 |
 | `cron`（仅 Linux） | 写入当前用户 crontab：每分钟 `ensure`、每天 03:30 `backup.sh`，并列出条目；只改本仓库的条目，已存在则不动 |
 
 补依赖（`ensure_deps.py`）：Python 只检查 `requirements.txt` 里的包是否已安装，不比对版本；`pnpm-lock.yaml` 内容变化时重新 `pnpm install --frozen-lockfile`。
@@ -80,7 +80,7 @@ Windows： 无需路径约定，固定环境为 local。
 1. 按「环境与端口」放置仓库；维护 `config/test|prod/vita_server.env`（`PORT`：9527 / 8848）。
 2. 首次：本机已有 conda 环境和 `pnpm`。
 3. 日常：仓库根 `./start_dev.sh`；停止 `./start_dev.sh stop`；查看 `./start_dev.sh status`。
-4. 启动后脚本最多等 30 秒探活；启动失败（如 prod 配置检查不通过）会打印 `repository/logs/backend.nohup.log` 最后 30 行并以非零退出。
+4. 启动后脚本最多等 30 秒探活；启动失败（如 prod 配置检查不通过）会打印 `repository/logs/backend.nohup.log` 最后 30 行并以非零退出。桌宠代理起不来只打印 `repository/logs/pet-proxy.nohup.log` 末尾，不影响后端和退出码。
 5. 托管与备份无需单独操作：`restart` 会写好 crontab，之后后端崩溃或服务器重启 1 分钟内自动拉起，每天自动备份（见「备份与恢复」）。`crontab -l` 可查看；不想要时 `crontab -e` 删掉带 `# antibody-forge:` 的行（下次 `restart` 会重新写入）。
 6. 配置 Nginx 代理，对外 test `:9958`、prod `:1314`。
 
@@ -116,7 +116,7 @@ rsync -a ~/backups/antibody_forge/prod/files/uploads/ <仓库>/repository/upload
 | prod | `1314` | `http://127.0.0.1:8848/api/` | 该环境的 `…/apps/antibody_vita/dist` |
 | test | `9958` | `http://127.0.0.1:9527/api/` | 同上，指向**本机该环境**的 dist |
 
-桌宠单独反代：`/api/pet/` → `http://127.0.0.1:18765`（样例 conf 已写在 `/api/` 之前，勿剥前缀）。需另起 `python pet-proxy/server.py`（工作目录 `pet-proxy`，只听本机）。说明见 `docs/fatfish.md`。
+桌宠单独反代：`/api/pet/` → prod `http://127.0.0.1:18765`、test `http://127.0.0.1:18766`（样例 conf 已写在 `/api/` 之前，勿剥前缀）。代理由 `start_dev.sh` 随后端一起启动和看护，只听本机。已部署的旧 conf 没有这段时，照样例补进两个 `server` 后 `nginx -t` 再 reload。说明见 `docs/fatfish.md`。
 
 未装 Nginx 时（Debian/Ubuntu）：
 ```bash

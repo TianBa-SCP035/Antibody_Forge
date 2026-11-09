@@ -12,7 +12,6 @@ export const MAGNET_RANGE = 56;
 
 export const BASE = `${import.meta.env.BASE_URL}fatfish/webm/`;
 export const CURSOR_BASE = `${import.meta.env.BASE_URL}fatfish/cursors/`;
-/** Official dsh-pet grab/grabbing + logo-derived hover (not open-hand). */
 export const CURSOR_HOVER = `url(${CURSOR_BASE}cursor-hover.png) 7 3, pointer`;
 export const CURSOR_GRABBING = `url(${CURSOR_BASE}cursor-grabbing.png) 12 12, grabbing`;
 export const CURSOR_HAMMER = `url(${CURSOR_BASE}cursor-hammer.png) 9 5, pointer`;

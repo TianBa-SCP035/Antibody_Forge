@@ -10,13 +10,15 @@ Antibody Vita 里的鲸鱼娘桌宠「大肥鱼」：闲聊、读当前页、代
 | `bbctg_vita_web/apps/antibody_vita/public/fatfish/` | 动画 webm、头像、光标；署名见目录内 `ATTRIBUTION.txt` |
 | `pet-proxy/` | 本机代理（标准库 Python，无第三方依赖） |
 
-`app.vue` 挂载 `<FatFishPet />`（登录页和业务页共用）。`vite.config.ts` / Nginx 把 `/api/pet` 转到 `127.0.0.1:18765`，**必须写在通用 `/api` 之前**。
+`app.vue` 挂载 `<FatFishPet />`（登录页和业务页共用）。`vite.config.ts` / Nginx 把 `/api/pet` 转到本机代理（本地与 prod `18765`，test `18766`），**必须写在通用 `/api` 之前**。
 
 ## 启动
 
+`start_dev.bat` / `start_dev.sh` 随后端一起启动（Linux 另有 crontab 看门狗）。单独调试：
+
 ```bash
 cd pet-proxy
-python server.py
+python server.py        # 端口用 PET_PORT 覆盖，缺省 18765
 ```
 
 健康检查：`GET http://127.0.0.1:18765/api/pet/health`。

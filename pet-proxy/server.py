@@ -13,6 +13,7 @@ Same-origin only (Vite / Nginx proxy /api/pet here): no CORS headers, JSON bodie
 from __future__ import annotations
 
 import json
+import os
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -20,7 +21,8 @@ from agent import handle_agent
 from chat import handle_chat, handle_compress, handle_lines
 
 HOST = "127.0.0.1"
-PORT = 18765
+# Nginx points each site at its own port (start_dev.sh: prod 18765, test 18766); Vite dev uses 18765.
+PORT = int(os.environ.get("PET_PORT", "18765"))
 # A full agent turn (10 steps of tool results) stays well under this.
 MAX_BODY = 512 * 1024
 

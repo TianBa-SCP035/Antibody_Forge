@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Linux deployment helper: ./start_dev.sh [restart|stop|status|ensure|cron]; no argument means restart.
-# Parent directory "prod" uses backend 8848; all other Linux paths use backend 9527.
+# Parent directory "prod" uses backend 8848 / pet-proxy 18765; all other Linux paths use 9527 / 18766.
 # restart also keeps the cron entries (watchdog every minute, backup.sh at 03:30) in place.
 
 set -e
@@ -12,15 +12,20 @@ PARENT="$(basename "$(dirname "$ROOT")")"
 
 if [ "$PARENT" = "prod" ]; then
   PORT=8848
+  PET_PORT=18765
 else
   PORT=9527
+  PET_PORT=18766
 fi
 
 LOG="$ROOT/repository/logs/backend.nohup.log"
+PET_LOG="$ROOT/repository/logs/pet-proxy.nohup.log"
 RUN_DIR="$ROOT/repository/run"
 STOP_MARK="$RUN_DIR/backend.stopped"
 ENSURE_MARK="$RUN_DIR/ensure.last"
+PET_ENSURE_MARK="$RUN_DIR/ensure-pet.last"
 HEALTH_URL="http://127.0.0.1:${PORT}/api/health"
+PET_HEALTH_URL="http://127.0.0.1:${PET_PORT}/api/pet/health"
 CRON_TAG="# antibody-forge:${ROOT}"
 
 ACTION="${1:-restart}"
@@ -61,13 +66,16 @@ conda_base() {
 }
 
 # Only the listening process: nginx upstream connections also use this port.
-backend_pids() {
+listen_pids() {
   if command -v lsof >/dev/null 2>&1; then
-    lsof -ti "tcp:${PORT}" -sTCP:LISTEN 2>/dev/null || true
+    lsof -ti "tcp:$1" -sTCP:LISTEN 2>/dev/null || true
   elif command -v fuser >/dev/null 2>&1; then
-    fuser "${PORT}/tcp" 2>/dev/null || true
+    fuser "$1/tcp" 2>/dev/null || true
   fi
 }
+
+backend_pids() { listen_pids "$PORT"; }
+pet_pids() { listen_pids "$PET_PORT"; }
 
 stop_backend() {
   local pids
@@ -108,6 +116,50 @@ exec python server.py
   echo "Backend PID: ${BACKEND_PID}"
 }
 
+stop_pet() {
+  local pids
+  pids="$(pet_pids)"
+  [ -z "$pids" ] && return 0
+  echo "Stopping pet-proxy on tcp:${PET_PORT} (PID $(echo $pids))..."
+  kill $pids 2>/dev/null || true
+  for _ in $(seq 1 5); do
+    [ -z "$(pet_pids)" ] && return 0
+    sleep 1
+  done
+  kill -9 $(pet_pids) 2>/dev/null || true
+}
+
+start_pet() {
+  [ -f "$ROOT/pet-proxy/server.py" ] || return 0
+  local base
+  base="$(conda_base)"
+  if [ -f "$PET_LOG" ] && [ "$(stat -c %s "$PET_LOG")" -gt 52428800 ]; then
+    mv -f "$PET_LOG" "$PET_LOG.1"
+  fi
+  echo "Starting pet-proxy on tcp:${PET_PORT}. Log: ${PET_LOG}"
+  nohup bash -c "
+source \"${base}/etc/profile.d/conda.sh\"
+conda activate \"${CONDA_ENV}\"
+cd \"${ROOT}/pet-proxy\"
+export PET_PORT=\"${PET_PORT}\" PYTHONDONTWRITEBYTECODE=1
+exec python server.py
+" >>"$PET_LOG" 2>&1 9>&- &
+}
+
+# The pet is optional: a failed start is reported but does not fail the deployment.
+wait_pet() {
+  [ -f "$ROOT/pet-proxy/server.py" ] && command -v curl >/dev/null 2>&1 || return 0
+  for _ in $(seq 1 10); do
+    if curl -fsS "$PET_HEALTH_URL" >/dev/null 2>&1; then
+      echo "Pet-proxy is up: ${PET_HEALTH_URL}"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Pet-proxy did not come up (backend is unaffected). Last log lines (${PET_LOG}):" >&2
+  tail -n 20 "$PET_LOG" >&2 || true
+}
+
 wait_healthy() {
   local pid="$1"
   if ! command -v curl >/dev/null 2>&1; then
@@ -143,8 +195,10 @@ install_cron() {
 
 case "$ACTION" in
   status)
-    echo "Parent dir: ${PARENT}; backend tcp port: ${PORT}"
+    echo "Parent dir: ${PARENT}; backend tcp port: ${PORT}; pet-proxy tcp port: ${PET_PORT}"
     [ -f "$STOP_MARK" ] && echo "Stopped manually (watchdog paused) since $(date -r "$STOP_MARK" '+%F %T')."
+    PET="$(pet_pids)"
+    if [ -n "$PET" ]; then echo "Pet-proxy running (PID $(echo $PET)). Log: ${PET_LOG}"; else echo "Pet-proxy stopped."; fi
     PIDS="$(backend_pids)"
     if [ -z "$PIDS" ]; then
       echo "Backend stopped."
@@ -159,12 +213,18 @@ case "$ACTION" in
   stop)
     touch "$STOP_MARK"
     stop_backend
+    stop_pet
     echo "Watchdog paused until next restart."
     exit 0
     ;;
   ensure)
-    # Cron watchdog: start the backend if it is down, at most once every 5 minutes.
+    # Cron watchdog: start the backend / pet-proxy if down, each at most once every 5 minutes.
     [ -f "$STOP_MARK" ] && exit 0
+    if [ -f "$ROOT/pet-proxy/server.py" ] && [ -z "$(pet_pids)" ] && [ -z "$(find "$PET_ENSURE_MARK" -mmin -5 2>/dev/null)" ]; then
+      touch "$PET_ENSURE_MARK"
+      echo "[$(date '+%F %T')] watchdog: pet-proxy down on tcp:${PET_PORT}, starting" >>"$PET_LOG"
+      start_pet >>"$PET_LOG" 2>&1
+    fi
     [ -n "$(backend_pids)" ] && exit 0
     [ -n "$(find "$ENSURE_MARK" -mmin -5 2>/dev/null)" ] && exit 0
     touch "$ENSURE_MARK"
@@ -179,7 +239,7 @@ case "$ACTION" in
     ;;
 esac
 
-echo "Parent dir: ${PARENT}; backend tcp port: ${PORT}"
+echo "Parent dir: ${PARENT}; backend tcp port: ${PORT}; pet-proxy tcp port: ${PET_PORT}"
 
 if ! command -v pnpm >/dev/null 2>&1; then
   echo "pnpm not found. Install example: npm install -g pnpm --prefix \"\$HOME/.local\"" >&2
@@ -195,7 +255,10 @@ echo "Building frontend..."
 (cd "$ROOT/bbctg_vita_web" && pnpm -F @bbctg/antibody-vita run build)
 
 stop_backend
-rm -f "$STOP_MARK" "$ENSURE_MARK"
+stop_pet
+rm -f "$STOP_MARK" "$ENSURE_MARK" "$PET_ENSURE_MARK"
 install_cron
+start_pet
 start_backend
 wait_healthy "$BACKEND_PID"
+wait_pet

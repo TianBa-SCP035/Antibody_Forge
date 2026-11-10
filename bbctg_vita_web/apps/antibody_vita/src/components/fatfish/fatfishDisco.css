@@ -1,0 +1,54 @@
+/* Motion is a PAUSED Web Animation whose currentTime is set from audio.currentTime
+   every frame. No independent CSS loop can drift after a pause, retry or replay. */
+.ff-disco-running .ff-disco-target {
+  transform-origin: center bottom;
+  will-change: translate, scale, rotate;
+}
+.ff-disco-running .ff-disco-paused { will-change: auto; }
+/* Coloured light from the corners, flashing on the beat. Edges only, so the page stays readable;
+   below Element dialogs (2000+) and the pet (4800). */
+.ff-disco-lights {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  pointer-events: none;
+  opacity: 0;
+  will-change: opacity;
+  background:
+    radial-gradient(55% 45% at 0% 0%, hsl(300 100% 62% / .3), transparent 70%),
+    radial-gradient(55% 45% at 100% 0%, hsl(186 100% 55% / .3), transparent 70%),
+    radial-gradient(60% 40% at 0% 100%, hsl(45 100% 60% / .22), transparent 70%),
+    radial-gradient(60% 40% at 100% 100%, hsl(330 100% 65% / .22), transparent 70%);
+}
+.ff-disco-controls {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 6000;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  max-width: min(480px, calc(100vw - 36px));
+  padding: 8px 12px;
+  border: 1px solid var(--el-color-primary-light-5);
+  border-radius: 14px;
+  color: var(--el-color-white);
+  background: var(--el-color-primary-dark-2);
+  box-shadow: var(--el-box-shadow-light);
+  font-size: 13px;
+  pointer-events: auto;
+}
+.ff-disco-controls button {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--el-color-primary-light-7);
+  border-radius: 8px;
+  color: inherit;
+  background: var(--el-color-primary-light-3);
+  cursor: pointer;
+}
+.ff-disco-controls button:focus-visible { outline: 2px solid var(--el-color-white); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .ff-disco-running .ff-disco-target { animation: none; will-change: auto; }
+}

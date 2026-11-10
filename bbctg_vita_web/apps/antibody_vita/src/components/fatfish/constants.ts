@@ -24,6 +24,8 @@ export const MEMORY_SUMMARY_KEY = 'fatfish-memory-summary';
 export const MEMORY_TURNS_SINCE_COMPRESS_KEY = 'fatfish-memory-turns-since-compress';
 export const DAILY_REMARKS_KEY = 'fatfish-daily-remarks';
 export const LINE_POOL_KEY = 'fatfish-line-pool';
+/** Best rhythm-stage score on this browser. */
+export const DISCO_BEST_KEY = 'fatfish-disco-best';
 /** List endpoints the pet has seen pages call (per account; no tokens). */
 export const DATA_SOURCES_KEY = 'fatfish-data-sources';
 

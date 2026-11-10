@@ -22,6 +22,9 @@ import { scanPageForm } from './formBridge';
 import { LINES } from './lines';
 import { lineFor, refreshLines, reloadLines, type FreshKind } from './linePool';
 import ShellGame from './ShellGame.vue';
+import FatfishDiscoStage from './FatfishDiscoStage.vue';
+import { pokeHitPresentation } from './pokeHitMark';
+import { useFatfishDisco } from './useFatfishDisco';
 import { ambientHint, collectPageContext, weatherNow } from './pageContext';
 import { currentUserKey, setHostRouter } from './session';
 import {
@@ -198,7 +201,7 @@ const holding = ref(false);
 const pressing = ref(false);
 const ballDragging = ref(false);
 const hovered = ref(false);
-type HitMark = { id: number; x: number; y: number; text: string; kind: 'poke' | 'flurry' | 'punch' };
+type HitMark = { id: number; x: number; y: number; text: string; kind: import('./pokeHitMark').PokeHitKind };
 /** Little 戳 / 咚 marks where each tap lands. */
 const hitMarks = ref<HitMark[]>([]);
 const hitShake = ref(false);
@@ -261,7 +264,83 @@ let tapTimer: number | undefined;
 let petStage = 0;
 
 const preloaded = new Map<string, HTMLVideoElement>();
+// Repeated pokes are captured before chat/drag/menu handlers; normal first-press dragging stays intact.
+const {
+  active: discoActive, pending: discoPending, busy: discoBusy, message: discoMessage,
+  play: playDisco, stop: stopDisco, replay: replayDisco,
+  clock: discoClock, duration: discoDuration, finished: discoFinished, session: discoSession,
+  stageOpen: discoStageOpen, readTime: discoReadTime, flurrying: discoFlurrying,
+  openStage: openDiscoStage, closeStage: closeDiscoStage,
+  onDown: discoDown, onMove: discoMove, onUp: discoUp,
+  onCancel: discoCancel, onAux: discoAux,
+} = useFatfishDisco({
+  enabled: () => !rhythm.value && !shellPlay.value,
+  prepare: () => {
+    closeMenu();
+    stopFlee();
+    cancelAnimationFrame(physicsRaf);
+    cancelAnimationFrame(roamRaf);
+    cancelAnimationFrame(snapRaf);
+  },
+  resetPointer: (preserveTaps = false) => {
+    if (preserveTaps) {
+      // Reset only physical press/drag state; the native 260ms poke burst is independent.
+      window.clearTimeout(holdTimer);
+      window.clearTimeout(tapTimer);
+      tapTimer = undefined;
+      pointerMode = 'none';
+      pressing.value = false;
+      dragging.value = false;
+      holding.value = false;
+      squish.value = 1;
+    } else {
+      resetPointer();
+    }
+    ballDown = null;
+    ballMoved = false;
+    ballDragging.value = false;
+    vel.x = 0;
+    vel.y = 0;
+  },
+  tap: recordPetTap,
+});
 
+let discoPetBefore: { collapsed: boolean; docked: boolean; x: number; y: number; sleeping: boolean } | undefined;
+watch(discoActive, (dancing) => {
+  if (dancing) {
+    discoPetBefore = { collapsed: collapsed.value, docked: docked.value, x: pos.x, y: pos.y, sleeping: sleeping.value };
+    closeMenu();
+    if (chatOpen.value) closeChatDialog();
+    stopFlee();
+    clearRhythm();
+    clearPlay();
+    resetPointer();
+    cancelAnimationFrame(physicsRaf);
+    cancelAnimationFrame(roamRaf);
+    cancelAnimationFrame(snapRaf);
+    collapsed.value = false;
+    docked.value = false;
+    expandFromBall(pos);
+    sleeping.value = false;
+    window.clearTimeout(sleepTimer);
+    clearAnimQueue();
+    // Real dance WebM plus the outer audio-driven stage motion; never animate either WebM buffer slot.
+    void playAnim('dance', { loop: true, restart: true, priority: 'urgent' });
+  } else if (discoPetBefore) {
+    const before = discoPetBefore;
+    discoPetBefore = undefined;
+    collapsed.value = before.collapsed;
+    docked.value = before.docked;
+    pos.x = before.x;
+    pos.y = before.y;
+    sleeping.value = before.sleeping;
+    if (before.collapsed) { slotA.value?.pause(); slotB.value?.pause(); }
+    else {
+      void playAnim(before.sleeping ? 'sleepLoop' : 'idle', { loop: true, restart: true, priority: 'urgent' });
+      if (!before.sleeping) pokeIdleClock();
+    }
+  }
+});
 /** Hover = character pointer; only press/drag uses grabbing hand. */
 const petCursor = computed(() => {
   // Grab only after a real hold or drag — a plain click / hammer tap must not flash the grab hand.
@@ -1382,27 +1461,37 @@ function onPointerUp(ev: PointerEvent) {
   }
 
   if (dist < 22 && held < 480) {
-    // Every tap answers at once (mark + squish); what the burst means is decided once the taps stop.
-    tapCount += 1;
-    const box = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-    const at = { x: ev.clientX - box.left, y: ev.clientY - box.top };
-    if (Date.now() < soreUntil.value) {
-      squish.value = 0.88;
-      shakeHit();
-      showHitMark(at, '咚', 'punch');
-    } else {
-      squish.value = 1.04;
-      showHitMark(at, tapCount >= 3 ? `戳×${tapCount}` : '戳', tapCount >= 3 ? 'flurry' : 'poke');
-      if (tapCount === 3 && !sleeping.value) startFlurry();
-    }
-    window.setTimeout(() => {
-      if (pointerMode === 'none') squish.value = 1;
-    }, 130);
-    tapTimer = window.setTimeout(resolveTaps, TAP_GAP_MS);
+    recordPetTap(ev);
     return;
   }
   squish.value = 1;
 }
+
+/** Shared native visual/interaction path for ordinary and easter-egg captured pointerup. */
+function recordPetTap(ev: PointerEvent, streak?: number) {
+  const hit = (ev.target as Element).closest('.ff-pet');
+  if (!hit) return;
+  // Every tap answers at once (mark + squish); what the burst means is decided once the taps stop.
+  window.clearTimeout(tapTimer);
+  tapCount += 1;
+  const box = hit.getBoundingClientRect();
+  const at = { x: ev.clientX - box.left, y: ev.clientY - box.top };
+  // The easter-egg streak survives the 260ms burst gap, so it is the count worth showing.
+  const mark = pokeHitPresentation(Math.max(tapCount, streak ?? 0), Date.now() < soreUntil.value);
+  if (mark.kind === 'punch') {
+    squish.value = 0.88;
+    shakeHit();
+  } else {
+    squish.value = 1.04;
+    if (tapCount === 3 && !sleeping.value) startFlurry();
+  }
+  showHitMark(at, mark.text, mark.kind);
+  window.setTimeout(() => {
+    if (pointerMode === 'none') squish.value = 1;
+  }, 130);
+  tapTimer = window.setTimeout(resolveTaps, TAP_GAP_MS);
+}
+
 
 let hitMarkSeq = 0;
 function showHitMark(at: { x: number; y: number }, text: string, kind: HitMark['kind']) {
@@ -1432,7 +1521,7 @@ function startFlurry() {
 function resolveTaps() {
   const n = tapCount;
   dropTaps();
-  if (!n || collapsed.value || dragging.value || holding.value) return;
+  if (!n || collapsed.value || dragging.value || holding.value || discoActive.value || discoPending.value) return;
   if (sleeping.value) {
     sleeping.value = false;
     void playAnim('wake', { then: 'wakeScare', priority: 'urgent' });
@@ -1441,7 +1530,7 @@ function resolveTaps() {
     return;
   }
   if (n === 2) {
-    toggleChatDialog();
+    if (!discoFlurrying()) toggleChatDialog();
     return;
   }
   // After a recent reply (or punch streak), a tap is a 揍 — a flurry counts as several hits.
@@ -2002,6 +2091,7 @@ function onHoverLeave() {
 
 function blocked() {
   return (
+    discoBusy.value ||
     collapsed.value ||
     dragging.value ||
     busy.value ||
@@ -2158,7 +2248,7 @@ const NUDGE_COOLDOWN = 3 * 60_000;
 let lastNudgeAt = 0;
 function canNudge() {
   return (
-    !collapsed.value && !busy.value && !document.hidden && !chatOpen.value && !hasCard.value &&
+    !discoBusy.value && !collapsed.value && !busy.value && !document.hidden && !chatOpen.value && !hasCard.value &&
     !rhythm.value && !shellPlay.value && Date.now() - lastNudgeAt > NUDGE_COOLDOWN
   );
 }
@@ -2364,6 +2454,12 @@ onBeforeUnmount(() => {
   <div class="ff-root" aria-live="polite">
     <div
       class="ff-stage"
+      @pointerdown.capture="discoDown"
+      @pointermove.capture="discoMove"
+      @pointerup.capture="discoUp"
+      @pointercancel.capture="discoCancel"
+      @dblclick.capture="discoAux"
+      @contextmenu.capture="discoAux"
       :style="{
         left: `${pos.x}px`,
         top: `${pos.y}px`,
@@ -2577,6 +2673,19 @@ onBeforeUnmount(() => {
       </template>
     </div>
   </div>
+  <Teleport to="body">
+    <div v-if="(discoActive || discoPending) && !discoStageOpen" class="ff-disco-controls" role="status">
+      <span>{{ discoMessage || (discoPending ? '正在准备全曲…' : '大肥鱼蹦迪中 · Esc 停止') }}</span>
+      <button v-if="discoPending" type="button" @click="playDisco">点击开蹦</button>
+      <button type="button" @click="openDiscoStage">进入节奏舞台</button>
+      <button type="button" @click="stopDisco">停止蹦迪</button>
+    </div>
+  </Teleport>
+  <FatfishDiscoStage v-if="discoStageOpen"
+    :active="discoActive" :pending="discoPending" :ended="discoFinished"
+    :clock="discoClock" :duration="discoDuration" :session="discoSession"
+    :message="discoMessage" :read-time="discoReadTime"
+    @play="playDisco" @replay="replayDisco" @close="closeDiscoStage" @stop="stopDisco" />
 </template>
 
 <style scoped>
@@ -2651,6 +2760,33 @@ onBeforeUnmount(() => {
 .ff-hit.flurry {
   font-size: 17px;
   color: #f97316;
+}
+.ff-hit.fever {
+  font-size: 17px;
+  color: #ffd400; /* theme-ok: comic gold, distinct from flurry orange and punch red */
+  text-shadow:
+    0 1px 0 #6b3a00, /* theme-ok */
+    0 0 6px #ffb703; /* theme-ok */
+}
+/* Little flame in front of 戳×N once past 100: a teardrop with its point up, flickering. */
+.ff-hit.fever::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin: 0 5px 0 2px;
+  vertical-align: 1px;
+  border-radius: 50% 0 50% 50%;
+  background: radial-gradient(circle at 60% 40%, #fff7c2 0 15%, #ffd400 38%, #ff7a00 70%, #e2330d 100%); /* theme-ok */
+  box-shadow: 0 0 6px #ff9a00; /* theme-ok */
+  transform: rotate(-45deg);
+  transform-origin: 50% 50%;
+  animation: ff-flame 0.15s ease-in-out infinite alternate;
+}
+@keyframes ff-flame {
+  to {
+    transform: rotate(-38deg) scale(1.15, 0.92);
+  }
 }
 .ff-hit.punch {
   font-size: 22px;

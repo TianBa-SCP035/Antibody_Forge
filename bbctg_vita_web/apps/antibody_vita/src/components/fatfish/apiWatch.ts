@@ -32,6 +32,8 @@ export type DataSource = {
   totalPath?: string[];
   /** Response field → column label on the page (matched by values); unmatched fields keep their key. */
   labels: Record<string, string>;
+  /** Headers the model gave fields no page column named (asked once per field); `labels` wins. A field it couldn't name maps to itself. */
+  guessed?: Record<string, string>;
   /** Code field → raw value → text the page shows for it (`status` 1 → 进行中); codes never shown stay raw. */
   values?: Record<string, Record<string, string>>;
   fields: string[];
@@ -583,10 +585,52 @@ export function findSource(ref: string): DataSource | undefined {
   return list.find((s) => s.id === r) || list.find((s) => s.name === r) || list.find((s) => s.name.includes(r) || s.route === r);
 }
 
-/** Column names the model can use: page labels for matched fields, raw keys for the rest. */
+function headerOf(src: DataSource, key: string): string {
+  if (src.labels[key]) return src.labels[key]!;
+  const guess = src.guessed?.[key];
+  // A page column learned later may have taken the same name; two fields must not share a header.
+  return guess && !Object.values(src.labels).includes(guess) ? guess : key;
+}
+
+/** Column names the model can use: page labels first, then model-given headers, raw keys for the rest. */
 export function sourceColumns(src: DataSource): string[] {
-  const labeled = (src.fields || []).filter((k) => k in src.labels).map((k) => src.labels[k]!);
-  return [...new Set([...labeled, ...(src.fields || []).filter((k) => !(k in src.labels))])];
+  const fields = src.fields || [];
+  return [...new Set([...fields.filter((k) => k in src.labels), ...fields.filter((k) => !(k in src.labels))].map((k) => headerOf(src, k)))];
+}
+
+/** Fields the page never named get a header from the model, once per source; on failure they keep their key. */
+async function guessHeaders(src: DataSource, items: any[], signal?: AbortSignal) {
+  const sample = items.slice(0, 50);
+  const keys = [...new Set(sample.flatMap((it) => Object.keys(it || {})))]
+    .filter((k) => !(k in src.labels) && !(k in (src.guessed || {})) && !isSensitiveName(k))
+    .filter((k) => sample.some((it) => flatten(it?.[k]) != null))
+    .slice(0, 80);
+  if (!keys.length) return;
+  const fields = keys.map((key) => ({
+    key,
+    samples: [...new Set(sample.map((it) => flatten(it?.[key])).filter((v) => v != null && v !== ''))].slice(0, 3),
+  }));
+  try {
+    const res = await window.fetch('/api/pet/labels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal,
+      body: JSON.stringify({ source: src.name, fields }),
+    });
+    const data = res.ok ? await res.json() : null;
+    if (!data?.ok) return;
+    const taken = new Set(Object.values(src.labels));
+    const guessed = { ...src.guessed };
+    for (const key of keys) {
+      const label = String(data.labels?.[key] || '').trim();
+      guessed[key] = label && !taken.has(label) && !isSensitiveName(label) ? label : key;
+      taken.add(guessed[key]);
+    }
+    src.guessed = guessed;
+    persist();
+  } catch (err) {
+    if ((err as any)?.name === 'AbortError') throw err;
+  }
 }
 
 function flatten(v: unknown): string | number | null {
@@ -604,7 +648,8 @@ function toTable(src: DataSource, items: any[]): DataTable {
     (k) => items.slice(0, 50).some((it) => !isPlainObject(it?.[k])) && !isSensitiveName(k) && !isSensitiveName(src.labels[k] || ''),
   );
   const ordered = [...keys.filter((k) => k in src.labels), ...keys.filter((k) => !(k in src.labels))].slice(0, 60);
-  const colOf = (k: string) => src.labels[k] || k;
+  const header = new Map(ordered.map((k) => [k, headerOf(src, k)]));
+  const colOf = (k: string) => header.get(k)!;
   const cell = (k: string, v: unknown) => {
     const code = src.values?.[k] ? codeOf(v) : null;
     return (code != null && src.values![k]![code]) || flatten(v);
@@ -612,6 +657,7 @@ function toTable(src: DataSource, items: any[]): DataTable {
   return {
     columns: ordered.map(colOf),
     rows: items.map((it) => Object.fromEntries(ordered.map((k) => [colOf(k), cell(k, it?.[k])])) as Row),
+    aliases: Object.fromEntries(ordered.filter((k) => colOf(k) !== k).map((k) => [k, colOf(k)])),
   };
 }
 
@@ -679,6 +725,7 @@ export async function fetchSource(
     if (!src.pageKey || !batch.length || (total != null ? rows.length >= total : batch.length < pageSize)) break;
   }
   const kept = rows.slice(0, maxRows);
+  await guessHeaders(src, kept, signal);
   return {
     table: toTable(src, kept),
     total,

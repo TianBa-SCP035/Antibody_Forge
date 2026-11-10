@@ -16,7 +16,7 @@ from pathlib import Path
 from agent_tools import normalize_args, phase_for, strip_invisible, tools_for_page
 from llm import DEEPSEEK, QWEN, chat_completion, first_message, message_text
 from memory_compress import SUMMARY_MAX_CHARS
-from prompts import AGENT_SYSTEM, VOICE_SYSTEM
+from prompts import AGENT_SYSTEM, LABELS_SYSTEM, VOICE_SYSTEM
 
 MAX_TURN_MESSAGES = 30
 HISTORY_TURNS = 8
@@ -56,7 +56,7 @@ def _system_messages(data: dict) -> list[dict]:
         msgs.append({"role": "system", "content": "用户当前所在页面：\n" + _data_block("页面", summary[:3500])})
     sources = str(data.get("dataSources") or "").strip()
     if sources:
-        msgs.append({"role": "system", "content": "已认识的数据源（用户打开过的列表页背后的数据，build_report 的 source / join.source 可用 id）：\n"
+        msgs.append({"role": "system", "content": "已认识的数据源（用户打开过的列表页背后的数据，query_data / build_report 的 source / join.source 可用 id）：\n"
                      + _data_block("数据源", sources[:3000])})
     last_report = str(data.get("lastReport") or "").strip()
     if last_report:
@@ -71,11 +71,31 @@ def _system_messages(data: dict) -> list[dict]:
     return msgs
 
 
+# Persona stage directions from small-talk replies. Copied into a data answer they turn into made-up
+# actions ("（去别的模块试了试）") that were never tool calls.
+_ACTION_ASIDE = re.compile(
+    r"[（(][^（）()\n]{0,30}(尾巴|耳朵|呆毛|鳍|歪头|叹气|眨眼|挠头|退了|抖|晃|甩|竖|垂|僵|点了点|试了试|翻了)[^（）()\n]{0,30}[）)]"
+)
+
+
+def _drop_asides(text: str) -> str:
+    lines = [ln.strip() for ln in _ACTION_ASIDE.sub("", text).splitlines()]
+    out: list[str] = []
+    for ln in lines:
+        if ln or (out and out[-1]):
+            out.append(ln)
+    return "\n".join(out).strip()
+
+
 def _history(data: dict) -> list[dict]:
     out = []
     for h in (data.get("history") or [])[-HISTORY_TURNS:]:
         if isinstance(h, dict) and h.get("role") in ("user", "assistant") and h.get("content"):
-            out.append({"role": h["role"], "content": strip_invisible(str(h["content"]))[:1000]})
+            content = strip_invisible(str(h["content"]))
+            if h["role"] == "assistant":
+                content = _drop_asides(content)
+            if content:
+                out.append({"role": h["role"], "content": content[:1000]})
     return out
 
 
@@ -201,13 +221,30 @@ def _voice(answer: str, pending: bool, care_mood: str = "", ambient: str = "") -
 
 _FILL_INTENT = re.compile(r"填表|填写|补全|补一下|录入|照着.{0,6}填|帮(?:我)?填|参考.{0,12}(项目|方案).{0,8}填")
 _CLAIMS_MISSING = re.compile(r"没查到|查不到|没有找到|未找到|没有记录")
+_CLAIMS_TRIED = re.compile(
+    r"(重新|又|再)(试|查|筛|翻|跑)了|我(也|又|刚|已经)?(试|查|筛|翻)了|试了(一下|一次|试|别的)|去(查|看|试|翻)了|查了一?下|翻了一?[遍圈下]|筛了一?下"
+)
 _WRITE_REFUSAL = re.compile(r"修改|删除|提交|启动|改成|改成已|删掉|去掉这条")
 _CARD_TOOLS = {"propose_form_fill", "propose_export", "build_report", "propose_open_page"}
+# Says a card or file is already there ("点卡片上的下载 Excel", "已生成 Excel"); an offer ("可以生成卡片") is not this.
+_CLAIMS_CARD = re.compile(
+    r"点.{0,8}(卡片|下载|确认导出|应用|打开页面)|卡片上|下载\s*Excel|"
+    r"已(经)?(生成|导出|整理|做)好?.{0,16}(Excel|表格|文件|清单|报表|卡片)"
+)
+# Pointing back at a card from an earlier turn ("上一张卡片还在，点确认导出").
+_EARLIER_CARD_REF = re.compile(r"(上一张|上张|刚才|之前|前面|上面|那张|原来)[^。\n]{0,8}卡片|卡片[^。\n]{0,4}(还在|没关|仍在)")
+CARD_MISSING = "这一轮我没有真正生成出可下载的文件。请再说一次要导出什么、要哪些列，我重新处理。"
+CARD_MISSING_NOTE = "（这一轮没有生成可下载的文件，需要的话再说一次要导出什么。）"
 
 
 def _called(turn: list[dict]) -> set[str]:
     return {tc["function"]["name"] for m in turn if m["role"] == "assistant"
             for tc in m.get("tool_calls") or [] if isinstance(tc, dict) and tc.get("function")}
+
+
+def _earlier_card(history: list[dict], text: str = "") -> bool:
+    last = bool(history) and history[-1]["role"] == "assistant" and "卡片" in history[-1]["content"]
+    return last or bool(_EARLIER_CARD_REF.search(text))
 
 
 def _nudge_for(data: dict, turn: list[dict], tools: list[dict], text: str) -> str | None:
@@ -220,7 +257,13 @@ def _nudge_for(data: dict, turn: list[dict], tools: list[dict], text: str) -> st
     offered = {t["function"]["name"] for t in tools}
     if _ANNOUNCE_ONLY.search(text) and len(text) < 60:
         return "请直接调用工具获取数据，不要只描述。"
-    if "propose_form_fill" in offered and _FILL_INTENT.search(question) and "propose_form_fill" not in called:
+    if not called and _CLAIMS_TRIED.search(text):
+        return ("这一轮你还没有调用任何工具，不能说试过、查过或重新查了。用户要你再试、换条件、看别的模块时，"
+                "请真的调用工具；只是解释之前的结果时，说明那是之前的结果，不要说成刚做的。")
+    # One push per turn: a second check_current_form means the model was already nudged and still sees nothing to fill.
+    checks = sum(1 for m in turn if m["role"] == "assistant" for tc in m.get("tool_calls") or []
+                 if isinstance(tc, dict) and (tc.get("function") or {}).get("name") == "check_current_form")
+    if "propose_form_fill" in offered and _FILL_INTENT.search(question) and "propose_form_fill" not in called and checks < 2:
         if "check_current_form" not in called:
             return "用户要填表。请先调用 check_current_form 读取当前表单，再按规则给出填写建议。"
         return ("用户要填表。能写的字段（含常规建议）用 propose_form_fill 交卡片；不能猜的留空并在回答里说明。"
@@ -229,11 +272,22 @@ def _nudge_for(data: dict, turn: list[dict], tools: list[dict], text: str) -> st
         return ("你还没有调用任何工具，不能下“查不到”的结论。请先用工具查询。"
                 "若用户要的是修改、删除、提交这类做不到的事，直接说明做不了，不要为了这句话去查数据。")
     # A card already offered last turn is still on screen; mentioning it again is fine.
-    earlier_card = bool(history) and history[-1]["role"] == "assistant" and "卡片" in history[-1]["content"]
-    if "卡片" in text and not earlier_card and not called & _CARD_TOOLS & offered:
-        return ("你在回答里提到了卡片，但这一轮还没有调用生成卡片的工具，用户看不到卡片。"
-                "需要就调用对应的工具（卡片本身就是征求用户同意，不用先问）；不需要就别提卡片。")
+    if ("卡片" in text or _CLAIMS_CARD.search(text)) and not _earlier_card(history, text) and not called & _CARD_TOOLS & offered:
+        return ("你在回答里提到了卡片或下载，但这一轮还没有调用生成卡片的工具，用户看不到可点的按钮。"
+                "需要就调用对应的工具（卡片本身就是征求用户同意，不用先问）；不需要就别提卡片和下载。")
     return None
+
+
+def _guard_card_claim(text: str, turn: list[dict], tools: list[dict], history: list[dict]) -> str:
+    """Still claiming a card after the nudge: drop those sentences, or the whole answer when no tool ran at all."""
+    called = _called(turn)
+    offered = {t["function"]["name"] for t in tools}
+    if called & _CARD_TOOLS & offered or _earlier_card(history, text) or not _CLAIMS_CARD.search(text):
+        return text
+    if not called:
+        return CARD_MISSING
+    kept = "".join(p for p in re.split(r"(?<=[。！!；;\n])", text) if not _CLAIMS_CARD.search(p)).strip()
+    return f"{kept}\n{CARD_MISSING_NOTE}" if kept else CARD_MISSING
 
 
 TRACE_MAX_BYTES = 5 * 1024 * 1024
@@ -302,6 +356,8 @@ def handle_agent(data: dict) -> dict:
             c.pop("echo", None)
         return {"http": 200, "body": {"ok": True, "type": "tool_calls", "calls": calls, "assistant": assistant}}
 
+    text = _drop_asides(text) or text
+    text = _guard_card_claim(text, turn, tools, _history(data))
     pending = any(m["role"] == "tool" and '"proposal_created"' in m["content"] for m in turn)
     care_mood = str(data.get("careMood") or "").strip()
     ambient = str(data.get("ambient") or "").strip()
@@ -309,3 +365,38 @@ def handle_agent(data: dict) -> dict:
     entry["voice"] = voice
     _trace(entry)
     return {"http": 200, "body": {"ok": True, "type": "final", "text": text, "voice": voice}}
+
+
+_HAS_CJK = re.compile(r"[\u4e00-\u9fa5]")
+
+
+def handle_labels(data: dict) -> dict:
+    """Chinese headers for API fields no page column was matched to; the browser asks once per data source."""
+    keys: list[str] = []
+    lines: list[str] = []
+    for f in (data.get("fields") if isinstance(data.get("fields"), list) else [])[:80]:
+        key = str((f or {}).get("key") or "")[:60] if isinstance(f, dict) else ""
+        if not key or key in keys:
+            continue
+        samples = [str(s)[:40] for s in (f.get("samples") or [])[:3] if s not in (None, "")]
+        keys.append(key)
+        lines.append(f"{key}: {' | '.join(samples)}")
+    if not keys:
+        return {"http": 200, "body": {"ok": True, "labels": {}}}
+    messages = [
+        {"role": "system", "content": LABELS_SYSTEM},
+        {"role": "user", "content": f"数据源：{str(data.get('source') or '')[:60]}\n" + _data_block("字段", "\n".join(lines))},
+    ]
+    status, up = chat_completion(DEEPSEEK, messages, max_tokens=1500, sampling="deepseek_agent", timeout=40)
+    labels: dict[str, str] = {}
+    if status == 200:
+        match = re.search(r"\{[\s\S]*\}", message_text(up))
+        try:
+            parsed = json.loads(match.group(0)) if match else {}
+        except Exception:
+            parsed = {}
+        for key in keys:
+            label = str(parsed.get(key) or "").strip() if isinstance(parsed, dict) else ""
+            if label and len(label) <= 12 and _HAS_CJK.search(label) and label not in labels.values():
+                labels[key] = label
+    return {"http": 200, "body": {"ok": status == 200, "labels": labels}}

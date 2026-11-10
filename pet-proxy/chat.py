@@ -12,8 +12,10 @@ from prompts import CARE_MOOD_NOTE, INTENT_COMMENT, LINES_TASK, PERSONA, PERSONA
 
 RECENT_MAX = 8
 # The chat model has no tools; a reply claiming it filled / exported / queried something is made up.
+# Also catch "I'm in chat mode so I can't export" — that should have gone to the agent.
 _FAKE_ACTION = re.compile(
-    r"(已|帮你|给你|我)(经)?(生成|填好|填上|填了|填写|导出|下载|提交|查到|查了)|填好了|弄好了.{0,8}(表|卡片)|已生成卡片|点.?应用"
+    r"(已|帮你|给你|我)(经)?(生成|填好|填上|填了|填写|导出|下载|提交|查到|查了)|填好了|弄好了.{0,8}(表|卡片)|已生成卡片|点.?应用|"
+    r"闲聊模式|没法(帮你)?真?(导出|下载|填写)|我(现在)?(不能|无法)(帮你)?(导出|下载)"
 )
 
 

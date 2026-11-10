@@ -29,6 +29,8 @@ type Control = {
   options?: Option[];
   allowCreate?: boolean;
   multiple?: boolean;
+  /** Remote-search select: it only holds the options of its last search, so a value has to be searched first. */
+  remote?: (query: string) => unknown;
   disabled: boolean;
 };
 
@@ -186,9 +188,14 @@ function readControl(container: HTMLElement, includeSelf = false): Control {
       options,
       allowCreate: !!select.props?.allowCreate,
       multiple: !!select.props?.multiple || Array.isArray(inst.props.modelValue),
+      ...(select.props?.remote && typeof select.props.remoteMethod === 'function'
+        ? { remote: (q: string) => select.props.remoteMethod(q) }
+        : {}),
       disabled,
     };
   }
+  // Time pickers share the date editor's class but take times, which the date conversion would get wrong.
+  if (container.querySelector('.el-date-editor--time, .el-date-editor--timerange')) return { kind: 'custom', inst: null, disabled: true };
   if (container.querySelector('.el-date-editor')) return { kind: 'date', inst, disabled };
   if (container.querySelector('.el-input-number')) return { kind: 'number', inst, disabled };
   if (container.querySelector('.el-switch')) return { kind: 'switch', inst, disabled };
@@ -200,6 +207,15 @@ function readControl(container: HTMLElement, includeSelf = false): Control {
     });
     return { kind: 'radio', inst, options, disabled };
   }
+  const boxes = container.querySelector('.el-checkbox-group') ? Array.from(container.querySelectorAll('.el-checkbox')) : [];
+  if (boxes.length) {
+    const options = boxes.map((b) => {
+      const p = ownerOf(b)?.props || {};
+      return { value: p.value ?? p.label, label: text((b as HTMLElement).innerText) || text(p.label) };
+    });
+    return { kind: 'select', inst, options, multiple: true, disabled };
+  }
+  if (container.querySelector('.el-checkbox')) return { kind: 'switch', inst, disabled };
   if (container.querySelector('textarea')) return { kind: 'textarea', inst, disabled };
   return { kind: 'text', inst, disabled };
 }
@@ -319,7 +335,7 @@ function hasAutoSaveLabel(root: ParentNode): boolean {
   return false;
 }
 
-/** Pages like SerumEdit write to the server a few seconds after any change, so "not saved yet" isn't true there. */
+/** Auto-saving pages write to the server a few seconds after any change, so "not saved yet" isn't true there. */
 function detectAutoSave(root: ParentNode, sample: any): boolean {
   if (root.querySelector('[title*="自动保存"]') || hasAutoSaveLabel(root)) return true;
   for (let cur = sample, depth = 0; cur && depth < 40; cur = cur.parent, depth += 1) {
@@ -447,6 +463,7 @@ function controlMeta(c: Control) {
   if (c.options?.length) meta.options = c.options.slice(0, 25).map((o) => o.label);
   if (c.allowCreate) meta.allow_custom = true;
   if (c.multiple) meta.multiple = true;
+  if (c.remote) meta.remote_search = true;
   return meta;
 }
 
@@ -533,6 +550,34 @@ function columnIndex(table: TableInfo, field: string) {
 
 type Converted = { ok: true; value: unknown; display: string } | { ok: false; why: string };
 
+/** Values of a multi-select; option labels may themselves contain a separator ("Human CD74 Protein, Fc Tag"). */
+const MULTI_SEP = /[,，、;；]/;
+
+function multiParts(v: string, options: Option[] = []): string[] {
+  const found: Array<{ at: number; label: string }> = [];
+  const taken = Array.from(v, () => false);
+  const free = (i: number) => i < 0 || i >= v.length || MULTI_SEP.test(v[i]!) || /\s/.test(v[i]!);
+  for (const o of [...options].sort((a, b) => b.label.length - a.label.length)) {
+    if (!o.label) continue;
+    for (let at = v.indexOf(o.label); at >= 0; at = v.indexOf(o.label, at + 1)) {
+      const end = at + o.label.length;
+      if (!free(at - 1) || !free(end) || taken.slice(at, end).some(Boolean)) continue;
+      found.push({ at, label: o.label });
+      taken.fill(true, at, end);
+      break;
+    }
+  }
+  const others: Array<{ at: number; label: string }> = [];
+  let start = 0;
+  for (let i = 0; i <= v.length; i += 1) {
+    if (i < v.length && !taken[i] && !MULTI_SEP.test(v[i]!)) continue;
+    const label = text(v.slice(start, i));
+    if (label) others.push({ at: start, label });
+    start = i + 1;
+  }
+  return [...found, ...others].sort((a, b) => a.at - b.at).map((x) => x.label);
+}
+
 export function convertValue(c: Control, raw: string): Converted {
   const v = text(raw);
   switch (c.kind) {
@@ -557,7 +602,7 @@ export function convertValue(c: Control, raw: string): Converted {
     }
     case 'radio':
     case 'select': {
-      const parts = c.multiple ? v.split(/[,，、;；]/).map(text).filter(Boolean) : [v];
+      const parts = c.multiple ? multiParts(v, c.options) : [v];
       const values: unknown[] = [];
       const labels: string[] = [];
       for (const p of parts) {
@@ -570,6 +615,8 @@ export function convertValue(c: Control, raw: string): Converted {
         } else if (c.allowCreate) {
           values.push(p);
           labels.push(p);
+        } else if (c.remote) {
+          return { ok: false, why: `「${p}」要先在下拉里搜索` };
         } else {
           const labels = (c.options || []).map((o) => o.label).slice(0, 15);
           return { ok: false, why: labels.length ? `「${p}」不在可选项里，可选：${labels.join('、')}` : `「${p}」需要在下拉里搜索后手动选` };
@@ -593,10 +640,19 @@ export function resolveFill(
     if (!field) return { ok: false, why: '当前表单里没有这个字段' };
     if (!fillableKind(field.control)) return { ok: false, why: field.control.disabled ? '字段不可编辑' : '自定义控件，需要手动填', manual: true };
     const c = convertValue(field.control, f.value);
+    if (!c.ok && field.control.remote) return { ok: true, display: text(f.value) };
     return c.ok ? { ok: true, display: c.display, unchanged: c.display === field.value } : { ok: false, why: c.why, manual: c.why.includes('手动') };
   }
   const table = findTable(form, f.table);
-  if (!table) return { ok: false, why: `没有叫「${f.table}」的表格` };
+  if (!table) {
+    const titles = form.tables.map((t) => t.title);
+    return {
+      ok: false,
+      why:
+        `没有叫「${f.table}」的表格${titles.length ? `（现有：${titles.join('、')}）` : ''}。` +
+        '有的表格要等前面的内容生效后才出现（比如按上面某个表的行生成的页签、选了类型才展开的子表）：这种情况先请用户应用当前卡片，再让你继续',
+    };
+  }
   const col = columnIndex(table, f.field);
   if (col < 0) return { ok: false, why: `表格「${table.title}」没有「${f.field}」列` };
   const row = Math.floor(Number(f.row) || 0);
@@ -609,6 +665,7 @@ export function resolveFill(
   if (!sample) return row > table.cells.length ? { ok: true, display: f.value } : { ok: false, why: '这一格不可编辑', manual: true };
   if (!fillableKind(sample.control)) return { ok: false, why: '这一列需要手动填', manual: true };
   const c = convertValue(sample.control, f.value);
+  if (!c.ok && sample.control.remote) return { ok: true, display: text(f.value) };
   if (!c.ok) return { ok: false, why: c.why, manual: c.why.includes('手动') };
   return { ok: true, display: c.display, unchanged: row <= table.cells.length && c.display === sample.value };
 }
@@ -648,6 +705,27 @@ async function ensureRows(title: string, need: number): Promise<boolean> {
     if (table && table.cells.length >= need) return true;
   }
   return false;
+}
+
+/**
+ * Run the select's own remote search for the value and wait for its options to come back; returns the control
+ * as it is after the search with the converted value, or null when the search never offered it.
+ */
+async function searchFor(f: ResolvedFill): Promise<{ control: Control; converted: Converted & { ok: true } } | null> {
+  const hit = locate(scanPageForm(), f);
+  if (!hit?.control.remote) return null;
+  const parts = hit.control.multiple ? multiParts(text(f.value), hit.control.options) : [text(f.value)];
+  // A search replaces the options, so only one searched value can be picked at a time.
+  if (parts.length !== 1) return null;
+  hit.control.remote(parts[0]!);
+  for (let i = 0; i < 30; i += 1) {
+    await sleep(100);
+    const now = locate(scanPageForm(), f);
+    if (!now) return null;
+    const c = convertValue(now.control, f.value);
+    if (c.ok) return { control: now.control, converted: c };
+  }
+  return null;
 }
 
 /** Current control + display value of a fill target, or null when it can't be found. */
@@ -766,13 +844,18 @@ async function applyOnce(
     const form = scanPageForm();
     for (const f of formFills) {
       const field = matchName(form.fields, f.field, (x) => x.field);
-      const c = field && fillableKind(field.control) ? convertValue(field.control, f.value) : null;
-      if (!field || !c?.ok) {
+      let control = field?.control;
+      let c = control && fillableKind(control) ? convertValue(control, f.value) : null;
+      if (control && c && !c.ok && control.remote) {
+        const found = await searchFor(f);
+        if (found) ({ control, converted: c } = found);
+      }
+      if (!control || !c?.ok) {
         missed.push(fillLabel(f));
         continue;
       }
-      snapshots?.push({ fill: f, prev: modelValue(field.control), addedRow: false });
-      emitValue(field.control, c.value);
+      snapshots?.push({ fill: f, prev: modelValue(control), addedRow: false });
+      emitValue(control, c.value);
       applied.push(fillLabel(f));
     }
     await sleep(60);
@@ -794,13 +877,18 @@ async function applyOnce(
       const table = findTable(scanPageForm(), title);
       const col = table ? columnIndex(table, f.field) : -1;
       const cell = table && col >= 0 ? table.cells[(f.row || 0) - 1]?.[col] : null;
-      const c = cell && fillableKind(cell.control) ? convertValue(cell.control, f.value) : null;
-      if (!cell || !c?.ok) {
+      let control = cell?.control;
+      let c = control && fillableKind(control) ? convertValue(control, f.value) : null;
+      if (control && c && !c.ok && control.remote) {
+        const found = await searchFor(f);
+        if (found) ({ control, converted: c } = found);
+      }
+      if (!control || !c?.ok) {
         missed.push(fillLabel(f));
         continue;
       }
-      snapshots?.push({ fill: f, prev: modelValue(cell.control), addedRow: (f.row || 0) > hadRows });
-      emitValue(cell.control, c.value);
+      snapshots?.push({ fill: f, prev: modelValue(control), addedRow: (f.row || 0) > hadRows });
+      emitValue(control, c.value);
       applied.push(fillLabel(f));
       await sleep(20);
     }

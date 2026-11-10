@@ -5,10 +5,12 @@
  * sum is computed here so the numbers in the answer and in the file are the same and exact.
  * No business imports: any source that can produce `DataTable` works.
  */
+import { writeXlsx } from './xlsxWriter';
 
 export type Cell = string | number | null;
 export type Row = Record<string, Cell>;
-export type DataTable = { columns: string[]; rows: Row[] };
+/** `aliases`: raw API field name → the column it is shown as, so the field name still works in a spec. */
+export type DataTable = { columns: string[]; rows: Row[]; aliases?: Record<string, string> };
 
 export const CONDITION_OPS = ['=', '!=', 'contains', 'not_contains', '>', '>=', '<', '<=', 'empty', 'not_empty', 'in'] as const;
 export const METRIC_OPS = ['count', 'pct', 'count_distinct', 'sum', 'avg', 'min', 'max'] as const;
@@ -27,7 +29,7 @@ export type ReportSpec = {
   limit?: number;
 };
 
-export type Sheet = { name: string; columns: string[]; rows: Cell[][] };
+export type Sheet = { name: string; columns: string[]; rows: Cell[][]; totalRow?: boolean };
 export type BuiltReport = { title: string; sheets: Sheet[]; matched: number; total: number };
 export type BuildResult =
   | { ok: true; report: BuiltReport; groups?: Row[]; subtotals?: Row[]; countColumn?: string }
@@ -53,10 +55,12 @@ function squash(s: string) {
 }
 
 /** Exact, then case/space-insensitive, then a unique partial match ("负责" → "负责人"). */
-export function resolveColumn(name: string, columns: string[]): string | null {
+export function resolveColumn(name: string, columns: string[], aliases?: Record<string, string>): string | null {
   const want = str(name);
   if (!want) return null;
   if (columns.includes(want)) return want;
+  const alias = aliases && Object.hasOwn(aliases, want) ? aliases[want]! : '';
+  if (alias && columns.includes(alias)) return alias;
   const sq = squash(want);
   const loose = columns.filter((c) => squash(c) === sq);
   if (loose.length === 1) return loose[0]!;
@@ -269,7 +273,7 @@ function deriveBuckets(table: DataTable, refs: string[]) {
     const m = /^(.+?)\s*[:：]\s*([a-z]+|[\u4e00-\u9fa5]+)$/i.exec(ref);
     if (!m || rename.has(ref) || table.columns.includes(ref)) continue;
     const unit = BUCKETS[m[2]!.toLowerCase()] ? m[2]!.toLowerCase() : BUCKET_ALIASES[m[2]!];
-    const base = unit ? resolveColumn(m[1]!, table.columns) : null;
+    const base = unit ? resolveColumn(m[1]!, table.columns, table.aliases) : null;
     if (!unit || !base) continue;
     const name = `${base}（${BUCKETS[unit]!.label}）`;
     rename.set(ref, name);
@@ -302,7 +306,7 @@ export function buildReport(input: DataTable, spec: ReportSpec): BuildResult {
     column,
     available_columns: cols,
   });
-  const col = (name: string | undefined) => (name ? rename.get(str(name)) ?? resolveColumn(name, cols) : null);
+  const col = (name: string | undefined) => (name ? rename.get(str(name)) ?? resolveColumn(name, cols, input.aliases) : null);
 
   const where: Condition[] = [];
   for (const c of spec.where || []) {
@@ -433,7 +437,7 @@ export function buildReport(input: DataTable, spec: ReportSpec): BuildResult {
     if (spec.limit && spec.limit > 0) groupRows = groupRows.slice(0, spec.limit);
     const out = groupRows.map((r) => header.map((h) => r[h] ?? null));
     out.push(['合计', ...groupBy.slice(1).map(() => ''), ...metrics.map((m) => metricValue(m, matched, matched))]);
-    sheets.push({ name: sheetName('汇总', used), columns: header, rows: out });
+    sheets.push({ name: sheetName('汇总', used), columns: header, rows: out, totalRow: true });
   } else if (metrics.length) {
     // "金额合计是多少" with no grouping: one summary row over every matched row.
     const row: Row = {};
@@ -512,7 +516,7 @@ export function suggestKeys(left: DataTable, right: DataTable, top = 3) {
 
 /** Most common values of a column, for telling the model what a filter could have matched. */
 export function columnValues(table: DataTable, column: string, top = 15): Array<[string, number]> {
-  const name = resolveColumn(column, table.columns);
+  const name = resolveColumn(column, table.columns, table.aliases);
   if (!name) return [];
   const counts = new Map<string, number>();
   for (const r of table.rows) {
@@ -532,9 +536,9 @@ export function joinTables(
   right: DataTable,
   spec: JoinSpec,
 ): { ok: true; table: DataTable; matchedLeft: number } | ({ ok: false; error: string } & Record<string, unknown>) {
-  const lk = resolveColumn(spec.leftOn, left.columns);
+  const lk = resolveColumn(spec.leftOn, left.columns, left.aliases);
   if (!lk) return { ok: false, error: 'unknown_column', column: spec.leftOn, available_columns: left.columns };
-  const rk = resolveColumn(spec.rightOn, right.columns);
+  const rk = resolveColumn(spec.rightOn, right.columns, right.aliases);
   if (!rk) return { ok: false, error: 'unknown_column', column: spec.rightOn, available_columns: right.columns };
   if (!JOIN_HOWS.includes(spec.how)) return { ok: false, error: `join.how 只能是 ${JOIN_HOWS.join(' / ')}` };
   const keyOf = (v: Cell | undefined) => str(v).toLowerCase();
@@ -557,14 +561,14 @@ export function joinTables(
     };
   }
   if (spec.how === 'anti') {
-    return { ok: true, table: { columns: left.columns, rows: left.rows.filter((r) => !index.has(keyOf(r[lk]))) }, matchedLeft };
+    return { ok: true, table: { columns: left.columns, rows: left.rows.filter((r) => !index.has(keyOf(r[lk]))), aliases: left.aliases }, matchedLeft };
   }
   if (spec.how === 'count') {
     let col = `${spec.rightName}条数`;
     while (left.columns.includes(col)) col = `${col}（关联）`;
     return {
       ok: true,
-      table: { columns: [...left.columns, col], rows: left.rows.map((r) => ({ ...r, [col]: index.get(keyOf(r[lk]))?.length || 0 })) },
+      table: { columns: [...left.columns, col], rows: left.rows.map((r) => ({ ...r, [col]: index.get(keyOf(r[lk]))?.length || 0 })), aliases: left.aliases },
       matchedLeft,
     };
   }
@@ -584,13 +588,8 @@ export function joinTables(
       }
     }
   }
-  return { ok: true, table: { columns, rows }, matchedLeft };
-}
-
-function textWidth(v: Cell): number {
-  let w = 0;
-  for (const ch of str(v)) w += /[\u0000-\u00ff]/.test(ch) ? 1 : 2;
-  return w;
+  const rightAliases = Object.entries(right.aliases || {}).filter(([, c]) => rename.has(c)).map(([k, c]) => [k, rename.get(c)!]);
+  return { ok: true, table: { columns, rows, aliases: { ...Object.fromEntries(rightAliases), ...left.aliases } }, matchedLeft };
 }
 
 function stamp(): string {
@@ -600,29 +599,20 @@ function stamp(): string {
 
 /**
  * Writes an .xlsx (never CSV: xlsx stores "=…" text as a string cell, so cell text can't run as a formula).
- * `info` becomes a leading 说明 sheet: source, filters, time, row counts, whether the data is partial.
+ * `info` becomes a trailing 说明 sheet: source, filters, time, row counts, whether the data is partial.
  */
-export async function buildWorkbook(report: BuiltReport, info: string[]) {
-  const XLSX = await import('xlsx');
-  const wb = XLSX.utils.book_new();
-  const used = new Set(report.sheets.map((s) => s.name));
-  const infoName = sheetName('说明', used);
-  const infoSheet = XLSX.utils.aoa_to_sheet(info.map((line) => [line]));
-  infoSheet['!cols'] = [{ wch: 80 }];
-  for (const s of report.sheets) {
-    const ws = XLSX.utils.aoa_to_sheet([s.columns, ...s.rows]);
-    ws['!cols'] = s.columns.map((c, i) => ({
-      wch: Math.min(40, Math.max(6, textWidth(c), ...s.rows.slice(0, 200).map((r) => textWidth(r[i] ?? null))) + 2),
-    }));
-    XLSX.utils.book_append_sheet(wb, ws, s.name);
-  }
-  XLSX.utils.book_append_sheet(wb, infoSheet, infoName);
-  return { XLSX, wb };
-}
-
-export async function downloadReport(report: BuiltReport, info: string[]): Promise<string> {
-  const { XLSX, wb } = await buildWorkbook(report, info);
-  const file = `${report.title.replace(/[\\/:*?"<>|]/g, ' ').trim().slice(0, 40) || '整理结果'}_${stamp()}.xlsx`;
-  XLSX.writeFile(wb, file);
-  return file;
+export async function reportFile(report: BuiltReport, info: string[]): Promise<{ blob: Blob; name: string }> {
+  const used = new Set(report.sheets.map((s) => s.name.toLowerCase()));
+  const notes = info.map((line): Cell[] => {
+    const m = /^([^：:]{1,8})[：:]\s*(.*)$/s.exec(line);
+    return m ? [m[1]!, m[2]!] : ['', line];
+  });
+  const bytes = await writeXlsx([
+    ...report.sheets,
+    { name: sheetName('说明', used), columns: ['项目', '内容'], rows: notes, notes: true },
+  ]);
+  return {
+    blob: new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    name: `${report.title.replace(/[\\/:*?"<>|]/g, ' ').trim().slice(0, 40) || '整理结果'}_${stamp()}.xlsx`,
+  };
 }

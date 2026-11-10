@@ -215,15 +215,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* Placement (left/bottom/width/height) comes from the parent. */
 .shell-game {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 8px;
   z-index: 7;
-  width: calc(100% - 12px);
-  height: 104px;
-  margin: 0 6px;
   padding: 5px 8px 6px;
   border: 1px solid rgba(186, 230, 253, 0.8);
   border-radius: 14px;

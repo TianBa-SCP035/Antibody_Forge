@@ -18,6 +18,7 @@ import {
   skipGlobalErrorHandler,
 } from '#/api/serum';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
+import { downloadBlob } from '#/utils/file-resource';
 import {
   buildFacsConclusionForPage,
   type ConclusionCellValue,
@@ -52,8 +53,8 @@ import {
   buildReport,
   columnValues,
   beijingIso,
-  downloadReport,
   joinTables,
+  reportFile,
   type BuiltReport,
   type Condition,
   type DataTable,
@@ -1002,7 +1003,7 @@ function listDataSources() {
     builtin: [{ id: 'projects', name: '免疫项目列表（内置，含中文列名）' }],
     not_opened_pages: unopenedPages().map((p) => p.title),
     note:
-      '这些是用户打开过的列表页背后的数据，可在 build_report 的 source / join.source 里用 id；要的模块在 not_opened_pages 里就用 propose_open_page 请用户打开。' +
+      '这些是用户打开过的列表页背后的数据，可在 query_data / build_report 的 source / join.source 里用 id；要的模块在 not_opened_pages 里就用 propose_open_page 请用户打开。' +
       'scope=all 取整个模块（有 all_scope_filters 时是带着这些条件的全部，说数量时要讲明），scope=page_filters 按 page_filters（页面上的标签/筛选，例如状态页签，不一定是某一列的值）取',
   };
 }
@@ -1012,7 +1013,11 @@ function clipRow(row: Row): Row {
   return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, typeof v === 'string' && v.length > 60 ? `${v.slice(0, 60)}…` : v]));
 }
 
-async function buildReportTool(args: Record<string, any>, signal?: AbortSignal): Promise<ToolOutcome> {
+const QUERY_ROWS = 20;
+const QUERY_COLS = 20;
+
+/** `asFile=false` is query_data: the same spec answered in chat, no card and no 上一份报表. */
+async function buildReportTool(args: Record<string, any>, signal?: AbortSignal, asFile = true): Promise<ToolOutcome> {
   const wrap = (obj: unknown): ToolOutcome => ({ content: JSON.stringify(obj) });
   const spec: ReportSpec = {
     title: text(args.title) || undefined,
@@ -1095,6 +1100,38 @@ async function buildReportTool(args: Record<string, any>, signal?: AbortSignal):
       ...extra,
     });
   }
+  const detail = report.sheets.find((s) => s.name !== '汇总');
+  const sendGroups = {
+    ...(groups ? { groups: groups.slice(0, 30).map(clipRow), ...(groups.length > 30 ? { groups_total: groups.length } : {}) } : {}),
+    ...(subtotals
+      ? {
+          subtotals: subtotals.slice(0, 30).map(clipRow),
+          ...(subtotals.length > 30 ? { subtotals_total: subtotals.length, subtotals_note: '只给了数量最多的 30 个' } : {}),
+        }
+      : {}),
+  };
+  const detailRows = (n: number, cols: number) =>
+    (detail?.rows ?? []).slice(0, n).map((r) => clipRow(Object.fromEntries(detail!.columns.slice(0, cols).map((c, i) => [c, r[i] ?? null]))));
+
+  if (!asFile) {
+    const shown = detailRows(QUERY_ROWS, QUERY_COLS);
+    return wrap({
+      source,
+      data_rows: report.total,
+      matched: report.matched,
+      ...(partialWhy ? { partial: true, partial_why: partialWhy } : {}),
+      ...sendGroups,
+      rows: shown,
+      ...(detail && detail.rows.length > shown.length ? { rows_total: detail.rows.length } : {}),
+      ...(detail && detail.columns.length > QUERY_COLS ? { columns_total: detail.columns.length, columns_note: '只给了前 20 列，要别的列用 columns 指定' } : {}),
+      ...extra,
+      note:
+        '只读查询结果，没有生成文件。matched / groups 是代码算的精确值，直接引用；rows 少于 rows_total 时不要说只有这几条。' +
+        '用户要文件时再用 build_report' +
+        (partialWhy ? '；数据不是全量，回答里必须说明 partial_why' : ''),
+    });
+  }
+
   const me = currentUserName();
   info.unshift(`标题：${report.title}`);
   if (spec.where?.length) info.push(`条件：${describeWhere(spec.where)}`);
@@ -1114,7 +1151,6 @@ async function buildReportTool(args: Record<string, any>, signal?: AbortSignal):
     args: Object.fromEntries(REPORT_ARG_KEYS.filter((k) => args[k] != null && args[k] !== '').map((k) => [k, args[k]])),
   };
 
-  const detail = report.sheets.find((s) => s.name !== '汇总');
   return {
     content: JSON.stringify({
       proposal_created: true,
@@ -1122,22 +1158,8 @@ async function buildReportTool(args: Record<string, any>, signal?: AbortSignal):
       data_rows: report.total,
       matched: report.matched,
       ...(partialWhy ? { partial: true, partial_why: partialWhy } : {}),
-      ...(groups
-        ? { groups: groups.slice(0, 30).map(clipRow), ...(groups.length > 30 ? { groups_total: groups.length } : {}) }
-        : {}),
-      ...(subtotals
-        ? {
-            subtotals: subtotals.slice(0, 30).map(clipRow),
-            ...(subtotals.length > 30 ? { subtotals_total: subtotals.length, subtotals_note: '只给了数量最多的 30 个' } : {}),
-          }
-        : {}),
-      ...(detail
-        ? {
-            detail_preview: detail.rows
-              .slice(0, 5)
-              .map((r) => clipRow(Object.fromEntries(detail.columns.slice(0, 15).map((c, i) => [c, r[i] ?? null])))),
-          }
-        : {}),
+      ...sendGroups,
+      ...(detail ? { detail_preview: detailRows(5, 15) } : {}),
       sheets: report.sheets.map((s) => ({ name: s.name, rows: s.rows.length })),
       ...extra,
       note:
@@ -1151,8 +1173,9 @@ async function buildReportTool(args: Record<string, any>, signal?: AbortSignal):
 
 export async function runReportProposal(p: Extract<Proposal, { kind: 'report' }>): Promise<string> {
   try {
-    const file = await downloadReport(p.report, p.info);
-    return `已生成并开始下载：${file}`;
+    const { blob, name } = await reportFile(p.report, p.info);
+    downloadBlob(blob, name);
+    return `已生成并开始下载：${name}`;
   } catch {
     return '生成 Excel 失败了，稍后再试';
   }
@@ -1209,6 +1232,8 @@ export async function runPetTool(call: ToolCall, signal?: AbortSignal): Promise<
         return await proposeExport(call.args, signal);
       case 'build_report':
         return await buildReportTool(call.args, signal);
+      case 'query_data':
+        return await buildReportTool(call.args, signal, false);
       case 'list_data_sources':
         return wrap(listDataSources());
       case 'propose_open_page':

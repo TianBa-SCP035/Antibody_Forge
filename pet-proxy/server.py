@@ -8,6 +8,7 @@ HTTP surface only:
 - POST /api/pet/chat     persona small talk / page comment (Qwen, chat.py).
 - POST /api/pet/compress long-term memory compression (Qwen).
 - POST /api/pet/lines    a small batch of fresh reaction lines in persona (Qwen, chat.py).
+- POST /api/pet/labels   Chinese column headers for API fields no page column named (DeepSeek, agent.py).
 Same-origin only (Vite / Nginx proxy /api/pet here): no CORS headers, JSON bodies up to 512 KB.
 """
 from __future__ import annotations
@@ -17,7 +18,7 @@ import os
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from agent import handle_agent
+from agent import handle_agent, handle_labels
 from chat import handle_chat, handle_compress, handle_lines
 
 HOST = "127.0.0.1"
@@ -78,6 +79,10 @@ class Handler(BaseHTTPRequestHandler):
                 result = handle_lines(data)
                 self._json(result["http"], result["body"])
                 return
+            if self.path.startswith("/api/pet/labels"):
+                result = handle_labels(data)
+                self._json(result["http"], result["body"])
+                return
             self._json(404, {"error": "not found"})
         except Exception:
             # The exception text can echo request data; it goes to the local log, not back to the page.
@@ -97,7 +102,7 @@ def main():
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(
         f"fatfish pet-proxy on http://{HOST}:{PORT}  "
-        "(POST /api/pet/agent, /api/pet/chat, /api/pet/compress, /api/pet/lines)"
+        "(POST /api/pet/agent, /api/pet/chat, /api/pet/compress, /api/pet/lines, /api/pet/labels)"
     )
     httpd.serve_forever()
 

@@ -355,6 +355,8 @@ function headLocalBottom(mode: 'bubbles' | 'pill') {
   const vh = window.innerHeight || 800;
   const box = petH();
   let localBottom = mode === 'pill' ? Math.round(box * 0.40) : Math.round(box * 0.90);
+  // The rhythm lanes (.ff-fall: bottom 6%, 220px tall) reach above her head; keep lines clear of the hint.
+  if (mode === 'bubbles' && rhythm.value) localBottom = Math.max(localBottom, Math.round(SIZE * 0.06) + 220 + 4);
   const viewBottom = pos.y + box - localBottom;
   if (viewBottom > vh - inset) {
     localBottom = Math.max(localBottom, pos.y + SIZE - (vh - inset));
@@ -362,6 +364,19 @@ function headLocalBottom(mode: 'bubbles' | 'pill') {
   return localBottom;
 }
 
+/** Shell game at her feet on the screen-centre side. The sprite sits ~58px inside the box, so a 52px reach stays just off her. */
+const shellGameStyle = computed(() => {
+  const w = 190;
+  const reach = 52;
+  const vw = window.innerWidth || 1280;
+  const vx = petOnLeftHalf() ? pos.x + SIZE - reach : pos.x + reach - w;
+  return {
+    left: `${Math.round(Math.max(10, Math.min(vw - 10 - w, vx)) - pos.x)}px`,
+    bottom: '36px',
+    width: `${w}px`,
+    height: '104px',
+  };
+});
 
 const bubbleStackStyle = computed(() => {
   // Same column above her head for idle chat and the input-open history.
@@ -701,8 +716,21 @@ function say(text: string, kind: Bubble['kind'] = 'pet') {
 }
 
 const MAX_CARDS = 3;
+const hoveredCard = ref<number | null>(null);
 
-/** Wide sticky card for agent answers / confirmations; only the user closes it. */
+/** Answer cards fade after a reading-time delay (the text stays in chat history); hovering or an open chat holds them. */
+function expireCard(id: number, ms: number) {
+  window.setTimeout(() => {
+    if (!bubbles.value.some((b) => b.id === id)) return;
+    if (chatOpen.value || hoveredCard.value === id) {
+      expireCard(id, 8000);
+      return;
+    }
+    bubbles.value = bubbles.value.filter((b) => b.id !== id);
+  }, ms);
+}
+
+/** Wide card for agent answers / confirmations. Cards with actions wait for the user. */
 function addCard(card: CardInput) {
   const id = bubbleSeq++;
   const cards = bubbles.value.filter((b) => b.kind === 'card');
@@ -710,6 +738,7 @@ function addCard(card: CardInput) {
     cards.filter((b) => !b.actions?.length).slice(0, Math.max(0, cards.length - MAX_CARDS + 1)).map((b) => b.id),
   );
   bubbles.value = [...bubbles.value.filter((b) => !drop.has(b.id)), { id, kind: 'card', sticky: true, ...card }];
+  if (!card.actions?.length) expireCard(id, Math.min(60_000, 12_000 + card.text.length * 60));
   scrollBubblesToEnd();
   return id;
 }
@@ -1886,6 +1915,10 @@ async function menuAction(kind: string) {
     return;
   }
   if (kind === 'fill') {
+    if (!scanPageForm().fields.length && !collectPageContext().interactive) {
+      say(pick(LINES.noForm));
+      return;
+    }
     await chat('检查当前表单', 'fill');
     return;
   }
@@ -2358,6 +2391,8 @@ onBeforeUnmount(() => {
             :class="[bubbleAlignClass(b.kind), bubbleTailClass(b.kind)]"
             @click.stop
             @pointerdown.stop
+            @pointerenter="hoveredCard = b.id"
+            @pointerleave="hoveredCard = null"
           >
             <div class="ff-card-head">
               <span class="ff-card-title">{{ b.title || '' }}</span>
@@ -2406,6 +2441,15 @@ onBeforeUnmount(() => {
         />
         <button type="button" class="ff-pill-send" :disabled="busy" @click="sendDraft">发送</button>
       </div>
+
+      <ShellGame
+        v-if="shellPlay"
+        ref="shellGameRef"
+        :style="shellGameStyle"
+        @round="onShellRound"
+        @phase="onShellPhase"
+        @finish="onShellFinish"
+      />
 
       <button
         v-if="collapsed"
@@ -2471,13 +2515,6 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
-        <ShellGame
-          v-if="shellPlay"
-          ref="shellGameRef"
-          @round="onShellRound"
-          @phase="onShellPhase"
-          @finish="onShellFinish"
-        />
         <video
           ref="slotA"
           class="ff-video"

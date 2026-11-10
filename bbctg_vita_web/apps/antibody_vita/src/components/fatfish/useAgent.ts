@@ -22,7 +22,7 @@ const MAX_TOOL_CHARS = 14_000;
  * 表格/检查 are left out: "你状态怎么样" is about her, and the agent path has no persona.
  */
 const TASK_HINT =
-  /(项目|效价|滴度|titer|elisa|facs|进度|到哪|哪一步|下一步|采血|几免|[一二三四五]免|加强免|导出|下载|excel|拉个?表|清单|汇总|报表|分组|这页的?表|整理|工作表|sheet|求和|平均|合计|去重|占比|关联|联查|工单|表单|填|录入|补全|核对|校验|负责|靶点|小鼠|鼠型|方案|统计|结题|实验\s*id|编号)/i;
+  /(项目|效价|滴度|titer|elisa|facs|进度|到哪|哪一步|下一步|采血|几免|[一二三四五]免|加强免|导出|下载|excel|拉个?表|清单|汇总|报表|分组|这页的?表|整理|工作表|sheet|求和|平均|合计|去重|占比|关联|联查|工单|表单|填|录入|补全|核对|校验|负责|靶点|小鼠|鼠型|方案|统计|结题|实验\s*id|编号|没(有)?(导出?|下载|生成)|卡片呢|文件呢|表呢)/i;
 const ID_HINT = /\b[A-Za-z]{1,6}-?\d{3,}\b/;
 /** Thanks, acknowledgements and questions about her — never a data follow-up. */
 const SMALL_TALK =
@@ -32,9 +32,28 @@ const SMALL_TALK =
 const REPORT_FOLLOWUP =
   /(去掉|去除|排除|剔除|不要.{0,6}的|只要|只看|只留|加一列|再加一列|改成|换成|改为|按.{0,8}(拆|分|排)|按[日天周月季年]|倒序|降序|升序|前\s*\d+|top\s*\d+|百分比|比例)/i;
 
-/** Naming a menu module ("合成与验证里有多少条") is about its data, whatever the other words are. */
+const MENU_SUFFIX = /(总览|列表|管理|详情|数据|工作台|草稿|情报|库)$/;
+const QUERY_WORD = /(多少|几[个条项只家位次]|哪些|哪几|列出|列一下|查一?下|查查|帮我查|有没有|统计|最近|最新|谁(负责|的|在))/;
+
+/** 引物库 → 引物, 合成与验证 → 合成 / 验证, 文库构建 → 文库构建 / 文库. */
+function moduleStems(title: string): string[] {
+  return title.split(/[与及和、]/).flatMap((part) => {
+    const p = part.trim().replace(MENU_SUFFIX, '');
+    return p.length >= 4 ? [p, p.slice(0, 2)] : p.length >= 2 ? [p] : [];
+  });
+}
+
+/**
+ * Naming a menu module ("合成与验证里有多少条") is about its data, whatever the other words are.
+ * A shortened name ("引物有多少条") only counts next to a query word, so "我发现…" stays small talk.
+ */
 function mentionsModule(message: string): boolean {
-  return menuPages().some((p) => p.title.length >= 3 && message.includes(p.title));
+  const asking = QUERY_WORD.test(message);
+  return menuPages().some(
+    (p) =>
+      (p.title.length >= 3 && message.includes(p.title)) ||
+      (asking && moduleStems(p.title).some((s) => message.includes(s))),
+  );
 }
 
 export function looksLikeTask(message: string): boolean {

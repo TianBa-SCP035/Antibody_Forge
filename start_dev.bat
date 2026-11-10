@@ -19,9 +19,8 @@ netstat -ano | findstr /R /C:":8888 .*LISTENING" /C:":5555 .*LISTENING" /C:":187
 exit /b 0
 
 :stop
-taskkill /FI "WINDOWTITLE eq Antibody Forge Backend*" /T /F >nul 2>nul
-taskkill /FI "WINDOWTITLE eq Antibody Forge Frontend*" /T /F >nul 2>nul
-taskkill /FI "WINDOWTITLE eq Antibody Forge Pet Proxy*" /T /F >nul 2>nul
+rem Match the service windows by command line; under Windows Terminal a title filter hits the whole terminal.
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*pushd*%ROOT%*' } | ForEach-Object { taskkill /PID $_.ProcessId /T /F | Out-Null }"
 for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":8888 .*LISTENING" /C:":5555 .*LISTENING" /C:":18765 .*LISTENING"') do (
   taskkill /PID %%P /T /F >nul 2>nul
 )

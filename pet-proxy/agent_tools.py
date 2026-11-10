@@ -111,6 +111,8 @@ TOOLS = {
         "按用户自定义的要求整理数据并生成 Excel（确认卡片，用户点了才下载）：统计、分组计数、筛选、挑列、排序、按某列分工作表。"
         "所有计数和合计由代码精确计算，结果里的 groups / matched 可直接引用。系统固定格式的导出用 propose_export；"
         "用户要“按X统计/汇总”“只要某几列”“按X分sheet”“把这页的表导出/整理”时用它。\n"
+        "免疫项目（免疫实验列表）的数据一律用 source=projects，不要用已认识数据源里的同一个列表。"
+        "keyword / target_name / owner / status / mine 是 projects 专用的系统侧筛选；其他数据源按列筛选只能用 where。\n"
         "source=projects：免疫项目列表全量（最多 5000 个；进行中/已结题这类页签用 status 参数，不是列值），列：编号、实验ID、项目名称、靶点、靶点编号、靶点类型、靶点大小、"
         "负责人、PM、状态、制备状态、开始日期、开始月份、课题类型、鼠型、归类鼠型、免疫间隔、检测方法、FACS板数、ELISA板数、"
         "效价负责人、笼位、实验记录本、实验备注、项目目的。没有执行记录、延期、效价数值这类列："
@@ -136,8 +138,8 @@ TOOLS = {
             },
             "title": {"type": "string", "description": "文件标题，如「按靶点统计进行中项目」"},
             "keyword": {"type": "string", "description": "projects：编号/项目名/靶点关键词（系统侧筛选）"},
-            "target_name": S,
-            "owner": S,
+            "target_name": {"type": "string", "description": "projects：靶点"},
+            "owner": {"type": "string", "description": "projects：负责人姓名"},
             "status": {"type": "string", "description": "projects：ongoing=进行中（待X/已X/加免中）；completed=已结题（结题+无效价处死）；"
                        "或具体状态文字。“排除/去掉已结题”不是 ongoing（还有规划中等），要用 where 状态 != 结题 和 状态 != 无效价处死"},
             "mine": {"type": "boolean", "description": "projects：只看当前用户负责的"},
@@ -182,6 +184,17 @@ TOOLS = {
     ),
 }
 
+TOOLS["query_data"] = _fn(
+    "query_data",
+    "只读查询，不生成文件：在对话里回答任一数据源（projects / page_table / 已认识的数据源 id）的问题，"
+    "返回精确的 matched、groups 和最多 20 行明细 rows。用户问“有哪些、列几条看看、某条记录的某列是什么”，"
+    "或填表要在别的模块里找参考记录时用它；参数和 build_report 相同（筛选用 where，可 join 联查）。"
+    "用户要 Excel、或要按X统计汇总时用 build_report。",
+    {k: v for k, v in TOOLS["build_report"]["function"]["parameters"]["properties"].items() if k not in ("title", "split_by")},
+    ["source"],
+)
+REPORT_TOOLS = ("build_report", "query_data")
+
 FORM_TOOLS = ("check_current_form", "propose_form_fill")
 
 PHASE_LABELS = {
@@ -193,6 +206,7 @@ PHASE_LABELS = {
     "propose_form_fill": "整理填写建议…",
     "propose_export": "准备导出…",
     "build_report": "取数整理中…",
+    "query_data": "翻数据中…",
     "list_data_sources": "看看认识哪些数据…",
     "propose_open_page": "找找是哪个页面…",
 }
@@ -306,6 +320,7 @@ _METRIC_ALIASES = {"计数": "count", "数量": "count", "去重": "count_distin
                    "合计": "sum", "求和": "sum", "total": "sum", "平均": "avg", "mean": "avg", "average": "avg",
                    "最小": "min", "最大": "max", "占比": "pct", "百分比": "pct", "比例": "pct", "percent": "pct",
                    "percentage": "pct", "share": "pct", "ratio": "pct"}
+_PROJECT_FILTERS = ("keyword", "target_name", "owner", "status", "mine")
 _COND_OPS = {"=", "!=", "contains", "not_contains", ">", ">=", "<", "<=", "empty", "not_empty", "in"}
 _METRICS = {"count", "pct", "count_distinct", "sum", "avg", "min", "max"}
 
@@ -332,6 +347,12 @@ def _report_args(args: dict, base: dict) -> tuple[dict, str | None]:
             return {}, "缺少 source：projects / page_table / 已认识的数据源 id"
         out["source"] = "page_table"
     out["source"] = out["source"][:60]
+    # The browser only applies these to the built-in project list; elsewhere they would be dropped and the result look unfiltered.
+    project_only = [k for k in _PROJECT_FILTERS if out.get(k)]
+    if project_only and out["source"] != "projects":
+        return {}, (f"{'/'.join(project_only)} 只对 source=projects 生效，{out['source']} 不支持。"
+                    "免疫项目就改用 source=projects；其他数据源用 where 按列筛选，"
+                    "如 [{\"column\": \"负责人\", \"op\": \"=\", \"value\": \"张三\"}]，列名不确定先 list_data_sources")
     for key in ("where", "metrics", "sort"):
         if args.get(key) is not None and not isinstance(args[key], list):
             return {}, f"{key} 必须是数组"
@@ -441,7 +462,7 @@ def normalize_args(name: str, args) -> tuple[dict, str | None]:
             except Exception:
                 continue
         elif t == "array":
-            if name == "build_report":
+            if name in REPORT_TOOLS:
                 continue
             if not isinstance(v, list):
                 return {}, f"{key} 必须是数组"
@@ -452,7 +473,7 @@ def normalize_args(name: str, args) -> tuple[dict, str | None]:
     if name == "propose_form_fill":
         fills, err = _expand_fills(args)
         return ({}, err) if err else ({"fills": fills}, None)
-    if name == "build_report":
+    if name in REPORT_TOOLS:
         return _report_args(args, out)
     if name == "search_projects":
         out["limit"] = max(1, min(20, int(out.get("limit") or 8)))

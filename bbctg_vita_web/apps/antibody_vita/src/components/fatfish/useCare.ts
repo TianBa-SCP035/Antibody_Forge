@@ -56,18 +56,19 @@ const MAX_CATCHUP_H = 16;
 const FEED_SATIETY = 30;
 
 /**
- * Hourly drift. Tuned by simulating workdays (9–18 h, 6–18 agent tasks): fed once she is hungry in the
- * morning until lunch, fed twice she rarely is, never fed she is hungry most of the day; she only gets
- * tired after a long, busy day. Dozing on the page is a light nap; a closed page is a full night's sleep.
+ * Hourly drift. Tuned by simulating 30 workdays (9–18 h, 10–25 agent tasks, dozing when left alone):
+ * fed once a day she is never hungry, never fed she is; mood never sinks to 'down' from drift alone and
+ * 'happy' comes from feeding, petting and work. Dozing on the page is a light nap; a closed page is a night's sleep.
  */
 const RATE = {
-  awake: { satiety: -3, energy: -6, energyNight: -10 },
-  nap: { satiety: -1.5, energy: 10 },
-  away: { satiety: -1, energy: 24 },
+  awake: { satiety: -2, energy: -6, energyNight: -10 },
+  nap: { satiety: -1, energy: 10 },
+  away: { satiety: -0.5, energy: 24 },
 };
 
+/** Not rounded: the minute tick moves a stat by ~0.05, which rounding would erase. */
 export function clampCare(n: number) {
-  return Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
+  return Math.max(0, Math.min(100, Number(n) || 0));
 }
 
 function today() {
@@ -260,7 +261,7 @@ export function useCare(opts: {
         break;
       case 'task': {
         // Work burns tokens: she gets a little hungry and tired, and feels useful.
-        c.satiety -= 1.5;
+        c.satiety -= 1;
         c.energy -= 2;
         c.mood += 2;
         const day = today();

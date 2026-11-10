@@ -1527,9 +1527,16 @@ export default {
       this.$nextTick(() => {
         const nodes = [...document.querySelectorAll('.workbench-drawer .drawer-field.is-synced textarea')]
         if (nodes.length < 2) return
-        nodes.forEach((node) => { node.style.height = 'auto' })
+        // 量高时压成一行会冒出滚动条、挤窄可用宽度，刚好一行的文字会被多折一行
+        nodes.forEach((node) => {
+          node.style.overflowY = 'hidden'
+          node.style.height = 'auto'
+        })
         const height = Math.max(...nodes.map((node) => node.scrollHeight))
-        nodes.forEach((node) => { node.style.height = `${height}px` })
+        nodes.forEach((node) => {
+          node.style.height = `${height}px`
+          node.style.overflowY = ''
+        })
       })
     },
     splitCsv,

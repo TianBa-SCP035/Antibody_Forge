@@ -67,14 +67,47 @@ function wmoLabel(code: number): string {
   return $t('page.home.weatherUnknown');
 }
 
-/** US AQI bands (≈国标分段): 0–50 优, 51–100 良, 101–150 中, 151–200 较差, >200 差 */
+/** 国标 HJ 633 实时 AQI：PM2.5、PM10 按 24 小时分段，其余按 1 小时分段；浓度均为 μg/m³。 */
+const AQI_LEVELS = [0, 50, 100, 150, 200, 300, 400, 500];
+const CN_AQI_BREAKPOINTS = {
+  pm2_5: [0, 35, 75, 115, 150, 250, 350, 500],
+  pm10: [0, 50, 150, 250, 350, 420, 500, 600],
+  sulphur_dioxide: [0, 150, 500, 650, 800],
+  nitrogen_dioxide: [0, 100, 200, 700, 1200, 2340, 3090, 3840],
+  ozone: [0, 160, 200, 300, 400, 800, 1000, 1200],
+  carbon_monoxide: [0, 5000, 10_000, 35_000, 60_000, 90_000, 120_000, 150_000],
+} as const;
+
+type PollutantReadings = Partial<Record<keyof typeof CN_AQI_BREAKPOINTS, number>>;
+
+function cnAqi(readings: PollutantReadings | undefined): number | null {
+  let aqi: number | null = null;
+  for (const [key, bps] of Object.entries(CN_AQI_BREAKPOINTS)) {
+    const c = readings?.[key as keyof typeof CN_AQI_BREAKPOINTS];
+    if (typeof c !== 'number' || Number.isNaN(c) || c < 0) continue;
+    const i = bps.findIndex((bp, idx) => idx > 0 && c <= bp);
+    const iaqi =
+      i === -1
+        ? (AQI_LEVELS[bps.length - 1] ?? 500)
+        : Math.ceil(
+            (((AQI_LEVELS[i] ?? 0) - (AQI_LEVELS[i - 1] ?? 0)) / ((bps[i] ?? 0) - (bps[i - 1] ?? 0))) *
+              (c - (bps[i - 1] ?? 0)) +
+              (AQI_LEVELS[i - 1] ?? 0),
+          );
+    aqi = Math.max(aqi ?? 0, iaqi);
+  }
+  return aqi;
+}
+
+/** 国标分级：0–50 优，51–100 良，101–150 轻度，151–200 中度，201–300 重度，>300 严重污染 */
 function aqiLevel(aqi: number | null): string | null {
   if (aqi === null || Number.isNaN(aqi)) return null;
-  if (aqi <= 50) return $t('page.home.aqiGood');
-  if (aqi <= 100) return $t('page.home.aqiFair');
-  if (aqi <= 150) return $t('page.home.aqiModerate');
-  if (aqi <= 200) return $t('page.home.aqiPoor');
-  return $t('page.home.aqiVeryPoor');
+  if (aqi <= 50) return $t('page.home.aqiExcellent');
+  if (aqi <= 100) return $t('page.home.aqiGood');
+  if (aqi <= 150) return $t('page.home.aqiLight');
+  if (aqi <= 200) return $t('page.home.aqiModerate');
+  if (aqi <= 300) return $t('page.home.aqiHeavy');
+  return $t('page.home.aqiSevere');
 }
 
 export interface HomeWeatherState {
@@ -159,7 +192,7 @@ async function fetchOpenMeteoSnapshot(): Promise<WeatherSnapshot> {
   const aqUrl = new URL('https://air-quality-api.open-meteo.com/v1/air-quality');
   aqUrl.searchParams.set('latitude', String(BEIJING_LAT));
   aqUrl.searchParams.set('longitude', String(BEIJING_LON));
-  aqUrl.searchParams.set('current', 'us_aqi');
+  aqUrl.searchParams.set('current', Object.keys(CN_AQI_BREAKPOINTS).join(','));
 
   const [forecastRes, aqRes] = await Promise.all([
     fetch(forecastUrl.toString()),
@@ -182,12 +215,8 @@ async function fetchOpenMeteoSnapshot(): Promise<WeatherSnapshot> {
 
   let aqi: number | null = null;
   if (aqRes?.ok) {
-    const aqJson = (await aqRes.json()) as {
-      current?: { us_aqi?: number };
-    };
-    if (aqJson.current?.us_aqi !== undefined) {
-      aqi = Math.round(aqJson.current.us_aqi);
-    }
+    const aqJson = (await aqRes.json()) as { current?: PollutantReadings };
+    aqi = cnAqi(aqJson.current);
   }
 
   return {
@@ -233,12 +262,8 @@ async function fetchWeatherApiSiteSnapshot(): Promise<WeatherSnapshot> {
 
   let aqi: number | null = null;
   if (aqRes?.ok) {
-    const aqJson = (await aqRes.json()) as {
-      current?: { us_aqi?: number };
-    };
-    if (aqJson.current?.us_aqi !== undefined) {
-      aqi = Math.round(aqJson.current.us_aqi);
-    }
+    const aqJson = (await aqRes.json()) as { current?: PollutantReadings };
+    aqi = cnAqi(aqJson.current);
   }
 
   return {

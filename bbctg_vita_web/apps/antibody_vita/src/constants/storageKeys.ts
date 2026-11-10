@@ -8,7 +8,7 @@ export const HOME_QUICK_NAV_STORAGE_KEY = 'antibody-vita-home-quick-nav';
 export const HOME_WARM_NOTE_STORAGE_KEY = 'antibody-vita-home-warm-note';
 /** 登录后默认打开的站内路径（空则跟随服务端 homePath / 系统默认） */
 export const HOME_START_PAGE_STORAGE_KEY = 'antibody-vita-user-start-page';
-export const WEATHER_CACHE_KEY = 'home-weather-beijing-v3';
+export const WEATHER_CACHE_KEY = 'home-weather-beijing-v4';
 export const RECENT_LOGIN_ACCOUNTS_KEY = `ANTIBODY_RECENT_LOGIN_ACCOUNTS_${location.hostname}`;
 
 /** 工作台列顺序、列宽等视图偏好（WorkbenchDataTable 的 storage-key） */

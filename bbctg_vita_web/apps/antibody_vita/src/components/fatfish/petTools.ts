@@ -1107,7 +1107,7 @@ async function buildReportTool(args: Record<string, any>, signal?: AbortSignal):
   info.push(`工作表：${report.sheets.map((s) => `${s.name} ${s.rows.length} 行`).join('，')}`);
   info.push(`生成时间：${nowText()}${me ? `，账号：${me}（只含该账号有权限看到的数据）` : ''}`);
   if (partialWhy) info.push(`注意：不是全量数据——${partialWhy}`);
-  info.push('由桌宠按提问整理，只读，没有修改系统里的任何数据。');
+  info.push('由大肥鱼按提问整理，只读，没有修改系统里的任何数据。');
   lastReport = {
     user: currentUserKey(),
     at: Date.now(),

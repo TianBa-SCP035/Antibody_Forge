@@ -196,14 +196,15 @@ function dayPart(hour: number): string {
   return '深夜'
 }
 
-export type WeatherNow = { sky: string; temp: number; aqi: number }
+export type WeatherNow = { sky: string; temp: number | null; aqi: number }
 
 /** The home page's cached weather (it refetches every 30 min while open), if recent enough to call "now". */
 export function weatherNow(): WeatherNow | null {
   try {
     const w = JSON.parse(localStorage.getItem(WEATHER_CACHE_KEY) || 'null')
     if (!w || Date.now() - Number(w.savedAt) >= 2 * 3600_000) return null
-    return { sky: weatherText(Number(w.weatherCode)), temp: Number(w.temp), aqi: Number(w.aqi) }
+    const temp = typeof w.temp === 'number' ? w.temp : null
+    return { sky: weatherText(Number(w.weatherCode)), temp, aqi: Number(w.aqi) }
   } catch {
     return null
   }
@@ -218,8 +219,8 @@ export function ambientHint(now = new Date()): string {
   if (w) {
     const air = w.aqi > 150 ? '，空气很差' : w.aqi > 100 ? '，空气一般' : ''
     const t = w.temp
-    const feel = t < 3 ? '很冷' : t < 12 ? '偏冷' : t < 26 ? '舒服' : t < 32 ? '偏热' : '很热'
-    parts.push(`北京${w.sky}，${feel}${air}`)
+    const feel = t === null ? '' : t < 3 ? '很冷' : t < 12 ? '偏冷' : t < 26 ? '舒服' : t < 32 ? '偏热' : '很热'
+    parts.push(`北京${[w.sky, feel].filter(Boolean).join('，') || '天气未知'}${air}`)
   }
   return parts.join('；')
 }

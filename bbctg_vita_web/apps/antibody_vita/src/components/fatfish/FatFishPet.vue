@@ -20,7 +20,7 @@ import {
 import { reloadSources } from './apiWatch';
 import { scanPageForm } from './formBridge';
 import { LINES } from './lines';
-import { lineFor, refreshLines, type FreshKind } from './linePool';
+import { lineFor, refreshLines, reloadLines, type FreshKind } from './linePool';
 import ShellGame from './ShellGame.vue';
 import { ambientHint, collectPageContext, weatherNow } from './pageContext';
 import { currentUserKey, setHostRouter } from './session';
@@ -171,8 +171,8 @@ const DANCE_ANIMS: AnimKey[] = ['dance', 'sway', 'maidDance', 'swing', 'spin', '
 function seasonalAnims(): AnimKey[] {
   const month = new Date().getMonth() + 1;
   const w = weatherNow();
-  const hot = w ? w.temp >= 28 : month >= 6 && month <= 8;
-  const snowy = w ? w.sky === '下雪' || (w.temp <= 0 && (month === 12 || month <= 2)) : false;
+  const hot = w?.temp != null ? w.temp >= 28 : month >= 6 && month <= 8;
+  const snowy = w ? w.sky === '下雪' || (w.temp != null && w.temp <= 0 && (month === 12 || month <= 2)) : false;
   const out: AnimKey[] = [];
   if (hot) out.push('fan', 'eatIce', 'eatMelon', 'waterGun');
   if (snowy) out.push('snowman');
@@ -515,6 +515,7 @@ watch(currentUserKey, (now, was) => {
   chatOpen.value = false;
   reloadForUser();
   reloadSources();
+  reloadLines();
 });
 type ArrowDir = 'up' | 'down' | 'left' | 'right';
 const ARROW_DIRS: ArrowDir[] = ['left', 'down', 'up', 'right'];
@@ -2111,10 +2112,12 @@ function bootGreeting(): { text: string; anim: AnimKey } {
   const hour = new Date().getHours();
   const state = careState.value;
   if (state === 'hungry') return { text: pick(LINES.bootHungry), anim: 'hungry' };
-  if (awayHours.value >= 6 && hour >= 5 && hour < 11) return { text: pick(LINES.bootMorning), anim: pick(['stretch', 'brush']) };
-  if (awayHours.value >= 6) return { text: pick(LINES.bootBack), anim: 'pokeWave' };
-  if (hour >= 22 || hour < 5) return { text: pick(LINES.bootLate), anim: 'yawn' };
-  return { text: pick(LINES.boot), anim: 'pokeWave' };
+  if (awayHours.value >= 6 && hour >= 5 && hour < 11) {
+    return { text: lineFor('morning', LINES.bootMorning), anim: pick(['stretch', 'brush']) };
+  }
+  if (awayHours.value >= 6) return { text: lineFor('welcomeBack', LINES.bootBack), anim: 'pokeWave' };
+  if (hour >= 22 || hour < 5) return { text: lineFor('lateNight', LINES.bootLate), anim: 'yawn' };
+  return { text: lineFor('greet', LINES.boot), anim: 'pokeWave' };
 }
 
 /** Unprompted remarks (time of day, page events) share one budget so they never pile up. */
@@ -2126,7 +2129,7 @@ function canNudge() {
     !rhythm.value && !shellPlay.value && Date.now() - lastNudgeAt > NUDGE_COOLDOWN
   );
 }
-function nudge(pool: readonly string[], anim?: AnimKey) {
+function nudge(pool: readonly string[], anim?: AnimKey, fresh?: FreshKind) {
   lastNudgeAt = Date.now();
   if (sleeping.value) {
     pokeIdleClock();
@@ -2134,13 +2137,13 @@ function nudge(pool: readonly string[], anim?: AnimKey) {
   } else if (anim) {
     ambient(anim);
   }
-  say(pick(pool));
+  say(fresh ? lineFor(fresh, pool) : pick(pool));
 }
 
-const DAILY_REMARKS: Array<{ id: string; from: number; to: number; pool: readonly string[]; anim: AnimKey }> = [
-  { id: 'lunch', from: 11.67, to: 13, pool: LINES.lunch, anim: 'whatEat' },
-  { id: 'offWork', from: 17.83, to: 19, pool: LINES.offWork, anim: 'stretch' },
-  { id: 'late', from: 21.5, to: 24, pool: LINES.lateNight, anim: 'yawn' },
+const DAILY_REMARKS: Array<{ id: string; from: number; to: number; pool: readonly string[]; anim: AnimKey; fresh: FreshKind }> = [
+  { id: 'lunch', from: 11.67, to: 13, pool: LINES.lunch, anim: 'whatEat', fresh: 'lunch' },
+  { id: 'offWork', from: 17.83, to: 19, pool: LINES.offWork, anim: 'stretch', fresh: 'offWork' },
+  { id: 'late', from: 21.5, to: 24, pool: LINES.lateNight, anim: 'yawn', fresh: 'lateNight' },
 ];
 function dailyRemark() {
   if (!canNudge()) return;
@@ -2158,7 +2161,7 @@ function dailyRemark() {
   if (!due) return;
   said.ids.push(due.id);
   localStorage.setItem(DAILY_REMARKS_KEY, JSON.stringify(said));
-  nudge(due.pool, due.anim);
+  nudge(due.pool, due.anim, due.fresh);
 }
 
 let hiddenAt = 0;
@@ -2167,7 +2170,7 @@ function onVisibility() {
     hiddenAt = Date.now();
     return;
   }
-  if (hiddenAt && Date.now() - hiddenAt > 20 * 60_000 && canNudge()) nudge(LINES.welcomeBack, 'pokeWave');
+  if (hiddenAt && Date.now() - hiddenAt > 20 * 60_000 && canNudge()) nudge(LINES.welcomeBack, 'pokeWave', 'welcomeBack');
   hiddenAt = 0;
 }
 
@@ -2180,7 +2183,7 @@ function watchAppToasts() {
         if (!(node instanceof HTMLElement) || !node.classList.contains('el-message')) continue;
         const text = node.innerText || '';
         if (node.classList.contains('el-message--success') && /保存|提交|创建|更新/.test(text)) {
-          if (canNudge() && Math.random() < 0.5) nudge(LINES.saved, pick(['celebrate', 'pokeHappy', 'curtsy']));
+          if (canNudge() && Math.random() < 0.5) nudge(LINES.saved, pick(['celebrate', 'pokeHappy', 'curtsy']), 'saved');
         } else if (node.classList.contains('el-message--error')) {
           if (canNudge() && Math.random() < 0.4) nudge(LINES.appError, 'pokeShy');
         }
@@ -2229,11 +2232,16 @@ function offerFormHelp() {
 }
 
 let linesBootTimer: number | undefined;
+/** False while the current batch was written before the home page had fetched the weather. */
+let linesKnewWeather = true;
 
 /** Background refill of the model-written reaction lines; skipped while the models are serving the user. */
 function refreshFreshLines(moodChanged = false) {
   if (busy.value) return;
-  void refreshLines({ careMood: careMoodHint(), ambient: ambientHint() }, moodChanged);
+  const knew = weatherNow() !== null;
+  void refreshLines({ careMood: careMoodHint(), ambient: ambientHint() }, moodChanged).then((filled) => {
+    if (filled) linesKnewWeather = knew;
+  });
 }
 
 watch(careState, () => refreshFreshLines(true));
@@ -2272,9 +2280,9 @@ onMounted(() => {
   careDecayTimer = window.setInterval(() => {
     careTick(sleeping.value);
     dailyRemark();
-    refreshFreshLines();
+    refreshFreshLines(!linesKnewWeather && weatherNow() !== null);
   }, 60_000);
-  linesBootTimer = window.setTimeout(refreshFreshLines, 15_000);
+  linesBootTimer = window.setTimeout(() => refreshFreshLines(), 15_000);
   autoPlayTimer = window.setInterval(autoPlayful, 16000);
   lastPath = location.pathname + location.search;
   observeTimer = window.setInterval(offerFormHelp, 15000);

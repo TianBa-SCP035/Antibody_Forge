@@ -122,6 +122,7 @@ class DiscoverySynthesisOrder(Base):
     target_color: Mapped[str | None] = mapped_column(String(16), comment="靶点颜色标记")
     mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="小鼠品系")
     selection_method: Mapped[str | None] = mapped_column(String(128), comment="挑选方式")
+    is_rechoose: Mapped[str | None] = mapped_column(String(16), comment="是否补挑")
     synthesis_code: Mapped[str | None] = mapped_column(String(64), comment="送测转码")
     order_no: Mapped[str | None] = mapped_column(String(64), comment="合成订单号")
     synthetic_corp: Mapped[str | None] = mapped_column(String(64), comment="合成公司")
@@ -185,6 +186,7 @@ class DiscoverySynthesisOrder(Base):
             "target_color": self.target_color,
             "mouse_strain": self.mouse_strain,
             "selection_method": self.selection_method,
+            "is_rechoose": self.is_rechoose,
             "synthesis_code": self.synthesis_code,
             "order_no": self.order_no,
             "synthetic_corp": self.synthetic_corp,

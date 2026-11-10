@@ -22,6 +22,8 @@ from modules.discovery.synthesis_progress.constants import (
     FLOW_STATUS_OPTIONS,
     FLOW_STATUS_WAIT,
     INTERNAL_CORP,
+    RECHOOSE_TOKEN,
+    SELECTION_METHOD_OPTIONS,
     STATUS_ASSAYING,
     STATUS_CANCELLED,
     STATUS_COMPLETED,
@@ -32,6 +34,7 @@ from modules.discovery.synthesis_progress.constants import (
     SYNTHETIC_CORP_OPTIONS,
 )
 from utils.filter_values import clean_field_text
+from utils.normalize import join_tokens, split_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +266,12 @@ def build_remote_snapshot(
                 synthetic_date = cn_date
 
     arrival_count = raw_sup_count if raw_sup_count is not None else raw_plas_count
+    method_tokens = split_tokens(_clean_str(row_map.get("selectmethod"), 128))
+    rechoose_flag = str(row_map.get("isrechooseorder") or "").strip().lower()
+    if rechoose_flag == "true" or RECHOOSE_TOKEN in method_tokens:
+        is_rechoose = "是"
+    else:
+        is_rechoose = "否" if rechoose_flag == "false" else None
     task_projectid = _clean_str(row_map.get("task_projectid"), 128)
     task_batchname = _clean_str(row_map.get("task_batchname"), 128)
 
@@ -277,6 +286,8 @@ def build_remote_snapshot(
         "synthetic_date": synthetic_date,
         "arrival_count": arrival_count,
         "arrival_date": arrival_date,
+        "selection_method": join_tokens([t for t in method_tokens if t != RECHOOSE_TOKEN], SELECTION_METHOD_OPTIONS),
+        "is_rechoose": is_rechoose,
         "order_sender": _clean_str(row_map.get("uploader"), 128),
         "order_state": _clean_str(row_map.get("orderstate"), 64),
         "refstr": refstr,
@@ -397,6 +408,8 @@ _NGS_QUERY_BASE = """
         a.plasmidcounts AS plasmidcounts,
         a.supernatantcounts AS supernatantcounts,
         a.deliverydate AS deliverydate,
+        a.selectmethod AS selectmethod,
+        a.isrechooseorder AS isrechooseorder,
         t.synthesiscode AS synthesiscode,
         t.projectid AS task_projectid,
         t.projectcode AS task_projectcode,
@@ -427,6 +440,8 @@ _BEACON_QUERY_BASE = """
         a.plasmidcounts AS plasmidcounts,
         a.supernatantcounts AS supernatantcounts,
         a.deliverydate AS deliverydate,
+        a.selectmethod AS selectmethod,
+        a.isrechooseorder AS isrechooseorder,
         t.synthesiscode AS synthesiscode,
         t.projectid AS task_projectid,
         t.projectcode AS task_projectcode,

@@ -278,6 +278,7 @@ class SynthesisProgressServiceTests(DbTestCase):
                     "selection_method": ["JX_P", "补挑"],
                 },
             )
+            self.assertEqual((row1["selection_method"], row1["is_rechoose"]), ("JX_P", "是"))
             self.assertEqual(row1["status"], "待检测")
             self.assertEqual(row1["affinity_status"], "亲和力待检测")
             self.assertEqual(row1["affinity_owner"], "张赞")
@@ -824,6 +825,9 @@ class SynthesisProgressServiceTests(DbTestCase):
         snap = one_sync.build_remote_snapshot("beacon", {"id": 7, "uploader": "任鸿滨 Hongbin Ren"})
         self.assertEqual(snap["order_sender"], "任鸿滨 Hongbin Ren")
         self.assertIsNone(one_sync.build_remote_snapshot("ngs", {"id": 8})["order_sender"])
+        picked = one_sync.build_remote_snapshot("ngs", {"id": 9, "selectmethod": "补挑,D_JX", "isrechooseorder": "false"})
+        self.assertEqual((picked["selection_method"], picked["is_rechoose"]), ("D_JX", "是"))
+        self.assertEqual(one_sync.build_remote_snapshot("ngs", {"id": 10, "isrechooseorder": "false"})["is_rechoose"], "否")
 
     def test_queue_shift_is_one_bulk_update(self):
         with self.Session() as db:
@@ -994,10 +998,14 @@ class SynthesisHeaderFilterTests(DbTestCase):
         self.assertEqual({item["value"]: item["count"] for item in listed}, {"20R001": 3, "20R002": 2})
         with self.Session() as db:
             db.execute(update(DiscoverySynthesisOrder).where(DiscoverySynthesisOrder.synthesis_code == "S001")
-                       .values(order_sender="任鸿滨"))
+                       .values(order_sender="任鸿滨", affinity_owner="张三、李四"))
+            db.execute(update(DiscoverySynthesisOrder).where(DiscoverySynthesisOrder.synthesis_code == "S002")
+                       .values(is_rechoose="是"))
             db.commit()
         self.assertEqual(self.codes({"field": "order_sender", "values": ["任鸿滨"]}), ["S001"])
         self.assertEqual(self.codes(order_sender="任鸿滨"), ["S001"])
+        self.assertEqual(self.codes(affinity_owner=["李四"]), ["S001"])
+        self.assertEqual(self.codes(is_rechoose="是"), ["S002"])
         self.assertEqual(self.values("order_sender")["items"], [{"value": "任鸿滨", "count": 1}, {"value": "", "count": 3}])
 
     def test_status_header_includes_assay_sub_statuses(self):

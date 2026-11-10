@@ -34,8 +34,9 @@ call conda activate %CONDA_ENV%
 python "%ROOT%ensure_deps.py"
 if errorlevel 1 exit /b 1
 
-start "Antibody Forge Backend" cmd /k "pushd ""%ROOT%bbctg_vita_server"" && call conda activate %CONDA_ENV% && python server.py"
-if exist "%ROOT%pet-proxy\server.py" start "Antibody Forge Pet Proxy" cmd /k "pushd ""%ROOT%pet-proxy"" && call conda activate %CONDA_ENV% && python server.py"
+rem Windows inherit the activated env; parallel "conda activate" collides on its %RANDOM% temp file.
+start "Antibody Forge Backend" cmd /k "pushd ""%ROOT%bbctg_vita_server"" && python server.py"
+if exist "%ROOT%pet-proxy\server.py" start "Antibody Forge Pet Proxy" cmd /k "pushd ""%ROOT%pet-proxy"" && python server.py"
 timeout /t 1 /nobreak >nul
 start "Antibody Forge Frontend" cmd /k "pushd ""%ROOT%bbctg_vita_web"" && pnpm -F @bbctg/antibody-vita run dev"
 

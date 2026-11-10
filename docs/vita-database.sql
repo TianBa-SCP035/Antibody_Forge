@@ -607,6 +607,7 @@ CREATE TABLE IF NOT EXISTS discovery_synthesis_order (
   target_color VARCHAR(16) NULL COMMENT '靶点颜色标记',
   mouse_strain VARCHAR(128) NULL COMMENT '小鼠品系',
   selection_method VARCHAR(128) NULL COMMENT '挑选方式',
+  is_rechoose VARCHAR(16) NULL COMMENT '是否补挑',
   synthesis_code VARCHAR(64) NULL COMMENT '送测转码',
   order_no VARCHAR(64) NULL COMMENT '合成订单号',
   synthetic_corp VARCHAR(64) NULL COMMENT '合成公司',

@@ -71,7 +71,6 @@ AFFINITY_RESULT_OPTIONS = (
 )
 
 SELECTION_METHOD_OPTIONS = (
-    "补挑",
     "EYE",
     "DS",
     "DS_JX",
@@ -87,6 +86,9 @@ SELECTION_METHOD_OPTIONS = (
     "D模型-3轮",
     "P",
 )
+# 补挑单独记在「是否补挑」；挑选方式里填了「补挑」会转过去
+RECHOOSE_TOKEN = "补挑"
+RECHOOSE_OPTIONS = ("是", "否")
 
 TARGET_TYPE_OPTIONS = (
     "分泌型",
@@ -161,6 +163,8 @@ DRIFT_COMPARE_FIELDS = (
     "synthetic_date",
     "arrival_count",
     "arrival_date",
+    "selection_method",
+    "is_rechoose",
 )
 
 DRIFT_FIELD_LABELS = {
@@ -170,6 +174,8 @@ DRIFT_FIELD_LABELS = {
     "synthetic_date": "合成日期",
     "arrival_count": "到货个数",
     "arrival_date": "到货日期",
+    "selection_method": "挑选方式",
+    "is_rechoose": "是否补挑",
 }
 
 __all__ = [
@@ -197,6 +203,8 @@ __all__ = [
     "ORDER_KIND_ENGINEERING",
     "ORDER_KIND_NORMAL",
     "ORDER_KIND_OPTIONS",
+    "RECHOOSE_OPTIONS",
+    "RECHOOSE_TOKEN",
     "SELECTION_METHOD_OPTIONS",
     "SOURCE_ONE_TYPES",
     "STATUS_ASSAYING",

@@ -54,7 +54,6 @@ export const DEFAULT_TARGET_TYPE_OPTIONS = [
   '其他',
 ];
 export const DEFAULT_SELECTION_METHOD_OPTIONS = [
-  '补挑',
   'EYE',
   'DS',
   'DS_JX',
@@ -70,6 +69,7 @@ export const DEFAULT_SELECTION_METHOD_OPTIONS = [
   'D模型-3轮',
   'P',
 ];
+export const RECHOOSE_OPTIONS = ['是', '否'];
 export const DEFAULT_ENG_TYPE_OPTIONS = [
   '亲和力',
   '人源化',
@@ -343,8 +343,9 @@ export const BASE_EDITOR_SECTIONS = [
         type: 'csv',
         options: DEFAULT_SELECTION_METHOD_OPTIONS,
       },
-      { key: 'synthesis_code', label: '送测转码', type: 'text' },
-      { key: 'order_sender', label: '下单人', type: 'text', solo: true },
+      { key: 'is_rechoose', label: '是否补挑', type: 'select', options: RECHOOSE_OPTIONS },
+      { key: 'order_sender', label: '下单人', type: 'text' },
+      { key: 'synthesis_code', label: '送测转码', type: 'text', solo: true },
       { key: 'order_no', label: '订单号', type: 'text' },
       { key: 'synthetic_corp', label: '合成公司', type: 'corp_select' },
       { key: 'synthetic_count', label: '合成个数', type: 'number' },
@@ -545,6 +546,12 @@ export const WORKBENCH_COLUMNS = [
     showOverflowTooltip: true,
   },
   {
+    key: 'is_rechoose',
+    label: '是否补挑',
+    prop: 'is_rechoose',
+    minWidth: 90,
+  },
+  {
     key: 'batch_label',
     label: '工单批次',
     prop: 'batch_label',
@@ -701,6 +708,7 @@ export const HEADER_MENU_COLUMNS = Object.freeze({
   target_type: { type: 'enum', values: 'all', top: { query: 'target_type', topOnly: ['非分泌型'] } },
   mouse_strain: { type: 'csv', values: 'all', top: { query: 'mouse_strain' } },
   selection_method: { type: 'csv', values: 'all', top: { query: 'selection_method' } },
+  is_rechoose: { type: 'enum', values: 'all', top: { query: 'is_rechoose' } },
   synthesis_code: { type: 'text', values: 'recent', top: { query: 'synthesis_code', kind: 'codes' } },
   order_no: { type: 'text', values: 'recent', top: { query: 'order_no', kind: 'codes' } },
   batch_label: { type: 'text', values: 'recent', top: { query: 'batch_label', kind: 'codes' } },
@@ -711,7 +719,7 @@ export const HEADER_MENU_COLUMNS = Object.freeze({
   arrival_date: { type: 'date', values: 'all', top: { range: 'arrivalDateRange' } },
   affinity_date: { type: 'date', values: 'all', top: { range: 'affinityDateRange' } },
   flow_date: { type: 'date', values: 'all', top: { range: 'flowDateRange' } },
-  affinity_owner: { type: 'csv', values: 'all' },
+  affinity_owner: { type: 'csv', values: 'all', top: { query: 'affinity_owner' } },
   affinity_result: { type: 'enum', values: 'all', top: { query: 'affinity_result' } },
   owner: { type: 'enum', values: 'all', top: { query: 'owner' } },
   remark: { type: 'text', values: 'search', top: { query: 'remark', kind: 'contains' } },
@@ -738,6 +746,7 @@ export const SHEET_COLUMNS = [
   { key: 'target_type', label: '靶点类型', edit: 'select', width: 108 },
   { key: 'mouse_strain', label: '小鼠品系', edit: 'multi', minWidth: 115 },
   { key: 'selection_method', label: '挑选方式', edit: 'multi', minWidth: 115 },
+  { key: 'is_rechoose', label: '是否补挑', edit: 'select', width: 96 },
   { key: 'synthesis_code', label: '送测转码', edit: 'text', minWidth: 150 },
   { key: 'order_no', label: '订单号', edit: 'text', minWidth: 150 },
   { key: 'batch_label', label: '工单批次', edit: 'text', minWidth: 180 },
@@ -788,6 +797,8 @@ export const SHEET_HEADER_ALIASES = Object.freeze({
   鼠型: 'mouse_strain',
   小鼠品系: 'mouse_strain',
   挑选方式: 'selection_method',
+  是否补挑: 'is_rechoose',
+  补挑: 'is_rechoose',
   送测转码: 'synthesis_code',
   送合成转码: 'synthesis_code',
   合成批号: 'synthesis_code',
@@ -848,6 +859,7 @@ export const EDITABLE_FIELDS = [
   'target_codes',
   'mouse_strain',
   'selection_method',
+  'is_rechoose',
   'synthesis_code',
   'order_no',
   'synthetic_corp',

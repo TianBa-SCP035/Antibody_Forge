@@ -1,71 +1,8 @@
 <template>
   <div class="app-container" :class="{ 'is-list-table-locked': listTableLocked }">
     <AdvancedOpsBar v-model="showAdvancedOps">
-      <!-- 第 1 行（8 格）：合成与批次属性 5 项 + 3 项文本说明（检测备注/未出原因/流式说明） -->
-      <el-input
-        v-model="listQuery.batch_label"
-        clearable
-        v-bind="headerTop('batch_label', '工单批次')"
-        title="多个工单批次用逗号、空格或换行分隔，按完整批次查找；只填一个时按包含查找"
-        @keyup.enter="handleFilter"
-        @clear="handleFilter"
-      />
-      <el-input
-        v-model="listQuery.synthesis_code"
-        clearable
-        v-bind="headerTop('synthesis_code', '送测转码')"
-        title="多个送测转码用逗号、空格或换行分隔，按完整转码查找；只填一个时按包含查找"
-        @keyup.enter="handleFilter"
-        @clear="handleFilter"
-      />
-      <ListFilterSelect
-        v-if="canFullEdit"
-        v-model="listQuery.synthetic_corp"
-        clearable
-        v-bind="headerTop('synthetic_corp', '合成公司')"
-        @change="handleFilter"
-      >
-        <el-option v-for="item in optionLists.synthetic_corps" :key="item" :label="item" :value="item" />
-      </ListFilterSelect>
-      <ListFilterSelect
-        v-model="listQuery.selection_method"
-        clearable
-        v-bind="headerTop('selection_method', '挑选方式')"
-        @change="handleFilter"
-      >
-        <el-option v-for="item in optionLists.selection_methods" :key="item" :label="item" :value="item" />
-      </ListFilterSelect>
-      <ListFilterSelect
-        v-model="listQuery.supply_mode"
-        clearable
-        v-bind="headerTop('supply_mode', '供应方式')"
-        @change="handleFilter"
-      >
-        <el-option v-for="item in supplyModeOptions" :key="item" :label="item" :value="item" />
-      </ListFilterSelect>
-      <el-input
-        v-model="listQuery.remark"
-        clearable
-        v-bind="headerTop('remark', '检测备注')"
-        @keyup.enter="handleFilter"
-        @clear="handleFilter"
-      />
-      <el-input
-        v-model="listQuery.report_reason"
-        clearable
-        v-bind="headerTop('report_reason', '未出原因')"
-        @keyup.enter="handleFilter"
-        @clear="handleFilter"
-      />
-      <el-input
-        v-model="listQuery.flow_note"
-        clearable
-        v-bind="headerTop('flow_note', '流式说明')"
-        @keyup.enter="handleFilter"
-        @clear="handleFilter"
-      />
-
-      <!-- 第 2 行（8 格）：项目与队列属性 5 项 + 3 个验证日期区间（与上方检测备注/未出原因/流式说明纵向对齐） -->
+      <!-- 8 列 × 3 行，按列对齐：1 编号、2 人员、3-5 属性、6-8 到货/亲和力/流式（上行日期、下行说明） -->
+      <!-- 第 1 行：项目与队列 + 三个日期区间 -->
       <el-input
         v-model="listQuery.project_code"
         clearable
@@ -138,7 +75,15 @@
         @change="handleFilter"
       />
 
-      <!-- 第 3 行（4 格 + 操作按钮）：下单人、订单性质与序列改造筛选项 -->
+      <!-- 第 2 行：合成订单 + 三项文本说明 -->
+      <el-input
+        v-model="listQuery.batch_label"
+        clearable
+        v-bind="headerTop('batch_label', '工单批次')"
+        title="多个工单批次用逗号、空格或换行分隔，按完整批次查找；只填一个时按包含查找"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
       <div class="ops-user-select">
         <UserSelect
           v-model="listQuery.order_sender"
@@ -150,12 +95,87 @@
         />
       </div>
       <ListFilterSelect
+        v-model="listQuery.selection_method"
+        clearable
+        v-bind="headerTop('selection_method', '挑选方式')"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in optionLists.selection_methods" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.is_rechoose"
+        clearable
+        v-bind="headerTop('is_rechoose', '是否补挑')"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in rechooseOptions" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-if="canFullEdit"
+        v-model="listQuery.synthetic_corp"
+        clearable
+        v-bind="headerTop('synthetic_corp', '合成公司')"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in optionLists.synthetic_corps" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <div v-else aria-hidden="true" />
+      <el-input
+        v-model="listQuery.remark"
+        clearable
+        v-bind="headerTop('remark', '检测备注')"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <el-input
+        v-model="listQuery.report_reason"
+        clearable
+        v-bind="headerTop('report_reason', '未出原因')"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <el-input
+        v-model="listQuery.flow_note"
+        clearable
+        v-bind="headerTop('flow_note', '流式说明')"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+
+      <!-- 第 3 行：送测转码、亲和力人员、订单类型与序列改造 + 操作按钮 -->
+      <el-input
+        v-model="listQuery.synthesis_code"
+        clearable
+        v-bind="headerTop('synthesis_code', '送测转码')"
+        title="多个送测转码用逗号、空格或换行分隔，按完整转码查找；只填一个时按包含查找"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <div class="ops-user-select">
+        <UserSelect
+          v-model="listQuery.affinity_owner"
+          multi-gesture
+          :options="optionLists.affinity_owners"
+          v-bind="headerTop('affinity_owner', '亲和力人员')"
+          clearable
+          @change="handleFilter"
+        />
+      </div>
+      <ListFilterSelect
         v-model="listQuery.order_kind"
         clearable
         v-bind="headerTop('order_kind', '订单性质')"
         @change="handleFilter"
       >
         <el-option v-for="item in orderKindOptions" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.supply_mode"
+        clearable
+        v-bind="headerTop('supply_mode', '供应方式')"
+        @change="handleFilter"
+      >
+        <el-option v-for="item in supplyModeOptions" :key="item" :label="item" :value="item" />
       </ListFilterSelect>
       <ListFilterSelect
         v-model="listQuery.eng_type"
@@ -1219,6 +1239,7 @@ import {
   PM_EDIT_FIELD_KEYS,
   PRIORITY_OPTIONS,
   QUEUE_TERMINAL_STATUSES,
+  RECHOOSE_OPTIONS,
   SHEET_COLUMN_ORDER,
   SHEET_COLUMNS,
   SHEET_HEADER_ALIASES,
@@ -1332,6 +1353,8 @@ function emptyQuery() {
     owner: '',
     pm: '',
     order_sender: '',
+    affinity_owner: '',
+    is_rechoose: '',
     status: '',
     priority: '',
     order_kind: '',
@@ -1445,6 +1468,7 @@ export default {
       orderKindOptions: [...ORDER_KIND_OPTIONS],
       supplyModeOptions: [...SUPPLY_MODE_OPTIONS],
       affinityResultOptions: [...AFFINITY_RESULT_OPTIONS],
+      rechooseOptions: [...RECHOOSE_OPTIONS],
       mouseStrainOptions: [...MOUSE_STRAIN_OPTIONS],
       studyTypeOptions: [...STUDY_TYPE_OPTIONS],
       statusViews: STATUS_VIEWS,
@@ -1584,6 +1608,8 @@ export default {
           this.listQuery.project_code ||
           this.listQuery.pm ||
           this.listQuery.order_sender ||
+          this.listQuery.affinity_owner ||
+          this.listQuery.is_rechoose ||
           this.listQuery.study_type ||
           this.listQuery.priority ||
           this.listQuery.order_kind ||
@@ -1622,6 +1648,7 @@ export default {
       map.order_kind = this.orderKindOptions.map((item) => ({ label: item, value: item }))
       map.supply_mode = this.supplyModeOptions.map((item) => ({ label: item, value: item }))
       map.affinity_result = this.affinityResultOptions.map((item) => ({ label: item, value: item }))
+      map.is_rechoose = RECHOOSE_OPTIONS.map((item) => ({ label: item, value: item }))
       map.study_type = this.studyTypeOptions.map((item) => ({ label: item, value: item }))
       map.target_type = (this.optionLists.target_types || []).map((item) => ({
         label: item,
@@ -2893,6 +2920,7 @@ export default {
         'eng_requirement',
         'remark',
         'selection_method',
+        'is_rechoose',
         'synthesis_code',
         'batch_label',
       ]
@@ -3161,6 +3189,11 @@ export default {
         const val = String(raw || '').trim()
         if (!val) return { ok: true, value: null }
         return this.matchSheetOption(this.affinityResultOptions, val)
+      }
+      if (key === 'is_rechoose') {
+        const val = String(raw || '').trim()
+        if (!val) return { ok: true, value: null }
+        return this.matchSheetOption(RECHOOSE_OPTIONS, val)
       }
       if (key === 'study_type') {
         const val = String(raw || '').trim()

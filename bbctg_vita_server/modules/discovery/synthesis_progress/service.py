@@ -37,6 +37,8 @@ from modules.discovery.synthesis_progress.constants import (
     ORDER_KIND_ENGINEERING,
     ORDER_KIND_NORMAL,
     ORDER_KIND_OPTIONS,
+    RECHOOSE_OPTIONS,
+    RECHOOSE_TOKEN,
     SELECTION_METHOD_OPTIONS,
     STATUS_ASSAYING,
     STATUS_CANCELLED,
@@ -191,6 +193,7 @@ WRITABLE_FIELDS = (
     "flow_status",
     "target_codes",
     "target_color",
+    "is_rechoose",
 )
 
 PM_EDIT_FIELDS = frozenset(
@@ -689,6 +692,7 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "target_type": HeaderColumn(_O.target_type, "enum", order=tuple(TARGET_TYPE_OPTIONS)),
     "mouse_strain": csv_column(_O.mouse_strain, tuple(MOUSE_STRAIN_OPTIONS)),
     "selection_method": csv_column(_O.selection_method, tuple(SELECTION_METHOD_OPTIONS)),
+    "is_rechoose": HeaderColumn(_O.is_rechoose, "enum", order=RECHOOSE_OPTIONS),
     "synthesis_code": HeaderColumn(_O.synthesis_code),
     "order_no": HeaderColumn(_O.order_no),
     "batch_label": HeaderColumn(_O.batch_label),
@@ -830,6 +834,14 @@ def _apply_list_filters(
     sender_clause = match_any(DiscoverySynthesisOrder.order_sender, data.get("order_sender"))
     if sender_clause is not None:
         filters.append(sender_clause)
+
+    aff_owner_terms = filter_terms(data.get("affinity_owner"))
+    if aff_owner_terms:
+        filters.append(or_(*[csv_token_clause(DiscoverySynthesisOrder.affinity_owner, t) for t in aff_owner_terms]))
+
+    rechoose_clause = match_any(DiscoverySynthesisOrder.is_rechoose, data.get("is_rechoose"))
+    if rechoose_clause is not None:
+        filters.append(rechoose_clause)
 
     study_clause = match_any(DiscoverySynthesisOrder.study_type, data.get("study_type"))
     if study_clause is not None:
@@ -1236,6 +1248,8 @@ def _apply_fields(
             value = _normalize_affinity_result(raw)
         elif field == "target_color":
             value = _normalize_target_color(raw)
+        elif field == "is_rechoose":
+            value = normalize_choice(raw, RECHOOSE_OPTIONS, "是否补挑", nullable=True)
         elif field == "target_codes":
             value = normalize_target_codes(raw, upper=True)
         elif field in CSV_JOINED_FIELDS:
@@ -1255,6 +1269,12 @@ def _apply_fields(
 
     if "affinity_date" in data and not row.affinity_date and "affinity_result" not in data:
         row.affinity_result = None
+
+    methods = split_tokens(row.selection_method)
+    if "selection_method" in data and RECHOOSE_TOKEN in methods:
+        row.selection_method = join_tokens([m for m in methods if m != RECHOOSE_TOKEN], SELECTION_METHOD_OPTIONS)
+        if "is_rechoose" not in data:
+            row.is_rechoose = "是"
 
     # 订单号决定关联哪笔 One 订单；工单批次、送测转码允许与 One 不一致，改了不解除关联。
     if row.source_one_id is not None and "order_no" in data and row.order_no != prev_order_no:
@@ -1810,6 +1830,7 @@ EXPORT_COLUMNS = (
     ("靶点类型", "target_type"),
     ("小鼠品系", "mouse_strain"),
     ("挑选方式", "selection_method"),
+    ("是否补挑", "is_rechoose"),
     ("送测转码", "synthesis_code"),
     ("订单号", "order_no"),
     ("工单批次", "batch_label"),

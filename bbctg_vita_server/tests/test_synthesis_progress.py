@@ -870,6 +870,50 @@ class SynthesisProgressServiceTests(DbTestCase):
             self.assertEqual(len(commits), 1)
             self.assertIsNone(db.get(DiscoverySynthesisOrder, rid).remark)
 
+    def test_quick_filter_has_drift_matches_source_difference(self):
+        with self.Session() as db:
+            service.save(
+                db,
+                {"target_name": "CD3", "order_no": "CN1", "flow_note": "有说明", "report_reason": "异常"},
+            )
+            drifted = service.save(
+                db,
+                {
+                    "target_name": "CD4",
+                    "order_no": "CN2",
+                    "synthetic_count": 10,
+                    "synthetic_date": "2026-04-02",
+                    "arrival_count": 8,
+                    "arrival_date": "2026-04-17",
+                },
+            )
+            db.get(DiscoverySynthesisOrder, drifted["id"]).source_snapshot = {
+                "order_no": "GS2",
+                "synthetic_count": 12,
+                "synthetic_date": "2026-04-01",
+                "arrival_count": 9,
+                "arrival_date": "2026-04-15",
+            }
+            alias = service.save(db, {"target_name": "CD5", "order_no": "CN3", "synthetic_count": 5})
+            db.get(DiscoverySynthesisOrder, alias["id"]).source_snapshot = {
+                "order_no": "GS3",
+                "synthetic_count": 5,
+            }
+            empty_local = service.save(db, {"target_name": "CD6", "order_no": "CN4"})
+            db.get(DiscoverySynthesisOrder, empty_local["id"]).source_snapshot = {
+                "synthetic_count": 3,
+                "arrival_date": "2026-05-01",
+            }
+            other = service.save(db, {"target_name": "CD8", "order_no": "BAO1", "is_rechoose": "否"})
+            db.get(DiscoverySynthesisOrder, other["id"]).source_snapshot = {"is_rechoose": "是"}
+            db.commit()
+
+            data = service.get_list(db, {"quick_filter": "has_drift", "limit": 50})
+            self.assertEqual({item["target_name"] for item in data["items"]}, {"CD4", "CD8"})
+            self.assertEqual(data["total"], 2)
+            self.assertEqual(data["stats"]["has_drift"], 2)
+            self.assertEqual(data["stats"]["all"], 5)
+
 
 class SynthesisHeaderFilterTests(DbTestCase):
     tables = (Target, DiscoverySynthesisOrder)

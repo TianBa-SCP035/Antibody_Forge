@@ -11,7 +11,7 @@ import secrets
 import string
 from typing import Any
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import String, and_, case, cast, func, not_, or_, select
 from sqlalchemy.orm import Session
 
 from models.discovery import DiscoverySynthesisOrder
@@ -614,17 +614,34 @@ def _unassigned_clause():
     )
 
 
-def _has_issue_clause():
-    return or_(
-        and_(
-            DiscoverySynthesisOrder.flow_note.is_not(None),
-            DiscoverySynthesisOrder.flow_note != "",
-        ),
-        and_(
-            DiscoverySynthesisOrder.report_reason.is_not(None),
-            DiscoverySynthesisOrder.report_reason != "",
-        ),
-    )
+def _snapshot_text(field: str, *, dialect: str):
+    extracted = func.json_extract(DiscoverySynthesisOrder.source_snapshot, f"$.{field}")
+    if dialect == "mysql":
+        # JSON null 经 JSON_UNQUOTE 会变成文本 null，不能当成来源有值。
+        text = func.nullif(func.trim(func.json_unquote(extracted)), "")
+        return case((func.json_type(extracted) == "NULL", None), else_=text)
+    return func.nullif(func.trim(cast(extracted, String)), "")
+
+
+def _column_text(column):
+    return func.nullif(func.trim(cast(column, String)), "")
+
+
+def _has_drift_clause(db: Session | None):
+    """与 compute_drift_fields 同一口径：两侧都有值且不相等才算变更。"""
+    dialect = db.bind.dialect.name if db is not None and db.bind is not None else "mysql"
+    parts = []
+    for field in DRIFT_COMPARE_FIELDS:
+        local = _column_text(getattr(DiscoverySynthesisOrder, field))
+        remote = _snapshot_text(field, dialect=dialect)
+        differ = and_(local.is_not(None), remote.is_not(None), local != remote)
+        if field == "order_no":
+            differ = and_(
+                differ,
+                not_(and_(func.upper(local).like("CN%"), func.upper(remote).like("GS%"))),
+            )
+        parts.append(differ)
+    return or_(*parts)
 
 
 def _target_color_clause(tokens: list[str]):
@@ -931,8 +948,8 @@ def _apply_list_filters(
         quick_filter = str(data.get("quick_filter") or "").strip()
         if quick_filter == "unassigned":
             filters.append(_unassigned_clause())
-        elif quick_filter == "has_issue":
-            filters.append(_has_issue_clause())
+        elif quick_filter == "has_drift":
+            filters.append(_has_drift_clause(db))
 
     if filters:
         return stmt.where(*filters)
@@ -1082,7 +1099,7 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
                 0,
             ),
             func.coalesce(func.sum(case((_unassigned_clause(), 1), else_=0)), 0),
-            func.coalesce(func.sum(case((_has_issue_clause(), 1), else_=0)), 0),
+            func.coalesce(func.sum(case((_has_drift_clause(db), 1), else_=0)), 0),
         ).select_from(DiscoverySynthesisOrder),
         payload,
         apply_view=False,
@@ -1099,7 +1116,7 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
         "engineering": int(row[5] or 0),
         "cancelled": int(row[6] or 0),
         "unassigned": int(row[7] or 0),
-        "has_issue": int(row[8] or 0),
+        "has_drift": int(row[8] or 0),
     }
 
 

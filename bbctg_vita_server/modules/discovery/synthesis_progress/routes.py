@@ -44,7 +44,7 @@ class SynthesisListRequest(BaseModel):
         Literal["wait_order", "synthesizing", "assay", "completed", "engineering", "cancelled"]
         | None
     ) = None
-    quick_filter: Literal["unassigned", "has_issue"] | None = None
+    quick_filter: Literal["unassigned", "has_drift"] | None = None
 
 
 class SynthesisColumnValuesRequest(SynthesisListRequest):

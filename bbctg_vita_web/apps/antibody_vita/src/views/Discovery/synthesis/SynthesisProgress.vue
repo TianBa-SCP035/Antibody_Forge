@@ -218,11 +218,11 @@
             :aria-pressed="Boolean(listQuery.quick_filter)"
             :title="quickFilterTitle"
             @click="toggleQuickFilter('unassigned')"
-            @contextmenu.prevent="toggleQuickFilter('has_issue')"
+            @contextmenu.prevent="toggleQuickFilter('has_drift')"
           >
             <span class="ready-dot" />
-            <span v-if="listQuery.quick_filter === 'has_issue'">
-              <strong>{{ stats.has_issue }}</strong> 个批次有检测说明或异常
+            <span v-if="listQuery.quick_filter === 'has_drift'">
+              <strong>{{ stats.has_drift }}</strong> 个批次有变更
             </span>
             <span v-else>
               <strong>{{ stats.unassigned }}</strong> 个批次无人问津待认领
@@ -409,7 +409,7 @@
             title="右上角快捷筛选，点击取消"
             @click="toggleQuickFilter(listQuery.quick_filter)"
           >
-            {{ listQuery.quick_filter === 'has_issue' ? '只看异常' : '只看无人问津' }}
+            {{ listQuery.quick_filter === 'has_drift' ? '只看有变更' : '只看无人问津' }}
             <span class="wb-hf-chip-x">×</span>
           </button>
           <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
@@ -1437,7 +1437,7 @@ export default {
         engineering: 0,
         cancelled: 0,
         unassigned: 0,
-        has_issue: 0,
+        has_drift: 0,
       },
       viewMode: coerceWorkbenchViewMode(lastViewMode),
       showAdvancedOps: false,
@@ -1535,13 +1535,13 @@ export default {
       return (Array.isArray(status) ? status : [status]).filter(Boolean)
     },
     quickFilterTitle() {
-      if (this.listQuery.quick_filter === 'has_issue') {
-        return '当前只看填写了检测说明或异常的批次。右键取消；左键改看无人问津待认领。'
+      if (this.listQuery.quick_filter === 'has_drift') {
+        return '当前只看和 One 来源不一致的批次。右键取消；左键改看无人问津待认领。'
       }
       if (this.listQuery.quick_filter === 'unassigned') {
-        return '当前只看负责人为无人问津的待认领批次。再点取消；右键改看有检测说明或异常的批次。'
+        return '当前只看负责人为无人问津的待认领批次。再点取消；右键改看有变更的批次。'
       }
-      return '左键只看无人问津待认领；右键只看有检测说明或异常的批次。'
+      return '左键只看无人问津待认领；右键只看有变更的批次。'
     },
     editingRow() {
       return this.editingRowData
@@ -2476,7 +2476,7 @@ export default {
           engineering: data?.stats?.engineering || 0,
           cancelled: data?.stats?.cancelled || 0,
           unassigned: data?.stats?.unassigned || 0,
-          has_issue: data?.stats?.has_issue || 0,
+          has_drift: data?.stats?.has_drift || 0,
         }
         this.listQuery.page = data?.page || this.listQuery.page
         this.listQuery.limit = data?.limit || this.listQuery.limit

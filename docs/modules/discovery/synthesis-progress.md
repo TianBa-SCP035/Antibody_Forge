@@ -133,8 +133,8 @@
 ### 右上角胶囊快捷筛选（`quick_filter`）
 
 - **左键点击**：切换 `quick_filter = 'unassigned'`，只看 `status != '已取消' AND owner == '无人问津'` 的待认领批次（胶囊文案：`{stats.unassigned} 个批次无人问津待认领`），再次左键取消。
-- **右键点击**：切换 `quick_filter = 'has_issue'`，只看 `flow_note` 非空或 `report_reason` 非空的批次（胶囊文案：`{stats.has_issue} 个批次有检测说明或异常`），再次右键取消。
-- 快捷筛选生效时，筛选栏齿轮左侧显示「只看无人问津 ×」或「只看异常 ×」提示，点击取消。
+- **右键点击**：切换 `quick_filter = 'has_drift'`，只看本地值与外部来源快照不一致的批次（口径同 `has_drift` 与「变更」角标：`DRIFT_COMPARE_FIELDS` 两侧都有值且去空白后不相等；订单号本地 `CN`、来源 `GS` 不算差异）。胶囊文案：`{stats.has_drift} 个批次有变更`，再次右键取消。
+- 快捷筛选生效时，筛选栏齿轮左侧显示「只看无人问津 ×」或「只看有变更 ×」提示，点击取消。
 
 ### 搜索、筛选与表头菜单
 

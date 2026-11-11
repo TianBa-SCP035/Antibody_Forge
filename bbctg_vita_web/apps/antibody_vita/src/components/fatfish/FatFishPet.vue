@@ -268,7 +268,7 @@ const preloaded = new Map<string, HTMLVideoElement>();
 const {
   active: discoActive, pending: discoPending, busy: discoBusy, message: discoMessage,
   play: playDisco, stop: stopDisco, replay: replayDisco,
-  clock: discoClock, duration: discoDuration, finished: discoFinished, session: discoSession,
+  clock: discoClock, duration: discoDuration, finished: discoFinished, session: discoSession, unlocked: discoUnlocked,
   stageOpen: discoStageOpen, readTime: discoReadTime, flurrying: discoFlurrying,
   openStage: openDiscoStage, closeStage: closeDiscoStage,
   onDown: discoDown, onMove: discoMove, onUp: discoUp,
@@ -340,6 +340,9 @@ watch(discoActive, (dancing) => {
       if (!before.sleeping) pokeIdleClock();
     }
   }
+});
+watch(discoUnlocked, (now, before) => {
+  if (now && !before) say('解锁蹦迪啦！以后右键我选「蹦迪」就能直接开跳，不用再戳一百下～');
 });
 /** Hover = character pointer; only press/drag uses grabbing hand. */
 const petCursor = computed(() => {
@@ -2034,6 +2037,11 @@ async function menuAction(kind: string) {
     startRhythm('dance');
     return;
   }
+  if (kind === 'disco') {
+    // Must stay before any await: the menu click is the user gesture that lets the song autoplay.
+    if (!discoActive.value && !discoPending.value) playDisco();
+    return;
+  }
   if (kind === 'ball') toggleCollapse();
 }
 
@@ -2663,12 +2671,14 @@ onBeforeUnmount(() => {
       <button type="button" @click="menuAction('look')">看看页面</button>
       <button type="button" @click="menuAction('fill')">帮填表</button>
       <template v-if="collapsed">
+        <button v-if="discoUnlocked" type="button" @click="menuAction('disco')">蹦迪</button>
         <button type="button" @click="menuAction('ball')">展开</button>
       </template>
       <template v-else>
         <button type="button" @click="menuAction('feed')">投喂</button>
         <button type="button" @click="menuAction('play')">玩耍</button>
         <button type="button" @click="menuAction('dance')">跳舞</button>
+        <button v-if="discoUnlocked" type="button" @click="menuAction('disco')">蹦迪</button>
         <button type="button" @click="menuAction('ball')">收成球</button>
       </template>
     </div>

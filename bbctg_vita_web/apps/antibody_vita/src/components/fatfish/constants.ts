@@ -26,6 +26,8 @@ export const DAILY_REMARKS_KEY = 'fatfish-daily-remarks';
 export const LINE_POOL_KEY = 'fatfish-line-pool';
 /** Best rhythm-stage score on this browser. */
 export const DISCO_BEST_KEY = 'fatfish-disco-best';
+/** Set once the poke easter egg has played here; the pet menu then offers 蹦迪 directly. */
+export const DISCO_UNLOCKED_KEY = 'fatfish-disco-unlocked';
 /** List endpoints the pet has seen pages call (per account; no tokens). */
 export const DATA_SOURCES_KEY = 'fatfish-data-sources';
 

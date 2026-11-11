@@ -11,7 +11,7 @@ import { BASE, DISCO_BEST_KEY } from './constants';
 import {
   ARROWS, BEAT_SECONDS, RHYTHM_BPM, SECTION_NAMES, advanceRhythm, buildRhythmChart, createRhythmGame,
   dispatchRhythmKey, hitSpace, holdTally, openRound, releaseSpace, resumeRhythmGame, rhythmAccuracy,
-  sampleDiscoBeat, sectionAt, typeArrow, upcomingRound, type Arrow, type RhythmKey,
+  sampleDiscoBeat, sectionAt, typeArrow, upcomingRound, type Arrow, type RhythmKey, type Verdict,
 } from './discoRhythm';
 
 const props = defineProps<{
@@ -25,6 +25,13 @@ const HOLD_TEXT = { start: '按住!', done: '长按成功', broken: '松早了' 
 const KEYS: RhythmKey[] = [...ARROWS, 'Space'];
 /** Combo from which the console glows gold. */
 const FEVER_COMBO = 5;
+const SECTION_TAGLINE = ['热热身', '跟上节拍', '箭头变多了', '全力冲刺！'];
+const GRADE_LINE = {
+  S: '舞王驾到！大肥鱼给你疯狂鼓掌',
+  A: '跳得真带劲，再冲一把 S？',
+  B: '节奏感不错，多来几曲会更稳',
+  C: '先热热身，下一曲一定更好',
+} as const;
 const stage = ref<HTMLElement | null>(null);
 const game = shallowRef(kept?.session === props.session
   ? (props.ended ? kept.game : resumeRhythmGame(kept.game, props.clock))
@@ -33,6 +40,11 @@ const revision = ref(0);
 const spaceDown = ref(false);
 const best = ref(readBest());
 const newRecord = ref(false);
+/** Rolls toward the real score so points visibly count up. */
+const shownScore = ref(game.value.score);
+const banner = ref<{ section: number; at: number } | null>(null);
+let sfx: AudioContext | undefined;
+let scoreFrame = 0;
 let previousFocus: HTMLElement | null = null;
 let mounted = false;
 
@@ -52,6 +64,10 @@ const view = computed(() => {
     // Once the row is typed (or between rows) the next one is shown early, so it can be read ahead.
     next: round && (complete || !open) ? upcomingRound(g, now, round.id) : undefined,
     sparkle: last && (last.verdict === 'Perfect' || last.verdict === 'Great') && last.hold !== 'start' ? last : null,
+    timing: last && (last.verdict === 'Great' || last.verdict === 'Good' || last.verdict === 'Bad')
+      && (!last.hold || last.hold === 'start') ? (last.delta < 0 ? '早了' : '晚了') : '',
+    milestone: last && last.hold !== 'start' && last.combo >= 10 && last.combo % 10 === 0
+      && (last.verdict === 'Perfect' || last.verdict === 'Great') ? last : null,
     press: g.press && now - g.press.at < 0.14 ? g.press : null,
     wrong: !!g.press && !g.press.ok && g.press.key !== 'Space' && now - g.press.at < 0.3,
     score: g.score, combo: g.combo, maxCombo: g.maxCombo, counts: g.counts, accuracy: rhythmAccuracy(g),
@@ -88,7 +104,9 @@ const hint = computed(() => {
   if (!v.complete) return '按顺序敲方向键';
   return v.round.hold ? '光标到黄点时按住空格' : '光标到黄点时按空格';
 });
-const section = computed(() => SECTION_NAMES[sectionAt(props.clock)]);
+const sectionIndex = computed(() => sectionAt(props.clock));
+const section = computed(() => SECTION_NAMES[sectionIndex.value]);
+const shownBanner = computed(() => banner.value && props.active && props.clock - banner.value.at < 1.8 ? banner.value : null);
 const grade = computed(() => {
   const a = view.value.accuracy;
   return a >= 95 ? 'S' : a >= 85 ? 'A' : a >= 70 ? 'B' : 'C';
@@ -99,18 +117,52 @@ const seconds = (value: number) => `${Math.floor(value / 60)}:${String(Math.floo
 function readBest() {
   try { return Math.max(0, Number(localStorage.getItem(DISCO_BEST_KEY)) || 0); } catch { return 0; }
 }
+/** Short synthesized blips; created on the first key press, which is the gesture audio needs. */
+function beep(kind: 'tick' | 'wrong' | Verdict) {
+  if (kind === 'Miss') return;
+  try {
+    sfx ??= new AudioContext();
+    const t = sfx.currentTime;
+    const notes = { tick: [1320], wrong: [180], Perfect: [880, 1320], Great: [880], Good: [660], Bad: [330] }[kind];
+    notes.forEach((freq, i) => {
+      const osc = sfx!.createOscillator(), gain = sfx!.createGain();
+      osc.type = kind === 'wrong' || kind === 'Bad' ? 'square' : 'triangle';
+      osc.frequency.value = freq;
+      const start = t + i * 0.06, length = kind === 'tick' ? 0.05 : 0.12;
+      gain.gain.setValueAtTime(kind === 'tick' ? 0.03 : 0.07, start);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + length);
+      osc.connect(gain).connect(sfx!.destination);
+      osc.start(start);
+      osc.stop(start + length);
+    });
+  } catch { /* No Web Audio: play silently. */ }
+}
 function resetGame(joinAt = 0) {
   game.value = createRhythmGame(buildRhythmChart(props.duration), joinAt);
   spaceDown.value = false;
   newRecord.value = false;
+  shownScore.value = 0;
+  banner.value = null;
   revision.value++;
 }
 watch(() => props.session, () => resetGame(props.clock));
 watch(() => props.clock, (now) => {
   if (props.active || props.ended) {
+    const before = game.value.last;
     advanceRhythm(game.value, now);
+    const after = game.value.last;
+    if (after !== before && after?.hold === 'done') beep(after.verdict);
     revision.value++;
   }
+});
+watch(() => view.value.score, () => { if (!scoreFrame) scoreFrame = requestAnimationFrame(rollScore); });
+function rollScore() {
+  const gap = game.value.score - shownScore.value;
+  shownScore.value += Math.abs(gap) < 20 ? gap : Math.round(gap * 0.18);
+  scoreFrame = shownScore.value === game.value.score ? 0 : requestAnimationFrame(rollScore);
+}
+watch(sectionIndex, (section) => {
+  if (props.active && section > 0) banner.value = { section, at: props.clock };
 });
 watch(() => props.ended, (ended) => {
   const score = game.value.score;
@@ -123,14 +175,21 @@ function hit(key: RhythmKey) {
   if (!props.active || props.ended) return;
   // Judge against the media element at the key event, not the previous animation frame.
   const now = props.readTime();
-  if (key === 'Space') { spaceDown.value = true; hitSpace(game.value, now); }
-  else typeArrow(game.value, key as Arrow, now);
+  if (key === 'Space') {
+    spaceDown.value = true;
+    const result = hitSpace(game.value, now);
+    if (result) beep(result.verdict);
+  } else {
+    if (typeArrow(game.value, key as Arrow, now)) beep('tick');
+    else if (!game.value.press?.ok) beep('wrong');
+  }
   revision.value++;
 }
 function release() {
   if (!spaceDown.value) return;
   spaceDown.value = false;
-  releaseSpace(game.value, props.readTime());
+  const result = releaseSpace(game.value, props.readTime());
+  if (result) beep(result.verdict);
   revision.value++;
 }
 function lift(key: RhythmKey) {
@@ -168,6 +227,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   mounted = false;
   kept = { session: props.session, game: game.value };
+  cancelAnimationFrame(scoreFrame);
+  void sfx?.close();
   window.removeEventListener('keydown', onKey, true);
   window.removeEventListener('keyup', onKey, true);
   window.removeEventListener('blur', release);
@@ -201,7 +262,10 @@ onBeforeUnmount(() => {
         <div class="ff-dance-light right" aria-hidden="true" />
         <div class="ff-dance-orbit" aria-hidden="true" />
         <div class="ff-dance-glow" aria-hidden="true" />
-        <div class="ff-dance-avatar" :class="{ dancing: active, miss: view.last?.verdict === 'Miss' || view.last?.hold === 'broken' || view.wrong }">
+        <div class="ff-dance-avatar" :class="{
+          dancing: active, cheer: !!view.sparkle,
+          miss: view.last?.verdict === 'Miss' || view.last?.hold === 'broken' || view.wrong,
+        }">
           <video :key="active ? 'dance' : 'idle'" :src="BASE + (active ? '可爱宅舞.webm' : '待机呼吸休闲.webm')"
             autoplay muted loop playsinline :aria-label="active ? '大肥鱼伴舞' : '大肥鱼'" />
         </div>
@@ -210,13 +274,21 @@ onBeforeUnmount(() => {
           <strong>{{ VERDICT_TEXT[view.last.verdict] }}</strong>
           <span v-if="view.last.hold">{{ HOLD_TEXT[view.last.hold] }}</span>
           <span v-else-if="view.last.combo > 1">×{{ view.last.combo }}</span>
+          <small v-if="view.timing" class="ff-dance-timing">{{ view.timing }}</small>
         </div>
         <p v-else-if="countdown" :key="countdown" class="ff-dance-countdown">{{ countdown }}</p>
         <div v-if="view.sparkle" :key="`spark-${view.sparkle.round}`" class="ff-dance-sparkle" aria-hidden="true">
           <i>✦</i><i>✦</i><i>✦</i>
         </div>
+        <p v-if="view.milestone" :key="`combo-${view.milestone.round}`" class="ff-dance-milestone" aria-hidden="true">
+          {{ view.milestone.combo }} COMBO!
+        </p>
+        <div v-if="shownBanner" :key="`section-${shownBanner.section}`" class="ff-dance-banner" aria-live="polite">
+          <strong>{{ SECTION_NAMES[shownBanner.section] }}</strong>
+          <span>{{ SECTION_TAGLINE[shownBanner.section] }}</span>
+        </div>
         <aside class="ff-dance-board" aria-label="本局分数">
-          <span>得分</span><strong>{{ view.score.toLocaleString() }}</strong>
+          <span>得分</span><strong>{{ shownScore.toLocaleString() }}</strong>
           <span>连击</span><strong :class="{ fever: view.combo >= FEVER_COMBO }">{{ view.combo }}</strong>
           <span>准确率</span><strong>{{ view.accuracy }}%</strong>
           <small v-if="best">本机最高 {{ best.toLocaleString() }}</small>
@@ -253,15 +325,19 @@ onBeforeUnmount(() => {
         <div class="ff-dance-keys">
           <button v-for="key in KEYS" :key="key" type="button" :aria-label="`按 ${GLYPH[key]}`"
             :class="{ space: key === 'Space', on: view.press?.key === key || (key === 'Space' && spaceDown), bad: view.press?.key === key && !view.press.ok }"
-            @pointerdown.prevent="hit(key)" @pointerup="lift(key)" @pointercancel="lift(key)" @pointerleave="lift(key)">{{ GLYPH[key] }}</button>
+            @pointerdown.prevent="hit(key)" @pointerup="lift(key)" @pointercancel="lift(key)" @pointerleave="lift(key)">
+            {{ GLYPH[key] }}
+            <i v-if="view.press?.key === key && view.press.ok" :key="view.press.at" class="ff-dance-ripple" aria-hidden="true" />
+          </button>
         </div>
       </div>
 
       <div v-if="!active" class="ff-dance-curtain">
         <template v-if="ended">
           <h3>全曲完成！</h3>
-          <p class="ff-dance-grade">{{ grade }}</p>
-          <strong class="ff-dance-final">{{ view.score.toLocaleString() }}</strong>
+          <p class="ff-dance-grade" :class="`is-${grade.toLowerCase()}`">{{ grade }}</p>
+          <p class="ff-dance-line">{{ GRADE_LINE[grade] }}</p>
+          <strong class="ff-dance-final">{{ shownScore.toLocaleString() }}</strong>
           <p v-if="newRecord" class="ff-dance-record">新纪录！</p>
           <p v-else-if="best">本机最高 {{ best.toLocaleString() }}</p>
           <p>最高连击 {{ view.maxCombo }} · 准确率 {{ view.accuracy }}% · 长按 {{ view.holds.done }}/{{ view.holds.played }}</p>
@@ -328,6 +404,7 @@ nav { display: flex; gap: 8px; }
 .ff-dance-avatar { position: relative; z-index: 1; height: min(100%, 62vh); aspect-ratio: 1; scale: 1.6; translate: 0 48%; transform-origin: 50% 100%; pointer-events: none; }
 .ff-dance-avatar.dancing { translate: 0 calc(48% - var(--ff-stage-pulse) * 18px); }
 .ff-dance-avatar.miss { animation: ff-dance-shake .3s; }
+.ff-dance-avatar.cheer { animation: ff-dance-cheer .4s ease-out; }
 .ff-dance-avatar video { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 12px 28px hsl(185 100% 75% / .35)); }
 .ff-dance-verdict { position: absolute; z-index: 2; top: 4%; left: 50%; display: flex; align-items: baseline; gap: 12px; translate: -50% 0; font-weight: 900; font-style: italic; letter-spacing: .06em; animation: ff-dance-pop .9s ease-out forwards; text-shadow: 0 3px 14px hsl(240 100% 20% / .9); pointer-events: none; }
 .ff-dance-verdict strong { font-size: clamp(34px, 6vw, 72px); }
@@ -337,6 +414,11 @@ nav { display: flex; gap: 8px; }
 .ff-dance-verdict.good strong { color: hsl(130 70% 66%); }
 .ff-dance-verdict.bad strong { color: hsl(275 80% 75%); }
 .ff-dance-verdict.miss strong { color: hsl(350 40% 72%); }
+.ff-dance-timing { align-self: center; padding: 1px 9px; border-radius: 999px; font-size: clamp(13px, 1.5vw, 17px); font-style: normal; letter-spacing: .1em; color: hsl(200 80% 88%); background: hsl(240 50% 15% / .75); }
+.ff-dance-milestone { position: absolute; z-index: 2; top: 24%; left: 50%; margin: 0; translate: -50% 0; font-size: clamp(26px, 4vw, 48px); font-weight: 900; font-style: italic; letter-spacing: .08em; color: transparent; background: linear-gradient(90deg, hsl(320 100% 74%), hsl(48 100% 70%), hsl(185 100% 70%)); background-clip: text; text-shadow: none; filter: drop-shadow(0 3px 10px hsl(280 100% 25% / .85)); animation: ff-dance-milestone 1s ease-out forwards; pointer-events: none; }
+.ff-dance-banner { position: absolute; z-index: 2; top: 42%; left: 0; right: 0; display: flex; align-items: baseline; justify-content: center; gap: 14px; padding: 10px 0; background: linear-gradient(90deg, transparent, hsl(285 80% 28% / .78) 25%, hsl(222 80% 28% / .78) 75%, transparent); animation: ff-dance-banner 1.8s ease-out forwards; pointer-events: none; }
+.ff-dance-banner strong { font-size: clamp(28px, 4vw, 46px); letter-spacing: .2em; }
+.ff-dance-banner span { font-size: clamp(14px, 1.6vw, 18px); color: hsl(50 100% 76%); }
 .ff-dance-countdown { position: absolute; z-index: 2; top: 4%; left: 50%; translate: -50% 0; font-size: clamp(48px, 8vw, 96px); font-weight: 900; color: hsl(50 100% 75%); animation: ff-dance-tick .45s ease-out; }
 .ff-dance-sparkle { position: absolute; z-index: 2; top: 12%; left: 50%; width: 0; height: 0; pointer-events: none; }
 .ff-dance-sparkle i { position: absolute; font-style: normal; font-size: 40px; color: hsl(50 100% 75%); text-shadow: 0 0 12px hsl(45 100% 60%); animation: ff-dance-spark .7s ease-out forwards; }
@@ -358,7 +440,7 @@ nav { display: flex; gap: 8px; }
 .ff-dance-level.hold { border-color: hsl(32 100% 65%); background: hsl(32 100% 50% / .2); }
 .ff-dance-arrow { display: grid; place-items: center; width: clamp(40px, 5vw, 58px); height: clamp(40px, 5vw, 58px); border: 2px solid hsl(210 60% 80% / .5); border-radius: 12px; background: hsl(230 50% 18% / .85); font-size: clamp(22px, 3vw, 34px); font-weight: 900; color: hsl(210 40% 88%); transition: background .08s, transform .08s; }
 .ff-dance-arrow.next { border-color: hsl(185 100% 75%); box-shadow: 0 0 12px hsl(185 100% 65% / .6); transform: translateY(-3px); }
-.ff-dance-arrow.done { border-color: hsl(50 100% 75%); background: linear-gradient(140deg, hsl(42 100% 55%), hsl(30 100% 55%)); color: hsl(30 80% 12%); text-shadow: none; transform: scale(1.06); }
+.ff-dance-arrow.done { border-color: hsl(50 100% 75%); background: linear-gradient(140deg, hsl(42 100% 55%), hsl(30 100% 55%)); color: hsl(30 80% 12%); text-shadow: none; transform: scale(1.06); animation: ff-dance-arrow-pop .2s ease-out; }
 .ff-dance-row.wrong .ff-dance-arrow { border-color: hsl(350 100% 70%); background: hsl(350 70% 35% / .85); color: hsl(0 0% 100%); }
 .ff-dance-hint { position: absolute; right: 0; max-width: 124px; font-size: 12px; text-align: right; color: hsl(207 60% 84%); }
 .ff-dance-hint.bad { color: hsl(350 100% 78%); }
@@ -375,7 +457,9 @@ nav { display: flex; gap: 8px; }
 .ff-dance-point { position: absolute; top: -6px; bottom: -6px; width: 14px; translate: -7px 0; border-radius: 7px; background: hsl(50 100% 65%); box-shadow: 0 0 calc(8px + var(--ff-stage-pulse) * 14px) hsl(45 100% 60%); }
 .ff-dance-cursor { position: absolute; top: -9px; bottom: -9px; width: 4px; translate: -2px 0; border-radius: 2px; background: hsl(0 0% 100%); box-shadow: 0 0 10px hsl(185 100% 75%); }
 .ff-dance-keys { display: grid; grid-template-columns: repeat(4, minmax(44px, 70px)) minmax(120px, 220px); justify-content: center; gap: 8px; }
-.ff-dance-keys button { padding: 8px 0; font-size: 18px; font-weight: 800; touch-action: none; transition: transform .06s, background .06s; }
+.ff-dance-keys button { position: relative; padding: 8px 0; font-size: 18px; font-weight: 800; touch-action: none; transition: transform .06s, background .06s; }
+.ff-dance-ripple { position: absolute; inset: -2px; border: 2px solid hsl(185 100% 75%); border-radius: inherit; pointer-events: none; animation: ff-dance-ripple .35s ease-out forwards; }
+.ff-dance-keys button.space .ff-dance-ripple { border-color: hsl(50 100% 70%); }
 .ff-dance-keys button.space { font-size: 14px; color: hsl(52 100% 76%); }
 .ff-dance-keys button.on { transform: translateY(2px); background: hsl(185 80% 40%); }
 .ff-dance-keys button.bad { background: hsl(350 70% 42%); }
@@ -389,7 +473,11 @@ nav { display: flex; gap: 8px; }
 .ff-dance-legend kbd { display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 6px; border: 1px solid hsl(200 90% 80% / .5); border-bottom-width: 3px; border-radius: 7px; font: inherit; font-weight: 800; background: hsl(230 55% 20% / .9); }
 .ff-dance-legend kbd.wide { min-width: 74px; margin-left: 14px; color: hsl(52 100% 76%); }
 .ff-dance-message { color: hsl(45 100% 74%); }
-.ff-dance-grade { font-size: clamp(56px, 9vw, 110px) !important; font-weight: 900; font-style: italic; line-height: 1 !important; color: hsl(48 100% 70%); text-shadow: 0 4px 20px hsl(32 100% 50% / .6); }
+.ff-dance-grade { font-size: clamp(56px, 9vw, 110px) !important; font-weight: 900; font-style: italic; line-height: 1 !important; color: hsl(48 100% 70%); text-shadow: 0 4px 20px hsl(32 100% 50% / .6); rotate: -6deg; animation: ff-dance-stamp .5s cubic-bezier(.2, 1.5, .4, 1) both; }
+.ff-dance-grade.is-a { color: hsl(185 100% 70%); text-shadow: 0 4px 20px hsl(190 100% 45% / .6); }
+.ff-dance-grade.is-b { color: hsl(130 70% 68%); text-shadow: 0 4px 20px hsl(130 80% 35% / .6); }
+.ff-dance-grade.is-c { color: hsl(275 80% 80%); text-shadow: 0 4px 20px hsl(275 80% 40% / .6); }
+.ff-dance-line { font-size: 15px !important; color: hsl(50 100% 86%); }
 .ff-dance-final { font-size: 42px; color: hsl(48 100% 75%); font-variant-numeric: tabular-nums; }
 .ff-dance-record { font-weight: 900; letter-spacing: .1em; color: hsl(28 100% 65%); animation: ff-dance-tick .6s ease-out; }
 .ff-dance-tally { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; font-weight: 700; }
@@ -407,6 +495,13 @@ nav { display: flex; gap: 8px; }
 @keyframes ff-dance-tick { from { scale: 1.4; opacity: .4; } to { scale: 1; opacity: 1; } }
 @keyframes ff-dance-spark { from { opacity: 1; transform: translate(-50%, -50%) scale(.4) rotate(0); } to { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.6) rotate(70deg); } }
 @keyframes ff-dance-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+@keyframes ff-dance-cheer { 40% { transform: translateY(-5%) rotate(-3deg); } }
+@keyframes ff-dance-arrow-pop { from { scale: 1.3; } to { scale: 1; } }
+@keyframes ff-dance-ripple { from { opacity: .9; scale: 1; } to { opacity: 0; scale: 1.3 1.7; } }
+@keyframes ff-dance-milestone { 0% { opacity: 0; scale: .5; } 20% { opacity: 1; scale: 1.2; } 35% { scale: 1; } 80% { opacity: 1; } 100% { opacity: 0; translate: -50% -20px; } }
+@keyframes ff-dance-banner { 0% { opacity: 0; translate: -40% 0; } 15%, 80% { opacity: 1; translate: 0 0; } 100% { opacity: 0; translate: 40% 0; } }
+@keyframes ff-dance-fade { 0%, 100% { opacity: 0; } 15%, 80% { opacity: 1; } }
+@keyframes ff-dance-stamp { from { opacity: 0; scale: 2.6; rotate: -20deg; } to { opacity: 1; scale: 1; rotate: -6deg; } }
 @media (max-width: 860px) {
   .ff-dance-board, .ff-dance-eyebrow { display: none; }
   .ff-dance-row { flex-wrap: wrap; padding: 0; }
@@ -416,7 +511,9 @@ nav { display: flex; gap: 8px; }
 @media (prefers-reduced-motion: reduce) {
   .ff-dance-avatar.dancing { translate: 0 48%; }
   .ff-dance-orbit { scale: 1; box-shadow: none; }
-  .ff-dance-avatar.miss, .ff-dance-row.wrong, .ff-dance-verdict, .ff-dance-countdown, .ff-dance-record, .ff-dance-sparkle i { animation: none; }
+  .ff-dance-avatar.miss, .ff-dance-avatar.cheer, .ff-dance-row.wrong, .ff-dance-verdict, .ff-dance-countdown, .ff-dance-record,
+  .ff-dance-sparkle i, .ff-dance-arrow.done, .ff-dance-ripple, .ff-dance-grade { animation: none; }
+  .ff-dance-milestone, .ff-dance-banner { animation-name: ff-dance-fade; }
   .ff-dance-sparkle { display: none; }
   .ff-dance-light { opacity: .3; }
 }

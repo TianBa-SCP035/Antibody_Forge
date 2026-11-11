@@ -1,6 +1,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 
 import './fatfishDisco.css';
+import { DISCO_UNLOCKED_KEY } from './constants';
 import {
   RHYTHM_BPM, BEAT_OFFSET_SECONDS, FULL_TRACK_SECONDS, discoLightFrames, discoMotionFrames, type DanceKind,
 } from './discoRhythm';
@@ -54,6 +55,7 @@ export function useFatfishDisco(options: Options) {
   const finished = ref(false);
   const stageOpen = ref(false);
   const session = ref(0);
+  const unlocked = ref(readUnlocked());
   const streak = createPokeStreak();
   let burstTimer: number | undefined;
   let clockFrame = 0;
@@ -263,6 +265,7 @@ export function useFatfishDisco(options: Options) {
       if (disposed || token !== generation) return;
       pending.value = false;
       active.value = true;
+      unlock();
       if (Number.isFinite(player.duration) && player.duration > 0) duration.value = player.duration;
       startMotion();
       tickClock();
@@ -273,6 +276,14 @@ export function useFatfishDisco(options: Options) {
       clearMotion();
       message.value = player.error ? '配乐加载失败，点击重试' : '播放被浏览器拦截，请点击开蹦';
     });
+  }
+  function readUnlocked() {
+    try { return localStorage.getItem(DISCO_UNLOCKED_KEY) === '1'; } catch { return false; }
+  }
+  function unlock() {
+    if (unlocked.value) return;
+    unlocked.value = true;
+    try { localStorage.setItem(DISCO_UNLOCKED_KEY, '1'); } catch { /* Private mode: unlocked for this visit only. */ }
   }
   function openStage() { stageOpen.value = true; }
   function closeStage() { stageOpen.value = false; }
@@ -386,5 +397,5 @@ export function useFatfishDisco(options: Options) {
     audio?.load();
     audio = undefined;
   });
-  return { active, pending, busy, message, clock, duration, finished, stageOpen, session, readTime, flurrying, play, stop, replay, openStage, closeStage, onDown, onMove, onUp, onCancel, onAux };
+  return { active, pending, busy, message, clock, duration, finished, stageOpen, session, unlocked, readTime, flurrying, play, stop, replay, openStage, closeStage, onDown, onMove, onUp, onCancel, onAux };
 }

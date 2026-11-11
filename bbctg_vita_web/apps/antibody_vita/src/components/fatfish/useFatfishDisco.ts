@@ -300,9 +300,12 @@ export function useFatfishDisco(options: Options) {
     if (active.value || pending.value) { swallow(ev); return; }
     streak.expire(performance.now());
     window.clearTimeout(burstTimer);
-    options.prepare();
     const suppressed = streak.count >= FLURRY;
-    if (suppressed) options.resetPointer(true);
+    // Unsuppressed presses reach the native handlers, which must still see a fleeing pet to catch her.
+    if (suppressed) {
+      options.prepare();
+      options.resetPointer(true);
+    }
     down = {
       id: ev.pointerId, x: ev.clientX, y: ev.clientY, time: performance.now(),
       distance: 0, suppressed, hit,

@@ -865,8 +865,8 @@ function pickAnim(pool: readonly AnimKey[]): AnimKey {
 }
 
 /**
- * Every clip is ~10 s and ends in the pose it started from, so a cut at a clip
- * boundary is seamless while a mid-clip cut is a visible pose jump.
+ * Every clip (5 or 10 s) ends in the pose it started from, so a cut at a clip
+ * boundary is a small pose change while a mid-clip cut is a visible pose jump.
  * - ambient: things she does on her own (idle cycle, nudges, dozing off) wait for the current clip to end.
  * - react:   answers to the user (poke, pet, feed, chat result) let the current reaction read for REACT_HOLD_MS first.
  * - urgent:  physical or state changes (drag, hold, throw, punch, wake) cut in at once.
@@ -970,13 +970,9 @@ async function swapTo(key: AnimKey, opts: AnimOpts) {
   pendingEnd = null;
   swapping = true;
   const useA = !frontIsA.value;
-  // Cutting into the middle of the outgoing clip jumps between two different poses; blend those cuts.
+  // Even at a clip boundary the rest poses differ in hair, tail and face, so blend every cut from a painted frame.
   const outgoingNow = useA ? slotB.value : slotA.value;
-  const midClip =
-    !!outgoingNow &&
-    !outgoingNow.ended &&
-    outgoingNow.currentTime > 0.2 &&
-    outgoingNow.duration - outgoingNow.currentTime > 0.2;
+  const blend = !!outgoingNow && outgoingNow.readyState >= 2;
   if (useA) {
     srcA.value = nextUrl;
     loopA.value = wantLoop;
@@ -999,7 +995,7 @@ async function swapTo(key: AnimKey, opts: AnimOpts) {
     window.clearTimeout(watchdog);
     swapping = false;
     window.clearTimeout(blendTimer);
-    blending.value = midClip;
+    blending.value = blend;
     if (useA) {
       opA.value = 1;
       opB.value = 0;
@@ -1016,7 +1012,7 @@ async function swapTo(key: AnimKey, opts: AnimOpts) {
         /* ignore */
       }
     };
-    if (midClip) {
+    if (blend) {
       // Keep the old clip moving while it fades out; a frozen frame under the fade reads as a stutter.
       blendTimer = window.setTimeout(() => {
         blending.value = false;
@@ -2838,14 +2834,13 @@ onBeforeUnmount(() => {
   background: transparent;
   pointer-events: none;
   image-rendering: -webkit-optimize-contrast;
-  /* Swaps at a clip boundary are instant (both clips share the rest pose). */
   transition: none;
   will-change: opacity;
 }
 .ff-video.front {
   z-index: 1;
 }
-/* Mid-clip cut: the incoming clip fades in on top while the outgoing one stays opaque a moment longer,
+/* Every cut: the incoming clip fades in on top while the outgoing one stays opaque a moment longer,
    so the two alpha layers never both sit at half opacity (that reads as her turning see-through). */
 .ff-video.blend.front {
   transition: opacity 0.14s ease-out;

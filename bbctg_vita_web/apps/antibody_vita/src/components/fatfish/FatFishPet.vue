@@ -232,7 +232,6 @@ let sleepTimer: number | undefined;
 let holdTimer: number | undefined;
 let wanderTimer: number | undefined;
 let observeTimer: number | undefined;
-let autoPlayTimer: number | undefined;
 let physicsRaf = 0;
 let roamRaf = 0;
 let pendingEnd: (() => void) | null = null;
@@ -243,6 +242,7 @@ let punchTimer: number | undefined;
 const fleeing = ref(false);
 let fleeTimer: number | undefined;
 let fleeRaf = 0;
+let caughtAt = 0;
 
 /** After chat reply or being punched, clicks call doPunch(); petting comforts. */
 const soreUntil = ref(0);
@@ -862,6 +862,26 @@ function pick<T extends string>(pool: readonly T[]): T {
 function pickAnim(pool: readonly AnimKey[]): AnimKey {
   const others = pool.filter((k) => k !== currentAnim.value);
   return pick(others.length ? others : pool);
+}
+
+/** Shuffle bag per pool: every clip in it plays once before any of them repeats. */
+const animBags = new Map<string, { bag: AnimKey[]; last?: AnimKey }>();
+function drawAnim(pool: readonly AnimKey[]): AnimKey {
+  const id = pool.join();
+  const entry = animBags.get(id) ?? { bag: [] };
+  if (!entry.bag.length) {
+    const bag = [...pool];
+    for (let i = bag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [bag[i], bag[j]] = [bag[j]!, bag[i]!];
+    }
+    // A fresh round must not open with the clip the last round ended on.
+    if (bag.length > 1 && bag.at(-1) === entry.last) [bag[0], bag[bag.length - 1]] = [bag.at(-1)!, bag[0]!];
+    entry.bag = bag;
+    animBags.set(id, entry);
+  }
+  entry.last = entry.bag.pop()!;
+  return entry.last;
 }
 
 /**
@@ -1521,6 +1541,8 @@ function resolveTaps() {
   const n = tapCount;
   dropTaps();
   if (!n || collapsed.value || dragging.value || holding.value || discoActive.value || discoPending.value) return;
+  // The press that caught her mid-flee already got its reaction; it is not also a punch.
+  if (Date.now() - caughtAt < 1000) return;
   if (sleeping.value) {
     sleeping.value = false;
     void playAnim('wake', { then: 'wakeScare', priority: 'urgent' });
@@ -1770,6 +1792,7 @@ function startFlee() {
 }
 
 function onCaughtWhileFleeing() {
+  caughtAt = Date.now();
   stopFlee();
   armSore(12000);
   void playAnim(pickAnim(['scare', 'pokeShy', 'wakeScare', 'squash', 'spin']), { priority: 'urgent' });
@@ -2158,49 +2181,59 @@ function wanderStep() {
   const state = careState.value;
   const stateAnims = STATE_ANIMS[state];
   if (stateAnims && Math.random() < 0.5) {
-    ambient(pick(stateAnims), maybeSayState);
+    ambient(drawAnim(stateAnims), maybeSayState);
     return;
   }
   const lively = state === 'happy';
   const sayMood = lively ? maybeSayState : undefined;
   const hour = hourNow();
   const seasonal = seasonalAnims();
+  const playToy = () =>
+    ambient(drawAnim(PLAYFUL_ANIMS), () =>
+      maybeIdleSay(['自己玩会儿～', '嘿！', '看我的～', '摸鱼时间到', '发明新游戏', '自娱自乐中'], 0.22, 'idle'),
+    );
 
+  // Bands: small 18% · calm 15% · seasonal (else toys) 10% · walk 27% · toys 16% · in place 14%.
   const roll = Math.random();
-  if (roll < 0.22) {
+  if (roll < 0.18) {
     const small: AnimKey[] = ['look', 'stretch', 'floatStep'];
     if (hour >= 5 && hour < 10) small.push('brush');
     if (hour >= 22 || hour < 5 || hour === 14) small.push('yawn', 'yawn');
-    ambient(pick(small), sayMood);
+    ambient(drawAnim(small), sayMood);
     return;
   }
-  if (roll < 0.42) {
+  if (roll < 0.33) {
     const calm = ['hum', 'mutterIdle', 'mutterScreen', 'mutterWipe', 'mirror', 'flute', 'violin', 'note'];
     const playful = ['sway', 'bees', 'flower', 'balloon', 'spin'];
-    ambient(pick(lively ? playful : calm), sayMood);
+    ambient(drawAnim(lively ? playful : calm), sayMood);
     return;
   }
-  // Tired/hungry/down she stays put instead of roaming.
+  // Tired/hungry/down she stays put instead of roaming or playing.
   if (stateAnims) {
-    ambient(pick(['mutterIdle', 'mutterWipe', 'look', 'floatStep', 'hum']));
+    ambient(drawAnim(['mutterIdle', 'mutterWipe', 'look', 'floatStep', 'hum']));
     return;
   }
-  if (seasonal.length && roll < 0.55) {
-    ambient(pick(seasonal), sayMood);
+  if (roll < 0.43) {
+    if (seasonal.length) ambient(drawAnim(seasonal), sayMood);
+    else playToy();
     return;
   }
-  if (!pinned.value && roll < 0.72) {
+  if (roll < 0.7 && !pinned.value) {
     const maxX = window.innerWidth - SIZE;
     const dir: 1 | -1 = pos.x < 60 ? 1 : pos.x > maxX - 60 ? -1 : Math.random() > 0.5 ? 1 : -1;
-    const gait = pick(['trot', 'run', 'crab', 'pace', 'runTurn']);
+    const gait = drawAnim(['trot', 'run', 'crab', 'pace', 'runTurn']);
     ambient(gait, () => roam(gait, dir));
     return;
   }
-  // In-place flourish (also the pinned default path).
+  if (roll >= 0.7 && roll < 0.86) {
+    playToy();
+    return;
+  }
+  // In-place flourish (also where a pinned pet's walk turns go).
   ambient(
-    pick(
+    drawAnim(
       lively
-        ? ['sway', 'bees', 'animals', 'flower', 'balloon', 'pigeon', 'celebrate', 'dance']
+        ? ['sway', 'bees', 'animals', 'flower', 'balloon', 'pigeon', 'celebrate', 'dance', 'maidDance', 'swing']
         : ['sway', 'bees', 'flower', 'dress', 'note', 'archive', 'code', 'busy', 'mutter', 'mutterScreen'],
     ),
     sayMood,
@@ -2223,16 +2256,6 @@ function roam(gait: AnimKey, dir: 1 | -1) {
     if (u < 1) roamRaf = requestAnimationFrame(step);
   };
   roamRaf = requestAnimationFrame(step);
-}
-
-/** Occasional autonomous playful action — not spammy. */
-function autoPlayful() {
-  if (!canAmbient()) return;
-  if (careState.value !== 'happy' && careState.value !== 'normal') return;
-  if (Math.random() > (careState.value === 'happy' ? 0.7 : 0.45)) return;
-  ambient(pick([...PLAYFUL_ANIMS, ...seasonalAnims()]), () =>
-    maybeIdleSay(['自己玩会儿～', '嘿！', '看我的～', '摸鱼时间到', '发明新游戏', '自娱自乐中'], 0.22, 'idle'),
-  );
 }
 
 function bootGreeting(): { text: string; anim: AnimKey } {
@@ -2410,7 +2433,6 @@ onMounted(() => {
     refreshFreshLines(!linesKnewWeather && weatherNow() !== null);
   }, 60_000);
   linesBootTimer = window.setTimeout(() => refreshFreshLines(), 15_000);
-  autoPlayTimer = window.setInterval(autoPlayful, 16000);
   lastPath = location.pathname + location.search;
   observeTimer = window.setInterval(offerFormHelp, 15000);
   document.addEventListener('visibilitychange', onVisibility);
@@ -2436,7 +2458,6 @@ onBeforeUnmount(() => {
   window.clearInterval(wanderTimer);
   window.clearInterval(careDecayTimer);
   window.clearInterval(observeTimer);
-  window.clearInterval(autoPlayTimer);
   window.clearInterval(soreTick);
   document.removeEventListener('visibilitychange', onVisibility);
   window.removeEventListener('resize', onWindowResize);

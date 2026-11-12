@@ -899,7 +899,7 @@ const REQUIRED_STATUS_DEFAULTS = Object.freeze({
 const REQUIRED_STATUS_FIELD_KEYS = new Set(Object.keys(REQUIRED_STATUS_DEFAULTS))
 const QUEUE_TERMINAL_PLAN_STATUSES = ['已取消', '小鼠KO致死']
 const QUEUE_TERMINAL_PROJECT_STATUSES = ['结题', '无效价处死']
-const USER_FIELD_KEYS = new Set(['pm', 'owner'])
+const USER_FIELD_KEYS = new Set(['pm', 'owner', 'reviewer'])
 const DATE_FIELD_KEYS = new Set(['mouse_birth_date', 'mouse_arrive_date', 'antigen_eta'])
 const ALIGNED_FIELDS = new Set([
   'experiment_id',
@@ -921,6 +921,7 @@ const ALIGNED_FIELDS = new Set([
   'remark',
   'mouse_strain',
   'mouse_strain_category',
+  'reviewer',
 ])
 const DRAFT_PROTECTED_FIELDS = new Set(['plan_status', 'reviewer', 'review_status', 'can_start'])
 const SUPPORT_EDIT_FIELDS = new Set([
@@ -951,7 +952,7 @@ const EDITOR_SECTIONS = [
       { key: 'plan_status', label: '状态', type: 'status', optionsKey: 'plan_status', tone: 'status', lock: 'aligned' },
       { key: 'can_start', label: '可开展', type: 'yesno', tone: 'yesno' },
       { key: 'sort_order', label: '排序', type: 'text' },
-      { key: 'reviewer', label: '审核人', type: 'text', maxlength: 64 },
+      { key: 'reviewer', label: '审核人', type: 'select', optionsKey: 'reviewers', lock: 'aligned' },
       { key: 'review_status', label: '审核结果', type: 'select', optionsKey: 'review_status', tone: 'review' },
     ],
   },
@@ -1023,7 +1024,7 @@ const SHEET_COLUMNS = [
   { key: 'study_type', label: '课题类型', edit: 'select', optionsKey: 'study_type' },
   { key: 'species_cross', label: '种属交叉', edit: 'multi', minWidth: 160 },
   { key: 'owner', label: '开展人', width: 90, edit: 'select', optionsKey: 'owners' },
-  { key: 'reviewer', label: '审核人', width: 90, edit: 'text' },
+  { key: 'reviewer', label: '审核人', width: 90, edit: 'select', optionsKey: 'reviewers' },
   { key: 'review_status', label: '审核结果', width: 90, edit: 'select', optionsKey: 'review_status' },
   { key: 'immuno_method', label: '免疫方式', edit: 'multi', minWidth: 140 },
   { key: 'remark', label: '备注', edit: 'text' },
@@ -1690,11 +1691,12 @@ export default {
         await this.getList({ flushEditor: false })
         return
       }
-      if (field === 'review_status') {
+      const stampReviewer = field === 'review_status' && !row.aligned_locked
+      if (stampReviewer) {
         row.reviewer = getSerumUserName(this.userStore.userInfo || {}) || ''
       }
       return this.saveRow(row, {
-        fields: field === 'review_status' ? ['review_status', 'reviewer'] : [field],
+        fields: stampReviewer ? ['review_status', 'reviewer'] : [field],
       })
     },
     formatCodesText(value) {
@@ -1948,9 +1950,6 @@ export default {
       if (['remark', 'mouse_remark', 'antigen_remark'].includes(key) && raw.length > 255) {
         return { ok: false, reason: 'length' }
       }
-      if (key === 'reviewer' && raw.length > 64) {
-        return { ok: false, reason: 'length' }
-      }
       if (key === 'target_codes') return { ok: true, value: this.uniq(this.parseCodes(raw)) }
       if (DATE_FIELD_KEYS.has(key)) return this.normalizeSheetDate(raw)
       if (this.isTokenMultiKey(key)) {
@@ -2045,7 +2044,7 @@ export default {
       if (reason === 'unknown') return '粘贴内容包含无法识别的列'
       if (reason === 'started') return '请到方案草稿页核对方案后再开展'
       if (reason === 'length') {
-        return `${label}不能超过 ${key === 'reviewer' ? 64 : 255} 个字`
+        return `${label}不能超过 255 个字`
       }
       return `${label}必须与可选项完全匹配`
     },

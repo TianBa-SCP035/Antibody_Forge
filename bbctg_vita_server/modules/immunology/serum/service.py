@@ -184,6 +184,7 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "project_code": HeaderColumn(SerumImmProject.project_code),
     "project_name": HeaderColumn(SerumImmProject.project_name),
     "lab_notebook": HeaderColumn(SerumImmProject.lab_notebook),
+    "reviewer": HeaderColumn(SerumImmProject.reviewer, "enum"),
     "mouse_strain_category": csv_column(SerumImmProject.mouse_strain_category),
     "remark": HeaderColumn(SerumImmProject.remark),
     "study_type": HeaderColumn(SerumImmProject.study_type, "enum"),
@@ -235,6 +236,7 @@ def apply_project_filters(
     lab_notebook = data.get("lab_notebook")
     cage_position = data.get("cage_position")
     owner = data.get("owner")
+    reviewer = data.get("reviewer")
     status = data.get("project_status")
     target_name = data.get("target_name")
     study_type = data.get("study_type")
@@ -289,6 +291,7 @@ def apply_project_filters(
                 )
             )
     stmt = restrict(stmt, owner, lambda value: SerumImmProject.owner == value)
+    stmt = restrict(stmt, reviewer, lambda value: SerumImmProject.reviewer == value)
     stmt = restrict(stmt, status, _project_status_clause)
     target_clause = recorded_target_clause(
         db,
@@ -453,6 +456,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, st
         "实验ID",
         "项目名称",
         "实验记录本",
+        "审核人",
         "归类鼠型",
         "笼位",
         "实验备注",
@@ -480,6 +484,7 @@ def export_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, st
             project.experiment_id,
             project.project_name,
             project.lab_notebook,
+            project.reviewer,
             project.mouse_strain_category,
             cages.get(str(project.experiment_id or "").strip(), ""),
             project.remark,
@@ -1018,6 +1023,18 @@ def update_lab_notebook(db: Session, project_id: int, lab_notebook: str | None) 
     return value
 
 
+def update_reviewer(db: Session, project_id: int, reviewer: str | None) -> str | None:
+    project = db.get(SerumImmProject, project_id)
+    if not project:
+        raise ValueError("项目不存在")
+    value = str(reviewer or "").strip() or None
+    if value and len(value) > 64:
+        raise ValueError("审核人不能超过 64 个字")
+    project.reviewer = value
+    db.commit()
+    return value
+
+
 def update_cage_position(db: Session, project_id: int, cage_position: str | None) -> None:
     project = lock_project_by_id(db, project_id)
     if not project:
@@ -1149,6 +1166,7 @@ def get_filter_options(db: Session) -> dict:
 
     return {
         "owners": distinct_values(SerumImmProject.owner),
+        "reviewers": distinct_values(SerumImmProject.reviewer),
         "study_types": distinct_values(SerumImmProject.study_type),
         "pms": distinct_values(SerumImmProject.pm),
         "mouse_strains": token_values(SerumImmProject.mouse_strain),

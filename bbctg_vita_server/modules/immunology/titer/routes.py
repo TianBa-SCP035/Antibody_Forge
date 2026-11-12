@@ -234,7 +234,7 @@ _TITER_ORDER_BATCH_FIELD_KEYS = (
     "facs_plate_count",
     "elisa_plate_count",
 )
-_TITER_ORDER_RECORD_FIELD_KEYS = ("test_dates", "remark", "summary")
+_TITER_ORDER_RECORD_FIELD_KEYS = ("test_dates", "remark", "summary", "lab_notebook")
 _TITER_ORDER_RECORD_OPEN_FIELD_KEYS = ("serum_status", "priority")
 
 
@@ -381,7 +381,7 @@ def _require_project_owner_or_edit_all(
     )
     if not project:
         raise ValueError("项目不存在")
-    if _is_owner_name(user, project.owner):
+    if _is_project_member(user, project):
         return
     exp_id = str(project.experiment_id or "").strip()
     if exp_id:
@@ -439,6 +439,10 @@ def _is_owner_name(user: SysUser, owner: str | None) -> bool:
     return bool(owner_name and owner_name in _owner_aliases(user))
 
 
+def _is_project_member(user: SysUser, project: SerumImmProject) -> bool:
+    return _is_owner_name(user, project.owner) or _is_owner_name(user, project.reviewer)
+
+
 def _has_payload_keys(data: dict, keys: tuple[str, ...]) -> bool:
     return any(key in data for key in keys)
 
@@ -465,7 +469,7 @@ def _require_titer_order_record_edit(
         return
     if _is_titer_owner(user, order.titer_owners):
         return
-    if project and _is_owner_name(user, project.owner):
+    if project and _is_project_member(user, project):
         return
     raise HTTPException(
         status_code=403,

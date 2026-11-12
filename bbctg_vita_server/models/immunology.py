@@ -14,6 +14,7 @@ class SerumImmProject(Base):
     project_code: Mapped[str | None] = mapped_column(String(64))
     project_name: Mapped[str | None] = mapped_column(String(255))
     lab_notebook: Mapped[str | None] = mapped_column(String(64))
+    reviewer: Mapped[str | None] = mapped_column(String(64))
     project_purpose: Mapped[str | None] = mapped_column(String(255))
     start_date: Mapped[str | None] = mapped_column(DateString)
     immunization_interval: Mapped[str | None] = mapped_column(String(32))
@@ -40,6 +41,7 @@ class SerumImmProject(Base):
             "project_code": self.project_code,
             "project_name": self.project_name,
             "lab_notebook": self.lab_notebook,
+            "reviewer": self.reviewer,
             "project_purpose": self.project_purpose,
             "start_date": self.start_date,
             "immunization_interval": self.immunization_interval,
@@ -360,6 +362,7 @@ class SerumTiterOrder(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     experiment_id: Mapped[str] = mapped_column(String(64), nullable=False)
     titer_order_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    lab_notebook: Mapped[str | None] = mapped_column(String(64))
     cage_position: Mapped[str | None] = mapped_column(String(64))
     blood_collection_date: Mapped[str | None] = mapped_column(DateString)
     blood_collection_seq: Mapped[int | None] = mapped_column(Integer)
@@ -381,6 +384,7 @@ class SerumTiterOrder(Base):
             "id": self.id,
             "experiment_id": self.experiment_id,
             "titer_order_id": self.titer_order_id,
+            "lab_notebook": self.lab_notebook or "",
             "cage_position": self.cage_position or "",
             "blood_collection_date": self.blood_collection_date or "",
             "blood_collection_seq": self.blood_collection_seq,

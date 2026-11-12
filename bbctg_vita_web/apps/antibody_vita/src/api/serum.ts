@@ -79,6 +79,10 @@ export function updateLabNotebook(data: any) {
   return requestClient.post('/serum/update_lab_notebook', data, skipGlobalErrorHandler);
 }
 
+export function updateSerumReviewer(data: any) {
+  return requestClient.post('/serum/update_reviewer', data, skipGlobalErrorHandler);
+}
+
 export function export_mouse(data: any) {
   return requestClient.download('/serum/export_mouse', {
     data,

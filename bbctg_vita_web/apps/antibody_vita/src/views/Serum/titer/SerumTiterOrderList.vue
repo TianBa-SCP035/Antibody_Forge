@@ -14,6 +14,23 @@
           :value="item.value"
         />
       </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.reviewer"
+        clearable
+        filterable
+        popper-class="titer-select-dropdown"
+        :filter-method="filterMethodFor('reviewerFilterQuery')"
+        v-bind="headerTop('reviewer', '审核人')"
+        @clear="clearFilterQuery('reviewerFilterQuery')"
+        @change="handleFilter"
+      >
+        <el-option
+          v-for="name in filterOptions(allReviewerOptions, reviewerFilterQuery)"
+          :key="name"
+          :label="name"
+          :value="name"
+        />
+      </ListFilterSelect>
       <template #actions>
         <el-button type="warning" :icon="Download" @click="handleListExport">
           列表导出
@@ -602,6 +619,35 @@
             />
           </template>
         </el-table-column>
+        <el-table-column column-key="reviewer" prop="reviewer" align="center" min-width="90" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="审核人" v-bind="headerMenuStates.reviewer" /></template>
+        </el-table-column>
+        <el-table-column column-key="lab_notebook" align="center" min-width="120">
+          <template #header><WorkbenchHeaderLabel label="实验记录本" v-bind="headerMenuStates.lab_notebook" /></template>
+          <template #default="{ row }">
+            <div
+              class="cell-tooltip-target"
+              @mouseenter="handleOverflowMouseEnter($event, row.id, 'lab_notebook', row.lab_notebook)"
+              @mouseleave="handleOverflowMouseLeave(row.id, 'lab_notebook')"
+            >
+              <div
+                class="el-input el-input--small inline-cell-control inline-cell-preview"
+                :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }"
+                role="textbox"
+                :tabindex="canEditTiterOrderRecord(row) ? 0 : -1"
+                @click="activateInlineControl($event, row, 'lab_notebook')"
+                @keydown="onInlinePreviewKeydown($event, row, 'lab_notebook')"
+              >
+                <div class="el-input__wrapper" :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }">
+                  <span
+                    class="el-input__inner"
+                    :class="{ 'is-placeholder': !row.lab_notebook }"
+                  >{{ row.lab_notebook || '实验记录本' }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" fixed="right" width="240" align="center">
           <template #default="{ row }">
             <el-button-group>
@@ -652,6 +698,7 @@
           @priority-change="onPriorityChange"
           @remark-change="row => saveRow(row, '备注')"
           @summary-change="row => saveRow(row, '效价小结')"
+          @lab-notebook-change="row => saveRow(row, '实验记录本')"
         />
       </div>
       </div>
@@ -876,6 +923,8 @@ const TITER_HEADER_COLUMNS = Object.freeze({
   summary: { type: 'text', label: '效价小结', values: 'search' },
   order_status: { type: 'enum', label: '工单状态', values: 'all', top: { query: 'order_status' } },
   immune_status: { type: 'enum', label: '免疫状态', values: 'all', top: { query: 'immune_status' } },
+  reviewer: { type: 'enum', label: '审核人', values: 'all', top: { query: 'reviewer' } },
+  lab_notebook: { type: 'text', label: '实验记录本', values: 'recent' },
 });
 
 const SERUM_STATUS_PENDING_TEST = '已采血';
@@ -990,6 +1039,12 @@ const OWNER_TAG_COLORS = [
   { bg: '#f4eef6', color: '#a878a0' }, // 香芋
 ];
 
+const TEXT_EDITOR_FIELDS = Object.freeze({
+  remark: { placeholder: '备注', maxlength: 500, event: 'remark-change' },
+  summary: { placeholder: '填写小结', maxlength: 500, event: 'summary-change' },
+  lab_notebook: { placeholder: '实验记录本', maxlength: 64, event: 'lab-notebook-change' },
+});
+
 const TiterTableFloatingLayer = defineComponent({
   name: 'TiterTableFloatingLayer',
   props: {
@@ -1001,7 +1056,7 @@ const TiterTableFloatingLayer = defineComponent({
     getSerumTiterStatusTagType: { type: Function, required: true },
     getTiterPriorityTone: { type: Function, required: true },
   },
-  emits: ['owner-change', 'test-dates-change', 'serum-status-change', 'priority-change', 'remark-change', 'summary-change'],
+  emits: ['owner-change', 'test-dates-change', 'serum-status-change', 'priority-change', 'remark-change', 'summary-change', 'lab-notebook-change'],
   data() {
     return {
       editor: null,
@@ -1037,7 +1092,7 @@ const TiterTableFloatingLayer = defineComponent({
       this.$nextTick(() => {
         const ins = this.$refs.controlRef;
         if (!ins) return;
-        if (field === 'remark' || field === 'summary') {
+        if (TEXT_EDITOR_FIELDS[field]) {
           ins.focus?.();
         } else if (field === 'test_dates') {
           ins.handleOpen?.();
@@ -1068,12 +1123,12 @@ const TiterTableFloatingLayer = defineComponent({
       const ed = this.editor;
       if (!ed) return;
       if (
-        (ed.field === 'remark' || ed.field === 'summary')
+        TEXT_EDITOR_FIELDS[ed.field]
         && !ed.saved
         && String(ed.row?.[ed.field] ?? '') !== String(ed.initialValue ?? '')
       ) {
         ed.saved = true;
-        this.$emit(ed.field === 'remark' ? 'remark-change' : 'summary-change', ed.row);
+        this.$emit(TEXT_EDITOR_FIELDS[ed.field].event, ed.row);
       }
       this.editor = null;
     },
@@ -1218,7 +1273,8 @@ const TiterTableFloatingLayer = defineComponent({
               h(ElOption, { key: item, label: item, value: item }),
             ),
         );
-      } else if (field === 'remark' || field === 'summary') {
+      } else if (TEXT_EDITOR_FIELDS[field]) {
+        const spec = TEXT_EDITOR_FIELDS[field];
         control = h(
           'div',
           { class: 'el-input el-input--small inline-cell-control is-focus' },
@@ -1228,14 +1284,14 @@ const TiterTableFloatingLayer = defineComponent({
                 ref: 'controlRef',
                 value: row[field] ?? '',
                 class: 'el-input__inner',
-                maxlength: 500,
-                placeholder: field === 'remark' ? '备注' : '填写小结',
+                maxlength: spec.maxlength,
+                placeholder: spec.placeholder,
                 onInput: (e) => {
                   row[field] = e.target.value;
                 },
                 onChange: () => {
                   ed.saved = true;
-                  this.$emit(field === 'remark' ? 'remark-change' : 'summary-change', row);
+                  this.$emit(spec.event, row);
                 },
                 onBlur: () => {
                   this.closeEditor();
@@ -1393,6 +1449,7 @@ export default {
         project_code: '',
         assay_method: '',
         immune_owner: '',
+        reviewer: '',
         immune_status: '',
         serum_status: '',
         summary_status: '',
@@ -1408,6 +1465,7 @@ export default {
       allOwnerOptions: [],
       allAssayMethodOptions: [],
       allImmuneOwnerOptions: [],
+      allReviewerOptions: [],
       allImmuneStatusOptions: [],
       allSerumStatusOptions: mergeTiterSerumStatusOptions(),
       titerSerumStatusOptions: [...TITER_SERUM_STATUS_OPTIONS],
@@ -1416,6 +1474,7 @@ export default {
       ownerFilterQuery: '',
       assayMethodFilterQuery: '',
       immuneOwnerFilterQuery: '',
+      reviewerFilterQuery: '',
       immuneStatusFilterQuery: '',
       stats: { ...DEFAULT_STATS },
       bloodCollectionRange: [],
@@ -1607,7 +1666,7 @@ export default {
     activateInlineControl(event, row, field) {
       if (this.plateDragging || this.plateSuppressInlineClick) return;
       if (field === 'owner' && !this.canEditTiterOrderOwner()) return;
-      if ((field === 'test_dates' || field === 'remark' || field === 'summary') && !this.canEditTiterOrderRecord(row)) return;
+      if ((field === 'test_dates' || TEXT_EDITOR_FIELDS[field]) && !this.canEditTiterOrderRecord(row)) return;
       if ((field === 'serum_status' || field === 'priority') && !this.canEditTiterOrderRecordOpen()) return;
       const targetEl = event?.currentTarget;
       const wrapEl = this.$refs.tablePlateWrap;
@@ -1631,7 +1690,7 @@ export default {
       if (label === '效价负责人') {
         return this.canEditTiterOrderOwner();
       }
-      if (label === '检测日期' || label === '备注' || label === '效价小结') {
+      if (label === '检测日期' || label === '备注' || label === '效价小结' || label === '实验记录本') {
         return this.canEditTiterOrderRecord(row);
       }
       if (label === '血清状态' || label === '优先级') {
@@ -2314,6 +2373,7 @@ export default {
         this.allOwnerOptions = meta.owners || [];
         this.allAssayMethodOptions = meta.assay_methods || [];
         this.allImmuneOwnerOptions = meta.immune_owners || [];
+        this.allReviewerOptions = meta.reviewers || [];
         this.allImmuneStatusOptions = meta.immune_statuses || [];
         this.allSerumStatusOptions = mergeTiterSerumStatusOptions(meta.serum_statuses);
       } catch (error) {
@@ -2775,6 +2835,7 @@ export default {
         project_code: '',
         assay_method: '',
         immune_owner: '',
+        reviewer: '',
         immune_status: '',
         serum_status: '',
         summary_status: '',
@@ -2793,6 +2854,7 @@ export default {
       this.ownerFilterQuery = '';
       this.assayMethodFilterQuery = '';
       this.immuneOwnerFilterQuery = '';
+      this.reviewerFilterQuery = '';
       this.immuneStatusFilterQuery = '';
       this.statFilterActive = createDefaultStatFilterActive();
       this.testDateStatScope = '';
@@ -2827,6 +2889,7 @@ export default {
     canEditTiter(row) {
       return canEditSerumTiter(this.currentUserInfo, {
         owner: row.immune_owner,
+        reviewer: row.reviewer,
         titer_owners: row.titer_owners,
       });
     },
@@ -2834,7 +2897,7 @@ export default {
       if (!row?.project_id) {
         return false;
       }
-      return canUpdateSerumStatus(this.currentUserInfo, { owner: row.immune_owner });
+      return canUpdateSerumStatus(this.currentUserInfo, { owner: row.immune_owner, reviewer: row.reviewer });
     },
     onImmuneStatusChange(row, newStatus) {
       this.list.forEach((item) => {
@@ -2919,6 +2982,12 @@ export default {
           return Promise.resolve(false);
         }
         payload.summary = row.summary;
+      } else if (label === '实验记录本') {
+        if (!this.canEditTiterOrderRecord(row)) {
+          ElMessage.warning('您没有权限编辑实验记录本');
+          return Promise.resolve(false);
+        }
+        payload.lab_notebook = row.lab_notebook;
       } else if (label === '优先级') {
         if (!this.canEditTiterOrderRecordOpen()) {
           ElMessage.warning('您没有权限编辑优先级');

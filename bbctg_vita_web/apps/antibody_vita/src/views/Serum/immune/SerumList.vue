@@ -20,6 +20,16 @@
         @keyup.enter="handleFilter"
         @clear="handleFilter"
       />
+      <ListFilterSelect
+        v-model="listQuery.reviewer"
+        v-bind="headerTop('reviewer', '审核人')"
+        clearable
+        filterable
+        :filter-method="q => setFilterQuery('reviewer', q)"
+        @clear="setFilterQuery('reviewer', '')"
+        @change="handleFilter">
+        <el-option v-for="item in filteredReviewerOptions" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
       <template #actions>
         <el-button
           type="primary"
@@ -319,17 +329,43 @@
                   v-model="editingValue"
                   class="inline-edit-input"
                   placeholder="实验记录本号"
-                  @keyup.enter="saveLabNotebook(row)"
-                  @blur="saveLabNotebook(row)"
+                  @keyup.enter="saveInlineField(row, 'lab_notebook')"
+                  @blur="saveInlineField(row, 'lab_notebook')"
                />
                <button
                   v-else
                   type="button"
                   class="inline-edit-trigger"
                   :class="{ 'is-editable': canEdit(row) }"
-                  @click="handleNotebookClick(row)"
+                  @click="handleInlineEditClick(row, 'lab_notebook')"
                >
                   {{ row.lab_notebook || '' }}
+               </button>
+            </template>
+        </el-table-column>
+
+        <el-table-column v-if="showExtraColumns" column-key="reviewer" prop="reviewer" align="center" min-width="90" show-overflow-tooltip class-name="inline-edit-cell">
+            <template #header><WorkbenchHeaderLabel label="审核人" v-bind="headerMenuStates.reviewer" /></template>
+            <template #default="{ row }">
+               <UserSelect
+                  v-if="editingField === 'reviewer' && editingRowId === row.id"
+                  v-model="editingValue"
+                  class="inline-edit-input"
+                  :options="allReviewerOptions"
+                  placeholder="选择审核人"
+                  clearable
+                  automatic-dropdown
+                  @change="saveInlineField(row, 'reviewer')"
+                  @visible-change="visible => visible || stopInlineEditIfCurrent(row.id, 'reviewer')"
+               />
+               <button
+                  v-else
+                  type="button"
+                  class="inline-edit-trigger"
+                  :class="{ 'is-editable': canEdit(row) }"
+                  @click="handleInlineEditClick(row, 'reviewer')"
+               >
+                  {{ row.reviewer || '' }}
                </button>
             </template>
         </el-table-column>
@@ -518,10 +554,11 @@ import {
 } from 'element-plus'
 
 import { notifyApiError, resolveUserMessage } from '#/api/errors'
-import { fetchList, fetchSerumColumnValues, fetchStats, getSerumFilterOptions, export_mouse, exportSerumList, autoUpdateStatus, updateCagePosition, updateLabNotebook, exportSchemePdf } from '#/api/serum'
+import { fetchList, fetchSerumColumnValues, fetchStats, getSerumFilterOptions, export_mouse, exportSerumList, autoUpdateStatus, updateCagePosition, updateLabNotebook, updateSerumReviewer, exportSchemePdf } from '#/api/serum'
 import { skipGlobalErrorHandler } from '#/api/request'
 import { SERUM_ERRORS } from '../shared/errors'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
+import UserSelect from '#/components/UserSelect.vue'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import SerumProjectStatusEditor from '../shared/SerumProjectStatusEditor.vue'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
@@ -554,6 +591,7 @@ const SERUM_HEADER_COLUMNS = Object.freeze({
   project_code: { type: 'text', label: '编号', values: 'recent', top: { query: 'project_code', kind: 'codes' } },
   project_name: { type: 'text', label: '项目名称', values: 'search', top: { query: 'project_name', kind: 'contains' } },
   lab_notebook: { type: 'text', label: '实验记录本', values: 'recent' },
+  reviewer: { type: 'enum', label: '审核人', values: 'all', top: { query: 'reviewer' } },
   mouse_strain_category: { type: 'csv', label: '归类鼠型', values: 'all', top: { query: 'mouse_strain_category' } },
   remark: { type: 'text', label: '实验备注', values: 'search' },
   study_type: { type: 'enum', label: '课题类型', values: 'all', top: { query: 'study_type' } },
@@ -563,6 +601,21 @@ const SERUM_HEADER_COLUMNS = Object.freeze({
   owner: { type: 'enum', label: '负责人', values: 'all', top: { query: 'owner' } },
   start_date: { type: 'date', label: '开始日期', values: 'all', top: { range: 'dateRange' } },
   project_status: { type: 'enum', label: '状态', values: 'all', top: { query: 'project_status', topOnly: ['ongoing', 'completed'] } },
+})
+
+const INLINE_EDIT_FIELDS = Object.freeze({
+  lab_notebook: {
+    normalize: (value) => String(value || '').replace(/\s+/g, ''),
+    save: updateLabNotebook,
+    success: '实验记录本更新成功',
+    errors: SERUM_ERRORS.list.updateLabNotebook,
+  },
+  reviewer: {
+    normalize: (value) => String(value || '').trim(),
+    save: updateSerumReviewer,
+    success: '审核人更新成功',
+    errors: SERUM_ERRORS.list.updateReviewer,
+  },
 })
 
 export default {
@@ -586,6 +639,7 @@ export default {
     AdvancedOpsBar,
     ListFilterSelect,
     SerumProjectStatusEditor,
+    UserSelect,
     WorkbenchTargetFilter,
     WorkbenchHeaderFilterChip,
     WorkbenchHeaderLabel,
@@ -629,6 +683,9 @@ export default {
     filteredOwnerOptions() {
       return this.filterOptions(this.allOwnerOptions, this.ownerFilterQuery)
     },
+    filteredReviewerOptions() {
+      return this.filterOptions(this.allReviewerOptions, this.reviewerFilterQuery)
+    },
     filteredStudyTypeOptions() {
       return this.filterOptions(this.allStudyTypeOptions, this.studyTypeFilterQuery)
     },
@@ -663,6 +720,7 @@ export default {
         project_name: undefined,
         lab_notebook: undefined,
         cage_position: undefined,
+        reviewer: undefined,
         owner: undefined,
         target_name: undefined,
         study_type: undefined,
@@ -679,6 +737,8 @@ export default {
       ownerFilterQuery: '',
       chartVisible: false,
       allOwnerOptions: [],
+      allReviewerOptions: [],
+      reviewerFilterQuery: '',
       allStudyTypeOptions: [],
       studyTypeFilterQuery: '',
       allPMOptions: [],
@@ -817,6 +877,7 @@ export default {
             project_name: this.listQuery.project_name,
             lab_notebook: this.listQuery.lab_notebook,
             cage_position: this.listQuery.cage_position,
+            reviewer: this.listQuery.reviewer,
             owner: this.listQuery.owner,
             project_status: this.listQuery.project_status,
             target_name: this.listQuery.target_name,
@@ -846,6 +907,7 @@ export default {
         const filterOptions = await getSerumFilterOptions(skipGlobalErrorHandler)
         if (filterOptions) {
           this.allOwnerOptions = filterOptions.owners || []
+          this.allReviewerOptions = filterOptions.reviewers || []
           this.allStudyTypeOptions = filterOptions.study_types || []
           this.allPMOptions = filterOptions.pms || []
           this.allMouseStrainOptions = [
@@ -983,6 +1045,7 @@ export default {
         project_name: undefined,
         lab_notebook: undefined,
         cage_position: undefined,
+        reviewer: undefined,
         owner: undefined,
         target_name: undefined,
         study_type: undefined,
@@ -998,6 +1061,7 @@ export default {
       this.clearHeaderFilters()
       this.dateRange = []
       this.ownerFilterQuery = ''
+      this.reviewerFilterQuery = ''
       this.studyTypeFilterQuery = ''
       this.pmFilterQuery = ''
       this.mouseStrainFilterQuery = ''
@@ -1201,12 +1265,12 @@ export default {
         this.savingKeys[key] = false
       })
     },
-    handleNotebookClick(row) {
+    handleInlineEditClick(row, field) {
       if (!this.canEdit(row)) {
         ElMessage.warning('您没有权限编辑此项目')
         return
       }
-      this.startInlineEdit(row.id, 'lab_notebook', row.lab_notebook || '')
+      this.startInlineEdit(row.id, field, row[field] || '')
       this.focusInlineInput(row.id, '.inline-edit-input input')
     },
     startInlineEdit(rowId, field, value) {
@@ -1235,11 +1299,8 @@ export default {
       this.editingField = ''
       this.editingValue = ''
     },
-    normalizeLabNotebook(value) {
-      return String(value || '').replace(/\s+/g, '')
-    },
-    saveLabNotebook(row) {
-      const field = 'lab_notebook'
+    saveInlineField(row, field) {
+      const spec = INLINE_EDIT_FIELDS[field]
       const key = `${row.id}:${field}`
       if (this.savingKeys[key]) {
         return
@@ -1247,8 +1308,8 @@ export default {
       if (this.editingField !== field || this.editingRowId !== row.id) {
         return
       }
-      const value = this.normalizeLabNotebook(this.editingValue)
-      if (value === (row.lab_notebook || '')) {
+      const value = spec.normalize(this.editingValue)
+      if (value === (row[field] || '')) {
         this.stopInlineEditIfCurrent(row.id, field)
         return
       }
@@ -1257,19 +1318,19 @@ export default {
         this.stopInlineEditIfCurrent(row.id, field)
         return
       }
-      const previous = row.lab_notebook || ''
-      row.lab_notebook = value
+      const previous = row[field] || ''
+      row[field] = value
       this.savingKeys[key] = true
-      updateLabNotebook({
+      spec.save({
         id: row.id,
-        lab_notebook: value,
+        [field]: value,
       }).then((response) => {
-        row.lab_notebook = response?.lab_notebook ?? value
-        ElMessage.success('实验记录本更新成功')
+        row[field] = response?.[field] ?? value
+        ElMessage.success(spec.success)
         this.stopInlineEditIfCurrent(row.id, field)
       }).catch((error) => {
-        row.lab_notebook = previous
-        notifyApiError(error, { messages: SERUM_ERRORS.list.updateLabNotebook })
+        row[field] = previous
+        notifyApiError(error, { messages: spec.errors })
         this.stopInlineEditIfCurrent(row.id, field)
       }).finally(() => {
         this.savingKeys[key] = false
@@ -1424,7 +1485,8 @@ export default {
     height: 100%;
     --el-input-height: 100%;
 }
-.app-container :deep(.inline-edit-cell .inline-edit-input .el-input__wrapper) {
+.app-container :deep(.inline-edit-cell .inline-edit-input .el-input__wrapper),
+.app-container :deep(.inline-edit-cell .inline-edit-input .el-select__wrapper) {
     height: 100%;
     min-height: 100%;
     border-radius: 0;

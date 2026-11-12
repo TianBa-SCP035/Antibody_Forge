@@ -105,12 +105,13 @@ ALIGNED_FIELDS = [
     "remark",
     "mouse_strain",
     "mouse_strain_category",
+    "reviewer",
 ]
 STRAIN_FIELDS = ("mouse_strain", "mouse_strain_category")
 SCHEME_HEADER_FIELDS = [
     field
     for field in ALIGNED_FIELDS
-    if field != "experiment_id" and field not in STRAIN_FIELDS
+    if field not in ("experiment_id", "reviewer") and field not in STRAIN_FIELDS
 ]
 
 PREP_FIELDS = [
@@ -120,7 +121,6 @@ PREP_FIELDS = [
     "project_set_code",
     "species_cross",
     "immuno_method",
-    "reviewer",
     "review_status",
     "mouse_scheme_no",
     "mouse_count",
@@ -894,7 +894,7 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "project_set_code": HeaderColumn(_W.project_set_code),
     "species_cross": csv_column(_W.species_cross, SPECIES_CROSS_OPTIONS),
     "immuno_method": csv_column(_W.immuno_method, IMMUNO_METHOD_OPTIONS),
-    "reviewer": HeaderColumn(_W.reviewer, "enum"),
+    "reviewer": HeaderColumn(_aligned_value_expr(_W.reviewer, SerumImmProject.reviewer), "enum"),
     "review_status": HeaderColumn(_W.review_status, "enum", order=REVIEW_STATUS_OPTIONS),
     "mouse_scheme_no": HeaderColumn(_W.mouse_scheme_no),
     "mouse_count": HeaderColumn(_W.mouse_count),
@@ -969,7 +969,11 @@ def _apply_list_filters(
         data.get("owner"),
         lambda value: _aligned_value_expr(SerumImmWorkbench.owner, SerumImmProject.owner) == value,
     )
-    stmt = restrict(stmt, data.get("reviewer"), lambda value: SerumImmWorkbench.reviewer == value)
+    stmt = restrict(
+        stmt,
+        data.get("reviewer"),
+        lambda value: _aligned_value_expr(SerumImmWorkbench.reviewer, SerumImmProject.reviewer) == value,
+    )
     stmt = restrict(stmt, data.get("review_status"), lambda value: SerumImmWorkbench.review_status == value)
     stmt = restrict(stmt, data.get("display_status"), lambda value: _display_status_expr() == value)
     stmt = restrict(stmt, data.get("immuno_method"), _immuno_method_filter)
@@ -1246,7 +1250,7 @@ def get_options(db: Session) -> dict[str, Any]:
     return {
         "owners": owners,
         "pms": pms,
-        "reviewers": values(SerumImmWorkbench.reviewer),
+        "reviewers": values(SerumImmProject.reviewer, SerumImmWorkbench.reviewer),
         "study_types": values(SerumImmWorkbench.study_type, SerumImmProject.study_type),
         "mouse_strains": token_values(
             SerumImmMouse.mouse_strain,

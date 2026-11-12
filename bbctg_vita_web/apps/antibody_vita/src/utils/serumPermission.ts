@@ -78,11 +78,13 @@ function normalizeName(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function isProjectOwner(userInfo: any, project: any): boolean {
-  const owner = normalizeName(project?.owner);
-  if (!owner) return false;
+function isProjectMember(userInfo: any, project: any): boolean {
   const meta = getPermMeta(userInfo);
-  return Boolean(meta && meta.aliasSet.has(owner));
+  if (!meta) return false;
+  return [project?.owner, project?.reviewer].some((value) => {
+    const name = normalizeName(value);
+    return Boolean(name && meta.aliasSet.has(name));
+  });
 }
 
 export function getSerumUserName(userInfo: any): string {
@@ -139,7 +141,7 @@ export function canEditSerumProject(userInfo: any, project: any): boolean {
   if (canEditAllSerumProjects(userInfo)) {
     return true;
   }
-  return hasAccessCode(userInfo, 'serum.project.edit') && isProjectOwner(userInfo, project);
+  return hasAccessCode(userInfo, 'serum.project.edit') && isProjectMember(userInfo, project);
 }
 
 export function canOpenSerumEdit(userInfo: any, project: any): boolean {
@@ -153,14 +155,14 @@ export function canDeleteSerumProject(userInfo: any): boolean {
 export function canUpdateSerumStatus(userInfo: any, project: any): boolean {
   return (
     hasAccessCode(userInfo, 'serum.status.update') &&
-    (canEditAllSerumProjects(userInfo) || isProjectOwner(userInfo, project))
+    (canEditAllSerumProjects(userInfo) || isProjectMember(userInfo, project))
   );
 }
 
 export function canUpdateSerumCage(userInfo: any, project: any): boolean {
   return (
     hasAccessCode(userInfo, 'serum.cage.update') &&
-    (canEditAllSerumProjects(userInfo) || isProjectOwner(userInfo, project))
+    (canEditAllSerumProjects(userInfo) || isProjectMember(userInfo, project))
   );
 }
 
@@ -168,7 +170,7 @@ export function canEditSerumTiter(userInfo: any, project: any): boolean {
   return (
     hasAccessCode(userInfo, 'serum.titer.edit') &&
     (canEditAllSerumTiter(userInfo) ||
-      isProjectOwner(userInfo, project) ||
+      isProjectMember(userInfo, project) ||
       isTiterOwner(userInfo, project))
   );
 }
@@ -177,7 +179,7 @@ export function canManageSerumTiterFiles(userInfo: any, project: any): boolean {
   return (
     hasAccessCode(userInfo, 'serum.file.manage') &&
     (canEditAllSerumTiter(userInfo) ||
-      isProjectOwner(userInfo, project) ||
+      isProjectMember(userInfo, project) ||
       isTiterOwner(userInfo, project))
   );
 }
@@ -238,6 +240,6 @@ export function canEditTiterOrderRecord(userInfo: any, row: any): boolean {
     canEditTiterOrderRecordOpen(userInfo) &&
     (canEditAllTiterOrderRecord(userInfo) ||
       isTiterOwner(userInfo, row) ||
-      isProjectOwner(userInfo, { owner: row?.immune_owner }))
+      isProjectMember(userInfo, { owner: row?.immune_owner, reviewer: row?.reviewer }))
   );
 }

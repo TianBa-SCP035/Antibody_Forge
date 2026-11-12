@@ -92,7 +92,7 @@ DDL 与种子见 [vita-database.sql](./vita-database.sql)。
 | `serum.titer_order.edit` | action | 新建/编辑效价工单（含批次信息：笼位、采血、只数、检测方法等） |
 | `serum.titer_order.delete` | action | 删除效价工单 |
 | `serum.titer_order.owner.edit` | action | 编辑效价负责人列 |
-| `serum.titer_order.record.edit` | action | 编辑检测日期、备注、效价小结（需为效价或免疫负责人，或 `record.edit_all`）；血清状态、检测优先级仅需本权限 |
+| `serum.titer_order.record.edit` | action | 编辑检测日期、备注、效价小结、实验记录本（需为效价或免疫负责人，或 `record.edit_all`）；血清状态、检测优先级仅需本权限 |
 | `serum.titer_order.record.edit_all` | action | 编辑任意工单检测记录字段（含效价小结） |
 
 ### 2.2 镁伽模块（`mega.*`）
@@ -240,9 +240,9 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 | 工作台实验保障 | `serum.workbench.support_edit`；按“小鼠后勤”和“抗原”字段白名单校验，不限制项目状态 |
 | 工作台开展 | `serum.workbench.edit`，外加 `serum.project.edit` 或 `serum.project.edit_all`（此时尚无正式项目，不校验负责人） |
 | 靶点搜索 | `serum.page.edit` 或 `serum.page.workbench` |
-| 保存项目（有 id） | 当前负责人且改后仍为自己 → `serum.project.edit`；否则 `serum.project.edit_all` |
+| 保存项目（有 id） | 当前负责人或审核人且不改负责人 → `serum.project.edit`；否则 `serum.project.edit_all` |
 | 新建项目 | `serum.project.create`；无 `edit_all` 时只能把自己设为 `owner` |
-| 改实验记录本 | 与方案编辑相同：`serum.project.edit_all`，或 `serum.project.edit` 且为项目负责人 |
+| 改实验记录本 / 审核人 | 与方案编辑相同：`serum.project.edit_all`，或 `serum.project.edit` 且为项目负责人 |
 | 改笼位 | `serum.cage.update` + 项目负责人或 `edit_all` |
 | 改状态 | 项目负责人：`status.update` 或 `titer.edit`；非负责人：`status.update`+`edit_all`，或 `titer.edit`+`titer.edit_all` |
 | 鼠号分组查询 / 鼠号明细保存 | `serum.project.edit` / `edit_all` / `serum.titer.edit` / `titer.edit_all` **任一** |
@@ -255,7 +255,7 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 | 效价工单（检测记录） | 检测日期 / 备注 / 小结：`record.edit` + 负责人或 `record.edit_all`；血清状态 / 检测优先级：仅 `record.edit` |
 | 自动更新状态 | `serum.status.auto_update` |
 
-负责人匹配：用户 `username` / `display_name`（前端下发为 `realName`）与项目 `owner` 字符串比对（含姓名首段别名）。
+负责人匹配：用户 `username` / `display_name`（前端下发为 `realName`）与项目 `owner` 字符串比对（含姓名首段别名）。项目审核人 `reviewer` 与项目负责人同权：上表“项目负责人”“免疫负责人”均包含审核人，但审核人不能改负责人。
 
 > **安全边界**：前端按钮隐藏不能代替后端校验；所有写接口以 `require_permission` 及上述归属逻辑为准。
 

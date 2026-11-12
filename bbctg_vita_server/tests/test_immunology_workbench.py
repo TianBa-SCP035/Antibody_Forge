@@ -70,12 +70,29 @@ class HeaderFilterTests(unittest.TestCase):
         self.addCleanup(engine.dispose)
         with sessionmaker(bind=engine, expire_on_commit=False)() as db:
             db.add_all([
-                workbench_model(experiment_id="E1", plan_status=workbench_service.PLAN_STATUS_STARTED, owner="旧人"),
-                project_model(experiment_id="E1", owner="张三"),
-                workbench_model(experiment_id="E2", plan_status="草稿", owner="李四"),
+                workbench_model(
+                    experiment_id="E1",
+                    plan_status=workbench_service.PLAN_STATUS_STARTED,
+                    owner="旧人",
+                    reviewer="旧审",
+                ),
+                project_model(experiment_id="E1", owner="张三", reviewer="王五"),
+                workbench_model(experiment_id="E2", plan_status="草稿", owner="李四", reviewer="王五"),
                 workbench_model(experiment_id="E3", plan_status="草稿"),
             ])
             db.commit()
+
+            started = db.query(workbench_model).filter_by(experiment_id="E1").one()
+            overlay = workbench_service._overlay_identity(started.to_dict(), db.query(project_model).one())
+            self.assertEqual(overlay["reviewer"], "王五")
+            by_reviewer = workbench_service._apply_list_filters(
+                workbench_service._count_stmt(), {"reviewer": "王五"}, db=db
+            )
+            self.assertEqual(db.scalar(by_reviewer), 2)
+            stale_reviewer = workbench_service._apply_list_filters(
+                workbench_service._count_stmt(), {"reviewer": "旧审"}, db=db
+            )
+            self.assertEqual(db.scalar(stale_reviewer), 0)
 
             values = workbench_service.get_column_values(db, {"field": "owner"})["items"]
             self.assertEqual(

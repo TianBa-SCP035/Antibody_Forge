@@ -176,6 +176,17 @@ def update_lab_notebook(
     return success({"message": "实验记录本更新成功", "lab_notebook": value})
 
 
+@router.post("/update_reviewer")
+def update_reviewer(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    _require_project_scheme_edit(db, current_user, int(data.get("id")))
+    value = service.update_reviewer(db, int(data.get("id")), data.get("reviewer"))
+    return success({"message": "审核人更新成功", "reviewer": value})
+
+
 @router.post("/update_cage_position")
 def update_cage_position(
     data: dict,
@@ -313,14 +324,16 @@ def _require_project_save_permission(db: Session, user: SysUser, data: dict) -> 
     if not project:
         raise ValueError("项目不存在")
 
-    target_owner = str(data.get("owner") or project.owner or "").strip()
+    current_owner = str(project.owner or "").strip()
+    target_owner = str(data.get("owner") or current_owner).strip()
     if not target_owner:
         data["owner"] = project.owner
-        target_owner = str(project.owner or "").strip()
+        target_owner = current_owner
 
-    is_current_owner = _is_owner_name(user, project.owner)
-    keeps_own_owner = _is_owner_name(user, target_owner)
-    if is_current_owner and keeps_own_owner:
+    keeps_owner = target_owner == current_owner or (
+        _is_owner_name(user, current_owner) and _is_owner_name(user, target_owner)
+    )
+    if keeps_owner and _is_project_member(user, project):
         require_permission(db, user, "serum.project.edit")
         return
 
@@ -338,10 +351,10 @@ def require_serum_project_edit_permission(db: Session, user: SysUser) -> None:
     )
 
 
-def require_serum_project_editor(db: Session, user: SysUser, owner: str | None) -> None:
+def require_serum_project_editor(db: Session, user: SysUser, project: SerumImmProject) -> None:
     if has_permission(db, user, "serum.project.edit_all"):
         return
-    if has_permission(db, user, "serum.project.edit") and _is_owner_name(user, owner):
+    if has_permission(db, user, "serum.project.edit") and _is_project_member(user, project):
         return
     raise HTTPException(
         status_code=403,
@@ -353,14 +366,14 @@ def _require_project_scheme_edit(db: Session, user: SysUser, project_id: int) ->
     project = db.get(SerumImmProject, project_id)
     if not project:
         raise ValueError("项目不存在")
-    require_serum_project_editor(db, user, project.owner)
+    require_serum_project_editor(db, user, project)
 
 
 def _require_project_owner_or_edit_all(db: Session, user: SysUser, project_id: int) -> None:
     project = db.get(SerumImmProject, project_id)
     if not project:
         raise ValueError("项目不存在")
-    if _is_owner_name(user, project.owner):
+    if _is_project_member(user, project):
         return
     require_permission(db, user, "serum.project.edit_all")
 
@@ -369,7 +382,7 @@ def _require_status_update_access(db: Session, user: SysUser, project_id: int) -
     project = db.get(SerumImmProject, project_id)
     if not project:
         raise ValueError("项目不存在")
-    if _is_owner_name(user, project.owner):
+    if _is_project_member(user, project):
         if has_permission(db, user, "serum.status.update") or has_permission(db, user, "serum.titer.edit"):
             return
         raise HTTPException(
@@ -401,3 +414,7 @@ def _owner_aliases(user: SysUser) -> set[str]:
 def _is_owner_name(user: SysUser, owner: str | None) -> bool:
     owner_name = str(owner or "").strip()
     return bool(owner_name and owner_name in _owner_aliases(user))
+
+
+def _is_project_member(user: SysUser, project: SerumImmProject) -> bool:
+    return _is_owner_name(user, project.owner) or _is_owner_name(user, project.reviewer)

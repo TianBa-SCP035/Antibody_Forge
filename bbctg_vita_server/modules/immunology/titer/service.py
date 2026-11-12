@@ -737,6 +737,7 @@ def _order_to_list_item(
             "target_name": project.target_name or "",
             "target_codes": project.target_codes if isinstance(project.target_codes, list) else [],
             "immune_owner": project.owner or "",
+            "reviewer": project.reviewer or "",
             "immune_status": project.project_status or "",
             "blood_collections": _blood_collections_payload(blood_dates),
             "following": {
@@ -859,6 +860,8 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "facs_plate_count": HeaderColumn(func.coalesce(_assay_plate_expr("FACS"), 0), "number"),
     "elisa_plate_count": HeaderColumn(func.coalesce(_assay_plate_expr("ELISA"), 0), "number"),
     "immune_owner": HeaderColumn(SerumImmProject.owner, "enum"),
+    "reviewer": HeaderColumn(SerumImmProject.reviewer, "enum"),
+    "lab_notebook": HeaderColumn(SerumTiterOrder.lab_notebook),
     "titer_owners": json_array_column(SerumTiterOrder.titer_owners),
     "test_dates": json_array_column(SerumTiterOrder.test_dates),
     "serum_status": HeaderColumn(SerumTiterOrder.serum_status, "enum", order=TITER_SERUM_STATUS_ORDER),
@@ -985,6 +988,7 @@ def _apply_titer_order_list_filters(
             lambda owner: func.json_overlaps(SerumTiterOrder.titer_owners, json.dumps([owner])),
         )
     stmt = restrict(stmt, data.get("immune_owner"), lambda value: SerumImmProject.owner == value)
+    stmt = restrict(stmt, data.get("reviewer"), lambda value: SerumImmProject.reviewer == value)
     stmt = restrict(
         stmt,
         data.get("immune_status"),
@@ -1240,6 +1244,11 @@ def save_titer_order(db: Session, data: dict[str, Any]) -> dict:
         order.summary = summary or None
     if "remark" in data:
         order.remark = clean_field_text(data.get("remark"), keep_breaks=True) or None
+    if "lab_notebook" in data:
+        lab_notebook = str(data.get("lab_notebook") or "").strip()
+        if len(lab_notebook) > 64:
+            raise ValueError("实验记录本号过长")
+        order.lab_notebook = lab_notebook or None
     if "priority" in data:
         order.priority = _normalize_titer_order_priority(data.get("priority"))
 
@@ -1300,17 +1309,17 @@ def _collect_titer_assay_method_names(db: Session) -> list[str]:
     return [row[0] for row in rows if row[0]]
 
 
-def _collect_titer_immune_owner_names(db: Session) -> list[str]:
+def _collect_titer_project_names(db: Session, column) -> list[str]:
     rows = db.execute(
-        select(SerumImmProject.owner)
+        select(column)
         .join(SerumTiterOrder, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
         .where(
             or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"),
-            SerumImmProject.owner.is_not(None),
-            SerumImmProject.owner != "",
+            column.is_not(None),
+            column != "",
         )
         .distinct()
-        .order_by(SerumImmProject.owner)
+        .order_by(column)
     ).all()
     return [row[0] for row in rows if row[0]]
 
@@ -1353,7 +1362,8 @@ def get_titer_order_page_meta(db: Session) -> dict:
     return {
         "owners": _collect_titer_owner_names(db),
         "assay_methods": _collect_titer_assay_method_names(db),
-        "immune_owners": _collect_titer_immune_owner_names(db),
+        "immune_owners": _collect_titer_project_names(db, SerumImmProject.owner),
+        "reviewers": _collect_titer_project_names(db, SerumImmProject.reviewer),
         "immune_statuses": _collect_titer_immune_status_names(db),
         "serum_statuses": _collect_titer_serum_status_names(db),
     }
@@ -1754,6 +1764,8 @@ def export_titer_order_list_workbook(db: Session, data: dict[str, Any]) -> tuple
         "效价小结",
         "工单状态",
         "免疫状态",
+        "审核人",
+        "实验记录本",
     ]
     rows = []
     for item in items:
@@ -1778,6 +1790,8 @@ def export_titer_order_list_workbook(db: Session, data: dict[str, Any]) -> tuple
             item.get("summary"),
             item.get("order_status_label") or item.get("order_status"),
             item.get("immune_status"),
+            item.get("reviewer"),
+            item.get("lab_notebook"),
         ])
     return build_list_workbook(
         sheet_title="效价实验列表",

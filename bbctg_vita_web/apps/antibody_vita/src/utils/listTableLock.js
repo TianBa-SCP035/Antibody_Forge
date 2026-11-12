@@ -22,10 +22,12 @@ function collectElTableVmsFromVNode(rootVNode, bodyEl, out = new Set()) {
   const comp = rootVNode.component
   if (comp) {
     const compEl = comp.vnode?.el
-    if (comp.state?.doLayout && comp.layout && (!bodyEl || (compEl instanceof Node && bodyEl.contains(compEl)))) {
+    const isTable = Boolean(comp.state?.doLayout && comp.layout)
+    if (isTable && (!bodyEl || (compEl instanceof Node && bodyEl.contains(compEl)))) {
       out.add(comp)
     }
-    if (comp.subTree) {
+    // 不进入表格内部：500 行时表格子树有 10 万个 VNode
+    if (comp.subTree && !isTable) {
       collectElTableVmsFromVNode(comp.subTree, bodyEl, out)
     }
   }
@@ -47,7 +49,6 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
   let deferRaf1 = 0
   let deferRaf2 = 0
   let deferRaf3 = 0
-  let deferTimer = 0
   let deferTransitionTarget = null
   let deferTransitionHandler = null
   let deferOverlayEl = null
@@ -126,10 +127,6 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
     if (deferRaf3) {
       cancelAnimationFrame(deferRaf3)
       deferRaf3 = 0
-    }
-    if (deferTimer) {
-      clearTimeout(deferTimer)
-      deferTimer = 0
     }
     if (deferTransitionTarget && deferTransitionHandler) {
       deferTransitionTarget.removeEventListener('transitionend', deferTransitionHandler)
@@ -239,31 +236,20 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
           vm.refs?.scrollBarRef?.$el
           || tableWrapper.querySelector('.el-table__body-wrapper .el-scrollbar')
 
-        const proto = HTMLElement.prototype
-        const elemProto = Element.prototype
-        const rawOW = Object.getOwnPropertyDescriptor(proto, 'offsetWidth')?.get
-        const rawOH = Object.getOwnPropertyDescriptor(proto, 'offsetHeight')?.get
-        const rawCW = Object.getOwnPropertyDescriptor(elemProto, 'clientWidth')?.get
-        const rawCH = Object.getOwnPropertyDescriptor(elemProto, 'clientHeight')?.get
-        const rawSW = Object.getOwnPropertyDescriptor(elemProto, 'scrollWidth')?.get
-        const rawSH = Object.getOwnPropertyDescriptor(elemProto, 'scrollHeight')?.get
-
-        let cachedOW = scrollWrap && rawOW ? rawOW.call(scrollWrap) : 0
-        let cachedOH = scrollWrap && rawOH ? rawOH.call(scrollWrap) : 0
-        let cachedCW = scrollWrap && rawCW ? rawCW.call(scrollWrap) : 0
-        let cachedCH = scrollWrap && rawCH ? rawCH.call(scrollWrap) : 0
-        let cachedSW = scrollWrap && rawSW ? rawSW.call(scrollWrap) : 0
-        let cachedSH = scrollWrap && rawSH ? rawSH.call(scrollWrap) : 0
+        // 阴影、表头时间轴、滑块拖拽用的几何，只在尺寸变化（ResizeObserver）和拖拽起手时刷新
+        let cachedCW = 0
+        let cachedCH = 0
+        let cachedSW = 0
+        let cachedSH = 0
 
         const refreshScrollBoxCache = () => {
           if (!(scrollWrap instanceof HTMLElement)) return
-          if (rawOW) cachedOW = rawOW.call(scrollWrap)
-          if (rawOH) cachedOH = rawOH.call(scrollWrap)
-          if (rawCW) cachedCW = rawCW.call(scrollWrap)
-          if (rawCH) cachedCH = rawCH.call(scrollWrap)
-          if (rawSW) cachedSW = rawSW.call(scrollWrap)
-          if (rawSH) cachedSH = rawSH.call(scrollWrap)
+          cachedCW = scrollWrap.clientWidth
+          cachedCH = scrollWrap.clientHeight
+          cachedSW = scrollWrap.scrollWidth
+          cachedSH = scrollWrap.scrollHeight
         }
+        refreshScrollBoxCache()
 
         const applyShadowPair = (showLeft, showRight) => {
           if (leftShadow && showLeft !== lastShowLeft) {
@@ -351,8 +337,8 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
         // 3. 表头跟手 + 滚动期间拦住 mouseenter 强制回流 + 滚动条拖拽零回流接管。
         //    (a) 表体继续走合成器滚动（不拦截 wheel、不改 scrollLeft）；
         //    (b) 非固定表头单元格用 ScrollTimeline 按表体横向滚动进度做 translate，和表体同一帧绘制；
-        //    (c) 滚动与拖拽滑块期间缓存 scrollWrap 盒模型尺寸（offsetHeight/Width、clientHeight/Width、scrollHeight/Width），
-        //        彻底消除 ElScrollbar.handleScroll / bar.handleScroll / ElTable.syncPosition 在每帧滚动时触发的同步强制回流；
+        //    (c) 滚动后 120ms 内拦住表体 mouseenter/mouseover，避免行划过静止指针时 show-overflow-tooltip 逐格测量；
+        //        mouseleave 和按住鼠标（拖选）时的事件必须放行，否则提示框关不掉、拖选终点跟不上滚动；
         //    (d) 接管 .el-scrollbar__thumb 拖拽：仅在 mousedown 时测量一次几何，拖拽期间在 .el-scrollbar 内升起单节点透明护盾
         //        （隔绝鼠标漂移到表格行和右侧操作列按钮上引发的 250 节点 tr:hover 样式重算与 el-button:hover 布局失效），
         //        并以 rAF 合并高频 mousemove，用纯算术更新 scrollTop / scrollLeft。
@@ -371,54 +357,13 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
             scrollingUntil = performance.now() + 120
           }
 
-          if (rawOW && rawOH && rawCW && rawCH && rawSW && rawSH) {
-            Object.defineProperties(scrollWrap, {
-              offsetWidth: {
-                configurable: true,
-                get() {
-                  return isHotScrolling() ? cachedOW : (cachedOW = rawOW.call(this))
-                },
-              },
-              offsetHeight: {
-                configurable: true,
-                get() {
-                  return isHotScrolling() ? cachedOH : (cachedOH = rawOH.call(this))
-                },
-              },
-              clientWidth: {
-                configurable: true,
-                get() {
-                  return isHotScrolling() ? cachedCW : (cachedCW = rawCW.call(this))
-                },
-              },
-              clientHeight: {
-                configurable: true,
-                get() {
-                  return isHotScrolling() ? cachedCH : (cachedCH = rawCH.call(this))
-                },
-              },
-              scrollWidth: {
-                configurable: true,
-                get() {
-                  return isHotScrolling() ? cachedSW : (cachedSW = rawSW.call(this))
-                },
-              },
-              scrollHeight: {
-                configurable: true,
-                get() {
-                  return isHotScrolling() ? cachedSH : (cachedSH = rawSH.call(this))
-                },
-              },
-            })
-          }
-
           scrollWrap.addEventListener('scroll', markScrolling, { passive: true })
           scrollWrap.addEventListener('wheel', markScrolling, { passive: true })
-          for (const evtName of ['mouseenter', 'mouseleave', 'mouseover']) {
+          for (const evtName of ['mouseenter', 'mouseover']) {
             scrollWrap.addEventListener(
               evtName,
               (e) => {
-                if (isHotScrolling()) {
+                if (isHotScrolling() && e.buttons === 0) {
                   e.stopPropagation()
                 }
               },
@@ -895,20 +840,23 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
       page.addEventListener('transitionend', onTransitionEnd)
     }
 
-    // 兜底定时器（略长于 2帧起播 + 320ms 进场过渡时长，确保不会早于动画结束）
-    deferTimer = window.setTimeout(finishResume, 380)
-
-    // 若用户关闭了页面过渡动画（页面无 *-enter-active class），则无需等待 380ms，在下一帧直接显现
-    deferRaf1 = requestAnimationFrame(() => {
-      deferRaf1 = 0
-      if (done || currentDeferGen !== deferGen) return
-      const hasEnterTransition =
-        page instanceof HTMLElement
-        && Array.from(page.classList).some((cls) => cls.endsWith('-enter-active'))
-      if (!hasEnterTransition) {
-        finishResume()
-      }
-    })
+    // 以 content.vue 摘掉 *-enter-active 为准（transitionend 或它从起播算的兜底定时器），不自己按固定时长兜底：
+    // 慢机上切页帧可能就要几百毫秒，固定时长会在动画结束前显现 tbody。关闭了页面过渡时首帧就没有这个 class，直接显现。
+    const isEntering = () =>
+      page instanceof HTMLElement
+      && Array.from(page.classList).some((cls) => cls.endsWith('-enter-active'))
+    const waitEnterEnd = () => {
+      deferRaf1 = requestAnimationFrame(() => {
+        deferRaf1 = 0
+        if (done || currentDeferGen !== deferGen) return
+        if (isEntering()) {
+          waitEnterEnd()
+        } else {
+          finishResume()
+        }
+      })
+    }
+    waitEnterEnd()
   }
 
   function pause(locked) {

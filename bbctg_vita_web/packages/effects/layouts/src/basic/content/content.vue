@@ -67,10 +67,10 @@ function collectInstances(root: Element, match: (comp: any) => boolean) {
     if (!vnode || typeof vnode !== 'object') return;
     const comp = vnode.component;
     if (comp) {
+      // 命中后不进入其内部：500 行表格子树有 10 万个 VNode
       if (match(comp)) {
         result.add(comp);
-      }
-      if (comp.subTree) {
+      } else if (comp.subTree) {
         visitVNode(comp.subTree);
       }
     }
@@ -232,7 +232,6 @@ function onEnter(
   };
 
   host.addEventListener('transitionend', onTransitionEnd);
-  timer = window.setTimeout(finish, 380);
 
   raf1 = requestAnimationFrame(() => {
     raf1 = 0;
@@ -241,6 +240,8 @@ function onEnter(
       if (finished) return;
       host.classList.remove(`${name}-enter-from`);
       host.classList.add(`${name}-enter-to`);
+      // 兜底从起播算：慢机上切页那一帧可能就要几百毫秒，从 onEnter 算会在动画结束前把它掐断
+      timer = window.setTimeout(finish, 380);
     });
   });
 }

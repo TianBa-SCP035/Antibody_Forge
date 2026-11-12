@@ -54,7 +54,7 @@ const showFooter = computed(() =>
         v-if="variant === 'announcements'"
         class="divide-y divide-border/60 px-2 py-1"
       >
-        <li v-for="item in announcements" :key="item.id" class="px-2 py-3">
+        <li v-for="item in announcements" :key="item.id" class="px-2 py-2.5">
           <article
             class="rounded-xl px-2 py-2 transition-colors hover:bg-muted/30"
             :class="item.pinned ? 'bg-rose-50/80 dark:bg-rose-950/20' : ''"

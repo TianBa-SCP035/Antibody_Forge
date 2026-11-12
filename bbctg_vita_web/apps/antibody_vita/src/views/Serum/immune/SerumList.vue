@@ -761,6 +761,8 @@ export default {
       schemePrintLoading: false,
       tableScrollAnimationFrame: 0,
       extraColumnsTimer: 0,
+      extraColumnsPending: false,
+      extraColumnsRaf: 0,
       statsRequestToken: 0,
       statsKey: '',
     }
@@ -779,6 +781,23 @@ export default {
     if (this.isListDataStale()) {
       this.refreshTabData()
     }
+    if (this.extraColumnsPending) {
+      this.extraColumnsPending = false
+      this.commitExtraColumnsAfterEnter()
+    }
+  },
+  deactivated() {
+    // 筛选栏过渡没走完就切走：离屏时增删扩展列会整表重渲染，正好卡在新页面的进场动画里，留到切回来再提交
+    if (this.extraColumnsTimer) {
+      clearTimeout(this.extraColumnsTimer)
+      this.extraColumnsTimer = 0
+      this.extraColumnsPending = true
+    }
+    if (this.extraColumnsRaf) {
+      cancelAnimationFrame(this.extraColumnsRaf)
+      this.extraColumnsRaf = 0
+      this.extraColumnsPending = true
+    }
   },
   beforeUnmount() {
     if (this.tableScrollAnimationFrame) {
@@ -787,6 +806,10 @@ export default {
     if (this.extraColumnsTimer) {
       clearTimeout(this.extraColumnsTimer)
       this.extraColumnsTimer = 0
+    }
+    if (this.extraColumnsRaf) {
+      cancelAnimationFrame(this.extraColumnsRaf)
+      this.extraColumnsRaf = 0
     }
   },
   methods: {
@@ -1004,6 +1027,22 @@ export default {
         this.extraColumnsTimer = 0
       }
       this.commitExtraColumnsSync()
+    },
+    commitExtraColumnsAfterEnter() {
+      const tick = () => {
+        this.extraColumnsRaf = 0
+        const page = this.$el
+        const entering =
+          page instanceof HTMLElement
+          && (Array.from(page.classList).some((cls) => cls.endsWith('-enter-active'))
+            || Boolean(page.querySelector('.is-list-table-defer-body')))
+        if (entering) {
+          this.extraColumnsRaf = requestAnimationFrame(tick)
+          return
+        }
+        this.commitExtraColumnsSync()
+      }
+      this.extraColumnsRaf = requestAnimationFrame(tick)
     },
     commitExtraColumnsSync() {
       const next = this.showAdvancedFilters

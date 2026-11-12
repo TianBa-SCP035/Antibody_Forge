@@ -35,6 +35,12 @@ export function getHomeAnnouncements(): HomeAnnouncement[] {
       pinned: true,
     },
     {
+      id: '3',
+      title: $t('page.home.mockAnnFatfishTitle'),
+      content: $t('page.home.mockAnnFatfishContent'),
+      publishedAt: new Date().toISOString().slice(0, 10),
+    },
+    {
       id: '2',
       title: $t('page.home.mockAnnWelcomeTitle'),
       content: $t('page.home.mockAnnWelcomeContent'),

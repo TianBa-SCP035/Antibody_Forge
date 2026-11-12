@@ -114,6 +114,8 @@
     "mockAnnAdminDate": "常驻",
     "mockAnnWelcomeTitle": "平台公告",
     "mockAnnWelcomeContent": "欢迎使用 Antibody Vita，请从快捷导航进入各业务模块。",
+    "mockAnnFatfishTitle": "小道消息",
+    "mockAnnFatfishContent": "听说一口气连戳大肥鱼 100 下会有惊喜？手不能停哦～",
     "mockMsgWelcomeTitle": "欢迎使用站内信",
     "mockMsgWelcomeSummary": "业务通知与审批消息将在此集中展示，接入消息服务后自动推送。",
     "mockMsgWelcomeDate": "今天",

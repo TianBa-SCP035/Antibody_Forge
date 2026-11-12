@@ -114,6 +114,8 @@
     "mockAnnAdminDate": "Always",
     "mockAnnWelcomeTitle": "Platform notice",
     "mockAnnWelcomeContent": "Welcome to Antibody Vita. Use quick navigation to open business modules.",
+    "mockAnnFatfishTitle": "Rumor has it",
+    "mockAnnFatfishContent": "Poke FatFish 100 times in a row for a surprise? Don't stop tapping!",
     "mockMsgWelcomeTitle": "Welcome to Messages",
     "mockMsgWelcomeSummary": "Notifications and approvals will appear here once the messaging service is connected.",
     "mockMsgWelcomeDate": "Today",

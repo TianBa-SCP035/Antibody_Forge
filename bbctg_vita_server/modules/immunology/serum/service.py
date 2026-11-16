@@ -1,9 +1,9 @@
-from collections import defaultdict
 import hashlib
-from io import BytesIO
 import json
-from pathlib import Path
 import shutil
+from collections import defaultdict
+from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook
@@ -13,16 +13,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
-from core.errors import BusinessError
-from utils.filter_values import (
-    DEFAULT_RECORDED_TARGET_LIMIT,
-    clean_field_text,
-    like_contains,
-    recorded_target_clause,
-    recorded_target_search,
-    restrict,
-)
-
+from core.errors import BusinessError, ConflictError, NotFoundError
 from models.immunology import (
     SerumElisaPlate,
     SerumFacsPlate,
@@ -44,6 +35,15 @@ from modules.immunology.titer.service import (
     create_titer_order_for_blood_collection_if_absent,
 )
 from utils.clock import now_local
+from utils.codes import insert_with_retry
+from utils.filter_values import (
+    DEFAULT_RECORDED_TARGET_LIMIT,
+    clean_field_text,
+    like_contains,
+    recorded_target_clause,
+    recorded_target_search,
+    restrict,
+)
 from utils.header_filters import (
     HeaderColumn,
     csv_column,
@@ -54,7 +54,7 @@ from utils.header_filters import (
     target_column,
     without_header_fields,
 )
-from utils.codes import insert_with_retry
+from utils.pagination import MAX_PAGE_LIMIT, parse_page_limit
 
 SERUM_CAGE_NO_MOUSE = "SERUM_CAGE_NO_MOUSE"
 TERMINAL_PROJECT_STATUSES = frozenset({"结题", "无效价处死"})
@@ -412,12 +412,11 @@ def _cages_by_experiment(db: Session, experiment_ids: list[str]) -> dict[str, st
     return {key: "、".join(sorted(cages)) for key, cages in grouped.items()}
 
 
-MAX_LIST_LIMIT = 500
+MAX_LIST_LIMIT = MAX_PAGE_LIMIT
 
 
 def get_list(db: Session, data: dict[str, Any]) -> dict:
-    page = max(int(data.get("page", 1) or 1), 1)
-    limit = min(max(int(data.get("limit", 20) or 20), 1), MAX_LIST_LIMIT)
+    page, limit = parse_page_limit(data, max_limit=MAX_LIST_LIMIT)
     stmt = _project_list_stmt(db, data)
 
     total_stmt = select(func.count()).select_from(stmt.subquery())
@@ -661,7 +660,7 @@ def save_mouse_registry(db: Session, data: dict[str, Any]) -> dict:
             )
         )
     if not row:
-        raise ValueError("小鼠分组不存在")
+        raise NotFoundError("小鼠分组不存在")
 
     if "mouse_registry" in data:
         row.mouse_registry = data.get("mouse_registry")
@@ -905,11 +904,11 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
     if project_id:
         project = lock_project_by_id(db, int(project_id))
         if not project:
-            raise ValueError("项目不存在")
+            raise NotFoundError("项目不存在")
         if not expected_revision:
             raise ValueError("项目版本缺失，请刷新后重试")
         if expected_revision != _project_revision(_project_snapshot(db, project)):
-            raise ValueError("项目已被其他用户修改，请刷新后重试")
+            raise ConflictError("项目已被其他用户修改，请刷新后重试")
         previous_project_status = str(project.project_status or "").strip()
         new_eid = update_project_identifiers(
             db,
@@ -980,7 +979,7 @@ def save_serum(db: Session, data: dict[str, Any]) -> dict:
 def delete_serum(db: Session, project_id: int) -> None:
     project = lock_project_by_id(db, project_id)
     if not project:
-        raise ValueError("项目不存在")
+        raise NotFoundError("项目不存在")
     exp_id = project.experiment_id
     for model in EXPERIMENT_RELATED_MODELS:
         for record in db.scalars(select(model).where(model.experiment_id == exp_id)).all():
@@ -999,7 +998,7 @@ def update_status(db: Session, project_id: int, project_status: str) -> None:
         raise ValueError("状态不能超过 64 个字符")
     project = db.get(SerumImmProject, project_id)
     if not project:
-        raise ValueError("项目不存在")
+        raise NotFoundError("项目不存在")
     previous_project_status = str(project.project_status or "").strip()
     project.project_status = project_status
     _sync_queue_if_terminal_status_changed(
@@ -1014,7 +1013,7 @@ def update_status(db: Session, project_id: int, project_status: str) -> None:
 def update_lab_notebook(db: Session, project_id: int, lab_notebook: str | None) -> str | None:
     project = db.get(SerumImmProject, project_id)
     if not project:
-        raise ValueError("项目不存在")
+        raise NotFoundError("项目不存在")
     value = _normalize_lab_notebook(lab_notebook)
     if value and len(value) > 64:
         raise ValueError("实验记录本号过长")
@@ -1026,7 +1025,7 @@ def update_lab_notebook(db: Session, project_id: int, lab_notebook: str | None) 
 def update_reviewer(db: Session, project_id: int, reviewer: str | None) -> str | None:
     project = db.get(SerumImmProject, project_id)
     if not project:
-        raise ValueError("项目不存在")
+        raise NotFoundError("项目不存在")
     value = str(reviewer or "").strip() or None
     if value and len(value) > 64:
         raise ValueError("审核人不能超过 64 个字")
@@ -1038,7 +1037,7 @@ def update_reviewer(db: Session, project_id: int, reviewer: str | None) -> str |
 def update_cage_position(db: Session, project_id: int, cage_position: str | None) -> None:
     project = lock_project_by_id(db, project_id)
     if not project:
-        raise ValueError("项目不存在")
+        raise NotFoundError("项目不存在")
     mice = db.scalars(
         select(SerumImmMouse).where(SerumImmMouse.experiment_id == project.experiment_id)
     ).all()
@@ -1052,7 +1051,7 @@ def update_cage_position(db: Session, project_id: int, cage_position: str | None
 def update_prep_status(db: Session, experiment_id: str, prep_status: str | None) -> None:
     project = db.scalar(select(SerumImmProject).where(SerumImmProject.experiment_id == experiment_id))
     if not project:
-        raise ValueError("项目不存在")
+        raise NotFoundError("项目不存在")
     project.prep_status = prep_status
     db.commit()
 

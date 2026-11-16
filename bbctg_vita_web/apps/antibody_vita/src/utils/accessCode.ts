@@ -19,7 +19,8 @@ function codesSignature(raw: unknown): string {
   return '';
 }
 
-export function hasAccessCode(userInfo: any, code: string): boolean {
+/** 有任一权限码即为真，和后端 require(*codes) 一致。 */
+export function hasAccessCode(userInfo: any, ...codes: string[]): boolean {
   if (!userInfo || typeof userInfo !== 'object') return false;
   const raw =
     userInfo.accessCodes || userInfo.permissions || userInfo.permissionCodes;
@@ -29,5 +30,6 @@ export function hasAccessCode(userInfo: any, code: string): boolean {
     cached = { rawSig, set: new Set(normalizeStringList(raw)) };
     codeSetCache.set(userInfo, cached);
   }
-  return cached.set.has('*') || cached.set.has(code);
+  const set = cached.set;
+  return codes.some((code) => set.has(code));
 }

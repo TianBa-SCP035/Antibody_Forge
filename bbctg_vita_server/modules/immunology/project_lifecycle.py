@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from core.errors import NotFoundError
 from models.immunology import SerumImmWorkbench
 from modules.immunology.project_lock import lock_project_by_id
 from modules.immunology.serum import service as serum_service
@@ -11,7 +12,7 @@ def delete_or_revert_project(db: Session, project_id: int) -> str:
     """Refuse when titer data exists; otherwise revert to draft or hard-delete."""
     project = lock_project_by_id(db, project_id)
     if not project:
-        raise ValueError("项目不存在")
+        raise NotFoundError("项目不存在")
 
     blocked = workbench_service.effect_data_block_reason(db, project.experiment_id)
     if blocked:

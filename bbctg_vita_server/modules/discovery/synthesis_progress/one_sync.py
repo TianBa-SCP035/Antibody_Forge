@@ -133,7 +133,7 @@ def sync_derived_statuses(
 ) -> str:
     """Derive the two assay states and the aggregate workflow state; cancelled rows keep their status."""
     changed = set(changed_fields)
-    current_status = (row.status or "").strip()
+    current_status = row.status
     if current_status == STATUS_COMPLETED and "target_type" not in changed:
         # 已完成只在要不要做流式变了（是否分泌型）时重算，其余重新检测要先打回待检测
         return current_status
@@ -149,7 +149,7 @@ def sync_derived_statuses(
         or (row.affinity_status == AFFINITY_STATUS_COMPLETED and not ("affinity_date" in changed and not row.affinity_date))
         or (row.flow_status == FLOW_STATUS_COMPLETED and not ("flow_date" in changed and not row.flow_date))
     )
-    external = (row.supply_mode or SUPPLY_MODE_ARRIVAL) == SUPPLY_MODE_ARRIVAL
+    external = row.supply_mode == SUPPLY_MODE_ARRIVAL
     # 外送合成还没到货时，误填的检测数据删干净就退回合成阶段；内部转染 / 改亚型手动推进的阶段不动
     if (
         ("arrival_date" in changed or (external and not explicit_status and ASSAY_DATA_FIELDS & changed))
@@ -233,39 +233,8 @@ def build_remote_snapshot(
     synthetic_date = normalize_date_text(row_map.get("syntheticdate"))
 
     arrival_date = normalize_date_text(row_map.get("deliverydate"))
-    raw_sup_count = _clean_int(row_map.get("supernatantcounts"))
-    if (
-        raw_sup_count is not None
-        and synthetic_count is not None
-        and raw_sup_count > synthetic_count
-        and raw_sup_count % 2 == 0
-        and (raw_sup_count // 2) <= synthetic_count
-    ):
-        raw_sup_count = raw_sup_count // 2
-    raw_plas_count = _clean_int(row_map.get("plasmidcounts"))
-    if (
-        raw_plas_count is not None
-        and synthetic_count is not None
-        and raw_plas_count > synthetic_count
-        and raw_plas_count % 2 == 0
-        and (raw_plas_count // 2) <= synthetic_count
-    ):
-        raw_plas_count = raw_plas_count // 2
-
-    if (
-        synthetic_date
-        and arrival_date
-        and synthetic_date > arrival_date
-        and order_no
-        and re.match(r"^CN(\d{2})(\d{2})(\d{2})\d+$", order_no)
-    ):
-        m_cn = re.match(r"^CN(\d{2})(\d{2})(\d{2})\d+$", order_no)
-        if m_cn:
-            cn_date = f"20{m_cn.group(1)}-{m_cn.group(2)}-{m_cn.group(3)}"
-            if cn_date <= arrival_date:
-                synthetic_date = cn_date
-
-    arrival_count = raw_sup_count if raw_sup_count is not None else raw_plas_count
+    sup_count = _clean_int(row_map.get("supernatantcounts"))
+    arrival_count = sup_count if sup_count is not None else _clean_int(row_map.get("plasmidcounts"))
     method_tokens = split_tokens(_clean_str(row_map.get("selectmethod"), 128))
     rechoose_flag = str(row_map.get("isrechooseorder") or "").strip().lower()
     if rechoose_flag == "true" or RECHOOSE_TOKEN in method_tokens:
@@ -787,7 +756,7 @@ def _match_unlinked_rows_batch(
 
     # Pass 3: Synthesis code match；改亚型/内部转染与原合成共用转码，只能按订单号或批次关联
     for urow in unlinked_rows:
-        if urow.id in matched or (urow.supply_mode or SUPPLY_MODE_ARRIVAL) != SUPPLY_MODE_ARRIVAL:
+        if urow.id in matched or urow.supply_mode != SUPPLY_MODE_ARRIVAL:
             continue
         syn_u = (urow.synthesis_code or "").strip().upper()
         if not syn_u or syn_u not in by_syn:

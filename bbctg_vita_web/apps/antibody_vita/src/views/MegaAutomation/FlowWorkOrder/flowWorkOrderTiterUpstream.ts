@@ -6,11 +6,11 @@
  */
 import type { FlowWorkOrder, FlowWorkOrderSamplePlate, FlowWorkOrderWell } from '#/api/megaAutomation';
 
-import { TITER_INSTRUMENT_WIZARD_DRAFT_KEY } from '#/constants/storageKeys';
-
 import { createDefaultFlowWorkOrder, createDefaultSamplePlate, PLATE_ROWS } from './flowWorkOrderModel';
 
 export const TITER_UPSTREAM_PREFILL_QUERY = 'titer-wizard';
+/** 效价上机向导写入、流式工单新建页读取的草稿（sessionStorage），键值已发布不要改 */
+export const TITER_INSTRUMENT_WIZARD_DRAFT_KEY = 'titer-instrument-wizard-draft';
 
 export interface TiterInstrumentWizardDraft {
   experiment_id: string;

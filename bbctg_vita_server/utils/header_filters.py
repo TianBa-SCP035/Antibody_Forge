@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Callable, Collection
+from typing import Any, Callable, Collection, Mapping
 
 from sqlalchemy import String, and_, case, cast, false, func, not_, or_, select
 from sqlalchemy.orm import Session
@@ -21,11 +21,11 @@ from utils.filter_values import (
     split_target_names,
     target_select_options,
 )
+from utils.model_fields import SORT_FIELD, ModelField
 from utils.normalize import DATE_FORMAT_MESSAGE, normalize_date, split_tokens
 
 TEXT_OPS = frozenset({"contains", "not_contains", "eq", "neq", "starts", "ends"})
 RANGE_OPS = frozenset({"eq", "gte", "lte", "between"})
-BLANK_OPS = frozenset({"blank", "not_blank"})
 VALUE_ORDERS = frozenset({"value", "value_desc", "recent"})
 DEFAULT_VALUE_LIMIT = 200
 MAX_VALUE_LIMIT = 1000
@@ -52,6 +52,20 @@ class HeaderColumn:
     values: Callable[[Session, Scoped, str], list[dict[str, Any]]] | None = None
     colors: Callable[[list[str]], Any] | None = None
     blank: Any = None
+
+
+_DEFAULT_HEADER_KINDS = {"text": "text", "date": "date", "int": "number"}
+
+
+def header_columns(fields: Mapping[str, ModelField], **explicit: HeaderColumn) -> dict[str, HeaderColumn]:
+    """可写的普通列（文本、日期、整数）按列类型生成表头筛选；有业务顺序的枚举、靶点、多值、计算列写在 explicit 里。"""
+    columns = {
+        key: HeaderColumn(field.column, _DEFAULT_HEADER_KINDS[field.kind])
+        for key, field in fields.items()
+        if field.kind in _DEFAULT_HEADER_KINDS and key != SORT_FIELD
+    }
+    columns.update(explicit)
+    return columns
 
 
 def blank_clause(spec: HeaderColumn):

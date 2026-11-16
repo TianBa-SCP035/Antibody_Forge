@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 from models.discovery import DiscoveryWorkbench
+from models.molecular_cell import MolecularLibraryOrder
 from models.target import Target
 from modules.discovery.workbench import service
 from support import DbTestCase
@@ -200,14 +201,14 @@ class DiscoveryWorkbenchIdTests(DbTestCase):
             "remark",
         ):
             self.assertEqual(saved[field], long_text)
-        with self.assertRaisesRegex(ValueError, "字段长度不能超过 1000"):
+        with self.assertRaisesRegex(ValueError, "免疫用抗原不能超过 1000 个字符"):
             service.save(self.db, {"immune_antigen": "A" * 1001})
 
 
 class DiscoveryHeaderFilterTests(DbTestCase):
     tables = (DiscoveryWorkbench, Target)
     ROWS = [
-        dict(project_code="P1", status=None, owner="甲", target_name="PD-L1", target_codes=["20R001"],
+        dict(project_code="P1", status="规划中", owner="甲", target_name="PD-L1", target_codes=["20R001"],
              mouse_strain="RN、自定义", screening_methods="达普,NGS", harvest_date="2026-01-05",
              mouse_count=5, remark="首批"),
         dict(project_code="P2", status="待剖鼠", owner="乙", target_name="HER2", target_codes=["20R002"],
@@ -273,6 +274,130 @@ class DiscoveryHeaderFilterTests(DbTestCase):
             rows = built.call_args.kwargs["rows"]
             code_at = [h for h, _ in service.EXPORT_COLUMNS].index("项目编号")
             self.assertEqual([row[code_at] for row in rows], ["P2", "P1"])
+
+
+class DiscoveryWorkbenchQueueTests(DbTestCase):
+    tables = (DiscoveryWorkbench, MolecularLibraryOrder)
+
+    def _sorts(self, *row_ids: int) -> list[int | None]:
+        self.db.expire_all()
+        return [self.db.get(DiscoveryWorkbench, rid).sort_order for rid in row_ids]
+
+    def test_queue_placement_priority_reorder_terminal_and_delete(self):
+        r1 = service.save(self.db, {"project_code": "P1"})
+        r2 = service.save(self.db, {"project_code": "P2"})
+        r3 = service.save(self.db, {"project_code": "P3", "priority": "加急"})
+        self.assertEqual(self._sorts(r1["id"], r2["id"], r3["id"]), [2, 3, 1])
+
+        service.save(self.db, {"id": r2["id"], "priority": "加急"})
+        self.assertEqual(self._sorts(r1["id"], r2["id"], r3["id"]), [3, 2, 1])
+        service.save(self.db, {"id": r3["id"], "priority": "正常"})
+        self.assertEqual(self._sorts(r1["id"], r2["id"], r3["id"]), [3, 1, 2])
+
+        service.reorder(self.db, r1["id"], r3["id"])
+        self.assertEqual(self._sorts(r2["id"], r1["id"], r3["id"]), [1, 2, 3])
+        same = service.reorder(self.db, r1["id"], r1["id"])
+        self.assertEqual([item["id"] for item in same["items"]], [r1["id"]])
+
+        r4 = service.save(self.db, {"project_code": "P4", "sort_order": 2})
+        self.assertEqual(self._sorts(r2["id"], r4["id"], r1["id"], r3["id"]), [1, 2, 3, 4])
+
+        service.save(self.db, {"id": r4["id"], "status": "已完成"})
+        self.assertEqual(self._sorts(r2["id"], r4["id"], r1["id"], r3["id"]), [1, None, 2, 3])
+        with self.assertRaisesRegex(ValueError, "终态记录不参与排序"):
+            service.reorder(self.db, r4["id"], r1["id"])
+
+        service.delete(self.db, r1["id"])
+        self.assertEqual(self._sorts(r2["id"], r3["id"]), [1, 2])
+
+    def test_expected_conflict_detection_single_and_batch(self):
+        from core.errors import ConflictError
+
+        r1 = service.save(self.db, {"project_code": "P1", "mouse_count": 5, "target_codes": ["20R001"]})
+        r2 = service.save(self.db, {"project_code": "P2", "remark": "原备注"})
+
+        with self.assertRaises(ConflictError):
+            service.save_batch(
+                self.db,
+                {
+                    "items": [
+                        {"id": r1["id"], "remark": "不应落库", "_expected": {"project_code": "P1"}},
+                        {"id": r2["id"], "remark": "新备注", "_expected": {"remark": "过期备注"}},
+                    ]
+                },
+            )
+        self.db.rollback()
+        self.assertIsNone(self.db.get(DiscoveryWorkbench, r1["id"]).remark)
+
+        updated = service.save_batch(
+            self.db,
+            {
+                "items": [
+                    {
+                        "id": r1["id"],
+                        "remark": "已保存",
+                        "_expected": {
+                            "project_code": " P1 ",
+                            "mouse_count": 5.0,
+                            "target_codes": [" 20R001 "],
+                            "remark": "",
+                            "sort_order": 999,
+                            "discovery_id": "IGNORED",
+                        },
+                    }
+                ]
+            },
+        )
+        self.assertEqual(updated["items"][0]["remark"], "已保存")
+
+        with self.assertRaises(ConflictError):
+            service.save(
+                self.db,
+                {"id": r1["id"], "remark": "冲突", "_expected": {"remark": "旧"}},
+            )
+        self.db.rollback()
+        plain = service.save(self.db, {"id": r1["id"], "remark": "无基线覆盖"})
+        self.assertEqual(plain["remark"], "无基线覆盖")
+
+    def test_screening_methods_round_trip_as_list(self):
+        from core.errors import ConflictError
+
+        row = service.save(self.db, {"screening_methods": ["NGS", "达普"]})
+        self.assertEqual(row["screening_methods"], ["达普", "NGS"])
+        self.assertNotIn("screening_method_list", row)
+
+        saved = service.save(
+            self.db,
+            {"id": row["id"], "screening_methods": ["噬菌体"], "_expected": {"screening_methods": ["达普", "NGS"]}},
+        )
+        self.assertEqual(saved["screening_methods"], ["噬菌体"])
+        with self.assertRaises(ConflictError):
+            service.save(self.db, {"id": row["id"], "remark": "冲突", "_expected": {"screening_methods": ["达普"]}})
+        self.db.rollback()
+
+    def test_list_rows_round_trip_as_expected(self):
+        service.save(
+            self.db,
+            {
+                "project_code": "P1",
+                "target_codes": ["20R001"],
+                "screening_methods": ["达普"],
+                "mouse_count": 3,
+                "harvest_date": "2026/1/5",
+                "remark": "第一行\n第二行",
+            },
+        )
+        service.save(self.db, {"project_code": "P2"})
+        items = service.get_list(self.db, {})["items"]
+        for item in items:
+            saved = service.save(self.db, {"id": item["id"], "remark": "单条", "_expected": dict(item)})
+            self.assertEqual(saved["remark"], "单条")
+        items = service.get_list(self.db, {})["items"]
+        saved = service.save_batch(
+            self.db,
+            {"items": [{"id": item["id"], "remark": "批量", "_expected": dict(item)} for item in items]},
+        )
+        self.assertEqual([row["remark"] for row in saved["items"]], ["批量", "批量"])
 
 
 if __name__ == "__main__":

@@ -1,14 +1,4 @@
-import {
-  computed,
-  getCurrentInstance,
-  nextTick,
-  onActivated,
-  onBeforeUnmount,
-  onDeactivated,
-  onMounted,
-  ref,
-  watch,
-} from 'vue'
+import { nextTick } from 'vue'
 
 /** 每页达到这个条数后，表格卡片占满一屏并固定表头。20 条仍整页滚动。 */
 export const LIST_TABLE_LOCK_MIN = 50
@@ -940,35 +930,4 @@ export const listTableLockMixin = {
   beforeUnmount() {
     this._listTableLock?.destroy()
   },
-}
-
-/** 组合式列表页。调用时 limit 的响应式来源必须已经存在。 */
-export function useListTableLock(getLimit) {
-  const instance = getCurrentInstance()
-  const listTableHeight = ref(undefined)
-  const listTableBody = ref(null)
-  const listTableLocked = computed(() => shouldLockListTable(getLimit()))
-  const lock = createLock(
-    () => {
-      const el = instance?.proxy?.$el
-      return el instanceof HTMLElement ? el : null
-    },
-    () => listTableBody.value,
-    (height) => {
-      if (height !== listTableHeight.value) listTableHeight.value = height
-    },
-    undefined,
-    () => instance,
-  )
-
-  watch(listTableLocked, (locked) => lock.apply(locked))
-  onMounted(() => lock.apply(listTableLocked.value))
-  onActivated(() => {
-    lock.apply(listTableLocked.value)
-    lock.resumeRows(listTableLocked.value)
-  })
-  onDeactivated(() => lock.pause(listTableLocked.value))
-  onBeforeUnmount(() => lock.destroy())
-
-  return { listTableLocked, listTableHeight, listTableBody }
 }

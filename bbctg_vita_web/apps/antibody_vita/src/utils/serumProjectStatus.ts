@@ -20,7 +20,7 @@ export const TITER_SERUM_STATUS_OPTIONS = [
 /** 检测优先级，从低到高。建单默认「正常」。 */
 export const TITER_PRIORITY_OPTIONS = ['正常', '加急', '非常紧急', '吉吉国王'] as const;
 
-export const TITER_PRIORITY_DEFAULT = '正常';
+const TITER_PRIORITY_DEFAULT = '正常';
 
 export const SERUM_PROJECT_STATUS_OPTIONS = [
   '规划中',
@@ -104,7 +104,7 @@ export function getTiterPriorityTone(
 export const WORKBENCH_PRIORITY_OPTIONS = TITER_PRIORITY_OPTIONS;
 export const WORKBENCH_PRIORITY_DEFAULT = TITER_PRIORITY_DEFAULT;
 
-export function canonicalizeWorkbenchPriority(priority: string | null | undefined): string {
+function canonicalizeWorkbenchPriority(priority: string | null | undefined): string {
   return String(priority || '').trim() || WORKBENCH_PRIORITY_DEFAULT;
 }
 

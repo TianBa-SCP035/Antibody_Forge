@@ -11,7 +11,7 @@
 | 权限代码 | 允许的操作与范围 |
 |---|---|
 | `atlas.page.target_library` | 访问靶点库页面，调用 `POST /api/atlas/targets/list` 查询靶点列表与状态统计 |
-| 任一业务页权限（`OPTION_ACCESS_PERMISSIONS`） | 免疫、发现工作台、合成与验证、文库构建、流式工单等业务页调用公共接口 `GET /api/options/targets` 远程检索靶点下拉选项 |
+| 任一业务页面权限（系统管理以外的 page 类权限） | 免疫、发现工作台、合成与验证、文库构建、流式工单等业务页调用公共接口 `GET /api/options/targets` 远程检索靶点下拉选项 |
 
 ## 2. 数据与编号
 
@@ -118,7 +118,7 @@
 | 方法 | 路径 | 权限 | 用途 |
 |---|---|---|---|
 | `POST` | `/api/atlas/targets/list` | `atlas.page.target_library` | 分页查询靶点列表与状态统计（请求体：`page`、`limit` 1..500 默认 20、`keyword`、`status`、`include_inactive`） |
-| `GET` | `/api/options/targets` | `OPTION_ACCESS_PERMISSIONS` 任一权限 | 跨模块靶点下拉远程搜索（参数：`keyword`、`limit` 1..50 默认 20、`codes` 逗号分隔已选编号置顶返回），复用 `get_target_list` 搜索与排序逻辑 |
+| `GET` | `/api/options/targets` | 任一业务页面权限 | 跨模块靶点下拉远程搜索（参数：`keyword`、`limit` 1..50 默认 20、`codes` 逗号分隔已选编号置顶返回），复用 `get_target_list` 搜索与排序逻辑 |
 
 ## 6. 定时任务
 

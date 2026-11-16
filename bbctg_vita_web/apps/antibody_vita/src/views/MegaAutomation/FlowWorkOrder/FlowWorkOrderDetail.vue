@@ -364,14 +364,13 @@ import {
   resumeFlowWorkOrder,
   saveFlowWorkOrder,
   validateFlowWorkOrder,
+  FLOW_WORK_ORDER_DISPATCH,
+  FLOW_WORK_ORDER_EDIT,
 } from '#/api/megaAutomation';
 import { notifyApiError, resolveUserMessage } from '#/api/errors';
 import { copyToClipboard } from '#/utils/clipboard';
 import { createLatestRequest } from '#/utils/latestRequest';
-import {
-  canDispatchMegaFlowWorkOrder,
-  canEditMegaFlowWorkOrder,
-} from '#/utils/megaPermission';
+import { hasAccessCode } from '#/utils/accessCode';
 import {
   buildDispatchChipLabel,
   EXECUTION_ISSUE_STATUSES,
@@ -386,13 +385,13 @@ import PlatingTab from './components/PlatingTab.vue';
 import {
   applyCellPlateUsage,
   buildFlowWorkOrderSavePayload,
-  cellKey,
   cellPlateBarcode,
   clearCellColumnUsage,
   clearCellPlateColumns,
   createDefaultFlowWorkOrder,
   EDITABLE_STATUSES,
   normalizeFlowWorkOrder,
+  pruneEmptyCellRefs,
   removeLockedCellKeys,
 } from './flowWorkOrderModel';
 import {
@@ -425,7 +424,6 @@ export default {
   setup() {
     const userStore = useUserStore();
     return {
-      cellKey,
       cellPlateBarcode,
       userStore,
     };
@@ -610,16 +608,6 @@ export default {
       const list = this.order.dispatches || [];
       return list.find((item) => !terminal.has(String(item?.status || ''))) || null;
     },
-    cellByKey() {
-      const map = {};
-      this.order.cell_plates.forEach((plate, plateIndex) => {
-        const barcode = this.cellPlateBarcode(plate, plateIndex);
-        (plate.columns || []).forEach((column) => {
-          map[this.cellKey(barcode, column.column_no)] = column;
-        });
-      });
-      return map;
-    },
     optionalWellWarnings() {
       const byPlate = {};
       let pcCount = 0;
@@ -766,11 +754,11 @@ export default {
     },
     canEdit() {
       if (this.isViewMode || this.loadError) return false;
-      return !this.order.id || canEditMegaFlowWorkOrder(this.currentUserInfo);
+      return !this.order.id || hasAccessCode(this.currentUserInfo, FLOW_WORK_ORDER_EDIT);
     },
     canDispatch() {
       if (this.isViewMode) return false;
-      return !this.order.id || canDispatchMegaFlowWorkOrder(this.currentUserInfo);
+      return !this.order.id || hasAccessCode(this.currentUserInfo, FLOW_WORK_ORDER_DISPATCH);
     },
     async loadMeta() {
       try {
@@ -834,6 +822,7 @@ export default {
       this.activePayloadLoading = false;
       this.clearValidationIssues();
       this.clearActivePayload();
+      this.labillionSyncToken += 1;
       this.labillionExecutionProgress = '';
       this.loading = true;
       const routeIdentity = this.detailRouteIdentity();
@@ -1006,7 +995,7 @@ export default {
             key.barcode === from ? { barcode: to, column_no: key.column_no } : key,
           );
         });
-        this.pruneEmptyCellRefs();
+        pruneEmptyCellRefs(this.order);
       }
       this.refreshCellPlateUsage(index, { fillEmpty: true, replace: true });
     },
@@ -1038,21 +1027,7 @@ export default {
           return newColumn ? [{ barcode: plateBarcode, column_no: newColumn }] : [];
         });
       });
-      this.pruneEmptyCellRefs();
-    },
-    /** 清除指向「无细胞名称」列的样本板引用 */
-    pruneEmptyCellRefs() {
-      const named = new Set(
-        Object.entries(this.cellByKey)
-          .filter(([, col]) => String(col?.cell_name || '').trim())
-          .map(([key]) => key),
-      );
-      this.order.sample_plates.forEach((plate) => {
-        const keys = Array.isArray(plate.cell_keys) ? plate.cell_keys : [];
-        plate.cell_keys = keys.filter((key) =>
-          named.has(this.cellKey(key.barcode, key.column_no)),
-        );
-      });
+      pruneEmptyCellRefs(this.order);
     },
     buildSavePayload() {
       return buildFlowWorkOrderSavePayload(this.order);

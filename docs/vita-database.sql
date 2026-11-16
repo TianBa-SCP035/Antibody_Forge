@@ -1,4 +1,4 @@
--- Antibody Forge / Vita 主库：全表 DDL + 权限点 / 接口审计映射 / 功能开关种子
+-- Antibody Forge / Vita 主库：全表 DDL + 示例角色
 -- 在 DATABASE_URL 空库执行本文件即可。
 --
 -- 说明：
@@ -6,8 +6,9 @@
 --   - 本文件只维护**当前全量 DDL + 种子**（空库执行一次）；修改已有表时直接改对应 CREATE TABLE 定义，不追加 ALTER / 升级脚本，也不标注本次新增。
 --   - 表、字段 COMMENT 须齐全且简练，只说明业务含义，不在括号中列举可能值。
 --   - 新模块尽量少改数据库；新增表和字段必须有长期业务意义，不建临时占位。
---   - sys_permission / sys_permission_api / sys_feature_flag：与代码约定对齐，建议保持完整。
---   - 文末「权限包 / 角色」仅为空库示例，覆盖血清、镁伽与系统管理。其余模块只加权限点，不写入 guest/operator，也不改现网角色/权限包。
+--   - 权限点、接口审计、功能开关默认值都在代码里声明（各模块 permissions.py，modules/registry.py 汇总），不建表、不写种子；
+--     sys_feature_flag 只保存管理员改过的开关，sys_permission_bundle_item / sys_user_permission_override 只保存授权关系。
+--   - 文末「权限包 / 角色」仅为空库示例，覆盖血清、镁伽与系统管理。其余模块不写入 guest/operator，也不改现网角色/权限包。
 --   - 外部细胞库 sam_sample 见文末注释（CELL_DB_URL，models/cell_inventory.py），勿在主库执行。
 --   - 外部员工库 org_emp / org_depart 见文末注释（EMPLOYEE_DB_URL，modules/system/employee_sync.py），勿在主库执行。
 --
@@ -48,23 +49,6 @@ CREATE TABLE IF NOT EXISTS sys_role (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   UNIQUE KEY uk_sys_role_code (code)
 ) COMMENT='系统角色表';
-
-CREATE TABLE IF NOT EXISTS sys_permission (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-  code VARCHAR(128) NOT NULL COMMENT '权限编码',
-  name VARCHAR(128) NOT NULL COMMENT '权限名称',
-  type VARCHAR(16) NOT NULL COMMENT '权限类型',
-  module VARCHAR(64) NULL COMMENT '所属模块编码',
-  resource VARCHAR(64) NULL COMMENT '资源域',
-  action VARCHAR(64) NULL COMMENT '动作',
-  route_path VARCHAR(255) NULL COMMENT '前端路由路径',
-  ui_key VARCHAR(128) NULL COMMENT '前端按钮或区域标识',
-  parent_code VARCHAR(128) NULL COMMENT '上级权限编码',
-  description VARCHAR(255) NULL COMMENT '权限描述',
-  sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
-  status VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT '权限状态',
-  UNIQUE KEY uk_sys_permission_code (code)
-) COMMENT='系统权限点表';
 
 CREATE TABLE IF NOT EXISTS sys_permission_bundle (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
@@ -148,31 +132,17 @@ CREATE TABLE IF NOT EXISTS sys_operation_log_item (
   KEY idx_sys_operation_log_item_log (log_id)
 ) COMMENT='操作日志实体变更明细';
 
-CREATE TABLE IF NOT EXISTS sys_permission_api (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-  permission_code VARCHAR(128) NOT NULL COMMENT '权限编码',
-  method VARCHAR(16) NOT NULL COMMENT 'HTTP方法',
-  path_pattern VARCHAR(255) NOT NULL COMMENT '接口路径模式',
-  description VARCHAR(255) NULL COMMENT '接口说明',
-  status VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT '状态',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  UNIQUE KEY uq_sys_permission_api (permission_code, method, path_pattern)
-) COMMENT='权限点接口映射表';
-
 CREATE TABLE IF NOT EXISTS sys_feature_flag (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
   code VARCHAR(128) NOT NULL COMMENT '功能编码',
-  name VARCHAR(128) NOT NULL COMMENT '功能名称',
-  category VARCHAR(32) NOT NULL COMMENT '功能分类',
-  description VARCHAR(255) NULL COMMENT '功能说明',
   enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
   visible TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否显示',
-  sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
+  sort_order INT NULL COMMENT '排序值；空则用模块登记的排序',
   config JSON NULL COMMENT '扩展配置',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   UNIQUE KEY uk_sys_feature_flag_code (code)
-) COMMENT='运行时功能配置表';
+) COMMENT='功能配置覆盖表';
 
 CREATE TABLE IF NOT EXISTS sys_job_run_log (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
@@ -363,13 +333,13 @@ CREATE TABLE IF NOT EXISTS serum_imm_workbench (
   mouse_strain VARCHAR(128) NULL COMMENT '确切鼠型',
   mouse_strain_category VARCHAR(128) NULL COMMENT '归类鼠型',
   sort_order INT NULL COMMENT '排序值',
-  priority VARCHAR(32) NULL COMMENT '优先级',
-  plan_status VARCHAR(32) NULL COMMENT '工作台状态',
+  priority VARCHAR(32) NOT NULL DEFAULT '正常' COMMENT '优先级',
+  plan_status VARCHAR(32) NOT NULL DEFAULT '草稿' COMMENT '工作台状态',
   project_set_code VARCHAR(64) NULL COMMENT '项目集编号',
   species_cross VARCHAR(64) NULL COMMENT '种属交叉',
   immuno_method VARCHAR(64) NULL COMMENT '免疫方式',
   reviewer VARCHAR(64) NULL COMMENT '审核人',
-  review_status VARCHAR(32) NULL COMMENT '审核结果',
+  review_status VARCHAR(32) NOT NULL DEFAULT '未审' COMMENT '审核结果',
   mouse_scheme_no VARCHAR(64) NULL COMMENT '小鼠方案号',
   mouse_count VARCHAR(32) NULL COMMENT '小鼠数量',
   mouse_zygosity VARCHAR(32) NULL COMMENT '小鼠合子状态',
@@ -378,16 +348,16 @@ CREATE TABLE IF NOT EXISTS serum_imm_workbench (
   mouse_expand_requested VARCHAR(16) NULL COMMENT '是否代下扩繁',
   mouse_region VARCHAR(64) NULL COMMENT '提供地区',
   mouse_room VARCHAR(64) NULL COMMENT '房间号',
-  mouse_status VARCHAR(32) NULL COMMENT '运输状态',
+  mouse_status VARCHAR(32) NOT NULL DEFAULT '未定' COMMENT '运输状态',
   mouse_arrive_date DATE NULL COMMENT '到鼠时间',
   mouse_remark VARCHAR(255) NULL COMMENT '小鼠备注',
   antigen_source VARCHAR(128) NULL COMMENT '抗原来源',
-  antigen_ready VARCHAR(16) NULL COMMENT '抗原到货情况',
+  antigen_ready VARCHAR(16) NOT NULL DEFAULT '否' COMMENT '抗原到货情况',
   antigen_eta VARCHAR(32) NULL COMMENT '抗原预计日',
   lnp_ordered VARCHAR(16) NULL COMMENT 'LNP是否下单',
   cell_prep_status VARCHAR(64) NULL COMMENT '冲击细胞准备',
   antigen_remark VARCHAR(255) NULL COMMENT '抗原备注',
-  can_start VARCHAR(16) NULL COMMENT '是否可开展',
+  can_start VARCHAR(16) NOT NULL DEFAULT '否' COMMENT '是否可开展',
   created_by VARCHAR(64) NULL COMMENT '创建人',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -548,7 +518,7 @@ CREATE TABLE IF NOT EXISTS serum_titer_order (
   serum_status VARCHAR(64) NULL COMMENT '血清状态',
   remark VARCHAR(500) NULL COMMENT '备注',
   summary VARCHAR(500) NULL COMMENT '效价小结',
-  priority VARCHAR(64) NULL COMMENT '检测优先级',
+  priority VARCHAR(64) NOT NULL DEFAULT '正常' COMMENT '检测优先级',
   PRIMARY KEY (id),
   UNIQUE KEY uk_serum_titer_order_id (titer_order_id),
   KEY idx_serum_titer_order_experiment_id (experiment_id)
@@ -581,8 +551,8 @@ CREATE TABLE IF NOT EXISTS discovery_workbench (
   owner VARCHAR(64) NULL COMMENT '负责人',
   immune_owner VARCHAR(64) NULL COMMENT '免疫负责人',
   cell_collector VARCHAR(64) NULL COMMENT '细胞收集人',
-  status VARCHAR(32) NULL COMMENT '状态',
-  priority VARCHAR(32) NULL COMMENT '优先级',
+  status VARCHAR(32) NOT NULL DEFAULT '规划中' COMMENT '状态',
+  priority VARCHAR(32) NOT NULL DEFAULT '正常' COMMENT '优先级',
   sort_order INT NULL COMMENT '排序值',
   remark VARCHAR(1000) NULL COMMENT '备注',
   created_by VARCHAR(64) NULL COMMENT '创建人',
@@ -598,11 +568,11 @@ CREATE TABLE IF NOT EXISTS discovery_synthesis_order (
   source_one_type VARCHAR(16) NULL COMMENT '外部来源类型',
   source_one_id BIGINT NULL COMMENT '外部来源记录ID',
   source_snapshot JSON NULL COMMENT '外部来源当前值快照',
-  status VARCHAR(32) NOT NULL COMMENT '状态',
-  priority VARCHAR(32) NULL COMMENT '优先级',
+  status VARCHAR(32) NOT NULL DEFAULT '待下单' COMMENT '状态',
+  priority VARCHAR(32) NOT NULL DEFAULT '正常' COMMENT '优先级',
   sort_order INT NULL COMMENT '排序值',
-  order_kind VARCHAR(32) NOT NULL COMMENT '订单性质',
-  supply_mode VARCHAR(32) NOT NULL COMMENT '供应方式',
+  order_kind VARCHAR(32) NOT NULL DEFAULT '常规合成' COMMENT '订单性质',
+  supply_mode VARCHAR(32) NOT NULL DEFAULT '合成到货' COMMENT '供应方式',
   target_name VARCHAR(128) NULL COMMENT '靶点名称',
   target_codes JSON NULL COMMENT '靶点编号列表',
   target_type VARCHAR(64) NULL COMMENT '靶点类型',
@@ -673,8 +643,8 @@ CREATE TABLE IF NOT EXISTS molecular_library_order (
   notebook_no VARCHAR(64) NULL COMMENT '实验记录本号',
   immunization_stage VARCHAR(64) NULL COMMENT '免疫阶段',
   library_batch_no VARCHAR(64) NULL COMMENT '建库批号',
-  status VARCHAR(24) NOT NULL COMMENT '状态',
-  priority VARCHAR(24) NOT NULL COMMENT '优先级',
+  status VARCHAR(24) NOT NULL DEFAULT '待处理' COMMENT '状态',
+  priority VARCHAR(24) NOT NULL DEFAULT '正常' COMMENT '优先级',
   owner VARCHAR(64) NULL COMMENT '负责人',
   started_at DATE NULL COMMENT '工单开始日期',
   finished_at DATE NULL COMMENT '工单完成日期',
@@ -794,181 +764,6 @@ CREATE TABLE IF NOT EXISTS molecular_library_result_link (
     FOREIGN KEY (order_id) REFERENCES molecular_library_order (id)
 ) COMMENT='文库结果关联';
 
-
-INSERT IGNORE INTO sys_permission
-  (code, name, type, module, resource, action, route_path, ui_key, parent_code, sort_order)
-VALUES
-  ('atlas.page.target_library', '靶点情报', 'page', 'atlas', 'target', 'view', '/atlas/targets', NULL, NULL, 50),
-  ('discovery.page.workbench', '抗体发现工作台', 'page', 'discovery', 'discovery_workbench', 'view', '/discovery/workbench', NULL, NULL, 400),
-  ('discovery.workbench.edit', '编辑抗体发现工作台', 'action', 'discovery', 'discovery_workbench', 'edit', NULL, 'discovery.workbench.edit_button', 'discovery.page.workbench', 401),
-  ('discovery.page.synthesis_progress', '合成与验证', 'page', 'discovery', 'synthesis_progress', 'view', '/discovery/synthesis-progress', NULL, NULL, 405),
-  ('discovery.synthesis_progress.edit', '编辑合成与验证', 'action', 'discovery', 'synthesis_progress', 'edit', NULL, 'discovery.synthesis_progress.edit_button', 'discovery.page.synthesis_progress', 406),
-  ('discovery.synthesis_progress.pm_edit', 'PM操作合成与验证', 'action', 'discovery', 'synthesis_progress', 'pm_edit', NULL, 'discovery.synthesis_progress.pm_edit_button', 'discovery.page.synthesis_progress', 407),
-  ('discovery.synthesis_progress.affinity_edit', '亲和力操作合成与验证', 'action', 'discovery', 'synthesis_progress', 'affinity_edit', NULL, 'discovery.synthesis_progress.affinity_edit_button', 'discovery.page.synthesis_progress', 408),
-  ('discovery.synthesis_progress.flow_edit', '流式操作合成与验证', 'action', 'discovery', 'synthesis_progress', 'flow_edit', NULL, 'discovery.synthesis_progress.flow_edit_button', 'discovery.page.synthesis_progress', 409),
-  ('discovery.synthesis_progress.eng_edit', '改造实验员操作合成与验证', 'action', 'discovery', 'synthesis_progress', 'eng_edit', NULL, 'discovery.synthesis_progress.eng_edit_button', 'discovery.page.synthesis_progress', 410),
-  ('molecular.page.library', '文库构建', 'page', 'molecular', 'library', 'view', '/molecular-cell/library-construction', NULL, NULL, 430),
-  ('molecular.library.edit', '编辑文库构建工单', 'action', 'molecular', 'library', 'edit', NULL, 'molecular.library.edit_button', 'molecular.page.library', 431),
-  ('molecular.page.library_detail', '文库构建详情', 'page', 'molecular', 'library_detail', 'view', '/molecular-cell/library-construction/result', NULL, 'molecular.page.library', 433),
-  ('molecular.library.file.manage', '管理质检文件和结论', 'action', 'molecular', 'library_file', 'manage', NULL, 'molecular.library.file.manage_button', 'molecular.page.library_detail', 434),
-  ('molecular.page.primer', '引物库', 'page', 'molecular', 'primer', 'view', '/molecular-cell/primer-library', NULL, NULL, 440),
-  ('molecular.primer.edit', '编辑引物库', 'action', 'molecular', 'primer', 'edit', NULL, 'molecular.primer.edit_button', 'molecular.page.primer', 441),
-  ('serum.page.workbench', '项目工作台', 'page', 'serum', 'serum_workbench', 'view', '/serum/workbench', NULL, NULL, 95),
-  ('serum.workbench.edit', '编辑项目工作台', 'action', 'serum', 'serum_workbench', 'edit', NULL, 'serum.workbench.edit_button', 'serum.page.workbench', 96),
-  ('serum.workbench.draft_edit', '编辑工作台草稿', 'action', 'serum', 'serum_workbench', 'draft_edit', NULL, NULL, 'serum.page.workbench', 97),
-  ('serum.workbench.support_edit', '编辑实验保障信息', 'action', 'serum', 'serum_workbench', 'support_edit', NULL, NULL, 'serum.page.workbench', 98),
-  ('serum.page.list', '免疫实验列表', 'page', 'serum', 'project', 'view', '/serum/list', NULL, NULL, 100),
-  ('serum.page.detail', '免疫实验详情', 'page', 'serum', 'project', 'view_detail', '/serum/detail', NULL, NULL, 110),
-  ('serum.page.edit', '免疫实验编辑', 'page', 'serum', 'project', 'edit_page', '/serum/edit', NULL, NULL, 120),
-  ('serum.page.titer', '血清效价数据', 'page', 'serum', 'titer', 'view', '/serum/titer', NULL, NULL, 130),
-  ('serum.page.titer_order', '效价实验列表', 'page', 'serum', 'titer_order', 'view', '/serum/titer-orders', NULL, NULL, 135),
-  ('serum.page.cell', '细胞库存查询', 'page', 'serum', 'cell', 'view', '/serum/cell', NULL, NULL, 140),
-  ('serum.project.create', '新建免疫项目', 'action', 'serum', 'project', 'create', NULL, 'serum.project.create_button', 'serum.page.list', 200),
-  ('serum.project.edit', '编辑本人负责免疫项目', 'action', 'serum', 'project', 'edit', NULL, 'serum.project.edit_button', 'serum.page.edit', 210),
-  ('serum.project.edit_all', '编辑全部免疫项目', 'action', 'serum', 'project', 'edit_all', NULL, 'serum.project.edit_all_button', 'serum.page.edit', 215),
-  ('serum.project.delete', '删除免疫项目', 'action', 'serum', 'project', 'delete', NULL, 'serum.project.delete_button', 'serum.page.edit', 220),
-  ('serum.status.update', '快速修改状态', 'action', 'serum', 'project_status', 'update', NULL, 'serum.status.update_button', 'serum.page.list', 230),
-  ('serum.status.auto_update', '自动更新状态', 'action', 'serum', 'project_status', 'auto_update', NULL, 'serum.status.auto_update_button', 'serum.page.list', 240),
-  ('serum.mouse.export', '导出小鼠免疫数据', 'action', 'serum', 'mouse', 'export', NULL, 'serum.mouse.export_button', 'serum.page.list', 250),
-  ('serum.cage.update', '更新笼位信息', 'action', 'serum', 'cage', 'update', NULL, 'serum.cage.update_button', 'serum.page.list', 260),
-  ('serum.titer.edit', '编辑效价数据', 'action', 'serum', 'titer', 'edit', NULL, 'serum.titer.edit_button', 'serum.page.titer', 270),
-  ('serum.titer.edit_all', '编辑全部项目效价数据', 'action', 'serum', 'titer', 'edit_all', NULL, 'serum.titer.edit_all_button', 'serum.page.titer', 275),
-  ('serum.file.manage', '管理效价文件', 'action', 'serum', 'file', 'manage', NULL, 'serum.file.manage_button', 'serum.page.titer', 280),
-  ('serum.cell.view', '查看细胞库存', 'action', 'serum', 'cell', 'view_inventory', NULL, 'serum.cell.view_button', 'serum.page.cell', 290),
-  ('serum.cell.prep_status.update', '更新细胞制备状态', 'action', 'serum', 'cell', 'update_prep_status', NULL, 'serum.cell.prep_status.update_button', 'serum.page.cell', 300),
-  ('serum.titer_order.edit', '编辑效价工单', 'action', 'serum', 'titer_order', 'edit', NULL, 'serum.titer_order.edit_button', 'serum.page.titer_order', 305),
-  ('serum.titer_order.delete', '删除效价工单', 'action', 'serum', 'titer_order', 'delete', NULL, 'serum.titer_order.delete_button', 'serum.page.titer_order', 315),
-  ('serum.titer_order.owner.edit', '编辑效价负责人', 'action', 'serum', 'titer_order', 'owner_edit', NULL, 'serum.titer_order.owner.edit_button', 'serum.page.titer_order', 320),
-  ('serum.titer_order.record.edit', '编辑本人工单检测记录', 'action', 'serum', 'titer_order', 'record_edit', NULL, 'serum.titer_order.record.edit_button', 'serum.page.titer_order', 325),
-  ('serum.titer_order.record.edit_all', '编辑全部工单检测记录', 'action', 'serum', 'titer_order', 'record_edit_all', NULL, 'serum.titer_order.record.edit_all_button', 'serum.page.titer_order', 326),
-  ('mega.page.flow_work_order', '流式工单总览', 'page', 'mega', 'flow_work_order', 'view', '/mega-automation/flow-work-orders', NULL, NULL, 500),
-  ('mega.flow_work_order.edit', '编辑流式工单', 'action', 'mega', 'flow_work_order', 'edit', NULL, 'mega.flow_work_order.edit_button', 'mega.page.flow_work_order', 510),
-  ('mega.flow_work_order.dispatch', '发送流式工单', 'action', 'mega', 'flow_work_order', 'dispatch', NULL, 'mega.flow_work_order.dispatch_button', 'mega.page.flow_work_order', 520),
-  ('system.page.user', '用户管理页面', 'page', 'system', 'user', 'view', '/system/user-permission', NULL, NULL, 900),
-  ('system.page.role', '角色管理页面', 'page', 'system', 'role', 'view', '/system/user-permission', NULL, NULL, 910),
-  ('system.page.permission', '权限管理页面', 'page', 'system', 'permission', 'view', '/system/user-permission', NULL, NULL, 920),
-  ('system.page.operation_log', '操作日志页面', 'page', 'system', 'operation_log', 'view', '/system/user-permission', NULL, NULL, 930),
-  ('system.page.feature', '系统功能页面', 'page', 'system', 'feature', 'view', '/system/features', NULL, NULL, 940),
-  ('system.user.manage', '管理用户', 'action', 'system', 'user', 'manage', NULL, 'system.user.manage_button', 'system.page.user', 1000),
-  ('system.role.manage', '管理角色', 'action', 'system', 'role', 'manage', NULL, 'system.role.manage_button', 'system.page.role', 1010),
-  ('system.permission.manage', '管理权限点', 'action', 'system', 'permission', 'manage', NULL, 'system.permission.manage_button', 'system.page.permission', 1020),
-  ('system.operation_log.view', '查看操作日志', 'action', 'system', 'operation_log', 'view', NULL, 'system.operation_log.view_button', 'system.page.operation_log', 1030),
-  ('system.feature.manage', '管理系统功能', 'action', 'system', 'feature', 'manage', NULL, 'system.feature.manage_button', 'system.page.feature', 1040);
-
--- 仅登记「会写操作日志」的写接口（POST/PUT/PATCH/DELETE + 非 page/view 权限）。
--- GET / 列表查询即使登记也不会被审计中间件记录，故不写入本表。
-INSERT IGNORE INTO sys_permission_api
-  (permission_code, method, path_pattern, description)
-VALUES
-  ('serum.workbench.edit', 'POST', '/api/serum/workbench/save', '保存免疫工作台'),
-  ('serum.workbench.edit', 'POST', '/api/serum/workbench/save_batch', '批量保存免疫工作台'),
-  ('serum.workbench.edit', 'POST', '/api/serum/workbench/save_scheme', '保存免疫工作台方案草稿'),
-  ('serum.workbench.edit', 'POST', '/api/serum/workbench/delete', '删除免疫工作台'),
-  ('serum.workbench.edit', 'POST', '/api/serum/workbench/start', '免疫工作台记录开展为实验'),
-  ('serum.workbench.edit', 'POST', '/api/serum/workbench/unlist', '免疫工作台记录下架撤回实验'),
-  ('serum.workbench.edit', 'POST', '/api/serum/workbench/copy', '复制免疫工作台记录'),
-  ('serum.workbench.edit', 'POST', '/api/serum/workbench/reorder', '免疫工作台同优先级排序'),
-  ('serum.project.create', 'POST', '/api/serum/save', '新建免疫项目'),
-  ('serum.project.edit', 'POST', '/api/serum/save', '编辑免疫项目'),
-  ('serum.project.edit', 'POST', '/api/serum/update_lab_notebook', '更新实验记录本'),
-  ('serum.project.edit', 'POST', '/api/serum/update_reviewer', '更新免疫实验审核人'),
-  ('serum.project.delete', 'POST', '/api/serum/delete', '删除免疫项目'),
-  ('serum.status.update', 'POST', '/api/serum/update_status', '快速修改状态'),
-  ('serum.cage.update', 'POST', '/api/serum/update_cage_position', '更新笼位信息'),
-  ('serum.cell.prep_status.update', 'POST', '/api/serum/project/prep_status', '更新细胞制备状态'),
-  ('serum.status.auto_update', 'POST', '/api/serum/auto_update_status', '自动更新状态'),
-  ('serum.mouse.export', 'POST', '/api/serum/export_mouse', '导出小鼠免疫数据'),
-  ('serum.file.manage', 'POST', '/api/serum/titer/file/save', '上传效价文件'),
-  ('serum.file.manage', 'POST', '/api/serum/titer/file/delete', '删除效价文件'),
-  ('serum.file.manage', 'POST', '/api/serum/titer/file/rename', '重命名效价文件'),
-  ('serum.file.manage', 'POST', '/api/serum/titer/file/replace', '替换效价文件'),
-  ('serum.titer.edit', 'POST', '/api/serum/titer/target/save', '保存效价标靶'),
-  ('serum.titer.edit', 'POST', '/api/serum/titer/pc/save', '保存效价阳性对照'),
-  ('serum.titer.edit', 'POST', '/api/serum/titer/plate/save', '保存FACS板'),
-  ('serum.titer.edit', 'POST', '/api/serum/titer/plate/delete', '删除FACS板'),
-  ('serum.titer.edit', 'POST', '/api/serum/titer/elisa/plate/save', '保存ELISA板'),
-  ('serum.titer.edit', 'POST', '/api/serum/titer/elisa/plate/delete', '删除ELISA板'),
-  ('serum.titer_order.edit', 'POST', '/api/serum/titer/order/save', '保存效价工单'),
-  ('serum.titer_order.delete', 'POST', '/api/serum/titer/order/delete', '删除效价工单'),
-  ('serum.project.edit', 'POST', '/api/serum/mouse-registry/save', '保存小鼠鼠号明细'),
-  ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/save', '保存抗体发现工作台'),
-  ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/save_batch', '批量保存抗体发现工作台'),
-  ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/delete', '删除抗体发现工作台'),
-  ('discovery.workbench.edit', 'POST', '/api/discovery/workbench/reorder', '调整抗体发现工作台排序'),
-  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/save', '保存合成与验证单'),
-  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/save_batch', '批量保存合成与验证单'),
-  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/claim', '认领合成与验证结果'),
-  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/reorder', '调整合成与验证排序'),
-  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/delete', '删除合成与验证单'),
-  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/adopt_source', '采用合成与验证外部来源变更'),
-  ('discovery.synthesis_progress.edit', 'POST', '/api/discovery/synthesis-progress/sync_now', '同步外部合成订单'),
-  ('molecular.library.edit', 'POST', '/api/molecular-cell/library-orders/save', '保存文库构建工单'),
-  ('molecular.library.edit', 'POST', '/api/molecular-cell/library-orders/batch_save', '批量保存文库构建工单'),
-  ('molecular.library.edit', 'POST', '/api/molecular-cell/library-orders/delete', '删除文库构建工单'),
-  ('molecular.library.edit', 'POST', '/api/molecular-cell/library-orders/handoff', '交接发现安排至文库构建'),
-  ('molecular.library.file.manage', 'POST', '/api/molecular-cell/library-orders/files/preflight', '预检文库构建结果路径'),
-  ('molecular.library.file.manage', 'POST', '/api/molecular-cell/library-orders/files/upload_batch', '批量上传文库构建结果'),
-  ('molecular.library.file.manage', 'POST', '/api/molecular-cell/library-orders/files/update', '更新文库构建结果文件标记'),
-  ('molecular.library.file.manage', 'POST', '/api/molecular-cell/library-orders/files/delete', '删除文库构建结果文件'),
-  ('molecular.primer.edit', 'POST', '/api/molecular-cell/library-orders/catalog/save', '保存引物'),
-  ('molecular.primer.edit', 'POST', '/api/molecular-cell/library-orders/catalog/delete', '删除引物'),
-  ('molecular.primer.edit', 'POST', '/api/molecular-cell/library-orders/catalog/batch_update', '批量修改引物'),
-  ('molecular.primer.edit', 'POST', '/api/molecular-cell/library-orders/catalog/batch_delete', '批量删除引物'),
-  ('molecular.primer.edit', 'POST', '/api/molecular-cell/library-orders/catalog/batch_save', '批量导入引物'),
-  ('molecular.page.primer', 'POST', '/api/molecular-cell/library-orders/catalog/export', '导出引物库'),
-  ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/save', '保存流式工单'),
-  ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/validate', '校验流式工单'),
-  ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/dispatch', '发送流式工单'),
-  ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/pause', '请求暂停流式工单'),
-  ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/pause-ack', '确认设备已暂停'),
-  ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/resume', '请求恢复流式工单'),
-  ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/resume-ack', '确认设备已恢复'),
-  ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/confirm-execution', '确认流式工单开始执行'),
-  ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/complete', '完成流式工单'),
-  ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/continue-execution', '继续执行流式工单'),
-  ('mega.flow_work_order.dispatch', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/fail', '标记流式工单执行失败'),
-  ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/delete', '删除流式工单'),
-  ('mega.flow_work_order.edit', 'POST', '/api/mega-automation/flow-work-orders/{order_id}/cancel', '作废流式工单'),
-  ('system.user.manage', 'POST', '/api/system/users/save', '新增或编辑用户'),
-  ('system.user.manage', 'POST', '/api/system/users/reset_password', '重置用户密码'),
-  ('system.user.manage', 'POST', '/api/system/users/delete', '删除用户'),
-  ('system.user.manage', 'POST', '/api/system/users/batch_roles', '批量设置用户角色'),
-  ('system.role.manage', 'POST', '/api/system/roles/save', '新增或编辑角色'),
-  ('system.role.manage', 'POST', '/api/system/roles/delete', '删除角色'),
-  ('system.permission.manage', 'POST', '/api/system/permission_bundles/save', '新增或编辑权限包'),
-  ('system.permission.manage', 'POST', '/api/system/permission_bundles/delete', '删除权限包'),
-  ('system.permission.manage', 'POST', '/api/system/users/{user_id}/permission_overrides', '保存用户个人权限覆盖'),
-  ('system.feature.manage', 'POST', '/api/system/features/save', '保存系统功能配置'),
-  ('system.feature.manage', 'POST', '/api/system/features/jobs/run', '手动执行定时任务');
-
-INSERT IGNORE INTO sys_feature_flag
-  (code, name, category, description, enabled, visible, sort_order, config)
-VALUES
-  ('menu.atlas', '千鼠万抗', 'menu', '控制千鼠万抗父级菜单显示', 1, 1, 5, JSON_OBJECT('path', '/atlas', 'icon', 'lucide:network')),
-  ('menu.atlas.target_library', '靶点情报', 'menu', '控制靶点情报页面显示', 1, 1, 10, JSON_OBJECT('path', '/atlas/targets', 'icon', 'lucide:database', 'parent_code', 'menu.atlas')),
-  ('menu.serum', '小鼠免疫菜单', 'menu', '控制小鼠免疫模块菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum', 'icon', 'lucide:test-tube')),
-  ('menu.serum.workbench', '项目工作台', 'menu', '控制项目工作台菜单显示', 1, 1, 5, JSON_OBJECT('path', '/serum/workbench', 'icon', 'lucide:layout-dashboard', 'parent_code', 'menu.serum')),
-  ('menu.serum.list', '免疫实验列表', 'menu', '控制免疫实验列表菜单显示', 1, 1, 10, JSON_OBJECT('path', '/serum/list', 'icon', 'lucide:list', 'parent_code', 'menu.serum')),
-  ('menu.serum.titer_order', '效价实验列表', 'menu', '控制效价实验列表菜单显示', 1, 1, 20, JSON_OBJECT('path', '/serum/titer-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.serum')),
-  ('menu.discovery', '抗体发现', 'menu', '控制抗体发现模块菜单显示', 1, 1, 15, JSON_OBJECT('path', '/discovery', 'icon', 'lucide:microscope')),
-  ('menu.discovery.workbench', '项目工作台', 'menu', '控制抗体发现项目工作台菜单显示', 1, 1, 5, JSON_OBJECT('path', '/discovery/workbench', 'icon', 'lucide:layout-dashboard', 'parent_code', 'menu.discovery')),
-  ('menu.discovery.synthesis_progress', '合成与验证', 'menu', '控制抗体发现合成与验证菜单显示', 1, 1, 10, JSON_OBJECT('path', '/discovery/synthesis-progress', 'icon', 'lucide:list-checks', 'parent_code', 'menu.discovery')),
-  ('menu.molecular_cell', '分子与细胞', 'menu', '控制分子与细胞模块菜单显示', 1, 1, 30, JSON_OBJECT('path', '/molecular-cell', 'icon', 'lucide:dna')),
-  ('menu.molecular_cell.library', '文库构建', 'menu', '控制文库构建页面显示', 1, 1, 10, JSON_OBJECT('path', '/molecular-cell/library-construction', 'icon', 'lucide:library', 'parent_code', 'menu.molecular_cell')),
-  ('menu.molecular_cell.primer', '引物库', 'menu', '控制引物库页面显示', 1, 1, 5, JSON_OBJECT('path', '/molecular-cell/primer-library', 'icon', 'lucide:flask-conical', 'parent_code', 'menu.molecular_cell')),
-  ('menu.mega_automation', '镁伽自动化菜单', 'menu', '控制镁伽自动化模块菜单显示', 1, 1, 50, JSON_OBJECT('path', '/mega-automation', 'icon', 'lucide:workflow')),
-  ('menu.mega_automation.flow_work_orders', '流式工单总览', 'menu', '控制流式工单总览页面显示', 1, 1, 10, JSON_OBJECT('path', '/mega-automation/flow-work-orders', 'icon', 'lucide:clipboard-list', 'parent_code', 'menu.mega_automation')),
-  ('menu.system', '系统管理', 'menu', '控制系统管理父级菜单显示', 1, 1, 90, JSON_OBJECT('path', '/system', 'icon', 'lucide:settings')),
-  ('menu.system.user_permission', '用户权限菜单', 'menu', '控制系统管理下用户权限页面显示', 1, 1, 10, JSON_OBJECT('path', '/system/user-permission', 'icon', 'lucide:shield-check', 'parent_code', 'menu.system')),
-  ('menu.system.features', '系统功能菜单', 'menu', '控制系统管理下系统功能页面显示', 1, 1, 20, JSON_OBJECT('path', '/system/features', 'icon', 'lucide:sliders-horizontal', 'parent_code', 'menu.system')),
-  ('feature.yunzhijia_auto_provision', '云之家自动创建用户', 'feature', '允许云之家登录时自动创建未绑定用户', 0, 1, 110, JSON_OBJECT()),
-  ('feature.drm_file_security', 'DRM 文件安全模块', 'feature', '控制上传自动解密、下载前加密等 DRM 文件安全能力', 0, 1, 120, JSON_OBJECT()),
-  ('job.employee_profile_sync', '员工资料定时同步', 'job', '每天 00:30 同步外部员工基础资料', 1, 1, 200, JSON_OBJECT('hour', 0, 'minute', 30)),
-  ('job.target_master_sync', '靶点主数据定时同步', 'job', '每天 00:45 同步外部靶点主数据', 1, 1, 205, JSON_OBJECT('hour', 0, 'minute', 45)),
-  ('job.serum_auto_update_status', '免疫状态自动更新', 'job', '每天 01:00 自动更新免疫实验状态', 1, 1, 210, JSON_OBJECT('hour', 1, 'minute', 0)),
-  ('job.discovery_auto_update_status', '抗体发现状态自动更新', 'job', '每天 01:15 自动更新已过期的冲击免状态', 1, 1, 215, JSON_OBJECT('hour', 1, 'minute', 15)),
-  ('job.mega_labillion_status_sync', '镁伽工单状态同步', 'job', '每天 02:00 同步镁伽非终态工单状态', 1, 1, 220, JSON_OBJECT('hour', 2, 'minute', 0)),
-  ('job.discovery_synthesis_order_sync', '合成与验证外部订单同步', 'job', '每隔 1 小时同步 One 合成订单与交付进度', 1, 1, 225, JSON_OBJECT('schedule', 'interval', 'every', 1, 'unit', 'hour', 'hour', 0, 'minute', 20));
 
 -- =============================================================================
 -- 权限包 / 角色（仅示例三档：访客、业务员、系统管理；生产环境完全自定义）

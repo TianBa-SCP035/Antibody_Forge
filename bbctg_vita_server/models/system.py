@@ -8,6 +8,7 @@ from db.session import Base
 
 class SysUser(Base):
     __tablename__ = "sys_user"
+    __log_label__ = "用户"
     __table_args__ = (
         UniqueConstraint("username", name="uk_sys_user_username"),
         UniqueConstraint("openid", name="uk_sys_user_openid"),
@@ -61,6 +62,7 @@ class SysUser(Base):
 
 class SysRole(Base):
     __tablename__ = "sys_role"
+    __log_label__ = "角色"
     __table_args__ = (UniqueConstraint("code", name="uk_sys_role_code"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
@@ -78,27 +80,9 @@ class SysRole(Base):
     )
 
 
-class SysPermission(Base):
-    __tablename__ = "sys_permission"
-    __table_args__ = (UniqueConstraint("code", name="uk_sys_permission_code"),)
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
-    code: Mapped[str] = mapped_column(String(128), nullable=False, comment="权限编码")
-    name: Mapped[str] = mapped_column(String(128), nullable=False, comment="权限名称")
-    type: Mapped[str] = mapped_column(String(16), nullable=False, comment="权限类型")
-    module: Mapped[str | None] = mapped_column(String(64), comment="所属模块编码")
-    resource: Mapped[str | None] = mapped_column(String(64), comment="资源域")
-    action: Mapped[str | None] = mapped_column(String(64), comment="动作")
-    route_path: Mapped[str | None] = mapped_column(String(255), comment="前端路由路径")
-    ui_key: Mapped[str | None] = mapped_column(String(128), comment="前端按钮或区域标识")
-    parent_code: Mapped[str | None] = mapped_column(String(128), comment="上级权限编码")
-    description: Mapped[str | None] = mapped_column(String(255), comment="权限描述")
-    sort_order: Mapped[int] = mapped_column(Integer, default=0, comment="排序值")
-    status: Mapped[str] = mapped_column(String(16), default="active", comment="权限状态")
-
-
 class SysPermissionBundle(Base):
     __tablename__ = "sys_permission_bundle"
+    __log_label__ = "权限包"
     __table_args__ = (UniqueConstraint("code", name="uk_sys_permission_bundle_code"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
@@ -119,6 +103,7 @@ class SysPermissionBundle(Base):
 
 class SysPermissionBundleItem(Base):
     __tablename__ = "sys_permission_bundle_item"
+    __log_label__ = "权限包"
     __table_args__ = (UniqueConstraint("bundle_code", "permission_code", name="uq_sys_permission_bundle_item"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
@@ -128,6 +113,7 @@ class SysPermissionBundleItem(Base):
 
 class SysUserRole(Base):
     __tablename__ = "sys_user_role"
+    __log_label__ = "用户"
     __table_args__ = (UniqueConstraint("user_id", "role_id", name="uq_sys_user_role"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
@@ -137,6 +123,7 @@ class SysUserRole(Base):
 
 class SysRolePermissionBundle(Base):
     __tablename__ = "sys_role_permission_bundle"
+    __log_label__ = "角色"
     __table_args__ = (UniqueConstraint("role_id", "bundle_code", name="uq_sys_role_permission_bundle"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
@@ -146,6 +133,7 @@ class SysRolePermissionBundle(Base):
 
 class SysUserPermissionOverride(Base):
     __tablename__ = "sys_user_permission_override"
+    __log_label__ = "用户"
     __table_args__ = (UniqueConstraint("user_id", "permission_code", name="uq_sys_user_permission_override"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
@@ -155,34 +143,19 @@ class SysUserPermissionOverride(Base):
     reason: Mapped[str | None] = mapped_column(String(255), comment="覆盖原因")
 
 
-class SysPermissionApi(Base):
-    __tablename__ = "sys_permission_api"
-    __table_args__ = (UniqueConstraint("permission_code", "method", "path_pattern", name="uq_sys_permission_api"),)
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
-    permission_code: Mapped[str] = mapped_column(String(128), nullable=False, comment="权限编码")
-    method: Mapped[str] = mapped_column(String(16), nullable=False, comment="HTTP方法")
-    path_pattern: Mapped[str] = mapped_column(String(255), nullable=False, comment="接口路径模式")
-    description: Mapped[str | None] = mapped_column(String(255), comment="接口说明")
-    status: Mapped[str] = mapped_column(String(16), default="active", comment="状态")
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")
-
-
 class SysFeatureFlag(Base):
     __tablename__ = "sys_feature_flag"
+    __log_label__ = "系统功能"
     __table_args__ = (
         UniqueConstraint("code", name="uk_sys_feature_flag_code"),
-        {"comment": "运行时功能配置（菜单可见性、功能开关、定时任务参数、站点偏好等）"},
+        {"comment": "管理员改过的功能配置；名称、分类、默认值在各模块 permissions.py 声明"},
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
     code: Mapped[str] = mapped_column(String(128), nullable=False, comment="功能编码")
-    name: Mapped[str] = mapped_column(String(128), nullable=False, comment="功能名称")
-    category: Mapped[str] = mapped_column(String(32), nullable=False, comment="功能分类")
-    description: Mapped[str | None] = mapped_column(String(255), comment="功能说明")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否启用")
     visible: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否显示")
-    sort_order: Mapped[int] = mapped_column(Integer, default=0, comment="排序值")
+    sort_order: Mapped[int | None] = mapped_column(Integer, comment="排序值；空则用模块登记的排序")
     config: Mapped[object | None] = mapped_column(JSON, comment="扩展配置")
     created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")
     updated_at: Mapped[datetime | None] = mapped_column(
@@ -191,20 +164,6 @@ class SysFeatureFlag(Base):
         onupdate=func.current_timestamp(),
         comment="更新时间",
     )
-
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "code": self.code,
-            "name": self.name,
-            "category": self.category,
-            "description": self.description,
-            "enabled": self.enabled,
-            "visible": self.visible,
-            "sort_order": self.sort_order,
-            "config": self.config or {},
-        }
-
 
 class SysJobRunLog(Base):
     __tablename__ = "sys_job_run_log"

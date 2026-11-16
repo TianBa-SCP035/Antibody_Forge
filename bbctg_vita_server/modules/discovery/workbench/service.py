@@ -1,44 +1,14 @@
-from datetime import date, datetime, timedelta
 import secrets
 import string
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from utils.filter_values import (
-    DEFAULT_RECORDED_TARGET_LIMIT,
-    combine_any,
-    like_contains,
-    match_any,
-    recorded_target_clause,
-    recorded_target_search,
-    split_code_tokens,
-)
-from models.types import date_blank, date_present
-from utils.normalize import (
-    join_known_options,
-    join_tokens,
-    normalize_choice,
-    normalize_date,
-    normalize_nonneg_int,
-    normalize_positive_int,
-    normalize_priority,
-    normalize_target_codes,
-    normalize_text,
-)
-from utils.header_filters import (
-    HeaderColumn,
-    header_column_values,
-    csv_column,
-    csv_token_clause,
-    header_filter_clauses,
-    header_sort_clauses,
-    json_array_column,
-    target_column,
-)
-
+from core.errors import NotFoundError
 from models.discovery import DiscoveryWorkbench
+from models.types import date_blank, date_present
 from modules.discovery.workbench.constants import (
     HARVEST_VIEW_STATUSES,
     LIBRARY_VIEW_STATUSES,
@@ -54,45 +24,63 @@ from modules.discovery.workbench.constants import (
     TERMINAL_STATUSES,
     VIEW_GROUP_STATUSES,
 )
+from utils.batch_save import (
+    check_expected,
+    lock_rows_by_id,
+    parse_batch_items,
+)
+from utils.clock import now_local, today_local
+from utils.filter_values import (
+    DEFAULT_RECORDED_TARGET_LIMIT,
+    combine_any,
+    like_contains,
+    match_any,
+    recorded_target_clause,
+    recorded_target_search,
+    split_code_tokens,
+)
+from utils.header_filters import (
+    HeaderColumn,
+    csv_column,
+    csv_token_clause,
+    header_column_values,
+    header_columns,
+    header_filter_clauses,
+    header_sort_clauses,
+    json_array_column,
+    target_column,
+)
+from utils.model_fields import clean_field, model_fields
+from utils.normalize import (
+    join_known_options,
+    join_tokens,
+    normalize_choice,
+    normalize_date,
+    normalize_positive_int,
+    normalize_priority,
+    normalize_target_codes,
+    parse_row_id,
+)
+from utils.pagination import paginate_select
 from utils.workbench_queue import (
     DEFAULT_PRIORITY,
     PRIORITY_OPTIONS,
     PRIORITY_ORDER,
-    apply_priority_constraints,
+    QueueSpec,
+    apply_queue,
     list_order_clauses,
     lock_queue,
-    place_row_among,
     queued_sort,
-    renumber_queue,
+    reorder_queue,
+    repack_queue,
 )
-from utils.clock import now_local, today_local
+
 MISSING_ROW = "发现工作台记录不存在"
 DISCOVERY_ID_PREFIX = "DSC"
 DISCOVERY_ID_RANDOM_LEN = 6
 DISCOVERY_ID_MAX_ATTEMPTS = 20
 DISCOVERY_ID_ALPHABET = string.ascii_uppercase + string.digits
-STRING_FIELDS = {
-    "project_code": 64,
-    "experiment_id": 64,
-    "target_name": 128,
-    "study_type": 64,
-    "pm": 64,
-    "owner": 64,
-    "immune_owner": 64,
-    "cell_collector": 64,
-    "mouse_strain_category": 128,
-    "mouse_strain": 128,
-    "cage_position": 64,
-    "mouse_nos": 1000,
-    "serum_titer": 1000,
-    "immune_antigen": 1000,
-    "screening_antigen": 1000,
-    "positive_cell_count": 255,
-    "plate_nos": 1000,
-    "boost_antigen": 1000,
-    "boost_cells": 1000,
-    "remark": 1000,
-}
+FIELDS = model_fields(DiscoveryWorkbench, readonly=("discovery_id",))
 BREAK_FIELDS = frozenset({
     "mouse_nos",
     "plate_nos",
@@ -104,17 +92,6 @@ BREAK_FIELDS = frozenset({
     "boost_cells",
     "remark",
 })
-DATE_FIELDS = ("harvest_date", "boost_date")
-WRITABLE_FIELDS = (
-    *STRING_FIELDS,
-    "target_codes",
-    "screening_methods",
-    "mouse_count",
-    *DATE_FIELDS,
-    "status",
-    "priority",
-    "sort_order",
-)
 
 
 def _today_text() -> str:
@@ -164,23 +141,12 @@ def _normalize_status(value: Any) -> str:
     return normalize_choice(value, PLAN_STATUS_OPTIONS, "状态", default=PLAN_STATUS_PLANNING)
 
 
-def _current_status(row: DiscoveryWorkbench) -> str:
-    return str(row.status or "").strip() or PLAN_STATUS_PLANNING
-
-
 def _is_terminal(status: str) -> bool:
     return status in TERMINAL_STATUSES
 
 
 def _has_date_value(value: Any) -> bool:
     return bool(str(value or "").strip())
-
-
-def _boost_active(boost_date: Any, today: str | None = None) -> bool:
-    text = str(boost_date or "").strip()
-    if not text:
-        return False
-    return text >= (today or _today_text())
 
 
 def _boost_expired(boost_date: Any, today: str | None = None) -> bool:
@@ -198,33 +164,9 @@ def _split_filter_tokens(value: Any) -> list[str]:
     return [part.strip() for part in str(value).replace("，", ",").split(",") if part.strip()]
 
 
-def _parse_row_id(value: Any) -> int | None:
-    if value in (None, ""):
-        return None
-    try:
-        row_id = int(value)
-    except (TypeError, ValueError):
-        return None
-    if row_id <= 0:
-        return None
-    return row_id
-
-
-def _page_limit(data: dict[str, Any]) -> tuple[int, int]:
-    try:
-        page = int(data.get("page", 1) or 1)
-    except (TypeError, ValueError):
-        page = 1
-    try:
-        limit = int(data.get("limit", 20) or 20)
-    except (TypeError, ValueError):
-        limit = 20
-    return max(page, 1), min(max(limit, 1), 500)
-
-
 def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> bool:
     previous_harvest = row.harvest_date or None
-    for field in WRITABLE_FIELDS:
+    for field, spec in FIELDS.items():
         if field not in data:
             continue
         value = data.get(field)
@@ -236,8 +178,6 @@ def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> bool:
             value = _normalize_mouse_strain_category(value)
         elif field == "mouse_strain":
             value = _normalize_mouse_strain(value)
-        elif field == "mouse_count":
-            value = normalize_nonneg_int(value, "小鼠只数")
         elif field == "sort_order":
             if value in (None, "", "-"):
                 continue
@@ -246,14 +186,8 @@ def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> bool:
             value = _normalize_status(value)
         elif field == "priority":
             value = normalize_priority(value)
-        elif field in DATE_FIELDS:
-            value = normalize_date(value)
         else:
-            value = normalize_text(
-                value,
-                STRING_FIELDS[field],
-                keep_breaks=field in BREAK_FIELDS,
-            )
+            value = clean_field(spec, value, keep_breaks=field in BREAK_FIELDS)
         setattr(row, field, value)
     harvest_changed = "harvest_date" in data and (row.harvest_date or None) != previous_harvest
     if harvest_changed:
@@ -266,7 +200,7 @@ def _apply_status_from_dates(
     payload: dict[str, Any],
     harvest_changed: bool = False,
 ) -> None:
-    status = _current_status(row)
+    status = row.status
     if _is_terminal(status):
         return
     today = _today_text()
@@ -276,7 +210,7 @@ def _apply_status_from_dates(
                 row.status = PLAN_STATUS_WAIT_HARVEST if _boost_expired(row.boost_date, today) else PLAN_STATUS_WAIT_BOOST
         elif status == PLAN_STATUS_WAIT_BOOST:
             row.status = PLAN_STATUS_PLANNING
-    if _current_status(row) == PLAN_STATUS_WAIT_BOOST and _boost_expired(row.boost_date, today):
+    if row.status == PLAN_STATUS_WAIT_BOOST and _boost_expired(row.boost_date, today):
         row.status = PLAN_STATUS_WAIT_HARVEST
 
 
@@ -294,14 +228,13 @@ def advance_expired_boosts(db: Session) -> int:
 
 
 def _view_group_for_status(status: str) -> str | None:
-    text = str(status or "").strip() or PLAN_STATUS_PLANNING
-    if text in HARVEST_VIEW_STATUSES:
+    if status in HARVEST_VIEW_STATUSES:
         return "harvest"
-    if text in LIBRARY_VIEW_STATUSES:
+    if status in LIBRARY_VIEW_STATUSES:
         return "library"
-    if text == PLAN_STATUS_WAIT_SEQ:
+    if status == PLAN_STATUS_WAIT_SEQ:
         return "sequencing"
-    if text == PLAN_STATUS_CANCELLED:
+    if status == PLAN_STATUS_CANCELLED:
         return "cancelled"
     return None
 
@@ -319,21 +252,17 @@ def _apply_date_range(filters: list, column, data: dict[str, Any], start_key: st
         filters.append(column <= normalize_date(end_raw))
 
 
-def _status_column():
-    return func.coalesce(DiscoveryWorkbench.status, PLAN_STATUS_PLANNING)
-
-
 def _status_filter_clause(status: str):
     if status not in PLAN_STATUS_OPTIONS:
         raise ValueError("状态不在允许的选项中")
-    return _status_column() == status
+    return DiscoveryWorkbench.status == status
 
 
 def _view_group_filter(view_group: str):
     statuses = VIEW_GROUP_STATUSES.get(view_group)
     if not statuses:
         return None
-    return _status_column().in_(tuple(statuses))
+    return DiscoveryWorkbench.status.in_(tuple(statuses))
 
 
 def _boosting_filter():
@@ -350,40 +279,21 @@ def _missing_date_filter():
             date_blank(DiscoveryWorkbench.harvest_date),
             date_blank(DiscoveryWorkbench.boost_date),
         ),
-        ~_status_column().in_(tuple(TERMINAL_STATUSES)),
+        ~DiscoveryWorkbench.status.in_(tuple(TERMINAL_STATUSES)),
     )
 
 
 _W = DiscoveryWorkbench
-HEADER_COLUMNS: dict[str, HeaderColumn] = {
-    "priority": HeaderColumn(_W.priority, "enum", order=tuple(PRIORITY_ORDER)),
-    "status": HeaderColumn(_status_column(), "enum", order=tuple(PLAN_STATUS_OPTIONS)),
-    "pm": HeaderColumn(_W.pm, "enum"),
-    "project_code": HeaderColumn(_W.project_code),
-    "experiment_id": HeaderColumn(_W.experiment_id),
-    "target_name": target_column(_W.target_name, _W.target_codes),
-    "target_codes": json_array_column(_W.target_codes),
-    "study_type": HeaderColumn(_W.study_type, "enum"),
-    "mouse_strain_category": csv_column(_W.mouse_strain_category, tuple(MOUSE_STRAIN_CATEGORY_OPTIONS)),
-    "mouse_strain": csv_column(_W.mouse_strain, tuple(MOUSE_STRAIN_OPTIONS)),
-    "screening_methods": csv_column(_W.screening_methods, tuple(SCREENING_METHOD_OPTIONS)),
-    "mouse_count": HeaderColumn(_W.mouse_count, "number"),
-    "harvest_date": HeaderColumn(_W.harvest_date, "date"),
-    "boost_date": HeaderColumn(_W.boost_date, "date"),
-    "owner": HeaderColumn(_W.owner, "enum"),
-    "immune_owner": HeaderColumn(_W.immune_owner, "enum"),
-    "cell_collector": HeaderColumn(_W.cell_collector, "enum"),
-    "cage_position": HeaderColumn(_W.cage_position),
-    "mouse_nos": HeaderColumn(_W.mouse_nos),
-    "serum_titer": HeaderColumn(_W.serum_titer),
-    "immune_antigen": HeaderColumn(_W.immune_antigen),
-    "screening_antigen": HeaderColumn(_W.screening_antigen),
-    "positive_cell_count": HeaderColumn(_W.positive_cell_count),
-    "plate_nos": HeaderColumn(_W.plate_nos),
-    "boost_antigen": HeaderColumn(_W.boost_antigen),
-    "boost_cells": HeaderColumn(_W.boost_cells),
-    "remark": HeaderColumn(_W.remark),
-}
+HEADER_COLUMNS = header_columns(
+    FIELDS,
+    priority=HeaderColumn(_W.priority, order=tuple(PRIORITY_ORDER)),
+    status=HeaderColumn(_W.status, order=tuple(PLAN_STATUS_OPTIONS)),
+    target_name=target_column(_W.target_name, _W.target_codes),
+    target_codes=json_array_column(_W.target_codes),
+    mouse_strain_category=csv_column(_W.mouse_strain_category, tuple(MOUSE_STRAIN_CATEGORY_OPTIONS)),
+    mouse_strain=csv_column(_W.mouse_strain, tuple(MOUSE_STRAIN_OPTIONS)),
+    screening_methods=csv_column(_W.screening_methods, tuple(SCREENING_METHOD_OPTIONS)),
+)
 
 
 def _csv_filter(column, value: Any):
@@ -520,57 +430,18 @@ def _list_order(data: dict[str, Any] | None = None):
     )
 
 
-def _queue_rows(db: Session) -> list[DiscoveryWorkbench]:
-    status = func.coalesce(DiscoveryWorkbench.status, PLAN_STATUS_PLANNING)
-    return list(
-        db.scalars(
-            select(DiscoveryWorkbench)
-            .where(status.notin_(TERMINAL_STATUSES))
-            .order_by(DiscoveryWorkbench.sort_order.asc(), DiscoveryWorkbench.id.asc())
-        ).all()
-    )
-
-
-def _lock_queue(db: Session) -> None:
-    lock_queue(db, DiscoveryWorkbench)
-
-
-def _place_row(db: Session, row: DiscoveryWorkbench, *, mode: str, target_sort: int | None = None) -> None:
-    if not getattr(row, "id", None):
-        db.flush()
-    others = [item for item in _queue_rows(db) if int(item.id) != int(row.id)]
-    place_row_among(others, row, mode=mode, target_sort=target_sort)
-
-
-def _apply_queue(
-    db: Session,
-    row: DiscoveryWorkbench,
-    *,
-    previous_sort: int | None,
-    previous_priority: Any,
-    payload: dict[str, Any],
-    is_new: bool,
-) -> None:
-    if _is_terminal(_current_status(row)):
-        leaving = queued_sort(previous_sort) is not None or queued_sort(row.sort_order) is not None
-        row.sort_order = None
-        if leaving:
-            renumber_queue([item for item in _queue_rows(db) if int(item.id) != int(row.id or 0)])
-        return
-    if is_new or queued_sort(previous_sort) is None:
-        target = queued_sort(payload.get("sort_order"))
-        _place_row(db, row, mode="snap" if target else "last", target_sort=target)
-        return
-    apply_priority_constraints(
-        row,
-        previous_sort=previous_sort,
-        previous_priority=previous_priority,
-        place=lambda mode, target_sort=None: _place_row(db, row, mode=mode, target_sort=target_sort),
-    )
+QUEUE_SPEC = QueueSpec(
+    model=DiscoveryWorkbench,
+    active_stmt=lambda: select(DiscoveryWorkbench).where(
+        DiscoveryWorkbench.status.notin_(TERMINAL_STATUSES)
+    ),
+    missing_message=MISSING_ROW,
+    is_terminal_row=lambda _db, row: _is_terminal(row.status),
+)
 
 
 def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
-    status_col = _status_column()
+    status_col = DiscoveryWorkbench.status
     stmt = _apply_list_filters(
         select(
             status_col,
@@ -607,23 +478,16 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
 
 def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     payload = data or {}
-    page, limit = _page_limit(payload)
     stmt = _apply_list_filters(select(DiscoveryWorkbench), payload, db=db)
-    total = db.scalar(
-        _apply_list_filters(select(func.count()).select_from(DiscoveryWorkbench), payload, db=db)
-    ) or 0
-    rows = db.scalars(
-        stmt.order_by(*_list_order(payload))
-        .offset((page - 1) * limit)
-        .limit(limit)
-    ).all()
-    return {
-        "items": [row.to_dict() for row in rows],
-        "total": total,
-        "page": page,
-        "limit": limit,
-        "stats": _list_stats(db, payload),
-    }
+    count_stmt = _apply_list_filters(select(func.count()).select_from(DiscoveryWorkbench), payload, db=db)
+    return paginate_select(
+        db,
+        stmt,
+        count_stmt,
+        payload,
+        order_by=_list_order(payload),
+        stats=_list_stats(db, payload),
+    )
 
 
 def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
@@ -697,14 +561,18 @@ def save(
     created_by: str | None = None,
     *,
     commit: bool = True,
+    acquire_queue_lock: bool = True,
 ) -> dict[str, Any]:
     payload = dict(data or {})
     payload.pop("discovery_id", None)
-    row_id = _parse_row_id(payload.get("id"))
+    expected = payload.pop("_expected", None)
+    row_id = parse_row_id(payload.get("id"))
     if payload.get("id") not in (None, "") and row_id is None:
         raise ValueError("工作台记录 ID 不正确")
-    if row_id is None or "sort_order" in payload or "priority" in payload or "status" in payload:
-        _lock_queue(db)
+    if acquire_queue_lock and (
+        row_id is None or "sort_order" in payload or "priority" in payload or "status" in payload
+    ):
+        lock_queue(db, DiscoveryWorkbench)
     if row_id is None:
         row = DiscoveryWorkbench(
             created_by=(created_by or "").strip() or None,
@@ -718,20 +586,34 @@ def save(
         previous_sort = None
         previous_priority = DEFAULT_PRIORITY
     else:
-        row = db.get(DiscoveryWorkbench, row_id)
+        row = (
+            db.scalar(
+                select(DiscoveryWorkbench)
+                .where(DiscoveryWorkbench.id == row_id)
+                .with_for_update()
+            )
+            if expected is not None
+            else db.get(DiscoveryWorkbench, row_id)
+        )
         if not row:
-            raise ValueError(MISSING_ROW)
+            raise NotFoundError(MISSING_ROW)
+        check_expected(
+            row.to_dict(),
+            expected,
+            fields=FIELDS,
+        )
         is_new = False
         previous_sort = queued_sort(row.sort_order)
         previous_priority = row.priority
     harvest_changed = _apply_fields(row, payload)
     _apply_status_from_dates(row, payload, harvest_changed)
-    _apply_queue(
+    apply_queue(
         db,
+        QUEUE_SPEC,
         row,
         previous_sort=previous_sort,
         previous_priority=previous_priority,
-        payload=payload,
+        target_sort=queued_sort(payload.get("sort_order")),
         is_new=is_new,
     )
     if commit:
@@ -747,29 +629,37 @@ def save_batch(
     data: dict[str, Any],
     created_by: str | None = None,
 ) -> dict[str, Any]:
-    raw_items = data.get("items") or []
-    if not isinstance(raw_items, list):
-        raise ValueError("批量保存数据格式不正确")
-    if any(not isinstance(item, dict) for item in raw_items):
-        raise ValueError("批量保存行数据格式不正确")
-    items = [dict(item) for item in raw_items]
-    row_ids: list[int] = []
-    needs_lock = False
-    for item in items:
-        supplied_id = item.get("id")
-        row_id = _parse_row_id(supplied_id)
-        if supplied_id not in (None, "") and row_id is None:
-            raise ValueError("工作台记录 ID 不正确")
-        if row_id is not None:
-            row_ids.append(row_id)
-        if row_id is None or "sort_order" in item or "priority" in item or "status" in item:
-            needs_lock = True
-    if len(row_ids) != len(set(row_ids)):
-        raise ValueError("批量保存包含重复的工作台记录")
+    items, row_ids = parse_batch_items(
+        data.get("items") or [],
+        invalid_id_message="工作台记录 ID 不正确",
+        duplicate_message="批量保存包含重复的工作台记录",
+    )
+    needs_lock = any(
+        parse_row_id(item.get("id")) is None
+        or "sort_order" in item
+        or "priority" in item
+        or "status" in item
+        for item in items
+    )
     if needs_lock:
-        _lock_queue(db)
+        lock_queue(db, DiscoveryWorkbench)
+    rows_by_id = lock_rows_by_id(
+        db,
+        DiscoveryWorkbench,
+        row_ids,
+        missing_message=MISSING_ROW,
+    )
+    for item in items:
+        row_id = parse_row_id(item.get("id"))
+        expected = item.pop("_expected", None)
+        if row_id is not None:
+            check_expected(
+                rows_by_id[row_id].to_dict(),
+                expected,
+                fields=FIELDS,
+            )
     saved_ids = [
-        int(save(db, item, created_by, commit=False)["id"])
+        int(save(db, item, created_by, commit=False, acquire_queue_lock=False)["id"])
         for item in items
     ]
     db.commit()
@@ -782,38 +672,23 @@ def save_batch(
 
 
 def delete(db: Session, row_id: int) -> None:
-    _lock_queue(db)
+    lock_queue(db, DiscoveryWorkbench)
     row = db.get(DiscoveryWorkbench, int(row_id))
     if not row:
-        raise ValueError(MISSING_ROW)
+        raise NotFoundError(MISSING_ROW)
     from modules.molecular_cell.library_orders.service import has_orders_for_discovery
 
     if has_orders_for_discovery(db, row.discovery_id):
         raise ValueError("该安排已有建库工单，不能删除")
     db.delete(row)
     db.flush()
-    renumber_queue(_queue_rows(db))
+    repack_queue(db, QUEUE_SPEC)
     db.commit()
 
 
 def reorder(db: Session, moved_id: Any, target_id: Any) -> dict[str, Any]:
-    _lock_queue(db)
-    parsed_moved_id = _parse_row_id(moved_id)
-    parsed_target_id = _parse_row_id(target_id)
-    if parsed_moved_id is None or parsed_target_id is None:
-        raise ValueError("排序记录 ID 不正确")
-    moved = db.get(DiscoveryWorkbench, parsed_moved_id)
-    target = db.get(DiscoveryWorkbench, parsed_target_id)
-    if not moved or not target:
-        raise ValueError(MISSING_ROW)
-    if parsed_moved_id == parsed_target_id:
-        return {"items": [moved.to_dict()]}
-    for row in (moved, target):
-        if _is_terminal(_current_status(row)) or queued_sort(row.sort_order) is None:
-            raise ValueError("终态记录不参与排序")
-    _place_row(db, moved, mode="snap", target_sort=queued_sort(target.sort_order))
-    db.commit()
-    return {"items": [moved.to_dict(), target.to_dict()]}
+    rows = reorder_queue(db, QUEUE_SPEC, moved_id, target_id)
+    return {"items": [row.to_dict() for row in rows]}
 
 
 EXPORT_COLUMNS = (

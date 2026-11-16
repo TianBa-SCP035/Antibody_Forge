@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from io import BytesIO
-from pathlib import Path
-from typing import Any
 import math
 import subprocess
 import sys
 import tempfile
 import zipfile
+from io import BytesIO
+from pathlib import Path
+from typing import Any
 
 from openpyxl import Workbook
 from openpyxl.cell.cell import MergedCell
@@ -20,9 +20,14 @@ from openpyxl.worksheet.worksheet import Worksheet
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models.immunology import SerumImmAntigen, SerumImmMouse, SerumImmProject, SerumImmStep
-
 from core.config import get_settings
+from core.errors import NotFoundError
+from models.immunology import (
+    SerumImmAntigen,
+    SerumImmMouse,
+    SerumImmProject,
+    SerumImmStep,
+)
 from utils.clock import now_local
 
 # A1 留边距（仅屏幕阅读）；正文 B2:P*。B=侧栏，C~P=数据区，宽列 D:H。
@@ -146,7 +151,7 @@ def export_scheme_response(db: Session, project_ids: list[int]) -> tuple[BytesIO
     unique_ids = list(dict.fromkeys(int(pid) for pid in project_ids))
     schemes = [data for pid in unique_ids if (data := load_scheme_data(db, pid))]
     if not schemes:
-        raise ValueError("未找到可导出的项目")
+        raise NotFoundError(_SCHEME_PDF_NOT_FOUND)
 
     timestamp = now_local().strftime("%Y%m%d_%H%M%S")
     if len(schemes) == 1:
@@ -619,7 +624,7 @@ def export_scheme_pdf_response(db: Session, project_ids: list[int]) -> tuple[Byt
         raise ValueError("打印仅支持单个项目")
     project = load_scheme_data(db, unique_ids[0])
     if not project:
-        raise ValueError(_SCHEME_PDF_NOT_FOUND)
+        raise NotFoundError(_SCHEME_PDF_NOT_FOUND)
     timestamp = now_local().strftime("%Y%m%d_%H%M%S")
     pdf_bytes = _xlsx_to_pdf(_build_project_workbook(project).getvalue())
     return BytesIO(pdf_bytes), _scheme_filename(project, "pdf", timestamp)

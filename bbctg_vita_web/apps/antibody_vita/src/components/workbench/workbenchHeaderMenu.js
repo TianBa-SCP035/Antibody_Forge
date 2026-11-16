@@ -8,10 +8,14 @@ import { filterTargetOptions, targetOptionExtra } from '#/utils/targetFilterOpti
  * 通用表头菜单（类 Excel 自动筛选）。
  *
  * 页面需提供：
- * - headerMenuColumns：{ [key]: { type, label?, color?, values?, search?, top?, sortOnly? } }，只有登记的列才有菜单。
- *   type: text | enum | csv | date | number；values: all | recent | search；search 指定搜索匹配规则；
+ * - headerMenuColumns：{ [key]: { type, label?, color?, values?, search?, top?, sortOnly? } }，只有登记的列才有菜单；
+ *   工作台页面写在字段定义的 header 里，由 fieldSchema.js 的 headerMenuColumns(FIELDS) 汇总。
+ *   type: text | enum | csv | date | number；search 指定搜索匹配规则；
+ *   values：all 一次列全部值、本地搜索；recent 只列最近出现的 200 个、服务端搜索；search 输入后才查。
  *   sortOnly 只排序不筛选，给值在内存里推算、SQL 筛不准的列；
- *   top 描述对应的顶部筛选器，见 synthesisColumns.js。
+ *   top 是与之共用一份条件的顶部筛选器 { query 或 range, kind?, topOnly? }：kind 缺省为下拉选值；
+ *   codes 是单号输入框（多个完整匹配、一个按包含）；tokens 是逗号分隔、总按完整值匹配的输入框；
+ *   contains 是文本包含；range 是日期区间。topOnly 是顶部独有、表头表达不了的选项。
  *   两种视图列键不同但是同一字段时写 { alias: '主键' }，条件、排序都记在主键上。
  * - listQuery.sort_field / sort_dir：与队列排序共用。
  * - fetchHeaderValues(query)：返回 { items: [{ value, label?, count }], truncated }，空值用 ''。
@@ -22,7 +26,8 @@ import { filterTargetOptions, targetOptionExtra } from '#/utils/targetFilterOpti
  * 模板接入：
  * - <WorkbenchHeaderMenu v-bind="headerMenuBind" />，工具栏 <WorkbenchHeaderFilterChip v-bind="headerChipBind" />。
  * - WorkbenchDataTable 传 :header-menu-states 与 @header-menu="openHeaderMenu"；
- *   Excel 列表头 <WorkbenchHeaderLabel :label v-bind="headerMenuStates[key]" />，表格外层 @click="onSheetHeaderMenuClick"。
+ *   Excel 视图用 WorkbenchSheet 时标准列表头和外层点击已接好；自写的列表头放
+ *   <WorkbenchHeaderLabel :label v-bind="headerMenuStates[key]" />。
  * - 普通 el-table：:header-cell-class-name="headerCellClassName" @header-click="onTableHeaderClick"，
  *   列写 column-key，表头插槽放 <WorkbenchHeaderLabel :label v-bind="headerMenuStates[key]" />。
  * - 顶部控件 v-bind="headerTop(key, '占位文字')"，日期区间用 headerTop(key, '起始', 'startPlaceholder')。

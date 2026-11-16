@@ -125,7 +125,7 @@
 import { Lock, Unlock } from '@element-plus/icons-vue';
 import { ElButton, ElIcon } from 'element-plus';
 
-import { cellKey, cellPlateBarcode } from '../flowWorkOrderModel';
+import { cellColumnsByKey, cellKey } from '../flowWorkOrderModel';
 import CellPlateLayout from './CellPlateLayout.vue';
 import SamplePlateLayout from './SamplePlateLayout.vue';
 
@@ -156,14 +156,7 @@ export default {
       return this.fieldDisabled || this.plateMapLocked;
     },
     cellByKey() {
-      const map = {};
-      (this.order.cell_plates || []).forEach((plate, plateIndex) => {
-        const barcode = cellPlateBarcode(plate, plateIndex);
-        (plate.columns || []).forEach((column) => {
-          map[cellKey(barcode, column.column_no)] = column;
-        });
-      });
-      return map;
+      return cellColumnsByKey(this.order.cell_plates);
     },
   },
   methods: {

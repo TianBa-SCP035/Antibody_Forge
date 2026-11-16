@@ -1,5 +1,8 @@
 import { requestClient, skipGlobalErrorHandler } from '#/api/request';
 
+export const FLOW_WORK_ORDER_EDIT = 'mega.flow_work_order.edit';
+export const FLOW_WORK_ORDER_DISPATCH = 'mega.flow_work_order.dispatch';
+
 type RequestConfig = Parameters<typeof requestClient.get>[1];
 type PostConfig = Parameters<typeof requestClient.post>[2];
 

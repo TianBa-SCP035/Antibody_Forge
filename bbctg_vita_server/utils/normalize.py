@@ -5,7 +5,6 @@ from collections.abc import Iterable
 from datetime import date, datetime
 from typing import Any
 
-from utils.filter_values import clean_field_text
 from utils.workbench_queue import PRIORITY_ORDER, canonicalize_priority
 
 DATE_FORMAT_MESSAGE = "日期必须是 YYYY-MM-DD"
@@ -13,19 +12,8 @@ DATE_FORMAT_MESSAGE = "日期必须是 YYYY-MM-DD"
 _DATE_PATTERN = re.compile(
     r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?"
 )
-_TOKEN_SPLIT = re.compile(r"[,，、+]")
+_TOKEN_SPLIT = re.compile(r"[,，、+\r\n\t]")
 _OPTION_SPLIT = re.compile(r"[,，]")
-
-
-def normalize_text(value: Any, max_len: int, *, keep_breaks: bool = False) -> str | None:
-    if value is None:
-        return None
-    text = clean_field_text(value, keep_breaks=keep_breaks)
-    if not text:
-        return None
-    if len(text) > max_len:
-        raise ValueError(f"字段长度不能超过 {max_len}")
-    return text
 
 
 def parse_date(value: Any) -> date | None:
@@ -62,16 +50,10 @@ def optional_int(value: Any) -> int | None:
         return None
 
 
-def normalize_nonneg_int(value: Any, label: str) -> int | None:
-    if value in (None, ""):
-        return None
-    try:
-        number = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{label}必须是整数") from exc
-    if number < 0:
-        raise ValueError(f"{label}不能为负数")
-    return number
+def parse_row_id(value: Any) -> int | None:
+    """解析正整数记录 ID，空值或非正整数返回 None。"""
+    number = optional_int(value)
+    return number if number is not None and number > 0 else None
 
 
 def normalize_positive_int(value: Any, message: str) -> int:
@@ -118,7 +100,7 @@ def normalize_priority(value: Any) -> str:
 
 
 def split_tokens(value: Any) -> list[str]:
-    """一格多值（逗号、顿号、加号分隔）拆成去重后的列表，保留原顺序。"""
+    """一格多值（逗号、顿号、加号、换行、制表符分隔）拆成去重后的列表，保留原顺序。"""
     if value is None:
         return []
     raw = value if isinstance(value, (list, tuple)) else _TOKEN_SPLIT.split(str(value))

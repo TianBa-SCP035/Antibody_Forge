@@ -47,7 +47,7 @@ Windows： 无需路径约定，固定环境为 local。
 ## 数据库
 
 1. 在 MySQL 中新建空库，并把 `DATABASE_URL` 指到该库。
-2. 对空库执行 [vita-database.sql](./vita-database.sql)（建表 + 权限/功能开关等种子；详见脚本头注释）。
+2. 对空库执行 [vita-database.sql](./vita-database.sql)（建表 + 示例权限包和角色；权限点和功能开关默认值在代码里；详见脚本头注释）。
 3. 首个超级管理员：按 SQL 文末注释生成 `password_hash` 并插入 `sys_user`。
 
 细胞库、外部平台库为只读库，不在此脚本中创建；需要时再配 `CELL_DB_URL` / `EMPLOYEE_DB_URL`。外部平台库提供员工资料及 `xdida_platform_biocytogen.target` 靶点主数据，本系统分别同步到本地主库。
@@ -178,7 +178,7 @@ sudo apt install -y libreoffice
 
 每个任务（含「立即执行」）运行前先取 MySQL `GET_LOCK`，取不到就跳过并记日志，所以即使误开了多个后端进程也不会重复执行；但仍建议只让一个进程开调度。
 
-开关与时间存于 `sys_feature_flag` 的 `job.*`，在系统功能页修改后写库并立即重排调度，无需重启；调度未启动的进程只写库。系统功能页可对任一任务**立即执行**（不依赖调度是否启动），功能开关见 [auth-permissions.md](./auth-permissions.md) §7。
+开关与时间存于 `sys_feature_flag` 的 `job.*`，在系统功能页修改后写库并立即重排调度，无需重启；调度未启动的进程只写库。启动时读不到开关（库连不上等）的任务一律不注册，日志记 `feature flag unreadable`；库恢复后重启服务，或在系统功能页保存一次该任务即可。系统功能页可对任一任务**立即执行**（不依赖调度是否启动），功能开关见 [auth-permissions.md](./auth-permissions.md) §7。
 
 应用日志：`repository/logs/app.log`（单文件 10MB，保留 5 份轮转）。`start_dev.sh` 另写 `repository/logs/backend.nohup.log`（不轮转）。
 

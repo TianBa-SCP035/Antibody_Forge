@@ -59,13 +59,6 @@ function loadPresetIds(): Array<string | null> {
         return typeof id === 'string' ? id : null;
       });
     }
-
-    if (Array.isArray(parsed) && parsed[0] && typeof parsed[0] === 'object') {
-      return Array.from({ length: HOME_QUICK_NAV_SLOTS }, (_, i) => {
-        const legacy = parsed[i] as QuickNavSlot | undefined;
-        return legacy ? slotToPresetId(legacy) : null;
-      });
-    }
   } catch {
     /* ignore */
   }

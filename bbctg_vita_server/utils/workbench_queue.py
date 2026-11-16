@@ -1,8 +1,11 @@
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from sqlalchemy import case, event, inspect, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
+
+from core.errors import NotFoundError
 
 DEFAULT_PRIORITY = "正常"
 PRIORITY_ORDER = ("吉吉国王", "非常紧急", "加急", "正常")
@@ -169,3 +172,123 @@ def apply_priority_constraints(
         place("first" if demote else "last")
         return
     place("snap", current_sort)
+
+
+@dataclass(frozen=True)
+class QueueSpec:
+    model: Any
+    active_stmt: Callable[[], Any]
+    missing_message: str
+    is_terminal_row: Callable[[Session, Any], bool]
+    unique_rows: bool = False
+
+
+def _parse_id(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def queue_rows(db: Session, spec: QueueSpec) -> list[Any]:
+    stmt = spec.active_stmt().order_by(
+        spec.model.sort_order.asc(),
+        spec.model.id.asc(),
+    )
+    scalars = db.scalars(stmt)
+    if spec.unique_rows:
+        scalars = scalars.unique()
+    return list(scalars.all())
+
+
+def place_row(
+    db: Session,
+    spec: QueueSpec,
+    row: Any,
+    *,
+    mode: str,
+    target_sort: int | None = None,
+) -> None:
+    if not getattr(row, "id", None):
+        db.flush()
+    others = [item for item in queue_rows(db, spec) if int(item.id) != int(row.id)]
+    place_row_among(others, row, mode=mode, target_sort=target_sort)
+
+
+def repack_queue(db: Session, spec: QueueSpec, *, exclude_id: int | None = None) -> None:
+    rows = queue_rows(db, spec)
+    if exclude_id is not None:
+        rows = [item for item in rows if int(item.id) != int(exclude_id)]
+    renumber_queue(rows)
+
+
+def apply_queue(
+    db: Session,
+    spec: QueueSpec,
+    row: Any,
+    *,
+    previous_sort: int | None,
+    previous_priority: Any,
+    target_sort: int | None = None,
+    is_new: bool = False,
+    is_terminal: bool | None = None,
+) -> None:
+    terminal = is_terminal if is_terminal is not None else spec.is_terminal_row(db, row)
+    if terminal:
+        leaving = (
+            queued_sort(previous_sort) is not None
+            or queued_sort(row.sort_order) is not None
+        )
+        row.sort_order = None
+        if leaving:
+            repack_queue(db, spec, exclude_id=int(row.id or 0) if getattr(row, "id", None) else None)
+        return
+    if is_new or queued_sort(previous_sort) is None:
+        place_row(db, spec, row, mode="snap" if target_sort else "last", target_sort=target_sort)
+        return
+    apply_priority_constraints(
+        row,
+        previous_sort=previous_sort,
+        previous_priority=previous_priority,
+        place=lambda mode, sort_target=None: place_row(
+            db, spec, row, mode=mode, target_sort=sort_target
+        ),
+    )
+
+
+def reorder_queue(
+    db: Session,
+    spec: QueueSpec,
+    moved_id: Any,
+    target_id: Any,
+    *,
+    authorize: Callable[[Any], None] | None = None,
+) -> list[Any]:
+    lock_queue(db, spec.model)
+    parsed_moved_id = _parse_id(moved_id)
+    parsed_target_id = _parse_id(target_id)
+    if parsed_moved_id is None or parsed_target_id is None:
+        raise ValueError("排序记录 ID 不正确")
+    moved = db.get(spec.model, parsed_moved_id)
+    target = db.get(spec.model, parsed_target_id)
+    if not moved or not target:
+        raise NotFoundError(spec.missing_message)
+    if authorize is not None:
+        authorize(moved)
+    if parsed_moved_id == parsed_target_id:
+        return [moved]
+    for row in (moved, target):
+        if spec.is_terminal_row(db, row) or queued_sort(row.sort_order) is None:
+            raise ValueError("终态记录不参与排序")
+    place_row(
+        db,
+        spec,
+        moved,
+        mode="snap",
+        target_sort=queued_sort(target.sort_order),
+    )
+    db.commit()
+    return [moved, target]

@@ -8,6 +8,7 @@ from db.session import Base
 
 class Target(Base):
     __tablename__ = "target"
+    __log_label__ = "靶点"
     __table_args__ = (
         Index("uk_target_external_id", "external_id", unique=True),
         Index("uk_target_snum", "snum", unique=True),

@@ -15,6 +15,7 @@ Antibody_Forge/
 ├── bbctg_vita_server/     # 后端（内部见 backend-structure.md）
 ├── bbctg_vita_web/        # 前端 monorepo（业务 app: apps/antibody_vita；其余为 Vben 基础包）
 ├── config/                # 各环境 vita_server.env（真实文件不入库，模板 *.gitkeep 入库）
+├── pet-proxy/             # 桌宠「大肥鱼」的本机代理，见 fatfish.md
 ├── repository/            # 上传、回传、日志等运行时文件（gitignore）
 ├── docs/                  # 文档
 ├── website/               # 对外展示站，GitHub Pages 发布
@@ -50,7 +51,7 @@ Antibody_Forge/
 ## 设计要点
 
 - **菜单**：由前端路由 `meta` 维护，不落库；`sys_feature_flag` 控制功能/任务开关（见 [auth-permissions.md](./auth-permissions.md)）。
-- **鉴权模型**：RBAC + 权限包 + 个人覆盖；组织字段不参与鉴权；`sys_permission_api` 仅作审计归类，不自动拦接口（详见权限文档）。
+- **鉴权模型**：RBAC + 权限包 + 个人覆盖；组织字段不参与鉴权；权限点、功能开关默认值在各模块 `permissions.py` 登记，写接口的权限和操作日志名称写在路由上（详见权限文档）。
 
 ## 定时任务
 

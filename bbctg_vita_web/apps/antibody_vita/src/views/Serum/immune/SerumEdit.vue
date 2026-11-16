@@ -816,6 +816,9 @@ import {
   fetchDetail,
   getSerumFilterOptions,
   saveSerum,
+  SERUM_PROJECT_CREATE,
+  SERUM_PROJECT_DELETE,
+  SERUM_PROJECT_EDIT_ALL,
 } from '#/api/serum'
 import { SERUM_ERRORS } from '../shared/errors'
 import serumSchemeMixin, { reindexGroupSortOrder } from '../shared/serumSchemeMixin'
@@ -823,13 +826,8 @@ import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import MouseRegistryDialog from '../shared/MouseRegistryDialog.vue'
 import AssayMethodEditor from '../shared/AssayMethodEditor.vue'
 import UserSelect from '#/components/UserSelect.vue'
-import {
-  canEditAllSerumProjects,
-  canCreateSerumProject,
-  canDeleteSerumProject,
-  canEditSerumProject,
-  getSerumUserName,
-} from '#/utils/serumPermission'
+import { hasAccessCode } from '#/utils/accessCode'
+import { canEditSerumProject, getSerumUserName } from '#/utils/serumPermission'
 import {
   SERUM_PROJECT_STATUS_DEFAULT,
   SERUM_PROJECT_STATUS_OPTIONS,
@@ -929,7 +927,7 @@ export default {
       return getSerumUserName(this.currentUserInfo)
     },
     canAssignProjectOwner() {
-      return canEditAllSerumProjects(this.currentUserInfo)
+      return hasAccessCode(this.currentUserInfo, SERUM_PROJECT_EDIT_ALL)
     },
     canEdit() {
       return this.canSaveForm()
@@ -1320,10 +1318,10 @@ export default {
       if (this.postForm.id) {
         return canEditSerumProject(this.currentUserInfo, this.postForm)
       }
-      return canCreateSerumProject(this.currentUserInfo)
+      return hasAccessCode(this.currentUserInfo, SERUM_PROJECT_CREATE)
     },
     canDeleteForm() {
-      return !this.loadFailed && Boolean(this.postForm.id) && canDeleteSerumProject(this.currentUserInfo)
+      return !this.loadFailed && Boolean(this.postForm.id) && hasAccessCode(this.currentUserInfo, SERUM_PROJECT_DELETE)
     }
   }
 }

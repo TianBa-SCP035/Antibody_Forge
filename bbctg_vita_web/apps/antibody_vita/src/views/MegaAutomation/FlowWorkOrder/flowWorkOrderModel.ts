@@ -157,6 +157,31 @@ export function cellPlateBarcode(plate: Partial<FlowWorkOrderCellPlate>, index: 
   return plate.barcode || `细胞板${index + 1}`;
 }
 
+/** 细胞板各列按 cellKey(条码, 列号) 索引。 */
+export function cellColumnsByKey(cellPlates: Partial<FlowWorkOrderCellPlate>[] | null | undefined) {
+  const map: Record<string, FlowWorkOrderCellColumn> = {};
+  (cellPlates || []).forEach((plate, plateIndex) => {
+    const barcode = cellPlateBarcode(plate, plateIndex);
+    (plate.columns || []).forEach((column) => {
+      map[cellKey(barcode, column.column_no)] = column;
+    });
+  });
+  return map;
+}
+
+/** 去掉样本板里指向「无细胞名称」列的引用。 */
+export function pruneEmptyCellRefs(order: Pick<FlowWorkOrder, 'cell_plates' | 'sample_plates'>) {
+  const named = new Set(
+    Object.entries(cellColumnsByKey(order.cell_plates))
+      .filter(([, column]) => String(column?.cell_name || '').trim())
+      .map(([key]) => key),
+  );
+  order.sample_plates.forEach((plate) => {
+    const keys = Array.isArray(plate.cell_keys) ? plate.cell_keys : [];
+    plate.cell_keys = keys.filter((key) => named.has(cellKey(key.barcode, key.column_no)));
+  });
+}
+
 export function isCellSelected(
   plate: Partial<FlowWorkOrderSamplePlate>,
   barcode: string,
@@ -354,7 +379,6 @@ export function normalizeFlowWorkOrder(
       : [{ barcode: '', columns: createDefaultColumns(defaults) }],
     dispatches: Array.isArray(source.dispatches) ? source.dispatches : [],
     orderName: source.orderName || baseInfo.orderName || '',
-    priority: source.priority || 'normal',
     sample_plates: samplePlates.length ? samplePlates : [createDefaultSamplePlate(plateDefaults)],
   };
 }

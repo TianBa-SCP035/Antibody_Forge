@@ -134,7 +134,7 @@
   padding: var(--vxe-ui-table-cell-padding-small);
   background: transparent;
 }
-.sheet-picker-editor {
+.sheet-wrap :deep(.sheet-picker-editor) {
   position: relative;
   display: flex;
   align-items: center;
@@ -145,7 +145,7 @@
   overflow: hidden;
   line-height: var(--vxe-ui-table-row-line-height);
 }
-.sheet-picker-editor__value {
+.sheet-wrap :deep(.sheet-picker-editor__value) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -168,7 +168,7 @@
 .sheet-wrap :deep(.sheet-date-editor .vxe-input--suffix) {
   display: none;
 }
-.sheet-category-select {
+.sheet-wrap :deep(.sheet-category-select) {
   width: 100%;
 }
 .sheet-wrap :deep(.sheet-tone-info) { color: var(--el-color-info); }

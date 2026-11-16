@@ -1,5 +1,7 @@
 import { requestClient, skipGlobalErrorHandler } from '#/api/request';
 
+export const PRIMER_EDIT = 'molecular.primer.edit';
+
 const BASE = '/molecular-cell/library-orders/catalog';
 const downloadConfig = {
   skipErrorHandler: true,

@@ -257,7 +257,8 @@ def assembled_primer(primer: str, direction: str) -> str:
     return f"{left}{primer_body(primer)}{right}"
 
 
-def safe_path_part(value: str, fallback: str) -> str:
+def clean_path_part(value: str, fallback: str) -> str:
+    """把 Windows 不认的字符换成下划线、截到 80 字（保留扩展名）；不拒绝输入，空了用 fallback。"""
     text = re.sub(r'[<>:"|?*\x00-\x1f]', "_", (value or "").strip())
     text = text.strip(". ") or fallback
     if len(text) <= 80:
@@ -286,7 +287,7 @@ def month_directory(kind: str, now: datetime) -> str:
 
 
 def other_directory(order: MolecularLibraryOrder, now: datetime) -> str:
-    order_key = safe_path_part(order.library_order_id, f"order-{order.id}")
+    order_key = clean_path_part(order.library_order_id, f"order-{order.id}")
     return f"library_results/others/{now.strftime('%Y')}/{order_key}"
 
 

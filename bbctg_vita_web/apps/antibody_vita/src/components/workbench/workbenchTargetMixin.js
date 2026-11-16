@@ -6,7 +6,8 @@ import { searchWorkbenchTargets, splitTargetNames, uniqueTargetCodes } from './t
 
 /**
  * 工作台的靶点编辑：下拉搜索、按编号或名称解析、表格里改靶点。
- * 页面需提供：list, pasteAnchor, pendingSheetOps, sameSheetValue, cloneSheetValue, sheetValueSnapshot, restoreSheetEditValue。
+ * 页面需提供：list, pasteAnchor, pendingSheetOps, sameSheetValue, cloneSheetValue, restoreSheetEditValue；
+ * 抽屉靶点保存还要 persistRow（workbenchDrawerMixin）。
  * 下拉只放本次搜索结果；解析到的靶点另记在 knownTargets 里补名称，不改动下拉。
  * 异步解析回来后先核对单元格还是提交时的值，用户已经改了别的就丢弃这次结果。
  */
@@ -35,15 +36,6 @@ export default {
     this.targetRequest = createLatestRequest()
   },
   methods: {
-    createSheetEditOriginal(row, key) {
-      return {
-        key,
-        rowId: row.id,
-        targetCodes: this.cloneSheetValue(row.target_codes),
-        targetName: row.target_name,
-        value: this.cloneSheetValue(this.sheetValueSnapshot(row, key)),
-      }
-    },
     /** 编号、名称两列互相补全：在这两列间切换要等上一格解析完，免得拿到旧值。 */
     async flushExcelKeyboardSwitch(previousKey, nextKey) {
       if (
@@ -94,6 +86,13 @@ export default {
           || code
         ))
         .join('&')
+    },
+    /** 抽屉里 WorkbenchTargetSelect 的 change：编号和名称一起写回并保存。 */
+    onDrawerTargetChange(row, payload) {
+      row.target_codes = payload.codes
+      row.target_name = payload.name
+      this.mergeTargetOptions(payload.items)
+      this.persistRow(row, 'target_codes')
     },
     onSheetTargetPickerChange(row) {
       const codes = uniqueTargetCodes(row.target_codes)
@@ -197,6 +196,50 @@ export default {
       } catch {
         if (!this.isSheetTargetCurrent(row, submittedCodes, submittedName)) return false
         return reject('靶点校验失败，本次修改未保存')
+      }
+    },
+    /**
+     * 多格保存（saveSheetCells）前统一解析靶点：entries 为 [{ row, fields }]，row 是保存用的副本，会被就地补全。
+     * 有编号按编号补名称（同时贴了名称就核对一致）；只有名称按名称查编号。返回错误文案，空串表示通过。
+     */
+    async resolveSheetTargets(entries) {
+      try {
+        const codeEntries = entries.filter(
+          ({ fields, row }) =>
+            fields.has('target_codes')
+            && ((row.target_codes || []).length > 0
+              || !fields.has('target_name')
+              || !splitTargetNames(row.target_name).length),
+        )
+        const resolvedCodes = await this.resolveTargetCodes(
+          codeEntries.flatMap(({ row }) => row.target_codes || []),
+        )
+        if (resolvedCodes.missing.length) return `未找到靶点编号：${resolvedCodes.missing.join('、')}`
+        for (const { fields, row } of codeEntries) {
+          const canonicalNames = (row.target_codes || []).map((code) => resolvedCodes.nameByCode.get(code))
+          const submittedNames = fields.has('target_name') ? splitTargetNames(row.target_name) : []
+          const matches = submittedNames.length === canonicalNames.length
+            && submittedNames.every(
+              (name, index) => name.toLowerCase() === String(canonicalNames[index] || '').toLowerCase(),
+            )
+          if (submittedNames.length && !matches) return '靶点名称与编号不匹配'
+          row.target_name = canonicalNames.join('&')
+        }
+        const nameEntries = entries.filter((entry) => !codeEntries.includes(entry))
+        const resolvedNames = await this.resolveTargetNames(
+          nameEntries.flatMap(({ row }) => splitTargetNames(row.target_name)).join('&'),
+        )
+        if (resolvedNames.missing.length) return `未找到靶点名称：${resolvedNames.missing.join('、')}`
+        if (resolvedNames.ambiguous.length) return `靶点名称不唯一：${resolvedNames.ambiguous.join('、')}`
+        nameEntries.forEach(({ row }) => {
+          const items = splitTargetNames(row.target_name)
+            .map((name) => resolvedNames.itemByName.get(name.toLowerCase()))
+          row.target_codes = items.map((item) => item.snum)
+          row.target_name = items.map((item) => item.name).join('&')
+        })
+        return ''
+      } catch {
+        return '靶点校验失败'
       }
     },
   },

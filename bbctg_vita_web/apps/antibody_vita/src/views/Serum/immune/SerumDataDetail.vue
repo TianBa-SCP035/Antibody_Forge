@@ -71,7 +71,7 @@
         <el-button
           size="large"
           type="primary"
-          :disabled="!postForm.id || !canEdit()"
+          :disabled="!postForm.id || !canOpenEdit()"
           @click="goEdit"
         >
           <el-icon><Edit /></el-icon>
@@ -518,7 +518,7 @@ import { copyToClipboard } from '#/utils/clipboard'
 import { downloadBlob } from '#/utils/file-resource'
 import { SERUM_ERRORS } from '../shared/errors'
 import {
-  canEditSerumProject,
+  canOpenSerumEdit,
   getSerumUserName,
   getSerumUserRoles,
 } from '#/utils/serumPermission'
@@ -732,8 +732,8 @@ export default {
       const allAntigens = this.postForm.antigens || []
       return allAntigens.filter(a => antigenIds.has(String(a.antigen_id)))
     },
-    canEdit() {
-        return canEditSerumProject(this.currentUserInfo, this.postForm)
+    canOpenEdit() {
+        return canOpenSerumEdit(this.currentUserInfo, this.postForm)
     },
     fetchData(id) {
       this.loading = true

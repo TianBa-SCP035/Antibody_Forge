@@ -1,60 +1,39 @@
 """引物库数据查询与写入。"""
 
-from io import BytesIO
 import re
+from io import BytesIO
 from typing import Any
 
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
-from utils.filter_values import clean_field_text, filter_terms, like_contains, match_any
-from utils.header_filters import HeaderColumn, header_column_values, header_filter_clauses, header_sort_clauses
-
+from core.errors import NotFoundError
 from models.molecular_cell import (
     LIBRARY_PRIMER_ID_FIELDS,
     MolecularLibraryOrder,
+)
+from models.molecular_cell import (
     MolecularPrimerIndexCatalog as Primer,
 )
+from utils.filter_values import filter_terms, like_contains, match_any
+from utils.header_filters import (
+    HeaderColumn,
+    header_column_values,
+    header_columns,
+    header_filter_clauses,
+    header_sort_clauses,
+)
+from utils.model_fields import clean_text, model_fields
+from utils.pagination import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, paginate_select
 
 MISSING_PRIMER = "引物不存在"
 NAME_TAKEN = "引物名称已存在"
 PRIMER_IN_USE = "这条引物已被文库工单使用，可以停用，不能删除"
-DEFAULT_PAGE_LIMIT = 20
-MAX_PAGE_LIMIT = 500
 MAX_OPTIONS = 2000
 MAX_BATCH_ITEMS = 1000
 MAX_BATCH_IDS = 5000
 
-FIELD_LIMITS = {
-    "name": 128,
-    "family": 32,
-    "direction": 8,
-    "version": 16,
-    "short_sequence": 64,
-    "homology_arm_1": 128,
-    "homology_arm_2": 128,
-    "note": 500,
-}
-FIELD_LABELS = {
-    "name": "名称",
-    "family": "系列",
-    "direction": "方向",
-    "version": "版本",
-    "short_sequence": "显示序列",
-    "homology_arm_1": "同源臂1",
-    "homology_arm_2": "同源臂2",
-    "note": "备注",
-}
-WRITABLE_FIELDS = (
-    "name",
-    "family",
-    "direction",
-    "version",
-    "short_sequence",
-    "homology_arm_1",
-    "homology_arm_2",
-    "note",
-)
+FIELDS = model_fields(Primer, readonly=("active", "source_file", "source_row"))
 EXPORT_HEADERS = ("名称", "系列", "方向", "显示序列", "核对序列", "备注", "状态")
 DNA_PATTERN = re.compile(r"^[ACGTN]+$")
 COMPLEMENT = str.maketrans("ACGTN", "TGCAN")
@@ -64,23 +43,19 @@ DIRECTION_VALUES = {"F": "F", "R": "R", "正向": "F", "反向": "R"}
 
 
 def _text(value: Any, field: str, required: bool = False) -> str | None:
-    text = clean_field_text(value, keep_breaks=field == "note")
+    text = clean_text(FIELDS[field], value, keep_breaks=field == "note")
     if required and not text:
-        raise ValueError(f"{FIELD_LABELS[field]}不能为空")
-    if text and len(text) > FIELD_LIMITS[field]:
-        raise ValueError(f"{FIELD_LABELS[field]}不能超过 {FIELD_LIMITS[field]} 个字符")
-    return text or None
+        raise ValueError(f"{FIELDS[field].label}不能为空")
+    return text
 
 
 def _sequence(value: Any, field: str, required: bool = False) -> str | None:
-    text = re.sub(r"\s+", "", str(value or "")).upper()
+    text = clean_text(FIELDS[field], re.sub(r"\s+", "", str(value or "")).upper())
     if required and not text:
-        raise ValueError(f"{FIELD_LABELS[field]}不能为空")
-    if text and len(text) > FIELD_LIMITS[field]:
-        raise ValueError(f"{FIELD_LABELS[field]}不能超过 {FIELD_LIMITS[field]} 个字符")
+        raise ValueError(f"{FIELDS[field].label}不能为空")
     if text and not DNA_PATTERN.fullmatch(text):
-        raise ValueError(f"{FIELD_LABELS[field]}只能包含 A、C、G、T、N")
-    return text or None
+        raise ValueError(f"{FIELDS[field].label}只能包含 A、C、G、T、N")
+    return text
 
 
 def check_sequence(value: str) -> str:
@@ -119,7 +94,7 @@ def normalize(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _apply(row: Primer, data: dict[str, Any]) -> None:
-    for field in WRITABLE_FIELDS:
+    for field in FIELDS:
         if field not in data:
             continue
         setattr(row, field, data[field])
@@ -139,14 +114,12 @@ def _new(data: dict[str, Any]) -> Primer:
 
 
 # 核对序列由显示序列算出，库里没有这一列，靠顶部筛选
-HEADER_COLUMNS: dict[str, HeaderColumn] = {
-    "name": HeaderColumn(Primer.name),
-    "family": HeaderColumn(Primer.family, "enum", order=PRESET_LIBRARIES),
-    "direction": HeaderColumn(Primer.direction, "enum", order=tuple(DIRECTION_LABELS)),
-    "short_sequence": HeaderColumn(Primer.short_sequence),
-    "note": HeaderColumn(Primer.note),
-    "active": HeaderColumn(case((Primer.active.is_(True), "active"), else_="inactive"), "enum", order=("active", "inactive")),
-}
+HEADER_COLUMNS = header_columns(
+    FIELDS,
+    family=HeaderColumn(Primer.family, order=PRESET_LIBRARIES),
+    direction=HeaderColumn(Primer.direction, order=tuple(DIRECTION_LABELS)),
+    active=HeaderColumn(case((Primer.active.is_(True), "active"), else_="inactive"), order=("active", "inactive")),
+)
 _VALUE_LABELS = {
     "direction": DIRECTION_LABELS,
     "active": {"active": "启用", "inactive": "停用"},
@@ -216,25 +189,17 @@ def _stats(db: Session, data: dict[str, Any]) -> dict[str, Any]:
 
 def list_catalog(db: Session, data: dict[str, Any] | None = None) -> dict[str, Any]:
     payload = data or {}
-    page = max(int(payload.get("page") or 1), 1)
-    limit = min(max(int(payload.get("limit") or DEFAULT_PAGE_LIMIT), 1), MAX_PAGE_LIMIT)
     filters = _filters(payload)
-    total = db.scalar(select(func.count()).select_from(Primer).where(*filters)) or 0
-    rows = db.scalars(
-        select(Primer)
-        .where(*filters)
-        .order_by(*_list_order(payload))
-        .offset((page - 1) * limit)
-        .limit(limit)
-    ).all()
-    stats = _stats(db, payload)
-    return {
-        "items": [row.to_dict() for row in rows],
-        "total": int(total),
-        "page": page,
-        "limit": limit,
-        "stats": stats,
-    }
+    return paginate_select(
+        db,
+        select(Primer).where(*filters),
+        select(func.count()).select_from(Primer).where(*filters),
+        payload,
+        order_by=_list_order(payload),
+        stats=_stats(db, payload),
+        default_limit=DEFAULT_PAGE_LIMIT,
+        max_limit=MAX_PAGE_LIMIT,
+    )
 
 
 def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
@@ -279,7 +244,7 @@ def save(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     row_id = data.get("id")
     row = db.get(Primer, int(row_id)) if row_id else None
     if row_id and row is None:
-        raise ValueError(MISSING_PRIMER)
+        raise NotFoundError(MISSING_PRIMER)
     clean = normalize(data)
     duplicate = db.scalar(
         select(Primer.id).where(
@@ -380,7 +345,7 @@ def batch_delete(db: Session, ids: list[int]) -> dict[str, Any]:
 def delete_primer(db: Session, row_id: int) -> dict[str, int]:
     row = db.get(Primer, int(row_id))
     if row is None:
-        raise ValueError(MISSING_PRIMER)
+        raise NotFoundError(MISSING_PRIMER)
     used = db.scalar(
         select(MolecularLibraryOrder.id).where(
             or_(*(getattr(MolecularLibraryOrder, field) == row.id for field in LIBRARY_PRIMER_ID_FIELDS))

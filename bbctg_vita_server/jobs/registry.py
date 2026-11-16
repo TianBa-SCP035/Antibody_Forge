@@ -3,6 +3,8 @@ import threading
 from collections.abc import Callable
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from sqlalchemy.exc import SQLAlchemyError
+
 from db.session import SessionLocal
 from jobs.lock import job_lock
 from jobs.discovery_status import discovery_auto_update_status_job
@@ -23,7 +25,6 @@ SCHEDULED_JOBS = [
         "name": "免疫状态自动更新",
         "resource": "project",
         "feature_code": "job.serum_auto_update_status",
-        "default_config": {"hour": 1, "minute": 0},
         "func": auto_update_status_job,
     },
     {
@@ -31,7 +32,6 @@ SCHEDULED_JOBS = [
         "name": "员工资料同步",
         "resource": "user",
         "feature_code": "job.employee_profile_sync",
-        "default_config": {"hour": 0, "minute": 30},
         "func": employee_profile_sync_job,
     },
     {
@@ -39,7 +39,6 @@ SCHEDULED_JOBS = [
         "name": "靶点同步",
         "resource": "target",
         "feature_code": "job.target_master_sync",
-        "default_config": {"hour": 0, "minute": 45},
         "func": target_master_sync_job,
     },
     {
@@ -47,7 +46,6 @@ SCHEDULED_JOBS = [
         "name": "发现状态更新",
         "resource": "discovery_workbench",
         "feature_code": "job.discovery_auto_update_status",
-        "default_config": {"hour": 1, "minute": 15},
         "func": discovery_auto_update_status_job,
     },
     {
@@ -55,7 +53,6 @@ SCHEDULED_JOBS = [
         "name": "镁伽状态同步",
         "resource": "flow_work_order",
         "feature_code": "job.mega_labillion_status_sync",
-        "default_config": {"hour": 2, "minute": 0},
         "func": labillion_status_sync_job,
     },
     {
@@ -63,7 +60,6 @@ SCHEDULED_JOBS = [
         "name": "合成与验证外部订单同步",
         "resource": "synthesis_progress",
         "feature_code": "job.discovery_synthesis_order_sync",
-        "default_config": {"schedule": "interval", "every": 1, "unit": "hour", "hour": 0, "minute": 20},
         "func": synthesis_order_sync_job,
     },
 ]
@@ -81,7 +77,7 @@ def get_scheduler() -> BackgroundScheduler:
             }
         )
         for job in SCHEDULED_JOBS:
-            enabled, schedule = _scheduled_job_config(job["feature_code"], job["default_config"])
+            enabled, schedule = _scheduled_job_config(job["feature_code"])
             if not enabled:
                 continue
             _register_job(_scheduler, job, schedule)
@@ -105,7 +101,7 @@ def apply_job_schedule(job_code: str) -> bool:
     job = get_scheduled_job(job_code)
     if job is None:
         return False
-    enabled, schedule = _scheduled_job_config(job["feature_code"], job["default_config"])
+    enabled, schedule = _scheduled_job_config(job["feature_code"])
     if not enabled:
         if scheduler.get_job(job["id"]):
             scheduler.remove_job(job["id"])
@@ -188,9 +184,13 @@ def _register_job(scheduler: BackgroundScheduler, job: dict, schedule: dict) -> 
     )
 
 
-def _scheduled_job_config(feature_code: str, default_config: dict) -> tuple[bool, dict]:
+def _scheduled_job_config(feature_code: str) -> tuple[bool, dict]:
+    """读不到开关就当关闭：库恢复后重启服务，或在系统管理里保存一次该任务即重新注册。"""
     db = SessionLocal()
     try:
-        return get_job_schedule(db, feature_code, default_config)
+        return get_job_schedule(db, feature_code)
+    except SQLAlchemyError:
+        logger.exception("job %s not scheduled: feature flag unreadable", feature_code)
+        return False, {}
     finally:
         db.close()

@@ -297,6 +297,7 @@
             </template>
             <FacsPlateCard
               v-if="plate.plate_type === 'facs'"
+              ref="plateCards"
               :plate-data="plate"
               :target-options="titer_targets"
               :pc-options="titer_pcs"
@@ -313,6 +314,7 @@
             />
             <ElisaPlateCard
               v-else
+              ref="plateCards"
               :plate-data="plate"
               :target-options="titer_targets"
               :pc-options="titer_pcs"
@@ -675,11 +677,6 @@ export default {
       titer_pcs: [],
       targetsLoading: false,
       pcsLoading: false,
-      targetsTimer: null,
-      pcsTimer: null,
-      targetsPending: false,
-      pcsPending: false,
-
       // Plates
       facsPlates: [],
       elisaPlates: [],
@@ -698,6 +695,8 @@ export default {
       conclusionRefreshTimer: null,
       conclusionFingerprint: '',
       tabDataFetchedAt: 0,
+      memoryCleared: false,
+      plateFlush: null,
     }
   },
   computed: {
@@ -818,7 +817,7 @@ export default {
     }
   },
   activated() {
-    if (shouldRefreshTabData(this.tabDataFetchedAt)) {
+    if (this.memoryCleared || shouldRefreshTabData(this.tabDataFetchedAt)) {
       this.refreshTabData()
     }
   },
@@ -889,24 +888,30 @@ export default {
         this.elisaPlates || [],
       )
     },
-    clearMemory() {
-      if (this.targetsTimer) {
-        clearTimeout(this.targetsTimer)
-        this.targetsTimer = null
-      }
-      if (this.pcsTimer) {
-        clearTimeout(this.pcsTimer)
-        this.pcsTimer = null
-      }
-      this.targetsPending = false
-      this.pcsPending = false
-      Object.values(this.plateTimers).forEach(t => clearTimeout(t))
+    flushPendingPlateSaves() {
+      ;(this.$refs.plateCards || []).forEach((card) => card?.flushPendingSave?.())
+      const runs = Object.values(this.plateTimers).map(({ timer, run }) => {
+        clearTimeout(timer)
+        return run()
+      })
       this.plateTimers = {}
+      return Promise.all(runs)
+    },
+    /** 离开页面：先把板子的待保存改动发出去，再整页清空，回来时重新拉取。 */
+    clearMemory() {
+      this.plateFlush = this.flushPendingPlateSaves()
       if (this.conclusionRefreshTimer) {
         clearTimeout(this.conclusionRefreshTimer)
         this.conclusionRefreshTimer = null
       }
-      
+
+      this.project = null
+      this.facsPlates = []
+      this.elisaPlates = []
+      this.activePlateName = ''
+      this.plateSaveSeq = {}
+      this.savingPlateKeys = {}
+      this.elisaAbsPreviewCache = {}
       this.excelData = []
       this.facsConclusionModel = null
       this.conclusionFingerprint = ''
@@ -914,11 +919,14 @@ export default {
       this.fileList = []
       Object.values(this.fileObjectUrls).forEach(url => URL.revokeObjectURL(url))
       this.fileObjectUrls = {}
-      
       this.titer_targets = []
       this.titer_pcs = []
+      this.memoryCleared = true
     },
-    refreshTabData() {
+    async refreshTabData() {
+      this.memoryCleared = false
+      await this.plateFlush
+      this.plateFlush = null
       const projectId = this.$route.query.id
       const experimentId = this.$route.query.experiment_id
       if (projectId) {
@@ -1571,7 +1579,7 @@ export default {
     },
     cleanupPlateState(plateKey) {
       if (this.plateTimers[plateKey]) {
-        clearTimeout(this.plateTimers[plateKey])
+        clearTimeout(this.plateTimers[plateKey].timer)
         delete this.plateTimers[plateKey]
       }
       delete this.plateSaveSeq[plateKey]
@@ -1598,9 +1606,9 @@ export default {
       this.plateSaveSeq[stableKey] = seq
       this.savingPlateKeys[stableKey] = true
 
-      if (this.plateTimers[stableKey]) clearTimeout(this.plateTimers[stableKey])
+      if (this.plateTimers[stableKey]) clearTimeout(this.plateTimers[stableKey].timer)
 
-      this.plateTimers[stableKey] = setTimeout(async () => {
+      const run = async () => {
         const mySeq = seq
         const myKey = stableKey
         let finalKey = myKey
@@ -1634,7 +1642,6 @@ export default {
             }
 
             if (oldKey !== newKey) {
-              delete this.plateTimers[oldKey]
               if (this.plateSaveSeq[oldKey] !== undefined && this.plateSaveSeq[newKey] === undefined) {
                 this.plateSaveSeq[newKey] = this.plateSaveSeq[oldKey]
                 delete this.plateSaveSeq[oldKey]
@@ -1668,7 +1675,12 @@ export default {
             this.scheduleFacsConclusionRefresh(true)
           }
         }
+      }
+      const timer = setTimeout(() => {
+        delete this.plateTimers[stableKey]
+        run()
       }, PLATE_SAVE_DEBOUNCE_MS)
+      this.plateTimers[stableKey] = { timer, run }
     },
     async handleElisaExcelChange({ fileId }, plate) {
       if (!this.canEditTiter() || !plate) return

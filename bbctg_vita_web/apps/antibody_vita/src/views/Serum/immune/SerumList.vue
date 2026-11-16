@@ -111,7 +111,7 @@
                  <WorkbenchTargetFilter
                       v-model="listQuery.target_name"
                       v-bind="headerTop('target_name', '靶点')"
-                      scope="serumList"
+                      :search="fetchSerumRecordedTargets"
                       style="width: 100%"
                       @change="handleFilter" />
             </el-col>
@@ -459,9 +459,9 @@
                         type="success"
                         plain
                         :icon="Edit"
-                        :class="{'no-permission-btn': !canEdit(row)}"
+                        :class="{'no-permission-btn': !canOpenEdit(row)}"
                         @click="handleUpdate(row, 'scheme')"
-                        :title="!canEdit(row) ? '您没有权限编辑此项目' : ''">
+                        :title="!canOpenEdit(row) ? '您没有权限编辑此项目' : ''">
                         方案
                     </el-button>
                     <el-button
@@ -554,7 +554,7 @@ import {
 } from 'element-plus'
 
 import { notifyApiError, resolveUserMessage } from '#/api/errors'
-import { fetchList, fetchSerumColumnValues, fetchStats, getSerumFilterOptions, export_mouse, exportSerumList, autoUpdateStatus, updateCagePosition, updateLabNotebook, updateSerumReviewer, exportSchemePdf } from '#/api/serum'
+import { fetchList, fetchSerumColumnValues, fetchStats, getSerumFilterOptions, export_mouse, exportSerumList, autoUpdateStatus, updateCagePosition, updateLabNotebook, updateSerumReviewer, exportSchemePdf, fetchSerumRecordedTargets, SERUM_CELL_VIEW, SERUM_MOUSE_EXPORT, SERUM_PROJECT_CREATE, SERUM_STATUS_AUTO_UPDATE } from '#/api/serum'
 import { skipGlobalErrorHandler } from '#/api/request'
 import { SERUM_ERRORS } from '../shared/errors'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
@@ -565,15 +565,13 @@ import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 import { listPageMixin } from '#/utils/listPage'
 import { listTableLockMixin } from '#/utils/listTableLock'
 import { downloadBlob } from '#/utils/file-resource'
+import { hasAccessCode } from '#/utils/accessCode'
 import {
-  canAutoUpdateSerumStatus,
-  canCreateSerumProject,
   canEditSerumProject,
   canEditSerumTiter,
-  canExportSerumMouse,
+  canOpenSerumEdit,
   canUpdateSerumCage,
   canUpdateSerumStatus,
-  canViewSerumCellInventory,
   getSerumUserName,
   getSerumUserRoles,
 } from '#/utils/serumPermission'
@@ -660,6 +658,7 @@ export default {
       Refresh,
       Search,
       TrendCharts,
+      fetchSerumRecordedTargets,
       userStore,
       View,
     }
@@ -1180,7 +1179,7 @@ export default {
                 return
             }
         } else {
-            if (!this.canEdit(row)) {
+            if (!this.canOpenEdit(row)) {
                 ElMessage.warning('您没有权限编辑此项目')
                 return
             }
@@ -1192,10 +1191,13 @@ export default {
         }
     },
     canCreateProject() {
-        return canCreateSerumProject(this.currentUserInfo)
+        return hasAccessCode(this.currentUserInfo, SERUM_PROJECT_CREATE)
     },
     canEdit(row) {
         return canEditSerumProject(this.currentUserInfo, row)
+    },
+    canOpenEdit(row) {
+        return canOpenSerumEdit(this.currentUserInfo, row)
     },
     canEditTiter(row) {
         return canEditSerumTiter(this.currentUserInfo, row)
@@ -1207,13 +1209,13 @@ export default {
         return canUpdateSerumCage(this.currentUserInfo, row)
     },
     canExportMouse() {
-        return canExportSerumMouse(this.currentUserInfo)
+        return hasAccessCode(this.currentUserInfo, SERUM_MOUSE_EXPORT)
     },
     canAutoUpdateStatus() {
-        return canAutoUpdateSerumStatus(this.currentUserInfo)
+        return hasAccessCode(this.currentUserInfo, SERUM_STATUS_AUTO_UPDATE)
     },
     canViewCellInventory() {
-        return canViewSerumCellInventory(this.currentUserInfo)
+        return hasAccessCode(this.currentUserInfo, SERUM_CELL_VIEW)
     },
     setFilterQuery(key, query) {
         this[`${key}FilterQuery`] = query;

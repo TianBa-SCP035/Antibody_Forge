@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from models.system import SysJobRunLog
 from models.target import Target
+from utils.pagination import paginate_select
 from utils.target_structure import match_structural_properties_by_keyword
 
 
@@ -48,8 +49,6 @@ TARGET_FIELDS = tuple(column.key for column in Target.__table__.columns)
 
 
 def get_target_list(db: Session, data: dict[str, Any], *, include_stats: bool = True) -> dict[str, Any]:
-    page = max(_to_int(data.get("page"), 1), 1)
-    limit = min(max(_to_int(data.get("limit"), 20), 1), 500)
     conditions = []
 
     if not _to_bool(data.get("include_inactive")):
@@ -120,24 +119,15 @@ def get_target_list(db: Session, data: dict[str, Any], *, include_stats: bool = 
         except (TypeError, ValueError):
             pass
 
-    total = db.scalar(select(func.count(Target.id)).where(*conditions)) or 0
-    targets = db.scalars(
-        select(Target)
-        .where(*conditions)
-        .order_by(*order_by)
-        .offset((page - 1) * limit)
-        .limit(limit)
-    ).all()
-
-    result = {
-        "items": [_target_to_dict(target) for target in targets],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
-    if include_stats:
-        result["stats"] = _get_target_stats(db, stat_conditions)
-    return result
+    return paginate_select(
+        db,
+        select(Target).where(*conditions),
+        select(func.count(Target.id)).where(*conditions),
+        data,
+        order_by=order_by,
+        serialize_rows=lambda rows: [_target_to_dict(target) for target in rows],
+        stats=_get_target_stats(db, stat_conditions) if include_stats else None,
+    )
 
 
 def _get_target_stats(db: Session, conditions: list) -> dict[str, Any]:
@@ -177,13 +167,6 @@ def _serialize(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat(sep=" ", timespec="seconds")
     return value
-
-
-def _to_int(value: Any, default: int) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
 
 
 def _to_bool(value: Any) -> bool:

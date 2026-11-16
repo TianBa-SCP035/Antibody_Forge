@@ -5,7 +5,7 @@ from sqlalchemy import String, select, text
 from sqlalchemy.exc import StatementError
 from sqlalchemy.orm import sessionmaker
 
-from core.errors import route_error
+from core.errors import _validation_error
 from models.discovery import DiscoveryWorkbench
 from models.types import DateString, date_blank, date_present
 from utils.header_filters import HeaderColumn, csv_token_clause
@@ -121,9 +121,7 @@ class DateStringTests(DbTestCase):
                 DiscoveryWorkbench.__table__.insert().values(discovery_id="D9", harvest_date="bad")
             )
         self.db.rollback()
-        result = route_error(ctx.exception, self.db)
-        self.assertNotEqual(result["code"], 0)
-        self.assertIn("YYYY-MM-DD", result["message"])
+        self.assertIn("YYYY-MM-DD", str(_validation_error(ctx.exception)))
         self.assertEqual(self.db.execute(text("select count(*) from discovery_workbench")).scalar(), 0)
 
 

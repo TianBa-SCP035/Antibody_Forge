@@ -12,14 +12,14 @@
         </div>
         <div class="topbar-state">
           <WorkbenchStatusEditor
-            :value="currentStatus"
+            :value="order.status"
             :options="statusOptions"
             :type="statusTagType"
             :editable="canEdit"
             @change="updateStatus"
           />
           <WorkbenchStatusEditor
-            :value="currentPriority"
+            :value="order.priority"
             :options="priorityOptions"
             :type="priorityTagType"
             :tag-class="priorityTone === 'king' ? 'status-tone-king' : ''"
@@ -666,7 +666,7 @@
                 <el-form-item
                   :label="field.label"
                   :label-width="field.type === 'primer-matrix' ? '0' : undefined"
-                  :class="{ 'is-wide': field.wide, 'is-synced': isSyncedText(field) }"
+                  :class="{ 'is-wide': field.wide, 'is-synced': field.sync }"
                 >
                   <el-date-picker
                     v-if="field.type === 'date'"
@@ -769,10 +769,19 @@
                       <span v-if="item.short_sequence" class="catalog-sequence">{{ item.short_sequence }}</span>
                     </el-option>
                   </el-select>
+                  <WorkbenchDrawerField
+                    v-else-if="field.type === 'tags'"
+                    :field="field"
+                    kind="tags"
+                    :value="splitTags(order[field.key])"
+                    :options="field.options"
+                    :disabled="!canEdit"
+                    @change="(values) => onTagsChange(field, values)"
+                  />
                   <el-select
-                    v-else-if="['select', 'source-select'].includes(field.type)"
+                    v-else-if="field.type === 'select'"
                     v-model="order[field.key]"
-                    :clearable="!isRequiredChoice(field.key)"
+                    :clearable="field.clearable !== false"
                     :disabled="!canEditField(field.key)"
                     @change="persist(field.key)"
                   >
@@ -798,11 +807,11 @@
                     v-else
                     v-model="order[field.key]"
                     :disabled="!canEdit"
-                    :type="isSyncedText(field) || field.type === 'textarea' ? 'textarea' : 'text'"
-                    :rows="isSyncedText(field) ? 1 : undefined"
-                    :autosize="isSyncedText(field) ? false : (field.type === 'textarea' ? { minRows: 2, maxRows: 5 } : undefined)"
+                    :type="field.sync || field.type === 'textarea' ? 'textarea' : 'text'"
+                    :rows="field.sync ? 1 : undefined"
+                    :autosize="field.sync ? false : (field.type === 'textarea' ? { minRows: 2, maxRows: 5 } : undefined)"
                     :placeholder="field.placeholder || ''"
-                    @input="isSyncedText(field) && syncSyncedTextareas()"
+                    @input="field.sync && syncSyncedTextareas()"
                     @blur="persist(field.key)"
                   />
                 </el-form-item>
@@ -868,17 +877,26 @@ import {
   saveLibraryOrder,
   updateLibraryFile,
   uploadLibraryFileBatch,
+  LIBRARY_EDIT,
+  LIBRARY_FILE_MANAGE,
 } from '#/api/molecularLibrary'
 import { expandResultArchives, readDroppedFiles, resultUploadLimitError } from './readDroppedFiles'
 import { extractApiError, notifyApiError } from '#/api/errors'
 import { FilePreviewer } from '#/components/file-preview'
-import { WorkbenchStatusEditor, WorkbenchTargetSelect } from '#/components/workbench'
-import { cleanFieldText } from '#/components/workbench/clipboardGrid'
+import {
+  cleanFieldValue,
+  joinTags,
+  splitTags,
+  syncTextareaHeights,
+  WorkbenchDrawerField,
+  WorkbenchStatusEditor,
+  WorkbenchTargetSelect,
+} from '#/components/workbench'
 import { downloadFile, fetchFileBlob } from '#/utils/file-resource'
-import { canEditLibrary, canManageLibraryFiles } from '#/utils/molecularPermission'
-import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/DiscoveryWorkbench.vue'
+import { hasAccessCode } from '#/utils/accessCode'
+import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/discoveryFocus'
 import { getSerumUserName } from '#/utils/serumPermission'
-import { getTiterPriorityTone, WORKBENCH_PRIORITY_DEFAULT } from '#/utils/serumProjectStatus'
+import { getTiterPriorityTone } from '#/utils/serumProjectStatus'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 import UserSelect from '#/components/UserSelect.vue'
 import {
@@ -889,19 +907,14 @@ import {
   BUILD_POOLED_BARCODE,
   BUILD_POOLED_BCR,
   buildTypeLabel,
+  FIELDS,
   normalizePlateInputText,
-  optionsForBuild,
+  libraryFieldOptions,
   orderEditorSections,
-  isSyncedText,
-  SYNC_TEXT_KEYS,
-  syncPairedTextareas,
   plateNumbersFromText,
-  persistValue,
   plateNumbersText,
   PRIORITY_OPTIONS,
   QC_RESULT_OPTIONS,
-  REQUIRED_CHOICE_KEYS,
-  SAMPLE_SOURCE_OPTIONS,
   sampleSourceLabel,
   sampleTypeLabel,
   stampQcFields,
@@ -975,6 +988,7 @@ export default {
     UserSelect,
     UploadFilled,
     WorkbenchStatusEditor,
+    WorkbenchDrawerField,
     WorkbenchTargetSelect,
     ZoomIn,
     ZoomOut,
@@ -1029,10 +1043,10 @@ export default {
       return Number(this.$route.query.id)
     },
     canEdit() {
-      return canEditLibrary(useUserStore().userInfo)
+      return hasAccessCode(useUserStore().userInfo, LIBRARY_EDIT)
     },
     canManageFiles() {
-      return canManageLibraryFiles(useUserStore().userInfo)
+      return hasAccessCode(useUserStore().userInfo, LIBRARY_FILE_MANAGE)
     },
     canEditQc() {
       return this.canEdit || this.canManageFiles
@@ -1047,12 +1061,6 @@ export default {
       const target = [this.order.target_name, targetCodes].filter(Boolean).join(' · ')
       return [buildTypeLabel(this.order.build_type), target].filter(Boolean).join(' ｜ ') || '文库构建工单'
     },
-    currentStatus() {
-      return this.order.status || '待处理'
-    },
-    currentPriority() {
-      return this.order.priority || WORKBENCH_PRIORITY_DEFAULT
-    },
     statusOptions() {
       return STATUS_OPTIONS
     },
@@ -1063,10 +1071,10 @@ export default {
       return QC_RESULT_OPTIONS
     },
     statusTagType() {
-      return statusTone(this.currentStatus)
+      return statusTone(this.order.status)
     },
     priorityTone() {
-      return getTiterPriorityTone(this.currentPriority)
+      return getTiterPriorityTone(this.order.priority)
     },
     priorityTagType() {
       const tone = this.priorityTone
@@ -1143,7 +1151,7 @@ export default {
       return this.files.filter((file) => this.isImage(file))
     },
     qcGaps() {
-      const status = this.currentStatus
+      const status = this.order.status
       if (!this.order?.id || ['已取消', '已完成', '质检不通过'].includes(status)) return []
       const working = ['建库中', '待质检', '质检待确认', '质检通过'].includes(status) || this.files.length
       if (!working) return []
@@ -1294,9 +1302,6 @@ export default {
       }
       return entries
     },
-    sourceOptions() {
-      return optionsForBuild(SAMPLE_SOURCE_OPTIONS, this.order.build_type)
-    },
   },
   created() {
     this.load()
@@ -1331,9 +1336,9 @@ export default {
     order: 'syncSyncedTextareas',
   },
   methods: {
-    isSyncedText,
+    splitTags,
     syncSyncedTextareas() {
-      this.$nextTick(() => syncPairedTextareas('.record-inspector .is-synced textarea'))
+      this.$nextTick(() => syncTextareaHeights('.record-inspector .is-synced textarea'))
     },
     packageEntryIcon(entry) {
       return entry?.type === 'folder' ? FolderOpened : this.fileIcon(entry?.name)
@@ -1348,8 +1353,11 @@ export default {
       return libraryFileDownloadUrl(linkId, '&preview=true')
     },
     fieldOptions(field) {
-      if (field.type === 'source-select') return this.sourceOptions
-      return field.options || []
+      return libraryFieldOptions(field, this.order) ?? field.options ?? []
+    },
+    onTagsChange(field, values) {
+      this.order[field.key] = joinTags(field.options, values)
+      this.persist(field.key)
     },
     async filterCatalog(query = '') {
       this.catalogQuery = String(query || '')
@@ -1396,11 +1404,8 @@ export default {
     },
     canEditField(key) {
       if (!this.canEdit) return false
-      if (key === 'build_type') return this.currentStatus === '待处理'
+      if (key === 'build_type') return this.order.status === '待处理'
       return true
-    },
-    isRequiredChoice(key) {
-      return REQUIRED_CHOICE_KEYS.includes(key)
     },
     sameValue(left, right) {
       return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
@@ -2372,10 +2377,7 @@ export default {
     async persist(field) {
       const qcConclusion = ['qc_result', 'qc_owner', 'qc_on', 'qc_note'].includes(field)
       if (!(qcConclusion ? this.canEditQc : this.canEdit) || !this.order?.id) return
-      if (typeof this.order[field] === 'string' && SYNC_TEXT_KEYS.has(field)) {
-        this.order[field] = cleanFieldText(this.order[field], { keepBreaks: true })
-      }
-      this.order[field] = persistValue(this.order[field])
+      this.order[field] = cleanFieldValue(FIELDS[field], this.order[field])
       const qcFields = field === 'qc_result'
         ? stampQcFields(this.order, getSerumUserName(useUserStore().userInfo))
         : []

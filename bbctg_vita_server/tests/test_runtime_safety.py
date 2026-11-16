@@ -7,10 +7,19 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from fastapi import HTTPException
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
 from core.config import DEFAULT_SECRET_KEY, Settings
-from core.errors import BusinessError, UNEXPECTED_MESSAGE, route_error
+from core.errors import (
+    UNEXPECTED_MESSAGE,
+    BusinessError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    setup_exception_handlers,
+)
+from db.session import get_db
 from jobs import registry
 from modules.auth.external import check_external_caller
 from modules.system.features import run_recorded_job
@@ -96,18 +105,60 @@ class UploadHelpersTest(TestCase):
             read_limited(io.BytesIO(b"abcd"), 3)
 
 
-class RouteErrorTest(TestCase):
-    def test_business_messages_pass_through(self):
-        db = MagicMock()
-        self.assertEqual(route_error(ValueError("实验号已存在"), db)["message"], "实验号已存在")
-        db.rollback.assert_called_once()
-        self.assertEqual(route_error(BusinessError("锁定", code=7))["code"], 7)
+class ExceptionHandlerTest(TestCase):
+    def setUp(self):
+        self.db = MagicMock()
+        app = FastAPI()
+        setup_exception_handlers(app)
+
+        @app.post("/raise/{kind}")
+        def raise_kind(kind: str, db=Depends(get_db)):
+            raise {
+                "value": ValueError("实验号已存在"),
+                "business": BusinessError("锁定", code=7, error_code="LOCKED"),
+                "forbidden": ForbiddenError("没有权限修改该字段"),
+                "missing": NotFoundError("记录不存在"),
+                "conflict": ConflictError("记录已被其他用户修改，请按最新内容重新填写"),
+                "internal": RuntimeError("(pymysql.err.OperationalError) secret dsn"),
+            }[kind]
+
+        @app.post("/ok")
+        def ok(db=Depends(get_db)):
+            return {"code": 0}
+
+        patcher = patch("db.session.SessionLocal", return_value=self.db)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.client = TestClient(app, raise_server_exceptions=False)
+
+    def test_business_errors_map_to_status_and_roll_back(self):
+        for kind, status, message in (
+            ("value", 422, "实验号已存在"),
+            ("business", 422, "锁定"),
+            ("forbidden", 403, "没有权限修改该字段"),
+            ("missing", 404, "记录不存在"),
+            ("conflict", 409, "记录已被其他用户修改，请按最新内容重新填写"),
+        ):
+            self.db.reset_mock()
+            response = self.client.post(f"/raise/{kind}")
+            self.assertEqual(response.status_code, status, kind)
+            self.assertEqual(response.json()["message"], message)
+            self.db.rollback.assert_called_once()
+            self.db.close.assert_called_once()
+        self.assertEqual(self.client.post("/raise/business").json()["code"], 7)
 
     def test_internal_errors_are_hidden(self):
         with patch("core.errors.logger") as logger:
-            body = route_error(RuntimeError("(pymysql.err.OperationalError) secret dsn"))
-        self.assertEqual(body["message"], UNEXPECTED_MESSAGE)
+            response = self.client.post("/raise/internal")
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json()["message"], UNEXPECTED_MESSAGE)
         logger.error.assert_called_once()
+        self.db.rollback.assert_called_once()
+
+    def test_success_does_not_roll_back(self):
+        self.assertEqual(self.client.post("/ok").status_code, 200)
+        self.db.rollback.assert_not_called()
+        self.db.close.assert_called_once()
 
 
 class RecordedJobTest(TestCase):

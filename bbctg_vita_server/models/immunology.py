@@ -7,6 +7,8 @@ from models.types import DateString
 
 class SerumImmProject(Base):
     __tablename__ = "serum_imm_project"
+    __log_label__ = "免疫项目"
+    __audit_label__ = ("experiment_id", "project_code", "project_name")
     __table_args__ = (UniqueConstraint("experiment_id", name="uk_serum_imm_project_experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -65,6 +67,8 @@ class SerumImmProject(Base):
 
 class SerumImmMouse(Base):
     __tablename__ = "serum_imm_mouse"
+    __log_label__ = "小鼠数据"
+    __audit_label__ = ("experiment_id",)
     __table_args__ = (Index("idx_serum_imm_mouse_experiment_id", "experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -101,6 +105,8 @@ class SerumImmMouse(Base):
 
 class SerumFile(Base):
     __tablename__ = "serum_file"
+    __log_label__ = "文件"
+    __audit_label__ = ("experiment_id",)
     __table_args__ = (Index("idx_serum_file_experiment_id", "experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -140,6 +146,8 @@ class SerumFile(Base):
 
 class SerumImmAntigen(Base):
     __tablename__ = "serum_imm_antigen"
+    __log_label__ = "免疫项目"
+    __audit_label__ = ("experiment_id",)
     __table_args__ = (UniqueConstraint("experiment_id", "antigen_id", name="uq_experiment_antigen"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -174,6 +182,8 @@ class SerumImmAntigen(Base):
 
 class SerumImmStep(Base):
     __tablename__ = "serum_imm_step"
+    __log_label__ = "免疫项目"
+    __audit_label__ = ("experiment_id",)
     __table_args__ = (Index("idx_serum_imm_step_experiment_id", "experiment_id"),)
 
     step_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -214,6 +224,8 @@ class SerumImmStep(Base):
 
 class SerumTiterPc(Base):
     __tablename__ = "serum_titer_pc"
+    __log_label__ = "效价"
+    __audit_label__ = ("experiment_id",)
     __table_args__ = (Index("idx_serum_titer_pc_experiment_id", "experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -236,6 +248,8 @@ class SerumTiterPc(Base):
 
 class SerumTiterTarget(Base):
     __tablename__ = "serum_titer_target"
+    __log_label__ = "效价"
+    __audit_label__ = ("name", "experiment_id")
     __table_args__ = (Index("idx_serum_titer_target_experiment_id", "experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -266,6 +280,8 @@ class SerumTiterTarget(Base):
 
 class SerumElisaPlate(Base):
     __tablename__ = "serum_elisa_plate"
+    __log_label__ = "效价"
+    __audit_label__ = ("experiment_id",)
     __table_args__ = (Index("idx_serum_elisa_plate_experiment_id", "experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -305,6 +321,8 @@ class SerumElisaPlate(Base):
 
 class SerumFacsPlate(Base):
     __tablename__ = "serum_facs_plate"
+    __log_label__ = "效价"
+    __audit_label__ = ("experiment_id",)
     __table_args__ = (Index("idx_serum_facs_plate_experiment_id", "experiment_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -354,6 +372,8 @@ class SerumFacsPlate(Base):
 
 class SerumTiterOrder(Base):
     __tablename__ = "serum_titer_order"
+    __log_label__ = "效价工单"
+    __audit_label__ = ("experiment_id",)
     __table_args__ = (
         UniqueConstraint("titer_order_id", name="uk_serum_titer_order_id"),
         Index("idx_serum_titer_order_experiment_id", "experiment_id"),
@@ -375,7 +395,7 @@ class SerumTiterOrder(Base):
     serum_status: Mapped[str | None] = mapped_column(String(64))
     summary: Mapped[str | None] = mapped_column(String(500))
     remark: Mapped[str | None] = mapped_column(String(500))
-    priority: Mapped[str | None] = mapped_column(String(64))
+    priority: Mapped[str] = mapped_column(String(64), nullable=False, default="正常")
 
     def to_dict(self) -> dict:
         raw_dates = self.test_dates if isinstance(self.test_dates, list) else []
@@ -398,66 +418,72 @@ class SerumTiterOrder(Base):
             "serum_status": self.serum_status,
             "summary": self.summary,
             "remark": self.remark,
-            "priority": self.priority or "正常",
+            "priority": self.priority,
         }
 
 
 class SerumImmWorkbench(Base):
     __tablename__ = "serum_imm_workbench"
-    __table_args__ = (UniqueConstraint("experiment_id", name="uk_serum_imm_workbench_experiment_id"),)
+    __log_label__ = "免疫工作台"
+    __audit_label__ = ("experiment_id", "project_code", "project_name")
+    __table_args__ = (
+        UniqueConstraint("experiment_id", name="uk_serum_imm_workbench_experiment_id"),
+        {"comment": "免疫项目工作台"},
+    )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    experiment_id: Mapped[str | None] = mapped_column(String(64))
-    project_code: Mapped[str | None] = mapped_column(String(64))
-    project_name: Mapped[str | None] = mapped_column(String(255))
-    project_purpose: Mapped[str | None] = mapped_column(String(255))
-    start_date: Mapped[str | None] = mapped_column(DateString)
-    immunization_interval: Mapped[str | None] = mapped_column(String(32))
-    target_codes: Mapped[list[str] | None] = mapped_column(JSON)
-    target_name: Mapped[str | None] = mapped_column(String(128))
-    target_type: Mapped[str | None] = mapped_column(String(64))
-    target_size: Mapped[str | None] = mapped_column(String(64))
-    owner: Mapped[str | None] = mapped_column(String(64))
-    pm: Mapped[str | None] = mapped_column(String(64))
-    study_type: Mapped[str | None] = mapped_column(String(64))
-    assay_method: Mapped[str | None] = mapped_column(String(128))
-    facs_plate_count: Mapped[int | None] = mapped_column(Integer)
-    elisa_plate_count: Mapped[int | None] = mapped_column(Integer)
-    remark: Mapped[str | None] = mapped_column(String(255))
-    mouse_strain: Mapped[str | None] = mapped_column(String(128))
-    mouse_strain_category: Mapped[str | None] = mapped_column(String(128))
-    sort_order: Mapped[int | None] = mapped_column(Integer)
-    priority: Mapped[str | None] = mapped_column(String(32))
-    plan_status: Mapped[str | None] = mapped_column(String(32))
-    project_set_code: Mapped[str | None] = mapped_column(String(64))
-    species_cross: Mapped[str | None] = mapped_column(String(64))
-    immuno_method: Mapped[str | None] = mapped_column(String(64))
-    reviewer: Mapped[str | None] = mapped_column(String(64))
-    review_status: Mapped[str | None] = mapped_column(String(32))
-    mouse_scheme_no: Mapped[str | None] = mapped_column(String(64))
-    mouse_count: Mapped[str | None] = mapped_column(String(32))
-    mouse_zygosity: Mapped[str | None] = mapped_column(String(32))
-    mouse_birth_date: Mapped[str | None] = mapped_column(DateString)
-    mouse_age_weeks: Mapped[str | None] = mapped_column(String(32))
-    mouse_expand_requested: Mapped[str | None] = mapped_column(String(16))
-    mouse_region: Mapped[str | None] = mapped_column(String(64))
-    mouse_room: Mapped[str | None] = mapped_column(String(64))
-    mouse_status: Mapped[str | None] = mapped_column(String(32))
-    mouse_arrive_date: Mapped[str | None] = mapped_column(DateString)
-    mouse_remark: Mapped[str | None] = mapped_column(String(255))
-    antigen_source: Mapped[str | None] = mapped_column(String(128))
-    antigen_ready: Mapped[str | None] = mapped_column(String(16))
-    antigen_eta: Mapped[str | None] = mapped_column(String(32))
-    lnp_ordered: Mapped[str | None] = mapped_column(String(16))
-    cell_prep_status: Mapped[str | None] = mapped_column(String(64))
-    antigen_remark: Mapped[str | None] = mapped_column(String(255))
-    can_start: Mapped[str | None] = mapped_column(String(16))
-    created_by: Mapped[str | None] = mapped_column(String(64))
-    created_at: Mapped[object | None] = mapped_column(DateTime, server_default=func.current_timestamp())
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    experiment_id: Mapped[str | None] = mapped_column(String(64), comment="实验号")
+    project_code: Mapped[str | None] = mapped_column(String(64), comment="项目管理编号")
+    project_name: Mapped[str | None] = mapped_column(String(255), comment="项目名称")
+    project_purpose: Mapped[str | None] = mapped_column(String(255), comment="项目目的")
+    start_date: Mapped[str | None] = mapped_column(DateString, comment="项目开始日期")
+    immunization_interval: Mapped[str | None] = mapped_column(String(32), comment="免疫间隔")
+    target_codes: Mapped[list[str] | None] = mapped_column(JSON, comment="靶点编号列表")
+    target_name: Mapped[str | None] = mapped_column(String(128), comment="靶点名称")
+    target_type: Mapped[str | None] = mapped_column(String(64), comment="靶点类型")
+    target_size: Mapped[str | None] = mapped_column(String(64), comment="靶点大小")
+    owner: Mapped[str | None] = mapped_column(String(64), comment="开展人")
+    pm: Mapped[str | None] = mapped_column(String(64), comment="PM")
+    study_type: Mapped[str | None] = mapped_column(String(64), comment="课题类型")
+    assay_method: Mapped[str | None] = mapped_column(String(128), comment="检测方法")
+    facs_plate_count: Mapped[int | None] = mapped_column(Integer, comment="FACS板数")
+    elisa_plate_count: Mapped[int | None] = mapped_column(Integer, comment="ELISA板数")
+    remark: Mapped[str | None] = mapped_column(String(255), comment="备注")
+    mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="确切鼠型")
+    mouse_strain_category: Mapped[str | None] = mapped_column(String(128), comment="归类鼠型")
+    sort_order: Mapped[int | None] = mapped_column(Integer, comment="排序值")
+    priority: Mapped[str] = mapped_column(String(32), nullable=False, default="正常", comment="优先级")
+    plan_status: Mapped[str] = mapped_column(String(32), nullable=False, default="草稿", comment="工作台状态")
+    project_set_code: Mapped[str | None] = mapped_column(String(64), comment="项目集编号")
+    species_cross: Mapped[str | None] = mapped_column(String(64), comment="种属交叉")
+    immuno_method: Mapped[str | None] = mapped_column(String(64), comment="免疫方式")
+    reviewer: Mapped[str | None] = mapped_column(String(64), comment="审核人")
+    review_status: Mapped[str] = mapped_column(String(32), nullable=False, default="未审", comment="审核结果")
+    mouse_scheme_no: Mapped[str | None] = mapped_column(String(64), comment="小鼠方案号")
+    mouse_count: Mapped[str | None] = mapped_column(String(32), comment="小鼠数量")
+    mouse_zygosity: Mapped[str | None] = mapped_column(String(32), comment="小鼠合子状态")
+    mouse_birth_date: Mapped[str | None] = mapped_column(DateString, comment="出生日期")
+    mouse_age_weeks: Mapped[str | None] = mapped_column(String(32), comment="周龄")
+    mouse_expand_requested: Mapped[str | None] = mapped_column(String(16), comment="是否代下扩繁")
+    mouse_region: Mapped[str | None] = mapped_column(String(64), comment="提供地区")
+    mouse_room: Mapped[str | None] = mapped_column(String(64), comment="房间号")
+    mouse_status: Mapped[str] = mapped_column(String(32), nullable=False, default="未定", comment="运输状态")
+    mouse_arrive_date: Mapped[str | None] = mapped_column(DateString, comment="到鼠时间")
+    mouse_remark: Mapped[str | None] = mapped_column(String(255), comment="小鼠备注")
+    antigen_source: Mapped[str | None] = mapped_column(String(128), comment="抗原来源")
+    antigen_ready: Mapped[str] = mapped_column(String(16), nullable=False, default="否", comment="抗原到货情况")
+    antigen_eta: Mapped[str | None] = mapped_column(String(32), comment="抗原预计日")
+    lnp_ordered: Mapped[str | None] = mapped_column(String(16), comment="LNP是否下单")
+    cell_prep_status: Mapped[str | None] = mapped_column(String(64), comment="冲击细胞准备")
+    antigen_remark: Mapped[str | None] = mapped_column(String(255), comment="抗原备注")
+    can_start: Mapped[str] = mapped_column(String(16), nullable=False, default="否", comment="是否可开展")
+    created_by: Mapped[str | None] = mapped_column(String(64), comment="创建人")
+    created_at: Mapped[object | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")
     updated_at: Mapped[object | None] = mapped_column(
         DateTime,
         server_default=func.current_timestamp(),
         onupdate=func.current_timestamp(),
+        comment="更新时间",
     )
 
     def to_dict(self) -> dict:
@@ -488,13 +514,13 @@ class SerumImmWorkbench(Base):
             "mouse_strain": self.mouse_strain,
             "mouse_strain_category": self.mouse_strain_category,
             "sort_order": self.sort_order,
-            "priority": self.priority or "正常",
-            "plan_status": self.plan_status or "草稿",
+            "priority": self.priority,
+            "plan_status": self.plan_status,
             "project_set_code": self.project_set_code,
-            "species_cross": self.species_cross,
-            "immuno_method": self.immuno_method,
+            "species_cross": [part for part in (self.species_cross or "").split(",") if part],
+            "immuno_method": [part for part in (self.immuno_method or "").split(",") if part],
             "reviewer": self.reviewer,
-            "review_status": self.review_status or "未审",
+            "review_status": self.review_status,
             "mouse_scheme_no": self.mouse_scheme_no,
             "mouse_count": self.mouse_count,
             "mouse_zygosity": self.mouse_zygosity,
@@ -503,16 +529,16 @@ class SerumImmWorkbench(Base):
             "mouse_expand_requested": self.mouse_expand_requested,
             "mouse_region": self.mouse_region,
             "mouse_room": self.mouse_room,
-            "mouse_status": self.mouse_status or "未定",
+            "mouse_status": self.mouse_status,
             "mouse_arrive_date": self.mouse_arrive_date,
             "mouse_remark": self.mouse_remark,
             "antigen_source": self.antigen_source,
-            "antigen_ready": self.antigen_ready or "否",
+            "antigen_ready": self.antigen_ready,
             "antigen_eta": self.antigen_eta,
             "lnp_ordered": self.lnp_ordered,
             "cell_prep_status": self.cell_prep_status,
             "antigen_remark": self.antigen_remark,
-            "can_start": self.can_start or "否",
+            "can_start": self.can_start,
             "created_by": self.created_by,
             "created_at": format_time(self.created_at),
             "updated_at": format_time(self.updated_at),

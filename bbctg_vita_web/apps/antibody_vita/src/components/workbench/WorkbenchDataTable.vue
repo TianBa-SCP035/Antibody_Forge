@@ -47,8 +47,8 @@
             class="wb-cell-clip"
             @mouseenter="showBreakTip($event, row, col)"
             @mouseleave="hideBreakTip"
-          >{{ formatPlain(row[col.prop || col.key]) }}</span>
-          <template v-else>{{ formatPlain(row[col.prop || col.key]) }}</template>
+          >{{ cellText(row, col) }}</span>
+          <template v-else>{{ cellText(row, col) }}</template>
         </template>
       </el-table-column>
     </el-table>
@@ -403,8 +403,12 @@ export default {
       if (value == null) return ''
       return String(value)
     },
+    cellText(row, column) {
+      const value = row[column.prop || column.key]
+      return column.format ? column.format(value) : this.formatPlain(value)
+    },
     showBreakTip(event, row, column) {
-      const text = this.formatPlain(row[column.prop || column.key])
+      const text = this.cellText(row, column)
       const el = event.currentTarget
       if (!text) return
       if (!text.includes('\n') && el.scrollWidth <= el.clientWidth + 1) return

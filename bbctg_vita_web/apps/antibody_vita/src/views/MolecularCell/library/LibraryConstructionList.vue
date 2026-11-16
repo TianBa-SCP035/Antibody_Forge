@@ -24,17 +24,17 @@
           v-bind="headerTop('build_type', '建库类型')"
           @change="onBuildTypeFilter"
         >
-          <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
+          <el-option v-for="item in optionLists.build_type" :key="item.value" :label="item.label" :value="item.value" />
         </ListFilterSelect>
-        <UserSelect v-model="listQuery.pm" multi-gesture :options="enumLists.people" v-bind="headerTop('pm', 'PM')" clearable @change="handleFilter" />
+        <UserSelect v-model="listQuery.pm" multi-gesture :options="optionLists.pm" v-bind="headerTop('pm', 'PM')" clearable @change="handleFilter" />
         <ListFilterSelect v-model="listQuery.study_type" clearable filterable v-bind="headerTop('study_type', '课题类型')" @change="handleFilter">
-          <el-option v-for="item in studyTypeOptions" :key="item" :label="item" :value="item" />
+          <el-option v-for="item in optionLists.study_type" :key="item" :label="item" :value="item" />
         </ListFilterSelect>
         <ListFilterSelect v-model="listQuery.sample_type" clearable v-bind="headerTop('sample_type', '样品类型')" @change="handleFilter">
-          <el-option v-for="item in sampleTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+          <el-option v-for="item in optionLists.sample_type" :key="item.value" :label="item.label" :value="item.value" />
         </ListFilterSelect>
         <ListFilterSelect v-model="listQuery.mouse_strain" clearable v-bind="headerTop('mouse_strain', '小鼠品系')" @change="handleFilter">
-          <el-option v-for="item in mouseStrainOptions" :key="item" :label="item" :value="item" />
+          <el-option v-for="item in optionLists.mouse_strain" :key="item" :label="item" :value="item" />
         </ListFilterSelect>
         <ListFilterSelect
           v-model="listQuery.cell_type"
@@ -45,7 +45,7 @@
           v-bind="headerTop('cell_type', '细胞类型')"
           @change="handleFilter"
         >
-          <el-option v-for="item in cellTypeOptions" :key="item" :label="item" :value="item" />
+          <el-option v-for="item in optionLists.cell_type" :key="item" :label="item" :value="item" />
         </ListFilterSelect>
         <el-input v-model="listQuery.source_discovery_id" clearable v-bind="headerTop('source_discovery_id', '来源发现 ID')" @keyup.enter="handleFilter" @clear="handleFilter" />
         <el-input v-model="listQuery.notebook_no" clearable v-bind="headerTop('notebook_no', '实验记录本号')" @keyup.enter="handleFilter" @clear="handleFilter" />
@@ -122,28 +122,28 @@
           @clear="handleFilter"
         />
         <ListFilterSelect v-model="listQuery.status" class="filter-item" clearable v-bind="headerTop('status', '状态')" @change="handleFilter">
-          <el-option v-for="item in statusOptions" :key="item" :label="item" :value="item" />
+          <el-option v-for="item in optionLists.status" :key="item" :label="item" :value="item" />
         </ListFilterSelect>
         <ListFilterSelect v-model="listQuery.priority" class="filter-item" clearable v-bind="headerTop('priority', '优先级')" @change="handleFilter">
-          <el-option v-for="item in priorityOptions" :key="item" :label="item" :value="item" />
+          <el-option v-for="item in optionLists.priority" :key="item" :label="item" :value="item" />
         </ListFilterSelect>
         <UserSelect
           v-model="listQuery.owner"
           class="filter-item"
           multi-gesture
-          :options="enumLists.people"
+          :options="optionLists.owner"
           v-bind="headerTop('owner', '负责人')"
           clearable
           @change="handleFilter"
         />
         <ListFilterSelect v-model="listQuery.sample_source" class="filter-item" clearable v-bind="headerTop('sample_source', '样品来源')" @change="handleFilter">
-          <el-option v-for="item in sampleSourceOptions" :key="item.value" :label="item.label" :value="item.value" />
+          <el-option v-for="item in optionLists.sample_source" :key="item.value" :label="item.label" :value="item.value" />
         </ListFilterSelect>
         <WorkbenchTargetFilter
           v-model="listQuery.target_name"
           class="filter-item"
           v-bind="headerTop('target_name', '靶点')"
-          scope="library"
+          :search="fetchLibraryRecordedTargets"
           @change="handleFilter"
         />
         <el-date-picker
@@ -209,29 +209,21 @@
         @row-click="onWorkbenchRowClick"
         @row-contextmenu="onWorkbenchRowContextMenu"
       >
-        <template #build_type="{ row }">{{ buildTypeLabel(row.build_type) || '—' }}</template>
-        <template #mouse_strain="{ row }">{{ row.mouse_strain || '—' }}</template>
-        <template #sample_source="{ row }">{{ sampleSourceLabel(row.sample_source) || '—' }}</template>
-        <template #sample_type="{ row }">{{ sampleTypeLabel(row.sample_type) || '—' }}</template>
-        <template #index_mode="{ row }">{{ indexModeLabel(row.index_mode) || '—' }}</template>
         <template #priority="{ row }">
-          <WorkbenchInlineSelect
-            v-if="canEdit"
-            v-model="row.priority"
-            :options="priorityOptions"
-            class="inline-select priority-select"
-            :class="'status-tone-' + priorityTone(row)"
-            @change="persistRow(row, 'priority')"
+          <WorkbenchPriorityCell
+            :value="row.priority"
+            :options="optionLists.priority"
+            :editable="canEdit"
+            @change="(value) => persistRowValue(row, 'priority', value)"
           />
-          <span v-else>{{ row.priority || '—' }}</span>
         </template>
         <template #status="{ row }">
           <WorkbenchStatusEditor
-            :value="row.status || '待处理'"
-            :options="statusOptions"
+            :value="row.status"
+            :options="optionLists.status"
             :type="statusTone(row.status)"
             :editable="canEdit"
-            @change="(value) => updateStatus(row, value)"
+            @change="(value) => persistRowValue(row, 'status', value)"
           />
         </template>
         <template #received_on="{ row }">
@@ -255,216 +247,64 @@
         </template>
       </WorkbenchDataTable>
 
-      <div
-        v-else
-        ref="sheetWrap"
-        class="sheet-wrap"
-        :class="{ 'is-column-moving': sheetDragMode === 'move-column' }"
-        tabindex="0"
-        @copy="onSheetCopy"
-        @paste="onSheetPaste"
-        @dblclick.capture="onSheetDblClickCapture"
-        @keydown.capture="onSheetKeydownCapture"
-        @compositionend.capture="onSheetCompositionEnd"
-        @mousedown="onSheetWrapMouseDown"
-        @click="onSheetHeaderMenuClick"
-        @mouseover="onSheetWrapMouseOver"
-        @contextmenu="onSheetWrapContextMenu"
-        @selectstart="onSheetSelectStart"
-      >
-        <div ref="sheetTableStage" class="sheet-table-stage">
-          <vxe-table
-            :key="sheetColumnOrderKey"
-            ref="sheetTable"
-            :height="listTableHeight"
-            v-loading="loading"
-            :data="list"
-            border
-            show-overflow
-            size="small"
-            :row-config="sheetRowConfig"
-            :cell-config="sheetCellConfig"
-            :column-config="sheetColumnConfig"
-            :mouse-config="sheetMouseConfig"
-            :keyboard-config="sheetKeyboardConfig"
-            :virtual-y-config="sheetVirtualYConfig"
-            :virtual-x-config="sheetVirtualXConfig"
-            :edit-config="sheetEditConfig"
-            :header-cell-class-name="sheetHeaderCellClassName"
-            :cell-class-name="sheetCellClass"
-            @scroll="onSheetScroll"
-            @column-resizable-change="onSheetColumnResize"
-            @edit-actived="onSheetEditActived"
-            @edit-closed="onSheetEditClosed"
-            @cell-delete-value="onSheetEditClosed"
-            @cell-selected="onSheetCellSelected"
+      <WorkbenchSheet v-else>
+        <template #column="{ column }">
+          <VxeColumn
+            :field="column.key"
+            :title="sheetColumnTitle(column)"
+            :width="sheetColumnWidth(column)"
+            :min-width="column.minWidth || 150"
+            :edit-render="sheetCustomEditRender"
           >
-            <template v-for="column in sheetColumns" :key="column.key">
-              <vxe-column
-                v-if="column.edit === 'target'"
-                :field="column.key"
-                :title="sheetColumnTitle(column)"
-                :width="sheetColumnWidth(column)"
-                :min-width="column.minWidth || 120"
-                :edit-render="sheetCustomEditRender"
-                :formatter="sheetFormatter(column)"
-              >
-                <template #edit="{ row }">
-                  <div v-if="sheetEditSource === 'dblclick'" class="sheet-picker-editor">
-                    <span class="sheet-picker-editor__value">{{ sheetPickerDisplayValue(row, column) }}</span>
-                    <VxeSelect
-                      v-model="row.target_codes"
-                      class-name="sheet-grid-editor sheet-picker-control"
-                      filterable
-                      multiple
-                      remote
-                      :options="sheetTargetSelectOptions"
-                      :popup-config="sheetTargetPopupConfig"
-                      :remote-config="sheetTargetRemoteConfig"
-                      empty-text="未找到匹配靶点"
-                      @change="onSheetTargetPickerChange(row)"
-                      @visible-change="onSheetPickerVisibleChange"
-                    />
-                  </div>
-                  <VxeInput
-                    v-else
-                    :model-value="sheetTargetDirectValue(row, column.key)"
-                    class-name="sheet-grid-editor"
-                    @update:model-value="setSheetTargetDirectValue(row, column.key, $event)"
-                  />
-                </template>
-              </vxe-column>
-              <vxe-column
-                v-else-if="isSheetChoiceColumn(column)"
-                :field="column.key"
-                :title="sheetColumnTitle(column)"
-                :width="sheetColumnWidth(column)"
-                :min-width="column.minWidth || 120"
-                :edit-render="sheetCustomEditRender"
-                :formatter="sheetFormatter(column)"
-              >
-                <template v-if="headerMenuStates[column.key]" #header>
-                  <WorkbenchHeaderLabel :label="column.label" v-bind="headerMenuStates[column.key]" />
-                </template>
-                <template #edit="{ row }">
-                  <ListFilterSelect
-                    v-if="column.key === 'mouse_strain' && sheetEditSource === 'dblclick'"
-                    :model-value="splitMouseStrain(row.mouse_strain)"
-                    joined
-                    filterable
-                    allow-create
-                    default-first-option
-                    ref="sheetSelectEditor"
-                    class="sheet-strain-select"
-                    popper-class="vxe-table--ignore-clear"
-                    clearable
-                    @change="onMouseStrainChange(row, $event, false)"
-                    @visible-change="onSheetSelectVisible"
-                  >
-                    <el-option v-for="item in mouseStrainOptions" :key="item" :label="item" :value="item" />
-                    <el-option
-                      v-for="item in extraMouseStrains(row.mouse_strain)"
-                      :key="`extra-${item}`"
-                      :label="item"
-                      :value="item"
-                    />
-                  </ListFilterSelect>
-                  <div v-else-if="sheetEditSource === 'dblclick' && isSheetChoiceForRow(column, row)" class="sheet-picker-editor">
-                    <span class="sheet-picker-editor__value">{{ sheetPickerDisplayValue(row, column) }}</span>
-                    <VxeSelect
-                      v-model="row[column.key]"
-                      class-name="sheet-grid-editor sheet-picker-control"
-                      :filterable="isUserColumn(column)"
-                      :clearable="!isRequiredChoice(column.key)"
-                      :options="sheetChoiceSelectOptions(column, row)"
-                      :popup-config="sheetChoicePopupConfig"
-                      @visible-change="onSheetPickerVisibleChange"
-                    />
-                  </div>
-                  <VxeInput
-                    v-else
-                    :model-value="sheetDirectTextValue(row, column.key)"
-                    class-name="sheet-grid-editor"
-                    @update:model-value="setSheetDirectValue(row, column.key, $event)"
-                  />
-                </template>
-              </vxe-column>
-              <vxe-column
-                v-else-if="column.edit === 'catalog'"
-                :field="column.key"
-                :title="sheetColumnTitle(column)"
-                :width="sheetColumnWidth(column)"
-                :min-width="column.minWidth || 150"
-                :edit-render="sheetCustomEditRender"
-              >
-                <template #edit="{ row }">
-                  <div v-if="sheetEditSource === 'dblclick'" class="sheet-picker-editor">
-                    <span class="sheet-picker-editor__value">{{ sheetPickerDisplayValue(row, column) }}</span>
-                    <VxeSelect
-                      v-model="row[column.key]"
-                      class-name="sheet-grid-editor sheet-picker-control"
-                      filterable
-                      remote
-                      clearable
-                      :options="sheetCatalogSelectOptions"
-                      :popup-config="sheetCatalogPopupConfig"
-                      :remote-config="sheetCatalogRemoteConfig"
-                      empty-text="输入名称或序列"
-                      @visible-change="onSheetPickerVisibleChange"
-                    />
-                  </div>
-                  <VxeInput
-                    v-else
-                    :model-value="sheetDirectTextValue(row, column.key)"
-                    class-name="sheet-grid-editor"
-                    @update:model-value="setSheetDirectValue(row, column.key, $event)"
-                  />
-                </template>
-              </vxe-column>
-              <vxe-column
+            <template #edit="{ row }">
+              <div v-if="sheetEditSource === 'dblclick'" class="sheet-picker-editor">
+                <span class="sheet-picker-editor__value">{{ sheetPickerDisplayValue(row, column) }}</span>
+                <VxeSelect
+                  v-model="row[column.key]"
+                  class-name="sheet-grid-editor sheet-picker-control"
+                  filterable
+                  remote
+                  clearable
+                  :options="sheetCatalogSelectOptions"
+                  :popup-config="sheetCatalogPopupConfig"
+                  :remote-config="sheetCatalogRemoteConfig"
+                  empty-text="输入名称或序列"
+                  @visible-change="onSheetPickerVisibleChange"
+                />
+              </div>
+              <VxeInput
                 v-else
-                :field="column.key"
-                :title="sheetColumnTitle(column)"
-                :width="sheetColumnWidth(column)"
-                :min-width="column.minWidth || column.width || 120"
-                :edit-render="sheetEditRender(column)"
-                :formatter="sheetFormatter(column)"
-              >
-                <template v-if="headerMenuStates[column.key]" #header>
-                  <WorkbenchHeaderLabel :label="column.label" v-bind="headerMenuStates[column.key]" />
-                </template>
-              </vxe-column>
+                :model-value="sheetDirectTextValue(row, column.key)"
+                class-name="sheet-grid-editor"
+                @update:model-value="setSheetDirectValue(row, column.key, $event)"
+              />
             </template>
-            <vxe-column title="操作" width="240" fixed="right" align="center">
-              <template #default="{ row }">
-                <div @mousedown.stop @click.stop>
-                  <LibraryRowActions
-                    :row="row"
-                    :can-edit="canEdit"
-                    :can-handoff="canEdit"
-                    :can-view="canViewDetail"
-                    @qc="openResult"
-                    @handoff="handleDownstreamHandoff"
-                    @delete="handleDelete"
-                  />
-                </div>
-              </template>
-            </vxe-column>
-          </vxe-table>
-          <div ref="sheetRangeOverlay" class="sheet-range-overlay" aria-hidden="true">
-            <button
-              v-if="showLibraryCodeFillHandle"
-              type="button"
-              class="library-code-fill-handle"
-              title="往上或往下拖，按末尾数字递增填充建库编号"
-              aria-label="往上或往下拖，按末尾数字递增填充建库编号"
-              @mousedown.stop.prevent="onLibraryCodeFillStart"
+          </VxeColumn>
+        </template>
+        <template #actions="{ row }">
+          <div @mousedown.stop @click.stop>
+            <LibraryRowActions
+              :row="row"
+              :can-edit="canEdit"
+              :can-handoff="canEdit"
+              :can-view="canViewDetail"
+              @qc="openResult"
+              @handoff="handleDownstreamHandoff"
+              @delete="handleDelete"
             />
           </div>
-          <div ref="sheetColumnDropLine" class="sheet-column-drop-line" aria-hidden="true" />
-          <div ref="sheetColumnGhost" class="sheet-column-ghost" aria-hidden="true" />
-        </div>
-      </div>
+        </template>
+        <template #range-overlay>
+          <button
+            v-if="showLibraryCodeFillHandle"
+            type="button"
+            class="library-code-fill-handle"
+            title="往上或往下拖，按末尾数字递增填充建库编号"
+            aria-label="往上或往下拖，按末尾数字递增填充建库编号"
+            @mousedown.stop.prevent="onLibraryCodeFillStart"
+          />
+        </template>
+      </WorkbenchSheet>
       </div>
 
       <el-pagination
@@ -480,79 +320,43 @@
       />
     </el-card>
 
-    <el-drawer
+    <WorkbenchDrawer
       v-model="drawerVisible"
       size="560px"
-      append-to-body
-      :modal="false"
-      :show-close="false"
-      :lock-scroll="false"
-      title="文库工单"
-      modal-class="workbench-drawer-overlay"
-      class="workbench-drawer"
+      label-width="92px"
+      title-mark
+      :title="drawerTitle"
+      :row="editingRow"
+      :sections="editorSections"
+      :disabled="!canEdit"
+      :has-prev="hasPrevEditor"
+      :has-next="hasNextEditor"
+      @shift="shiftEditor"
     >
-      <template #header="{ close, titleId }">
-        <div class="drawer-header">
-          <div class="drawer-heading">
-            <h2 :id="titleId" class="drawer-title">{{ drawerTitle }}</h2>
-            <div v-if="drawerHeaderFacts.length" class="drawer-header-facts">
-              <span
-                v-for="fact in drawerHeaderFacts"
-                :key="fact.key"
-                :class="{ 'is-type': fact.key === 'type' }"
-              >
-                {{ fact.text }}
-              </span>
-            </div>
-          </div>
-          <button type="button" class="drawer-close" aria-label="关闭" @click="close">×</button>
+      <template #meta>
+        <div v-if="drawerHeaderFacts.length" class="drawer-header-facts">
+          <span
+            v-for="fact in drawerHeaderFacts"
+            :key="fact.key"
+            :class="{ 'is-type': fact.key === 'type' }"
+          >
+            {{ fact.text }}
+          </span>
         </div>
       </template>
-      <div v-if="editingRow" class="drawer-toolbar">
-        <div class="drawer-toolbar-actions">
-          <LibraryRowActions
-            :row="editingRow"
-            :can-edit="canEdit"
-            :can-handoff="canEdit"
-            :can-view="canViewDetail"
-            @qc="openResult"
-            @handoff="handleDownstreamHandoff"
-            @delete="handleDelete"
-          />
-        </div>
-        <div class="drawer-nav">
-          <el-button size="small" :disabled="!hasPrevEditor" @click="shiftEditor(-1)">上一条</el-button>
-          <el-button size="small" :disabled="!hasNextEditor" @click="shiftEditor(1)">下一条</el-button>
-        </div>
-      </div>
-      <div v-if="editingRow" class="drawer-fields">
-        <el-form label-width="92px" size="small" class="drawer-form" @submit.prevent>
-          <article
-            v-for="section in editorSections"
-            :key="section.title"
-            class="drawer-card"
-            :class="{ 'is-queue': section.queue }"
-          >
-            <h3 class="drawer-card-title">{{ section.title }}</h3>
-            <div class="drawer-card-grid">
-              <template v-for="field in section.fields" :key="field.key">
-              <el-form-item
-                :label="field.label"
-                :label-width="field.type === 'primer-matrix' ? '0' : undefined"
-                :class="['drawer-field', field.wide ? 'is-wide' : '', isSyncedText(field) ? 'is-synced' : '']"
-              >
-                <el-date-picker
-                  v-if="field.type === 'date'"
-                  v-model="editingRow[field.key]"
-                  type="date"
-                  value-format="YYYY-MM-DD"
-                  format="YYYY-MM-DD"
-                  placeholder="选择日期"
-                  style="width: 100%"
-                  :disabled="!canEdit"
-                  @change="persistRow(editingRow, field.key)"
-                />
-                <div v-else-if="field.type === 'primer-matrix'" class="primer-matrix">
+      <template #actions>
+        <LibraryRowActions
+          :row="editingRow"
+          :can-edit="canEdit"
+          :can-handoff="canEdit"
+          :can-view="canViewDetail"
+          @qc="openResult"
+          @handoff="handleDownstreamHandoff"
+          @delete="handleDelete"
+        />
+      </template>
+      <template #field="{ field }">
+                <div v-if="field.type === 'primer-matrix'" class="primer-matrix">
                   <span />
                   <span class="primer-matrix-heading">正向引物</span>
                   <span class="primer-matrix-heading">反向引物</span>
@@ -592,23 +396,6 @@
                     />
                   </template>
                 </div>
-                <WorkbenchTargetSelect
-                  v-else-if="field.type === 'target'"
-                  v-model="editingRow.target_codes"
-                  :display-name="editingRow.target_name"
-                  :placeholder="editingRow.target_name ? '' : '搜索靶点'"
-                  :disabled="!canEdit"
-                  @change="(payload) => onDrawerTargetChange(editingRow, payload)"
-                />
-                <UserSelect
-                  v-else-if="field.type === 'user'"
-                  v-model="editingRow[field.key]"
-                  :options="enumLists.people"
-                  :placeholder="`选择${field.label}`"
-                  :disabled="!canEdit"
-                  clearable
-                  @change="persistRow(editingRow, field.key)"
-                />
                 <div
                   v-else-if="field.type === 'source-link'"
                   class="source-link"
@@ -644,16 +431,6 @@
                     <span v-if="item.short_sequence" class="catalog-sequence">{{ item.short_sequence }}</span>
                   </el-option>
                 </el-select>
-                <el-select
-                  v-else-if="field.type === 'source-select'"
-                  v-model="editingRow[field.key]"
-                  clearable
-                  style="width: 100%"
-                  :disabled="!canEdit"
-                  @change="persistRow(editingRow, field.key)"
-                >
-                  <el-option v-for="item in sourceOptionsForType" :key="item.value" :label="item.label" :value="item.value" />
-                </el-select>
                 <el-input
                   v-else-if="field.type === 'plate-list'"
                   :model-value="plateDraft"
@@ -665,55 +442,9 @@
                   @update:model-value="onPlateDraftInput"
                   @blur="persistRow(editingRow, 'plate_nos')"
                 />
-                <ListFilterSelect
-                  v-else-if="field.key === 'mouse_strain'"
-                  :model-value="splitMouseStrain(editingRow.mouse_strain)"
-                  joined
-                  filterable
-                  allow-create
-                  default-first-option
-                  clearable
-                  placeholder="选择小鼠品系"
-                  style="width: 100%"
-                  :disabled="!canEditField(editingRow, field.key)"
-                  @change="onMouseStrainChange(editingRow, $event)"
-                >
-                  <el-option v-for="item in mouseStrainOptions" :key="item" :label="item" :value="item" />
-                  <el-option
-                    v-for="item in extraMouseStrains(editingRow.mouse_strain)"
-                    :key="`extra-${item}`"
-                    :label="item"
-                    :value="item"
-                  />
-                </ListFilterSelect>
-                <el-select
-                  v-else-if="field.type === 'select'"
-                  v-model="editingRow[field.key]"
-                  style="width: 100%"
-                  :clearable="!isRequiredChoice(field.key)"
-                  :disabled="!canEditField(editingRow, field.key)"
-                  @change="persistRow(editingRow, field.key)"
-                >
-                  <el-option v-for="item in drawerSelectOptions(field)" :key="item.value || item" :label="item.label || item" :value="item.value || item" />
-                </el-select>
-                <el-input
-                  v-else
-                  v-model="editingRow[field.key]"
-                  :disabled="!canEdit"
-                  :type="isSyncedText(field) || field.type === 'textarea' ? 'textarea' : 'text'"
-                  :rows="isSyncedText(field) ? 1 : undefined"
-                  :autosize="isSyncedText(field) ? false : (field.type === 'textarea' ? { minRows: 1, maxRows: 4 } : undefined)"
-                  @input="isSyncedText(field) && syncDrawerTextareas()"
-                  @blur="persistRow(editingRow, field.key)"
-                />
-              </el-form-item>
-              <div v-if="field.rowBreak" class="drawer-field-break" aria-hidden="true" />
-              </template>
-            </div>
-          </article>
-        </el-form>
-      </div>
-    </el-drawer>
+                <WorkbenchDrawerField v-else v-bind="drawerFieldBind(field)" />
+      </template>
+    </WorkbenchDrawer>
     <el-dialog v-model="createVisible" title="新增文库工单" width="640px" append-to-body>
       <div class="create-rows">
         <section v-for="row in createRows" :key="row.method" class="create-row">
@@ -735,7 +466,7 @@
       </div>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!createPick" @click="confirmCreate">创建</el-button>
+        <el-button type="primary" :disabled="!createPick" :loading="creating" @click="confirmCreate">创建</el-button>
       </template>
     </el-dialog>
     <LibraryResultUploadDialog v-model="resultUploadVisible" @uploaded="getList" />
@@ -750,9 +481,6 @@ import {
   ElCard,
   ElDatePicker,
   ElDialog,
-  ElDrawer,
-  ElForm,
-  ElFormItem,
   ElIcon,
   ElInput,
   ElMessage,
@@ -762,12 +490,8 @@ import {
   ElSelect,
 } from 'element-plus'
 import { VxeInput, VxeSelect } from 'vxe-pc-ui'
-import { VxeColumn, VxeTable } from 'vxe-table'
+import { VxeColumn } from 'vxe-table'
 import { useUserStore } from '@vben/stores'
-
-import '#/adapter/vxe-table'
-import 'vxe-pc-ui/styles/cssvar.scss'
-import 'vxe-table/styles/cssvar.scss'
 
 import {
   batchSaveLibraryOrders,
@@ -777,86 +501,68 @@ import {
   fetchLibraryOrderList,
   fetchLibraryOrderOptions,
   saveLibraryOrder,
+  fetchLibraryRecordedTargets,
+  LIBRARY_CREATED_KEY,
+  LIBRARY_EDIT,
+  LIBRARY_FILE_MANAGE,
+  LIBRARY_PAGE_DETAIL,
 } from '#/api/molecularLibrary'
-import { skipGlobalErrorHandler } from '#/api/request'
 import { notifyApiError } from '#/api/errors'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import {
-  cleanFieldText,
-  coerceWorkbenchViewMode,
-  createColumnOrder,
-  EXCEL_VIEW,
-  splitTargetNames,
+  fieldOptionLists,
   uniqueTargetCodes,
-  WORKBENCH_VIEW,
   WorkbenchDataTable,
+  WorkbenchDrawer,
+  WorkbenchDrawerField,
   WorkbenchHeaderFilterChip,
-  WorkbenchHeaderLabel,
   WorkbenchHeaderMenu,
   WorkbenchInlineDatePicker,
-  WorkbenchInlineSelect,
+  WorkbenchPriorityCell,
+  WorkbenchSheet,
+  workbenchCrudMixin,
+  workbenchDrawerMixin,
   workbenchExcelMixin,
   workbenchHeaderMenuMixin,
   workbenchTargetMixin,
   WorkbenchStatusEditor,
-  WorkbenchTargetSelect,
   WorkbenchViewToggle,
   WorkbenchTargetFilter,
 } from '#/components/workbench'
 import UserSelect from '#/components/UserSelect.vue'
 import LibraryResultUploadDialog from './LibraryResultUploadDialog.vue'
 import LibraryRowActions from './LibraryRowActions.vue'
-import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 import { listPageMixin } from '#/utils/listPage'
 import { listTableLockMixin } from '#/utils/listTableLock'
-import { canEditLibrary, canManageLibraryFiles, canViewLibraryDetail } from '#/utils/molecularPermission'
-import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/DiscoveryWorkbench.vue'
+import { hasAccessCode } from '#/utils/accessCode'
+import { rememberDiscoveryFocus } from '#/views/Discovery/workbench/discoveryFocus'
 import { getSerumUserName } from '#/utils/serumPermission'
 import { applyOptionLists } from '#/utils/optionLists'
-import { getTiterPriorityTone } from '#/utils/serumProjectStatus'
-import { LIBRARY_CREATED_KEY, WORKBENCH_VIEW_PREFS_KEYS } from '#/constants/storageKeys'
+import { uniqueNames } from '#/utils/userOptions'
 import {
-  allSheetColumns,
   BUILD_PLASMA_NGS,
-  BUILD_TYPE_OPTIONS,
   buildTypeLabel,
-  HANDOFF_METHOD_ROWS,
   CATALOG_NAME_FIELDS,
-  CELL_TYPE_OPTIONS,
-  INDEX_MODE_OPTIONS,
-  MOUSE_STRAIN_OPTIONS,
-  joinMouseStrain,
-  splitMouseStrain,
+  FIELDS,
+  HANDOFF_METHOD_ROWS,
+  HEADER_MENU_COLUMNS,
+  isIndexFieldRecorded,
+  isSheetFieldApplicable,
+  LIBRARY_VIEW_PREFS_KEY,
+  libraryFieldOptions,
   normalizePlateInputText,
   optionsForBuild,
   orderEditorSections,
   plateNumbersFromText,
-  persistValue,
   plateNumbersText,
-  isSyncedText,
-  SYNC_TEXT_KEYS,
-  syncPairedTextareas,
-  PHAGE_EXPERIMENT_TYPE_OPTIONS,
-  PLASMA_SAMPLE_TYPE_OPTIONS,
-  CELL_TYPE_CHOICE_BUILDS,
-  PRIORITY_OPTIONS,
-  QC_RESULT_OPTIONS,
-  REQUIRED_CHOICE_KEYS,
   SAMPLE_SOURCE_OPTIONS,
-  SAMPLE_TYPE_OPTIONS,
-  indexModeLabel,
-  sampleSourceLabel,
-  sampleTypeLabel,
-  stampQcFields,
-  isIndexFieldRecorded,
-  isSheetFieldApplicable,
+  SHEET_COLUMN_ORDER,
+  SHEET_COLUMNS,
   sheetColumnsForBuild,
   STAT_TILES,
-  STATUS_OPTIONS,
-  STUDY_TYPE_OPTIONS,
+  stampQcFields,
   statusTone,
-  TARGET_FORM_OPTIONS,
   typeGroup,
   WORKBENCH_COLUMNS,
 } from './libraryColumns'
@@ -894,67 +600,6 @@ function emptyQuery() {
   }
 }
 
-/**
- * 表头菜单登记，字段含义见 synthesisColumns.js 的 HEADER_MENU_COLUMNS。
- */
-const HEADER_MENU_COLUMNS = Object.freeze({
-  library_code: { type: 'text', values: 'recent', top: { query: 'library_code', kind: 'codes' } },
-  source_project_code: { type: 'text', values: 'recent', top: { query: 'source_project_code', kind: 'codes' } },
-  library_order_id: { type: 'text', values: 'recent' },
-  source_discovery_id: { type: 'text', values: 'recent', top: { query: 'source_discovery_id', kind: 'codes' } },
-  library_batch_no: { type: 'text', values: 'recent', top: { query: 'library_batch_no', kind: 'codes' } },
-  target_name: { type: 'text', values: 'all', search: 'target', top: { query: 'target_name' } },
-  build_type: { type: 'enum', values: 'all', top: { query: 'build_type' } },
-  sample_source: { type: 'enum', values: 'all', top: { query: 'sample_source' } },
-  sample_type: { type: 'enum', values: 'all', top: { query: 'sample_type' } },
-  index_mode: { type: 'enum', values: 'all' },
-  owner: { type: 'enum', values: 'all', top: { query: 'owner' } },
-  pm: { type: 'enum', values: 'all', top: { query: 'pm', kind: 'contains' } },
-  study_type: { type: 'enum', values: 'all', top: { query: 'study_type', kind: 'contains' } },
-  status: { type: 'enum', values: 'all', top: { query: 'status' } },
-  priority: { type: 'enum', values: 'all', top: { query: 'priority' } },
-  mouse_strain: { type: 'csv', values: 'all', top: { query: 'mouse_strain' } },
-  cell_type: { type: 'enum', values: 'all', top: { query: 'cell_type', kind: 'contains' } },
-  immunization_stage: { type: 'enum', values: 'all' },
-  notebook_no: { type: 'text', values: 'recent', top: { query: 'notebook_no', kind: 'contains' } },
-  positive_cell_count: { type: 'text', values: 'recent' },
-  plate_nos: { type: 'csv', values: 'all' },
-  target_forms: { type: 'enum', values: 'all' },
-  source_experiment_type: { type: 'enum', values: 'all' },
-  project_goal: { type: 'text', values: 'search' },
-  received_on: { type: 'date', values: 'all' },
-  instrument_on: { type: 'date', values: 'all', top: { range: 'instrumentRange' } },
-  blood_collected_on: { type: 'date', values: 'all' },
-  started_at: { type: 'date', values: 'all', top: { range: 'startedRange' } },
-  finished_at: { type: 'date', values: 'all', top: { range: 'finishedRange' } },
-  rna_location: { type: 'text', values: 'recent' },
-  cdna_location: { type: 'text', values: 'recent' },
-  library_location: { type: 'text', values: 'recent' },
-  cdna_concentration: { type: 'text', values: 'recent' },
-  library_concentration: { type: 'text', values: 'recent' },
-  initial_library_size: { type: 'text', values: 'recent' },
-  effective_library_size: { type: 'text', values: 'recent' },
-  fragment_size_bp: { type: 'text', values: 'recent' },
-  h_forward_primer_name: { type: 'enum', values: 'all' },
-  h_reverse_primer_name: { type: 'enum', values: 'all' },
-  h_primer_concentration: { type: 'text', values: 'recent' },
-  k_forward_primer_name: { type: 'enum', values: 'all' },
-  k_reverse_primer_name: { type: 'enum', values: 'all' },
-  k_primer_concentration: { type: 'text', values: 'recent' },
-  l_forward_primer_name: { type: 'enum', values: 'all' },
-  l_reverse_primer_name: { type: 'enum', values: 'all' },
-  l_primer_concentration: { type: 'text', values: 'recent' },
-  i7_name: { type: 'enum', values: 'all' },
-  i7_sequence: { type: 'text', values: 'recent' },
-  i5_name: { type: 'enum', values: 'all' },
-  i5_sequence: { type: 'text', values: 'recent' },
-  qc_result: { type: 'enum', values: 'all' },
-  qc_owner: { type: 'enum', values: 'all' },
-  qc_on: { type: 'date', values: 'all' },
-  qc_note: { type: 'text', values: 'search' },
-  remark: { type: 'text', values: 'search', top: { query: 'remark', kind: 'contains' } },
-})
-
 function libraryCodeSeries(seed, count) {
   const text = String(seed || '').trim().toUpperCase()
   const matched = text.match(/^(.*?)(\d+)$/)
@@ -968,90 +613,71 @@ function libraryCodeSeries(seed, count) {
     const next = start + step
     if (!Number.isSafeInteger(next) || next < 0) return null
     const code = `${prefix}${String(next).padStart(width, '0')}`
-    if (code.length > SHEET_STRING_MAX.library_code) return null
+    if (code.length > FIELDS.library_code.max) return null
     codes.push(code)
   }
   return codes
 }
 
-const SHEET_COLUMN_ORDER = createColumnOrder(
-  'libraryConstructionSheetColumnOrder.v5',
-  allSheetColumns(),
-)
 const INDEX_LINKED_KEYS = ['i7_catalog_id', 'i7_name', 'i7_sequence', 'i5_catalog_id', 'i5_name', 'i5_sequence']
 const DERIVED_FIELDS = ['status', 'started_at', 'finished_at']
-const SHEET_DATE_KEYS = [
-  'received_on',
-  'instrument_on',
-  'blood_collected_on',
-  'qc_on',
-  'started_at',
-  'finished_at',
-]
-const TEXT_BREAK_KEYS = new Set(['remark', 'qc_note', 'project_goal', 'library_location'])
-
-function keepsLineBreaks(key) {
-  return key === 'plate_nos' || SYNC_TEXT_KEYS.has(key) || TEXT_BREAK_KEYS.has(key)
+const PEOPLE_FIELDS = ['pm', 'owner', 'qc_owner']
+const OPTION_SOURCES = {
+  statuses: 'status',
+  priorities: 'priority',
+  qc_results: 'qc_result',
+  cell_types: 'cell_type',
+  mouse_strains: 'mouse_strain',
 }
+const ROW_OPTION_REASONS = { sample_source: 'source', sample_type: 'plasma' }
 
-const SHEET_STRING_MAX = {
-  library_code: 64,
-  source_project_code: 64,
-  study_type: 64,
-  project_goal: 1000,
-  target_name: 128,
-  pm: 64,
-  mouse_strain: 128,
-  positive_cell_count: 64,
-  fragment_size_bp: 64,
-  cell_type: 64,
-  notebook_no: 64,
-  immunization_stage: 64,
-  library_batch_no: 64,
-  owner: 64,
-  rna_location: 255,
-  cdna_location: 255,
-  library_location: 255,
-  initial_library_size: 64,
-  effective_library_size: 64,
-  cdna_concentration: 64,
-  library_concentration: 64,
-  h_primer_concentration: 64,
-  k_primer_concentration: 64,
-  l_primer_concentration: 64,
-  h_forward_primer_name: 128,
-  h_reverse_primer_name: 128,
-  k_forward_primer_name: 128,
-  k_reverse_primer_name: 128,
-  l_forward_primer_name: 128,
-  l_reverse_primer_name: 128,
-  i7_name: 128,
-  i7_sequence: 64,
-  i5_name: 128,
-  i5_sequence: 64,
-  qc_owner: 64,
-  qc_note: 1000,
-  remark: 1000,
+/** 保存一个字段后后端会联动改写的字段，回包时一起回填。 */
+function linkedFields(field) {
+  if (field === 'target_codes' || field === 'target_name') return ['target_codes', 'target_name']
+  const catalog = CATALOG_NAME_FIELDS[field]
+  if (catalog) return [field, catalog.idKey, ...(catalog.sequenceKey ? [catalog.sequenceKey] : [])]
+  if (field === 'mouse_strain') return [field, 'sample_type']
+  if (field === 'index_mode') return [field, ...INDEX_LINKED_KEYS]
+  return [field]
 }
 
 export default {
   name: 'LibraryConstructionList',
-  mixins: [workbenchExcelMixin, workbenchTargetMixin, listPageMixin, workbenchHeaderMenuMixin, listTableLockMixin],
+  mixins: [
+    workbenchExcelMixin,
+    workbenchDrawerMixin,
+    workbenchCrudMixin,
+    workbenchTargetMixin,
+    listPageMixin,
+    workbenchHeaderMenuMixin,
+    listTableLockMixin,
+  ],
   listFilterKey: 'libraryConstructionList',
+  workbenchFields: FIELDS,
+  workbenchApi: {
+    list: fetchLibraryOrderList,
+    save: saveLibraryOrder,
+    saveBatch: batchSaveLibraryOrders,
+    remove: deleteLibraryOrder,
+    export: exportLibraryOrderList,
+    exportName: '文库构建',
+    columnValues: fetchLibraryOrderColumnValues,
+    errors: { load: { default: '加载文库工单失败' } },
+  },
+  workbenchSheet: { columns: SHEET_COLUMNS, order: SHEET_COLUMN_ORDER },
   components: {
     AdvancedOpsBar,
     ListFilterSelect,
+    WorkbenchDrawer,
+    WorkbenchDrawerField,
     WorkbenchHeaderFilterChip,
-    WorkbenchHeaderLabel,
     WorkbenchHeaderMenu,
+    WorkbenchSheet,
     WorkbenchTargetFilter,
     ElButton,
     ElCard,
     ElDatePicker,
     ElDialog,
-    ElDrawer,
-    ElForm,
-    ElFormItem,
     ElIcon,
     ElInput,
     ElOption,
@@ -1063,56 +689,40 @@ export default {
     Tools,
     WorkbenchDataTable,
     WorkbenchInlineDatePicker,
-    WorkbenchInlineSelect,
+    WorkbenchPriorityCell,
     WorkbenchStatusEditor,
-    WorkbenchTargetSelect,
     WorkbenchViewToggle,
     VxeColumn,
     VxeInput,
     VxeSelect,
-    VxeTable,
   },
   setup() {
-    return { Download, Plus, Search, Upload }
+    return { Download, fetchLibraryRecordedTargets, Plus, Search, Upload }
   },
   data() {
     return {
-      viewPrefsStorageKey: WORKBENCH_VIEW_PREFS_KEYS.library,
-      enumLists: {
-        cell_types: CELL_TYPE_OPTIONS,
-        mouse_strains: MOUSE_STRAIN_OPTIONS,
-        people: [],
-        priorities: PRIORITY_OPTIONS,
-        qc_results: QC_RESULT_OPTIONS,
-        statuses: STATUS_OPTIONS,
-      },
+      viewPrefsStorageKey: LIBRARY_VIEW_PREFS_KEY,
+      optionLists: { ...fieldOptionLists(FIELDS), pm: [], owner: [], qc_owner: [] },
       excelRowSelectKey: 'id',
       showAdvancedOps: false,
       loading: false,
       list: [],
       total: 0,
-      stats: {},
+      stats: Object.fromEntries(STAT_TILES.map((item) => [item.statKey, 0])),
       listQuery: emptyQuery(),
       headerMenuColumns: HEADER_MENU_COLUMNS,
       instrumentRange: [],
       startedRange: [],
       finishedRange: [],
-      viewMode: WORKBENCH_VIEW,
-      drawerVisible: false,
-      editingId: null,
-      editingRow: null,
       plateDraft: '',
-      rowBaselines: new Map(),
-      allUserOptions: [],
       catalogQuery: '',
       primerCatalog: [],
       catalogLoading: false,
       consumingCreated: false,
       createVisible: false,
+      creating: false,
       resultUploadVisible: false,
       createPick: '',
-      drawerPointerBound: false,
-      sheetColumns: allSheetColumns(),
       listLoaded: false,
       libraryCodeFill: null,
     }
@@ -1122,7 +732,7 @@ export default {
       return filterPrimerCatalog(this.primerCatalog, this.catalogQuery)
     },
     canEdit() {
-      return canEditLibrary(useUserStore().userInfo)
+      return hasAccessCode(useUserStore().userInfo, LIBRARY_EDIT)
     },
     showLibraryCodeFillHandle() {
       if (!this.canEdit || !this.isExcelMode) return false
@@ -1132,10 +742,10 @@ export default {
       return Boolean(this.libraryCodeFill) || range.r1 === range.r2
     },
     canViewDetail() {
-      return canViewLibraryDetail(useUserStore().userInfo)
+      return hasAccessCode(useUserStore().userInfo, LIBRARY_PAGE_DETAIL)
     },
     canManageFiles() {
-      return canManageLibraryFiles(useUserStore().userInfo)
+      return hasAccessCode(useUserStore().userInfo, LIBRARY_FILE_MANAGE)
     },
     activeType() {
       return this.listQuery.build_type || ''
@@ -1171,15 +781,6 @@ export default {
         tone: tones[index % tones.length],
       }))
     },
-    statusOptions() {
-      return this.enumLists.statuses
-    },
-    priorityOptions() {
-      return this.enumLists.priorities
-    },
-    qcResultOptions() {
-      return this.enumLists.qc_results
-    },
     sheetCatalogSelectOptions() {
       const options = this.catalogOptions.map((item) => ({
         label: item.short_sequence ? `${item.name} ${item.short_sequence}` : item.name,
@@ -1193,48 +794,8 @@ export default {
         queryMethod: this.querySheetCatalogOptions,
       })
     },
-    sheetUserSelectOptions() {
-      return this.allUserOptions.map((item) => ({ label: item, value: item }))
-    },
-    sheetStaticChoiceOptionsMap() {
-      return {
-        study_type: STUDY_TYPE_OPTIONS.map((item) => ({ label: item, value: item })),
-        target_forms: TARGET_FORM_OPTIONS.map((item) => ({ label: item, value: item })),
-        priority: this.priorityOptions.map((item) => ({ label: item, value: item })),
-        status: this.statusOptions.map((item) => ({ label: item, value: item })),
-        build_type: this.typeOptions,
-        cell_type: this.cellTypeOptions.map((item) => ({ label: item, value: item })),
-        source_experiment_type: PHAGE_EXPERIMENT_TYPE_OPTIONS.map((item) => ({ label: item, value: item })),
-        index_mode: INDEX_MODE_OPTIONS,
-        qc_result: this.qcResultOptions.map((item) => ({ label: item, value: item })),
-      }
-    },
-    sampleSourceOptions() {
-      return SAMPLE_SOURCE_OPTIONS.map((item) => ({
-        value: item.value,
-        label: item.label,
-      }))
-    },
-    sampleTypeOptions() {
-      return SAMPLE_TYPE_OPTIONS.map((item) => ({
-        value: item.value,
-        label: item.label,
-      }))
-    },
-    mouseStrainOptions() {
-      return this.enumLists.mouse_strains
-    },
     workbenchColumns() {
       return WORKBENCH_COLUMNS
-    },
-    typeOptions() {
-      return BUILD_TYPE_OPTIONS
-    },
-    studyTypeOptions() {
-      return STUDY_TYPE_OPTIONS
-    },
-    cellTypeOptions() {
-      return this.enumLists.cell_types
     },
     createRows() {
       return HANDOFF_METHOD_ROWS
@@ -1257,50 +818,29 @@ export default {
         { key: 'target', text: targetText || '靶点待关联' },
       ]
     },
-    editingIndex() {
-      return this.list.findIndex((row) => row.id === this.editingId)
-    },
-    hasPrevEditor() {
-      return this.editingIndex > 0
-    },
-    hasNextEditor() {
-      return this.editingIndex >= 0 && this.editingIndex < this.list.length - 1
-    },
     editorSections() {
       return orderEditorSections(typeGroup(this.editingRow?.build_type), this.editingRow)
     },
-    sourceOptionsForType() {
-      return optionsForBuild(SAMPLE_SOURCE_OPTIONS, this.editingRow?.build_type)
-    },
   },
   created() {
-    this.viewMode = coerceWorkbenchViewMode(this.viewMode)
     this.rebuildSheetColumns()
-    this.loadAllUserOptions()
-    this.loadEnumOptions()
+    this.loadOptionLists()
     this.getList({ flushEditor: false }).finally(() => {
       this.listLoaded = true
       this.consumeCreatedQuery()
     })
   },
   activated() {
-    this.bindDrawerPointer()
     if (this.listLoaded && this.isListDataStale()) {
       this.getList({ flushEditor: false })
     }
     this.consumeCreatedQuery()
   },
-  mounted() {
-    this.bindDrawerPointer()
-  },
   beforeUnmount() {
     this.stopLibraryCodeFill()
-    this.unbindDrawerPointer()
   },
   deactivated() {
     this.stopLibraryCodeFill()
-    this.closeDrawer()
-    this.unbindDrawerPointer()
   },
   watch: {
     '$route.query.created'() {
@@ -1310,42 +850,9 @@ export default {
       this.clearSheetRange()
       this.rebuildSheetColumns()
     },
-    drawerVisible(open) {
-      if (open) this.syncDrawerTextareas()
-    },
-    editingId() {
-      if (this.drawerVisible) this.syncDrawerTextareas()
-    },
   },
   methods: {
-    isSyncedText,
-    syncDrawerTextareas() {
-      this.$nextTick(() => syncPairedTextareas('.workbench-drawer .drawer-field.is-synced textarea'))
-    },
-    buildTypeLabel,
-    indexModeLabel,
-    joinMouseStrain,
-    splitMouseStrain,
-    sampleSourceLabel,
-    sampleTypeLabel,
     statusTone,
-    priorityTone(row) {
-      return getTiterPriorityTone(row?.priority)
-    },
-    typeGroup,
-    isRequiredChoice(key) {
-      return REQUIRED_CHOICE_KEYS.includes(key)
-    },
-    bindDrawerPointer() {
-      if (this.drawerPointerBound) return
-      document.addEventListener('mousedown', this.onDocumentPointerDown, true)
-      this.drawerPointerBound = true
-    },
-    unbindDrawerPointer() {
-      if (!this.drawerPointerBound) return
-      document.removeEventListener('mousedown', this.onDocumentPointerDown, true)
-      this.drawerPointerBound = false
-    },
     async filterCatalog(query = '') {
       this.catalogQuery = String(query || '')
       if (!this.catalogQuery.trim() || this.primerCatalog.length) return
@@ -1359,29 +866,15 @@ export default {
         this.catalogLoading = false
       }
     },
-    async onCatalogChange(row, field, value) {
+    onCatalogChange(row, field, value) {
       if (!row) return
-      const selected = this.primerCatalog.find((item) => item.name === value)
-      row[field.catalogIdKey] = selected?.id || null
-      if (field.sequenceKey) row[field.sequenceKey] = selected?.short_sequence || ''
-      const payload = {
-        id: row.id,
-        [field.key]: value || null,
-        [field.catalogIdKey]: row[field.catalogIdKey],
-      }
-      if (field.sequenceKey) payload[field.sequenceKey] = row[field.sequenceKey] || null
-      try {
-        const saved = await saveLibraryOrder(payload)
-        this.applySavedFields(this.normalizeRow(saved))
-      } catch (error) {
-        const baseline = this.rowBaselines.get(row.id)
-        if (baseline) Object.assign(row, this.normalizeRow(JSON.parse(JSON.stringify(baseline))))
-        notifyApiError(error, { messages: { default: '保存引物或Index失败' } })
-      }
+      row[field.key] = value || null
+      // 名称没变也要存：后端按名称回绑字典 ID（纯文本同名条目选字典时才会带上 id）。
+      return this.persistRow(row, field.key, { force: true })
     },
     canEditField(row, key) {
       if (!this.canEdit) return false
-      if (key === 'build_type') return !this.activeType && (row?.status || '待处理') === '待处理'
+      if (key === 'build_type') return !this.activeType && row?.status === '待处理'
       return true
     },
     sheetCellLockReason(row, key) {
@@ -1470,7 +963,10 @@ export default {
     },
     /** 从种子格往拖动方向逐格加 1：默认新工单在上，从最近的编号往上拖，编号就和创建先后一致。 */
     async fillLibraryCodes(startIndex, endIndex, colIndex) {
-      if (!await this.flushPendingSheetEdits()) return
+      if (!await this.flushPendingSheetEdits() || !await this.awaitRowSaves()) {
+        this.setSheetRange({ r1: startIndex, c1: colIndex, r2: startIndex, c2: colIndex })
+        return
+      }
       const column = this.sheetColumns[colIndex]
       const seedRow = this.list[startIndex]
       if (!seedRow || column?.key !== 'library_code') return
@@ -1502,19 +998,19 @@ export default {
         }
       }
       try {
-        const saved = await batchSaveLibraryOrders(targets.map((row, index) => ({
-          id: row.id,
-          library_code: codes[index],
-        })))
+        const saved = await batchSaveLibraryOrders({
+          items: targets.map((row, index) => this.rowSavePayload({ ...row, library_code: codes[index] }, ['library_code'])),
+        })
         const savedById = new Map((saved?.items || []).map((item) => [item.id, item]))
         targets.forEach((row) => {
           const item = savedById.get(row.id)
-          if (item) this.applySavedFields(this.normalizeRow(item), ['library_code'])
+          if (item) this.applySavedFields(item, ['library_code'])
         })
         ElMessage.success(`已填充 ${targets.length} 个建库编号`)
         this.setSheetRange({ r1: startIndex, c1: colIndex, r2: endIndex, c2: colIndex })
       } catch (error) {
         notifyApiError(error, { messages: { default: '建库编号填充失败' } })
+        await this.getList({ flushEditor: false, silent: true })
         this.setSheetRange({ r1: startIndex, c1: colIndex, r2: startIndex, c2: colIndex })
       }
     },
@@ -1539,9 +1035,6 @@ export default {
       if (Array.isArray(state.startedRange)) this.startedRange = state.startedRange
       if (Array.isArray(state.finishedRange)) this.finishedRange = state.finishedRange
     },
-    openColumnPicker() {
-      this.$refs.workbenchTable?.openColumnPicker()
-    },
     buildQuery() {
       const [instrumentStart, instrumentEnd] = this.instrumentRange || []
       const [startedStart, startedEnd] = this.startedRange || []
@@ -1559,272 +1052,53 @@ export default {
       if (fieldFilters.length) payload.field_filters = fieldFilters
       return payload
     },
-    fetchHeaderValues(query) {
-      return fetchLibraryOrderColumnValues(query)
+    fieldOptions(field, row) {
+      return (row && libraryFieldOptions(field, row)) ?? this.optionLists[field.key] ?? field.options ?? []
     },
-    normalizeRow(row) {
-      return {
-        ...row,
-        target_codes: uniqueTargetCodes(row?.target_codes),
-        plate_nos: Array.isArray(row?.plate_nos) ? row.plate_nos : [],
-      }
-    },
-    updateRowBaseline(row) {
-      if (!row?.id) return
-      this.rowBaselines.set(row.id, JSON.parse(JSON.stringify(row)))
-    },
-    async loadEnumOptions() {
+    async loadOptionLists() {
       try {
         const data = await fetchLibraryOrderOptions()
-        applyOptionLists(this.enumLists, data, Object.keys(this.enumLists))
+        const people = uniqueNames(data?.people || [])
+        PEOPLE_FIELDS.forEach((key) => { this.optionLists[key] = people })
+        applyOptionLists(this.optionLists, data, OPTION_SOURCES)
       } catch (error) {
         notifyApiError(error, { messages: { default: '加载文库选项失败，暂用本地默认选项' } })
       }
     },
-    drawerSelectOptions(field) {
-      const lists = {
-        cell_type: this.cellTypeOptions,
-        priority: this.priorityOptions,
-        qc_result: this.qcResultOptions,
-        status: this.statusOptions,
-      }
-      return lists[field.key] || field.options || []
+    availableSheetColumns() {
+      return sheetColumnsForBuild(this.activeType)
     },
-    async getList({ flushEditor = true } = {}) {
-      const isLatest = this.beginListRequest()
-      this.loading = true
-      try {
-        if (flushEditor) await this.flushPendingSheetEdits()
-        const data = await fetchLibraryOrderList(this.buildQuery(), skipGlobalErrorHandler)
-        if (!isLatest()) return false
-        this.list = (data?.items || []).map((row) => this.normalizeRow(row))
-        this.list.forEach((row) => this.updateRowBaseline(row))
-        this.total = data?.total || 0
-        if (data?.page) this.listQuery.page = data.page
-        this.stats = { ...Object.fromEntries(this.typeSheets.map((item) => [item.statKey, 0])), ...(data?.stats || {}) }
-        if (this.editingId) {
-          const selected = this.list.find((row) => row.id === this.editingId)
-          if (selected) {
-            this.editingRow = this.normalizeRow(JSON.parse(JSON.stringify(selected)))
-            this.plateDraft = plateNumbersText(this.editingRow.plate_nos)
-          } else {
-            this.closeDrawer()
-          }
-        }
-        this.markListFetched()
-        return true
-      } catch (error) {
-        if (!isLatest()) return false
-        notifyApiError(error, { messages: { default: '加载文库工单失败' } })
-        return false
-      } finally {
-        if (isLatest()) this.loading = false
-      }
+    onDrawerRowSynced(row) {
+      this.plateDraft = plateNumbersText(row?.plate_nos)
     },
-    rebuildSheetColumns() {
-      const cols = sheetColumnsForBuild(this.activeType)
-      const remaining = new Map(cols.map((column) => [column.key, column]))
-      const ordered = []
-      SHEET_COLUMN_ORDER.load().forEach((column) => {
-        const next = remaining.get(column.key)
-        if (!next) return
-        ordered.push(next)
-        remaining.delete(next.key)
-      })
-      cols.forEach((column) => {
-        if (remaining.has(column.key)) ordered.push(column)
-      })
-      this.sheetColumns = ordered
-    },
-    persistSheetColumnOrder(columns) {
-      const next = columns || this.sheetColumns
-      this.sheetColumns = next
-      const visibleKeys = new Set(next.map((column) => column.key))
-      let visibleIndex = 0
-      const merged = SHEET_COLUMN_ORDER.load().map((column) => {
-        if (!visibleKeys.has(column.key)) return column
-        const replacement = next[visibleIndex]
-        visibleIndex += 1
-        return replacement || column
-      })
-      if (visibleIndex < next.length) merged.push(...next.slice(visibleIndex))
-      SHEET_COLUMN_ORDER.save(merged)
-    },
-    sheetColumnStore() {
-      return SHEET_COLUMN_ORDER
-    },
-    async resetSheetColumnOrder() {
-      if (this.isExcelMode) {
-        if (!await this.flushPendingSheetEdits()) return
-        SHEET_COLUMN_ORDER.clear()
-        this.rebuildSheetColumns()
-        this.persistSheetColumnOrder(this.sheetColumns)
-        this.resetSheetColumnWidths()
-        this.clearSheetRange()
-        return
-      }
-      this.$refs.workbenchTable?.resetColumnOrder()
-    },
-    async toggleViewMode() {
-      if (this.isExcelMode && !await this.flushPendingSheetEdits()) return
-      this.viewMode = this.viewMode === EXCEL_VIEW ? WORKBENCH_VIEW : EXCEL_VIEW
-    },
-    applySavedFields(saved, fields) {
-      this.patchExistingListRow(saved, fields)
-      if (this.editingId === saved?.id && this.editingRow) {
-        Object.assign(this.editingRow, this.normalizeRow(saved))
-        this.plateDraft = plateNumbersText(this.editingRow.plate_nos)
-      }
-      this.updateRowBaseline(this.normalizeRow(saved))
-    },
-    sameFieldValue(left, right) {
-      if (Array.isArray(left) || Array.isArray(right) || (left && typeof left === 'object') || (right && typeof right === 'object')) {
-        return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
-      }
-      return String(left ?? '') === String(right ?? '')
-    },
-    async persistRow(row, field, { linkCatalog = false } = {}) {
+    async saveRowField(row, field, { force = false } = {}) {
       if (!this.canEdit || !row?.id) return
-      const baseline = this.rowBaselines.get(row.id)
-      const catalogMeta = linkCatalog ? CATALOG_NAME_FIELDS[field] : null
-      if (typeof row[field] === 'string') {
-        row[field] = cleanFieldText(row[field], {
-          keepBreaks: keepsLineBreaks(field),
-        })
-      }
-      row[field] = persistValue(row[field])
-      if (catalogMeta) {
-        const selected = row[field] ? this.primerCatalog.find((item) => item.name === row[field]) : null
-        row[catalogMeta.idKey] = selected?.id || null
-        if (catalogMeta.sequenceKey) row[catalogMeta.sequenceKey] = selected?.short_sequence || null
-      }
-      const targetField = field === 'target_codes' || field === 'target_name'
-      const catalogDirty = Boolean(catalogMeta) && (
-        !this.sameFieldValue(baseline?.[catalogMeta.idKey], row[catalogMeta.idKey])
-        || (catalogMeta.sequenceKey && !this.sameFieldValue(baseline?.[catalogMeta.sequenceKey], row[catalogMeta.sequenceKey]))
-      )
-      if (baseline && this.sameFieldValue(baseline[field], row[field]) && !catalogDirty) {
-        const pairedTargetUnchanged = this.sameFieldValue(baseline.target_name, row.target_name)
-          && this.sameFieldValue(baseline.target_codes, row.target_codes)
-        if (!targetField || pairedTargetUnchanged) return
-      }
+      if (!this.normalizeDrawerValue(row, field)) return
+      const valueKeys = this.drawerValueKeys(field)
+      if (!force && this.rowFieldsUnchanged(row, valueKeys)) return
       const qcFields = field === 'qc_result'
         ? stampQcFields(row, getSerumUserName(useUserStore().userInfo))
         : []
-      try {
-        const payload = { id: row.id, [field]: row[field] }
-        if (targetField) {
-          payload.target_codes = row.target_codes
-          payload.target_name = row.target_name
-        }
-        if (catalogMeta) {
-          payload[catalogMeta.idKey] = row[catalogMeta.idKey] || null
-          if (catalogMeta.sequenceKey) payload[catalogMeta.sequenceKey] = row[catalogMeta.sequenceKey] || null
-        }
-        qcFields.forEach((key) => {
-          payload[key] = row[key]
-        })
-        const saved = await saveLibraryOrder(payload)
-        const savedFields = targetField
-          ? ['target_codes', 'target_name']
-          : catalogMeta
-            ? [field, catalogMeta.idKey, ...(catalogMeta.sequenceKey ? [catalogMeta.sequenceKey] : [])]
-            : field === 'mouse_strain'
-              ? [field, 'sample_type']
-              : field === 'index_mode'
-                ? [field, ...INDEX_LINKED_KEYS]
-                : [field]
-        this.applySavedFields(
-          this.normalizeRow(saved),
-          field === 'build_type' ? undefined : [...savedFields, ...qcFields, ...DERIVED_FIELDS],
-        )
-      } catch (error) {
-        if (baseline) {
-          row[field] = baseline[field]
-          if (field === 'target_codes') row.target_name = baseline.target_name
-          if (catalogMeta) {
-            row[catalogMeta.idKey] = baseline[catalogMeta.idKey]
-            if (catalogMeta.sequenceKey) row[catalogMeta.sequenceKey] = baseline[catalogMeta.sequenceKey]
-          }
-          qcFields.forEach((key) => {
-            row[key] = baseline[key]
-          })
-          if (field === 'plate_nos') this.plateDraft = plateNumbersText(row.plate_nos)
-        }
-        notifyApiError(error, { messages: { default: '保存失败' } })
-      }
+      const fields = [...valueKeys, ...qcFields]
+      return this.submitRowFields(row, fields, {
+        messages: { default: CATALOG_NAME_FIELDS[field] ? '保存引物或Index失败' : '保存失败' },
+        // 改建库类型会连带清掉不适用的字段，整行回填
+        applyFields: field === 'build_type' ? null : fields,
+      })
+    },
+    savedFieldKeys(fields) {
+      return new Set([...fields.flatMap(linkedFields), ...DERIVED_FIELDS])
     },
     onPlateDraftInput(value) {
       if (!this.editingRow) return
       this.plateDraft = normalizePlateInputText(value)
       this.editingRow.plate_nos = plateNumbersFromText(this.plateDraft)
     },
-    async updateStatus(row, value) {
-      row.status = value
-      await this.persistRow(row, 'status')
-    },
-    onDrawerTargetChange(row, payload) {
-      row.target_codes = payload.codes
-      row.target_name = payload.name
-      this.persistRow(row, 'target_codes')
-    },
     openSourceDiscovery(discoveryId) {
       const id = String(discoveryId || '').trim()
       if (!id) return
       rememberDiscoveryFocus(id)
       this.$router.push({ name: 'DiscoveryWorkbench' })
-    },
-    onWorkbenchRowClick(row, _column, event) {
-      if (event?.target?.closest?.('.el-button, .el-input, .el-select, .el-date-editor, .action-cell, .workbench-status-tag')) {
-        return
-      }
-      this.openDrawer(row)
-    },
-    workbenchRowClassName({ row }) {
-      return row.id === this.editingId ? 'is-editing' : ''
-    },
-    shiftEditor(delta) {
-      const next = this.list[this.editingIndex + delta]
-      if (next) this.openDrawer(next)
-    },
-    onWorkbenchRowContextMenu(_row, _column, event) {
-      if (!this.drawerVisible) return
-      event?.preventDefault?.()
-      this.closeDrawer()
-    },
-    onDocumentPointerDown(event) {
-      if (!this.drawerVisible) return
-      const target = event.target
-      if (!(target instanceof Element)) return
-      if (target.closest('.el-drawer, .el-popper, .el-select-dropdown, .el-picker-panel, .el-message-box, .el-overlay-message-box, .sheet-picker-popup')) {
-        return
-      }
-      if (target.closest('.el-table__row, .vxe-body--row, .action-cell')) return
-      this.closeDrawer()
-    },
-    flushDrawerEdit() {
-      const active = document.activeElement
-      if (!(active instanceof HTMLElement) || !active.closest('.el-drawer')) return
-      active.blur()
-    },
-    closeDrawer() {
-      this.flushDrawerEdit()
-      this.drawerVisible = false
-      this.editingId = null
-      this.editingRow = null
-      this.plateDraft = ''
-    },
-    openDrawer(row) {
-      if (!row?.id) return
-      if (this.drawerVisible && this.editingId === row.id) {
-        this.closeDrawer()
-        return
-      }
-      this.flushDrawerEdit()
-      this.editingId = row.id
-      this.editingRow = this.normalizeRow(JSON.parse(JSON.stringify(row)))
-      this.plateDraft = plateNumbersText(this.editingRow.plate_nos)
-      this.drawerVisible = true
     },
     openResult(row) {
       if (!this.canViewDetail) {
@@ -1840,29 +1114,8 @@ export default {
       }
       ElMessage.info('下游测序模块尚未开放')
     },
-    async handleDelete(row) {
-      if (!this.canEdit) {
-        ElMessage.warning('您没有权限删除文库工单')
-        return
-      }
-      try {
-        const name = row.library_code || row.library_order_id || '这条工单'
-        await ElMessageBox.confirm(
-          `确认删除 ${name}？工单及其独占质检文件将一并删除，且无法恢复。`,
-          '删除确认',
-          { type: 'warning', confirmButtonText: '删除' },
-        )
-      } catch {
-        return
-      }
-      try {
-        await deleteLibraryOrder(row.id)
-        if (this.editingId === row.id) this.closeDrawer()
-        await this.getList({ flushEditor: false })
-        ElMessage.success('已删除')
-      } catch (error) {
-        notifyApiError(error, { messages: { default: '删除失败' } })
-      }
+    deleteConfirmText(row) {
+      return `确认删除 ${row.library_code || row.library_order_id || '这条工单'}？工单及其独占质检文件将一并删除，且无法恢复。`
     },
     handleCreate() {
       if (!this.canEdit) {
@@ -1877,11 +1130,13 @@ export default {
       this.createVisible = true
     },
     async confirmCreate() {
+      if (this.creating) return
       const pick = this.createPicks.find((item) => item.id === this.createPick)
       if (!pick) {
         ElMessage.warning('请选择类型')
         return
       }
+      this.creating = true
       try {
         const saved = await saveLibraryOrder({
           build_type: pick.buildType,
@@ -1895,19 +1150,11 @@ export default {
           return
         }
         await this.getList({ flushEditor: false })
-        this.openDrawer(this.normalizeRow(saved))
+        this.openDrawer(saved)
       } catch (error) {
         notifyApiError(error, { messages: { default: '新建失败' } })
-      }
-    },
-    async handleListExport() {
-      try {
-        await downloadListExcel(
-          () => exportLibraryOrderList(this.buildQuery()),
-          `文库构建_${excelTimestamp()}.xlsx`,
-        )
-      } catch (error) {
-        notifyApiError(error, { messages: { default: '列表导出失败' } })
+      } finally {
+        this.creating = false
       }
     },
     async consumeCreatedQuery() {
@@ -1931,7 +1178,7 @@ export default {
         if (cachedRaw) {
           try {
             const cached = JSON.parse(cachedRaw)
-            if (cached?.id === id) this.openDrawer(this.normalizeRow(cached))
+            if (cached?.id === id) this.openDrawer(cached)
           } catch {
             /* ignore */
           }
@@ -1940,493 +1187,65 @@ export default {
         this.consumingCreated = false
       }
     },
-    isUserColumn(column) {
-      return ['pm', 'owner', 'qc_owner'].includes(column?.key)
+    isSheetCustomColumn(column) {
+      return column.edit === 'catalog'
     },
-    isSheetChoiceColumn(column) {
-      return column?.edit === 'select'
-    },
-    extraMouseStrains(value) {
-      const known = new Set(this.mouseStrainOptions)
-      return splitMouseStrain(value).filter((item) => !known.has(item))
-    },
-    onMouseStrainChange(row, values, persist = true) {
-      row.mouse_strain = joinMouseStrain(values) || null
-      if (persist && this.sheetEditSource !== 'dblclick') this.persistRow(row, 'mouse_strain')
-    },
-    isSheetChoiceForRow(column, row) {
-      return column.key !== 'cell_type' || CELL_TYPE_CHOICE_BUILDS.includes(row?.build_type)
-    },
-    sheetChoiceSelectOptions(column, row) {
-      if (column.key === 'sample_source') return optionsForBuild(SAMPLE_SOURCE_OPTIONS, row?.build_type)
-      if (column.key === 'sample_type') {
-        return row?.build_type === BUILD_PLASMA_NGS ? PLASMA_SAMPLE_TYPE_OPTIONS : SAMPLE_TYPE_OPTIONS
-      }
-      if (this.isUserColumn(column)) return this.sheetUserSelectOptions
-      return this.sheetStaticChoiceOptionsMap[column.key] || []
-    },
-    sheetDirectTextValue(row, key) {
-      if (!row) return ''
-      if (key === 'build_type') return buildTypeLabel(row[key])
-      if (key === 'sample_source') return sampleSourceLabel(row[key])
-      if (key === 'sample_type') return sampleTypeLabel(row[key])
-      if (key === 'index_mode') return indexModeLabel(row[key])
-      if (key === 'target_codes') return uniqueTargetCodes(row[key]).join(',')
-      if (key === 'plate_nos') {
-        return Array.isArray(row[key]) ? row[key].join('、') : (row[key] || '')
-      }
-      return row[key] == null ? '' : String(row[key])
-    },
-    formatBuildTypeCell({ cellValue }) {
-      return buildTypeLabel(cellValue) || ''
-    },
-    formatSampleSourceCell({ cellValue }) {
-      return sampleSourceLabel(cellValue) || ''
-    },
-    formatSampleTypeCell({ cellValue }) {
-      return sampleTypeLabel(cellValue) || ''
-    },
-    formatIndexModeCell({ cellValue }) {
-      return indexModeLabel(cellValue) || ''
-    },
-    formatTargetCodesCell({ row }) {
-      return uniqueTargetCodes(row.target_codes).join(',')
-    },
-    formatPlateNosCell({ cellValue }) {
-      return Array.isArray(cellValue) ? cellValue.join('、') : (cellValue || '')
+    sheetCellValue(row, key) {
+      return key === 'plate_nos' ? (row.plate_nos || []).join('、') : row[key]
     },
     sheetFormatter(column) {
-      if (column.key === 'build_type') return this.formatBuildTypeCell
-      if (column.key === 'sample_source') return this.formatSampleSourceCell
-      if (column.key === 'sample_type') return this.formatSampleTypeCell
-      if (column.key === 'index_mode') return this.formatIndexModeCell
-      if (column.key === 'target_codes') return this.formatTargetCodesCell
-      if (column.key === 'plate_nos') return this.formatPlateNosCell
-      return undefined
-    },
-    sheetTargetDirectValue(row, key) {
-      return key === 'target_codes' ? uniqueTargetCodes(row.target_codes).join(',') : row.target_name
-    },
-    setSheetTargetDirectValue(row, key, value) {
-      if (key === 'target_codes') {
-        row.target_codes = uniqueTargetCodes(value)
-        return
-      }
-      row.target_name = value
-    },
-    sheetPickerDisplayValue(row, column) {
-      return column.edit === 'target'
-        ? this.sheetTargetDirectValue(row, column.key)
-        : this.sheetDirectTextValue(row, column.key)
+      return column.key === 'plate_nos' ? this.formatSheetCellValue : this.sheetTypeFormatter(column)
     },
     querySheetCatalogOptions({ searchValue }) {
       return this.filterCatalog(searchValue)
     },
-    sheetOptionValue(options, raw) {
-      const text = String(raw || '').trim().toLowerCase()
-      const matched = options.find((item) => (
-        String(item.value ?? item).toLowerCase() === text
-        || String(item.label ?? item).toLowerCase() === text
-      ))
-      return matched ? (matched.value ?? matched) : undefined
-    },
-    normalizeSheetDate(text) {
-      const raw = String(text ?? '').trim()
-      if (!raw) return { ok: true, value: null }
-      const match = /^(\d{4})-(\d{2})-(\d{2})(?:\s+\d{2}:\d{2}(?::\d{2})?)?$/.exec(raw)
-      if (!match) return { ok: false, reason: 'date' }
-      const year = Number(match[1])
-      const month = Number(match[2])
-      const day = Number(match[3])
-      const date = new Date(Date.UTC(year, month - 1, day))
-      const valid = date.getUTCFullYear() === year
-        && date.getUTCMonth() === month - 1
-        && date.getUTCDate() === day
-      return valid ? { ok: true, value: `${match[1]}-${match[2]}-${match[3]}` } : { ok: false, reason: 'date' }
-    },
-    normalizeSheetSequence(text) {
+    normalizeSheetSequence(key, text) {
       const raw = String(text ?? '').replace(/\s+/g, '').toUpperCase()
       if (!raw) return { ok: true, value: null }
-      if (raw.length > SHEET_STRING_MAX.i7_sequence) return { ok: false, reason: 'length' }
-      return /^[ACGTRYSWKMBDHVN]+$/.test(raw)
-        ? { ok: true, value: raw }
-        : { ok: false, reason: 'sequence' }
+      if (raw.length > this.sheetStringMax[key]) return { ok: false, reason: 'length' }
+      return /^[ACGTRYSWKMBDHVN]+$/.test(raw) ? { ok: true, value: raw } : { ok: false, reason: 'sequence' }
     },
-    sheetTextLimit(key, raw) {
-      const maxLen = SHEET_STRING_MAX[key]
-      if (maxLen && String(raw || '').length > maxLen) return { ok: false, reason: 'length' }
-      return { ok: true, value: raw || null }
-    },
-    coerceSheetValue(row, key, text) {
+    coerceSheetValue(key, text, row) {
       if (key === 'plate_nos') {
-        return {
-          ok: true,
-          value: plateNumbersFromText(Array.isArray(text) ? text.join(',') : text),
-        }
+        return { ok: true, value: plateNumbersFromText(Array.isArray(text) ? text.join(',') : text) }
       }
-      const keepBreaks = keepsLineBreaks(key)
-      const raw = Array.isArray(text)
-        ? text.join(',')
-        : cleanFieldText(text, { keepBreaks })
-      if (key === 'target_forms') {
-        if (!raw) return { ok: true, value: null }
-        const value = this.sheetOptionValue(TARGET_FORM_OPTIONS.map((item) => ({ label: item, value: item })), raw)
-        return value ? { ok: true, value } : { ok: false, reason: 'option' }
+      if (key === 'i7_sequence' || key === 'i5_sequence') return this.normalizeSheetSequence(key, text)
+      if (key === 'library_code') return this.coerceSheetField(key, String(text ?? '').toUpperCase(), row)
+      const result = this.coerceSheetField(key, text, row)
+      if (result.reason === 'option' && ROW_OPTION_REASONS[key] && this.coerceSheetField(key, text).ok) {
+        return { ok: false, reason: ROW_OPTION_REASONS[key] }
       }
-      if (key === 'study_type') {
-        if (!raw) return { ok: true, value: null }
-        const value = this.sheetOptionValue(STUDY_TYPE_OPTIONS.map((item) => ({ label: item, value: item })), raw)
-        return value ? { ok: true, value } : { ok: false, reason: 'option' }
-      }
-      if (SHEET_DATE_KEYS.includes(key)) return this.normalizeSheetDate(raw)
-      if (key === 'build_type') {
-        const value = this.sheetOptionValue(this.typeOptions, raw)
-        return value ? { ok: true, value } : { ok: false, reason: 'option' }
-      }
-      if (key === 'mouse_strain') {
-        if (!raw) return { ok: true, value: null }
-        const value = joinMouseStrain(raw)
-        return value ? { ok: true, value } : { ok: true, value: null }
-      }
-      if (key === 'sample_source') {
-        if (!raw) return { ok: true, value: null }
-        const allowed = optionsForBuild(SAMPLE_SOURCE_OPTIONS, row?.build_type)
-        const value = this.sheetOptionValue(allowed, raw)
-        if (value) return { ok: true, value }
-        return { ok: false, reason: this.sheetOptionValue(SAMPLE_SOURCE_OPTIONS, raw) ? 'source' : 'option' }
-      }
-      if (key === 'sample_type') {
-        if (!raw) return { ok: true, value: null }
-        const plasma = row?.build_type === BUILD_PLASMA_NGS
-        const options = plasma ? PLASMA_SAMPLE_TYPE_OPTIONS : SAMPLE_TYPE_OPTIONS
-        const value = this.sheetOptionValue(options, raw)
-        if (value) return { ok: true, value }
-        const known = this.sheetOptionValue(SAMPLE_TYPE_OPTIONS, raw)
-        return { ok: false, reason: plasma && known ? 'plasma' : 'option' }
-      }
-      if (key === 'cell_type' && CELL_TYPE_CHOICE_BUILDS.includes(row?.build_type) && raw && !this.cellTypeOptions.includes(raw)) {
-        return { ok: false, reason: 'cell' }
-      }
-      if (key === 'source_experiment_type') {
-        return !raw || PHAGE_EXPERIMENT_TYPE_OPTIONS.includes(raw)
-          ? { ok: true, value: raw || null }
-          : { ok: false, reason: 'option' }
-      }
-      if (key === 'index_mode') {
-        if (!raw) return { ok: true, value: null }
-        const value = this.sheetOptionValue(INDEX_MODE_OPTIONS, raw)
-        return value ? { ok: true, value } : { ok: false, reason: 'option' }
-      }
-      if (key === 'qc_result') {
-        return !raw || this.qcResultOptions.includes(raw)
-          ? { ok: true, value: raw || null }
-          : { ok: false, reason: 'option' }
-      }
-      if (key === 'status') return this.statusOptions.includes(raw) ? { ok: true, value: raw } : { ok: false, reason: 'option' }
-      if (key === 'priority') return this.priorityOptions.includes(raw) ? { ok: true, value: raw } : { ok: false, reason: 'option' }
-      if (this.isUserColumn({ key })) {
-        if (!raw) return { ok: true, value: null }
-        const hit = this.allUserOptions.find((item) => item === raw || item.toLowerCase() === raw.toLowerCase())
-        return hit ? { ok: true, value: hit } : { ok: false, reason: 'option' }
-      }
-      if (key === 'i7_sequence' || key === 'i5_sequence') return this.normalizeSheetSequence(raw)
-      if (key === 'library_code') return this.sheetTextLimit(key, raw.toUpperCase())
-      if (key === 'target_codes') return { ok: true, value: uniqueTargetCodes(raw.split(/[,，、]/)) }
-      if (key === 'target_name') return this.sheetTextLimit(key, raw)
-      return this.sheetTextLimit(key, raw)
+      return result
     },
-    assignSheetValue(row, key, text) {
-      const column = allSheetColumns().find((item) => item.key === key)
-      if (!column) return { ok: false, reason: 'unknown' }
-      const result = this.coerceSheetValue(row, key, text)
-      if (this.isSheetCellLocked(row, key)) {
-        if (result.ok && this.sameSheetValue(key, result.value, row[key])) return { ok: true, skipped: true }
-        if (!isSheetFieldApplicable(row?.build_type, key)) return { ok: false, reason: 'inapplicable' }
-        if (!isIndexFieldRecorded(row?.build_type, row?.index_mode, key)) return { ok: false, reason: 'index' }
-        return { ok: false, reason: column.edit === 'readonly' ? 'readonly' : 'locked' }
-      }
-      if (!result.ok) return result
-      this.restoreSheetEditValue(row, key, result.value)
-      return { ok: true }
+    sheetPasteIdentityKey() {
+      return 'library_order_id'
     },
-    sheetValidationMessage(key, reason) {
-      const label = this.sheetColumns.find((item) => item.key === key)?.label
-        || allSheetColumns().find((item) => item.key === key)?.label
-        || '当前字段'
-      if (reason === 'date') return `${label}必须是 YYYY-MM-DD 格式的有效日期`
+    sheetPasteLockedReason(row, key) {
+      if (!isSheetFieldApplicable(row?.build_type, key)) return 'inapplicable'
+      if (!isIndexFieldRecorded(row?.build_type, row?.index_mode, key)) return 'index'
+      return 'locked'
+    },
+    expandSheetPasteFields(row, fields) {
+      if (fields.has('qc_result')) {
+        stampQcFields(row, getSerumUserName(useUserStore().userInfo)).forEach((key) => fields.add(key))
+      }
+    },
+    applySheetPasteSaved(saved, fields = []) {
+      this.applySavedFields(saved, fields.includes('build_type') ? undefined : fields)
+    },
+    sheetValidationExtraMessage(_key, reason, label) {
       if (reason === 'sequence') return `${label}只能包含 IUPAC 碱基字符`
       if (reason === 'index') return `当前 Barcode 方式不填写「${label}」`
       if (reason === 'plasma') return '浆细胞 NGS 的样品类型只能是 Nano 或 Lite'
       if (reason === 'source') return '样品来源与当前建库类型不匹配'
-      if (reason === 'cell') return '细胞类型只能是全细胞、浆细胞或流穿液'
       if (reason === 'inapplicable') return `当前建库类型没有「${label}」`
-      if (reason === 'length') {
-        const maxLen = SHEET_STRING_MAX[key]
-        return maxLen ? `${label}不能超过 ${maxLen} 个字` : `${label}超出长度限制`
-      }
-      if (reason === 'readonly') return `${label}与当前行不一致`
-      if (reason === 'locked') return `${label}当前不可编辑`
-      if (reason === 'unknown') return '粘贴内容包含无法识别的列'
-      return `${label}必须与可选项完全匹配`
-    },
-    restoreSheetEditValue(row, key, value) {
-      if (key === 'target_codes') {
-        row.target_codes = uniqueTargetCodes(value)
-        return
-      }
-      row[key] = this.cloneSheetValue(value)
-    },
-    async finishSheetEdit(context) {
-      const row = context?.row
-      const key = context?.column?.field
-      const pickingTarget = this.sheetEditSource === 'dblclick' && (key === 'target_codes' || key === 'target_name')
-      const pickingCatalog = this.sheetEditSource === 'dblclick' && Boolean(CATALOG_NAME_FIELDS[key])
-      this.sheetEditSource = ''
-      if (!key || !row?.id) return
-      const originalValue = this.takeSheetEditOriginal(row, key)
-      if (this.isSheetCellLocked(row, key)) {
-        if (pickingTarget) this.restoreSheetTargetEdit(row, key, originalValue)
-        else this.restoreSheetEditValue(row, key, originalValue)
-        return
-      }
-      const source = key === 'target_codes' ? row.target_codes : row[key]
-      const result = this.coerceSheetValue(row, key, source)
-      if (!result.ok) {
-        if (pickingTarget) this.restoreSheetTargetEdit(row, key, originalValue)
-        else this.restoreSheetEditValue(row, key, originalValue)
-        ElMessage.warning(this.sheetValidationMessage(key, result.reason))
-        return
-      }
-      if (!pickingTarget && !pickingCatalog && this.sameSheetValue(key, result.value, originalValue)) {
-        this.restoreSheetEditValue(row, key, originalValue)
-        return
-      }
-      this.restoreSheetEditValue(row, key, result.value)
-      if (pickingTarget) {
-        const baseline = this.rowBaselines.get(row.id)
-        if (
-          this.sameSheetValue('target_codes', row.target_codes, baseline?.target_codes)
-          && this.sameSheetValue('target_name', row.target_name, baseline?.target_name)
-        ) {
-          return
-        }
-      }
-      if (key === 'target_codes' || key === 'target_name') {
-        if (!await this.applySheetTargetText(row, pickingTarget ? 'target_codes' : key, originalValue)) return
-      }
-      const baseline = this.rowBaselines.get(row.id)
-      const unchanged = key === 'target_codes' || key === 'target_name'
-        ? this.sameSheetValue('target_codes', row.target_codes, baseline?.target_codes)
-          && this.sameSheetValue('target_name', row.target_name, baseline?.target_name)
-        : this.sameSheetValue(key, row[key], originalValue)
-      if (unchanged) {
-        this.restoreSheetEditValue(row, key, originalValue)
-        if ((key === 'target_codes' || key === 'target_name') && baseline) {
-          row.target_codes = this.cloneSheetValue(baseline.target_codes)
-          row.target_name = baseline.target_name
-        }
-        return
-      }
-      await this.persistRow(row, key, { linkCatalog: pickingCatalog })
-    },
-    restoreSheetTargetEdit(row, key, originalValue) {
-      const baseline = this.rowBaselines.get(row.id)
-      if (!baseline) {
-        this.restoreSheetEditValue(row, key, originalValue)
-        return
-      }
-      row.target_codes = this.cloneSheetValue(baseline.target_codes)
-      row.target_name = baseline.target_name
-    },
-    async onSheetPaste(event) {
-      const columns = allSheetColumns()
-      const labelToKey = new Map(columns.map((column) => [column.label, column.key]))
-      const paste = await this.prepareSheetPaste(event, labelToKey, {
-        limitRows: (keys, header) => !(header && keys.includes('library_order_id')),
-      })
-      if (!paste) return
-      const { dataRows, hasHeader, headerKeys, skippedRowCount, startColIndex, startIndex } = paste
-      const orderIdHeaderIndex = hasHeader ? headerKeys.indexOf('library_order_id') : -1
-      const matchRowsByOrderId = orderIdHeaderIndex >= 0
-      const workingRows = this.list.map((row) => this.normalizeRow(JSON.parse(JSON.stringify(row))))
-      const rowIndexByOrderId = new Map(
-        workingRows.map((row, index) => [String(row.library_order_id || '').trim(), index]),
-      )
-      const matchedOrderIds = new Set()
-      const dirtyByIndex = new Map()
-      const targetFieldsByIndex = new Map()
-      const invalidCells = []
-      const touchedCells = []
-      dataRows.forEach((cells, offset) => {
-        if (cells.every((cell) => String(cell ?? '') === '')) return
-        let rowIndex = startIndex + offset
-        if (matchRowsByOrderId) {
-          const orderId = String(cells[orderIdHeaderIndex] || '').trim()
-          const matchedIndex = rowIndexByOrderId.get(orderId)
-          if (!orderId || matchedIndex === undefined || matchedOrderIds.has(orderId)) {
-            invalidCells.push({ reason: 'identity' })
-            return
-          }
-          matchedOrderIds.add(orderId)
-          rowIndex = matchedIndex
-        }
-        const row = workingRows[rowIndex]
-        if (!row) return
-        cells.forEach((cell, cellIndex) => {
-          const key = hasHeader ? headerKeys[cellIndex] : this.sheetColumns[startColIndex + cellIndex]?.key
-          if (!key) {
-            if (String(cell ?? '').trim()) invalidCells.push({ reason: 'unknown' })
-            return
-          }
-          const result = this.assignSheetValue(row, key, cell)
-          if (result.skipped) return
-          if (!result.ok) {
-            invalidCells.push({ ...result, key })
-            return
-          }
-          if (this.sameSheetValue(key, row[key], this.list[rowIndex]?.[key])) return
-          touchedCells.push({ rowId: row.id, key })
-          const fields = dirtyByIndex.get(rowIndex) || new Set()
-          fields.add(key)
-          dirtyByIndex.set(rowIndex, fields)
-          if (key === 'target_codes' || key === 'target_name') {
-            const targetFields = targetFieldsByIndex.get(rowIndex) || new Set()
-            targetFields.add(key)
-            targetFieldsByIndex.set(rowIndex, targetFields)
-          }
-        })
-      })
-      if (invalidCells.length) {
-        const firstInvalid = invalidCells[0]
-        const message = firstInvalid.reason === 'identity'
-          ? '粘贴内容包含当前页不存在或重复的系统工单号，本次粘贴未保存'
-          : firstInvalid.reason === 'unknown'
-            ? '粘贴内容包含无法识别的列，本次粘贴未保存'
-            : firstInvalid.key
-              ? `${this.sheetValidationMessage(firstInvalid.key, firstInvalid.reason)}，本次粘贴未保存`
-              : `有 ${invalidCells.length} 个单元格不可编辑，本次粘贴未保存`
-        ElMessage.warning(message)
-        return
-      }
-      if (!dirtyByIndex.size) return
-      const targetEntries = [...targetFieldsByIndex.entries()]
-        .map(([rowIndex, fields]) => ({ fields, row: workingRows[rowIndex] }))
-      if (targetEntries.length) {
-        try {
-          const codeEntries = targetEntries.filter(({ fields }) => fields.has('target_codes'))
-          const resolvedCodes = await this.resolveTargetCodes(codeEntries.flatMap(({ row }) => row.target_codes || []))
-          if (resolvedCodes.missing.length) {
-            ElMessage.warning(`未找到靶点编号：${resolvedCodes.missing.join('、')}，本次粘贴未保存`)
-            return
-          }
-          codeEntries.forEach(({ fields, row }) => {
-            const canonicalNames = (row.target_codes || []).map((code) => resolvedCodes.nameByCode.get(code))
-            if (fields.has('target_name')) {
-              const submittedNames = splitTargetNames(row.target_name)
-              const matches = submittedNames.length === canonicalNames.length
-                && submittedNames.every((name, index) => name.toLowerCase() === String(canonicalNames[index] || '').toLowerCase())
-              if (!matches) throw new Error('target-mismatch')
-            }
-            row.target_name = canonicalNames.join('&')
-            fields.add('target_name')
-          })
-          const nameOnlyEntries = targetEntries.filter(({ fields }) => fields.has('target_name') && !fields.has('target_codes'))
-          const resolvedNames = await this.resolveTargetNames(nameOnlyEntries.flatMap(({ row }) => splitTargetNames(row.target_name)).join('&'))
-          if (resolvedNames.missing.length) {
-            ElMessage.warning(`未找到靶点名称：${resolvedNames.missing.join('、')}，本次粘贴未保存`)
-            return
-          }
-          if (resolvedNames.ambiguous.length) {
-            ElMessage.warning(`靶点名称不唯一：${resolvedNames.ambiguous.join('、')}，本次粘贴未保存`)
-            return
-          }
-          nameOnlyEntries.forEach(({ fields, row }) => {
-            const targetItems = splitTargetNames(row.target_name).map((name) => (
-              resolvedNames.items.find((item) => String(item.name || '').toLowerCase() === name.toLowerCase())
-            ))
-            row.target_codes = targetItems.map((item) => item.snum)
-            row.target_name = targetItems.map((item) => item.name).join('&')
-            fields.add('target_codes')
-          })
-        } catch {
-          ElMessage.warning('靶点名称与编号不匹配或校验失败，本次粘贴未保存')
-          return
-        }
-      }
-      const qcActor = getSerumUserName(useUserStore().userInfo)
-      const entries = [...dirtyByIndex.entries()].map(([rowIndex, fields]) => {
-        const row = workingRows[rowIndex]
-        if (fields.has('qc_result')) {
-          stampQcFields(row, qcActor).forEach((key) => fields.add(key))
-        }
-        if (fields.has('target_codes') || fields.has('target_name')) {
-          fields.add('target_codes')
-          fields.add('target_name')
-        }
-        const payload = { id: row.id }
-        fields.forEach((field) => {
-          payload[field] = row[field]
-        })
-        return { fields, payload }
-      })
-      try {
-        const result = await batchSaveLibraryOrders(entries.map(({ payload }) => payload))
-        const savedById = new Map((result?.items || []).map((item) => [item.id, item]))
-        entries.forEach(({ fields, payload }) => {
-          const saved = savedById.get(payload.id)
-          if (!saved) return
-          const savedFields = [...fields]
-          if (fields.has('mouse_strain')) savedFields.push('sample_type')
-          if (fields.has('index_mode')) savedFields.push(...INDEX_LINKED_KEYS)
-          savedFields.push(...DERIVED_FIELDS)
-          fields.forEach((field) => {
-            const catalogMeta = CATALOG_NAME_FIELDS[field]
-            if (!catalogMeta) return
-            savedFields.push(catalogMeta.idKey)
-            if (catalogMeta.sequenceKey) savedFields.push(catalogMeta.sequenceKey)
-          })
-          this.applySavedFields(
-            this.normalizeRow(saved),
-            fields.has('build_type') ? undefined : [...new Set(savedFields)],
-          )
-        })
-        const savedCount = entries.length
-        const selectedCells = touchedCells
-          .map(({ rowId, key }) => ({
-            rowIndex: this.list.findIndex((row) => row.id === rowId),
-            colIndex: this.sheetColumns.findIndex((column) => column.key === key),
-          }))
-          .filter(({ rowIndex, colIndex }) => rowIndex >= 0 && colIndex >= 0)
-        if (selectedCells.length) {
-          const rowIndexes = selectedCells.map((cell) => cell.rowIndex)
-          const colIndexes = selectedCells.map((cell) => cell.colIndex)
-          const range = {
-            r1: Math.min(...rowIndexes),
-            c1: Math.min(...colIndexes),
-            r2: Math.max(...rowIndexes),
-            c2: Math.max(...colIndexes),
-          }
-          await this.$nextTick()
-          const activeRow = this.list[range.r1]
-          const activeColumn = this.sheetColumns[range.c1]
-          if (activeRow && activeColumn) {
-            await this.$refs.sheetTable?.setSelectCell?.(activeRow, activeColumn.key)
-          }
-          this.setSheetRange(range)
-        }
-        const skippedHint = skippedRowCount ? `，已忽略超出的 ${skippedRowCount} 行` : ''
-        ElMessage.success(`已粘贴并保存 ${savedCount} 行${skippedHint}`)
-      } catch (error) {
-        await this.getList({ flushEditor: false })
-        notifyApiError(error, { messages: { default: '粘贴保存失败' } })
-      }
+      return ''
     },
   },
 }
 </script>
 
-<style scoped src="#/components/workbench/workbenchExcel.css"></style>
-<style scoped src="#/components/workbench/workbenchDrawerChrome.css"></style>
+<style scoped src="#/components/workbench/workbenchPanel.css"></style>
 <style src="#/components/workbench/workbenchDrawer.css"></style>
 <style scoped>
 .library-code-fill-handle {
@@ -2450,212 +1269,8 @@ export default {
   background: var(--list-page-bg);
 }
 
-.workbench-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: var(--list-surface-padding-y) var(--list-surface-padding-x);
-  margin-bottom: var(--list-page-gap);
-  background: var(--list-surface-bg);
-  border: var(--list-surface-border);
-  border-radius: var(--list-surface-radius);
-  box-shadow: var(--list-surface-shadow);
-}
-
-.page-title {
-  margin: 0;
-  color: var(--el-text-color-primary);
-  font-size: var(--list-page-title-size);
-  font-weight: var(--list-page-title-weight);
-  letter-spacing: 0.2px;
-}
-
-.text-secondary {
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-}
-
-.text-hint {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  opacity: 0.92;
-}
-
-.page-header-band {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-width: 0;
-  padding: 12px 16px;
-  border: 1px solid rgb(191 219 254 / 45%);
-  border-radius: var(--list-mid-radius);
-  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, var(--el-bg-color) 100%);
-}
-
-.title-group {
-  min-width: 0;
-}
-
-.page-subtitle {
-  max-width: 560px;
-  margin: 6px 0 0;
-  color: var(--list-page-subtitle-color);
-  font-size: var(--list-page-subtitle-size);
-  font-weight: var(--list-page-subtitle-weight);
-}
-
-.header-actions {
-  display: flex;
-  flex-shrink: 0;
-  gap: 8px;
-  align-items: center;
-}
-
-.total-count {
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-}
-
 .stats-strip {
-  display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.stat-tile {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 54px;
-  padding: 8px 10px 8px 14px;
-  text-align: left;
-  background: var(--list-mid-bg);
-  border: var(--list-mid-border);
-  border-radius: var(--list-mid-radius);
-  --stat-ring: rgba(64, 158, 255, 0.32);
-  --stat-glow: rgba(64, 158, 255, 0.12);
-}
-
-.stat-tile-interactive {
-  cursor: pointer;
-  user-select: none;
-  transition:
-    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.22s ease,
-    border-color 0.22s ease,
-    background-color 0.22s ease;
-}
-
-.stat-tile-interactive:hover {
-  transform: translateY(-2px);
-  border-color: #dce3ec;
-  background: var(--el-bg-color);
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07);
-}
-
-.stat-tile-interactive:active {
-  transform: translateY(0) scale(0.985);
-  background: var(--el-bg-color);
-  border-color: transparent;
-  box-shadow: 0 3px 10px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
-  transition-duration: 0.08s;
-}
-
-.stat-tile-active {
-  border-color: transparent;
-  background: var(--el-bg-color);
-  box-shadow: 0 6px 18px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
-}
-
-.stat-tile-active:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
-}
-
-.stat-tile-active:active {
-  transform: translateY(0) scale(0.985);
-  box-shadow: 0 3px 10px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
-}
-
-.stat-tile::before {
-  position: absolute;
-  top: 12px;
-  left: 0;
-  width: 4px;
-  height: 28px;
-  content: '';
-  border-radius: 0 999px 999px 0;
-  transition: height 0.22s ease, top 0.22s ease;
-}
-
-.stat-tile-interactive:hover::before,
-.stat-tile-active::before {
-  top: 10px;
-  height: 32px;
-}
-
-.stat-copy {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-}
-
-.stat-label {
-  display: block;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.stat-copy small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stat-tile-active .stat-label {
-  color: var(--el-text-color-primary);
-  font-weight: 600;
-}
-
-.stat-tile-active .stat-value {
-  transform: scale(1.03);
-}
-
-.stat-value {
-  flex: 0 0 auto;
-  color: var(--el-text-color-primary);
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.stat-blue::before { background: var(--el-color-primary); }
-.stat-blue { --stat-ring: rgba(64, 158, 255, 0.34); --stat-glow: rgba(64, 158, 255, 0.12); }
-.stat-purple::before { background: #8b5cf6; }
-.stat-purple { --stat-ring: rgba(139, 92, 246, 0.34); --stat-glow: rgba(139, 92, 246, 0.12); }
-.stat-orange::before { background: #ff9f43; }
-.stat-orange { --stat-ring: rgba(255, 159, 67, 0.38); --stat-glow: rgba(255, 159, 67, 0.13); }
-.stat-red::before { background: #ff6b6b; }
-.stat-red { --stat-ring: rgba(255, 107, 107, 0.36); --stat-glow: rgba(255, 107, 107, 0.12); }
-.stat-slate::before { background: #4dd0e1; }
-.stat-slate { --stat-ring: rgba(77, 208, 225, 0.38); --stat-glow: rgba(77, 208, 225, 0.13); }
-
-.filter-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  align-items: center;
-  min-width: 0;
-  padding-top: 10px;
-  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .filter-item {
@@ -2715,46 +1330,6 @@ export default {
   padding: 0 8px;
 }
 
-.table-card :deep(.priority-select.status-tone-info .el-select__wrapper) {
-  background-color: var(--el-color-info-light-9);
-}
-.table-card :deep(.priority-select.status-tone-info .el-select__selected-item) {
-  color: var(--el-color-info);
-}
-.table-card :deep(.priority-select.status-tone-warning .el-select__wrapper) {
-  background-color: var(--el-color-warning-light-9);
-}
-.table-card :deep(.priority-select.status-tone-warning .el-select__selected-item) {
-  color: var(--el-color-warning);
-}
-.table-card :deep(.priority-select.status-tone-danger .el-select__wrapper) {
-  background-color: var(--el-color-danger-light-9);
-}
-.table-card :deep(.priority-select.status-tone-danger .el-select__selected-item) {
-  color: var(--el-color-danger);
-}
-.table-card :deep(.priority-select.status-tone-king .el-select__wrapper) {
-  background-color: var(--vita-king-bg);
-}
-.table-card :deep(.priority-select.status-tone-king .el-select__selected-item) {
-  color: var(--vita-king-text);
-}
-
-.drawer-heading {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.drawer-title {
-  color: #20252c;
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-}
-
 .drawer-header-facts {
   display: flex;
   flex-wrap: wrap;
@@ -2779,102 +1354,19 @@ export default {
   border-radius: 5px;
 }
 
-.source-link.is-link,
-.source-link.is-link :deep(.el-input__wrapper),
-.source-link.is-link :deep(.el-input__inner),
-.source-link.is-link :deep(.el-input__suffix) {
+.source-link.is-link {
   cursor: pointer;
+}
+
+/* 只读用户的抽屉整组禁用，禁用的输入框吃掉点击，点击要落到外层 div 上 */
+.source-link.is-link :deep(.el-input) {
+  pointer-events: none;
 }
 
 .source-link-action {
   color: var(--el-color-primary);
   font-size: 12px;
   font-weight: 600;
-}
-
-.drawer-fields {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
-}
-
-.drawer-card {
-  padding: 10px 0 2px;
-  margin-bottom: 8px;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  border-radius: 0;
-}
-
-.drawer-card:last-child {
-  margin-bottom: 0;
-  border-bottom: 0;
-}
-
-.drawer-card.is-queue {
-  padding: 8px 10px 2px;
-  margin-bottom: 8px;
-  background: var(--list-mid-bg);
-  border: var(--list-mid-border);
-  border-radius: var(--list-mid-radius);
-}
-
-.drawer-card-title {
-  display: flex;
-  gap: 7px;
-  align-items: center;
-  margin: 0 0 10px;
-  color: var(--el-text-color-primary);
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-}
-
-.drawer-card-title::before {
-  width: 3px;
-  height: 13px;
-  background: var(--el-color-primary);
-  border-radius: 2px;
-  content: '';
-}
-
-.drawer-card.is-queue .drawer-card-title {
-  color: var(--el-text-color-primary);
-}
-
-.drawer-card-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 12px;
-}
-
-.drawer-field.is-wide {
-  grid-column: 1 / -1;
-}
-
-.drawer-field.is-synced :deep(.el-textarea__inner) {
-  resize: none;
-}
-
-.drawer-field-break {
-  grid-column: 2;
-}
-
-.drawer-form :deep(.el-form-item) {
-  margin-bottom: 8px;
-}
-
-.drawer-form :deep(.el-form-item__label) {
-  color: var(--el-text-color-regular);
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.drawer-form :deep(.el-form-item__content) {
-  min-width: 0;
-  justify-content: flex-start;
 }
 
 .primer-matrix {
@@ -2943,19 +1435,6 @@ export default {
   border-color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
-}
-
-html.dark .page-header-band {
-  background: var(--el-fill-color-extra-light);
-  border-color: var(--el-border-color-light);
-}
-
-html.dark .stat-tile-interactive:hover {
-  border-color: var(--el-border-color-light);
-}
-
-html.dark .drawer-title {
-  color: var(--el-text-color-primary);
 }
 
 html.dark .drawer-header-facts .is-type {

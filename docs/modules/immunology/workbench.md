@@ -36,9 +36,9 @@
 | `display_status` | 列表展示状态 | 未开展取 `plan_status`；开展后取正式项目 `project_status` |
 | `can_start` | 开展条件标记 | `是` / `否`，与状态独立 |
 | `priority` / `sort_order` | 优先级与队列位 | 规则见[共用约定](../workbench.md) |
-| `species_cross` | 种属交叉 | `人`、`猴`、`鼠`、`狗`、`猫`、`空白`多选，英文逗号存储 |
-| `immuno_method` | 免疫方式 | `蛋白`、`DNA`、`LNP`、`细胞`、`混合`多选，英文逗号存储 |
-| `mouse_strain_category` / `mouse_strain` | 归类鼠型 / 小鼠品系 | 有小鼠分组时按分组顺序去重后用顿号展示；两组及以上时在工作台只读 |
+| `species_cross` | 种属交叉 | `人`、`猴`、`鼠`、`狗`、`猫`、`空白`多选，英文逗号存储，接口收发数组 |
+| `immuno_method` | 免疫方式 | `蛋白`、`DNA`、`LNP`、`细胞`、`混合`多选，英文逗号存储，接口收发数组 |
+| `mouse_strain_category` / `mouse_strain` | 归类鼠型 / 小鼠品系 | 有小鼠分组时按分组顺序去重后用顿号展示（列表、详情、保存、排序和方案保存的返回都一样）；两组及以上时在工作台只读 |
 | `mouse_remark` / `antigen_remark` / `remark` | 备注 | 保留换行，最长 255 字符 |
 
 草稿号格式为 `SCP-YYYYMMDD-HHMMSS-XXXX`，`XXXX` 是 4 位大写字母或数字。首次保存时生成，冲突时重新分配。开展后的正式实验号为 `{project_code}{两位起始序号}`；后缀从 `01` 起选择空闲值，超过两位时按实际数字输出。

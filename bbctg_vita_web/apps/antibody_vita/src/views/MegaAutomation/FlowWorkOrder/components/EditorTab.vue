@@ -313,6 +313,7 @@ import {
 } from 'element-plus';
 
 import {
+  cellColumnsByKey,
   cellKey,
   cellPlateBarcode,
   CELL_TYPE_OPTIONS,
@@ -321,6 +322,7 @@ import {
   createLocalPcId,
   isCellSelected,
   PC_INFO_TYPE_OPTIONS,
+  pruneEmptyCellRefs,
   SECONDARY_ANTIBODY_OPTIONS,
   selectedCountInPlate,
   SPECIES_OPTIONS,
@@ -404,14 +406,7 @@ export default {
       return this.order.cell_plates[index] || this.order.cell_plates[0] || { columns: [] };
     },
     cellByKey() {
-      const map = {};
-      this.order.cell_plates.forEach((plate, plateIndex) => {
-        const barcode = this.cellPlateBarcode(plate, plateIndex);
-        (plate.columns || []).forEach((column) => {
-          map[this.cellKey(barcode, column.column_no)] = column;
-        });
-      });
-      return map;
+      return cellColumnsByKey(this.order.cell_plates);
     },
     cellPickerOptions() {
       return this.order.cell_plates.map((plate, plateIndex) => {
@@ -525,19 +520,6 @@ export default {
         keys.push({ barcode, column_no: columnNo });
       }
       plate.cell_keys = keys;
-    },
-    pruneEmptyCellRefs() {
-      const named = new Set(
-        Object.entries(this.cellByKey)
-          .filter(([, col]) => String(col?.cell_name || '').trim())
-          .map(([key]) => key),
-      );
-      this.order.sample_plates.forEach((plate) => {
-        const keys = Array.isArray(plate.cell_keys) ? plate.cell_keys : [];
-        plate.cell_keys = keys.filter((key) =>
-          named.has(this.cellKey(key.barcode, key.column_no)),
-        );
-      });
     },
     onCellPickerShow(plate) {
       this.activeCellPickerRowKey = plate._rowKey || '';
@@ -684,7 +666,7 @@ export default {
           return [{ barcode, column_no: columnNo }];
         });
       });
-      this.pruneEmptyCellRefs();
+      pruneEmptyCellRefs(this.order);
       if (Number(this.activeCellPlate) >= plates.length) {
         this.setActiveCellPlate(Math.max(0, plates.length - 1));
       }

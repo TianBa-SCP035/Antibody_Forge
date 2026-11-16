@@ -148,10 +148,10 @@
               <div class="project-status">
                 <el-tag
                   :type="project.prepared ? 'success' : getStatusType(project.project_status)"
-                  :class="{ 'no-permission-tag': !canUpdatePrepStatus(project) }"
-                  :title="!canUpdatePrepStatus(project) ? '您没有权限更新制备状态' : ''"
+                  :class="{ 'no-permission-tag': !canUpdatePrepStatus }"
+                  :title="!canUpdatePrepStatus ? '您没有权限更新制备状态' : ''"
                   @click="toggleProjectPrepStatus(project)"
-                  :style="canUpdatePrepStatus(project) ? 'cursor: pointer' : 'cursor: not-allowed'"
+                  :style="canUpdatePrepStatus ? 'cursor: pointer' : 'cursor: not-allowed'"
                 >
                   {{ project.project_status }}
                 </el-tag>
@@ -188,10 +188,10 @@
                 <div class="project-status">
                   <el-tag
                     :type="project.prepared ? 'success' : getStatusType(project.project_status)"
-                    :class="{ 'no-permission-tag': !canUpdatePrepStatus(project) }"
-                    :title="!canUpdatePrepStatus(project) ? '您没有权限更新制备状态' : ''"
+                    :class="{ 'no-permission-tag': !canUpdatePrepStatus }"
+                    :title="!canUpdatePrepStatus ? '您没有权限更新制备状态' : ''"
                     @click="toggleProjectPrepStatus(project)"
-                    :style="canUpdatePrepStatus(project) ? 'cursor: pointer' : 'cursor: not-allowed'"
+                    :style="canUpdatePrepStatus ? 'cursor: pointer' : 'cursor: not-allowed'"
                   >
                     {{ project.project_status }}
                   </el-tag>
@@ -337,9 +337,9 @@ import {
 } from 'element-plus'
 
 import { notifyApiError } from '#/api/errors'
-import { fetchCellInventoryData, updateProjectPrepStatus } from '#/api/serum'
+import { fetchCellInventoryData, SERUM_CELL_PREP_STATUS_UPDATE, updateProjectPrepStatus } from '#/api/serum'
 import { SERUM_ERRORS } from './shared/errors'
-import { canUpdateSerumPrepStatus } from '#/utils/serumPermission'
+import { hasAccessCode } from '#/utils/accessCode'
 import { createLatestRequest } from '#/utils/latestRequest'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
@@ -385,6 +385,9 @@ export default {
   computed: {
     currentUserInfo() {
       return this.userStore.userInfo || {}
+    },
+    canUpdatePrepStatus() {
+      return hasAccessCode(this.currentUserInfo, SERUM_CELL_PREP_STATUS_UPDATE)
     },
     cellTargets() {
       const allTargets = new Set()
@@ -703,7 +706,7 @@ export default {
       this.selectedTarget = targetName
     },
     async toggleProjectPrepStatus(project) {
-      if (!this.canUpdatePrepStatus(project)) {
+      if (!this.canUpdatePrepStatus) {
         ElMessage.warning('您没有权限更新制备状态')
         return
       }
@@ -735,9 +738,6 @@ export default {
       if (!status) return 'info'
       if (status.includes('待三免') || status.includes('待四免') || status.includes('待五免') || status.includes('待六免') || status.includes('待七免') || status.includes('待八免') || status.includes('待九免') || status.includes('待十免')) return 'warning'
       return 'info'
-    },
-    canUpdatePrepStatus(project) {
-      return canUpdateSerumPrepStatus(this.currentUserInfo, project)
     },
     calculateGenusStock(cells) {
       if (!cells || cells.length === 0) return 0

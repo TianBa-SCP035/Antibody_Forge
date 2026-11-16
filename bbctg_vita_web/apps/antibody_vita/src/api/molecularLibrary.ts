@@ -1,4 +1,15 @@
 import { requestClient, skipGlobalErrorHandler } from '#/api/request';
+import { DISCOVERY_WORKBENCH_EDIT } from '#/api/discoveryWorkbench';
+import { fetchRecordedTargets } from '#/api/options';
+
+export const LIBRARY_PAGE = 'molecular.page.library';
+export const LIBRARY_PAGE_DETAIL = 'molecular.page.library_detail';
+export const LIBRARY_EDIT = 'molecular.library.edit';
+export const LIBRARY_FILE_MANAGE = 'molecular.library.file.manage';
+/** 从发现工作台交接建库：有任一权限即可 */
+export const LIBRARY_HANDOFF = [DISCOVERY_WORKBENCH_EDIT, LIBRARY_EDIT];
+/** 交接建库后跳到文库构建定位新工单（sessionStorage），键值已发布不要改 */
+export const LIBRARY_CREATED_KEY = 'molecular.library.created';
 
 const SAVE_TIMEOUT = 5000;
 const DOWNLOAD_TIMEOUT = 360_000;
@@ -9,6 +20,10 @@ type PostConfig = Parameters<typeof requestClient.post>[2];
 const downloadConfig = {
   skipErrorHandler: true,
 } as Parameters<typeof requestClient.download>[1];
+
+export function fetchLibraryRecordedTargets(keyword = '') {
+  return fetchRecordedTargets('/molecular-cell/library-orders/recorded_targets', keyword);
+}
 
 export function fetchLibraryOrderList(data: any, config?: PostConfig) {
   return requestClient.post('/molecular-cell/library-orders/list', data, {
@@ -67,8 +82,8 @@ export function saveLibraryOrder(data: any) {
   });
 }
 
-export function batchSaveLibraryOrders(items: any[]) {
-  return requestClient.post('/molecular-cell/library-orders/batch_save', { items }, {
+export function batchSaveLibraryOrders(data: any) {
+  return requestClient.post('/molecular-cell/library-orders/batch_save', data, {
     timeout: LONG_TIMEOUT,
     ...skipGlobalErrorHandler,
   });

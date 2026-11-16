@@ -156,7 +156,7 @@
   - 当 `report_reason` 非空时，亲和力胶囊只有全部编辑或同时具备亲和力、流式权限者可点，下拉只有 `待测 / 完成`（标为完成即结束、不出报告）；其他权限点击提示先清除未出原因。
 - **靶点类型与右上角微角标**：工作台视图下 `target_type` 含 `"分泌"` 呈玫红色，其余非空值呈青碧色，支持行内点击切换；靶点单元格右上角按条件显示微角标：`改造`（`order_kind == '改造'`）、`转染`（`内部转染`）或 `亚型`（`改亚型`）、`变更`（`has_drift == true`，悬停显示差异详情）。
 - **待认领负责人**：`owner == '无人问津'` 时两种视图的负责人单元格文字呈暖橙色（`#dd6b20`，暗色主题 `#f6ad55`）。
-- **编辑抽屉（540px 无遮罩）**：
+- **编辑抽屉（520px 无遮罩）**：
   - 分区顺序：`1. 状态 / 归属` → `2. 改造信息`（仅 `order_kind == '改造'` 时展开） → `3. 项目信息` → `4. 合成订单` → `5. 到货与验证`。
   - 顶部工具栏含 `详情`、`认领`、`删除`、`加单`、`全部采用`（`has_drift && canFullEdit` 时显示）及 `上一条 / 下一条`。
   - **删除 / 取消**：行操作与抽屉的删除按钮按工单自动切换：未关联 One 的显示「删除」，确认后删除；已关联 One 合成订单（`source_one_id` 非空）的显示「取消」，可改该工单 `status` 的人（`edit`，或 `eng_edit` 对改造类工单）可用，确认后把 `status` 改为 `已取消`（已取消的不可再点）。确认弹窗用靶点与订单号 / 转码 / 批次描述工单，都没有时写「这条工单」。
@@ -179,6 +179,7 @@
 3. **快照字段、自动回填与差异采用**：
    - `SNAPSHOT_STORED_FIELDS`（存入 `source_snapshot` 的 **10 个字段**）：`DRIFT_COMPARE_FIELDS` 加 `synthesis_code`、`batch_label`。
    - `DRIFT_COMPARE_FIELDS`（参与差异比对的 **8 个字段**）：`order_no`、`synthetic_corp`、`synthetic_count`、`synthetic_date`、`arrival_count`、`arrival_date`、`selection_method`、`is_rechoose`。
+   - 个数和日期原样取 One，不做修正：`arrival_count` 取 `a.supernatantcounts`，为空时取 `a.plasmidcounts`；`synthetic_date` 取 `a.syntheticdate`，`arrival_date` 取 `a.deliverydate`。
    - `selection_method` 取 One `a.selectmethod`（逗号、顿号或加号分隔，去掉 `补挑` 后按预设顺序以顿号拼接）；`is_rechoose` 在 `a.isrechooseorder = 'true'` 或 `selectmethod` 含 `补挑` 时为 `是`，`'false'` 时为 `否`，其他为空。
    - 本地为空的快照字段（或重新绑定时仍等于上一版快照自动填入值的字段）自动用 One 库值回填，触及 `order_no` 或 `arrival_date` 时自动推导状态并在进入终态时重编队列。
    - `order_sender` 不进快照、不比对差异，每次核对都直接改成 One 当前值（One 没有上传记录时清空）。

@@ -14,7 +14,7 @@ from sqlalchemy import JSON, event, inspect
 from sqlalchemy.orm import Session, SessionTransaction
 
 from core.logging import is_sensitive_key
-from db.session import AuditedSession
+from db.session import AuditedSession, Base
 from models.system import SysJobRunLog, SysOperationLog, SysOperationLogItem
 from modules.system.audit_config import (
     get_audit_field_label,
@@ -38,6 +38,7 @@ MAX_AUDIT_VALUE_BYTES = 4096
 MAX_AUDIT_DETAIL_BYTES = 512 * 1024
 
 _IGNORED_FIELDS = frozenset({"created_at", "updated_at", "last_login_at", "source_snapshot"})
+_GENERIC_LABEL_FIELDS = ("display_name", "name", "code", "username", "original_name", "file_name", "job_name")
 
 
 @dataclass
@@ -806,23 +807,29 @@ def _entity_id(obj: Any) -> str | None:
     return None
 
 
-def _entity_label(obj: Any) -> str | None:
-    default_fields = (
-        "display_name",
-        "name",
-        "experiment_id",
-        "project_code",
-        "project_name",
-        "synthesis_order_id",
-        "library_order_id",
-        "orderNum",
-        "code",
-        "username",
-        "original_name",
-        "file_name",
-        "job_name",
+def label_fields(model: type) -> tuple[str, ...]:
+    """对象标题的取值顺序：模型 __audit_label__ 声明的业务编号优先，再取通用名称字段。"""
+    return (*getattr(model, "__audit_label__", ()), *_GENERIC_LABEL_FIELDS)
+
+
+def all_label_fields() -> tuple[str, ...]:
+    """接口返回值里找对象标题用：各模型声明的业务编号，再加通用名称字段。
+
+    通用名称字段（name 等）即使写进了某个模型的 __audit_label__，这里也一律放最后，
+    避免扫通用响应时误用别的实体的 name。不缓存：等全部模型导入后再取。
+    """
+    generic = set(_GENERIC_LABEL_FIELDS)
+    declared = (
+        field
+        for mapper in Base.registry.mappers
+        for field in getattr(mapper.class_, "__audit_label__", ())
+        if field not in generic
     )
-    for key in default_fields:
+    return tuple(dict.fromkeys((*declared, *_GENERIC_LABEL_FIELDS)))
+
+
+def _entity_label(obj: Any) -> str | None:
+    for key in label_fields(type(obj)):
         value = getattr(obj, key, None)
         if value not in (None, ""):
             return str(value)[:255]

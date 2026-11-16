@@ -9,6 +9,9 @@ import { preferences } from '@vben/preferences';
 
 import { HOME_START_PAGE_STORAGE_KEY } from '#/constants/storageKeys';
 import { $t } from '#/locales';
+import { getCachedFeatureFilter } from '#/router/featureFilter';
+import { canAccessRoutePath } from '#/router/routeAccess';
+import { accessRoutes } from '#/router/routes';
 
 const HOME_WEEK_DAYS_ZH = ['一', '二', '三', '四', '五', '六', '日'] as const;
 const HOME_WEEK_DAYS_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -307,14 +310,6 @@ export const homePlatformTips = [
   'page.home.tip3',
 ] as const;
 
-export const HOME_SYSTEM_ACCESS_CODES = [
-  'system.page.user',
-  'system.page.role',
-  'system.page.permission',
-  'system.page.operation_log',
-  'system.page.feature',
-] as const;
-
 export function normalizeInternalPath(input: string): string {
   const trimmed = input.trim();
   if (!trimmed || /^https?:\/\//i.test(trimmed) || trimmed.startsWith('//')) {
@@ -355,37 +350,12 @@ export function canAccessStartPath(
   path: string,
   hasAccessByCodes: (codes: string[]) => boolean,
 ): boolean {
-  if (path === '/serum/workbench') {
-    return hasAccessByCodes(['serum.page.workbench']);
-  }
-  if (path === '/serum/list') {
-    return hasAccessByCodes(['serum.page.list']);
-  }
-  if (path === '/serum/titer-orders') {
-    return hasAccessByCodes(['serum.page.titer_order']);
-  }
-  if (path === '/discovery/workbench') {
-    return hasAccessByCodes(['discovery.page.workbench']);
-  }
-  if (path === '/discovery/synthesis-progress') {
-    return hasAccessByCodes(['discovery.page.synthesis_progress']);
-  }
-  if (path === '/molecular-cell/library-construction') {
-    return hasAccessByCodes(['molecular.page.library']);
-  }
-  if (path === '/molecular-cell/primer-library') {
-    return hasAccessByCodes(['molecular.page.primer']);
-  }
-  if (path === '/mega-automation/flow-work-orders') {
-    return hasAccessByCodes(['mega.page.flow_work_order']);
-  }
-  if (path === '/atlas/targets') {
-    return hasAccessByCodes(['atlas.page.target_library']);
-  }
-  if (path.startsWith('/system')) {
-    return hasAccessByCodes([...HOME_SYSTEM_ACCESS_CODES]);
-  }
-  return true;
+  return canAccessRoutePath(
+    path,
+    accessRoutes,
+    hasAccessByCodes,
+    getCachedFeatureFilter(),
+  );
 }
 
 export function resolveUserStartPath(

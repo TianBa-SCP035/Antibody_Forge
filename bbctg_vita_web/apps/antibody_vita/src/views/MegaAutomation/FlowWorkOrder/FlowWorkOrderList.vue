@@ -10,7 +10,7 @@
 
     <section class="workbench-panel">
       <div class="page-header-band">
-        <div>
+        <div class="title-group">
           <h1 class="page-title">流式工单总览</h1>
           <p class="page-subtitle">维护样本板、细胞板与下发状态，在列表中查看工单摘要。</p>
         </div>
@@ -32,7 +32,7 @@
         <div
           v-for="item in statusOptions"
           :key="item.value"
-          class="stat-tile"
+          class="stat-tile stat-tile-interactive"
           :class="[
             `stat-tone-${item.value}`,
             { 'stat-tile-active': listQuery.status === item.value },
@@ -251,7 +251,7 @@
         :page-sizes="[20, 50, 100, 200, 500]"
         layout="total, sizes, prev, pager, next, jumper"
         class="list-pagination"
-        @size-change="getList"
+        @size-change="handleFilter"
         @current-change="getList"
       />
     </el-card>
@@ -290,6 +290,7 @@ import {
   fetchFlowWorkOrderList,
   fetchFlowWorkOrderMeta,
   exportFlowWorkOrderList,
+  FLOW_WORK_ORDER_EDIT,
 } from '#/api/megaAutomation';
 import { notifyApiError } from '#/api/errors';
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
@@ -303,9 +304,7 @@ import {
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
 import { listPageMixin } from '#/utils/listPage';
 import { listTableLockMixin } from '#/utils/listTableLock';
-import {
-  canEditMegaFlowWorkOrder,
-} from '#/utils/megaPermission';
+import { hasAccessCode } from '#/utils/accessCode';
 import { rememberTiterOrderFocus } from '#/views/Serum/titer/SerumTiterOrderList.vue';
 import {
   FLOW_WORK_ORDER_STATUS_OPTIONS,
@@ -497,7 +496,7 @@ export default {
       return Array.isArray(value) && value.length ? value.join(', ') : '—';
     },
     canEdit() {
-      return canEditMegaFlowWorkOrder(this.currentUserInfo);
+      return hasAccessCode(this.currentUserInfo, FLOW_WORK_ORDER_EDIT);
     },
     createDraft() {
       if (!this.canEdit()) {
@@ -558,6 +557,7 @@ export default {
 };
 </script>
 
+<style scoped src="#/components/workbench/workbenchPanel.css"></style>
 <style scoped>
 .mega-flow-order-page {
   position: relative;
@@ -566,56 +566,6 @@ export default {
   font-size: 14px;
   color: var(--el-text-color-primary);
   background: var(--list-page-bg);
-}
-
-/* 标题 + 统计 + 筛选同一白底，表格单独；比两两组合更不散 */
-.workbench-panel {
-  padding: var(--list-surface-padding-y) var(--list-surface-padding-x);
-  margin-bottom: var(--list-page-gap);
-  background: var(--list-surface-bg);
-  border: var(--list-surface-border);
-  border-radius: var(--list-surface-radius);
-  box-shadow: var(--list-surface-shadow);
-}
-
-.page-header-band {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-  padding: 12px 16px;
-  margin: 0;
-  border: 1px solid rgb(191 219 254 / 45%);
-  border-radius: var(--list-mid-radius);
-  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, var(--el-bg-color) 100%);
-}
-
-.page-title {
-  margin: 0;
-  font-size: var(--list-page-title-size);
-  font-weight: var(--list-page-title-weight);
-  letter-spacing: -0.01em;
-}
-
-.page-subtitle {
-  margin: 4px 0 0;
-  color: var(--list-page-subtitle-color);
-  font-size: var(--list-page-subtitle-size);
-  font-weight: var(--list-page-subtitle-weight);
-}
-
-.header-actions {
-  display: flex;
-  flex-shrink: 0;
-  gap: 12px;
-  align-items: center;
-}
-
-.total-count {
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-  white-space: nowrap;
 }
 
 .preview-banner {
@@ -629,76 +579,9 @@ export default {
 }
 
 .stats-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-  gap: 8px;
-  padding: 12px 0;
-  margin: 0;
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
 }
 
-.stat-tile {
-  position: relative;
-  padding: 11px 12px 11px 16px;
-  overflow: hidden;
-  cursor: pointer;
-  background: var(--list-mid-bg);
-  border: var(--list-mid-border);
-  border-radius: var(--list-mid-radius);
-  box-shadow: none;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease,
-    background-color 0.15s ease,
-    transform 0.15s ease;
-  --stat-accent: #5b9ef0;
-}
-
-.stat-tile::before {
-  position: absolute;
-  top: 10px;
-  bottom: 10px;
-  left: 0;
-  width: 4px;
-  content: '';
-  background: var(--stat-accent);
-  border-radius: 0 4px 4px 0;
-}
-
-.stat-tile:hover {
-  background: var(--el-bg-color);
-  border-color: color-mix(in srgb, var(--stat-accent) 38%, var(--el-bg-color));
-  box-shadow: 0 4px 12px rgb(15 23 42 / 6%);
-  transform: translateY(-1px);
-}
-
-.stat-tile:active {
-  transform: scale(0.98);
-}
-
-.stat-tile-active {
-  background: color-mix(in srgb, var(--stat-accent) 14%, var(--el-bg-color));
-  border-color: color-mix(in srgb, var(--stat-accent) 42%, var(--el-bg-color));
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--stat-accent) 28%, var(--el-bg-color)),
-    0 4px 12px rgb(15 23 42 / 6%);
-}
-
-.stat-tile-active:hover {
-  background: color-mix(in srgb, var(--stat-accent) 14%, var(--el-bg-color));
-  border-color: color-mix(in srgb, var(--stat-accent) 42%, var(--el-bg-color));
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--stat-accent) 28%, var(--el-bg-color)),
-    0 4px 12px rgb(15 23 42 / 6%);
-  transform: translateY(-1px);
-}
-
-.stat-tile-active:active,
-.stat-tile-active:hover:active {
-  transform: scale(0.98);
-}
-
-/* 状态色条：按 status value 绑 class */
 .stat-tone-draft {
   --stat-accent: #5b9ef0;
 }
@@ -735,34 +618,10 @@ export default {
   --stat-accent: #8b97a8;
 }
 
-.stat-label {
-  display: block;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.stat-tile-active .stat-label {
-  font-weight: 600;
-  color: var(--el-text-color-regular);
-}
-
-.stat-value {
-  display: block;
-  margin-top: 5px;
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1.15;
-  color: var(--el-text-color-primary);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-}
-
 .filter-strip {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) repeat(6, minmax(0, 1fr)) auto auto;
   gap: 10px var(--list-filter-action-gap);
-  align-items: center;
-  padding: 12px 2px 2px;
 }
 
 .filter-item,
@@ -774,33 +633,6 @@ export default {
 .filter-strip :deep(.el-select),
 .filter-strip :deep(.el-input) {
   width: 100%;
-}
-
-.filter-actions {
-  flex-shrink: 0;
-}
-
-@media (max-width: 960px) {
-  .page-header-band {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .stat-tile {
-    transition: none;
-  }
-
-  .stat-tile:hover,
-  .stat-tile-active:hover {
-    transform: none;
-  }
-}
-
-html.dark .page-header-band {
-  background: var(--el-fill-color-extra-light);
-  border-color: var(--el-border-color-light);
 }
 
 html.dark .preview-banner {

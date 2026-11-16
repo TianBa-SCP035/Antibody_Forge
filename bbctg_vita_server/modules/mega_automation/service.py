@@ -6,18 +6,14 @@ from typing import Any
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, defer
 
-from utils.filter_values import combine_any, filter_terms, like_literal, match_any, split_code_tokens
-from utils.header_filters import (
-    HeaderColumn,
-    header_column_values,
-    header_filter_clauses,
-    header_sort_clauses,
-    json_array_column,
+from core.errors import ConflictError, NotFoundError
+from integrations.labillion import (
+    LabillionError,
+    delete_orders,
+    push_flow_work_order,
 )
-
 from models.immunology import SerumImmProject, SerumTiterOrder
 from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
-
 from modules.mega_automation.content import (
     build_content_body,
     build_content_hash,
@@ -34,11 +30,6 @@ from modules.mega_automation.content import (
     safe_list,
     validate_cell_column_occupancy,
 )
-from integrations.labillion import (
-    LabillionError,
-    delete_orders,
-    push_flow_work_order,
-)
 from modules.mega_automation.dispatch import (
     PAUSE_STATE_WITHDRAWN,
     TERMINAL_DISPATCH_STATUSES,
@@ -50,8 +41,8 @@ from modules.mega_automation.dispatch import (
     create_dispatch_record,
     get_current_dispatch,
     has_dispatches,
-    lock_current_dispatch,
     is_pause_ready_for_edit,
+    lock_current_dispatch,
     normalize_pause_state,
     request_pause_current_dispatch,
     request_resume_current_dispatch,
@@ -59,7 +50,20 @@ from modules.mega_automation.dispatch import (
 )
 from modules.mega_automation.payload import build_dispatch_payload
 from utils.clock import now_local
-
+from utils.filter_values import (
+    combine_any,
+    filter_terms,
+    like_literal,
+    match_any,
+    split_code_tokens,
+)
+from utils.header_filters import (
+    HeaderColumn,
+    header_column_values,
+    header_filter_clauses,
+    header_sort_clauses,
+    json_array_column,
+)
 
 WORK_ORDER_STATUSES = [
     {"value": "draft", "label": "草稿"},
@@ -114,7 +118,7 @@ def _get_order_or_raise(
         stmt = stmt.with_for_update()
     order = db.scalar(stmt)
     if not order:
-        raise ValueError("流式工单不存在")
+        raise NotFoundError("流式工单不存在")
     return order
 
 
@@ -251,7 +255,7 @@ def _check_expected_content_hash(order: MegaFlowWorkOrder, data: dict[str, Any])
     if "expected_content_hash" not in data:
         raise ValueError("缺少 expected_content_hash，无法确认编辑版本")
     if clean_text(data.get("expected_content_hash")) != (order.content_hash or ""):
-        raise ValueError("工单内容已被其他用户修改，请刷新后重试")
+        raise ConflictError("工单内容已被其他用户修改，请刷新后重试")
 
 
 def list_cell_plate_peers(
@@ -1050,6 +1054,8 @@ def cancel_work_order(db: Session, order_id: int) -> dict[str, Any]:
 
 
 def sync_work_order_labillion_status(db: Session, order_id: int, *, force: bool = True) -> dict[str, Any]:
-    from modules.mega_automation.labillion_sync import sync_work_order_labillion_status as sync_status
+    from modules.mega_automation.labillion_sync import (
+        sync_work_order_labillion_status as sync_status,
+    )
 
     return sync_status(db, order_id, force=force)

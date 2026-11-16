@@ -2,6 +2,7 @@ const CONTENT_SELECTOR = [
   '.el-input__inner',
   '.el-select__selected-item',
   '.target-selected-text',
+  '.list-filter-joined',
 ].join(', ')
 
 function controlText(content) {

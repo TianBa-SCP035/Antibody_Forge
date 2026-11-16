@@ -8,6 +8,8 @@ from db.session import Base
 
 class MegaFlowWorkOrder(Base):
     __tablename__ = "mega_flow_work_order"
+    __log_label__ = "流式工单"
+    __audit_label__ = ("orderNum",)
     __table_args__ = (
         Index("idx_mega_flow_work_order_project_nos", text("(CAST(project_nos AS CHAR(128) ARRAY))")),
         Index("idx_mega_flow_work_order_targets", text("(CAST(targets AS CHAR(128) ARRAY))")),
@@ -53,7 +55,7 @@ class MegaFlowWorkOrder(Base):
             "orderNum": self.orderNum or "",
             "orderType": self.orderType,
             "source_id": self.source_id or "",
-            "priority": self.priority or "normal",
+            "priority": self.priority,
             "remark": self.remark or "",
             "status": self.status,
             "created_by": self.created_by or "",
@@ -85,6 +87,7 @@ class MegaFlowWorkOrder(Base):
 
 class MegaFlowWorkOrderDispatch(Base):
     __tablename__ = "mega_flow_work_order_dispatch"
+    __log_label__ = "流式工单"
     __table_args__ = (
         UniqueConstraint("dispatchId", name="uk_mega_flow_work_order_dispatch_id"),
         Index("idx_mega_flow_work_order_dispatch_order", "work_order_id"),

@@ -1,10 +1,10 @@
 /** 预置两个系列。自建系列不在这里登记，有引物后由接口返回。 */
 export const PRESET_LIBRARIES = [
-  { value: '达普Barcode', hint: '达普仪器', tone: 'tone-purple' },
-  { value: 'UDP', hint: '其他仪器或步骤', tone: 'tone-orange' },
+  { value: '达普Barcode', hint: '达普仪器', tone: 'stat-purple' },
+  { value: 'UDP', hint: '其他仪器或步骤', tone: 'stat-orange' },
 ] as const;
 
-const EXTRA_TONES = ['tone-teal', 'tone-slate'] as const;
+const EXTRA_TONES = ['stat-teal', 'stat-gray'] as const;
 
 const COMPLEMENT: Record<string, string> = { A: 'T', C: 'G', G: 'C', T: 'A', N: 'N' };
 

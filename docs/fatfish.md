@@ -6,7 +6,7 @@ Antibody Vita 里的鲸鱼娘桌宠「大肥鱼」：闲聊、读当前页、代
 
 | 路径 | 内容 |
 |------|------|
-| `bbctg_vita_web/apps/antibody_vita/src/components/fatfish/` | 前端模块（18 个源文件） |
+| `bbctg_vita_web/apps/antibody_vita/src/components/fatfish/` | 前端模块（23 个 TS / Vue 源文件） |
 | `bbctg_vita_web/apps/antibody_vita/public/fatfish/` | 动画 webm、头像、光标；署名见目录内 `ATTRIBUTION.txt` |
 | `pet-proxy/` | 本机代理（标准库 Python，无第三方依赖） |
 

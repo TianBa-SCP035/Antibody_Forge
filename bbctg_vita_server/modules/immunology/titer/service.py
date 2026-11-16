@@ -1,37 +1,29 @@
+import json
+import random
 from datetime import datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
-import json
-import random
 from typing import Any
 
 from fastapi import UploadFile
 from PIL import Image
-from sqlalchemy import JSON, Integer, String, and_, bindparam, case, cast, func, or_, select, text
+from sqlalchemy import (
+    JSON,
+    Integer,
+    String,
+    and_,
+    bindparam,
+    case,
+    cast,
+    func,
+    or_,
+    select,
+    text,
+)
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
-from utils.clock import now_local
-from utils.header_filters import (
-    HeaderColumn,
-    header_column_values,
-    header_filter_clauses,
-    header_sort_clauses,
-    json_array_column,
-    target_column,
-    without_header_fields,
-)
-from utils.normalize import normalize_date
-from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_ORDER
-from utils.uploads import contained_path, read_limited, safe_path_part, upload_filename
-from utils.filter_values import (
-    DEFAULT_RECORDED_TARGET_LIMIT,
-    clean_field_text,
-    like_literal,
-    recorded_target_clause,
-    recorded_target_search,
-    restrict,
-)
+from core.errors import NotFoundError
 from integrations import drm_service
 from models.immunology import (
     SerumElisaPlate,
@@ -45,8 +37,30 @@ from models.immunology import (
     SerumTiterTarget,
 )
 from models.mega_automation import MegaFlowWorkOrder
-from modules.mega_automation.service import ORDER_STATUS_LABELS
 from modules.immunology.project_lock import lock_experiment_owner
+from modules.mega_automation.service import ORDER_STATUS_LABELS
+from utils.clock import now_local
+from utils.filter_values import (
+    DEFAULT_RECORDED_TARGET_LIMIT,
+    clean_field_text,
+    like_literal,
+    recorded_target_clause,
+    recorded_target_search,
+    restrict,
+)
+from utils.header_filters import (
+    HeaderColumn,
+    header_column_values,
+    header_filter_clauses,
+    header_sort_clauses,
+    json_array_column,
+    target_column,
+    without_header_fields,
+)
+from utils.normalize import normalize_date
+from utils.pagination import MAX_PAGE_LIMIT, parse_page_limit
+from utils.uploads import contained_path, read_limited, safe_path_part, upload_filename
+from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_ORDER
 
 
 def _upload_root() -> Path:
@@ -103,7 +117,7 @@ def save_file(db: Session, file_obj: UploadFile, experiment_id: str, user_name: 
 def delete_file(db: Session, file_id: int) -> None:
     record = db.get(SerumFile, file_id)
     if not record:
-        raise ValueError("文件不存在")
+        raise NotFoundError("文件不存在")
     full_path = get_full_path(record.file_path)
     if full_path.exists():
         full_path.unlink()
@@ -114,7 +128,7 @@ def delete_file(db: Session, file_id: int) -> None:
 def rename_file(db: Session, file_id: int, new_name: str) -> None:
     record = db.get(SerumFile, file_id)
     if not record:
-        raise ValueError("文件不存在")
+        raise NotFoundError("文件不存在")
     record.file_name = new_name
     db.commit()
 
@@ -122,7 +136,7 @@ def rename_file(db: Session, file_id: int, new_name: str) -> None:
 def replace_file(db: Session, file_id: int, file_obj: UploadFile, user_name: str = "unknown") -> dict:
     record = db.get(SerumFile, file_id)
     if not record:
-        raise ValueError("文件不存在")
+        raise NotFoundError("文件不存在")
 
     old_path = get_full_path(record.file_path)
     exp_dir = old_path.parent
@@ -145,10 +159,10 @@ def replace_file(db: Session, file_id: int, file_obj: UploadFile, user_name: str
 def get_download_record(db: Session, file_id: int) -> tuple[SerumFile, Path]:
     record = db.get(SerumFile, file_id)
     if not record:
-        raise ValueError("文件不存在")
+        raise NotFoundError("文件不存在")
     full_path = get_full_path(record.file_path)
     if not full_path.exists():
-        raise ValueError("磁盘上找不到文件")
+        raise NotFoundError("磁盘上找不到文件")
     return record, full_path
 
 
@@ -277,25 +291,17 @@ def _parse_datetime(value: Any) -> datetime | None:
 
 
 def _filter_date_bounds(data: dict[str, Any], start_key: str, end_key: str) -> tuple[str | None, str | None]:
-    range_start = None
-    range_end = None
-    if data.get(start_key):
+    """筛选日期格式不对直接报错，不当成没筛选、把全部数据返回去。"""
+
+    def day(key: str) -> str | None:
+        if not data.get(key):
+            return None
         try:
-            start_time = _parse_datetime(data[start_key])
-            if start_time:
-                range_start = start_time.date().isoformat()
+            return _parse_datetime(data[key]).date().isoformat()
         except ValueError:
-            pass
-    if data.get(end_key):
-        try:
-            end_time = _parse_datetime(data[end_key])
-            if end_time:
-                if str(data[end_key]).strip().count(":") == 0:
-                    end_time = datetime.combine(end_time.date(), time.max)
-                range_end = end_time.date().isoformat()
-        except ValueError:
-            pass
-    return range_start, range_end
+            raise ValueError("日期筛选格式不正确，应为 YYYY-MM-DD") from None
+
+    return day(start_key), day(end_key)
 
 
 def _project_code_part(project_code: str | None, experiment_id: str) -> str:
@@ -368,7 +374,7 @@ TITER_ORDER_PRIORITIES = tuple(reversed(PRIORITY_ORDER))
 TITER_SERUM_STATUS_ORDER = ("待采血", "待采血-加免", "已采血", "已检测", "已交接", "已销毁")
 TITER_SERUM_STATUS_POST_TEST = ("已检测", "已交接", "已销毁")
 TITER_FLOW_ORDER_TYPE = "TITER"
-MAX_LIST_LIMIT = 500
+MAX_LIST_LIMIT = MAX_PAGE_LIMIT
 
 # NULL=跟随免疫方案；非 NULL=用户覆盖（字段互相独立）
 FOLLOWABLE_BATCH_KEYS = (
@@ -865,11 +871,7 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "titer_owners": json_array_column(SerumTiterOrder.titer_owners),
     "test_dates": json_array_column(SerumTiterOrder.test_dates),
     "serum_status": HeaderColumn(SerumTiterOrder.serum_status, "enum", order=TITER_SERUM_STATUS_ORDER),
-    "priority": HeaderColumn(
-        func.coalesce(func.nullif(SerumTiterOrder.priority, ""), TITER_ORDER_PRIORITY_DEFAULT),
-        "enum",
-        order=TITER_ORDER_PRIORITIES,
-    ),
+    "priority": HeaderColumn(SerumTiterOrder.priority, "enum", order=TITER_ORDER_PRIORITIES),
     "remark": HeaderColumn(SerumTiterOrder.remark),
     "summary": HeaderColumn(SerumTiterOrder.summary),
     "order_status": HeaderColumn(_latest_order_status_expr(), "enum"),
@@ -912,16 +914,6 @@ def _serum_status_pre_tested_condition():
         SerumTiterOrder.serum_status == "",
         SerumTiterOrder.serum_status.notin_(TITER_SERUM_STATUS_POST_TEST),
     )
-
-
-def _titer_priority_clause(priority: str):
-    if priority == TITER_ORDER_PRIORITY_DEFAULT:
-        return or_(
-            SerumTiterOrder.priority == priority,
-            SerumTiterOrder.priority.is_(None),
-            SerumTiterOrder.priority == "",
-        )
-    return SerumTiterOrder.priority == priority
 
 
 def _titer_order_status_clause(order_status: str):
@@ -995,7 +987,7 @@ def _apply_titer_order_list_filters(
         lambda value: SerumImmProject.project_status == value,
     )
     stmt = restrict(stmt, data.get("serum_status"), lambda value: SerumTiterOrder.serum_status == value)
-    stmt = restrict(stmt, data.get("priority"), _titer_priority_clause)
+    stmt = restrict(stmt, data.get("priority"), lambda value: SerumTiterOrder.priority == value)
     stmt = restrict(stmt, data.get("order_status"), _titer_order_status_clause)
     stmt = _apply_assay_method_filter(stmt, data.get("assay_method"))
     stmt = stmt.where(*header_filter_clauses(db, HEADER_COLUMNS, data.get("field_filters"), except_field=header_except))
@@ -1098,8 +1090,7 @@ def get_titer_order_column_values(db: Session, data: dict[str, Any] | None) -> d
 
 
 def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
-    page = max(int(data.get("page", 1) or 1), 1)
-    limit = min(max(int(data.get("limit", 20) or 20), 1), MAX_LIST_LIMIT)
+    page, limit = parse_page_limit(data, max_limit=MAX_LIST_LIMIT)
     stmt = _apply_titer_order_list_filters(_titer_order_query(), data, db=db)
 
     blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
@@ -1194,7 +1185,7 @@ def save_titer_order(db: Session, data: dict[str, Any]) -> dict:
     if order_id:
         order = db.get(SerumTiterOrder, int(order_id), with_for_update=True)
         if not order:
-            raise ValueError("效价工单不存在")
+            raise NotFoundError("效价工单不存在")
         project = db.scalar(
             select(SerumImmProject).where(SerumImmProject.experiment_id == order.experiment_id)
         )
@@ -1266,7 +1257,7 @@ def save_titer_order(db: Session, data: dict[str, Any]) -> dict:
 def delete_titer_order(db: Session, order_id: int) -> None:
     order = db.get(SerumTiterOrder, int(order_id))
     if not order:
-        raise ValueError("效价工单不存在")
+        raise NotFoundError("效价工单不存在")
     db.delete(order)
     db.commit()
 
@@ -1664,7 +1655,7 @@ def save_facs_plate(db: Session, plate_data: dict[str, Any]) -> dict:
     if plate_id:
         plate = db.get(SerumFacsPlate, int(plate_id))
         if not plate:
-            raise ValueError("板数据不存在")
+            raise NotFoundError("板数据不存在")
         if plate.experiment_id != experiment_id:
             raise ValueError("板数据不属于当前实验")
     else:
@@ -1681,7 +1672,7 @@ def save_facs_plate(db: Session, plate_data: dict[str, Any]) -> dict:
 def delete_facs_plate(db: Session, plate_id: int) -> None:
     plate = db.get(SerumFacsPlate, plate_id)
     if not plate:
-        raise ValueError("板数据不存在")
+        raise NotFoundError("板数据不存在")
     db.delete(plate)
     db.commit()
 
@@ -1715,7 +1706,7 @@ def save_elisa_plate(db: Session, plate_data: dict[str, Any]) -> dict:
     if plate_id:
         plate = db.get(SerumElisaPlate, int(plate_id))
         if not plate:
-            raise ValueError("板数据不存在")
+            raise NotFoundError("板数据不存在")
         if plate.experiment_id != experiment_id:
             raise ValueError("板数据不属于当前实验")
     else:
@@ -1734,7 +1725,7 @@ def save_elisa_plate(db: Session, plate_data: dict[str, Any]) -> dict:
 def delete_elisa_plate(db: Session, plate_id: int) -> None:
     plate = db.get(SerumElisaPlate, plate_id)
     if not plate:
-        raise ValueError("板数据不存在")
+        raise NotFoundError("板数据不存在")
     db.delete(plate)
     db.commit()
 
@@ -1785,7 +1776,7 @@ def export_titer_order_list_workbook(db: Session, data: dict[str, Any]) -> tuple
             cell_text(item.get("titer_owners")),
             item.get("test_dates_display") or cell_text(item.get("test_dates")),
             item.get("serum_status"),
-            item.get("priority") or TITER_ORDER_PRIORITY_DEFAULT,
+            item.get("priority"),
             item.get("remark"),
             item.get("summary"),
             item.get("order_status_label") or item.get("order_status"),

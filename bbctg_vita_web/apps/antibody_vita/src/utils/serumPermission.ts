@@ -1,90 +1,58 @@
-function normalizeStringList(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map(String).filter(Boolean);
-  }
-  if (typeof value === 'string') {
-    return value
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return [];
-}
+// 免疫与效价里“本人负责的项目才能改”这类规则；只看一个权限码的地方直接用 hasAccessCode。
 
-function normalizeRoles(roles: unknown): string[] {
-  return normalizeStringList(roles);
-}
-
-type CachedPermMeta = {
-  rawCodes: unknown;
-  codeSet: Set<string>;
-  rawNamesKey: string;
-  aliasSet: Set<string>;
-  aliasList: string[];
-};
-
-const permCache = new WeakMap<object, CachedPermMeta>();
-
-function codesSignature(rawCodes: unknown): string {
-  if (Array.isArray(rawCodes)) return rawCodes.map(String).join('\0');
-  if (typeof rawCodes === 'string') return rawCodes;
-  return '';
-}
-
-function getPermMeta(userInfo: any): CachedPermMeta | null {
-  if (!userInfo || typeof userInfo !== 'object') return null;
-  const rawCodes =
-    userInfo.accessCodes || userInfo.permissions || userInfo.permissionCodes;
-  const rawCodesSig = codesSignature(rawCodes);
-  const rawNamesKey = `${userInfo.realName ?? ''}|${userInfo.displayName ?? ''}|${userInfo.display_name ?? ''}|${userInfo.username ?? ''}`;
-  let cached = permCache.get(userInfo);
-  // 用内容签名而非引用相等：原地改权限数组时也能失效缓存
-  if (cached && cached.rawCodes === rawCodesSig && cached.rawNamesKey === rawNamesKey) {
-    return cached;
-  }
-  const codeSet = new Set(normalizeStringList(rawCodes));
-  const names = [
-    normalizeName(userInfo.realName),
-    normalizeName(userInfo.displayName),
-    normalizeName(userInfo.display_name),
-    normalizeName(userInfo.username),
-  ].filter(Boolean);
-  const aliasList = [
-    ...new Set(
-      names.flatMap((name) => {
-        const firstPart = name.split(/\s+/)[0] || '';
-        return firstPart && firstPart !== name ? [name, firstPart] : [name];
-      }),
-    ),
-  ];
-  cached = {
-    rawCodes: rawCodesSig,
-    codeSet,
-    rawNamesKey,
-    aliasSet: new Set(aliasList),
-    aliasList,
-  };
-  permCache.set(userInfo, cached);
-  return cached;
-}
-
-function hasAccessCode(userInfo: any, code: string): boolean {
-  const meta = getPermMeta(userInfo);
-  if (!meta) return false;
-  return meta.codeSet.has('*') || meta.codeSet.has(code);
-}
+import {
+  SERUM_CAGE_UPDATE,
+  SERUM_FILE_MANAGE,
+  SERUM_PAGE_EDIT,
+  SERUM_PROJECT_EDIT,
+  SERUM_PROJECT_EDIT_ALL,
+  SERUM_STATUS_UPDATE,
+  SERUM_TITER_EDIT,
+  SERUM_TITER_EDIT_ALL,
+  TITER_ORDER_RECORD_EDIT,
+  TITER_ORDER_RECORD_EDIT_ALL,
+} from '#/api/serum';
+import { hasAccessCode } from '#/utils/accessCode';
 
 function normalizeName(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function isProjectMember(userInfo: any, project: any): boolean {
-  const meta = getPermMeta(userInfo);
-  if (!meta) return false;
-  return [project?.owner, project?.reviewer].some((value) => {
+const aliasCache = new WeakMap<object, { key: string; aliases: Set<string> }>();
+
+/** 当前用户可能出现在负责人字段里的写法：姓名、账号，以及“姓名 英文名”取第一段。 */
+function userAliases(userInfo: any): Set<string> {
+  if (!userInfo || typeof userInfo !== 'object') return new Set();
+  const key = `${userInfo.realName ?? ''}|${userInfo.displayName ?? ''}|${userInfo.display_name ?? ''}|${userInfo.username ?? ''}`;
+  const cached = aliasCache.get(userInfo);
+  if (cached && cached.key === key) return cached.aliases;
+  const names = [userInfo.realName, userInfo.displayName, userInfo.display_name, userInfo.username]
+    .map(normalizeName)
+    .filter(Boolean);
+  const aliases = new Set(
+    names.flatMap((name) => {
+      const firstPart = name.split(/\s+/)[0] || '';
+      return firstPart && firstPart !== name ? [name, firstPart] : [name];
+    }),
+  );
+  aliasCache.set(userInfo, { key, aliases });
+  return aliases;
+}
+
+function isAnyAlias(userInfo: any, values: unknown[]): boolean {
+  const aliases = userAliases(userInfo);
+  return values.some((value) => {
     const name = normalizeName(value);
-    return Boolean(name && meta.aliasSet.has(name));
+    return Boolean(name && aliases.has(name));
   });
+}
+
+function isProjectMember(userInfo: any, project: any): boolean {
+  return isAnyAlias(userInfo, [project?.owner, project?.reviewer]);
+}
+
+function isTiterOwner(userInfo: any, row: any): boolean {
+  return isAnyAlias(userInfo, Array.isArray(row?.titer_owners) ? row.titer_owners : []);
 }
 
 export function getSerumUserName(userInfo: any): string {
@@ -92,84 +60,44 @@ export function getSerumUserName(userInfo: any): string {
 }
 
 export function getSerumUserRoles(userInfo: any): string[] {
-  return normalizeRoles(userInfo?.roles);
-}
-
-export function canAccessWorkbench(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.page.workbench');
-}
-
-export function canEditWorkbench(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.workbench.edit');
-}
-
-export function canEditWorkbenchDraft(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.workbench.draft_edit');
-}
-
-export function canEditWorkbenchSupport(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.workbench.support_edit');
-}
-
-export function canAccessSerumDetail(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.page.detail');
-}
-
-export function canAccessSerumEdit(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.page.edit');
-}
-
-export function canCreateSerumProject(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.project.create');
-}
-
-export function canEditAllSerumProjects(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.project.edit_all');
-}
-
-export function hasSerumProjectEditPermission(userInfo: any): boolean {
-  return (
-    canEditAllSerumProjects(userInfo) || hasAccessCode(userInfo, 'serum.project.edit')
-  );
-}
-
-export function canEditAllSerumTiter(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.titer.edit_all');
+  const roles = userInfo?.roles;
+  if (Array.isArray(roles)) return roles.map(String).filter(Boolean);
+  if (typeof roles === 'string') {
+    return roles
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
 }
 
 export function canEditSerumProject(userInfo: any, project: any): boolean {
-  if (canEditAllSerumProjects(userInfo)) {
-    return true;
-  }
-  return hasAccessCode(userInfo, 'serum.project.edit') && isProjectMember(userInfo, project);
+  if (hasAccessCode(userInfo, SERUM_PROJECT_EDIT_ALL)) return true;
+  return hasAccessCode(userInfo, SERUM_PROJECT_EDIT) && isProjectMember(userInfo, project);
 }
 
 export function canOpenSerumEdit(userInfo: any, project: any): boolean {
-  return canAccessSerumEdit(userInfo) && canEditSerumProject(userInfo, project);
-}
-
-export function canDeleteSerumProject(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.project.delete');
+  return hasAccessCode(userInfo, SERUM_PAGE_EDIT) && canEditSerumProject(userInfo, project);
 }
 
 export function canUpdateSerumStatus(userInfo: any, project: any): boolean {
   return (
-    hasAccessCode(userInfo, 'serum.status.update') &&
-    (canEditAllSerumProjects(userInfo) || isProjectMember(userInfo, project))
+    hasAccessCode(userInfo, SERUM_STATUS_UPDATE) &&
+    (hasAccessCode(userInfo, SERUM_PROJECT_EDIT_ALL) || isProjectMember(userInfo, project))
   );
 }
 
 export function canUpdateSerumCage(userInfo: any, project: any): boolean {
   return (
-    hasAccessCode(userInfo, 'serum.cage.update') &&
-    (canEditAllSerumProjects(userInfo) || isProjectMember(userInfo, project))
+    hasAccessCode(userInfo, SERUM_CAGE_UPDATE) &&
+    (hasAccessCode(userInfo, SERUM_PROJECT_EDIT_ALL) || isProjectMember(userInfo, project))
   );
 }
 
 export function canEditSerumTiter(userInfo: any, project: any): boolean {
   return (
-    hasAccessCode(userInfo, 'serum.titer.edit') &&
-    (canEditAllSerumTiter(userInfo) ||
+    hasAccessCode(userInfo, SERUM_TITER_EDIT) &&
+    (hasAccessCode(userInfo, SERUM_TITER_EDIT_ALL) ||
       isProjectMember(userInfo, project) ||
       isTiterOwner(userInfo, project))
   );
@@ -177,68 +105,17 @@ export function canEditSerumTiter(userInfo: any, project: any): boolean {
 
 export function canManageSerumTiterFiles(userInfo: any, project: any): boolean {
   return (
-    hasAccessCode(userInfo, 'serum.file.manage') &&
-    (canEditAllSerumTiter(userInfo) ||
+    hasAccessCode(userInfo, SERUM_FILE_MANAGE) &&
+    (hasAccessCode(userInfo, SERUM_TITER_EDIT_ALL) ||
       isProjectMember(userInfo, project) ||
       isTiterOwner(userInfo, project))
   );
 }
 
-export function canExportSerumMouse(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.mouse.export');
-}
-
-export function canAutoUpdateSerumStatus(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.status.auto_update');
-}
-
-export function canViewSerumCellInventory(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.cell.view');
-}
-
-export function canUpdateSerumPrepStatus(userInfo: any, _project?: any): boolean {
-  return hasAccessCode(userInfo, 'serum.cell.prep_status.update');
-}
-
-function isTiterOwner(userInfo: any, row: any): boolean {
-  const meta = getPermMeta(userInfo);
-  if (!meta || !meta.aliasSet.size) return false;
-  const owners = Array.isArray(row?.titer_owners) ? row.titer_owners : [];
-  return owners.some((owner: unknown) => {
-    const name = normalizeName(owner);
-    return Boolean(name && meta.aliasSet.has(name));
-  });
-}
-
-export function canViewTiterOrderPage(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.page.titer_order');
-}
-
-export function canEditTiterOrder(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.titer_order.edit');
-}
-
-export function canDeleteTiterOrder(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.titer_order.delete');
-}
-
-export function canEditTiterOrderOwner(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.titer_order.owner.edit');
-}
-
-export function canEditAllTiterOrderRecord(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.titer_order.record.edit_all');
-}
-
-/** 血清状态、检测优先级：有 record.edit 即可，不校验负责人。 */
-export function canEditTiterOrderRecordOpen(userInfo: any): boolean {
-  return hasAccessCode(userInfo, 'serum.titer_order.record.edit');
-}
-
 export function canEditTiterOrderRecord(userInfo: any, row: any): boolean {
   return (
-    canEditTiterOrderRecordOpen(userInfo) &&
-    (canEditAllTiterOrderRecord(userInfo) ||
+    hasAccessCode(userInfo, TITER_ORDER_RECORD_EDIT) &&
+    (hasAccessCode(userInfo, TITER_ORDER_RECORD_EDIT_ALL) ||
       isTiterOwner(userInfo, row) ||
       isProjectMember(userInfo, { owner: row?.immune_owner, reviewer: row?.reviewer }))
   );

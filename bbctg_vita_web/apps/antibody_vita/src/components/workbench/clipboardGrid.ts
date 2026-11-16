@@ -1,27 +1,4 @@
-const HIDDEN_CHARS = /[\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g
-const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g
-
-export interface CleanFieldTextOptions {
-  keepBreaks?: boolean
-}
-
-export function cleanFieldText(
-  value: unknown,
-  { keepBreaks = false }: CleanFieldTextOptions = {},
-): string {
-  const text = String(value ?? '')
-    .replace(/\u00A0/g, ' ')
-    .replace(HIDDEN_CHARS, '')
-    .replace(CONTROL_CHARS, '')
-  if (keepBreaks) {
-    return text
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n')
-      .replace(/\t+/g, ' ')
-      .replace(/^[ \n]+|[ \n]+$/g, '')
-  }
-  return text.replace(/[\r\n\t]+/g, ' ').trim()
-}
+import { CONTROL_CHARS, HIDDEN_CHARS } from '#/utils/fieldText'
 
 function parseClipboardGrid(text: unknown): string[][] {
   const source = String(text ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')

@@ -28,7 +28,6 @@
 <script>
 import { defineComponent } from 'vue'
 import { ElOption } from 'element-plus'
-import { fetchRecordedTargets, RECORDED_TARGET_ENDPOINTS } from '#/api/options'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import { createLatestRequest } from '#/utils/latestRequest'
 import { normalizeTargetOptions, targetOptionExtra } from '#/utils/targetFilterOptions'
@@ -42,12 +41,8 @@ export default defineComponent({
   props: {
     modelValue: { type: [String, Array], default: '' },
     placeholder: { type: String, default: '靶点' },
-    /** 本表已录入靶点的搜索接口，见 RECORDED_TARGET_ENDPOINTS */
-    scope: {
-      type: String,
-      required: true,
-      validator: (value) => Object.prototype.hasOwnProperty.call(RECORDED_TARGET_ENDPOINTS, value),
-    },
+    /** 本表已录入靶点的搜索：(keyword) => Promise<选项[]>，由模块 api 提供 */
+    search: { type: Function, required: true },
   },
   emits: ['update:modelValue', 'change'],
   data() {
@@ -96,7 +91,7 @@ export default defineComponent({
     async load(keyword) {
       const isLatest = this.searchRequest.begin()
       try {
-        const items = normalizeTargetOptions(await fetchRecordedTargets(this.scope, keyword))
+        const items = normalizeTargetOptions(await this.search(keyword))
         if (!isLatest()) return
         this.remote = items
         this.loadedKeyword = keyword

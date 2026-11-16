@@ -46,7 +46,7 @@
     </AdvancedOpsBar>
     <section class="workbench-panel">
       <div class="page-header-band">
-        <div>
+        <div class="title-group">
           <h1 class="page-title">引物库</h1>
           <p class="page-subtitle">达普仪器用达普Barcode，其他仪器或步骤用 UDP。输入新系列名即可自建。停用后不再出现在选项中。</p>
         </div>
@@ -76,8 +76,8 @@
           v-for="item in seriesCards"
           :key="item.value || 'all'"
           type="button"
-          class="stat-tile"
-          :class="[item.tone, { 'is-active': listQuery.family === item.value }]"
+          class="stat-tile stat-tile-interactive"
+          :class="[item.tone, { 'stat-tile-active': listQuery.family === item.value }]"
           @click="selectSeries(item.value)"
         >
           <span class="stat-copy">
@@ -141,7 +141,7 @@
           <ElOption label="启用" value="active" />
           <ElOption label="停用" value="inactive" />
         </ListFilterSelect>
-        <div class="list-filter-actions">
+        <div class="filter-actions list-filter-actions">
           <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
           <button
             type="button"
@@ -164,143 +164,113 @@
         <template v-if="selectionMode">勾选列可拖拽或按住 Shift 连选，表头菜单可当页全选、全部全选或取消。</template>
       </p>
       <div ref="listTableBody" class="list-table-body">
-      <div
-        ref="wrapRef"
-        class="sheet-wrap"
-        tabindex="0"
-        @copy="onCopy"
-        @click="onSheetClick"
-        @contextmenu="onContextMenu"
-        @keydown="onKeydown"
-        @mousedown="onMouseDown"
-        @mouseover="onMouseOver"
-        @selectstart="onSelectStart"
+      <WorkbenchSheet
+        :cell-config="cellConfig"
+        :keyboard-config="keyboardConfig"
+        :row-class-name="rowClassName"
+        empty-text="没有引物"
+        @cell-dblclick="onDblclick"
       >
-        <div ref="stageRef" class="sheet-stage">
-          <vxe-table
-            ref="tableRef"
-            :height="listTableHeight"
-            v-loading="loading"
-            :data="items"
-            border
-            show-overflow
-            size="small"
-            :row-config="rowConfig"
-            :cell-config="cellConfig"
-            :column-config="columnConfig"
-            :mouse-config="mouseConfig"
-            :keyboard-config="keyboardConfig"
-            :virtual-y-config="virtualYConfig"
-            :row-class-name="rowClassName"
-            :header-cell-class-name="sheetHeaderCellClass"
-            empty-text="没有引物"
-            @scroll="onScroll"
-            @cell-selected="onCellSelected"
-            @cell-dblclick="onDblclick"
+        <template #columns>
+          <vxe-column v-if="selectionMode" width="40" fixed="left" align="center">
+            <template #header>
+              <div class="check-header" @mousedown.stop>
+                <ElDropdown trigger="click" @command="onSelectCommand">
+                  <button type="button" class="check-menu" aria-label="选择范围">
+                    <ElIcon><ArrowDown /></ElIcon>
+                  </button>
+                  <template #dropdown>
+                    <ElDropdownMenu>
+                      <ElDropdownItem command="page">当页全选</ElDropdownItem>
+                      <ElDropdownItem command="all">全部全选</ElDropdownItem>
+                      <ElDropdownItem command="clear">取消选择</ElDropdownItem>
+                    </ElDropdownMenu>
+                  </template>
+                </ElDropdown>
+              </div>
+            </template>
+            <template #default="{ row, rowIndex }">
+              <div
+                class="check-cell"
+                @mousedown.stop.prevent="onCheckDown($event, row, rowIndex)"
+                @mouseenter="onCheckEnter(row)"
+                @click.stop
+                @dblclick.stop
+              >
+                <ElCheckbox :model-value="selectedIds.has(row.id)" class="check-readonly" />
+              </div>
+            </template>
+          </vxe-column>
+          <vxe-column
+            v-for="column in sheetColumns"
+            :key="column.key"
+            :field="column.key"
+            :title="column.label"
+            :min-width="column.minWidth"
+            :width="sheetColumnWidth(column)"
+            :align="column.align"
+            :class-name="column.mono ? 'is-sequence' : ''"
           >
-            <vxe-column v-if="selectionMode" width="40" fixed="left" align="center">
-              <template #header>
-                <div class="check-header" @mousedown.stop>
-                  <ElDropdown trigger="click" @command="onSelectCommand">
-                    <button type="button" class="check-menu" aria-label="选择范围">
-                      <ElIcon><ArrowDown /></ElIcon>
-                    </button>
-                    <template #dropdown>
-                      <ElDropdownMenu>
-                        <ElDropdownItem command="page">当页全选</ElDropdownItem>
-                        <ElDropdownItem command="all">全部全选</ElDropdownItem>
-                        <ElDropdownItem command="clear">取消选择</ElDropdownItem>
-                      </ElDropdownMenu>
-                    </template>
-                  </ElDropdown>
-                </div>
-              </template>
-              <template #default="{ row, rowIndex }">
-                <div
-                  class="check-cell"
-                  @mousedown.stop.prevent="onCheckDown($event, row, rowIndex)"
-                  @mouseenter="onCheckEnter(row)"
-                  @click.stop
-                  @dblclick.stop
-                >
-                  <ElCheckbox :model-value="selectedIds.has(row.id)" class="check-readonly" />
-                </div>
-              </template>
-            </vxe-column>
-            <vxe-column
-              v-for="column in columns"
-              :key="column.key"
-              :field="column.key"
-              :title="column.title"
-              :min-width="column.minWidth"
-              :width="column.width"
-              :align="column.align"
-              :class-name="column.mono ? 'is-sequence' : ''"
-            >
-              <template #header>
-                <WorkbenchHeaderLabel
-                  v-if="headerMenuStates[column.key]"
-                  :label="column.title"
-                  v-bind="headerMenuStates[column.key]"
-                />
-                <template v-else>{{ column.title }}</template>
-              </template>
-              <template #default="{ row }">
-                <ElTag
-                  v-if="column.key === 'active'"
-                  class="list-status-tag"
-                  :type="row.active ? 'success' : 'info'"
-                  effect="plain"
-                >
-                  {{ row.active ? '启用' : '停用' }}
-                </ElTag>
-                <template v-else>{{ displayCell(row, column.key) }}</template>
-              </template>
-            </vxe-column>
-            <vxe-column title="操作" width="240" fixed="right" align="center">
-              <template #default="{ row }">
-                <div class="sheet-actions" @mousedown.stop @click.stop @dblclick.stop>
-                  <ElButtonGroup>
-                    <ElButton
-                      class="list-table-action-btn"
-                      type="primary"
-                      plain
-                      :icon="Edit"
-                      :class="{ 'no-permission-btn': !canEdit }"
-                      @click="openEdit(row)"
-                    >
-                      编辑
-                    </ElButton>
-                    <ElButton
-                      class="list-table-action-btn"
-                      type="success"
-                      plain
-                      :icon="row.active ? CircleClose : CircleCheck"
-                      :loading="savingId === row.id"
-                      :class="{ 'no-permission-btn': !canEdit }"
-                      @click="toggleActive(row)"
-                    >
-                      {{ row.active ? '停用' : '启用' }}
-                    </ElButton>
-                    <ElButton
-                      class="list-table-action-btn"
-                      type="warning"
-                      plain
-                      :icon="Delete"
-                      :loading="deletingId === row.id"
-                      :class="{ 'no-permission-btn': !canEdit }"
-                      @click="removeRow(row)"
-                    >
-                      删除
-                    </ElButton>
-                  </ElButtonGroup>
-                </div>
-              </template>
-            </vxe-column>
-          </vxe-table>
-          <div ref="overlayRef" class="sheet-range" aria-hidden="true" />
-        </div>
-      </div>
+            <template #header>
+              <WorkbenchHeaderLabel
+                v-if="headerMenuStates[column.key]"
+                :label="column.label"
+                v-bind="headerMenuStates[column.key]"
+              />
+              <template v-else>{{ column.label }}</template>
+            </template>
+            <template #default="{ row }">
+              <ElTag
+                v-if="column.key === 'active'"
+                class="list-status-tag"
+                :type="row.active ? 'success' : 'info'"
+                effect="plain"
+              >
+                {{ row.active ? '启用' : '停用' }}
+              </ElTag>
+              <template v-else>{{ displayCell(row, column.key) }}</template>
+            </template>
+          </vxe-column>
+        </template>
+        <template #actions="{ row }">
+          <div class="sheet-actions" @mousedown.stop @click.stop @dblclick.stop>
+            <ElButtonGroup>
+              <ElButton
+                class="list-table-action-btn"
+                type="primary"
+                plain
+                :icon="Edit"
+                :class="{ 'no-permission-btn': !canEdit }"
+                @click="openEdit(row)"
+              >
+                编辑
+              </ElButton>
+              <ElButton
+                class="list-table-action-btn"
+                type="success"
+                plain
+                :icon="row.active ? CircleClose : CircleCheck"
+                :loading="savingId === row.id"
+                :class="{ 'no-permission-btn': !canEdit }"
+                @click="toggleActive(row)"
+              >
+                {{ row.active ? '停用' : '启用' }}
+              </ElButton>
+              <ElButton
+                class="list-table-action-btn"
+                type="warning"
+                plain
+                :icon="Delete"
+                :loading="deletingId === row.id"
+                :class="{ 'no-permission-btn': !canEdit }"
+                @click="removeRow(row)"
+              >
+                删除
+              </ElButton>
+            </ElButtonGroup>
+          </div>
+        </template>
+      </WorkbenchSheet>
       </div>
 
       <ElPagination
@@ -328,8 +298,6 @@
 </template>
 
 <script>
-import { ref } from 'vue';
-
 import {
   ArrowDown,
   CircleCheck,
@@ -361,15 +329,18 @@ import {
   ElSelect,
   ElTag,
 } from 'element-plus';
-import { VxeColumn, VxeTable } from 'vxe-table';
+import { VxeColumn } from 'vxe-table';
 
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
 import ListFilterSelect from '#/components/ListFilterSelect.vue';
 import {
+  createColumnOrder,
+  sheetSelectionMixin,
   WorkbenchHeaderFilterChip,
   WorkbenchHeaderLabel,
   WorkbenchHeaderMenu,
   workbenchHeaderMenuMixin,
+  WorkbenchSheet,
 } from '#/components/workbench';
 import { notifyApiError } from '#/api/errors';
 import {
@@ -381,15 +352,13 @@ import {
   fetchPrimerColumnValues,
   fetchPrimerIds,
   savePrimer,
+  PRIMER_EDIT,
 } from '#/api/primerCatalog';
 import { clearPrimerCatalogCache } from '../library/primerCatalogOptions';
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
 import { listPageMixin } from '#/utils/listPage';
 import { listTableLockMixin } from '#/utils/listTableLock';
-import { canEditPrimerLibrary } from '#/utils/molecularPermission';
-
-import '#/adapter/vxe-table';
-import 'vxe-table/styles/cssvar.scss';
+import { hasAccessCode } from '#/utils/accessCode';
 
 import PrimerEditorDialog from './PrimerEditorDialog.vue';
 import PrimerImportDialog from './PrimerImportDialog.vue';
@@ -400,17 +369,17 @@ import {
   libraryTone,
   PRESET_LIBRARIES,
 } from './primerSeries';
-import { useSheetRange } from './sheetRange';
 
 const COLUMNS = Object.freeze([
-  { key: 'name', title: '名称', minWidth: 160 },
-  { key: 'family', title: '系列', minWidth: 120 },
-  { key: 'direction', title: '方向', minWidth: 60, align: 'center' },
-  { key: 'short_sequence', title: '显示序列', minWidth: 160, mono: true },
-  { key: 'check_sequence', title: '核对序列', minWidth: 160, mono: true },
-  { key: 'note', title: '备注', minWidth: 180 },
-  { key: 'active', title: '状态', width: 90, align: 'center' },
+  { key: 'name', label: '名称', minWidth: 160 },
+  { key: 'family', label: '系列', minWidth: 120 },
+  { key: 'direction', label: '方向', minWidth: 60, align: 'center' },
+  { key: 'short_sequence', label: '显示序列', minWidth: 160, mono: true },
+  { key: 'check_sequence', label: '核对序列', minWidth: 160, mono: true },
+  { key: 'note', label: '备注', minWidth: 180 },
+  { key: 'active', label: '状态', width: 90, align: 'center' },
 ]);
+const SHEET_COLUMN_ORDER = createColumnOrder('primerLibrarySheetColumnOrder', COLUMNS);
 
 // 核对序列是算出来的，只有顶部筛选
 const PRIMER_HEADER_COLUMNS = Object.freeze({
@@ -422,11 +391,8 @@ const PRIMER_HEADER_COLUMNS = Object.freeze({
   active: { type: 'enum', label: '状态', values: 'all', top: { query: 'status' } },
 });
 
-const ROW_CONFIG = Object.freeze({ keyField: 'id', isHover: true });
 const CELL_CONFIG = Object.freeze({ height: 40 });
-const COLUMN_CONFIG = Object.freeze({ resizable: true });
-const MOUSE_CONFIG = Object.freeze({ selected: true });
-const VIRTUAL_Y_CONFIG = Object.freeze({ enabled: true, gt: 40, oSize: 10, immediate: true });
+// 只读表格：不开 Delete/Enter，免得 vxe 清空或进入编辑
 const KEYBOARD_CONFIG = Object.freeze({
   isArrow: true,
   isShift: true,
@@ -488,31 +454,18 @@ export default {
     PrimerImportDialog,
     Tools,
     VxeColumn,
-    VxeTable,
     WorkbenchHeaderFilterChip,
     WorkbenchHeaderLabel,
     WorkbenchHeaderMenu,
+    WorkbenchSheet,
   },
-  mixins: [listTableLockMixin, listPageMixin, workbenchHeaderMenuMixin],
+  mixins: [listTableLockMixin, listPageMixin, workbenchHeaderMenuMixin, sheetSelectionMixin],
   listFilterKey: 'primerLibrary',
+  workbenchSheet: { order: SHEET_COLUMN_ORDER },
   setup() {
-    const items = ref([]);
-    const sheet = useSheetRange({
-      rows: items,
-      columns: COLUMNS,
-      text: cellText,
-      menuKeys: Object.keys(PRIMER_HEADER_COLUMNS),
-    });
     return {
-      ...sheet,
-      items,
       userStore: useUserStore(),
-      columns: COLUMNS,
-      rowConfig: ROW_CONFIG,
       cellConfig: CELL_CONFIG,
-      columnConfig: COLUMN_CONFIG,
-      mouseConfig: MOUSE_CONFIG,
-      virtualYConfig: VIRTUAL_Y_CONFIG,
       keyboardConfig: KEYBOARD_CONFIG,
       CircleCheck,
       CircleClose,
@@ -527,6 +480,7 @@ export default {
   },
   data() {
     return {
+      list: [],
       listQuery: emptyQuery(),
       total: 0,
       statsTotal: 0,
@@ -551,11 +505,11 @@ export default {
       return PRIMER_HEADER_COLUMNS;
     },
     canEdit() {
-      return canEditPrimerLibrary(this.userStore.userInfo);
+      return hasAccessCode(this.userStore.userInfo, PRIMER_EDIT);
     },
     seriesCards() {
       return [
-        { label: '全部', value: '', count: this.statsTotal, hint: '当前筛选', tone: 'tone-blue' },
+        { label: '全部', value: '', count: this.statsTotal, hint: '当前筛选', tone: 'stat-blue' },
         ...this.libraryStats.map((item, index) => ({
           label: item.name,
           value: item.name,
@@ -599,12 +553,8 @@ export default {
     rowClassName({ row }) {
       return row.active ? '' : 'is-inactive';
     },
-    sheetHeaderCellClass({ column }) {
-      return this.headerCellClass(column.field);
-    },
-    onSheetClick(event) {
-      const field = this.headerMenuField(event);
-      if (field) this.openHeaderMenu(field, event.target.closest('.vxe-header--column'));
+    sheetDirectTextValue(row, key) {
+      return row ? cellText(row, key) : '';
     },
     replaceSelected(next) {
       this.selectedIds = next;
@@ -643,7 +593,8 @@ export default {
       try {
         const data = await fetchPrimerCatalog(this.buildQuery());
         if (!isLatest()) return;
-        this.items = data.items || [];
+        this.clearSheetRange();
+        this.list = data.items || [];
         this.total = data.total || 0;
         this.statsTotal = data.stats?.total || 0;
         this.libraryStats = data.stats?.families || [];
@@ -667,7 +618,7 @@ export default {
     },
     selectPage() {
       const next = new Set(this.selectedIds);
-      for (const row of this.items) next.add(row.id);
+      for (const row of this.list) next.add(row.id);
       this.replaceSelected(next);
     },
     onSelectCommand(command) {
@@ -694,12 +645,12 @@ export default {
     onCheckDown(event, row, rowIndex) {
       if (event.button !== 0) return;
       const next = new Set(this.selectedIds);
-      const index = Number.isInteger(rowIndex) ? rowIndex : this.items.findIndex((item) => item.id === row.id);
+      const index = Number.isInteger(rowIndex) ? rowIndex : this.list.findIndex((item) => item.id === row.id);
       if (event.shiftKey && this._checkAnchor >= 0 && index >= 0) {
         const start = Math.min(this._checkAnchor, index);
         const end = Math.max(this._checkAnchor, index);
         for (let cursor = start; cursor <= end; cursor += 1) {
-          const item = this.items[cursor];
+          const item = this.list[cursor];
           if (item) next.add(item.id);
         }
         this.replaceSelected(next);
@@ -872,7 +823,7 @@ export default {
       try {
         await deletePrimer(row.id);
         ElMessage.success('已删除');
-        if (this.items.length === 1 && this.listQuery.page > 1) this.listQuery.page -= 1;
+        if (this.list.length === 1 && this.listQuery.page > 1) this.listQuery.page -= 1;
         await this.load();
       } catch (error) {
         notifyApiError(error, { messages: { default: '删除失败' } });
@@ -905,6 +856,7 @@ export default {
 };
 </script>
 
+<style scoped src="#/components/workbench/workbenchPanel.css"></style>
 <style scoped>
 .primer-page {
   position: relative;
@@ -913,159 +865,8 @@ export default {
   background: var(--list-page-bg);
 }
 
-.workbench-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: var(--list-surface-padding-y) var(--list-surface-padding-x);
-  margin-bottom: var(--list-page-gap);
-  background: var(--list-surface-bg);
-  border: var(--list-surface-border);
-  border-radius: var(--list-surface-radius);
-  box-shadow: var(--list-surface-shadow);
-}
-
-.page-header-band {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, var(--el-bg-color) 100%);
-  border: 1px solid rgb(191 219 254 / 45%);
-  border-radius: var(--list-mid-radius);
-}
-
-.page-title {
-  margin: 0;
-  font-size: var(--list-page-title-size);
-  font-weight: var(--list-page-title-weight);
-}
-
-.page-subtitle {
-  margin: 6px 0 0;
-  color: var(--list-page-subtitle-color);
-  font-size: var(--list-page-subtitle-size);
-}
-
-.header-actions {
-  display: flex;
-  flex-shrink: 0;
-  gap: 8px;
-  align-items: center;
-}
-
-.header-actions :deep(.el-button + .el-button) {
-  margin-left: 0;
-}
-
-.total-count {
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  white-space: nowrap;
-}
-
 .stats-strip {
-  display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
-}
-
-.stat-tile {
-  position: relative;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 58px;
-  padding: 8px 12px 8px 14px;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  background: var(--list-mid-bg);
-  border: var(--list-mid-border);
-  border-radius: var(--list-mid-radius);
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
-}
-
-.stat-tile::before {
-  position: absolute;
-  top: 14px;
-  left: 0;
-  width: 4px;
-  height: 28px;
-  content: '';
-  border-radius: 0 999px 999px 0;
-}
-
-.stat-copy {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.stat-label {
-  overflow: hidden;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stat-copy small {
-  overflow: hidden;
-  color: var(--el-text-color-placeholder);
-  font-size: 12px;
-  line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stat-value {
-  color: var(--el-text-color-primary);
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.stat-tile:hover {
-  background: var(--el-bg-color);
-  border-color: #dce3ec;
-  box-shadow: 0 8px 20px rgb(15 23 42 / 7%);
-  transform: translateY(-2px);
-}
-
-.stat-tile.is-active {
-  background: var(--el-bg-color);
-  border-color: transparent;
-  box-shadow: 0 6px 18px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
-}
-
-.stat-tile.is-active .stat-label {
-  color: var(--el-text-color-primary);
-  font-weight: 600;
-}
-
-.tone-blue { --stat-ring: rgb(64 158 255 / 34%); --stat-glow: rgb(64 158 255 / 12%); }
-.tone-blue::before { background: var(--el-color-primary); }
-.tone-purple { --stat-ring: rgb(139 92 246 / 34%); --stat-glow: rgb(139 92 246 / 12%); }
-.tone-purple::before { background: #8b5cf6; }
-.tone-orange { --stat-ring: rgb(255 159 67 / 38%); --stat-glow: rgb(255 159 67 / 13%); }
-.tone-orange::before { background: #ff9f43; }
-.tone-teal { --stat-ring: rgb(20 184 166 / 36%); --stat-glow: rgb(20 184 166 / 12%); }
-.tone-teal::before { background: #14b8a6; }
-.tone-slate { --stat-ring: rgb(100 116 139 / 36%); --stat-glow: rgb(100 116 139 / 12%); }
-.tone-slate::before { background: #64748b; }
-
-.filter-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  padding-top: 10px;
-  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .filter-name {
@@ -1112,10 +913,6 @@ export default {
   pointer-events: none;
 }
 
-.list-filter-actions {
-  margin-left: auto;
-}
-
 .sheet-hint {
   margin: 0 0 8px;
   color: var(--el-text-color-secondary);
@@ -1123,47 +920,9 @@ export default {
   line-height: 18px;
 }
 
-.sheet-wrap {
-  --vxe-ui-font-size-small: 14px;
-
-  width: 100%;
-  outline: none;
-  user-select: none;
-}
-
-.sheet-stage {
-  position: relative;
-  width: 100%;
-}
-
-.sheet-wrap :deep(.vxe-body--column),
-.sheet-wrap :deep(.vxe-header--column) {
-  cursor: cell;
-  user-select: none;
-}
-
-.sheet-wrap :deep(.vxe-cell--col-resizable) {
-  cursor: col-resize;
-}
-
 .sheet-wrap :deep(.vxe-header--column) {
   font-weight: 600;
   background: var(--list-table-header-bg, var(--el-fill-color-light));
-}
-
-.sheet-wrap :deep(.vxe-header--column.wb-hf-cell) {
-  cursor: pointer;
-}
-
-.sheet-wrap :deep(.vxe-body--column.col--selected) {
-  box-shadow: none !important;
-}
-
-.sheet-wrap :deep(.vxe-body--row.row--hover > .vxe-body--column),
-.sheet-wrap :deep(.vxe-body--row:hover > .vxe-body--column),
-.sheet-wrap :deep(.vxe-table--fixed-left-wrapper .vxe-body--row.row--hover > .vxe-body--column),
-.sheet-wrap :deep(.vxe-table--fixed-right-wrapper .vxe-body--row.row--hover > .vxe-body--column) {
-  background-color: var(--vxe-ui-table-row-hover-background-color);
 }
 
 .sheet-wrap :deep(.is-sequence) {
@@ -1180,34 +939,7 @@ export default {
   cursor: pointer;
 }
 
-.sheet-range {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 8;
-  display: none;
-  box-sizing: border-box;
-  pointer-events: none;
-  background: color-mix(in srgb, var(--el-color-primary) 10%, transparent);
-  border: 2px solid var(--el-color-primary);
-  will-change: width, height, transform;
-}
-
 @media (max-width: 760px) {
-  .page-header-band,
-  .header-actions {
-    flex-wrap: wrap;
-  }
-
-  .page-header-band {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .stats-strip {
-    grid-template-columns: 1fr;
-  }
-
   .filter-item,
   .filter-name,
   .filter-sequence,
@@ -1216,14 +948,5 @@ export default {
     flex: 1 1 120px;
     width: auto;
   }
-}
-
-html.dark .page-header-band {
-  background: var(--el-fill-color-extra-light);
-  border-color: var(--el-border-color-light);
-}
-
-html.dark .stat-tile:hover {
-  border-color: var(--el-border-color-light);
 }
 </style>

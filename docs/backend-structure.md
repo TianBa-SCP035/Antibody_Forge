@@ -39,15 +39,21 @@ bbctg_vita_server/
 | 位置 | 用途 |
 |------|------|
 | `utils/normalize.py` | 文本、日期、非负整数、靶点编号、多值拼接、状态、优先级的清洗 |
-| `utils/workbench_queue.py` | 优先级常量（`PRIORITY_ORDER` 队列顺序从高到低；`PRIORITY_OPTIONS` 下拉顺序从低到高）、队列锁与重编号 |
-| `utils/header_filters.py` | 表头筛选；多值字段匹配统一用 `csv_token_clause`（已转义 `%` `_`）；统计块去掉本维度的表头条件用 `without_header_fields` |
+| `utils/workbench_queue.py` | 优先级常量（`PRIORITY_ORDER` 队列顺序从高到低；`PRIORITY_OPTIONS` 下拉顺序从低到高）、队列锁与重编号；`QueueSpec` 描述一个队列，入队、出队、改号、拖行共用 |
+| `utils/pagination.py` | `parse_page_limit`、`paginate_select`：列表分页（上限 500），返回 `{ items, total, page, limit }` |
+| `utils/model_fields.py` | `model_fields(Model, readonly=...)` 从模型列推出可写字段（中文名取列注释、长度取 `String(n)`）；`clean_field` / `clean_text` / `clean_date` / `clean_int` 按列类型整理写入值，报错文案全系统一致；`fields_request_model(名, FIELDS)` 生成保存接口的请求模型（接口文档列出全部可写字段，值不转换、未登记的键照常保留，取值必须 `model_dump(exclude_unset=True)`） |
+| `utils/batch_save.py` | 批量保存：解析请求、按主键顺序锁行、`check_expected(当前行序列化结果, _expected, fields=FIELDS)` 比对（不一致抛 `ConflictError`） |
+| `core/errors.py` | 业务异常：`BusinessError`（422）、`ForbiddenError`（403）、`NotFoundError`（404）、`ConflictError`（409），裸 `ValueError` 也按 422；全局处理器统一返回，`db/session.get_db` 出错即回滚。路由不写 try/except |
+| `utils/header_filters.py` | 表头筛选；`header_columns(FIELDS, **显式列)` 按列类型自动生成普通文本/日期/整数列，枚举、靶点、多值写在显式列里；多值字段匹配统一用 `csv_token_clause`（已转义 `%` `_`）；统计块去掉本维度的表头条件用 `without_header_fields` |
 | `utils/filter_values.py` | `like_literal`、`recorded_target_search`（各模块 `GET /recorded_targets` 共用，关键字与上限都进 SQL） |
 | `utils/codes.py` | 编号生成；唯一键冲突时重试 |
 | `utils/clock.py` | `now_local()`，固定 Asia/Shanghai，不要再用裸 `datetime.now()` |
 | `utils/uploads.py` | 上传文件名清洗、落盘路径必须在上传根目录内、`read_limited` 读取限长 |
 | `models/types.py` | `DateString`：Python 侧是 `YYYY-MM-DD` 字符串，库里 `VARCHAR` 或 `DATE` 都能读写；写入非法日期直接报错 |
 
-未知异常不要把 `str(exc)` 返回前端：记日志，返回通用提示；业务校验用 `ValueError` / `BusinessError` 照常返回消息。
+模块分层：`routes.py` 只写权限（含按记录的归属判断）、审计声明、入参解析和 `success(...)` 包装；列表、保存、删除等查询与写入放同目录 `service.py`，单测直接调服务函数。
+
+未知异常不要把 `str(exc)` 返回前端：全局处理器记日志、返回通用提示。业务校验直接抛 `ValueError` / `BusinessError`，按记录判断的无权限抛 `ForbiddenError`，找不到抛 `NotFoundError`，并发或归属冲突抛 `ConflictError`。
 
 DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Office 附件下载加密，失败不阻断传输。Linux 需配置 `LD_LIBRARY_PATH`（见 deploy.md）。
 
@@ -83,8 +89,8 @@ DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Offi
 业务接口统一如下；健康检查、设备回传、镁伽回调三处例外列在最后：
 
 - 成功：`{ "code": 0, "data": ... }`
-- 业务失败（HTTP 200）：`{ "code": 1, "message": "..." }`（`BusinessError` 可带 `errorCode`）
-- HTTP 异常（401/403/404/500）：保留状态码，body 同上
+- 业务失败：HTTP 422 / 403 / 404 / 409，`{ "code": 1, "message": "..." }`（`BusinessError` 可带其他 `code` 和 `errorCode`）；前端对带数字 `code` 的 403/404 直接显示后端文案
+- 其他 HTTP 异常（401、未登记路由的 404、500）：保留状态码，body 同上；500 只返回通用提示
 - 健康检查 `/api/health`：`{ "status": "ok" }`（不走上述 envelope）
 - 设备回传 `/api/order-experiment/sync`：`{ "code", "message", "trace_id", "data" }`（multipart 上传 `order_json`）
 - 镁伽状态回调：`{ "success": true, "data": ... }`，按 Labillion 约定返回（`modules/mega_automation/routes.py`）

@@ -7,6 +7,8 @@ from models.types import DateString
 
 class DiscoveryWorkbench(Base):
     __tablename__ = "discovery_workbench"
+    __log_label__ = "发现工作台"
+    __audit_label__ = ("experiment_id", "project_code", "discovery_id")
     __table_args__ = (
         UniqueConstraint("discovery_id", name="uk_discovery_workbench_discovery_id"),
         {"comment": "抗体发现项目工作台"},
@@ -38,8 +40,8 @@ class DiscoveryWorkbench(Base):
     owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
     immune_owner: Mapped[str | None] = mapped_column(String(64), comment="免疫负责人")
     cell_collector: Mapped[str | None] = mapped_column(String(64), comment="细胞收集人")
-    status: Mapped[str | None] = mapped_column(String(32), comment="状态")
-    priority: Mapped[str | None] = mapped_column(String(32), comment="优先级")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="规划中", comment="状态")
+    priority: Mapped[str] = mapped_column(String(32), nullable=False, default="正常", comment="优先级")
     sort_order: Mapped[int | None] = mapped_column(Integer, comment="排序值")
     remark: Mapped[str | None] = mapped_column(String(1000), comment="备注")
     created_by: Mapped[str | None] = mapped_column(String(64), comment="创建人")
@@ -57,8 +59,6 @@ class DiscoveryWorkbench(Base):
                 return None
             return dt.strftime("%Y-%m-%d %H:%M:%S")
 
-        methods = str(self.screening_methods or "").strip()
-        method_list = [part for part in methods.split(",") if part]
         codes = self.target_codes if isinstance(self.target_codes, list) else []
         return {
             "id": self.id,
@@ -76,8 +76,7 @@ class DiscoveryWorkbench(Base):
             "mouse_nos": self.mouse_nos,
             "serum_titer": self.serum_titer,
             "immune_antigen": self.immune_antigen,
-            "screening_methods": self.screening_methods,
-            "screening_method_list": method_list,
+            "screening_methods": [part for part in (self.screening_methods or "").split(",") if part],
             "screening_antigen": self.screening_antigen,
             "positive_cell_count": self.positive_cell_count,
             "plate_nos": self.plate_nos,
@@ -100,6 +99,8 @@ class DiscoveryWorkbench(Base):
 
 class DiscoverySynthesisOrder(Base):
     __tablename__ = "discovery_synthesis_order"
+    __log_label__ = "合成与验证"
+    __audit_label__ = ("experiment_id", "project_code", "synthesis_order_id")
     __table_args__ = (
         UniqueConstraint("synthesis_order_id", name="uk_discovery_synthesis_order_id"),
         UniqueConstraint("source_one_type", "source_one_id", name="uk_discovery_synthesis_order_source_one"),
@@ -111,11 +112,11 @@ class DiscoverySynthesisOrder(Base):
     source_one_type: Mapped[str | None] = mapped_column(String(16), comment="外部来源类型")
     source_one_id: Mapped[int | None] = mapped_column(BigInteger, comment="外部来源记录ID")
     source_snapshot: Mapped[dict | None] = mapped_column(JSON, comment="外部来源当前值快照")
-    status: Mapped[str] = mapped_column(String(32), nullable=False, comment="状态")
-    priority: Mapped[str | None] = mapped_column(String(32), comment="优先级")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="待下单", comment="状态")
+    priority: Mapped[str] = mapped_column(String(32), nullable=False, default="正常", comment="优先级")
     sort_order: Mapped[int | None] = mapped_column(Integer, comment="排序值")
-    order_kind: Mapped[str] = mapped_column(String(32), nullable=False, comment="订单性质")
-    supply_mode: Mapped[str] = mapped_column(String(32), nullable=False, comment="供应方式")
+    order_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="常规合成", comment="订单性质")
+    supply_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="合成到货", comment="供应方式")
     target_name: Mapped[str | None] = mapped_column(String(128), comment="靶点名称")
     target_codes: Mapped[list[str] | None] = mapped_column(JSON, comment="靶点编号列表")
     target_type: Mapped[str | None] = mapped_column(String(64), comment="靶点类型")

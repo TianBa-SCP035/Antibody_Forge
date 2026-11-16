@@ -30,6 +30,8 @@ def _format_value(value):
 
 class MolecularLibraryOrder(Base):
     __tablename__ = "molecular_library_order"
+    __log_label__ = "文库工单"
+    __audit_label__ = ("library_order_id",)
     __table_args__ = (
         UniqueConstraint("library_order_id", name="uk_molecular_library_order_id"),
         Index("idx_molecular_library_order_library_code", "library_code"),
@@ -64,8 +66,8 @@ class MolecularLibraryOrder(Base):
     immunization_stage: Mapped[str | None] = mapped_column(String(64), comment="免疫阶段")
     library_batch_no: Mapped[str | None] = mapped_column(String(64), comment="建库批号")
 
-    status: Mapped[str] = mapped_column(String(24), nullable=False, comment="状态")
-    priority: Mapped[str] = mapped_column(String(24), nullable=False, comment="优先级")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="待处理", comment="状态")
+    priority: Mapped[str] = mapped_column(String(24), nullable=False, default="正常", comment="优先级")
     owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
     started_at: Mapped[date | None] = mapped_column(Date, comment="工单开始日期")
     finished_at: Mapped[date | None] = mapped_column(Date, comment="工单完成日期")
@@ -131,6 +133,7 @@ class MolecularLibraryOrder(Base):
 
 class MolecularPrimerIndexCatalog(Base):
     __tablename__ = "molecular_primer_index_catalog"
+    __log_label__ = "引物库"
     __table_args__ = (
         UniqueConstraint("name", name="uk_molecular_primer_index_name"),
         {"comment": "引物与Barcode字典"},
@@ -173,6 +176,7 @@ class MolecularPrimerIndexCatalog(Base):
 
 class MolecularLibraryResultPackage(Base):
     __tablename__ = "molecular_library_result_package"
+    __log_label__ = "测序包"
     __table_args__ = (
         UniqueConstraint("signature", name="uk_molecular_library_result_package_signature"),
         Index("idx_molecular_library_result_package_owner_order_id", "owner_order_id"),
@@ -202,6 +206,7 @@ class MolecularLibraryResultPackage(Base):
 
 class MolecularLibraryResultFile(Base):
     __tablename__ = "molecular_library_result_file"
+    __log_label__ = "构建文件"
     __table_args__ = (
         Index("idx_molecular_library_result_sha256", "sha256"),
         Index("idx_molecular_library_result_file_package_id", "package_id"),
@@ -240,6 +245,7 @@ class MolecularLibraryResultFile(Base):
 
 class MolecularLibraryResultLink(Base):
     __tablename__ = "molecular_library_result_link"
+    __log_label__ = "构建文件"
     __table_args__ = (
         UniqueConstraint("file_id", "order_id", name="uk_molecular_library_result_link"),
         Index("idx_molecular_library_result_link_order_id", "order_id"),

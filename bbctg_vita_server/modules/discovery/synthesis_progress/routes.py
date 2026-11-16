@@ -5,14 +5,15 @@ from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from core.errors import route_error
 from core.response import success
 from db.session import get_db
 from models.system import SysUser
-from modules.auth.dependencies import get_current_user
+from modules.auth.dependencies import actor_name, get_current_user
+from modules.auth.permissions import UserContext, get_user_context, require
 from modules.discovery.synthesis_progress import service
-from modules.system.permissions import build_user_context, require_permission
+from modules.system.audit_routes import audit_quiet
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
+from utils.model_fields import fields_request_model
 
 router = APIRouter()
 SYNTHESIS_VIEW_PERMISSION = "discovery.page.synthesis_progress"
@@ -21,7 +22,6 @@ SYNTHESIS_PM_EDIT_PERMISSION = "discovery.synthesis_progress.pm_edit"
 SYNTHESIS_ENG_EDIT_PERMISSION = "discovery.synthesis_progress.eng_edit"
 SYNTHESIS_AFFINITY_EDIT_PERMISSION = "discovery.synthesis_progress.affinity_edit"
 SYNTHESIS_FLOW_EDIT_PERMISSION = "discovery.synthesis_progress.flow_edit"
-ALL_EDIT_SCOPES = {"full", "pm", "eng", "affinity", "flow"}
 PERMISSION_SCOPES = {
     SYNTHESIS_EDIT_PERMISSION: "full",
     SYNTHESIS_PM_EDIT_PERMISSION: "pm",
@@ -29,11 +29,15 @@ PERMISSION_SCOPES = {
     SYNTHESIS_AFFINITY_EDIT_PERMISSION: "affinity",
     SYNTHESIS_FLOW_EDIT_PERMISSION: "flow",
 }
+ANY_EDIT_PERMISSIONS = tuple(PERMISSION_SCOPES)
+CLAIM_PERMISSIONS = (SYNTHESIS_EDIT_PERMISSION, SYNTHESIS_PM_EDIT_PERMISSION)
+ARRANGE_PERMISSIONS = (SYNTHESIS_EDIT_PERMISSION, SYNTHESIS_PM_EDIT_PERMISSION, SYNTHESIS_ENG_EDIT_PERMISSION)
 
 
-class SynthesisSaveRequest(BaseModel):
-    model_config = ConfigDict(extra="allow")
+SynthesisFields = fields_request_model("SynthesisOrderFields", service.FIELDS)
 
+
+class SynthesisSaveRequest(SynthesisFields):
     id: int | None = Field(default=None, gt=0)
 
 
@@ -55,7 +59,7 @@ class SynthesisColumnValuesRequest(SynthesisListRequest):
 
 
 class SynthesisBatchSaveRequest(BaseModel):
-    items: list[dict] = Field(min_length=1)
+    items: list[SynthesisFields] = Field(min_length=1)
     confirm_complete: bool = False
 
 
@@ -77,28 +81,8 @@ class SynthesisCheckRemoteRequest(BaseModel):
     ids: list[int] = Field(default_factory=list)
 
 
-def _actor_name(user: SysUser) -> str:
-    return (user.display_name or user.username or "").strip()
-
-
-def _user_scopes(db: Session, user: SysUser) -> frozenset[str]:
-    context = build_user_context(db, user)
-    return frozenset(
-        scope
-        for permission, scope in PERMISSION_SCOPES.items()
-        if context.is_superuser or permission in context.permissions
-    )
-
-
-def _require_edit_scopes(
-    db: Session,
-    user: SysUser,
-    allowed_scopes: set[str] | None = None,
-) -> frozenset[str]:
-    scopes = _user_scopes(db, user)
-    if not scopes.intersection(allowed_scopes or ALL_EDIT_SCOPES):
-        raise HTTPException(status_code=403, detail="没有权限执行该合成与验证操作")
-    return scopes
+def _user_scopes(context: UserContext) -> frozenset[str]:
+    return frozenset(scope for permission, scope in PERMISSION_SCOPES.items() if context.allows(permission))
 
 
 def _visible(data, scopes: frozenset[str]):
@@ -107,229 +91,188 @@ def _visible(data, scopes: frozenset[str]):
     return service.mask_synthetic_corp(data, keep_engineering_rows="eng" in scopes)
 
 
-def _run_write(db: Session, fn, *, scopes: frozenset[str] = frozenset({"full"})):
+def _save_confirming(db: Session, fn, scopes: frozenset[str]) -> dict:
+    """保存会让整单完成时先回滚，返回 needs_confirm 让前端弹确认，用户确认后带 confirm_complete 重提。"""
     try:
         return success(_visible(fn(), scopes))
-    except HTTPException:
-        raise
     except service.CompletionConfirmRequired as exc:
         db.rollback()
         return success({"needs_confirm": True, "message": str(exc)})
-    except PermissionError as exc:
-        db.rollback()
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ValueError as exc:
-        db.rollback()
-        message = str(exc)
-        if message == service.MISSING_ROW:
-            raise HTTPException(status_code=404, detail=message) from exc
-        raise HTTPException(status_code=422, detail=message) from exc
-    except Exception as exc:
-        return route_error(exc, db)
 
 
-@router.post("/list")
+@router.post("/list", dependencies=[require(SYNTHESIS_VIEW_PERMISSION)])
 def list_synthesis_orders(
     data: SynthesisListRequest | None = None,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    require_permission(db, current_user, SYNTHESIS_VIEW_PERMISSION)
-    scopes = _user_scopes(db, current_user)
+    scopes = _user_scopes(context)
     payload = data.model_dump() if data else {}
-    try:
-        result = service.get_list(db, payload if "full" in scopes else service.without_corp_query(payload))
-        return success(_visible(result, scopes))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    result = service.get_list(db, payload if "full" in scopes else service.without_corp_query(payload))
+    return success(_visible(result, scopes))
 
 
-@router.post("/column_values")
+@router.post("/column_values", dependencies=[require(SYNTHESIS_VIEW_PERMISSION)])
 def synthesis_column_values(
     data: SynthesisColumnValuesRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    require_permission(db, current_user, SYNTHESIS_VIEW_PERMISSION)
     payload = data.model_dump()
-    if "full" not in _user_scopes(db, current_user):
+    if "full" not in _user_scopes(context):
         if payload["field"] == "synthetic_corp":
             raise HTTPException(status_code=403, detail="没有权限查看合成公司")
         payload = service.without_corp_query(payload)
-    try:
-        return success(service.get_column_values(db, payload))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return success(service.get_column_values(db, payload))
 
 
-@router.get("/options")
+@router.get("/options", dependencies=[require(SYNTHESIS_VIEW_PERMISSION)])
 def synthesis_options(
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    require_permission(db, current_user, SYNTHESIS_VIEW_PERMISSION)
     options = service.get_options(db)
-    if not _user_scopes(db, current_user).intersection({"full", "eng"}):
+    if not _user_scopes(context).intersection({"full", "eng"}):
         options["synthetic_corps"] = []
     return success(options)
 
 
-@router.get("/recorded_targets")
+@router.get("/recorded_targets", dependencies=[require(SYNTHESIS_VIEW_PERMISSION)])
 def synthesis_recorded_targets(
     keyword: str = Query(default="", max_length=128),
     limit: int = Query(default=DEFAULT_RECORDED_TARGET_LIMIT, ge=1, le=MAX_RECORDED_TARGET_LIMIT),
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, SYNTHESIS_VIEW_PERMISSION)
     return success({"items": service.search_recorded_targets(db, keyword, limit)})
 
 
-@router.post("/check_remote")
+@router.post(
+    "/check_remote",
+    dependencies=[require(SYNTHESIS_VIEW_PERMISSION), audit_quiet("核对外部合成订单", "synthesis_progress")],
+)
 def check_remote_orders(
     data: SynthesisCheckRemoteRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    require_permission(db, current_user, SYNTHESIS_VIEW_PERMISSION)
     result = service.check_remote_for_local_rows(db, data.ids)
-    return success(_visible(result, _user_scopes(db, current_user)))
+    return success(_visible(result, _user_scopes(context)))
 
 
-@router.post("/save")
+@router.post("/save", dependencies=[require(*ANY_EDIT_PERMISSIONS, audit="保存合成与验证单")])
 def save_synthesis_order(
     data: SynthesisSaveRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    scopes = _require_edit_scopes(db, current_user, ALL_EDIT_SCOPES)
+    scopes = _user_scopes(context)
     payload = data.model_dump(exclude_unset=True)
     confirm_complete = bool(payload.pop("confirm_complete", False))
-    return _run_write(
+    return _save_confirming(
         db,
         lambda: service.save(
             db,
             payload,
-            created_by=_actor_name(current_user),
+            created_by=actor_name(current_user),
             scopes=scopes,
             require_fields=True,
             confirm_complete=confirm_complete,
         ),
-        scopes=scopes,
+        scopes,
     )
 
 
-@router.post("/save_batch")
+@router.post("/save_batch", dependencies=[require(*ANY_EDIT_PERMISSIONS, audit="批量保存合成与验证单")])
 def save_synthesis_order_batch(
     data: SynthesisBatchSaveRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    scopes = _require_edit_scopes(db, current_user, ALL_EDIT_SCOPES)
-    payload = data.model_dump()
-    return _run_write(
+    scopes = _user_scopes(context)
+    payload = {
+        "items": [item.model_dump(exclude_unset=True) for item in data.items],
+        "confirm_complete": data.confirm_complete,
+    }
+    return _save_confirming(
         db,
         lambda: service.save_batch(
             db,
             payload,
-            created_by=_actor_name(current_user),
+            created_by=actor_name(current_user),
             scopes=scopes,
             require_fields=True,
             confirm_complete=data.confirm_complete,
         ),
-        scopes=scopes,
+        scopes,
     )
 
 
-@router.post("/claim")
+@router.post("/claim", dependencies=[require(*CLAIM_PERMISSIONS, audit="认领合成与验证结果")])
 def claim_synthesis_order(
     data: SynthesisIdRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    scopes = _require_edit_scopes(db, current_user, {"full", "pm"})
-    return _run_write(
-        db,
-        lambda: service.claim_order(db, data.id, _actor_name(current_user), scopes=scopes),
-        scopes=scopes,
-    )
+    scopes = _user_scopes(context)
+    return success(_visible(service.claim_order(db, data.id, actor_name(current_user), scopes=scopes), scopes))
 
 
-@router.post("/reorder")
+@router.post("/reorder", dependencies=[require(*ARRANGE_PERMISSIONS, audit="调整合成与验证排序")])
 def reorder_synthesis_orders(
     data: SynthesisReorderRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    scopes = _require_edit_scopes(db, current_user, {"full", "pm", "eng"})
-    return _run_write(
-        db,
-        lambda: service.reorder(
-            db, data.moved_id, data.target_id, scopes=scopes, actor_name=_actor_name(current_user)
-        ),
-        scopes=scopes,
-    )
+    scopes = _user_scopes(context)
+    result = service.reorder(db, data.moved_id, data.target_id, scopes=scopes, actor_name=actor_name(current_user))
+    return success(_visible(result, scopes))
 
 
-@router.post("/delete")
+@router.post("/delete", dependencies=[require(*ARRANGE_PERMISSIONS, audit="删除合成与验证单")])
 def delete_synthesis_order(
     data: SynthesisIdRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    scopes = _require_edit_scopes(db, current_user, {"full", "pm", "eng"})
-
-    def _delete():
-        service.delete(db, data.id, scopes=scopes, actor_name=_actor_name(current_user))
-        return {"message": "删除成功"}
-
-    return _run_write(db, _delete)
+    service.delete(db, data.id, scopes=_user_scopes(context), actor_name=actor_name(current_user))
+    return success({"message": "删除成功"})
 
 
-@router.post("/adopt_source")
+@router.post("/adopt_source", dependencies=[require(SYNTHESIS_EDIT_PERMISSION, audit="采用合成与验证外部来源变更")])
 def adopt_synthesis_source(
     data: SynthesisAdoptRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, SYNTHESIS_EDIT_PERMISSION)
-    return _run_write(
-        db,
-        lambda: service.adopt_source(db, data.id, data.fields),
-    )
+    return success(service.adopt_source(db, data.id, data.fields))
 
 
-@router.post("/sync_now")
+@router.post("/sync_now", dependencies=[require(SYNTHESIS_EDIT_PERMISSION, audit="同步外部合成订单")])
 def sync_synthesis_orders_now(
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, SYNTHESIS_EDIT_PERMISSION)
-    return _run_write(
-        db,
-        lambda: service.sync_from_one(db),
-    )
+    return success(service.sync_from_one(db))
 
 
-@router.post("/export_list")
+@router.post("/export_list", dependencies=[require(SYNTHESIS_VIEW_PERMISSION)])
 def export_synthesis_order_list(
     data: SynthesisListRequest | None = None,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> Response:
     from utils.excel import xlsx_response
 
-    require_permission(db, current_user, SYNTHESIS_VIEW_PERMISSION)
-    scopes = _user_scopes(db, current_user)
+    scopes = _user_scopes(context)
     hide_corp = "full" not in scopes
     payload = data.model_dump() if data else {}
-    try:
-        output, filename = service.export_list_workbook(
-            db,
-            service.without_corp_query(payload) if hide_corp else payload,
-            hide_corp=hide_corp,
-            keep_engineering_rows="eng" in scopes,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    output, filename = service.export_list_workbook(
+        db,
+        service.without_corp_query(payload) if hide_corp else payload,
+        hide_corp=hide_corp,
+        keep_engineering_rows="eng" in scopes,
+    )
     return xlsx_response(output, filename)

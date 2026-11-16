@@ -81,9 +81,13 @@ import { ElButton, ElDialog, ElMessage } from 'element-plus'
 import { useUserStore } from '@vben/stores'
 
 import { notifyApiError } from '#/api/errors'
-import { fetchLibraryOrdersByDiscovery, handoffLibraryOrders } from '#/api/molecularLibrary'
-import { LIBRARY_CREATED_KEY } from '#/constants/storageKeys'
-import { canViewLibrary } from '#/utils/molecularPermission'
+import {
+  fetchLibraryOrdersByDiscovery,
+  handoffLibraryOrders,
+  LIBRARY_CREATED_KEY,
+  LIBRARY_PAGE,
+} from '#/api/molecularLibrary'
+import { hasAccessCode } from '#/utils/accessCode'
 
 import {
   buildTypeLabel,
@@ -121,7 +125,7 @@ export default {
   },
   computed: {
     canOpenLibrary() {
-      return canViewLibrary(useUserStore().userInfo)
+      return hasAccessCode(useUserStore().userInfo, LIBRARY_PAGE)
     },
     methodNames() {
       return String(this.preview.screening_methods || '')

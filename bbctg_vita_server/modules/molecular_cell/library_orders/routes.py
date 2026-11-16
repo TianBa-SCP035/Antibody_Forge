@@ -1,26 +1,39 @@
 from typing import Literal
+from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
-from urllib.parse import quote
 
-from core.errors import route_error
 from core.response import success
 from db.session import get_db
-from models.system import SysUser
-from modules.auth.dependencies import get_current_user
-from modules.molecular_cell.library_orders import service
-from modules.molecular_cell.library_orders.result_upload import TRACE_EXTENSIONS, preview_extension
-from modules.system.permissions import (
-    DEFAULT_PERMISSION_MESSAGE,
-    PERMISSION_MESSAGES,
-    has_any_permission,
-    require_permission,
-)
 from integrations.drm_service import prepare_office_download_file, remove_temp_file
+from models.system import SysUser
+from modules.auth.dependencies import actor_name, get_current_user
+from modules.auth.permissions import (
+    UserContext,
+    get_user_context,
+    permission_denied,
+    require,
+)
+from modules.molecular_cell.library_orders import service
+from modules.molecular_cell.library_orders.result_upload import (
+    TRACE_EXTENSIONS,
+    preview_extension,
+)
+from modules.system.audit_routes import audit, audit_quiet, permission_action
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
+from utils.model_fields import fields_request_model
 
 router = APIRouter()
 PAGE_PERMISSION = "molecular.page.library"
@@ -28,18 +41,17 @@ EDIT_PERMISSION = "molecular.library.edit"
 DETAIL_PERMISSION = "molecular.page.library_detail"
 FILE_PERMISSION = "molecular.library.file.manage"
 QC_CONCLUSION_FIELDS = {"qc_result", "qc_owner", "qc_on", "qc_note"}
-HANDOFF_PERMISSIONS = ("discovery.workbench.edit", EDIT_PERMISSION)
+HANDOFF_PERMISSIONS = (EDIT_PERMISSION, "discovery.workbench.edit")
 
 
-class OrderSaveRequest(BaseModel):
-    model_config = ConfigDict(extra="allow")
+OrderFields = fields_request_model("LibraryOrderFields", service.FIELDS)
 
+
+class OrderSaveRequest(OrderFields):
     id: int | None = Field(default=None, gt=0)
 
 
-class OrderUpdateItem(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class OrderUpdateItem(OrderFields):
     id: int = Field(gt=0)
 
 
@@ -91,198 +103,127 @@ class FileUpdateRequest(BaseModel):
     qc_regions: list[dict[str, float | str]] | None = None
 
 
-def _actor_name(user: SysUser) -> str:
-    return (user.display_name or user.username or "").strip()
-
-
 def _is_qc_conclusion_only(payload: dict) -> bool:
-    changed = set(payload) - {"id"}
+    changed = set(payload) - {"id", "_expected"}
     return bool(changed) and changed <= QC_CONCLUSION_FIELDS
 
 
-def _require_any(db: Session, user: SysUser, codes: tuple[str, ...]) -> None:
-    if has_any_permission(db, user, codes):
-        return
-    raise HTTPException(
-        status_code=403,
-        detail=PERMISSION_MESSAGES.get(codes[0], DEFAULT_PERMISSION_MESSAGE),
-    )
+def _require_save(context: UserContext, qc_conclusion_only: bool) -> None:
+    """只改已有工单的质检结论时，文库编辑或质检管理任一即可；其余改动要文库编辑权限。"""
+    if qc_conclusion_only:
+        if not context.allows(EDIT_PERMISSION, FILE_PERMISSION):
+            raise permission_denied(EDIT_PERMISSION)
+    else:
+        context.require(EDIT_PERMISSION)
 
 
-def _require_handoff_permission(db: Session, user: SysUser) -> None:
-    if has_any_permission(db, user, HANDOFF_PERMISSIONS):
-        return
-    raise HTTPException(
-        status_code=403,
-        detail=PERMISSION_MESSAGES.get(EDIT_PERMISSION, DEFAULT_PERMISSION_MESSAGE),
-    )
-
-
-def _run_write(db: Session, fn):
-    try:
-        return success(fn())
-    except HTTPException:
-        raise
-    except ValueError as exc:
-        db.rollback()
-        message = str(exc)
-        if message in {service.MISSING_ROW, service.MISSING_FILE, service.MISSING_DISCOVERY}:
-            raise HTTPException(status_code=404, detail=message) from exc
-        raise HTTPException(status_code=422, detail=message) from exc
-    except Exception as exc:
-        return route_error(exc, db)
-
-
-@router.get("/options")
+@router.get("/options", dependencies=[require(PAGE_PERMISSION, DETAIL_PERMISSION)])
 def order_options(
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    _require_any(db, current_user, (PAGE_PERMISSION, DETAIL_PERMISSION))
     return success(service.get_options(db))
 
 
-@router.get("/recorded_targets")
+@router.get("/recorded_targets", dependencies=[require(PAGE_PERMISSION)])
 def recorded_targets(
     keyword: str = Query(default="", max_length=128),
     limit: int = Query(default=DEFAULT_RECORDED_TARGET_LIMIT, ge=1, le=MAX_RECORDED_TARGET_LIMIT),
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, PAGE_PERMISSION)
     return success({"items": service.search_recorded_targets(db, keyword, limit)})
 
 
-@router.post("/list")
+@router.post("/list", dependencies=[require(PAGE_PERMISSION)])
 def list_orders(
     data: OrderListRequest | None = None,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, PAGE_PERMISSION)
-    try:
-        return success(service.get_list(db, data.model_dump() if data else {}))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return success(service.get_list(db, data.model_dump() if data else {}))
 
 
-@router.post("/column_values")
+@router.post("/column_values", dependencies=[require(PAGE_PERMISSION)])
 def order_column_values(
     data: OrderColumnValuesRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, PAGE_PERMISSION)
-    try:
-        return success(service.get_column_values(db, data.model_dump()))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return success(service.get_column_values(db, data.model_dump()))
 
 
-@router.get("/by-discovery")
+@router.get("/by-discovery", dependencies=[require(*HANDOFF_PERMISSIONS)])
 def by_discovery(
     discovery_workbench_id: int | None = Query(default=None),
     discovery_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    _require_handoff_permission(db, current_user)
-    try:
-        return success(
-            service.list_by_discovery(
-                db,
-                discovery_id=discovery_id,
-                discovery_workbench_id=discovery_workbench_id,
-            )
+    return success(
+        service.list_by_discovery(
+            db,
+            discovery_id=discovery_id,
+            discovery_workbench_id=discovery_workbench_id,
         )
-    except ValueError as exc:
-        message = str(exc)
-        if message == service.MISSING_DISCOVERY:
-            raise HTTPException(status_code=404, detail=message) from exc
-        raise HTTPException(status_code=422, detail=message) from exc
+    )
 
 
-@router.post("/save")
+@router.post("/save", dependencies=[audit(permission_action(EDIT_PERMISSION, "保存文库构建工单"))])
 def save_order(
     data: OrderSaveRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
     payload = data.model_dump(exclude_unset=True)
-    if data.id is not None and _is_qc_conclusion_only(payload):
-        _require_any(db, current_user, (EDIT_PERMISSION, FILE_PERMISSION))
-    else:
-        require_permission(db, current_user, EDIT_PERMISSION)
-    return _run_write(db, lambda: service.save(db, payload, created_by=_actor_name(current_user)))
+    _require_save(context, data.id is not None and _is_qc_conclusion_only(payload))
+    return success(service.save(db, payload, created_by=actor_name(current_user)))
 
 
-@router.post("/batch_save")
+@router.post("/batch_save", dependencies=[audit(permission_action(EDIT_PERMISSION, "批量保存文库构建工单"))])
 def batch_save_orders(
     data: OrderBatchSaveRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
     payloads = [item.model_dump(exclude_unset=True) for item in data.items]
-    if all(_is_qc_conclusion_only(payload) for payload in payloads):
-        _require_any(db, current_user, (EDIT_PERMISSION, FILE_PERMISSION))
-    else:
-        require_permission(db, current_user, EDIT_PERMISSION)
-    return _run_write(db, lambda: service.batch_save(db, payloads))
+    _require_save(context, all(_is_qc_conclusion_only(payload) for payload in payloads))
+    return success(service.batch_save(db, payloads))
 
 
-@router.post("/export_list")
+@router.post("/export_list", dependencies=[require(PAGE_PERMISSION)])
 def export_orders(
     data: OrderListRequest | None = None,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> Response:
     from utils.excel import xlsx_response
 
-    require_permission(db, current_user, PAGE_PERMISSION)
-    try:
-        output, filename = service.export_list_workbook(db, data.model_dump() if data else {})
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    output, filename = service.export_list_workbook(db, data.model_dump() if data else {})
     return xlsx_response(output, filename)
 
 
-@router.post("/handoff")
+@router.post("/handoff", dependencies=[require(*HANDOFF_PERMISSIONS, audit="交接发现安排至文库构建")])
 def handoff(
     data: HandoffRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    _require_handoff_permission(db, current_user)
-    return _run_write(db, lambda: service.handoff(db, data.model_dump(), created_by=_actor_name(current_user)))
+    return success(service.handoff(db, data.model_dump(), created_by=actor_name(current_user)))
 
 
-@router.post("/delete")
+@router.post("/delete", dependencies=[require(EDIT_PERMISSION, audit="删除文库构建工单")])
 def delete_order(
     data: OrderIdRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, EDIT_PERMISSION)
-    return _run_write(db, lambda: service.delete_order(db, data.id))
+    return success(service.delete_order(db, data.id))
 
 
-@router.post("/files/list")
+@router.post("/files/list", dependencies=[require(DETAIL_PERMISSION), audit_quiet("刷新质检核对", "library_file")])
 def file_list(
     data: FileListRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, DETAIL_PERMISSION)
-    try:
-        return success(service.list_files(db, data.order_id))
-    except ValueError as exc:
-        message = str(exc)
-        if message == service.MISSING_ROW:
-            raise HTTPException(status_code=404, detail=message) from exc
-        raise HTTPException(status_code=422, detail=message) from exc
+    return success(service.list_files(db, data.order_id))
 
 
-@router.post("/files/upload_batch")
+@router.post("/files/upload_batch", dependencies=[require(FILE_PERMISSION, audit="批量上传文库构建结果")])
 def file_upload_batch(
     files: list[UploadFile] = File(...),
     paths: list[str] = Form(default=[]),
@@ -290,76 +231,62 @@ def file_upload_batch(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, FILE_PERMISSION)
-    return _run_write(
-        db,
-        lambda: service.upload_batch(
+    return success(
+        service.upload_batch(
             db,
             files,
             paths,
-            _actor_name(current_user),
+            actor_name(current_user),
             order_id,
-        ),
+        )
     )
 
 
-@router.post("/files/preflight")
+@router.post("/files/preflight", dependencies=[require(FILE_PERMISSION, audit="预检文库构建结果路径")])
 def file_preflight(
     data: FilePreflightRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, FILE_PERMISSION)
-    try:
-        return success(service.preflight_upload(db, data.paths))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return success(service.preflight_upload(db, data.paths))
 
 
-@router.post("/files/delete")
+@router.post("/files/delete", dependencies=[require(FILE_PERMISSION, audit="删除文库构建结果文件")])
 def file_delete(
     data: FileDeleteRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, FILE_PERMISSION)
     if (data.package_id or data.file_id) and not data.order_id:
         raise HTTPException(status_code=422, detail="请指定工单")
     if data.package_id:
-        return _run_write(
-            db,
-            lambda: service.delete_package(db, data.order_id, data.package_id),
+        return success(
+            service.delete_package(db, data.order_id, data.package_id)
         )
     if data.file_id:
-        return _run_write(
-            db,
-            lambda: service.delete_stored_file(db, data.order_id, data.file_id),
+        return success(
+            service.delete_stored_file(db, data.order_id, data.file_id)
         )
     if not data.link_id:
         raise HTTPException(status_code=422, detail="请选择要删除的文件")
-    return _run_write(db, lambda: service.delete_file(db, data.link_id, data.order_id))
+    return success(service.delete_file(db, data.link_id, data.order_id))
 
 
-@router.post("/files/update")
+@router.post("/files/update", dependencies=[require(FILE_PERMISSION, audit="更新文库构建结果文件标记")])
 def file_update(
     data: FileUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, FILE_PERMISSION)
     payload = data.model_dump(exclude_unset=True)
-    return _run_write(
-        db,
-        lambda: service.update_file_link(
+    return success(
+        service.update_file_link(
             db,
             data.link_id,
             data.order_id,
             payload,
-        ),
+        )
     )
 
 
-@router.get("/files/download")
+@router.get("/files/download", dependencies=[require(DETAIL_PERMISSION)])
 def file_download(
     background_tasks: BackgroundTasks,
     id: int | None = Query(default=None),
@@ -369,46 +296,38 @@ def file_download(
     w: int = Query(default=400, ge=32, le=1600),
     h: int = Query(default=400, ge=32, le=1600),
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ):
-    require_permission(db, current_user, DETAIL_PERMISSION)
-    try:
-        if file_id:
-            original_name, file_path = service.get_stored_file(db, file_id)
-        elif id:
-            record, file_path = service.get_download_record(db, id)
-            original_name = record.original_name
-        else:
-            raise ValueError("缺少文件")
-        if thumb:
-            thumbnail = service.create_thumbnail(file_path, w, h)
-            if thumbnail:
-                output, media_type = thumbnail
-                return StreamingResponse(output, media_type=media_type)
-        recognized = TRACE_EXTENSIONS | service.INLINE_PREVIEW_EXTENSIONS
-        suffix = preview_extension(file_path.name, original_name, recognized)
-        if preview and suffix in TRACE_EXTENSIONS:
-            return service.read_trace_preview(file_path)
-        is_inline_preview = preview and suffix in service.INLINE_PREVIEW_EXTENSIONS
-        serve_path = file_path
-        temp_path = None
-        if not is_inline_preview:
-            serve_path, temp_path = prepare_office_download_file(db, file_path, original_name)
-            if temp_path is not None:
-                background_tasks.add_task(remove_temp_file, temp_path)
-        return FileResponse(
-            serve_path,
-            filename=original_name,
-            media_type=None,
-            headers={
-                "Content-Disposition": (
-                    f"{'inline' if is_inline_preview else 'attachment'}; "
-                    f"filename*=UTF-8''{quote(original_name)}"
-                )
-            },
-        )
-    except ValueError as exc:
-        message = str(exc)
-        if message == service.MISSING_FILE:
-            raise HTTPException(status_code=404, detail=message) from exc
-        raise HTTPException(status_code=422, detail=message) from exc
+    if file_id:
+        original_name, file_path = service.get_stored_file(db, file_id)
+    elif id:
+        record, file_path = service.get_download_record(db, id)
+        original_name = record.original_name
+    else:
+        raise ValueError("缺少文件")
+    if thumb:
+        thumbnail = service.create_thumbnail(file_path, w, h)
+        if thumbnail:
+            output, media_type = thumbnail
+            return StreamingResponse(output, media_type=media_type)
+    recognized = TRACE_EXTENSIONS | service.INLINE_PREVIEW_EXTENSIONS
+    suffix = preview_extension(file_path.name, original_name, recognized)
+    if preview and suffix in TRACE_EXTENSIONS:
+        return service.read_trace_preview(file_path)
+    is_inline_preview = preview and suffix in service.INLINE_PREVIEW_EXTENSIONS
+    serve_path = file_path
+    temp_path = None
+    if not is_inline_preview:
+        serve_path, temp_path = prepare_office_download_file(db, file_path, original_name)
+        if temp_path is not None:
+            background_tasks.add_task(remove_temp_file, temp_path)
+    return FileResponse(
+        serve_path,
+        filename=original_name,
+        media_type=None,
+        headers={
+            "Content-Disposition": (
+                f"{'inline' if is_inline_preview else 'attachment'}; "
+                f"filename*=UTF-8''{quote(original_name)}"
+            )
+        },
+    )

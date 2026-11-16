@@ -1,30 +1,38 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from core.errors import route_error
+from core.errors import NotFoundError
 from core.response import success
 from db.session import get_db
 from models.system import SysUser
-from modules.auth.dependencies import get_current_user
-from modules.immunology.serum.routes import require_serum_project_edit_permission
+from modules.auth.dependencies import actor_name, get_current_user
+from modules.auth.permissions import UserContext, get_user_context, require
 from modules.immunology.workbench import service
-from modules.system.permissions import build_user_context, require_permission
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
+from utils.model_fields import fields_request_model
 
 router = APIRouter()
 WORKBENCH_VIEW_PERMISSION = "serum.page.workbench"
 WORKBENCH_EDIT_PERMISSION = "serum.workbench.edit"
 WORKBENCH_DRAFT_EDIT_PERMISSION = "serum.workbench.draft_edit"
 WORKBENCH_SUPPORT_EDIT_PERMISSION = "serum.workbench.support_edit"
+PERMISSION_SCOPES = {
+    WORKBENCH_EDIT_PERMISSION: "full",
+    WORKBENCH_DRAFT_EDIT_PERMISSION: "draft",
+    WORKBENCH_SUPPORT_EDIT_PERMISSION: "support",
+}
+ROW_EDIT_PERMISSIONS = tuple(PERMISSION_SCOPES)
+DRAFT_EDIT_PERMISSIONS = (WORKBENCH_EDIT_PERMISSION, WORKBENCH_DRAFT_EDIT_PERMISSION)
 
 
-class WorkbenchSaveRequest(BaseModel):
-    model_config = ConfigDict(extra="allow")
+WorkbenchFields = fields_request_model("SerumWorkbenchFields", service.FIELDS)
 
+
+class WorkbenchSaveRequest(WorkbenchFields):
     id: int | None = Field(default=None, gt=0)
 
 
@@ -42,10 +50,12 @@ class WorkbenchColumnValuesRequest(WorkbenchListRequest):
 
 
 class WorkbenchBatchSaveRequest(BaseModel):
-    items: list[dict] = Field(min_length=1)
+    items: list[WorkbenchFields] = Field(min_length=1)
 
 
-class WorkbenchSchemeSaveRequest(WorkbenchSaveRequest):
+class WorkbenchSchemeSaveRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     id: int = Field(gt=0)
     scheme_revision: str = Field(min_length=1)
     mouse_groups: list[dict]
@@ -64,80 +74,33 @@ class WorkbenchReorderRequest(BaseModel):
     target_id: int = Field(gt=0)
 
 
-def _actor_name(user: SysUser) -> str:
-    return (user.display_name or user.username or "").strip()
+def _edit_scopes(context: UserContext) -> frozenset[str]:
+    return frozenset(scope for permission, scope in PERMISSION_SCOPES.items() if context.allows(permission))
 
 
-def _require_edit_scopes(
-    db: Session,
-    user: SysUser,
-    allowed_scopes: set[str],
-) -> frozenset[str]:
-    context = build_user_context(db, user)
-    permission_scopes = {
-        WORKBENCH_EDIT_PERMISSION: "full",
-        WORKBENCH_DRAFT_EDIT_PERMISSION: "draft",
-        WORKBENCH_SUPPORT_EDIT_PERMISSION: "support",
-    }
-    scopes = frozenset(
-        scope
-        for permission, scope in permission_scopes.items()
-        if context.is_superuser or permission in context.permissions
-    )
-    if not scopes.intersection(allowed_scopes):
-        raise HTTPException(status_code=403, detail="没有权限执行该工作台操作")
-    return scopes
-
-
-def _run_write(db: Session, fn):
-    try:
-        return success(fn())
-    except HTTPException:
-        raise
-    except PermissionError as exc:
-        db.rollback()
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ValueError as exc:
-        db.rollback()
-        message = str(exc)
-        if message == "工作台记录不存在":
-            raise HTTPException(status_code=404, detail=message) from exc
-        if "不属于当前工作台" in message or "已被其他用户修改" in message:
-            raise HTTPException(status_code=409, detail=message) from exc
-        raise HTTPException(status_code=422, detail=message) from exc
-    except Exception as exc:
-        return route_error(exc, db)
-
-
-@router.post("/list")
+@router.post("/list", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
 def list_workbench(
     data: WorkbenchListRequest | None = None,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
     return success(service.get_list(db, data.model_dump() if data else {}))
 
 
-@router.post("/column_values")
+@router.post("/column_values", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
 def workbench_column_values(
     data: WorkbenchColumnValuesRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
     return success(service.get_column_values(db, data.model_dump()))
 
 
-@router.post("/export_list")
+@router.post("/export_list", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
 def export_workbench_list(
     data: WorkbenchListRequest | None = None,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> Response:
     from utils.excel import xlsx_response
 
-    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
     output, filename = service.export_list_workbook(
         db,
         data.model_dump() if data else {},
@@ -145,173 +108,142 @@ def export_workbench_list(
     return xlsx_response(output, filename)
 
 
-@router.get("/options")
+@router.get("/options", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
 def workbench_options(
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
     return success(service.get_options(db))
 
 
-@router.get("/recorded_targets")
+@router.get("/recorded_targets", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
 def workbench_recorded_targets(
     keyword: str = Query(default="", max_length=128),
     limit: int = Query(default=DEFAULT_RECORDED_TARGET_LIMIT, ge=1, le=MAX_RECORDED_TARGET_LIMIT),
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
     return success({"items": service.search_recorded_targets(db, keyword, limit)})
 
 
-@router.get("/detail")
+@router.get("/detail", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
 def workbench_detail(
     id: int = Query(...),
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
     data = service.get_detail(db, id)
     if data is None:
-        raise HTTPException(status_code=404, detail="工作台记录不存在")
+        raise NotFoundError(service.MISSING_ROW)
     return success(data)
 
 
-@router.post("/save")
+@router.post("/save", dependencies=[require(*ROW_EDIT_PERMISSIONS, audit="保存免疫工作台")])
 def save_workbench(
     data: WorkbenchSaveRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    edit_scopes = _require_edit_scopes(db, current_user, {"full", "draft", "support"})
-    payload = data.model_dump()
-    return _run_write(
-        db,
-        lambda: service.save(
+    edit_scopes = _edit_scopes(context)
+    return success(
+        service.save(
             db,
-            payload,
-            created_by=_actor_name(current_user),
+            data.model_dump(exclude_unset=True),
+            created_by=actor_name(current_user),
             edit_scopes=edit_scopes,
-        ),
+        )
     )
 
 
-@router.post("/save_batch")
+@router.post("/save_batch", dependencies=[require(*ROW_EDIT_PERMISSIONS, audit="批量保存免疫工作台")])
 def save_workbench_batch(
     data: WorkbenchBatchSaveRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    edit_scopes = _require_edit_scopes(db, current_user, {"full", "draft", "support"})
-    payload = data.model_dump()
-    return _run_write(
-        db,
-        lambda: service.save_batch(
+    edit_scopes = _edit_scopes(context)
+    return success(
+        service.save_batch(
             db,
-            payload,
-            created_by=_actor_name(current_user),
+            {"items": [item.model_dump(exclude_unset=True) for item in data.items]},
+            created_by=actor_name(current_user),
             edit_scopes=edit_scopes,
-        ),
+        )
     )
 
 
-@router.post("/save_scheme")
+@router.post("/save_scheme", dependencies=[require(*DRAFT_EDIT_PERMISSIONS, audit="保存免疫工作台方案草稿")])
 def save_workbench_scheme(
     data: WorkbenchSchemeSaveRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    edit_scopes = _require_edit_scopes(db, current_user, {"full", "draft"})
-    payload = data.model_dump()
-    return _run_write(
-        db,
-        lambda: service.save_scheme(
+    edit_scopes = _edit_scopes(context)
+    return success(
+        service.save_scheme(
             db,
-            payload,
-            created_by=_actor_name(current_user),
+            data.model_dump(),
+            created_by=actor_name(current_user),
             edit_scopes=edit_scopes,
-        ),
+        )
     )
 
 
-@router.post("/delete")
+@router.post("/delete", dependencies=[require(*DRAFT_EDIT_PERMISSIONS, audit="删除免疫工作台")])
 def delete_workbench(
     data: WorkbenchIdRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    edit_scopes = _require_edit_scopes(db, current_user, {"full", "draft"})
-
-    def _delete():
-        service.delete(db, data.id, edit_scopes=edit_scopes)
-        return {"message": "删除成功"}
-
-    return _run_write(db, _delete)
+    service.delete(db, data.id, edit_scopes=_edit_scopes(context))
+    return success({"message": "删除成功"})
 
 
-@router.post("/start")
+@router.post(
+    "/start",
+    dependencies=[
+        require(WORKBENCH_EDIT_PERMISSION, audit="免疫工作台记录开展为实验"),
+        require("serum.project.edit", "serum.project.edit_all"),
+    ],
+)
 def start_workbench(
     data: WorkbenchIdRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    _require_edit_scopes(db, current_user, {"full"})
-    require_serum_project_edit_permission(db, current_user)
-
-    def _start():
-        return service.start(db, data.id)
-
-    return _run_write(db, _start)
+    return success(service.start(db, data.id))
 
 
-@router.post("/unlist")
+@router.post("/unlist", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="免疫工作台记录下架撤回实验")])
 def unlist_workbench(
     data: WorkbenchIdRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    _require_edit_scopes(db, current_user, {"full"})
-
-    def _unlist():
-        return service.unlist(db, data.id)
-
-    return _run_write(db, _unlist)
+    return success(service.unlist(db, data.id))
 
 
-@router.post("/copy")
+@router.post("/copy", dependencies=[require(*DRAFT_EDIT_PERMISSIONS, audit="复制免疫工作台记录")])
 def copy_workbench(
     data: WorkbenchIdRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    edit_scopes = _require_edit_scopes(db, current_user, {"full", "draft"})
-
-    def _copy():
-        return service.copy_row(
+    return success(
+        service.copy_row(
             db,
             data.id,
-            created_by=_actor_name(current_user),
-            edit_scopes=edit_scopes,
+            created_by=actor_name(current_user),
+            edit_scopes=_edit_scopes(context),
         )
+    )
 
-    return _run_write(db, _copy)
 
-
-@router.post("/reorder")
+@router.post("/reorder", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="免疫工作台同优先级排序")])
 def reorder_workbench(
     data: WorkbenchReorderRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    edit_scopes = _require_edit_scopes(db, current_user, {"full"})
-
-    def _reorder():
-        return service.reorder(
-            db,
-            data.moved_id,
-            data.target_id,
-            edit_scopes=edit_scopes,
-        )
-
-    return _run_write(db, _reorder)
+    return success(service.reorder(db, data.moved_id, data.target_id, edit_scopes=_edit_scopes(context)))

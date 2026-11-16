@@ -40,12 +40,9 @@ def is_sensitive_key(key: object) -> bool:
     )
 
 
-_is_sensitive_key = is_sensitive_key
-
-
 def _redact_sensitive_values(value):
     if isinstance(value, dict):
-        return {key: REDACTED if _is_sensitive_key(key) else _redact_sensitive_values(item) for key, item in value.items()}
+        return {key: REDACTED if is_sensitive_key(key) else _redact_sensitive_values(item) for key, item in value.items()}
     if isinstance(value, list):
         return [_redact_sensitive_values(item) for item in value]
     return value

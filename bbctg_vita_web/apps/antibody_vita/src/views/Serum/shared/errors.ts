@@ -30,9 +30,6 @@ export const SERUM_ERRORS = {
     exportList: {
       default: '列表导出失败，请重试',
     } satisfies OperationMessages,
-    reorder: {
-      default: '排序失败',
-    } satisfies OperationMessages,
   },
   cell: {
     load: {

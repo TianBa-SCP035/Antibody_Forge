@@ -1,4 +1,11 @@
 import { requestClient, skipGlobalErrorHandler } from '#/api/request';
+import { fetchRecordedTargets } from '#/api/options';
+
+export const SYNTHESIS_EDIT = 'discovery.synthesis_progress.edit';
+export const SYNTHESIS_PM_EDIT = 'discovery.synthesis_progress.pm_edit';
+export const SYNTHESIS_ENG_EDIT = 'discovery.synthesis_progress.eng_edit';
+export const SYNTHESIS_AFFINITY_EDIT = 'discovery.synthesis_progress.affinity_edit';
+export const SYNTHESIS_FLOW_EDIT = 'discovery.synthesis_progress.flow_edit';
 
 const SAVE_TIMEOUT = 5000;
 const REMOTE_CHECK_TIMEOUT = 3000;
@@ -10,6 +17,10 @@ type RequestConfig = Parameters<typeof requestClient.get>[1];
 const downloadConfig = {
   skipErrorHandler: true,
 } as Parameters<typeof requestClient.download>[1];
+
+export function fetchSynthesisRecordedTargets(keyword = '') {
+  return fetchRecordedTargets('/discovery/synthesis-progress/recorded_targets', keyword);
+}
 
 export function fetchDiscoverySynthesisList(data: any, config?: PostConfig) {
   return requestClient.post('/discovery/synthesis-progress/list', data, {

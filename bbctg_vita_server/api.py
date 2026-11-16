@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -5,21 +7,8 @@ from core.response import success
 from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
-from modules.auth.routes import router as auth_router
 from modules.auth.service import build_user_info
-from modules.atlas.routes import router as atlas_router
-from modules.discovery.synthesis_progress.routes import router as discovery_synthesis_router
-from modules.discovery.workbench.routes import router as discovery_workbench_router
-from modules.immunology.cell.routes import router as cell_router
-from modules.immunology.serum.routes import router as serum_router
-from modules.immunology.titer.routes import router as titer_router
-from modules.immunology.workbench.routes import router as workbench_router
-from modules.mega_automation.routes import router as mega_automation_router
-from modules.molecular_cell.library_orders.routes import router as molecular_library_router
-from modules.molecular_cell.primer_catalog.routes import router as primer_catalog_router
-from modules.options.routes import router as options_router
-from modules.order_sync.routes import router as order_sync_router
-from modules.system.routes import router as system_router
+from modules.registry import MOUNTS
 
 api_router = APIRouter()
 
@@ -29,29 +18,9 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-api_router.include_router(auth_router, prefix="/auth", tags=["认证"])
-api_router.include_router(atlas_router, prefix="/atlas", tags=["千鼠万抗"])
-api_router.include_router(discovery_workbench_router, prefix="/discovery/workbench", tags=["抗体发现-项目工作台"])
-api_router.include_router(discovery_synthesis_router, prefix="/discovery/synthesis-progress", tags=["抗体发现-合成进度"])
-api_router.include_router(serum_router, prefix="/serum", tags=["免疫部-血清"])
-api_router.include_router(workbench_router, prefix="/serum/workbench", tags=["免疫部-项目工作台"])
-api_router.include_router(titer_router, prefix="/serum/titer", tags=["免疫部-效价"])
-api_router.include_router(cell_router, prefix="/serum/cell_inventory", tags=["免疫部-细胞"])
-api_router.include_router(mega_automation_router, prefix="/mega-automation", tags=["镁伽自动化"])
-api_router.include_router(
-    molecular_library_router,
-    prefix="/molecular-cell/library-orders",
-    tags=["分子与细胞-文库构建"],
-)
-# 路径沿用 library-orders/catalog，与 sys_permission_api 登记保持一致
-api_router.include_router(
-    primer_catalog_router,
-    prefix="/molecular-cell/library-orders/catalog",
-    tags=["分子与细胞-引物库"],
-)
-api_router.include_router(order_sync_router, prefix="/order-experiment", tags=["工单数据回传"])
-api_router.include_router(options_router, prefix="/options", tags=["公共选项"])
-api_router.include_router(system_router, prefix="/system", tags=["系统管理"])
+for _mount in MOUNTS:
+    _module_path, _attribute = _mount.router.split(":")
+    api_router.include_router(getattr(import_module(_module_path), _attribute), prefix=_mount.prefix, tags=[_mount.tag])
 
 
 @api_router.get("/user/info", tags=["认证"])

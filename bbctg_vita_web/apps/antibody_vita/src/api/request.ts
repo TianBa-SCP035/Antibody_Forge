@@ -13,11 +13,11 @@ import {
 import { useAccessStore } from '@vben/stores';
 
 import { toastApiError } from '#/api/errors';
-import { cleanFieldText } from '#/components/workbench/clipboardGrid';
 import {
   handleUnauthorizedError,
   isUnauthorizedError,
 } from '#/utils/auth-session';
+import { cleanFieldText } from '#/utils/fieldText';
 
 const { apiURL } = useAppConfig(import.meta.env, import.meta.env.PROD);
 

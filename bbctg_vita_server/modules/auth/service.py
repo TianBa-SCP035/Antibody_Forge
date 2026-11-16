@@ -7,10 +7,10 @@ from sqlalchemy.orm import Session
 from core.config import get_settings
 from integrations.yunzhijia import YunzhijiaClient
 from models.system import SysUser
+from modules.auth.permissions import build_user_context
 from modules.auth.security import create_access_token, hash_password, verify_password
 from modules.system.audit import write_operation_log
 from modules.system.features import is_feature_enabled
-from modules.system.permissions import build_user_context
 from utils.clock import now_local
 
 YUNZHIJIA_AUTO_PROVISION_FEATURE = "feature.yunzhijia_auto_provision"
@@ -90,7 +90,7 @@ def login_with_yunzhijia_ticket(db: Session, ticket: str) -> dict:
         raise HTTPException(status_code=401, detail="云之家未返回用户 openid")
     user = db.scalar(select(SysUser).where(SysUser.openid == openid))
     if not user:
-        if is_feature_enabled(db, YUNZHIJIA_AUTO_PROVISION_FEATURE, default=False):
+        if is_feature_enabled(db, YUNZHIJIA_AUTO_PROVISION_FEATURE):
             user = _provision_yunzhijia_user(db, user_context)
             write_operation_log(
                 db,

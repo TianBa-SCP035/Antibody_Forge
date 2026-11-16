@@ -1,27 +1,28 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from core.errors import route_error
 from core.response import success
 from db.session import get_db
 from models.system import SysUser
-from modules.auth.dependencies import get_current_user
+from modules.auth.dependencies import actor_name, get_current_user
+from modules.auth.permissions import require
 from modules.discovery.workbench import service
-from modules.system.permissions import require_permission
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
+from utils.model_fields import fields_request_model
 
 router = APIRouter()
 WORKBENCH_VIEW_PERMISSION = "discovery.page.workbench"
 WORKBENCH_EDIT_PERMISSION = "discovery.workbench.edit"
 
 
-class WorkbenchSaveRequest(BaseModel):
-    model_config = ConfigDict(extra="allow")
+WorkbenchFields = fields_request_model("DiscoveryWorkbenchFields", service.FIELDS)
 
+
+class WorkbenchSaveRequest(WorkbenchFields):
     id: int | None = Field(default=None, gt=0)
 
 
@@ -40,7 +41,7 @@ class WorkbenchColumnValuesRequest(WorkbenchListRequest):
 
 
 class WorkbenchBatchSaveRequest(BaseModel):
-    items: list[dict] = Field(min_length=1)
+    items: list[WorkbenchFields] = Field(min_length=1)
 
 
 class WorkbenchIdRequest(BaseModel):
@@ -52,141 +53,80 @@ class WorkbenchReorderRequest(BaseModel):
     target_id: int = Field(gt=0)
 
 
-def _actor_name(user: SysUser) -> str:
-    return (user.display_name or user.username or "").strip()
-
-
-def _run_write(db: Session, fn):
-    try:
-        return success(fn())
-    except HTTPException:
-        raise
-    except ValueError as exc:
-        db.rollback()
-        message = str(exc)
-        if message == service.MISSING_ROW:
-            raise HTTPException(status_code=404, detail=message) from exc
-        raise HTTPException(status_code=422, detail=message) from exc
-    except Exception as exc:
-        return route_error(exc, db)
-
-
-@router.post("/list")
+@router.post("/list", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
 def list_workbench(
     data: WorkbenchListRequest | None = None,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
-    try:
-        return success(service.get_list(db, data.model_dump() if data else {}))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return success(service.get_list(db, data.model_dump() if data else {}))
 
 
-@router.post("/column_values")
+@router.post("/column_values", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
 def workbench_column_values(
     data: WorkbenchColumnValuesRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
-    try:
-        return success(service.get_column_values(db, data.model_dump()))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return success(service.get_column_values(db, data.model_dump()))
 
 
-@router.get("/options")
+@router.get("/options", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
 def workbench_options(
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
     return success(service.get_options(db))
 
 
-@router.get("/recorded_targets")
+@router.get("/recorded_targets", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
 def workbench_recorded_targets(
     keyword: str = Query(default="", max_length=128),
     limit: int = Query(default=DEFAULT_RECORDED_TARGET_LIMIT, ge=1, le=MAX_RECORDED_TARGET_LIMIT),
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
     return success({"items": service.search_recorded_targets(db, keyword, limit)})
 
 
-@router.post("/save")
+@router.post("/save", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="保存抗体发现工作台")])
 def save_workbench(
     data: WorkbenchSaveRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_EDIT_PERMISSION)
-    payload = data.model_dump(exclude_unset=True)
-    return _run_write(
-        db,
-        lambda: service.save(db, payload, created_by=_actor_name(current_user)),
-    )
+    return success(service.save(db, data.model_dump(exclude_unset=True), created_by=actor_name(current_user)))
 
 
-@router.post("/export_list")
+@router.post("/export_list", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
 def export_workbench_list(
     data: WorkbenchListRequest | None = None,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> Response:
     from utils.excel import xlsx_response
 
-    require_permission(db, current_user, WORKBENCH_VIEW_PERMISSION)
-    try:
-        output, filename = service.export_list_workbook(
-            db,
-            data.model_dump() if data else {},
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    output, filename = service.export_list_workbook(db, data.model_dump() if data else {})
     return xlsx_response(output, filename)
 
 
-@router.post("/save_batch")
+@router.post("/save_batch", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="批量保存抗体发现工作台")])
 def save_workbench_batch(
     data: WorkbenchBatchSaveRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_EDIT_PERMISSION)
-    payload = data.model_dump()
-    return _run_write(
-        db,
-        lambda: service.save_batch(db, payload, created_by=_actor_name(current_user)),
-    )
+    items = [item.model_dump(exclude_unset=True) for item in data.items]
+    return success(service.save_batch(db, {"items": items}, created_by=actor_name(current_user)))
 
 
-@router.post("/delete")
+@router.post("/delete", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="删除抗体发现工作台")])
 def delete_workbench(
     data: WorkbenchIdRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_EDIT_PERMISSION)
-
-    def _delete():
-        service.delete(db, data.id)
-        return {"message": "删除成功"}
-
-    return _run_write(db, _delete)
+    service.delete(db, data.id)
+    return success({"message": "删除成功"})
 
 
-@router.post("/reorder")
+@router.post("/reorder", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="调整抗体发现工作台排序")])
 def reorder_workbench(
     data: WorkbenchReorderRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, WORKBENCH_EDIT_PERMISSION)
-    return _run_write(
-        db,
-        lambda: service.reorder(db, data.moved_id, data.target_id),
-    )
+    return success(service.reorder(db, data.moved_id, data.target_id))

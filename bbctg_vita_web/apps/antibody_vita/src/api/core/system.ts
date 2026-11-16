@@ -33,19 +33,16 @@ export interface SystemRole {
 }
 
 export interface SystemPermission {
-  id: number;
   code: string;
   name: string;
   type: string;
-  action?: string;
-  module?: string;
-  parent_code?: string;
-  resource?: string;
-  route_path?: string;
-  description?: string;
+  action: string;
+  module: string;
+  parent_code: null | string;
+  resource: string;
+  route_path: null | string;
   sort_order: number;
-  status: string;
-  ui_key?: string;
+  ui_key: null | string;
 }
 
 export interface SystemPermissionBundle {
@@ -106,12 +103,14 @@ export interface SystemOperationLogItem {
   entity_id?: string;
   entity_label?: string;
   entity_type: string;
+  entity_type_label?: string;
   id: number;
   table_name: string;
 }
 
 export interface SystemOperationLog {
   action: string;
+  action_label?: string;
   affected_count?: number;
   created_at?: string;
   detail?: Record<string, any>;
@@ -128,6 +127,7 @@ export interface SystemOperationLog {
   target_id?: string;
   target_label?: string;
   target_type?: string;
+  target_type_label?: string;
   user_id?: number;
   username?: string;
 }
@@ -143,12 +143,11 @@ export interface SystemAuditTargetSnapshot {
 export interface SystemFeatureFlag {
   category: 'feature' | 'job' | 'menu' | string;
   code: string;
-  config?: Record<string, any>;
-  description?: string;
+  config: Record<string, any>;
+  description: string;
   enabled: boolean;
-  id?: number;
   name: string;
-  sort_order?: number;
+  sort_order: number;
   visible: boolean;
 }
 
@@ -334,7 +333,13 @@ export function getSystemOperationLogsByQueryApi(
   params: SystemOperationLogQuery,
   config?: RequestConfig,
 ) {
-  return requestClient.get<{ items: SystemOperationLog[]; page: number; page_size: number; total: number }>(
+  return requestClient.get<{
+    items: SystemOperationLog[];
+    page: number;
+    page_size: number;
+    target_type_options?: string[];
+    total: number;
+  }>(
     '/system/operation_logs',
     {
       ...config,

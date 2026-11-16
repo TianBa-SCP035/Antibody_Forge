@@ -5,43 +5,35 @@ from core.response import success
 from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
+from modules.auth.permissions import UserContext, get_user_context
 from modules.auth.service import (
     change_user_password,
     login_with_password,
     login_with_yunzhijia_ticket,
     update_profile_signature,
 )
-from modules.system.permissions import get_permission_codes
+from modules.system.audit_context import AuditAction
+from modules.system.audit_routes import audit, audit_quiet
 
 router = APIRouter()
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[audit(AuditAction("auth.password_login", "账号密码登录", "login", "sys_user"))])
 def login(data: dict, db: Session = Depends(get_db)) -> dict:
     return success(login_with_password(db, data.get("username", ""), data.get("password", "")))
 
 
-@router.post("/logout")
+@router.post("/logout", dependencies=[audit_quiet()])
 def logout() -> dict:
     return success({"message": "ok"})
 
 
-@router.post("/refresh")
-def refresh_token(current_user: SysUser = Depends(get_current_user)) -> dict:
-    from modules.auth.security import create_access_token
-
-    return success(create_access_token(current_user.id, current_user.username))
-
-
 @router.get("/codes")
-def access_codes(
-    db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
-) -> dict:
-    return success(get_permission_codes(db, current_user))
+def access_codes(context: UserContext = Depends(get_user_context)) -> dict:
+    return success(context.permissions)
 
 
-@router.put("/user/profile")
+@router.put("/user/profile", dependencies=[audit(AuditAction("auth.update_profile", "更新个人资料", "update", "user"))])
 def update_user_profile(
     data: dict,
     db: Session = Depends(get_db),
@@ -53,7 +45,10 @@ def update_user_profile(
     return success(update_profile_signature(db, current_user, signature))
 
 
-@router.post("/user/change_password")
+@router.post(
+    "/user/change_password",
+    dependencies=[audit(AuditAction("auth.change_password", "修改密码", "update", "user"))],
+)
 def change_password(
     data: dict,
     db: Session = Depends(get_db),

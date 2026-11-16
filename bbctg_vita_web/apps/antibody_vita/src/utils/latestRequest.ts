@@ -24,5 +24,3 @@ export function createLatestRequest() {
     },
   };
 }
-
-export type LatestRequest = ReturnType<typeof createLatestRequest>;

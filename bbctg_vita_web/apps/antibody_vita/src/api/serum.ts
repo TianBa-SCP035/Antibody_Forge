@@ -1,6 +1,28 @@
 import { requestClient, skipGlobalErrorHandler } from '#/api/request';
+import { fetchRecordedTargets } from '#/api/options';
 
 export { skipGlobalErrorHandler };
+
+export const SERUM_PAGE_DETAIL = 'serum.page.detail';
+export const SERUM_PAGE_EDIT = 'serum.page.edit';
+export const SERUM_PROJECT_CREATE = 'serum.project.create';
+export const SERUM_PROJECT_EDIT = 'serum.project.edit';
+export const SERUM_PROJECT_EDIT_ALL = 'serum.project.edit_all';
+export const SERUM_PROJECT_DELETE = 'serum.project.delete';
+export const SERUM_STATUS_UPDATE = 'serum.status.update';
+export const SERUM_STATUS_AUTO_UPDATE = 'serum.status.auto_update';
+export const SERUM_CAGE_UPDATE = 'serum.cage.update';
+export const SERUM_MOUSE_EXPORT = 'serum.mouse.export';
+export const SERUM_CELL_VIEW = 'serum.cell.view';
+export const SERUM_CELL_PREP_STATUS_UPDATE = 'serum.cell.prep_status.update';
+export const SERUM_TITER_EDIT = 'serum.titer.edit';
+export const SERUM_TITER_EDIT_ALL = 'serum.titer.edit_all';
+export const SERUM_FILE_MANAGE = 'serum.file.manage';
+export const TITER_ORDER_EDIT = 'serum.titer_order.edit';
+export const TITER_ORDER_DELETE = 'serum.titer_order.delete';
+export const TITER_ORDER_OWNER_EDIT = 'serum.titer_order.owner.edit';
+export const TITER_ORDER_RECORD_EDIT = 'serum.titer_order.record.edit';
+export const TITER_ORDER_RECORD_EDIT_ALL = 'serum.titer_order.record.edit_all';
 
 const SAVE_TIMEOUT = 5000;
 const AUTO_UPDATE_STATUS_TIMEOUT = 20_000;
@@ -12,6 +34,14 @@ type PostConfig = Parameters<typeof requestClient.post>[2];
 const downloadConfig = {
   skipErrorHandler: true,
 } as Parameters<typeof requestClient.download>[1];
+
+export function fetchSerumRecordedTargets(keyword = '') {
+  return fetchRecordedTargets('/serum/recorded_targets', keyword);
+}
+
+export function fetchTiterOrderRecordedTargets(keyword = '') {
+  return fetchRecordedTargets('/serum/titer/order/recorded_targets', keyword);
+}
 
 export function fetchStats(data: Record<string, unknown> = {}, config?: PostConfig) {
   return requestClient.post('/serum/stats', data, config);

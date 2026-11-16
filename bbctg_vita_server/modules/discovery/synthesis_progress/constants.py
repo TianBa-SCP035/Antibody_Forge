@@ -115,7 +115,6 @@ TARGET_COLOR_OPTIONS = (
     "purple",
 )
 
-SOURCE_ONE_TYPES = ("ngs", "beacon")
 # 此前的订单已按总工单 Excel 导入对齐；只为 One 在此之后新建的订单自动建单
 ONE_AUTO_CREATE_SINCE = "2026-11-01"
 ONE_AUTO_CREATED_BY = "One同步"
@@ -206,7 +205,6 @@ __all__ = [
     "RECHOOSE_OPTIONS",
     "RECHOOSE_TOKEN",
     "SELECTION_METHOD_OPTIONS",
-    "SOURCE_ONE_TYPES",
     "STATUS_ASSAYING",
     "STATUS_CANCELLED",
     "STATUS_COMPLETED",

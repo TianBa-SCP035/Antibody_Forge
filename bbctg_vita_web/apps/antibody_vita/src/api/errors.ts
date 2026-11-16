@@ -120,6 +120,14 @@ export function resolveUserMessage(
   if (extracted.isNetworkError) {
     return { level: 'error', message: '网络异常，请检查连接' };
   }
+  // 后端统一响应体（带数字 code）里的 403/404 文案是写给用户的；框架默认的 {"detail": "Not Found"} 不是
+  if (
+    (extracted.httpStatus === 403 || extracted.httpStatus === 404) &&
+    extracted.businessCode !== undefined &&
+    extracted.backendMessage
+  ) {
+    return { level: 'error', message: extracted.backendMessage };
+  }
   if (extracted.httpStatus === 403) {
     return { level: 'error', message: '没有权限执行此操作' };
   }

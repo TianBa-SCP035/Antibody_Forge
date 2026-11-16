@@ -177,6 +177,11 @@ class LibraryOrderTests(DbTestCase):
         )
         self.assertEqual(custom["mouse_strain"], "RL、自建品系")
         self.assertEqual(custom["sample_type"], service.SAMPLE_LITE)
+        pasted = service.save(
+            self.db,
+            {"id": saved["id"], "mouse_strain": "自建品系\nRL\tRN"},
+        )
+        self.assertEqual(pasted["mouse_strain"], "RL、RN、自建品系")
         unmapped_first = service.save(
             self.db,
             {"id": saved["id"], "mouse_strain": "RM、RN"},
@@ -365,14 +370,98 @@ class LibraryOrderTests(DbTestCase):
         with self.assertRaisesRegex(ValueError, "ID"):
             service.batch_save(self.db, [{"remark": "x"}])
 
+    def test_expected_conflict_detection_single_and_batch(self):
+        from datetime import date
+
+        from core.errors import ConflictError
+        from modules.molecular_cell.library_orders import routes as order_routes
+
+        first = service.save(
+            self.db,
+            {"build_type": service.BUILD_POOLED_BCR, "remark": "初版", "qc_on": "2026-03-17"},
+        )
+        second = service.save(
+            self.db,
+            {"build_type": service.BUILD_PHAGE_DISPLAY, "remark": "二号"},
+        )
+
+        with self.assertRaises(ConflictError):
+            service.batch_save(
+                self.db,
+                [
+                    {"id": first["id"], "remark": "不应写入", "_expected": {"remark": "初版"}},
+                    {"id": second["id"], "remark": "新版", "_expected": {"remark": "过期"}},
+                ],
+            )
+        self.db.rollback()
+        self.assertEqual(self.db.get(MolecularLibraryOrder, first["id"]).remark, "初版")
+
+        updated = service.batch_save(
+            self.db,
+            [
+                {
+                    "id": first["id"],
+                    "remark": "已改",
+                    "_expected": {
+                        "remark": " 初版 ",
+                        "qc_on": date(2026, 3, 17),
+                        "library_order_id": "IGNORED",
+                    },
+                }
+            ],
+        )
+        self.assertEqual(updated["items"][0]["remark"], "已改")
+
+        with self.assertRaises(ConflictError):
+            service.save(
+                self.db,
+                {"id": first["id"], "remark": "冲突", "_expected": {"remark": "过期"}},
+            )
+        self.db.rollback()
+        plain = service.save(self.db, {"id": first["id"], "remark": "无基线覆盖"})
+        self.assertEqual(plain["remark"], "无基线覆盖")
+
+        # QC 结论权限校验允许携带 _expected
+        self.assertTrue(
+            order_routes._is_qc_conclusion_only(
+                {"id": first["id"], "qc_result": "通过", "_expected": {"qc_result": "待判定"}}
+            )
+        )
+
+    def test_list_rows_round_trip_as_expected(self):
+        service.save(
+            self.db,
+            {
+                "build_type": service.BUILD_POOLED_BCR,
+                "plate_nos": ["P2", "P1"],
+                "qc_on": "2026/3/17",
+                "remark": "第一行\n第二行",
+            },
+        )
+        service.save(self.db, {"build_type": service.BUILD_PHAGE_DISPLAY})
+        items = service.get_list(self.db, {})["items"]
+        for item in items:
+            saved = service.save(self.db, {"id": item["id"], "remark": "单条", "_expected": dict(item)})
+            self.assertEqual(saved["remark"], "单条")
+        items = service.get_list(self.db, {})["items"]
+        saved = service.batch_save(
+            self.db,
+            [{"id": item["id"], "remark": "批量", "_expected": dict(item)} for item in items],
+        )
+        self.assertEqual([row["remark"] for row in saved["items"]], ["批量", "批量"])
+
     def test_export_headers_match_excel_view_labels(self):
-        columns_js = (
-            Path(__file__).resolve().parents[2]
-            / "bbctg_vita_web/apps/antibody_vita/src/views/MolecularCell/library/libraryColumns.js"
-        )
+        web_src = Path(__file__).resolve().parents[2] / "bbctg_vita_web/apps/antibody_vita/src"
+        source = (web_src / "views/MolecularCell/library/libraryColumns.js").read_text(encoding="utf-8")
+        start = source.index("export const FIELDS = defineFields({")
+        fields_block = source[start : source.index("\n})", start)]
         sheet_labels = dict(
-            re.findall(r"def\('(\w+)',\s*'([^']+)'", columns_js.read_text(encoding="utf-8"))
+            re.findall(r"^  (\w+): (?:\{\s*(?:\.\.\.)?)?(?:label: |\w+\()'([^']+)'", fields_block, re.M)
         )
+        shared_source = (web_src / "components/workbench/fieldSchema.js").read_text(encoding="utf-8")
+        shared_labels = dict(re.findall(r"^export const (\w+) = Object\.freeze\(\{\s*label: '([^']+)'", shared_source, re.M))
+        for key, constant in re.findall(r"^  (\w+): ([A-Z_]+),$", fields_block, re.M):
+            sheet_labels[key] = shared_labels[constant]
         self.assertEqual(set(sheet_labels), {key for _, key in service.EXPORT_COLUMNS})
         for label, key in service.EXPORT_COLUMNS:
             self.assertEqual(sheet_labels.get(key), label, key)
@@ -1186,13 +1275,13 @@ class LibraryFileTests(DbTestCase):
         )
 
     def _upload(self, name, content, order_id=None):
+        """传一个文件到指定工单；没存上时按第一条原因抛 ValueError。"""
         upload = UploadFile(filename=name, file=io.BytesIO(content))
-        return service.upload_file(
-            self.db,
-            upload,
-            order_id or self.order["id"],
-            "tester",
-        )
+        result = service.upload_batch(self.db, [upload], [name], "tester", order_id or self.order["id"])
+        if not result["items"]:
+            reasons = [issue["reason"] for summary in result["summary"] for issue in summary.get("issues", [])]
+            raise ValueError(reasons[0] if reasons else "文件未保存")
+        return result["items"][0]
 
     def _file_record(self, uploaded):
         link = self.db.get(MolecularLibraryResultLink, uploaded["id"])
@@ -1327,7 +1416,7 @@ class LibraryFileTests(DbTestCase):
 
     def test_long_filename_keeps_extension_for_preview(self):
         original = f"{'C' * 90}.ab1"
-        stored = service.safe_path_part(original, "file")
+        stored = service.clean_path_part(original, "file")
         recognized = TRACE_EXTENSIONS | service.INLINE_PREVIEW_EXTENSIONS
 
         self.assertTrue(stored.endswith(".ab1"))

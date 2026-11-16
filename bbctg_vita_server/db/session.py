@@ -70,5 +70,8 @@ def get_db(request: Request) -> Generator[Session, None, None]:
     db.info["audit_read_only"] = request.method in {"GET", "HEAD", "OPTIONS"}
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()

@@ -132,6 +132,10 @@ class TiterStatsTests(DbTestCase):
         self.assertEqual(titer.get_titer_order_stats(self.db, scope)["pending"], 1)
         self.assertEqual(titer.get_titer_order_stats(self.db, {**scope, "blood_collection_start": "2026-11-01"})["pending"], 0)
 
+    def test_invalid_date_filter_is_rejected_not_ignored(self):
+        with self.assertRaisesRegex(ValueError, "日期筛选格式不正确"):
+            titer.get_titer_order_stats(self.db, {"blood_collection_start": "2026/10/15"})
+
     def test_header_filters_follow_displayed_mouse_count(self):
         for code in ("E1", "E2"):
             self.db.add(SerumImmProject(project_code=code, experiment_id=code, project_status="已采血"))

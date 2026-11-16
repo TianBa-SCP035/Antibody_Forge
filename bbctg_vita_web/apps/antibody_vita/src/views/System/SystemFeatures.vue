@@ -323,6 +323,16 @@ function menuKey(feature: SystemFeatureFlag) {
   return feature.code.replace(/^menu\./, '');
 }
 
+const JOB_RESULTS = [
+  { value: 'success', label: '成功', tag: 'success' },
+  { value: 'skipped', label: '跳过', tag: 'info' },
+  { value: 'failed', label: '失败', tag: 'danger' },
+] as const;
+
+function jobResult(log: SystemJobRunLog) {
+  return JOB_RESULTS.find((item) => item.value === log.result) || JOB_RESULTS[2];
+}
+
 function formatDuration(ms?: number) {
   if (ms === undefined || ms === null) return '-';
   if (ms < 1000) return `${ms} ms`;
@@ -637,8 +647,12 @@ onMounted(loadFeatures);
                 />
               </el-select>
               <el-select v-model="logQuery.result" clearable placeholder="全部结果" style="width: 120px">
-                <el-option label="成功" value="success" />
-                <el-option label="失败" value="failed" />
+                <el-option
+                  v-for="item in JOB_RESULTS"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
               </el-select>
               <el-date-picker
                 v-model="logQuery.date_range"
@@ -658,9 +672,7 @@ onMounted(loadFeatures);
               </el-table-column>
               <el-table-column label="结果" width="100">
                 <template #default="{ row }">
-                  <el-tag :type="row.result === 'success' ? 'success' : 'danger'">
-                    {{ row.result === 'success' ? '成功' : '失败' }}
-                  </el-tag>
+                  <el-tag :type="jobResult(row).tag">{{ jobResult(row).label }}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column label="执行内容" min-width="260">

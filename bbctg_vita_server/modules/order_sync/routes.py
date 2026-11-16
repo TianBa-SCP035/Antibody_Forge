@@ -9,6 +9,8 @@ from db.session import get_db
 from modules.auth.external import require_order_sync_caller
 from modules.order_sync import service
 from modules.order_sync.service import OrderSyncError
+from modules.system.audit_context import AuditAction
+from modules.system.audit_routes import audit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -28,7 +30,13 @@ def device_error(code: int, message: str, trace_id: str) -> JSONResponse:
     )
 
 
-@router.post("/sync", dependencies=[Depends(require_order_sync_caller)])
+@router.post(
+    "/sync",
+    dependencies=[
+        Depends(require_order_sync_caller),
+        audit(AuditAction("order.experiment.sync", "回传工单数据", "update", "order_sync")),
+    ],
+)
 def sync_order_experiment(
     trace_id: str = Form(...),
     order_json: UploadFile = File(...),

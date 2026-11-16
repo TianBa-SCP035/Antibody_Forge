@@ -1,26 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from core.errors import route_error
 from core.response import success
 from db.session import get_db
-from models.system import SysUser
-from modules.auth.dependencies import get_current_user
+from modules.auth.permissions import require
 from modules.immunology.cell.service import get_cell_inventory_data
-from modules.system.permissions import require_permission
 
 router = APIRouter()
 
 
-@router.get("/data")
+@router.get("/data", dependencies=[require("serum.cell.view")])
 def cell_inventory_data(
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    try:
-        require_permission(db, current_user, "serum.cell.view")
-        return success(get_cell_inventory_data(db))
-    except HTTPException:
-        raise
-    except Exception as exc:
-        return route_error(exc)
+    return success(get_cell_inventory_data(db))

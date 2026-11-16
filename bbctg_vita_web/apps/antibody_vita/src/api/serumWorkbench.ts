@@ -1,4 +1,9 @@
 import { requestClient, skipGlobalErrorHandler } from '#/api/request';
+import { fetchRecordedTargets } from '#/api/options';
+
+export const SERUM_WORKBENCH_EDIT = 'serum.workbench.edit';
+export const SERUM_WORKBENCH_DRAFT_EDIT = 'serum.workbench.draft_edit';
+export const SERUM_WORKBENCH_SUPPORT_EDIT = 'serum.workbench.support_edit';
 
 const SAVE_TIMEOUT = 5000;
 const DOWNLOAD_TIMEOUT = 360_000;
@@ -8,6 +13,10 @@ type RequestConfig = Parameters<typeof requestClient.get>[1];
 const downloadConfig = {
   skipErrorHandler: true,
 } as Parameters<typeof requestClient.download>[1];
+
+export function fetchSerumWorkbenchRecordedTargets(keyword = '') {
+  return fetchRecordedTargets('/serum/workbench/recorded_targets', keyword);
+}
 
 export function fetchWorkbenchList(data: any, config?: PostConfig) {
   return requestClient.post('/serum/workbench/list', data, {

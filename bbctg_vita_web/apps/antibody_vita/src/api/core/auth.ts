@@ -11,11 +11,6 @@ export namespace AuthApi {
   export interface LoginResult {
     accessToken: string;
   }
-
-  export interface RefreshTokenResult {
-    data: string;
-    status: number;
-  }
 }
 
 /**
@@ -32,15 +27,6 @@ export async function yunzhijiaLoginApi(ticket: string) {
   return requestClient.get<AuthApi.LoginResult>('/auth/yunzhijia', {
     params: { ticket },
     timeout: 15_000,
-  });
-}
-
-/**
- * 刷新accessToken
- */
-export async function refreshTokenApi() {
-  return baseRequestClient.post<AuthApi.RefreshTokenResult>('/auth/refresh', {
-    withCredentials: true,
   });
 }
 

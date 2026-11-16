@@ -10,15 +10,7 @@ from sqlalchemy import and_, case, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from utils.filter_values import (
-    DEFAULT_RECORDED_TARGET_LIMIT,
-    clean_field_text,
-    recorded_target_clause,
-    recorded_target_search,
-    restrict,
-    split_code_tokens,
-)
-
+from core.errors import ConflictError, ForbiddenError, NotFoundError
 from models.immunology import (
     SerumElisaPlate,
     SerumFacsPlate,
@@ -37,35 +29,58 @@ from modules.immunology.serum.service import (
     EXPERIMENT_RELATED_MODELS,
     TERMINAL_PROJECT_STATUSES,
     generate_next_id,
-    join_strain_parts as _join_strain_parts,
     rename_experiment_related_records,
     update_project_identifiers,
+)
+from modules.immunology.serum.service import (
+    join_strain_parts as _join_strain_parts,
+)
+from modules.immunology.serum.service import (
     validate_scheme_graph as _validate_scheme_graph,
 )
-from utils.target_structure import to_serum_target_type
+from utils.batch_save import check_expected, lock_rows_by_id, parse_batch_items
+from utils.clock import now_local
+from utils.filter_values import (
+    DEFAULT_RECORDED_TARGET_LIMIT,
+    recorded_target_clause,
+    recorded_target_search,
+    restrict,
+    split_code_tokens,
+)
 from utils.header_filters import (
     HeaderColumn,
-    header_column_values,
     csv_column,
     csv_token_clause,
+    header_column_values,
+    header_columns,
     header_filter_clauses,
     header_sort_clauses,
     without_header_fields,
 )
-from utils.normalize import join_known_options, normalize_target_codes, optional_int
+from utils.model_fields import clean_field, model_fields
+from utils.normalize import (
+    join_known_options,
+    normalize_priority,
+    normalize_target_codes,
+    optional_int,
+    parse_row_id,
+)
+from utils.pagination import paginate_select
+from utils.target_structure import to_serum_target_type
 from utils.workbench_queue import (
     DEFAULT_PRIORITY,
     PRIORITY_ORDER,
-    apply_priority_constraints,
-    canonicalize_priority,
+    QueueSpec,
+    apply_queue,
     list_order_clauses,
     lock_queue,
-    place_row_among,
+    place_row,
     queued_sort,
-    renumber_queue,
+    reorder_queue,
+    repack_queue,
 )
-from utils.clock import now_local
 
+MISSING_ROW = "工作台记录不存在"
 PLAN_STATUS_DRAFT = "草稿"
 PLAN_STATUS_PREP = "筹备中"
 PLAN_STATUS_STARTED = "已开展"
@@ -114,35 +129,9 @@ SCHEME_HEADER_FIELDS = [
     if field not in ("experiment_id", "reviewer") and field not in STRAIN_FIELDS
 ]
 
-PREP_FIELDS = [
-    "sort_order",
-    "priority",
-    "plan_status",
-    "project_set_code",
-    "species_cross",
-    "immuno_method",
-    "review_status",
-    "mouse_scheme_no",
-    "mouse_count",
-    "mouse_zygosity",
-    "mouse_birth_date",
-    "mouse_age_weeks",
-    "mouse_expand_requested",
-    "mouse_region",
-    "mouse_room",
-    "mouse_status",
-    "mouse_arrive_date",
-    "mouse_remark",
-    "antigen_source",
-    "antigen_ready",
-    "antigen_eta",
-    "lnp_ordered",
-    "cell_prep_status",
-    "antigen_remark",
-    "can_start",
-]
-
-WORKBENCH_MUTABLE_FIELDS = frozenset(ALIGNED_FIELDS + PREP_FIELDS)
+FIELDS = model_fields(SerumImmWorkbench)
+# 开展后对齐字段跟随免疫实验，工作台只能再改其余的准备字段
+PREP_FIELDS = [field for field in FIELDS if field not in ALIGNED_FIELDS]
 DRAFT_PROTECTED_FIELDS = frozenset(
     {"plan_status", "reviewer", "review_status", "can_start"}
 )
@@ -167,12 +156,11 @@ SUPPORT_EDIT_FIELDS = frozenset(
         "antigen_remark",
     }
 )
-WORKBENCH_REMARK_FIELDS = frozenset({"remark", "mouse_remark", "antigen_remark"})
+BREAK_FIELDS = frozenset({"remark", "mouse_remark", "antigen_remark", "project_purpose"})
 
 YES_NO_FIELDS = frozenset(
     {"can_start", "antigen_ready", "lnp_ordered", "mouse_expand_requested"}
 )
-INT_FIELDS = frozenset({"sort_order", "facs_plate_count", "elisa_plate_count"})
 READONLY_RESPONSE_KEYS = frozenset(
     {
         "experiment_id",
@@ -260,14 +248,11 @@ def _assign_temp_experiment_id(db: Session, row: SerumImmWorkbench) -> None:
 
 
 def _is_started(row: SerumImmWorkbench) -> bool:
-    return (row.plan_status or "") == PLAN_STATUS_STARTED
+    return row.plan_status == PLAN_STATUS_STARTED
 
 
 def _is_closed_plan(status: str | None) -> bool:
     return str(status or "").strip() in CLOSED_PLAN_STATUSES
-
-
-_priority_value = canonicalize_priority
 
 
 def _normalize_species_cross(value: Any) -> str | None:
@@ -297,7 +282,7 @@ def _row_is_terminal(row: SerumImmWorkbench, project: SerumImmProject | None = N
 
 
 def _terminal_sql():
-    plan_status = func.coalesce(SerumImmWorkbench.plan_status, PLAN_STATUS_DRAFT)
+    plan_status = SerumImmWorkbench.plan_status
     project_status = func.coalesce(SerumImmProject.project_status, "")
     return or_(
         plan_status.in_(CLOSED_PLAN_STATUSES),
@@ -308,16 +293,18 @@ def _terminal_sql():
     )
 
 
-def _queue_rows(db: Session) -> list[SerumImmWorkbench]:
-    return db.scalars(
-        select(SerumImmWorkbench)
-        .outerjoin(
-            SerumImmProject,
-            SerumImmWorkbench.experiment_id == SerumImmProject.experiment_id,
-        )
-        .where(~_terminal_sql())
-        .order_by(SerumImmWorkbench.sort_order.asc(), SerumImmWorkbench.id.asc())
-    ).unique().all()
+QUEUE_SPEC = QueueSpec(
+    model=SerumImmWorkbench,
+    active_stmt=lambda: select(SerumImmWorkbench)
+    .outerjoin(
+        SerumImmProject,
+        SerumImmWorkbench.experiment_id == SerumImmProject.experiment_id,
+    )
+    .where(~_terminal_sql()),
+    missing_message=MISSING_ROW,
+    is_terminal_row=lambda db, row: _row_is_terminal(row, _project_by_experiment(db, row.experiment_id)),
+    unique_rows=True,
+)
 
 
 def _projects_for_rows(
@@ -341,10 +328,6 @@ def _projects_for_rows(
     }
 
 
-def _lock_queue(db: Session) -> None:
-    lock_queue(db, SerumImmWorkbench)
-
-
 def sync_project_queue_status(
     db: Session,
     experiment_id: str,
@@ -352,7 +335,7 @@ def sync_project_queue_status(
     is_terminal: bool,
 ) -> None:
     """Apply one project's terminal transition without rebuilding the full queue."""
-    _lock_queue(db)
+    lock_queue(db, SerumImmWorkbench)
     row = db.scalar(
         select(SerumImmWorkbench)
         .where(SerumImmWorkbench.experiment_id == experiment_id)
@@ -364,50 +347,9 @@ def sync_project_queue_status(
         if queued_sort(row.sort_order) is None:
             return
         row.sort_order = None
-        renumber_queue(
-            [
-                item
-                for item in _queue_rows(db)
-                if int(item.id) != int(row.id)
-            ]
-        )
+        repack_queue(db, QUEUE_SPEC, exclude_id=row.id)
     elif queued_sort(row.sort_order) is None:
-        _place_row(db, row, mode="last")
-
-
-def _place_row(db: Session, row: SerumImmWorkbench, *, mode: str, target_sort: int | None = None) -> None:
-    if not getattr(row, "id", None):
-        db.flush()
-    others = [item for item in _queue_rows(db) if int(item.id) != int(row.id)]
-    place_row_among(others, row, mode=mode, target_sort=target_sort)
-
-
-def _apply_queue(
-    db: Session,
-    row: SerumImmWorkbench,
-    *,
-    previous_sort: int | None,
-    previous_priority: Any,
-    payload: dict[str, Any],
-    is_new: bool,
-    project: SerumImmProject | None = None,
-) -> None:
-    if _row_is_terminal(row, project):
-        leaving = queued_sort(previous_sort) is not None or queued_sort(row.sort_order) is not None
-        row.sort_order = None
-        if leaving:
-            renumber_queue([item for item in _queue_rows(db) if int(item.id) != int(row.id or 0)])
-        return
-    if is_new or queued_sort(previous_sort) is None:
-        target = queued_sort(payload.get("sort_order"))
-        _place_row(db, row, mode="snap" if target else "last", target_sort=target)
-        return
-    apply_priority_constraints(
-        row,
-        previous_sort=previous_sort,
-        previous_priority=previous_priority,
-        place=lambda mode, target_sort=None: _place_row(db, row, mode=mode, target_sort=target_sort),
-    )
+        place_row(db, QUEUE_SPEC, row, mode="last")
 
 
 def _project_by_experiment(
@@ -426,7 +368,7 @@ def _project_by_experiment(
 
 
 def _overlay_identity(data: dict[str, Any], project: SerumImmProject | None) -> dict[str, Any]:
-    started = (data.get("plan_status") or "") == PLAN_STATUS_STARTED
+    started = data["plan_status"] == PLAN_STATUS_STARTED
     if started and project:
         for field in ALIGNED_FIELDS:
             data[field] = getattr(project, field)
@@ -436,7 +378,7 @@ def _overlay_identity(data: dict[str, Any], project: SerumImmProject | None) -> 
         data["display_status"] = project.project_status or PLAN_STATUS_STARTED
     else:
         data["serum_project_id"] = None
-        data["display_status"] = data.get("plan_status") or PLAN_STATUS_DRAFT
+        data["display_status"] = data["plan_status"]
     data["aligned_locked"] = started
     return data
 
@@ -577,13 +519,7 @@ def serialize_row(
     row: SerumImmWorkbench,
     project: SerumImmProject | None = None,
 ) -> dict[str, Any]:
-    data = _overlay_identity(row.to_dict(), project)
-    data["species_cross"] = _normalize_species_cross(data.get("species_cross")) or ""
-    try:
-        data["immuno_method"] = _normalize_immuno_method(data.get("immuno_method")) or ""
-    except ValueError:
-        data["immuno_method"] = str(data.get("immuno_method") or "").strip()
-    return data
+    return _overlay_identity(row.to_dict(), project)
 
 
 def _scheme_revision(db: Session, row: SerumImmWorkbench) -> str:
@@ -596,39 +532,18 @@ def _scheme_revision(db: Session, row: SerumImmWorkbench) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _comparison_value(field: str, value: Any) -> Any:
-    if field == "target_codes":
-        return normalize_target_codes(value)
-    if field == "species_cross":
-        return _normalize_species_cross(value)
-    if field == "immuno_method":
-        try:
-            return _normalize_immuno_method(value)
-        except ValueError:
-            return None
-    if field == "priority":
-        return _priority_value(value)
-    if field in YES_NO_FIELDS:
-        return _normalize_yes_no(value)
-    if field in INT_FIELDS:
-        return optional_int(value)
-    if field == "plan_status":
-        return str(value or "").strip() or PLAN_STATUS_DRAFT
-    if isinstance(value, str):
-        return value.strip() or None
-    return value
-
-
-def _validate_expected_fields(row: SerumImmWorkbench, expected: Any) -> None:
-    if not isinstance(expected, dict) or not expected:
+def _check_expected_rows(db: Session, pairs: list[tuple[SerumImmWorkbench, Any]]) -> None:
+    """按列表给前端的同一份数据核对 _expected：已开展行的对齐字段取免疫实验，品系取方案分组。"""
+    pairs = [(row, expected) for row, expected in pairs if expected]
+    if not pairs:
         return
-    current = row.to_dict()
-    allowed = set(ALIGNED_FIELDS + PREP_FIELDS)
-    for field, expected_value in expected.items():
-        if field not in allowed:
-            continue
-        if _comparison_value(field, current.get(field)) != _comparison_value(field, expected_value):
-            raise ValueError("工作台记录已被其他用户修改，请刷新后重试")
+    current = _serialize_list_rows(db, [row for row, _expected in pairs])
+    for values, (_row, expected) in zip(current, pairs):
+        check_expected(
+            values,
+            expected,
+            fields=FIELDS,
+        )
 
 
 def _apply_fields(row: SerumImmWorkbench, data: dict[str, Any], fields: list[str]) -> None:
@@ -643,10 +558,10 @@ def _apply_fields(row: SerumImmWorkbench, data: dict[str, Any], fields: list[str
             if value is None and field in REQUIRED_YES_NO_DEFAULTS:
                 value = REQUIRED_YES_NO_DEFAULTS[field]
             if value not in (None, "是", "否"):
-                raise ValueError(f"{field} 只能填写“是”或“否”")
-        elif field in INT_FIELDS:
+                raise ValueError(f"{FIELDS[field].label}只能填写“是”或“否”")
+        elif field == "sort_order":
             value = optional_int(value)
-            if field == "sort_order" and (value is None or value <= 0):
+            if value is None or value <= 0:
                 continue
         elif field == "plan_status":
             text = str(value or "").strip()
@@ -656,9 +571,7 @@ def _apply_fields(row: SerumImmWorkbench, data: dict[str, Any], fields: list[str
                 raise ValueError("工作台状态不在允许的选项中")
             value = text or PLAN_STATUS_DRAFT
         elif field == "priority":
-            value = _priority_value(value)
-            if value not in PRIORITY_ORDER:
-                raise ValueError("优先级不在允许的选项中")
+            value = normalize_priority(value)
         elif field == "review_status":
             value = str(value or "").strip() or DEFAULT_REVIEW_STATUS
             if value not in REVIEW_STATUS_OPTIONS:
@@ -673,12 +586,8 @@ def _apply_fields(row: SerumImmWorkbench, data: dict[str, Any], fields: list[str
             value = _normalize_immuno_method(value)
         elif field == "project_code":
             value = _compact_identifier(value) or None
-        elif field in WORKBENCH_REMARK_FIELDS:
-            value = clean_field_text(value, keep_breaks=True) or None
-            if value and len(value) > 255:
-                raise ValueError("备注不能超过 255 个字符")
-        elif isinstance(value, str):
-            value = clean_field_text(value, keep_breaks=field == "project_purpose") or None
+        else:
+            value = clean_field(FIELDS[field], value, keep_breaks=field in BREAK_FIELDS)
         setattr(row, field, value)
 
 
@@ -746,7 +655,7 @@ def _delete_children(db: Session, experiment_id: str | None) -> None:
 
 
 def _resolve_view_group(plan_status: Any, project_status: Any) -> str:
-    plan = str(plan_status or "").strip() or PLAN_STATUS_DRAFT
+    plan = plan_status
     project = str(project_status or "").strip()
     if plan in CLOSED_PLAN_STATUSES:
         return "cancelled"
@@ -758,7 +667,7 @@ def _resolve_view_group(plan_status: Any, project_status: Any) -> str:
 
 
 def _view_group_expr(view_group: str):
-    plan_status = func.coalesce(SerumImmWorkbench.plan_status, PLAN_STATUS_DRAFT)
+    plan_status = SerumImmWorkbench.plan_status
     is_started = plan_status == PLAN_STATUS_STARTED
     is_cancelled = plan_status.in_(CLOSED_PLAN_STATUSES)
     is_completed = and_(
@@ -819,7 +728,7 @@ def _display_status_expr():
             ),
             func.coalesce(SerumImmProject.project_status, PLAN_STATUS_STARTED),
         ),
-        else_=func.coalesce(SerumImmWorkbench.plan_status, PLAN_STATUS_DRAFT),
+        else_=SerumImmWorkbench.plan_status,
     )
 
 
@@ -881,39 +790,29 @@ def _target_pair_stmt():
 
 _W = SerumImmWorkbench
 _YES_NO = ("是", "否")
-HEADER_COLUMNS: dict[str, HeaderColumn] = {
-    "priority": HeaderColumn(_W.priority, "enum", order=tuple(PRIORITY_ORDER)),
+# 对齐字段开展后显示免疫实验的值，表头筛选要按同一口径，不能用工作台列自动生成
+HEADER_COLUMNS = header_columns(
+    {key: field for key, field in FIELDS.items() if key not in ALIGNED_FIELDS},
+    priority=HeaderColumn(_W.priority, order=tuple(PRIORITY_ORDER)),
     # 表格视图的 plan_status 列在前端是 status 的别名；显示的是开展后跟随项目的状态
-    "status": HeaderColumn(_display_status_expr(), "enum"),
-    "pm": HeaderColumn(_aligned_value_expr(_W.pm, SerumImmProject.pm), "enum"),
-    "owner": HeaderColumn(_aligned_value_expr(_W.owner, SerumImmProject.owner), "enum"),
-    "project_code": HeaderColumn(_aligned_value_expr(_W.project_code, SerumImmProject.project_code)),
-    "experiment_id": HeaderColumn(_aligned_value_expr(_W.experiment_id, SerumImmProject.experiment_id)),
-    "study_type": HeaderColumn(_aligned_value_expr(_W.study_type, SerumImmProject.study_type), "enum"),
-    "remark": HeaderColumn(_aligned_value_expr(_W.remark, SerumImmProject.remark)),
-    "project_set_code": HeaderColumn(_W.project_set_code),
-    "species_cross": csv_column(_W.species_cross, SPECIES_CROSS_OPTIONS),
-    "immuno_method": csv_column(_W.immuno_method, IMMUNO_METHOD_OPTIONS),
-    "reviewer": HeaderColumn(_aligned_value_expr(_W.reviewer, SerumImmProject.reviewer), "enum"),
-    "review_status": HeaderColumn(_W.review_status, "enum", order=REVIEW_STATUS_OPTIONS),
-    "mouse_scheme_no": HeaderColumn(_W.mouse_scheme_no),
-    "mouse_count": HeaderColumn(_W.mouse_count),
-    "mouse_zygosity": HeaderColumn(_W.mouse_zygosity, "enum"),
-    "mouse_birth_date": HeaderColumn(_W.mouse_birth_date, "date"),
-    "mouse_region": HeaderColumn(_W.mouse_region, "enum", order=MOUSE_REGION_OPTIONS),
-    "mouse_room": HeaderColumn(_W.mouse_room),
-    "mouse_status": HeaderColumn(_W.mouse_status, "enum", order=MOUSE_STATUS_OPTIONS),
-    "mouse_arrive_date": HeaderColumn(_W.mouse_arrive_date, "date"),
-    "mouse_remark": HeaderColumn(_W.mouse_remark),
-    "mouse_expand_requested": HeaderColumn(_W.mouse_expand_requested, "enum", order=_YES_NO),
-    "antigen_source": HeaderColumn(_W.antigen_source, "enum"),
-    "antigen_ready": HeaderColumn(_W.antigen_ready, "enum", order=_YES_NO),
-    "antigen_eta": HeaderColumn(_W.antigen_eta),
-    "lnp_ordered": HeaderColumn(_W.lnp_ordered, "enum", order=_YES_NO),
-    "cell_prep_status": HeaderColumn(_W.cell_prep_status, "enum"),
-    "antigen_remark": HeaderColumn(_W.antigen_remark),
-    "can_start": HeaderColumn(_W.can_start, "enum", order=_YES_NO),
-}
+    status=HeaderColumn(_display_status_expr()),
+    pm=HeaderColumn(_aligned_value_expr(_W.pm, SerumImmProject.pm)),
+    owner=HeaderColumn(_aligned_value_expr(_W.owner, SerumImmProject.owner)),
+    project_code=HeaderColumn(_aligned_value_expr(_W.project_code, SerumImmProject.project_code)),
+    experiment_id=HeaderColumn(_aligned_value_expr(_W.experiment_id, SerumImmProject.experiment_id)),
+    study_type=HeaderColumn(_aligned_value_expr(_W.study_type, SerumImmProject.study_type)),
+    remark=HeaderColumn(_aligned_value_expr(_W.remark, SerumImmProject.remark)),
+    reviewer=HeaderColumn(_aligned_value_expr(_W.reviewer, SerumImmProject.reviewer)),
+    species_cross=csv_column(_W.species_cross, SPECIES_CROSS_OPTIONS),
+    immuno_method=csv_column(_W.immuno_method, IMMUNO_METHOD_OPTIONS),
+    review_status=HeaderColumn(_W.review_status, order=REVIEW_STATUS_OPTIONS),
+    mouse_region=HeaderColumn(_W.mouse_region, order=MOUSE_REGION_OPTIONS),
+    mouse_status=HeaderColumn(_W.mouse_status, order=MOUSE_STATUS_OPTIONS),
+    mouse_expand_requested=HeaderColumn(_W.mouse_expand_requested, order=_YES_NO),
+    antigen_ready=HeaderColumn(_W.antigen_ready, order=_YES_NO),
+    lnp_ordered=HeaderColumn(_W.lnp_ordered, order=_YES_NO),
+    can_start=HeaderColumn(_W.can_start, order=_YES_NO),
+)
 
 
 def _apply_list_filters(
@@ -1074,31 +973,10 @@ def _list_stats(db: Session, data: dict[str, Any]) -> dict[str, int]:
     return stats
 
 
-def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
-    page = max(int(data.get("page", 1) or 1), 1)
-    limit = min(max(int(data.get("limit", 20) or 20), 1), 500)
-    payload = data or {}
-    stmt = _apply_list_filters(_base_stmt(), payload, db=db)
-    total = db.scalar(_apply_list_filters(_count_stmt(), payload, db=db)) or 0
-    order_by = [*_list_order(payload)]
-    kw_tokens = split_code_tokens(payload.get("keyword"))
-    if len(kw_tokens) == 1:
-        order_by.insert(0, _keyword_rank_expr(kw_tokens[0]))
-    rows = db.scalars(
-        stmt.order_by(*order_by)
-        .offset((page - 1) * limit)
-        .limit(limit)
-    ).unique().all()
+def _serialize_list_rows(db: Session, rows: list[SerumImmWorkbench]) -> list[dict[str, Any]]:
     experiment_ids = [str(row.experiment_id or "").strip() for row in rows if row.experiment_id]
     strain_groups = _strain_groups_by_experiment(db, experiment_ids)
-    projects = {}
-    if experiment_ids:
-        projects = {
-            str(item.experiment_id or "").strip(): item
-            for item in db.scalars(
-                select(SerumImmProject).where(SerumImmProject.experiment_id.in_(experiment_ids))
-            ).all()
-        }
+    projects = _projects_for_rows(db, rows)
     items = [
         serialize_row(
             row,
@@ -1107,13 +985,27 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
         for row in rows
     ]
     _show_scheme_strains(items, strain_groups)
-    return {
-        "items": items,
-        "total": total,
-        "page": page,
-        "limit": limit,
-        "stats": _list_stats(db, payload),
-    }
+    return items
+
+
+def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    payload = data or {}
+    stmt = _apply_list_filters(_base_stmt(), payload, db=db)
+    count_stmt = _apply_list_filters(_count_stmt(), payload, db=db)
+    order_by = [*_list_order(payload)]
+    kw_tokens = split_code_tokens(payload.get("keyword"))
+    if len(kw_tokens) == 1:
+        order_by.insert(0, _keyword_rank_expr(kw_tokens[0]))
+    return paginate_select(
+        db,
+        stmt,
+        count_stmt,
+        payload,
+        order_by=order_by,
+        unique=True,
+        serialize_rows=lambda rows: _serialize_list_rows(db, rows),
+        stats=_list_stats(db, payload),
+    )
 
 
 def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
@@ -1278,21 +1170,11 @@ def get_detail(db: Session, workbench_id: int) -> dict[str, Any] | None:
     if not row:
         return None
     project = _project_by_experiment(db, row.experiment_id)
-    data = serialize_row(row, project)
+    data = _with_mouse_group_flag(db, serialize_row(row, project))
     data.update(_load_children(db, row.experiment_id))
     if not _is_started(row):
         data["scheme_revision"] = _scheme_revision(db, row)
     return data
-
-
-def _parse_row_id(raw: Any) -> int | None:
-    if raw in (None, ""):
-        return None
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return None
-    return value if value > 0 else None
 
 
 def _edit_scope_set(edit_scopes: set[str] | frozenset[str] | None) -> set[str]:
@@ -1311,17 +1193,17 @@ def _validate_row_edit_scope(
         return
 
     allowed_fields: set[str] = set()
-    is_draft = str(row.plan_status or PLAN_STATUS_DRAFT).strip() == PLAN_STATUS_DRAFT
+    is_draft = row.plan_status == PLAN_STATUS_DRAFT
     if "draft" in scopes and (is_new or is_draft):
-        allowed_fields.update(WORKBENCH_MUTABLE_FIELDS - DRAFT_PROTECTED_FIELDS)
+        allowed_fields.update(FIELDS.keys() - DRAFT_PROTECTED_FIELDS)
     if "support" in scopes and not is_new:
         allowed_fields.update(SUPPORT_EDIT_FIELDS)
     if not allowed_fields:
-        raise PermissionError("没有权限编辑该工作台记录")
+        raise ForbiddenError("没有权限编辑该工作台记录")
 
-    denied_fields = (set(payload) & WORKBENCH_MUTABLE_FIELDS) - allowed_fields
+    denied_fields = (set(payload) & FIELDS.keys()) - allowed_fields
     if denied_fields:
-        raise PermissionError("没有权限修改该工作台字段")
+        raise ForbiddenError("没有权限修改该工作台字段")
 
 
 def save(
@@ -1331,18 +1213,21 @@ def save(
     *,
     commit: bool = True,
     edit_scopes: set[str] | frozenset[str] | None = None,
+    acquire_queue_lock: bool = True,
 ) -> dict[str, Any]:
     payload = dict(data or {})
     supplied_id = payload.get("id")
-    raw_id = _parse_row_id(payload.get("id"))
+    raw_id = parse_row_id(payload.get("id"))
     if supplied_id not in (None, "") and raw_id is None:
         raise ValueError("工作台记录 ID 不正确")
     for key in READONLY_RESPONSE_KEYS:
         payload.pop(key, None)
     payload.pop("id", None)
     expected = payload.pop("_expected", None)
-    if raw_id is None or "sort_order" in payload or "priority" in payload or "plan_status" in payload:
-        _lock_queue(db)
+    if acquire_queue_lock and (
+        raw_id is None or "sort_order" in payload or "priority" in payload or "plan_status" in payload
+    ):
+        lock_queue(db, SerumImmWorkbench)
 
     row = None
     if raw_id is not None:
@@ -1352,7 +1237,7 @@ def save(
             .with_for_update()
         )
     if raw_id is not None and row is None:
-        raise ValueError("工作台记录不存在")
+        raise NotFoundError(MISSING_ROW)
     is_new = raw_id is None
     if row is None:
         row = SerumImmWorkbench(
@@ -1375,7 +1260,8 @@ def save(
     )
     previous_sort = queued_sort(row.sort_order)
     previous_priority = row.priority
-    _validate_expected_fields(row, expected)
+    if not is_new:
+        _check_expected_rows(db, [(row, expected)])
     refresh_project_name = (
         not _is_started(row)
         and "project_name" not in payload
@@ -1436,14 +1322,15 @@ def save(
                     _project_name_strains(db, row),
                 )
     project = _project_by_experiment(db, row.experiment_id) if _is_started(row) else None
-    _apply_queue(
+    apply_queue(
         db,
+        QUEUE_SPEC,
         row,
         previous_sort=previous_sort,
         previous_priority=previous_priority,
-        payload=payload,
+        target_sort=queued_sort(payload.get("sort_order")),
         is_new=is_new,
-        project=project,
+        is_terminal=_row_is_terminal(row, project),
     )
     if commit:
         db.commit()
@@ -1459,47 +1346,34 @@ def save_batch(
     *,
     edit_scopes: set[str] | frozenset[str] | None = None,
 ) -> dict[str, Any]:
-    raw_items = data.get("items") or []
-    if not isinstance(raw_items, list):
-        raise ValueError("批量保存数据格式不正确")
-    if any(not isinstance(item, dict) for item in raw_items):
-        raise ValueError("批量保存行数据格式不正确")
-    items = [dict(item) for item in raw_items]
-    row_ids: list[int] = []
-    queue_mutation = False
-    for item in items:
-        supplied_id = item.get("id")
-        row_id = _parse_row_id(supplied_id)
-        if supplied_id not in (None, "") and row_id is None:
-            raise ValueError("工作台记录 ID 不正确")
-        if row_id is not None:
-            row_ids.append(row_id)
-        if row_id is None or "sort_order" in item or "priority" in item or "plan_status" in item:
-            queue_mutation = True
-    if len(row_ids) != len(set(row_ids)):
-        raise ValueError("批量保存包含重复的工作台记录")
-
-    if queue_mutation:
-        _lock_queue(db)
-    existing_rows = (
-        db.scalars(
-            select(SerumImmWorkbench)
-            .where(SerumImmWorkbench.id.in_(row_ids))
-            .order_by(SerumImmWorkbench.id.asc())
-            .with_for_update()
-        ).all()
-        if row_ids
-        else []
+    items, row_ids = parse_batch_items(
+        data.get("items") or [],
+        invalid_id_message="工作台记录 ID 不正确",
+        duplicate_message="批量保存包含重复的工作台记录",
     )
-    rows_by_id = {int(row.id): row for row in existing_rows}
-    if len(rows_by_id) != len(row_ids):
-        raise ValueError("工作台记录不存在")
+    queue_mutation = any(
+        parse_row_id(item.get("id")) is None
+        or "sort_order" in item
+        or "priority" in item
+        or "plan_status" in item
+        for item in items
+    )
+    if queue_mutation:
+        lock_queue(db, SerumImmWorkbench)
+    rows_by_id = lock_rows_by_id(
+        db,
+        SerumImmWorkbench,
+        row_ids,
+        missing_message=MISSING_ROW,
+    )
 
+    pairs = []
     for item in items:
-        row_id = _parse_row_id(item.get("id"))
+        row_id = parse_row_id(item.get("id"))
+        expected = item.pop("_expected", None)
         if row_id is not None:
-            _validate_expected_fields(rows_by_id[row_id], item.get("_expected"))
-        item.pop("_expected", None)
+            pairs.append((rows_by_id[row_id], expected))
+    _check_expected_rows(db, pairs)
 
     saved_ids = [
         int(
@@ -1509,6 +1383,7 @@ def save_batch(
                 created_by,
                 commit=False,
                 edit_scopes=edit_scopes,
+                acquire_queue_lock=False,
             )["id"]
         )
         for item in items
@@ -1536,14 +1411,14 @@ def delete(
     *,
     edit_scopes: set[str] | frozenset[str] | None = None,
 ) -> None:
-    _lock_queue(db)
+    lock_queue(db, SerumImmWorkbench)
     row = db.get(SerumImmWorkbench, int(workbench_id))
     if not row:
-        raise ValueError("工作台记录不存在")
+        raise NotFoundError(MISSING_ROW)
     scopes = _edit_scope_set(edit_scopes)
-    is_draft = str(row.plan_status or PLAN_STATUS_DRAFT).strip() == PLAN_STATUS_DRAFT
+    is_draft = row.plan_status == PLAN_STATUS_DRAFT
     if "full" not in scopes and not ("draft" in scopes and is_draft):
-        raise PermissionError("只能删除草稿状态的工作台记录")
+        raise ForbiddenError("只能删除草稿状态的工作台记录")
     if _is_started(row):
         raise ValueError("已开展的工作台记录不能删除")
     if _project_by_experiment(db, row.experiment_id):
@@ -1552,7 +1427,7 @@ def delete(
         _delete_children(db, row.experiment_id)
     db.delete(row)
     db.flush()
-    renumber_queue(_queue_rows(db))
+    repack_queue(db, QUEUE_SPEC)
     db.commit()
 
 
@@ -1563,7 +1438,7 @@ def start(db: Session, workbench_id: int) -> dict[str, Any]:
         .with_for_update()
     )
     if not row:
-        raise ValueError("工作台记录不存在")
+        raise NotFoundError(MISSING_ROW)
     if _is_started(row):
         raise ValueError("该记录已开展")
     if _is_closed_plan(row.plan_status):
@@ -1618,11 +1493,8 @@ def start(db: Session, workbench_id: int) -> dict[str, Any]:
             break
         except IntegrityError as exc:
             last_error = exc
-            if project is not None:
-                try:
-                    db.expunge(project)
-                except Exception:
-                    pass
+            if project is not None and project in db:
+                db.expunge(project)
             db.expire(row)
             row.project_code = project_code
             project = None
@@ -1687,7 +1559,7 @@ def unlist(
         .with_for_update()
     )
     if not row:
-        raise ValueError("工作台记录不存在")
+        raise NotFoundError(MISSING_ROW)
     if not _is_started(row):
         raise ValueError("未开展的记录无需下架")
     project = _project_by_experiment(db, row.experiment_id, for_update=True)
@@ -1737,11 +1609,11 @@ def copy_row(
     edit_scopes: set[str] | frozenset[str] | None = None,
 ) -> dict[str, Any]:
     if not (_edit_scope_set(edit_scopes) & {"full", "draft"}):
-        raise PermissionError("没有权限复制工作台记录")
-    _lock_queue(db)
+        raise ForbiddenError("没有权限复制工作台记录")
+    lock_queue(db, SerumImmWorkbench)
     source = db.get(SerumImmWorkbench, int(workbench_id))
     if not source:
-        raise ValueError("工作台记录不存在")
+        raise NotFoundError(MISSING_ROW)
     project = _project_by_experiment(db, source.experiment_id) if _is_started(source) else None
     overlay = serialize_row(source, project)
     clone = SerumImmWorkbench(
@@ -1760,13 +1632,14 @@ def copy_row(
     if clone.project_name:
         clone.project_name = f"{clone.project_name}（副本）"
     _assign_temp_experiment_id(db, clone)
-    _apply_queue(
+    apply_queue(
         db,
+        QUEUE_SPEC,
         clone,
         previous_sort=None,
         previous_priority=DEFAULT_PRIORITY,
-        payload={},
         is_new=True,
+        is_terminal=False,
     )
     _clone_children(db, source.experiment_id, clone.experiment_id)
     db.commit()
@@ -1781,35 +1654,22 @@ def reorder(
     *,
     edit_scopes: set[str] | frozenset[str] | None = None,
 ) -> dict[str, Any]:
-    _lock_queue(db)
     if "full" not in _edit_scope_set(edit_scopes):
-        raise PermissionError("没有权限调整工作台队列排序")
-    parsed_moved_id = _parse_row_id(moved_id)
-    parsed_target_id = _parse_row_id(target_id)
-    if parsed_moved_id is None or parsed_target_id is None:
-        raise ValueError("排序记录 ID 不正确")
-    moved = db.get(SerumImmWorkbench, parsed_moved_id)
-    target = db.get(SerumImmWorkbench, parsed_target_id)
-    if not moved or not target:
-        raise ValueError("工作台记录不存在")
-    if parsed_moved_id == parsed_target_id:
-        return {
-            "items": [
-                serialize_row(moved, _project_by_experiment(db, moved.experiment_id) if _is_started(moved) else None),
-            ]
-        }
-    projects = _projects_for_rows(db, [moved, target])
-    for row in (moved, target):
-        if _row_is_terminal(row, projects.get(str(row.experiment_id or "").strip())) or queued_sort(row.sort_order) is None:
-            raise ValueError("终态记录不参与排序")
-    _place_row(db, moved, mode="snap", target_sort=queued_sort(target.sort_order))
-    db.commit()
-    return {
-        "items": [
-            serialize_row(row, _project_by_experiment(db, row.experiment_id) if _is_started(row) else None)
-            for row in (moved, target)
-        ]
-    }
+        raise ForbiddenError("没有权限调整工作台队列排序")
+    rows = reorder_queue(db, QUEUE_SPEC, moved_id, target_id)
+    projects = _projects_for_rows(db, rows)
+    items = [
+        serialize_row(
+            row,
+            projects.get(str(row.experiment_id or "").strip()) if _is_started(row) else None,
+        )
+        for row in rows
+    ]
+    _show_scheme_strains(
+        items,
+        _strain_groups_by_experiment(db, [str(row.experiment_id or "").strip() for row in rows]),
+    )
+    return {"items": items}
 
 
 def _sanitize_child_items(model_class, items: list[dict], id_field: str = "id") -> list[dict]:
@@ -1821,7 +1681,7 @@ def _sanitize_child_items(model_class, items: list[dict], id_field: str = "id") 
         row = {key: value for key, value in item.items() if key in allowed or key == id_field}
         row.pop("experiment_id", None)
         supplied_id = row.get(id_field)
-        parsed_id = _parse_row_id(supplied_id)
+        parsed_id = parse_row_id(supplied_id)
         if supplied_id not in (None, "") and parsed_id is None:
             raise ValueError("方案子表记录 ID 不正确")
         if parsed_id is None:
@@ -1856,11 +1716,11 @@ def _replace_owned_children(
 
     for item in items:
         values = dict(item)
-        item_id = _parse_row_id(values.pop(id_field, None))
+        item_id = parse_row_id(values.pop(id_field, None))
         if item_id is not None:
             obj = existing_by_id.get(item_id)
             if obj is None:
-                raise ValueError("方案子表记录不属于当前工作台")
+                raise ConflictError("方案子表记录不属于当前工作台")
             submitted_ids.add(item_id)
             for key, value in values.items():
                 if key != "experiment_id" and hasattr(obj, key):
@@ -1886,7 +1746,7 @@ def save_scheme(
     *,
     edit_scopes: set[str] | frozenset[str] | None = None,
 ) -> dict[str, Any]:
-    workbench_id = _parse_row_id(data.get("id"))
+    workbench_id = parse_row_id(data.get("id"))
     if workbench_id is None:
         raise ValueError("缺少工作台记录")
     row = db.scalar(
@@ -1895,18 +1755,18 @@ def save_scheme(
         .with_for_update()
     )
     if not row:
-        raise ValueError("工作台记录不存在")
+        raise NotFoundError(MISSING_ROW)
     scopes = _edit_scope_set(edit_scopes)
-    is_draft = str(row.plan_status or PLAN_STATUS_DRAFT).strip() == PLAN_STATUS_DRAFT
+    is_draft = row.plan_status == PLAN_STATUS_DRAFT
     if "full" not in scopes and not ("draft" in scopes and is_draft):
-        raise PermissionError("只能编辑草稿状态的方案")
+        raise ForbiddenError("只能编辑草稿状态的方案")
     if _is_started(row):
         raise ValueError("已开展记录请到免疫实验编辑页保存")
     expected_revision = str(data.get("scheme_revision") or "").strip()
     if not expected_revision:
         raise ValueError("方案版本缺失，请刷新后重试")
     if expected_revision != _scheme_revision(db, row):
-        raise ValueError("方案已被其他用户修改，请刷新后重试")
+        raise ConflictError("方案已被其他用户修改，请刷新后重试")
 
     payload = dict(data or {})
     payload.pop("plan_status", None)
@@ -1966,7 +1826,7 @@ def save_scheme(
     db.commit()
     db.refresh(row)
 
-    response = serialize_row(row)
+    response = _with_mouse_group_flag(db, serialize_row(row))
     response["scheme_revision"] = scheme_revision
     if new_mice:
         response["new_mouse_records"] = [item.to_dict() for item in new_mice]

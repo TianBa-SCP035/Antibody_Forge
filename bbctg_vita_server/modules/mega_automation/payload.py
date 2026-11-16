@@ -14,7 +14,7 @@ def build_dispatch_payload(order: MegaFlowWorkOrder, dispatchId: str) -> dict[st
         "orderNum": order.orderNum,
         "orderName": order.orderName or "",
         "orderType": order.orderType,
-        "priority": order.priority or "normal",
+        "priority": order.priority,
         "orderDetail": {
             "pc_infos": safe_list(content.get("pc_infos")),
             "sample_plates": safe_list(content.get("sample_plates")),

@@ -126,7 +126,7 @@ def remove_temp_file(path: Path) -> None:
 
 def _get_drm_runtime(db: Session) -> dict[str, Any] | None:
     settings = get_settings()
-    if not is_feature_enabled(db, DRM_FEATURE_CODE, default=False):
+    if not is_feature_enabled(db, DRM_FEATURE_CODE):
         return None
     if not settings.drm_enabled:
         return None

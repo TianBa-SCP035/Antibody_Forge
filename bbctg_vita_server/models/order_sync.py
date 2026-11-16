@@ -8,6 +8,7 @@ from db.session import Base
 
 class OrderSync(Base):
     __tablename__ = "order_sync"
+    __log_label__ = "工单回传"
     __table_args__ = (UniqueConstraint("trace_id", name="uk_order_sync_trace_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)

@@ -1,12 +1,12 @@
-from datetime import datetime
-from io import BytesIO
-from pathlib import Path
 import hashlib
 import math
 import re
 import secrets
 import shutil
 import string
+from datetime import datetime
+from io import BytesIO
+from pathlib import Path
 from typing import Any, NamedTuple
 
 from fastapi import UploadFile
@@ -16,34 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
-from utils.header_filters import (
-    HeaderColumn,
-    header_column_values,
-    csv_column,
-    csv_token_clause,
-    header_filter_clauses,
-    header_sort_clauses,
-    json_array_column,
-    target_column,
-    without_header_fields,
-)
-from utils.normalize import (
-    normalize_choice,
-    normalize_priority,
-    normalize_text,
-    order_tokens,
-    parse_date,
-    split_tokens,
-)
-from utils.filter_values import (
-    DEFAULT_RECORDED_TARGET_LIMIT,
-    filter_terms,
-    like_contains,
-    match_any,
-    recorded_target_clause,
-    recorded_target_search,
-    split_code_tokens,
-)
+from core.errors import NotFoundError
 from integrations import drm_service
 from models.discovery import DiscoveryWorkbench
 from models.molecular_cell import (
@@ -55,49 +28,99 @@ from models.molecular_cell import (
     MolecularPrimerIndexCatalog,
 )
 from modules.discovery.workbench.constants import (
-    PLAN_STATUS_PLANNING as DISCOVERY_PLANNING,
-    PLAN_STATUS_WAIT_BOOST as DISCOVERY_WAIT_BOOST,
-    PLAN_STATUS_WAIT_HARVEST as DISCOVERY_WAIT_HARVEST,
-    PLAN_STATUS_WAIT_LIBRARY as DISCOVERY_WAIT_LIBRARY,
-    PLAN_STATUS_WAIT_PHAGE as DISCOVERY_WAIT_PHAGE,
-    PLAN_STATUS_WAIT_SEQ as DISCOVERY_WAIT_SEQ,
+    MOUSE_STRAIN_OPTIONS,
     SCREENING_METHOD_BEACON,
     SCREENING_METHOD_DAPU,
     SCREENING_METHOD_PHAGE,
+)
+from modules.discovery.workbench.constants import (
+    PLAN_STATUS_PLANNING as DISCOVERY_PLANNING,
+)
+from modules.discovery.workbench.constants import (
+    PLAN_STATUS_WAIT_BOOST as DISCOVERY_WAIT_BOOST,
+)
+from modules.discovery.workbench.constants import (
+    PLAN_STATUS_WAIT_HARVEST as DISCOVERY_WAIT_HARVEST,
+)
+from modules.discovery.workbench.constants import (
+    PLAN_STATUS_WAIT_LIBRARY as DISCOVERY_WAIT_LIBRARY,
+)
+from modules.discovery.workbench.constants import (
+    PLAN_STATUS_WAIT_PHAGE as DISCOVERY_WAIT_PHAGE,
+)
+from modules.discovery.workbench.constants import (
+    PLAN_STATUS_WAIT_SEQ as DISCOVERY_WAIT_SEQ,
+)
+from modules.discovery.workbench.constants import (
     TERMINAL_STATUSES as DISCOVERY_TERMINAL_STATUSES,
-    MOUSE_STRAIN_OPTIONS,
 )
 from modules.molecular_cell.library_orders.result_upload import (
+    ARM_STATUSES,
+    IMAGE_EXTENSIONS,
+    MATCHED_STATUSES,
+    READ_EXTENSIONS,
     ROLE_GEL,
     ROLE_READ,
-    ARM_STATUSES,
-    MATCHED_STATUSES,
     SEQUENCE_NOT_FOUND,
+    TRACE_EXTENSIONS,
+    clean_path_part,
     extension_of,
-    IMAGE_EXTENSIONS,
+    is_short,
     library_code_stem,
     library_codes_in_name,
     longest_library_code,
+    loose_file_role,
     month_directory,
     normalize_relative_path,
     other_directory,
     package_file_role,
     package_name,
     package_signature,
+    plain_status,
     plan_upload_paths,
     read_direction,
-    READ_EXTENSIONS,
-    safe_path_part,
-    is_short,
-    plain_status,
     sequence_check,
     sequence_check_text,
-    TRACE_EXTENSIONS,
-    loose_file_role,
 )
+from utils.batch_save import (
+    check_expected,
+    lock_rows_by_id,
+    parse_batch_items,
+)
+from utils.clock import now_local, today_local
+from utils.filter_values import (
+    DEFAULT_RECORDED_TARGET_LIMIT,
+    filter_terms,
+    like_contains,
+    match_any,
+    recorded_target_clause,
+    recorded_target_search,
+    split_code_tokens,
+)
+from utils.header_filters import (
+    HeaderColumn,
+    csv_column,
+    csv_token_clause,
+    header_column_values,
+    header_columns,
+    header_filter_clauses,
+    header_sort_clauses,
+    json_array_column,
+    target_column,
+    without_header_fields,
+)
+from utils.model_fields import clean_field, clean_text, model_fields
+from utils.normalize import (
+    normalize_choice,
+    normalize_priority,
+    order_tokens,
+    parse_date,
+    parse_row_id,
+    split_tokens,
+)
+from utils.pagination import paginate_select
 from utils.uploads import read_limited, upload_filename
 from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_OPTIONS
-from utils.clock import now_local, today_local
 
 MISSING_ROW = "文库构建工单不存在"
 MISSING_FILE = "结果文件不存在"
@@ -353,53 +376,7 @@ PROFILE_FIELDS = {
 }
 PROFILE_SCOPED_FIELDS = set().union(*PROFILE_FIELDS.values())
 
-STRING_FIELDS = {
-    "library_code": 64,
-    "source_project_code": 64,
-    "study_type": 64,
-    "project_goal": 1000,
-    "target_name": 128,
-    "pm": 64,
-    "mouse_strain": 128,
-    "positive_cell_count": 255,
-    "fragment_size_bp": 64,
-    "cell_type": 64,
-    "notebook_no": 64,
-    "immunization_stage": 64,
-    "library_batch_no": 64,
-    "owner": 64,
-    "rna_location": 255,
-    "cdna_location": 255,
-    "library_location": 255,
-    "initial_library_size": 64,
-    "effective_library_size": 64,
-    "cdna_concentration": 64,
-    "library_concentration": 64,
-    "h_primer_concentration": 64,
-    "k_primer_concentration": 64,
-    "l_primer_concentration": 64,
-    "h_forward_primer_name": 128,
-    "h_reverse_primer_name": 128,
-    "k_forward_primer_name": 128,
-    "k_reverse_primer_name": 128,
-    "l_forward_primer_name": 128,
-    "l_reverse_primer_name": 128,
-    "i7_name": 128,
-    "i7_sequence": 64,
-    "i5_name": 128,
-    "i5_sequence": 64,
-    "qc_owner": 64,
-    "qc_note": 1000,
-    "remark": 1000,
-}
-DATE_FIELDS = (
-    "received_on",
-    "instrument_on",
-    "blood_collected_on",
-    "qc_on",
-    "started_at",
-    "finished_at",
-)
+FIELDS = model_fields(MolecularLibraryOrder, readonly=("library_order_id", "source_discovery_id"))
 INSTRUMENT_DATE_BUILDS = frozenset({
     BUILD_PLATE,
     BUILD_POOLED_BCR,
@@ -469,6 +446,25 @@ def _next_library_order_id(db: Session) -> str:
     raise ValueError("无法分配文库工单号")
 
 
+# 这些列有选项、联动或字典关联，在 _apply_fields 里单独处理；其余列按模型列类型清洗
+CUSTOM_FIELDS = frozenset({
+    "build_type",
+    "status",
+    "priority",
+    "library_code",
+    "target_codes",
+    "target_forms",
+    "plate_nos",
+    "mouse_strain",
+    "i7_sequence",
+    "i5_sequence",
+    "sample_type",
+    "sample_source",
+    "source_experiment_type",
+    "index_mode",
+    "qc_result",
+    *(id_field for id_field, _, _ in LIBRARY_PRIMER_REFERENCE_FIELDS),
+})
 BREAK_FIELDS = frozenset({
     "positive_cell_count",
     "fragment_size_bp",
@@ -480,7 +476,7 @@ BREAK_FIELDS = frozenset({
 
 
 def _normalize_library_code(value: Any) -> str | None:
-    text = normalize_text(value, STRING_FIELDS["library_code"])
+    text = clean_text(FIELDS["library_code"], value)
     return text.upper() if text else None
 
 
@@ -501,8 +497,8 @@ def _normalize_string_list(value: Any, label: str) -> list[str]:
     return result
 
 
-def _normalize_sequence(value: Any, max_len: int = 64) -> str | None:
-    text = normalize_text(value, max_len)
+def _normalize_sequence(field: str, value: Any) -> str | None:
+    text = clean_text(FIELDS[field], value)
     if not text:
         return None
     text = re.sub(r"\s+", "", text).upper()
@@ -530,27 +526,8 @@ def _normalize_status(value: Any) -> str:
     return str(result)
 
 
-def _parse_row_id(value: Any) -> int | None:
-    if value in (None, ""):
-        return None
-    try:
-        row_id = int(value)
-    except (TypeError, ValueError):
-        return None
-    return row_id if row_id > 0 else None
-
-
-def _page_limit(data: dict[str, Any]) -> tuple[int, int]:
-    try:
-        page = int(data.get("page", 1) or 1)
-        limit = int(data.get("limit", 20) or 20)
-    except (TypeError, ValueError):
-        page, limit = 1, 20
-    return max(page, 1), min(max(limit, 1), 500)
-
-
 def _current_status(row: MolecularLibraryOrder) -> str:
-    return str(row.status or "").strip() or STATUS_PENDING
+    return row.status
 
 
 def _clear_inapplicable_fields(row: MolecularLibraryOrder, build_type: str) -> None:
@@ -596,7 +573,7 @@ def _apply_catalog_reference(
         if sequence_field and sequence_field not in data:
             setattr(row, sequence_field, None)
         return
-    catalog_id = _parse_row_id(data.get(id_field))
+    catalog_id = parse_row_id(data.get(id_field))
     if data.get(id_field) not in (None, "") and catalog_id is None:
         raise ValueError("引物或Index字典ID不正确")
     setattr(row, id_field, catalog_id)
@@ -642,23 +619,14 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
     if "plate_nos" in data:
         row.plate_nos = _normalize_string_list(data.get("plate_nos"), "板号")
 
-    for field, max_len in STRING_FIELDS.items():
-        if field == "library_code" or field not in data:
-            continue
-        if field == "mouse_strain":
-            setattr(row, field, _normalize_mouse_strain(data.get(field)))
-        elif field in {"i7_sequence", "i5_sequence"}:
-            setattr(row, field, _normalize_sequence(data.get(field), max_len))
-        else:
-            setattr(
-                row,
-                field,
-                normalize_text(
-                    data.get(field),
-                    max_len,
-                    keep_breaks=field in BREAK_FIELDS,
-                ),
-            )
+    if "mouse_strain" in data:
+        row.mouse_strain = _normalize_mouse_strain(data.get("mouse_strain"))
+    for field in ("i7_sequence", "i5_sequence"):
+        if field in data:
+            setattr(row, field, _normalize_sequence(field, data.get(field)))
+    for field, spec in FIELDS.items():
+        if field in data and field not in CUSTOM_FIELDS:
+            setattr(row, field, clean_field(spec, data[field], keep_breaks=field in BREAK_FIELDS))
     if "sample_type" in data:
         row.sample_type = normalize_choice(
             data.get("sample_type"),
@@ -670,9 +638,6 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
         auto_type = _auto_sample_type(row.mouse_strain)
         if auto_type:
             row.sample_type = auto_type
-    for field in DATE_FIELDS:
-        if field in data:
-            setattr(row, field, parse_date(data.get(field)))
     if "sample_source" in data:
         row.sample_source = normalize_choice(
             data.get("sample_source"),
@@ -1034,63 +999,24 @@ def search_recorded_targets(db: Session, keyword: str = "", limit: int = DEFAULT
 
 
 _L = MolecularLibraryOrder
-HEADER_COLUMNS: dict[str, HeaderColumn] = {
-    "library_code": HeaderColumn(_L.library_code),
-    "source_project_code": HeaderColumn(_L.source_project_code),
-    "library_order_id": HeaderColumn(_L.library_order_id),
-    "source_discovery_id": HeaderColumn(_L.source_discovery_id),
-    "library_batch_no": HeaderColumn(_L.library_batch_no),
-    "target_name": target_column(_L.target_name, _L.target_codes),
-    "build_type": HeaderColumn(_L.build_type, "enum", order=BUILD_TYPE_ORDER),
-    "sample_source": HeaderColumn(_L.sample_source, "enum", order=tuple(SAMPLE_SOURCE_LABELS)),
-    "sample_type": HeaderColumn(_L.sample_type, "enum", order=tuple(SAMPLE_TYPE_LABELS)),
-    "index_mode": HeaderColumn(_L.index_mode, "enum", order=tuple(INDEX_MODE_LABELS)),
-    "owner": HeaderColumn(_L.owner, "enum"),
-    "pm": HeaderColumn(_L.pm, "enum"),
-    "study_type": HeaderColumn(_L.study_type, "enum"),
-    "status": HeaderColumn(_L.status, "enum", order=STATUS_OPTIONS),
-    "priority": HeaderColumn(_L.priority, "enum", order=tuple(PRIORITY_OPTIONS)),
-    "mouse_strain": csv_column(_L.mouse_strain, tuple(MOUSE_STRAIN_OPTIONS)),
-    "cell_type": HeaderColumn(_L.cell_type, "enum", order=CELL_TYPE_OPTIONS),
-    "immunization_stage": HeaderColumn(_L.immunization_stage, "enum"),
-    "notebook_no": HeaderColumn(_L.notebook_no),
-    "positive_cell_count": HeaderColumn(_L.positive_cell_count),
-    "plate_nos": json_array_column(_L.plate_nos),
-    "target_forms": HeaderColumn(_L.target_forms, "enum", order=TARGET_FORM_OPTIONS),
-    "source_experiment_type": HeaderColumn(_L.source_experiment_type, "enum", order=PHAGE_EXPERIMENT_TYPES),
-    "project_goal": HeaderColumn(_L.project_goal),
-    "received_on": HeaderColumn(_L.received_on, "date"),
-    "instrument_on": HeaderColumn(_L.instrument_on, "date"),
-    "blood_collected_on": HeaderColumn(_L.blood_collected_on, "date"),
-    "started_at": HeaderColumn(_L.started_at, "date"),
-    "finished_at": HeaderColumn(_L.finished_at, "date"),
-    "rna_location": HeaderColumn(_L.rna_location),
-    "cdna_location": HeaderColumn(_L.cdna_location),
-    "library_location": HeaderColumn(_L.library_location),
-    "cdna_concentration": HeaderColumn(_L.cdna_concentration),
-    "library_concentration": HeaderColumn(_L.library_concentration),
-    "initial_library_size": HeaderColumn(_L.initial_library_size),
-    "effective_library_size": HeaderColumn(_L.effective_library_size),
-    "fragment_size_bp": HeaderColumn(_L.fragment_size_bp),
-    "h_forward_primer_name": HeaderColumn(_L.h_forward_primer_name, "enum"),
-    "h_reverse_primer_name": HeaderColumn(_L.h_reverse_primer_name, "enum"),
-    "h_primer_concentration": HeaderColumn(_L.h_primer_concentration),
-    "k_forward_primer_name": HeaderColumn(_L.k_forward_primer_name, "enum"),
-    "k_reverse_primer_name": HeaderColumn(_L.k_reverse_primer_name, "enum"),
-    "k_primer_concentration": HeaderColumn(_L.k_primer_concentration),
-    "l_forward_primer_name": HeaderColumn(_L.l_forward_primer_name, "enum"),
-    "l_reverse_primer_name": HeaderColumn(_L.l_reverse_primer_name, "enum"),
-    "l_primer_concentration": HeaderColumn(_L.l_primer_concentration),
-    "i7_name": HeaderColumn(_L.i7_name, "enum"),
-    "i7_sequence": HeaderColumn(_L.i7_sequence),
-    "i5_name": HeaderColumn(_L.i5_name, "enum"),
-    "i5_sequence": HeaderColumn(_L.i5_sequence),
-    "qc_result": HeaderColumn(_L.qc_result, "enum", order=QC_RESULT_OPTIONS),
-    "qc_owner": HeaderColumn(_L.qc_owner, "enum"),
-    "qc_on": HeaderColumn(_L.qc_on, "date"),
-    "qc_note": HeaderColumn(_L.qc_note),
-    "remark": HeaderColumn(_L.remark),
-}
+HEADER_COLUMNS = header_columns(
+    FIELDS,
+    library_order_id=HeaderColumn(_L.library_order_id),
+    source_discovery_id=HeaderColumn(_L.source_discovery_id),
+    target_name=target_column(_L.target_name, _L.target_codes),
+    build_type=HeaderColumn(_L.build_type, order=BUILD_TYPE_ORDER),
+    sample_source=HeaderColumn(_L.sample_source, order=tuple(SAMPLE_SOURCE_LABELS)),
+    sample_type=HeaderColumn(_L.sample_type, order=tuple(SAMPLE_TYPE_LABELS)),
+    index_mode=HeaderColumn(_L.index_mode, order=tuple(INDEX_MODE_LABELS)),
+    status=HeaderColumn(_L.status, order=STATUS_OPTIONS),
+    priority=HeaderColumn(_L.priority, order=tuple(PRIORITY_OPTIONS)),
+    mouse_strain=csv_column(_L.mouse_strain, tuple(MOUSE_STRAIN_OPTIONS)),
+    cell_type=HeaderColumn(_L.cell_type, order=CELL_TYPE_OPTIONS),
+    plate_nos=json_array_column(_L.plate_nos),
+    target_forms=HeaderColumn(_L.target_forms, order=TARGET_FORM_OPTIONS),
+    source_experiment_type=HeaderColumn(_L.source_experiment_type, order=PHAGE_EXPERIMENT_TYPES),
+    qc_result=HeaderColumn(_L.qc_result, order=QC_RESULT_OPTIONS),
+)
 # 这几列存的是代码，取值列表附上中文名
 _VALUE_LABELS = {
     "build_type": BUILD_TYPE_LABELS,
@@ -1242,26 +1168,17 @@ def get_options(db: Session) -> dict[str, list[str]]:
 
 def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     payload = data or {}
-    page, limit = _page_limit(payload)
     stmt = _apply_list_filters(select(MolecularLibraryOrder), payload, db=db)
-    total = db.scalar(
-        _apply_list_filters(select(func.count()).select_from(MolecularLibraryOrder), payload, db=db)
-    ) or 0
-    last_page = max(1, (int(total) + limit - 1) // limit)
-    if page > last_page:
-        page = last_page
-    rows = db.scalars(
-        stmt.order_by(*_list_order(payload))
-        .offset((page - 1) * limit)
-        .limit(limit)
-    ).all()
-    return {
-        "items": [row.to_dict() for row in rows],
-        "total": int(total),
-        "page": page,
-        "limit": limit,
-        "stats": _list_stats(db, payload),
-    }
+    count_stmt = _apply_list_filters(select(func.count()).select_from(MolecularLibraryOrder), payload, db=db)
+    return paginate_select(
+        db,
+        stmt,
+        count_stmt,
+        payload,
+        order_by=_list_order(payload),
+        clamp_page=True,
+        stats=_list_stats(db, payload),
+    )
 
 
 def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
@@ -1275,10 +1192,7 @@ def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-PROTECTED_SAVE_FIELDS = ("library_order_id", "source_discovery_id", "created_by")
 MAX_BATCH_SAVE_ITEMS = 500
-
-
 def _ensure_unique_library_codes(
     db: Session,
     pairs: list[tuple[int | None, Any]],
@@ -1309,25 +1223,19 @@ def _ensure_unique_library_codes(
         raise ValueError(f"建库编号 {'、'.join(taken)} 已存在")
 
 
-def _writable_payload(data: dict[str, Any] | None) -> dict[str, Any]:
-    payload = dict(data or {})
-    for protected in PROTECTED_SAVE_FIELDS:
-        payload.pop(protected, None)
-    return payload
-
-
 def save(
     db: Session,
     data: dict[str, Any],
     created_by: str | None = None,
 ) -> dict[str, Any]:
-    payload = _writable_payload(data)
-    row_id = _parse_row_id(payload.get("id"))
+    payload = dict(data or {})
+    expected = payload.pop("_expected", None)
+    row_id = parse_row_id(payload.get("id"))
     if payload.get("id") not in (None, "") and row_id is None:
         raise ValueError("工单 ID 不正确")
-    if "library_code" in payload:
-        _ensure_unique_library_codes(db, [(row_id, payload.get("library_code"))])
     if row_id is None:
+        if "library_code" in payload:
+            _ensure_unique_library_codes(db, [(None, payload.get("library_code"))])
         build_type = _normalize_build_type(payload.get("build_type"))
         row = MolecularLibraryOrder(
             library_order_id=_next_library_order_id(db),
@@ -1347,7 +1255,14 @@ def save(
             .with_for_update()
         )
         if not row:
-            raise ValueError(MISSING_ROW)
+            raise NotFoundError(MISSING_ROW)
+        check_expected(
+            row.to_dict(),
+            expected,
+            fields=FIELDS,
+        )
+        if "library_code" in payload:
+            _ensure_unique_library_codes(db, [(row_id, payload.get("library_code"))])
     _apply_fields(db, row, payload)
     db.commit()
     db.refresh(row)
@@ -1355,40 +1270,44 @@ def save(
 
 
 def batch_save(db: Session, items: list[dict[str, Any]]) -> dict[str, Any]:
-    if not items:
-        raise ValueError("没有需要保存的工单")
-    if len(items) > MAX_BATCH_SAVE_ITEMS:
-        raise ValueError(f"单次最多保存 {MAX_BATCH_SAVE_ITEMS} 条工单")
-    payloads = []
-    seen_ids: set[int] = set()
-    for item in items:
-        payload = _writable_payload(item)
-        row_id = _parse_row_id(payload.get("id"))
-        if row_id is None:
-            raise ValueError("工单 ID 不正确")
-        if row_id in seen_ids:
-            raise ValueError("同一工单不能重复提交")
-        seen_ids.add(row_id)
-        payloads.append((row_id, payload))
-    locked_rows = db.scalars(
-        select(MolecularLibraryOrder)
-        .where(MolecularLibraryOrder.id.in_(sorted(seen_ids)))
-        .order_by(MolecularLibraryOrder.id)
-        .with_for_update()
-    ).all()
-    rows_by_id = {int(row.id): row for row in locked_rows}
-    if len(rows_by_id) != len(seen_ids):
-        raise ValueError(MISSING_ROW)
+    parsed_items, row_ids = parse_batch_items(
+        items,
+        invalid_id_message="工单 ID 不正确",
+        duplicate_message="同一工单不能重复提交",
+        require_id=True,
+        allow_empty=False,
+        empty_message="没有需要保存的工单",
+        max_items=MAX_BATCH_SAVE_ITEMS,
+        too_many_message=f"单次最多保存 {MAX_BATCH_SAVE_ITEMS} 条工单",
+    )
+    payloads: list[tuple[int, dict[str, Any], Any]] = []
+    for item in parsed_items:
+        payload = dict(item)
+        expected = payload.pop("_expected", None)
+        row_id = int(parse_row_id(payload.get("id")))
+        payloads.append((row_id, payload, expected))
+    rows_by_id = lock_rows_by_id(
+        db,
+        MolecularLibraryOrder,
+        row_ids,
+        missing_message=MISSING_ROW,
+    )
+    for row_id, _payload, expected in payloads:
+        check_expected(
+            rows_by_id[row_id].to_dict(),
+            expected,
+            fields=FIELDS,
+        )
     _ensure_unique_library_codes(
         db,
         [
             (row_id, payload.get("library_code"))
-            for row_id, payload in payloads
+            for row_id, payload, _expected in payloads
             if "library_code" in payload
         ],
     )
     rows = []
-    for row_id, payload in payloads:
+    for row_id, payload, _expected in payloads:
         row = rows_by_id[row_id]
         try:
             _apply_fields(db, row, payload)
@@ -1404,7 +1323,7 @@ def batch_save(db: Session, items: list[dict[str, Any]]) -> dict[str, Any]:
 def delete_order(db: Session, row_id: int) -> dict[str, int]:
     row = db.get(MolecularLibraryOrder, int(row_id))
     if not row:
-        raise ValueError(MISSING_ROW)
+        raise NotFoundError(MISSING_ROW)
     links = list(
         db.scalars(
             select(MolecularLibraryResultLink).where(
@@ -1495,7 +1414,7 @@ def _load_discovery(
             )
         )
     if not row:
-        raise ValueError(MISSING_DISCOVERY)
+        raise NotFoundError(MISSING_DISCOVERY)
     return row
 
 
@@ -1513,7 +1432,7 @@ def _handoff_preview(row: DiscoveryWorkbench) -> dict[str, Any]:
         "instrument_on": row.harvest_date,
         "positive_cell_count": row.positive_cell_count,
         "screening_methods": row.screening_methods,
-        "priority": row.priority or DEFAULT_PRIORITY,
+        "priority": row.priority,
         "status": row.status,
     }
 
@@ -1594,7 +1513,7 @@ def _validate_handoff_item(row: DiscoveryWorkbench, item: dict[str, Any]) -> tup
 
 
 def _apply_discovery_status(row: DiscoveryWorkbench, created_types: list[str]) -> None:
-    current = str(row.status or "").strip() or DISCOVERY_PLANNING
+    current = row.status
     if current in DISCOVERY_TERMINAL_STATUSES or current == DISCOVERY_WAIT_SEQ:
         return
     if BUILD_PHAGE_DISPLAY in created_types and current in {
@@ -1621,10 +1540,10 @@ def handoff(
         raise ValueError("交接工艺格式不正确")
     row = _load_discovery(
         db,
-        discovery_workbench_id=_parse_row_id(payload.get("discovery_workbench_id")),
+        discovery_workbench_id=parse_row_id(payload.get("discovery_workbench_id")),
         discovery_id=str(payload.get("discovery_id") or "").strip() or None,
     )
-    if str(row.status or "").strip() in DISCOVERY_TERMINAL_STATUSES:
+    if row.status in DISCOVERY_TERMINAL_STATUSES:
         raise ValueError("已完成或已取消的发现安排不能交接")
     normalized = [_validate_handoff_item(row, item) for item in raw_items]
     codes = row.target_codes if isinstance(row.target_codes, list) else []
@@ -1653,12 +1572,12 @@ def handoff(
             ),
             cell_type=DEFAULT_PLASMA_CELL_TYPE if build_type == BUILD_PLASMA_NGS else None,
             positive_cell_count=(
-                normalize_text(row.positive_cell_count, STRING_FIELDS["positive_cell_count"])
+                clean_text(FIELDS["positive_cell_count"], row.positive_cell_count, keep_breaks=True)
                 if build_type in POSITIVE_CELL_COUNT_BUILDS
                 else None
             ),
             status=STATUS_PENDING,
-            priority=row.priority or DEFAULT_PRIORITY,
+            priority=row.priority,
             target_forms=None,
             plate_nos=[],
             created_by=(created_by or "").strip() or None,
@@ -1804,7 +1723,7 @@ def _load_order(
         else db.get(MolecularLibraryOrder, int(order_id))
     )
     if not row:
-        raise ValueError(MISSING_ROW)
+        raise NotFoundError(MISSING_ROW)
     return row
 
 
@@ -2237,7 +2156,7 @@ def _new_file_record(
 
 def _safe_inner_path(value: str) -> str:
     parts = [
-        safe_path_part(part, "file")
+        clean_path_part(part, "file")
         for part in normalize_relative_path(value, value).split("/")
     ]
     return "/".join(parts)
@@ -2662,7 +2581,7 @@ def _store_package(
         package = _extendable_package(db, name, prepared)
     created = False
     if package is None:
-        folder = f"{safe_path_part(name, 'package')}--{signature[:8]}"
+        folder = f"{clean_path_part(name, 'package')}--{signature[:8]}"
         storage_prefix = f"{month_directory('sequencing', now)}/{folder}"
         candidate = MolecularLibraryResultPackage(
             original_name=name,
@@ -2860,7 +2779,7 @@ def _store_loose(
         )
         new_count += 1
         relative = _place_bytes(
-            f"{other_directory(target, now)}/{safe_path_part(filename, 'file')}",
+            f"{other_directory(target, now)}/{clean_path_part(filename, 'file')}",
             entry["content"],
             created_paths,
         )
@@ -2883,32 +2802,6 @@ def _store_loose(
             )
         )
     return links, "", new_count
-
-
-def upload_file(
-    db: Session,
-    file_obj: UploadFile,
-    order_id: int,
-    user_name: str = "unknown",
-) -> dict[str, Any]:
-    result = upload_batch(
-        db,
-        [file_obj],
-        [file_obj.filename or "file"],
-        user_name,
-        order_id,
-    )
-    if not result["items"]:
-        issue = next(
-            (
-                issue["reason"]
-                for summary in result["summary"]
-                for issue in summary.get("issues", [])
-            ),
-            "文件未保存",
-        )
-        raise ValueError(issue)
-    return result["items"][0]
 
 
 def upload_batch(
@@ -3152,7 +3045,7 @@ def update_file_link(
     order = _load_order(db, order_id)
     link = db.get(MolecularLibraryResultLink, int(link_id))
     if not link or link.order_id != order.id:
-        raise ValueError(MISSING_FILE)
+        raise NotFoundError(MISSING_FILE)
     if "qc_regions" in data:
         link.qc_regions = _normalize_qc_regions(data.get("qc_regions"))
     if "original_name" in data:
@@ -3183,7 +3076,7 @@ def update_file_link(
     db.refresh(link)
     record = db.get(MolecularLibraryResultFile, link.file_id)
     if not record:
-        raise ValueError(MISSING_FILE)
+        raise NotFoundError(MISSING_FILE)
     return _link_payload(
         link,
         record,
@@ -3206,11 +3099,11 @@ def _finish_file_delete(
 def delete_file(db: Session, link_id: int, order_id: int | None = None) -> dict[str, Any]:
     link = db.get(MolecularLibraryResultLink, int(link_id))
     if not link:
-        raise ValueError(MISSING_FILE)
+        raise NotFoundError(MISSING_FILE)
     if order_id:
         _load_order(db, order_id)
         if link.order_id != int(order_id):
-            raise ValueError(MISSING_FILE)
+            raise NotFoundError(MISSING_FILE)
     record = db.get(MolecularLibraryResultFile, link.file_id)
     in_package = bool(record and record.package_id)
     affected_order = db.get(MolecularLibraryOrder, link.order_id)
@@ -3231,10 +3124,10 @@ def delete_stored_file(db: Session, order_id: int, file_id: int) -> dict[str, An
     order = _load_order(db, order_id)
     record = db.get(MolecularLibraryResultFile, int(file_id))
     if not record or not record.package_id:
-        raise ValueError(MISSING_FILE)
+        raise NotFoundError(MISSING_FILE)
     package = db.get(MolecularLibraryResultPackage, record.package_id)
     if not package:
-        raise ValueError(MISSING_FILE)
+        raise NotFoundError(MISSING_FILE)
     visible = package.owner_order_id == order.id or db.scalar(
         select(MolecularLibraryResultLink.id)
         .join(
@@ -3248,7 +3141,7 @@ def delete_stored_file(db: Session, order_id: int, file_id: int) -> dict[str, An
         .limit(1)
     )
     if not visible:
-        raise ValueError(MISSING_FILE)
+        raise NotFoundError(MISSING_FILE)
     links = list(db.scalars(
         select(MolecularLibraryResultLink).where(
             MolecularLibraryResultLink.file_id == record.id
@@ -3271,7 +3164,7 @@ def delete_package(db: Session, order_id: int, package_id: int) -> dict[str, Any
     order = _load_order(db, order_id)
     package = db.get(MolecularLibraryResultPackage, int(package_id))
     if not package:
-        raise ValueError(MISSING_FILE)
+        raise NotFoundError(MISSING_FILE)
     records = list(db.scalars(
         select(MolecularLibraryResultFile).where(
             MolecularLibraryResultFile.package_id == package.id
@@ -3286,7 +3179,7 @@ def delete_package(db: Session, order_id: int, package_id: int) -> dict[str, Any
     ).all()) if record_ids else []
     owns_package = package.owner_order_id == order.id or bool(own_links)
     if not owns_package:
-        raise ValueError(MISSING_FILE)
+        raise NotFoundError(MISSING_FILE)
     for link in own_links:
         db.delete(link)
     if package.owner_order_id == order.id:
@@ -3324,10 +3217,10 @@ def delete_package(db: Session, order_id: int, package_id: int) -> dict[str, Any
 def get_stored_file(db: Session, file_id: int) -> tuple[str, Path]:
     record = db.get(MolecularLibraryResultFile, int(file_id))
     if not record or record.package_id is None:
-        raise ValueError(MISSING_FILE)
+        raise NotFoundError(MISSING_FILE)
     full_path = _full_path(record.storage_path)
     if not full_path.exists():
-        raise ValueError("磁盘上找不到文件")
+        raise NotFoundError("磁盘上找不到文件")
     name = (record.relative_path or Path(record.storage_path).name).rsplit("/", 1)[-1]
     return name, full_path
 
@@ -3338,13 +3231,13 @@ def get_download_record(
 ) -> tuple[MolecularLibraryResultLink, Path]:
     link = db.get(MolecularLibraryResultLink, int(link_id))
     if not link:
-        raise ValueError(MISSING_FILE)
+        raise NotFoundError(MISSING_FILE)
     record = db.get(MolecularLibraryResultFile, link.file_id)
     if not record:
-        raise ValueError(MISSING_FILE)
+        raise NotFoundError(MISSING_FILE)
     full_path = _full_path(record.storage_path)
     if not full_path.exists():
-        raise ValueError("磁盘上找不到文件")
+        raise NotFoundError("磁盘上找不到文件")
     return link, full_path
 
 

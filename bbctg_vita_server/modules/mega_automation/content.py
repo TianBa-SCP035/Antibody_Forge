@@ -400,8 +400,8 @@ def build_content_hash(order: MegaFlowWorkOrder, content: dict[str, Any]) -> str
     canonical = {
         "orderName": order.orderName or "",
         "orderNum": order.orderNum or "",
-        "orderType": order.orderType or "TITER",
-        "priority": order.priority or "normal",
+        "orderType": order.orderType,
+        "priority": order.priority,
         "remark": order.remark or "",
         "content": content,
     }

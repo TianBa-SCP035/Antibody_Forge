@@ -3,36 +3,27 @@ from __future__ import annotations
 import json
 import logging
 import re
-from threading import Lock
-from time import monotonic
 import uuid
 from typing import Any
 
+from fastapi.routing import APIRoute
 from starlette.concurrency import run_in_threadpool
+from starlette.routing import Match
 
 from db.session import SessionLocal
 from modules.auth.security import decode_access_token
 from modules.system.audit import write_operation_log
-from modules.system.audit_config import (
-    INTENTIONALLY_IGNORED_ROUTES,
-    SYSTEM_OR_MANUAL_AUDIT_ROUTES,
-    WRITE_METHODS,
-    audit_path_matches,
-    load_audit_action_mappings,
-)
+from modules.system.audit_config import WRITE_METHODS, is_readonly_post
 from modules.system.audit_context import (
-    AuditAction,
     AuditContext,
     reset_audit_context,
     set_audit_context,
 )
+from modules.system.audit_routes import route_audit
+from modules.system.audit_session import all_label_fields
 
 logger = logging.getLogger(__name__)
 MAX_RESPONSE_CAPTURE = 64 * 1024
-ACTION_CACHE_TTL_SECONDS = 300
-_ACTION_CACHE_LOCK = Lock()
-_ACTION_CACHE_EXPIRES_AT = 0.0
-_ACTION_CACHE: tuple[tuple[str, str, AuditAction], ...] | None = None
 _BUSINESS_CODE_PREFIX = re.compile(
     rb'^\s*\{\s*"code"\s*:\s*(-?\d+)',
 )
@@ -52,14 +43,7 @@ class AuditMiddleware:
             await self.app(scope, receive, send)
             return
 
-        headers = _headers(scope)
-        context = await run_in_threadpool(
-            _build_context,
-            method,
-            path,
-            headers,
-            scope,
-        )
+        context = _build_context(method, path, _headers(scope), scope)
         scope.setdefault("state", {})["request_id"] = context.request_id
         token = set_audit_context(context)
         status_code = 500
@@ -118,41 +102,10 @@ def _headers(scope: dict) -> dict[str, str]:
 
 
 def _build_context(method: str, path: str, headers: dict[str, str], scope: dict) -> AuditContext:
-    suppress_noop = any(
-        method == known_method and audit_path_matches(pattern, path)
-        for known_method, pattern in INTENTIONALLY_IGNORED_ROUTES
-    )
-    actions = (
-        [
-            action
-            for mapped_method, pattern, action in _get_action_mappings()
-            if mapped_method == method and audit_path_matches(pattern, path)
-        ]
-        if not suppress_noop
-        else []
-    )
-    if not actions and not suppress_noop:
-        known_route = next(
-            (
-                (pattern, configured_action)
-                for (
-                    known_method,
-                    pattern,
-                ), configured_action in SYSTEM_OR_MANUAL_AUDIT_ROUTES.items()
-                if method == known_method and audit_path_matches(pattern, path)
-            ),
-            None,
-        )
-        if known_route:
-            known_pattern, configured_action = known_route
-            actions.append(
-                configured_action
-                or AuditAction(
-                    code=f"{method} {known_pattern}"[:128],
-                    name=f"{method} {known_pattern}"[:128],
-                    operation_type="update",
-                )
-            )
+    route = _match_route(scope)
+    spec = route_audit(route) if route else None
+    suppress_noop = is_readonly_post(method, path) or bool(spec and spec.quiet)
+    actions = spec.actions if spec and not suppress_noop else ()
 
     token = headers.get("authorization", "").removeprefix("Bearer ").strip()
     payload = decode_access_token(token) if token else None
@@ -169,30 +122,22 @@ def _build_context(method: str, path: str, headers: dict[str, str], scope: dict)
         source=source,
         method=method,
         path=path,
-        actions=tuple(actions),
+        actions=actions,
         user_id=user_id,
         username=username or None,
         ip_address=ip_address,
         fallback_action=f"{method} {path}",
-        fallback_name=_fallback_name(method, path),
-        fallback_resource=_fallback_resource(method, path),
+        fallback_name=(spec and spec.fallback_name) or f"{method} {path}",
+        fallback_resource=spec.fallback_resource if spec else None,
         suppress_noop=suppress_noop,
     )
 
 
-def _fallback_name(method: str, path: str) -> str:
-    if method == "POST" and path == "/api/molecular-cell/library-orders/files/list":
-        return "刷新质检核对"
-    if method == "POST" and path == "/api/discovery/synthesis-progress/check_remote":
-        return "核对外部合成订单"
-    return f"{method} {path}"
-
-
-def _fallback_resource(method: str, path: str) -> str | None:
-    if method == "POST" and path == "/api/molecular-cell/library-orders/files/list":
-        return "library_file"
-    if method == "POST" and path == "/api/discovery/synthesis-progress/check_remote":
-        return "synthesis_progress"
+def _match_route(scope: dict) -> APIRoute | None:
+    app = scope.get("app")
+    for route in getattr(app, "routes", ()):
+        if isinstance(route, APIRoute) and route.matches(scope)[0] == Match.FULL:
+            return route
     return None
 
 
@@ -200,27 +145,6 @@ def _source_for_path(path: str, has_user_token: bool) -> str:
     if path.startswith("/api/order-experiment/") or path == "/api/mega-automation/labillion/callback":
         return "device"
     return "user" if has_user_token else "system"
-
-
-def _get_action_mappings() -> tuple[tuple[str, str, AuditAction], ...]:
-    global _ACTION_CACHE, _ACTION_CACHE_EXPIRES_AT
-    now = monotonic()
-    if _ACTION_CACHE is not None and now < _ACTION_CACHE_EXPIRES_AT:
-        return _ACTION_CACHE
-    with _ACTION_CACHE_LOCK:
-        now = monotonic()
-        if _ACTION_CACHE is not None and now < _ACTION_CACHE_EXPIRES_AT:
-            return _ACTION_CACHE
-        try:
-            with SessionLocal() as db:
-                _ACTION_CACHE = load_audit_action_mappings(db)
-            _ACTION_CACHE_EXPIRES_AT = now + ACTION_CACHE_TTL_SECONDS
-        except Exception:
-            logger.exception("Failed to refresh audit action cache")
-            if _ACTION_CACHE is None:
-                _ACTION_CACHE = ()
-            _ACTION_CACHE_EXPIRES_AT = now + min(ACTION_CACHE_TTL_SECONDS, 30)
-        return _ACTION_CACHE
 
 
 def _finalize_attempt(
@@ -287,13 +211,7 @@ def _target_from_response(body: bytes) -> tuple[str | None, str | None]:
     if not isinstance(data, dict):
         return None, None
     entity_id = data.get("id")
-    label = (
-        data.get("experiment_id")
-        or data.get("synthesis_order_id")
-        or data.get("discovery_id")
-        or data.get("library_order_id")
-        or data.get("name")
-    )
+    label = next((data[key] for key in all_label_fields() if data.get(key) not in (None, "")), None)
     return (
         str(entity_id)[:64] if entity_id not in (None, "") else None,
         str(label)[:255] if label not in (None, "") else None,

@@ -7,16 +7,20 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from integrations.labillion import LabillionError, is_labillion_enabled, query_order_statuses
+from core.errors import NotFoundError
+from integrations.labillion import (
+    LabillionError,
+    is_labillion_enabled,
+    query_order_statuses,
+)
 from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
-
-from modules.mega_automation.content import clean_text
 from modules.mega_automation.callback import (
     ORDER_TERMINAL_STATUSES,
     PRE_DISPATCH_ORDER_STATUSES,
     apply_labillion_status,
     normalize_labillion_status,
 )
+from modules.mega_automation.content import clean_text
 from modules.mega_automation.dispatch import TERMINAL_DISPATCH_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -109,7 +113,7 @@ def sync_work_order_labillion_status(
         select(MegaFlowWorkOrder).where(MegaFlowWorkOrder.id == int(order_id)).with_for_update()
     )
     if not order:
-        raise ValueError("流式工单不存在")
+        raise NotFoundError("流式工单不存在")
 
     if order.status not in SYNCABLE_ORDER_STATUSES:
         return {

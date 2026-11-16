@@ -806,6 +806,8 @@ import {
   fetchWorkbenchOptions,
   saveWorkbenchScheme,
   startWorkbench,
+  SERUM_WORKBENCH_DRAFT_EDIT,
+  SERUM_WORKBENCH_EDIT,
 } from '#/api/serumWorkbench'
 import { SERUM_ERRORS } from '../shared/errors'
 import serumSchemeMixin, { reindexGroupSortOrder } from '../shared/serumSchemeMixin'
@@ -813,14 +815,9 @@ import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import MouseRegistryDialog from '../shared/MouseRegistryDialog.vue'
 import AssayMethodEditor from '../shared/AssayMethodEditor.vue'
 import UserSelect from '#/components/UserSelect.vue'
-import {
-  canAccessSerumDetail,
-  canEditSerumProject,
-  canEditWorkbench,
-  canEditWorkbenchDraft,
-  canOpenSerumEdit,
-  hasSerumProjectEditPermission,
-} from '#/utils/serumPermission'
+import { SERUM_PAGE_DETAIL, SERUM_PROJECT_EDIT, SERUM_PROJECT_EDIT_ALL } from '#/api/serum'
+import { hasAccessCode } from '#/utils/accessCode'
+import { canEditSerumProject, canOpenSerumEdit } from '#/utils/serumPermission'
 import {
   isWorkbenchPlanClosed,
   SERUM_PROJECT_STATUS_DEFAULT,
@@ -938,16 +935,16 @@ export default {
       return this.userStore.userInfo || {}
     },
     canFullEdit() {
-      return canEditWorkbench(this.currentUserInfo)
+      return hasAccessCode(this.currentUserInfo, SERUM_WORKBENCH_EDIT)
     },
     canDraftEdit() {
-      return canEditWorkbenchDraft(this.currentUserInfo)
+      return hasAccessCode(this.currentUserInfo, SERUM_WORKBENCH_DRAFT_EDIT)
     },
     canEdit() {
       return Boolean(this.activeWorkbenchId)
         && (
           this.canFullEdit
-          || (this.canDraftEdit && String(this.postForm.plan_status || '草稿').trim() === '草稿')
+          || (this.canDraftEdit && this.postForm.plan_status === '草稿')
         )
         && !this.postForm.aligned_locked
     },
@@ -956,7 +953,7 @@ export default {
         && Boolean(this.activeWorkbenchId)
         && !this.postForm.aligned_locked
         && !isWorkbenchPlanClosed(this.postForm.plan_status)
-        && hasSerumProjectEditPermission(this.currentUserInfo)
+        && hasAccessCode(this.currentUserInfo, SERUM_PROJECT_EDIT_ALL, SERUM_PROJECT_EDIT)
     },
   },
   created() {
@@ -984,10 +981,7 @@ export default {
     }
     this.flushPendingSave()
       .then(continueNavigation)
-      .catch((err) => {
-        this.handleSaveFailure(err)
-        next(false)
-      })
+      .catch(() => next(false))
   },
   beforeRouteLeave(to, from, next) {
     this.flushPendingSave()
@@ -995,10 +989,7 @@ export default {
         this.cancelPageRequests()
         next()
       })
-      .catch((err) => {
-        this.handleSaveFailure(err)
-        next(false)
-      })
+      .catch(() => next(false))
   },
   methods: {
     /** 作废进行中的加载；被作废请求的 finally 不再复位，所以加载状态要在这里一并清掉。 */
@@ -1079,7 +1070,7 @@ export default {
             this.$router.replace({ path: '/serum/edit', query: { id: detail.serum_project_id } })
             return
           }
-          if (canAccessSerumDetail(this.currentUserInfo)) {
+          if (hasAccessCode(this.currentUserInfo, SERUM_PAGE_DETAIL)) {
             this.$router.replace({ path: '/serum/detail', query: { id: detail.serum_project_id } })
             return
           }
@@ -1100,7 +1091,7 @@ export default {
           !this.postForm.aligned_locked
           && (
             this.canFullEdit
-            || (this.canDraftEdit && String(this.postForm.plan_status || '草稿').trim() === '草稿')
+            || (this.canDraftEdit && this.postForm.plan_status === '草稿')
           )
         ) {
           this.ensureInitialMouseGroup()
@@ -1225,7 +1216,7 @@ export default {
                     this.$router.replace({ path: '/serum/edit', query: { id: saved.serum_project_id } })
                     return
                 }
-                if (canAccessSerumDetail(this.currentUserInfo)) {
+                if (hasAccessCode(this.currentUserInfo, SERUM_PAGE_DETAIL)) {
                     this.$router.replace({ path: '/serum/detail', query: { id: saved.serum_project_id } })
                     return
                 }
@@ -1388,6 +1379,7 @@ export default {
         this.autoSaving = false
       }
     },
+    /** 保存都经 doSubmit 发出，失败已在那里提示；这里只把失败往外抛，调用方据此拦住跳转。 */
     async flushPendingSave() {
       this.clearAutoSaveTimer()
       if (!this.canEdit || !this.activeWorkbenchId) return

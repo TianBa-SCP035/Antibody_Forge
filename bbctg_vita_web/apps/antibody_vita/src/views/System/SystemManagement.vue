@@ -235,6 +235,10 @@ const canManagePermissions = computed(() => hasSystemAccess('system.permission.m
 const canViewLogs = computed(() => hasSystemAccess('system.operation_log.view'));
 const canManageSuperuser = computed(() => isCurrentSuperuser.value);
 
+function canManageAccount(user: SystemUser) {
+  return !user.is_superuser || canManageSuperuser.value;
+}
+
 const visibleTabs = computed(() => [
   ...(canManageUsers.value ? ['users'] : []),
   ...(canManageRoles.value ? ['roles'] : []),
@@ -387,9 +391,8 @@ function getEffectiveRolePermissionCodes(role: SystemRole) {
   for (const bundleCode of role.bundle_codes || []) {
     const bundle = permissionBundleMap.value.get(bundleCode);
     if (!bundle || bundle.status !== 'active') continue;
-    for (const permissionCode of bundle?.permission_codes || []) {
-      const permission = permissionMap.value.get(permissionCode);
-      if (permission?.status === 'active') {
+    for (const permissionCode of bundle.permission_codes || []) {
+      if (permissionMap.value.has(permissionCode)) {
         result.add(permissionCode);
       }
     }
@@ -400,7 +403,6 @@ function getEffectiveRolePermissionCodes(role: SystemRole) {
 function hasSystemAccess(code: string) {
   return (
     isCurrentSuperuser.value ||
-    currentAccessCodes.value.has('*') ||
     currentAccessCodes.value.has(code)
   );
 }
@@ -479,23 +481,7 @@ function formatLogOperator(log: SystemOperationLog) {
 }
 
 function formatLogAction(log: SystemOperationLog) {
-  const name = log.operation_name || log.action || '';
-  const map: Record<string, string> = {
-    'POST /api/molecular-cell/library-orders/files/list': '刷新质检核对',
-    'POST /api/discovery/synthesis-progress/check_remote': '核对外部合成订单',
-    'POST /api/auth/user/change_password': '修改密码',
-    'PUT /api/auth/user/profile': '更新个人资料',
-    'POST /api/order-experiment/sync': '回传工单数据',
-    '每天 01:00 自动更新免疫实验状态': '免疫状态自动更新',
-    '每天 00:30 同步外部员工基础资料': '员工资料同步',
-    '每天 00:45 同步外部靶点主数据': '靶点同步',
-    '每天 01:15 自动更新抗体发现状态': '发现状态更新',
-    '每天 02:00 同步镁伽非终态工单状态': '镁伽状态同步',
-    '每隔 1 小时同步 One 合成订单与交付进度': '合成与验证外部订单同步',
-    'Labillion 状态回调': '镁伽状态回调',
-    '同步镁伽工单状态': '同步镁伽状态',
-  };
-  return map[name] || name || '-';
+  return log.action_label || log.operation_name || log.action || '-';
 }
 
 function formatLogTarget(log: SystemOperationLog) {
@@ -567,93 +553,29 @@ function formatAuditValue(
   }
 }
 
-const LOG_TARGET_TYPE_LABELS: Record<string, string> = {
-  bundle: '权限包',
-  cage: '笼位',
-  cell: '细胞库存',
-  feature: '系统功能',
-  file: '文件',
-  flow_work_order: '流式工单',
-  target: '靶点',
-  order_sync: '工单回传',
-  mouse: '小鼠数据',
-  operation_log: '操作日志',
-  permission: '权限',
-  project: '免疫项目',
-  project_status: '项目状态',
-  role: '角色',
-  sys_user: '用户',
-  titer: '效价',
-  titer_order: '效价工单',
-  user: '用户',
-  serum_workbench: '免疫工作台',
-  discovery_workbench: '发现工作台',
-  synthesis_progress: '合成与验证',
-  library: '文库工单',
-  library_detail: '文库工单',
-  library_file: '构建文件',
-  MolecularLibraryOrder: '文库工单',
-  MolecularLibraryResultFile: '构建文件',
-  MolecularLibraryResultLink: '构建文件',
-  MolecularLibraryResultPackage: '测序包',
-  MolecularPrimerIndexCatalog: '引物库',
-  SerumImmProject: '免疫项目',
-  SerumImmWorkbench: '免疫工作台',
-  SerumImmMouse: '小鼠数据',
-  SerumTiterOrder: '效价工单',
-  SerumFile: '文件',
-  DiscoveryWorkbench: '发现工作台',
-  DiscoverySynthesisOrder: '合成与验证',
-  SysUser: '用户',
-  Target: '靶点',
-  MegaFlowWorkOrder: '流式工单',
-  MegaFlowWorkOrderDispatch: '流式工单',
-  OrderSync: '工单回传',
-  primer: '引物库',
-};
-
-const logTargetTypeOptions = [...new Set(Object.values(LOG_TARGET_TYPE_LABELS))].sort((a, b) =>
-  a.localeCompare(b, 'zh-CN'),
-);
+// 目标类型的中文名和下拉选项都由后端给，筛选时直接传中文名
+const logTargetTypeOptions = ref<string[]>([]);
 
 function formatLogTargetType(log: SystemOperationLog) {
-  return log.target_type ? LOG_TARGET_TYPE_LABELS[log.target_type] || log.target_type : '-';
+  return log.target_type_label || log.target_type || '-';
+}
+
+function applyLogPage(result?: { items?: SystemOperationLog[]; target_type_options?: string[]; total?: number }) {
+  logs.value = result?.items || [];
+  logTotal.value = result?.total || logs.value.length;
+  if (result?.target_type_options) {
+    logTargetTypeOptions.value = [...result.target_type_options].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  }
 }
 
 function operationLogParams(): SystemOperationLogQuery {
   const selected = (Array.isArray(logTargetType.value) ? logTargetType.value : [logTargetType.value])
     .map((item) => String(item || '').trim())
     .filter(Boolean);
-  const codes = Object.entries(LOG_TARGET_TYPE_LABELS)
-    .filter(([, label]) => selected.includes(label))
-    .map(([code]) => code);
   return {
     ...logQuery,
-    target_type: codes.length ? codes : undefined,
+    target_type: selected.length ? selected : undefined,
   };
-}
-
-function formatLogTableName(name?: string) {
-  const map: Record<string, string> = {
-    molecular_library_order: '文库工单',
-    molecular_library_result_file: '构建文件',
-    molecular_library_result_link: '构建文件',
-    molecular_library_result_package: '测序包',
-    molecular_primer_index_catalog: '引物库',
-    serum_imm_project: '免疫项目',
-    serum_imm_workbench: '免疫工作台',
-    serum_imm_mouse: '小鼠数据',
-    serum_titer_order: '效价工单',
-    serum_file: '文件',
-    discovery_workbench: '发现工作台',
-    discovery_synthesis_order: '合成与验证',
-    sys_user: '用户',
-    target: '靶点',
-    mega_flow_work_order: '流式工单',
-    mega_flow_work_order_dispatch: '流式工单',
-    order_sync: '工单回传',
-  };
-  return name ? map[name] || name : '-';
 }
 
 function formatLogResult(result?: string) {
@@ -783,10 +705,7 @@ async function loadData() {
       logLoading.value = false;
       const logResult = await getSystemOperationLogsByQueryApi(operationLogParams(), skipGlobalErrorHandler);
       if (!isLatest()) return;
-      if (isLatestLogs()) {
-        logs.value = logResult?.items || [];
-        logTotal.value = logResult?.total || logs.value.length;
-      }
+      if (isLatestLogs()) applyLogPage(logResult);
     } else {
       logs.value = [];
       logTotal.value = 0;
@@ -819,8 +738,7 @@ async function loadLogs() {
   try {
     const result = await getSystemOperationLogsByQueryApi(operationLogParams());
     if (!isLatest()) return;
-    logs.value = result?.items || [];
-    logTotal.value = result?.total || logs.value.length;
+    applyLogPage(result);
   } finally {
     if (isLatest()) logLoading.value = false;
   }
@@ -1442,7 +1360,12 @@ onMounted(loadData);
             </el-table-column>
             <el-table-column label="操作" width="250" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" @click="openUserDialog(row)">
+                <el-button
+                  v-if="canManageAccount(row)"
+                  link
+                  type="primary"
+                  @click="openUserDialog(row)"
+                >
                   编辑资料
                 </el-button>
                 <el-button
@@ -1453,7 +1376,12 @@ onMounted(loadData);
                 >
                   个人权限
                 </el-button>
-                <el-button link type="warning" @click="openPasswordDialog(row)">
+                <el-button
+                  v-if="canManageAccount(row)"
+                  link
+                  type="warning"
+                  @click="openPasswordDialog(row)"
+                >
                   账号密码
                 </el-button>
               </template>
@@ -1537,7 +1465,7 @@ onMounted(loadData);
           <el-alert
             class="section-gap"
             show-icon
-            title="权限点按页面或业务归属展示。权限码由代码和初始化 SQL 维护，页面暂时只读。"
+            title="权限点按页面或业务归属展示。权限码在各模块代码里登记，页面只读。"
             type="info"
           />
           <el-empty v-if="!groupedPermissions.length" description="暂无权限点" />
@@ -1729,7 +1657,7 @@ onMounted(loadData);
             <header class="audit-entity__header">
               <strong>{{ item.entity_label || item.entity_id || item.entity_type }}</strong>
               <el-tag size="small">{{ formatLogChangeType(item.change_type) }}</el-tag>
-              <span>{{ formatLogTableName(item.table_name) }} · {{ item.change_count }} 处变化</span>
+              <span>{{ item.entity_type_label || item.table_name }} · {{ item.change_count }} 处变化</span>
             </header>
             <el-table
               v-if="item.changes?.length"

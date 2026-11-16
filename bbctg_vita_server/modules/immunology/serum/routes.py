@@ -4,22 +4,27 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from core.errors import NotFoundError
 from core.response import success
 from db.session import get_db
 from models.immunology import SerumImmProject
 from models.system import SysUser
 from modules.auth.dependencies import get_current_user
-from modules.immunology import project_lifecycle
-from modules.immunology.serum import scheme_export, service
-from modules.system.permissions import (
-    DEFAULT_PERMISSION_MESSAGE,
-    PERMISSION_MESSAGES,
-    has_permission,
-    require_permission,
+from modules.auth.permissions import (
+    UserContext,
+    get_user_context,
+    permission_denied,
+    require,
 )
+from modules.immunology import project_lifecycle
+from modules.immunology.project_access import is_owner_name, is_project_member
+from modules.immunology.serum import scheme_export, service
+from modules.system.audit_routes import audit, audit_quiet, permission_action
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
 
 router = APIRouter()
+# 鼠号分组查询、鼠号明细保存：免疫方案编辑或效价编辑任一即可
+MOUSE_REGISTRY_PERMISSIONS = ("serum.project.edit", "serum.project.edit_all", "serum.titer.edit", "serum.titer.edit_all")
 
 
 def _parse_export_ids(data: dict) -> list:
@@ -37,44 +42,36 @@ def _attachment_response(content: bytes, filename: str, media_type: str) -> Resp
     )
 
 
-@router.post("/stats")
+@router.post("/stats", dependencies=[require("serum.page.list")])
 def stats(
     data: dict | None = None,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.page.list")
     return success(service.get_stats(db, data or {}))
 
 
-@router.post("/list")
+@router.post("/list", dependencies=[require("serum.page.list")])
 def list_serum(
     data: dict,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.page.list")
     return success(service.get_list(db, data or {}))
 
 
-@router.post("/column_values")
+@router.post("/column_values", dependencies=[require("serum.page.list")])
 def serum_column_values(
     data: dict | None = None,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.page.list")
     return success(service.get_column_values(db, data or {}))
 
 
-@router.get("/detail")
+@router.get("/detail", dependencies=[require("serum.page.detail")])
 def detail(
     id: int | None = Query(default=None),
     experiment_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.page.detail")
     if id is None and not str(experiment_id or "").strip():
         raise HTTPException(status_code=400, detail="id 或 experiment_id 必填")
     data = service.get_detail(db, project_id=id, experiment_id=experiment_id)
@@ -83,163 +80,149 @@ def detail(
     return success(data)
 
 
-@router.get("/mouse-groups")
+@router.get("/mouse-groups", dependencies=[require(*MOUSE_REGISTRY_PERMISSIONS)])
 def mouse_groups(
     experiment_id: str = Query(...),
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    _require_mouse_registry_access(db, current_user)
     return success({"items": service.get_mouse_groups(db, experiment_id)})
 
 
-@router.post("/mouse-registry/save")
+@router.post("/mouse-registry/save", dependencies=[require(*MOUSE_REGISTRY_PERMISSIONS, audit="保存小鼠鼠号明细")])
 def mouse_registry_save(
     data: dict,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    _require_mouse_registry_access(db, current_user)
     return success(service.save_mouse_registry(db, data or {}))
 
 
-@router.post("/save")
+@router.post(
+    "/save",
+    dependencies=[
+        audit(
+            permission_action("serum.project.create", "新建免疫项目"),
+            permission_action("serum.project.edit", "编辑免疫项目"),
+        )
+    ],
+)
 def save(
     data: dict,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
     save_data = dict(data or {})
-    try:
-        _require_project_save_permission(db, current_user, save_data)
-        return success(service.save_serum(db, save_data))
-    except ValueError as exc:
-        message = str(exc)
-        if "已被其他用户修改" in message:
-            raise HTTPException(status_code=409, detail=message) from exc
-        if "项目版本缺失" in message:
-            raise HTTPException(status_code=422, detail=message) from exc
-        raise
+    _require_project_save_permission(db, current_user, context, save_data)
+    return success(service.save_serum(db, save_data))
 
 
-@router.post("/delete")
+@router.post("/delete", dependencies=[require("serum.project.delete", audit="删除免疫项目")])
 def delete(
     data: dict,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.project.delete")
     action = project_lifecycle.delete_or_revert_project(db, int(data.get("id")))
     message = "已撤回为工作台草稿" if action == "reverted" else "删除成功"
     return success({"action": action, "message": message})
 
 
-@router.get("/filter_options")
+@router.get("/filter_options", dependencies=[require("serum.page.list")])
 def filter_options(
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.page.list")
     return success(service.get_filter_options(db))
 
 
-@router.get("/recorded_targets")
+@router.get("/recorded_targets", dependencies=[require("serum.page.list")])
 def recorded_targets(
     keyword: str = Query(default="", max_length=128),
     limit: int = Query(default=DEFAULT_RECORDED_TARGET_LIMIT, ge=1, le=MAX_RECORDED_TARGET_LIMIT),
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.page.list")
     return success({"items": service.search_recorded_targets(db, keyword, limit)})
 
 
-@router.post("/update_status")
+@router.post("/update_status", dependencies=[audit(permission_action("serum.status.update", "快速修改状态"))])
 def update_status(
     data: dict,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    _require_status_update_access(db, current_user, int(data.get("id")))
+    _require_status_update_access(db, current_user, context, int(data.get("id")))
     service.update_status(db, int(data.get("id")), data.get("project_status"))
     return success({"message": "状态修改成功"})
 
 
-@router.post("/update_lab_notebook")
+@router.post("/update_lab_notebook", dependencies=[audit(permission_action("serum.project.edit", "更新实验记录本"))])
 def update_lab_notebook(
     data: dict,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    _require_project_scheme_edit(db, current_user, int(data.get("id")))
+    _require_project_scheme_edit(db, current_user, context, int(data.get("id")))
     value = service.update_lab_notebook(db, int(data.get("id")), data.get("lab_notebook"))
     return success({"message": "实验记录本更新成功", "lab_notebook": value})
 
 
-@router.post("/update_reviewer")
+@router.post("/update_reviewer", dependencies=[audit(permission_action("serum.project.edit", "更新免疫实验审核人"))])
 def update_reviewer(
     data: dict,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    _require_project_scheme_edit(db, current_user, int(data.get("id")))
+    _require_project_scheme_edit(db, current_user, context, int(data.get("id")))
     value = service.update_reviewer(db, int(data.get("id")), data.get("reviewer"))
     return success({"message": "审核人更新成功", "reviewer": value})
 
 
-@router.post("/update_cage_position")
+@router.post("/update_cage_position", dependencies=[require("serum.cage.update", audit="更新笼位信息")])
 def update_cage_position(
     data: dict,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    require_permission(db, current_user, "serum.cage.update")
-    _require_project_owner_or_edit_all(db, current_user, int(data.get("id")))
+    _require_project_owner_or_edit_all(db, current_user, context, int(data.get("id")))
     service.update_cage_position(db, int(data.get("id")), data.get("cage_position"))
     return success({"message": "笼位更新成功"})
 
 
-@router.post("/project/prep_status")
+@router.post("/project/prep_status", dependencies=[require("serum.cell.prep_status.update", audit="更新细胞制备状态")])
 def update_prep_status(
     data: dict,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.cell.prep_status.update")
     service.update_prep_status(db, data.get("experiment_id"), data.get("prep_status"))
     return success({"message": "制备状态更新成功"})
 
 
-@router.post("/auto_update_status")
+@router.post("/auto_update_status", dependencies=[require("serum.status.auto_update", audit="自动更新状态")])
 def auto_update_status(
     data: dict,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    require_permission(db, current_user, "serum.status.auto_update")
     return success(service.auto_update_status(db, data or {}))
 
 
-@router.post("/export_list")
+@router.post("/export_list", dependencies=[require("serum.page.list")])
 def export_list(
     data: dict,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> Response:
-    require_permission(db, current_user, "serum.page.list")
     from utils.excel import xlsx_response
 
     output, filename = service.export_list_workbook(db, data or {})
     return xlsx_response(output, filename)
 
 
-@router.post("/export_mouse")
+@router.post("/export_mouse", dependencies=[require("serum.mouse.export"), audit_quiet()])
 def export_mouse(
     data: dict,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> Response:
-    require_permission(db, current_user, "serum.mouse.export")
     output, filename = service.export_mouse_workbook(db, data or {})
     return Response(
         content=output.getvalue(),
@@ -248,20 +231,15 @@ def export_mouse(
     )
 
 
-@router.post("/export_scheme")
+@router.post("/export_scheme", dependencies=[require("serum.page.detail"), audit_quiet()])
 def export_scheme(
     data: dict,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> Response:
-    require_permission(db, current_user, "serum.page.detail")
     ids = _parse_export_ids(data)
     if not ids:
         raise HTTPException(status_code=400, detail="请提供项目 ID")
-    try:
-        output, filename, export_type = scheme_export.export_scheme_response(db, ids)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    output, filename, export_type = scheme_export.export_scheme_response(db, ids)
     media_type = (
         "application/zip"
         if export_type == "zip"
@@ -270,22 +248,16 @@ def export_scheme(
     return _attachment_response(output.getvalue(), filename, media_type)
 
 
-@router.post("/export_scheme_pdf")
+@router.post("/export_scheme_pdf", dependencies=[require("serum.page.detail"), audit_quiet()])
 def export_scheme_pdf(
     data: dict,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
 ) -> Response:
-    require_permission(db, current_user, "serum.page.detail")
     ids = _parse_export_ids(data)
     if not ids:
         raise HTTPException(status_code=400, detail="请提供项目 ID")
     try:
         output, filename = scheme_export.export_scheme_pdf_response(db, ids)
-    except ValueError as exc:
-        detail = str(exc)
-        status_code = 404 if detail == scheme_export._SCHEME_PDF_NOT_FOUND else 400
-        raise HTTPException(status_code=status_code, detail=detail) from exc
     except RuntimeError as exc:
         detail = str(exc)
         status_code = 503 if "LibreOffice" in detail else 500
@@ -293,36 +265,21 @@ def export_scheme_pdf(
     return _attachment_response(output.getvalue(), filename, "application/pdf")
 
 
-def _require_mouse_registry_access(db: Session, user: SysUser) -> None:
-    """鼠号分组查询 / 鼠号明细保存：免疫方案编辑或效价编辑任一即可（含对应 edit_all）。"""
-    if (
-        has_permission(db, user, "serum.project.edit")
-        or has_permission(db, user, "serum.project.edit_all")
-        or has_permission(db, user, "serum.titer.edit")
-        or has_permission(db, user, "serum.titer.edit_all")
-    ):
-        return
-    raise HTTPException(
-        status_code=403,
-        detail=PERMISSION_MESSAGES.get("serum.project.edit", DEFAULT_PERMISSION_MESSAGE),
-    )
-
-
-def _require_project_save_permission(db: Session, user: SysUser, data: dict) -> None:
+def _require_project_save_permission(db: Session, user: SysUser, context: UserContext, data: dict) -> None:
     project_id = data.get("id")
     if not project_id:
-        require_permission(db, user, "serum.project.create")
+        context.require("serum.project.create")
         owner = str(data.get("owner") or "").strip()
         if not owner:
             data["owner"] = _default_owner_name(user)
             return
-        if not _is_owner_name(user, owner) and not has_permission(db, user, "serum.project.edit_all"):
+        if not is_owner_name(user, owner) and not context.allows("serum.project.edit_all"):
             raise ValueError("普通用户只能将自己设为项目负责人")
         return
 
     project = db.get(SerumImmProject, int(project_id))
     if not project:
-        raise ValueError("项目不存在")
+        raise NotFoundError("项目不存在")
 
     current_owner = str(project.owner or "").strip()
     target_owner = str(data.get("owner") or current_owner).strip()
@@ -331,90 +288,49 @@ def _require_project_save_permission(db: Session, user: SysUser, data: dict) -> 
         target_owner = current_owner
 
     keeps_owner = target_owner == current_owner or (
-        _is_owner_name(user, current_owner) and _is_owner_name(user, target_owner)
+        is_owner_name(user, current_owner) and is_owner_name(user, target_owner)
     )
-    if keeps_owner and _is_project_member(user, project):
-        require_permission(db, user, "serum.project.edit")
+    if keeps_owner and is_project_member(user, project):
+        context.require("serum.project.edit")
         return
 
-    require_permission(db, user, "serum.project.edit_all")
+    context.require("serum.project.edit_all")
 
 
-def require_serum_project_edit_permission(db: Session, user: SysUser) -> None:
-    if has_permission(db, user, "serum.project.edit_all") or has_permission(
-        db, user, "serum.project.edit"
-    ):
-        return
-    raise HTTPException(
-        status_code=403,
-        detail=PERMISSION_MESSAGES.get("serum.project.edit", DEFAULT_PERMISSION_MESSAGE),
-    )
-
-
-def require_serum_project_editor(db: Session, user: SysUser, project: SerumImmProject) -> None:
-    if has_permission(db, user, "serum.project.edit_all"):
-        return
-    if has_permission(db, user, "serum.project.edit") and _is_project_member(user, project):
-        return
-    raise HTTPException(
-        status_code=403,
-        detail=PERMISSION_MESSAGES.get("serum.project.edit", DEFAULT_PERMISSION_MESSAGE),
-    )
-
-
-def _require_project_scheme_edit(db: Session, user: SysUser, project_id: int) -> None:
+def _require_project_scheme_edit(db: Session, user: SysUser, context: UserContext, project_id: int) -> None:
     project = db.get(SerumImmProject, project_id)
     if not project:
-        raise ValueError("项目不存在")
-    require_serum_project_editor(db, user, project)
-
-
-def _require_project_owner_or_edit_all(db: Session, user: SysUser, project_id: int) -> None:
-    project = db.get(SerumImmProject, project_id)
-    if not project:
-        raise ValueError("项目不存在")
-    if _is_project_member(user, project):
+        raise NotFoundError("项目不存在")
+    if context.allows("serum.project.edit_all"):
         return
-    require_permission(db, user, "serum.project.edit_all")
+    if context.allows("serum.project.edit") and is_project_member(user, project):
+        return
+    raise permission_denied("serum.project.edit")
 
 
-def _require_status_update_access(db: Session, user: SysUser, project_id: int) -> None:
+def _require_project_owner_or_edit_all(db: Session, user: SysUser, context: UserContext, project_id: int) -> None:
     project = db.get(SerumImmProject, project_id)
     if not project:
-        raise ValueError("项目不存在")
-    if _is_project_member(user, project):
-        if has_permission(db, user, "serum.status.update") or has_permission(db, user, "serum.titer.edit"):
+        raise NotFoundError("项目不存在")
+    if is_project_member(user, project):
+        return
+    context.require("serum.project.edit_all")
+
+
+def _require_status_update_access(db: Session, user: SysUser, context: UserContext, project_id: int) -> None:
+    project = db.get(SerumImmProject, project_id)
+    if not project:
+        raise NotFoundError("项目不存在")
+    if is_project_member(user, project):
+        if context.allows("serum.status.update", "serum.titer.edit"):
             return
-        raise HTTPException(
-            status_code=403,
-            detail=PERMISSION_MESSAGES.get("serum.status.update", DEFAULT_PERMISSION_MESSAGE),
-        )
-    if has_permission(db, user, "serum.status.update") and has_permission(db, user, "serum.project.edit_all"):
+        raise permission_denied("serum.status.update")
+    if context.allows("serum.status.update") and context.allows("serum.project.edit_all"):
         return
-    if has_permission(db, user, "serum.titer.edit") and has_permission(db, user, "serum.titer.edit_all"):
+    if context.allows("serum.titer.edit") and context.allows("serum.titer.edit_all"):
         return
-    raise HTTPException(
-        status_code=403,
-        detail=PERMISSION_MESSAGES.get("serum.status.update", DEFAULT_PERMISSION_MESSAGE),
-    )
+    raise permission_denied("serum.status.update")
 
 
 def _default_owner_name(user: SysUser) -> str:
     return (user.display_name or user.username or "").strip()
-
-
-def _owner_aliases(user: SysUser) -> set[str]:
-    values = {user.username, user.display_name, _default_owner_name(user)}
-    aliases = {str(value).strip() for value in values if str(value or "").strip()}
-    for value in list(aliases):
-        aliases.add(value.split()[0])
-    return aliases
-
-
-def _is_owner_name(user: SysUser, owner: str | None) -> bool:
-    owner_name = str(owner or "").strip()
-    return bool(owner_name and owner_name in _owner_aliases(user))
-
-
-def _is_project_member(user: SysUser, project: SerumImmProject) -> bool:
-    return _is_owner_name(user, project.owner) or _is_owner_name(user, project.reviewer)

@@ -1,12 +1,6 @@
 from __future__ import annotations
 
-import re
-
-from sqlalchemy import Engine, select, text
-from sqlalchemy.orm import Session
-
-from models.system import SysPermission, SysPermissionApi
-from modules.system.audit_context import AuditAction
+from sqlalchemy import Engine, text
 
 WRITE_METHODS = frozenset({"DELETE", "PATCH", "POST", "PUT"})
 _DATABASE_FIELD_LABELS: dict[tuple[str, str], str] = {}
@@ -27,98 +21,18 @@ _REQUIRED_AUDIT_COLUMNS = {
     ("sys_operation_log_item", "changes"),
 }
 
-# 查询、普通导出和会话管理：不记录无变化日志。
-INTENTIONALLY_IGNORED_ROUTES = frozenset(
-    {
-        ("POST", "/api/atlas/targets/list"),
-        ("POST", "/api/auth/logout"),
-        ("POST", "/api/auth/refresh"),
-        ("POST", "/api/discovery/synthesis-progress/check_remote"),
-        ("POST", "/api/discovery/synthesis-progress/column_values"),
-        ("POST", "/api/discovery/synthesis-progress/export_list"),
-        ("POST", "/api/discovery/synthesis-progress/list"),
-        ("POST", "/api/discovery/workbench/column_values"),
-        ("POST", "/api/discovery/workbench/export_list"),
-        ("POST", "/api/discovery/workbench/list"),
-        ("POST", "/api/mega-automation/flow-work-orders/by-source"),
-        ("POST", "/api/mega-automation/flow-work-orders/column_values"),
-        ("POST", "/api/mega-automation/flow-work-orders/export"),
-        ("POST", "/api/mega-automation/flow-work-orders/list"),
-        ("GET", "/api/molecular-cell/library-orders/by-discovery"),
-        ("POST", "/api/molecular-cell/library-orders/column_values"),
-        ("GET", "/api/molecular-cell/library-orders/files/download"),
-        ("GET", "/api/molecular-cell/library-orders/recorded_targets"),
-        ("POST", "/api/molecular-cell/library-orders/export_list"),
-        ("POST", "/api/molecular-cell/library-orders/files/list"),
-        ("POST", "/api/molecular-cell/library-orders/catalog/column_values"),
-        ("POST", "/api/molecular-cell/library-orders/catalog/ids"),
-        ("POST", "/api/molecular-cell/library-orders/catalog/list"),
-        ("POST", "/api/molecular-cell/library-orders/list"),
-        ("POST", "/api/serum/column_values"),
-        ("POST", "/api/serum/export_list"),
-        ("POST", "/api/serum/export_mouse"),
-        ("POST", "/api/serum/export_scheme"),
-        ("POST", "/api/serum/export_scheme_pdf"),
-        ("POST", "/api/serum/list"),
-        ("POST", "/api/serum/stats"),
-        ("POST", "/api/serum/titer/elisa/plate/list"),
-        ("POST", "/api/serum/titer/file/list"),
-        ("POST", "/api/serum/titer/order/column_values"),
-        ("POST", "/api/serum/titer/order/export"),
-        ("POST", "/api/serum/titer/order/list"),
-        ("POST", "/api/serum/titer/order/stats"),
-        ("POST", "/api/serum/titer/plate/list"),
-        ("POST", "/api/serum/workbench/column_values"),
-        ("POST", "/api/serum/workbench/export_list"),
-        ("POST", "/api/serum/workbench/list"),
-    }
+# 标准只读 POST 后缀（查询、导出、统计）：路由上不用声明审计，没有数据变化不记日志。
+READ_ONLY_POST_SUFFIXES = (
+    "/list",
+    "/column_values",
+    "/export_list",
+    "/export",
+    "/stats",
 )
 
-# 不依赖 sys_permission_api，由登录显式日志或 Session 捕获负责。
-LABILLION_CALLBACK_AUDIT_ACTION = AuditAction(
-    code="mega.labillion.callback",
-    name="镁伽状态回调",
-    operation_type="update",
-    resource="flow_work_order",
-)
-LABILLION_STATUS_SYNC_AUDIT_ACTION = AuditAction(
-    code="mega.labillion.status_sync",
-    name="同步镁伽状态",
-    operation_type="update",
-    resource="flow_work_order",
-)
-SYSTEM_OR_MANUAL_AUDIT_ROUTES: dict[
-    tuple[str, str],
-    AuditAction | None,
-] = {
-    ("POST", "/api/auth/login"): None,
-    ("POST", "/api/auth/user/change_password"): AuditAction(
-        code="auth.change_password",
-        name="修改密码",
-        operation_type="update",
-        resource="user",
-    ),
-    ("PUT", "/api/auth/user/profile"): AuditAction(
-        code="auth.update_profile",
-        name="更新个人资料",
-        operation_type="update",
-        resource="user",
-    ),
-    (
-        "POST",
-        "/api/mega-automation/flow-work-orders/{order_id}/sync-labillion-status",
-    ): LABILLION_STATUS_SYNC_AUDIT_ACTION,
-    (
-        "POST",
-        "/api/mega-automation/labillion/callback",
-    ): LABILLION_CALLBACK_AUDIT_ACTION,
-    ("POST", "/api/order-experiment/sync"): AuditAction(
-        code="order.experiment.sync",
-        name="回传工单数据",
-        operation_type="update",
-        resource="order_sync",
-    ),
-}
+
+def is_readonly_post(method: str, path: str) -> bool:
+    return method.upper() == "POST" and path.endswith(READ_ONLY_POST_SUFFIXES)
 
 
 AUDIT_SET_LIKE_FIELDS: dict[str, frozenset[str]] = {
@@ -138,37 +52,6 @@ def get_audit_set_like_fields(
     return AUDIT_SET_LIKE_FIELDS.get(
         entity_type,
         AUDIT_SET_LIKE_FIELDS.get(table_name, frozenset()),
-    )
-
-
-def load_audit_action_mappings(
-    db: Session,
-) -> tuple[tuple[str, str, AuditAction], ...]:
-    rows = db.execute(
-        select(SysPermissionApi, SysPermission)
-        .join(
-            SysPermission,
-            SysPermission.code == SysPermissionApi.permission_code,
-        )
-        .where(
-            SysPermissionApi.status == "active",
-            SysPermission.status == "active",
-        )
-    ).all()
-    return tuple(
-        (
-            mapping.method.upper(),
-            mapping.path_pattern,
-            AuditAction(
-                code=permission.code,
-                name=mapping.description or permission.name,
-                operation_type=permission.action,
-                resource=permission.resource,
-            ),
-        )
-        for mapping, permission in rows
-        if permission.type != "page"
-        and permission.action not in {"page", "view"}
     )
 
 
@@ -220,8 +103,3 @@ def get_audit_field_label(
         or str(orm_comment or "").strip()
         or field_name
     )
-
-
-def audit_path_matches(pattern: str, path: str) -> bool:
-    regex = "^" + re.sub(r"\\\{[^/]+\\\}", r"[^/]+", re.escape(pattern)) + "$"
-    return re.match(regex, path) is not None

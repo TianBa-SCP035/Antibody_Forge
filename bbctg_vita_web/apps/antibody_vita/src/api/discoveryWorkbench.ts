@@ -1,4 +1,9 @@
 import { requestClient, skipGlobalErrorHandler } from '#/api/request';
+import { fetchRecordedTargets } from '#/api/options';
+
+export const DISCOVERY_WORKBENCH_EDIT = 'discovery.workbench.edit';
+/** 别的页面新建发现行后跳过来定位（sessionStorage），键值已发布不要改 */
+export const DISCOVERY_WORKBENCH_CREATED_KEY = 'discovery.workbench.created';
 
 const SAVE_TIMEOUT = 5000;
 const DOWNLOAD_TIMEOUT = 360_000;
@@ -8,6 +13,10 @@ type RequestConfig = Parameters<typeof requestClient.get>[1];
 const downloadConfig = {
   skipErrorHandler: true,
 } as Parameters<typeof requestClient.download>[1];
+
+export function fetchDiscoveryWorkbenchRecordedTargets(keyword = '') {
+  return fetchRecordedTargets('/discovery/workbench/recorded_targets', keyword);
+}
 
 export function fetchDiscoveryWorkbenchList(data: any, config?: PostConfig) {
   return requestClient.post('/discovery/workbench/list', data, {

@@ -135,7 +135,7 @@
           class="filter-item"
           popper-class="titer-select-dropdown"
           v-bind="headerTop('target_name', '靶点')"
-          scope="titerOrder"
+          :search="fetchTiterOrderRecordedTargets"
           @change="handleFilter"
         />
         <ListFilterSelect
@@ -841,6 +841,11 @@ import {
   fetchTiterOrderStats,
   exportTiterOrderList,
   saveTiterOrder,
+  fetchTiterOrderRecordedTargets,
+  TITER_ORDER_DELETE,
+  TITER_ORDER_EDIT,
+  TITER_ORDER_OWNER_EDIT,
+  TITER_ORDER_RECORD_EDIT,
 } from '#/api/serum';
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
 import ListFilterSelect from '#/components/ListFilterSelect.vue';
@@ -853,23 +858,19 @@ import {
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
 import { listPageMixin } from '#/utils/listPage';
 import { listTableLockMixin } from '#/utils/listTableLock';
-import { getSerumTiterStatusTagType, getTiterPriorityTone, mergeTiterSerumStatusOptions, TITER_PRIORITY_DEFAULT, TITER_PRIORITY_OPTIONS, TITER_SERUM_STATUS_OPTIONS } from '#/utils/serumProjectStatus';
+import { getSerumTiterStatusTagType, getTiterPriorityTone, mergeTiterSerumStatusOptions, TITER_PRIORITY_OPTIONS, TITER_SERUM_STATUS_OPTIONS } from '#/utils/serumProjectStatus';
 import { FLOW_WORK_ORDER_STATUS_OPTIONS, orderStatusTagType } from '#/utils/megaFlowWorkOrderStatus';
+import { hasAccessCode } from '#/utils/accessCode';
 import {
-  canDeleteTiterOrder,
   canEditSerumTiter,
-  canEditTiterOrder,
-  canEditTiterOrderOwner,
   canEditTiterOrderRecord,
-  canEditTiterOrderRecordOpen,
   canUpdateSerumStatus,
   getSerumUserName,
 } from '#/utils/serumPermission';
 import { useUserStore } from '@vben/stores';
 
 import WorkbenchTargetFilter from '#/components/workbench/WorkbenchTargetFilter.vue';
-import { DISCOVERY_WORKBENCH_CREATED_KEY } from '#/constants/storageKeys';
-import { canEditDiscoveryWorkbench } from '#/utils/discoveryPermission';
+import { DISCOVERY_WORKBENCH_CREATED_KEY, DISCOVERY_WORKBENCH_EDIT } from '#/api/discoveryWorkbench';
 import { handoffTiterToDiscovery } from '#/utils/titerDiscoveryHandoff';
 import TiterInstrumentOrderDialogs from './TiterInstrumentOrderDialogs.vue';
 import TiterMouseSelectWizard from './TiterMouseSelectWizard.vue';
@@ -1372,7 +1373,7 @@ export default {
   },
   setup() {
     const userStore = useUserStore();
-    return { userStore };
+    return { fetchTiterOrderRecordedTargets, userStore };
   },
   computed: {
     headerMenuColumns() {
@@ -2461,7 +2462,6 @@ export default {
                 titer_owners: Array.isArray(item.titer_owners) ? item.titer_owners : [],
                 test_dates: Array.isArray(item.test_dates) ? item.test_dates : [],
                 test_dates_display: item.test_dates_display || '',
-                priority: item.priority || TITER_PRIORITY_DEFAULT,
               }))
             : [];
           this.total = Number(response.total) || 0;
@@ -2510,7 +2510,7 @@ export default {
       });
     },
     goSequencing(row) {
-      if (!canEditDiscoveryWorkbench(this.currentUserInfo)) {
+      if (!hasAccessCode(this.currentUserInfo, DISCOVERY_WORKBENCH_EDIT)) {
         ElMessage.warning('您没有权限编辑抗体发现工作台');
         return;
       }
@@ -2872,19 +2872,19 @@ export default {
       this.createDialogVisible = true;
     },
     canEditTiterOrder() {
-      return canEditTiterOrder(this.currentUserInfo);
+      return hasAccessCode(this.currentUserInfo, TITER_ORDER_EDIT);
     },
     canDeleteTiterOrder() {
-      return canDeleteTiterOrder(this.currentUserInfo);
+      return hasAccessCode(this.currentUserInfo, TITER_ORDER_DELETE);
     },
     canEditTiterOrderOwner() {
-      return canEditTiterOrderOwner(this.currentUserInfo);
+      return hasAccessCode(this.currentUserInfo, TITER_ORDER_OWNER_EDIT);
     },
     canEditTiterOrderRecord(row) {
       return canEditTiterOrderRecord(this.currentUserInfo, row);
     },
     canEditTiterOrderRecordOpen() {
-      return canEditTiterOrderRecordOpen(this.currentUserInfo);
+      return hasAccessCode(this.currentUserInfo, TITER_ORDER_RECORD_EDIT);
     },
     canEditTiter(row) {
       return canEditSerumTiter(this.currentUserInfo, {
@@ -2993,7 +2993,7 @@ export default {
           ElMessage.warning('您没有权限编辑优先级');
           return Promise.resolve(false);
         }
-        payload.priority = row.priority || TITER_PRIORITY_DEFAULT;
+        payload.priority = row.priority;
       } else {
         return Promise.resolve(false);
       }
@@ -3019,6 +3019,7 @@ export default {
 };
 </script>
 
+<style scoped src="#/components/workbench/workbenchPanel.css"></style>
 <style scoped>
 /*
  * 尺寸维护约定（L1 页面壳子 / L2 数据区）：
@@ -3038,239 +3039,8 @@ export default {
   background: var(--list-page-bg);
 }
 
-.page-title {
-  margin: 0;
-  color: var(--el-text-color-primary);
-  font-size: var(--list-page-title-size);
-  font-weight: var(--list-page-title-weight);
-  letter-spacing: 0.2px;
-}
-
-.text-secondary {
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-}
-
-.text-hint {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  opacity: 0.92;
-}
-
-.stat-tile-active .stat-label {
-  color: var(--el-text-color-primary);
-  font-weight: 600;
-}
-
-.stat-tile-active .stat-value {
-  transform: scale(1.03);
-}
-
-.stat-value {
-  flex: 0 0 auto;
-  color: var(--el-text-color-primary);
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 1;
-  text-align: right;
-  transition: transform 0.22s ease;
-}
-
-.workbench-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: var(--list-surface-padding-y) var(--list-surface-padding-x);
-  margin-bottom: var(--list-page-gap);
-  background: var(--list-surface-bg);
-  border: var(--list-surface-border);
-  border-radius: var(--list-surface-radius);
-  box-shadow: var(--list-surface-shadow);
-}
-
-.page-header-band {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-width: 0;
-  padding: 12px 16px;
-  margin: 0;
-  border: 1px solid rgb(191 219 254 / 45%);
-  border-radius: var(--list-mid-radius);
-  background: linear-gradient(90deg, #e6f0ff 0%, #f2faf7 46%, var(--el-bg-color) 100%);
-}
-
-.title-group {
-  min-width: 0;
-}
-
-.page-subtitle {
-  max-width: 560px;
-  margin: 6px 0 0;
-  color: var(--list-page-subtitle-color);
-  font-size: var(--list-page-subtitle-size);
-  font-weight: var(--list-page-subtitle-weight);
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.total-count {
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-}
-
 .stats-strip {
-  display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.stat-tile {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 54px;
-  padding: 8px 10px 8px 14px;
-  text-align: left;
-  background: var(--list-mid-bg);
-  border: var(--list-mid-border);
-  border-radius: var(--list-mid-radius);
-  --stat-ring: rgba(64, 158, 255, 0.32);
-  --stat-glow: rgba(64, 158, 255, 0.12);
-}
-
-.stat-tile-interactive {
-  cursor: pointer;
-  user-select: none;
-  transition:
-    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.22s ease,
-    border-color 0.22s ease,
-    background-color 0.22s ease;
-}
-
-.stat-tile-interactive:hover {
-  transform: translateY(-2px);
-  border-color: #dce3ec;
-  background: var(--el-bg-color);
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07);
-}
-
-.stat-tile-interactive:active {
-  transform: translateY(0) scale(0.985);
-  background: var(--el-bg-color);
-  border-color: transparent;
-  box-shadow: 0 3px 10px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
-  transition-duration: 0.08s;
-}
-
-.stat-tile-active {
-  border-color: transparent;
-  background: var(--el-bg-color);
-  box-shadow: 0 6px 18px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
-}
-
-.stat-tile-active:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
-}
-
-.stat-tile-active:active {
-  transform: translateY(0) scale(0.985);
-  box-shadow: 0 3px 10px var(--stat-glow), 0 0 0 1.5px var(--stat-ring);
-}
-
-.stat-tile::before {
-  position: absolute;
-  top: 12px;
-  left: 0;
-  width: 4px;
-  height: 28px;
-  content: '';
-  border-radius: 0 999px 999px 0;
-  transition: height 0.22s ease, top 0.22s ease;
-}
-
-.stat-tile-interactive:hover::before,
-.stat-tile-active::before {
-  top: 10px;
-  height: 32px;
-}
-
-.stat-copy {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-}
-
-.stat-label {
-  display: block;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.stat-copy small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stat-blue::before {
-  background: var(--el-color-primary);
-}
-
-.stat-blue {
-  --stat-ring: rgba(64, 158, 255, 0.34);
-  --stat-glow: rgba(64, 158, 255, 0.12);
-}
-
-.stat-purple::before {
-  background: #8b5cf6;
-}
-
-.stat-purple {
-  --stat-ring: rgba(139, 92, 246, 0.34);
-  --stat-glow: rgba(139, 92, 246, 0.12);
-}
-
-.stat-orange::before {
-  background: #ff9f43;
-}
-
-.stat-orange {
-  --stat-ring: rgba(255, 159, 67, 0.38);
-  --stat-glow: rgba(255, 159, 67, 0.13);
-}
-
-.stat-red::before {
-  background: #ff6b6b;
-}
-
-.stat-red {
-  --stat-ring: rgba(255, 107, 107, 0.36);
-  --stat-glow: rgba(255, 107, 107, 0.12);
-}
-
-.stat-slate::before {
-  background: #4dd0e1;
-}
-
-.stat-slate {
-  --stat-ring: rgba(77, 208, 225, 0.38);
-  --stat-glow: rgba(77, 208, 225, 0.13);
 }
 
 .filter-strip {
@@ -3278,9 +3048,6 @@ export default {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   grid-template-rows: repeat(2, auto);
   gap: 8px var(--list-filter-action-gap);
-  align-items: center;
-  padding-top: 10px;
-  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .filter-strip .filter-item {
@@ -3293,10 +3060,6 @@ export default {
 .filter-strip :deep(.el-input) {
   width: 100%;
   min-width: 0;
-}
-
-.filter-actions {
-  white-space: nowrap;
 }
 
 .table-plate-wrap {
@@ -3633,11 +3396,6 @@ export default {
 }
 
 @media (max-width: 768px) {
-  .page-header-band {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .header-actions {
     width: 100%;
     justify-content: space-between;
@@ -3646,14 +3404,6 @@ export default {
   .stats-strip {
     grid-template-columns: 1fr;
   }
-}
-
-html.dark .page-header-band {
-  background: linear-gradient(90deg, var(--el-color-primary-light-9) 0%, var(--el-fill-color-light) 46%, var(--el-bg-color) 100%);
-}
-
-html.dark .stat-tile-interactive:hover {
-  border-color: var(--el-border-color);
 }
 
 html.dark .plate-select-bubble {

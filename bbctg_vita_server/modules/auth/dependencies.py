@@ -25,6 +25,10 @@ def get_current_user(
     return user
 
 
+def actor_name(user: SysUser) -> str:
+    return (user.display_name or user.username or "").strip()
+
+
 def _extract_bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None

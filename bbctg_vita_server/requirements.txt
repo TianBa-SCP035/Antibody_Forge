@@ -11,3 +11,4 @@ requests
 pillow
 biopython
 pytest
+httpx2

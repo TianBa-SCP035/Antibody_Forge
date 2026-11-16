@@ -6,9 +6,9 @@ import re
 import uuid
 from typing import Any
 
+from fastapi import Request
 from fastapi.routing import APIRoute
 from starlette.concurrency import run_in_threadpool
-from starlette.routing import Match
 
 from db.session import SessionLocal
 from modules.auth.security import decode_access_token
@@ -16,6 +16,7 @@ from modules.system.audit import write_operation_log
 from modules.system.audit_config import WRITE_METHODS, is_readonly_post
 from modules.system.audit_context import (
     AuditContext,
+    get_audit_context,
     reset_audit_context,
     set_audit_context,
 )
@@ -102,11 +103,6 @@ def _headers(scope: dict) -> dict[str, str]:
 
 
 def _build_context(method: str, path: str, headers: dict[str, str], scope: dict) -> AuditContext:
-    route = _match_route(scope)
-    spec = route_audit(route) if route else None
-    suppress_noop = is_readonly_post(method, path) or bool(spec and spec.quiet)
-    actions = spec.actions if spec and not suppress_noop else ()
-
     token = headers.get("authorization", "").removeprefix("Bearer ").strip()
     payload = decode_access_token(token) if token else None
     try:
@@ -122,23 +118,31 @@ def _build_context(method: str, path: str, headers: dict[str, str], scope: dict)
         source=source,
         method=method,
         path=path,
-        actions=actions,
         user_id=user_id,
         username=username or None,
         ip_address=ip_address,
         fallback_action=f"{method} {path}",
-        fallback_name=(spec and spec.fallback_name) or f"{method} {path}",
-        fallback_resource=spec.fallback_resource if spec else None,
-        suppress_noop=suppress_noop,
+        fallback_name=f"{method} {path}",
+        suppress_noop=is_readonly_post(method, path),
     )
 
 
-def _match_route(scope: dict) -> APIRoute | None:
-    app = scope.get("app")
-    for route in getattr(app, "routes", ()):
-        if isinstance(route, APIRoute) and route.matches(scope)[0] == Match.FULL:
-            return route
-    return None
+async def bind_route_audit(request: Request) -> None:
+    """全局依赖：路由匹配后才知道接口的审计声明，FastAPI 把匹配到的路由放在 scope["route"]。"""
+    context = get_audit_context()
+    route = request.scope.get("route")
+    if context is not None and isinstance(route, APIRoute):
+        apply_route_audit(context, route)
+
+
+def apply_route_audit(context: AuditContext, route: APIRoute) -> None:
+    spec = route_audit(route)
+    if spec is None:
+        return
+    context.suppress_noop = context.suppress_noop or spec.quiet
+    context.actions = () if context.suppress_noop else spec.actions
+    context.fallback_name = spec.fallback_name or context.fallback_name
+    context.fallback_resource = spec.fallback_resource
 
 
 def _source_for_path(path: str, has_user_token: bool) -> str:

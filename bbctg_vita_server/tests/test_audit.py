@@ -5,10 +5,12 @@ from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
+from fastapi.testclient import TestClient
 from sqlalchemy import JSON, Integer, String, event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column, sessionmaker
 from sqlalchemy.orm.attributes import flag_modified
+from starlette.routing import compile_path
 from support import DbTestCase
 
 import modules.mega_automation.routes as mega_routes
@@ -37,6 +39,7 @@ from modules.system.audit_context import (
     reset_audit_context,
     set_audit_context,
 )
+from api import api_routes
 from modules.system.audit_coverage import unclassified_write_routes
 from modules.system.audit_middleware import _parse_result
 from modules.system.audit_routes import audit_quiet, permission_action, route_audit
@@ -738,6 +741,13 @@ class AuditMiddlewareTests(unittest.TestCase):
         )
         self.assertTrue(context.explicitly_audited)
 
+    def test_real_request_binds_route_declaration_before_permission_check(self):
+        with patch.object(audit_middleware, "_write_attempt_log") as write_log:
+            TestClient(app).post("/api/mega-automation/flow-work-orders/42/complete")
+        write_log.assert_called_once()
+        context = write_log.call_args.args[0]
+        self.assertEqual(context.select_action("update").code, "mega.flow_work_order.dispatch")
+
     def test_labillion_status_sync_uses_chinese_audit_name(self):
         context = _route_context("POST", "/api/mega-automation/flow-work-orders/12/sync-labillion-status")
         self.assertEqual(context.actions, (mega_routes.LABILLION_STATUS_SYNC_AUDIT_ACTION,))
@@ -767,7 +777,12 @@ class AuditMiddlewareTests(unittest.TestCase):
 
 class AuditCoverageTests(unittest.TestCase):
     def test_every_write_route_declares_audit(self):
-        self.assertEqual(unclassified_write_routes(app), set())
+        self.assertEqual(unclassified_write_routes(api_routes()), set())
+
+    def test_api_routes_match_served_paths(self):
+        served = {path for path in app.openapi()["paths"] if path.startswith("/api/")}
+        listed = {compile_path(path)[1] for path, route in api_routes() if route.include_in_schema}
+        self.assertEqual(listed, served)
 
     def test_standard_readonly_post_suffixes_are_ignored_and_write_gate_remains_strict(self):
         demo = FastAPI()
@@ -787,8 +802,9 @@ class AuditCoverageTests(unittest.TestCase):
         def _check():
             return {}
 
+        demo_routes = [(route.path, route) for route in demo.routes if isinstance(route, APIRoute)]
         self.assertEqual(
-            unclassified_write_routes(demo),
+            unclassified_write_routes(demo_routes),
             {
                 ("POST", "/api/demo/save"),
                 ("POST", "/api/demo/delete"),
@@ -796,15 +812,14 @@ class AuditCoverageTests(unittest.TestCase):
             },
         )
         for suffix in audit_config.READ_ONLY_POST_SUFFIXES:
-            self.assertTrue(_route_context("POST", f"/api/demo{suffix}", demo).suppress_noop)
-        self.assertTrue(_route_context("POST", "/api/demo/check", demo).suppress_noop)
+            self.assertTrue(_route_context("POST", f"/api/demo{suffix}", demo_routes).suppress_noop)
+        self.assertTrue(_route_context("POST", "/api/demo/check", demo_routes).suppress_noop)
 
     def test_quiet_marker_on_readonly_suffix_must_carry_a_name(self):
         redundant = {
-            route.path
-            for route in app.routes
-            if isinstance(route, APIRoute)
-            and is_readonly_post("POST", route.path)
+            path
+            for path, route in api_routes()
+            if is_readonly_post("POST", path)
             and (spec := route_audit(route)) is not None
             and spec.quiet
             and not spec.fallback_name
@@ -818,9 +833,13 @@ class AuditCoverageTests(unittest.TestCase):
         self.assertEqual(context.fallback_resource, "library_file")
 
 
-def _route_context(method: str, path: str, application: FastAPI = app) -> AuditContext:
-    scope = {"type": "http", "method": method, "path": path, "app": application, "headers": [], "root_path": ""}
-    return audit_middleware._build_context(method, path, {}, scope)
+def _route_context(method: str, path: str, routes: list[tuple[str, APIRoute]] | None = None) -> AuditContext:
+    context = audit_middleware._build_context(method, path, {}, {"headers": []})
+    for full_path, route in api_routes() if routes is None else routes:
+        if method in route.methods and compile_path(full_path)[0].match(path):
+            audit_middleware.apply_route_audit(context, route)
+            break
+    return context
 
 
 class OperationLogLabelTests(DbTestCase):

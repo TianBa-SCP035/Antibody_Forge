@@ -84,7 +84,7 @@ function defineApplicationConfig(userConfigPromise?: DefineApplicationOptions) {
           clientFiles: [
             './index.html',
             './src/bootstrap.ts',
-            './src/{views,layouts,router,store,api,adapter}/*',
+            './src/{views,layouts,router,store,api,adapter}/*.{ts,vue}',
           ],
         },
       },

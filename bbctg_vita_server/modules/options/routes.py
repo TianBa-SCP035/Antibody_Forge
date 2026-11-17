@@ -13,7 +13,7 @@ def _require_business_access(context: UserContext = Depends(get_user_context)) -
         raise HTTPException(status_code=403, detail="没有业务页面权限，不能读取靶点和人员选项")
 
 
-# 靶点、人员下拉是各业务页共用的基础数据：能打开任一业务页面即可读取，新模块的页面权限自动包含在内。
+# 靶点、人员下拉是各业务页共用的基础数据；能打开任一业务页面即可读取，新模块的页面权限自动包含在内。
 router = APIRouter(dependencies=[Depends(_require_business_access)])
 
 @router.get("/targets")

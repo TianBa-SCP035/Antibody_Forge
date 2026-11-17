@@ -32,10 +32,9 @@ def decrypt_upload_file_if_available(
     file_path: str | Path,
     decrypt_user_id: str | None = None,
 ) -> bool:
-    """Decrypt an uploaded file when the DRM module is enabled and available.
+    """DRM 模块启用且可用时解密上传文件。
 
-    Returns True if decrypted, False if skipped or failed. Failures are logged only
-    and never block the upload flow.
+    解密成功返回 True，跳过或失败返回 False；失败只记日志，不阻断上传。
     """
 
     runtime = _get_drm_runtime(db)
@@ -62,12 +61,11 @@ def decrypt_upload_file_if_available(
 
 
 def prepare_office_download_file(db: Session, source_path: Path, file_name: str) -> tuple[Path, Path | None]:
-    """Return a path suitable for attachment download.
+    """返回可供附件下载的文件路径。
 
-    Office files (Word/Excel/PPT) are encrypted on a temp copy when DRM is available.
-    Already-encrypted files are sent as-is. Other types and preview flows use the
-    original path. Second value is a temp file to delete after response, if any.
-    Encrypt failures are logged and fall back to the original plaintext file.
+    DRM 可用时在临时副本上加密 Word、Excel 和 PPT 文件；已加密文件直接发送，
+    其他类型和预览使用原文件。第二个返回值是响应后需删除的临时文件。
+    加密失败只记日志，并回退到原始明文文件。
     """
 
     if not is_office_download_name(file_name):

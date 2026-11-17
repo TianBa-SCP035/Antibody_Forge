@@ -1,6 +1,6 @@
 /**
  * 用后端 options 接口给出的业务枚举覆盖页面默认值；后端没给或给了空列表时保留默认值。
- * mapping 为「接口字段 -> 页面字段」，传数组表示两边同名。
+ * mapping 表示接口字段到页面字段的映射；传数组表示两边同名。
  */
 export function applyOptionLists(
   target: Record<string, unknown>,

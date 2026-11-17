@@ -1,23 +1,5 @@
 import assert from 'node:assert/strict'
-import { register } from 'node:module'
 import test from 'node:test'
-
-// node 不认 vite 的 #/ 别名和省略扩展名的路径；靶点接口换成空模块。
-register(`data:text/javascript,${encodeURIComponent(`
-const STUBS = { '#/api/options': 'export const fetchCatalogTargetOptions = async () => []' }
-const SRC = ${JSON.stringify(new URL('../../', import.meta.url).href)}
-export async function resolve(specifier, context, next) {
-  if (STUBS[specifier]) return { url: 'data:text/javascript,' + encodeURIComponent(STUBS[specifier]), shortCircuit: true }
-  if (specifier.startsWith('#/')) specifier = SRC + specifier.slice(2)
-  if ((specifier.startsWith('.') || specifier.startsWith('file:')) && !/\\.\\w+$/.test(specifier)) {
-    try {
-      return await next(specifier + '.js', context)
-    } catch {
-      return next(specifier + '.ts', context)
-    }
-  }
-  return next(specifier, context)
-}`)}`)
 
 const {
   ACTIONS_COLUMN,
@@ -51,11 +33,6 @@ const FIELDS = defineFields({
   species: { label: '种属', type: 'multi', options: ['人', '猴'] },
 })
 
-test('defineFields 带上键并冻结', () => {
-  assert.equal(FIELDS.status.key, 'status')
-  assert.ok(Object.isFrozen(FIELDS) && Object.isFrozen(FIELDS.status))
-})
-
 test('存库前整理文字：多行文本留换行，空串记 null，其他值原样', () => {
   assert.equal(cleanFieldValue(FIELDS.remark, ' a\r\n b \n'), 'a\n b')
   assert.equal(cleanFieldValue(FIELDS.owner, ' 张\n三 '), '张 三')
@@ -65,7 +42,9 @@ test('存库前整理文字：多行文本留换行，空串记 null，其他值
   assert.equal(cleanFieldValue(FIELDS.count, 3), 3)
 })
 
-test('工作台列：按类型推出 prop、换行、多值显示，末尾加操作列', () => {
+test('defineFields 带键冻结，工作台列按类型推出并加操作列', () => {
+  assert.equal(FIELDS.status.key, 'status')
+  assert.ok(Object.isFrozen(FIELDS) && Object.isFrozen(FIELDS.status))
   const columns = workbenchColumns(FIELDS, ['sort_order', 'strain', 'remark', 'method', 'owner', 'species'])
   const [sort, strain, remark, method, owner, species, actions] = columns
   assert.deepEqual(sort, { key: 'sort_order', label: '序号', defaultVisible: true, width: 62, className: 'sort-column-cell' })

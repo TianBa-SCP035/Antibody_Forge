@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS order_sync (
   error_message TEXT NULL COMMENT '错误信息',
   received_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '接收时间',
   UNIQUE KEY uk_order_sync_trace_id (trace_id)
-) COMMENT='效价数据回传记录';
+) COMMENT='工单实验结果回传记录';
 
 -- ---------------------------------------------------------------------------
 -- 靶点主数据（models/target.py；外部平台只读同步镜像）
@@ -249,7 +249,7 @@ CREATE TABLE IF NOT EXISTS mega_flow_work_order (
   sample_plate_barcodes JSON NULL COMMENT '样本板条码列表',
   cell_plate_barcodes JSON NULL COMMENT '细胞板条码列表',
   content JSON NULL COMMENT '工单编辑内容',
-  content_hash CHAR(64) NULL COMMENT 'content摘要',
+  content_hash CHAR(64) NULL COMMENT '工单内容哈希',
   error_message TEXT NULL COMMENT '错误信息',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -266,8 +266,8 @@ CREATE TABLE IF NOT EXISTS mega_flow_work_order_dispatch (
   dispatchId VARCHAR(64) NOT NULL COMMENT '下发编号',
   work_order_id BIGINT NOT NULL COMMENT '工单ID',
   payload JSON NOT NULL COMMENT '下发JSON',
-  payload_hash CHAR(64) NOT NULL COMMENT 'payload摘要',
-  content_hash_at_send CHAR(64) NOT NULL COMMENT '发送时content摘要',
+  payload_hash CHAR(64) NOT NULL COMMENT '下发内容哈希',
+  content_hash_at_send CHAR(64) NOT NULL COMMENT '下发时工单内容哈希',
   status VARCHAR(32) NOT NULL DEFAULT 'pending' COMMENT '状态',
   pause_state VARCHAR(32) NULL COMMENT '暂停状态',
   sent_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '发送时间',
@@ -283,7 +283,7 @@ CREATE TABLE IF NOT EXISTS mega_flow_work_order_dispatch (
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS serum_imm_project (
-  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
   project_code VARCHAR(64) NULL COMMENT '项目管理编号',
   project_name VARCHAR(255) NULL COMMENT '项目名称',
@@ -312,7 +312,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_project (
 ) COMMENT='免疫项目表';
 
 CREATE TABLE IF NOT EXISTS serum_imm_workbench (
-  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   experiment_id VARCHAR(64) NULL COMMENT '实验号',
   project_code VARCHAR(64) NULL COMMENT '项目管理编号',
   project_name VARCHAR(255) NULL COMMENT '项目名称',
@@ -366,7 +366,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_workbench (
 ) COMMENT='免疫项目工作台';
 
 CREATE TABLE IF NOT EXISTS serum_imm_mouse (
-  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
   group_id VARCHAR(32) NULL COMMENT '组别',
   mouse_strain VARCHAR(128) NULL COMMENT '小鼠品系',
@@ -384,7 +384,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_mouse (
 ) COMMENT='小鼠信息表';
 
 CREATE TABLE IF NOT EXISTS serum_file (
-  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   experiment_id VARCHAR(64) NOT NULL COMMENT '实验编号',
   upload_user VARCHAR(64) NULL COMMENT '上传人',
   file_name VARCHAR(255) NOT NULL COMMENT '文件名',
@@ -396,7 +396,7 @@ CREATE TABLE IF NOT EXISTS serum_file (
 ) COMMENT='效价实验文件表';
 
 CREATE TABLE IF NOT EXISTS serum_imm_antigen (
-  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
   antigen_id VARCHAR(32) NULL COMMENT '抗原ID',
   species VARCHAR(32) NULL COMMENT '抗原种属',
@@ -413,7 +413,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_antigen (
 ) COMMENT='免疫抗原信息表';
 
 CREATE TABLE IF NOT EXISTS serum_imm_step (
-  step_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  step_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '步骤主键ID',
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
   group_id VARCHAR(32) NULL COMMENT '组别',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '组内排序',
@@ -433,7 +433,7 @@ CREATE TABLE IF NOT EXISTS serum_imm_step (
 ) COMMENT='免疫实验步骤表';
 
 CREATE TABLE IF NOT EXISTS serum_titer_pc (
-  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
   pc_name VARCHAR(255) NULL COMMENT 'PC名称',
   catalog_batch VARCHAR(128) NULL COMMENT '货号批次',
@@ -444,7 +444,7 @@ CREATE TABLE IF NOT EXISTS serum_titer_pc (
 ) COMMENT='效价阳性对照表';
 
 CREATE TABLE IF NOT EXISTS serum_titer_target (
-  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
   type VARCHAR(32) NULL COMMENT '类型',
   species VARCHAR(32) NULL COMMENT '种属',
@@ -459,7 +459,7 @@ CREATE TABLE IF NOT EXISTS serum_titer_target (
 ) COMMENT='效价检测目标表';
 
 CREATE TABLE IF NOT EXISTS serum_facs_plate (
-  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   experiment_id VARCHAR(64) NOT NULL COMMENT '实验编号',
   qr_code VARCHAR(128) NULL COMMENT '板二维码编号',
   instrument_type VARCHAR(64) NULL COMMENT '仪器类型',
@@ -688,7 +688,7 @@ CREATE TABLE IF NOT EXISTS molecular_library_order (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_molecular_library_order_id (library_order_id),
-  KEY idx_molecular_library_order_library_code (library_code),
+  UNIQUE KEY uk_molecular_library_order_library_code (library_code),
   KEY idx_molecular_library_order_source_discovery_id (source_discovery_id)
 ) COMMENT='文库构建工单';
 
@@ -696,7 +696,7 @@ CREATE TABLE IF NOT EXISTS molecular_primer_index_catalog (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   name VARCHAR(128) NOT NULL COMMENT '名称',
   family VARCHAR(32) NOT NULL COMMENT '系列',
-  direction VARCHAR(8) NULL COMMENT '原始方向',
+  direction VARCHAR(8) NULL COMMENT '引物方向',
   version VARCHAR(16) NULL COMMENT '版本',
   short_sequence VARCHAR(64) NOT NULL COMMENT '显示序列',
   homology_arm_1 VARCHAR(128) NULL COMMENT '同源臂1',

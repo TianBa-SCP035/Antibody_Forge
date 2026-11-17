@@ -43,7 +43,7 @@
   --vita-library-bg: #15302f;
   --vita-library-border: #1f6f72;
 
-  /* vxe-table 自带暗色是纯黑灰，改成和 Element 同一套 */
+  /* vxe-table 暗色需与 Element 色系一致，不能使用默认纯黑灰。 */
   --vxe-ui-layout-background-color: var(--el-bg-color);
   --vxe-ui-font-color: var(--el-text-color-regular);
   --vxe-ui-base-popup-border-color: var(--el-border-color-light);
@@ -68,7 +68,7 @@
   --vxe-ui-table-row-hover-radio-checked-background-color: var(--el-color-warning-light-8);
 }
 
-/* Element 暗色把卡片设成浮层色（更亮一档），改回和页面面板同色 */
+/* Element 暗色卡片需与页面面板同色，不能使用更亮的浮层色。 */
 :root.dark .el-card {
   --el-card-bg-color: var(--el-bg-color);
 }

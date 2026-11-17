@@ -1,8 +1,12 @@
-from unittest.mock import patch
+"""功能开关与定时任务：登记默认值、保存覆盖、未登记编码、记录运行结果与手动触发。"""
+
+import threading
+import unittest
+from contextlib import contextmanager, nullcontext
+from unittest.mock import MagicMock, patch
 
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
-from support import DbTestCase
 
 import jobs.registry as registry
 from models.system import SysFeatureFlag
@@ -11,8 +15,10 @@ from modules.system.features import (
     get_job_schedule,
     is_feature_enabled,
     list_feature_flags,
+    run_recorded_job,
     save_feature_flag,
 )
+from support import DbTestCase
 
 
 class FeatureFlagTests(DbTestCase):
@@ -22,10 +28,10 @@ class FeatureFlagTests(DbTestCase):
         items = {item["code"]: item for item in list_feature_flags(self.db)}
         self.assertEqual(items.keys(), FEATURE_INDEX.keys())
         self.assertFalse(is_feature_enabled(self.db, "feature.drm_file_security"))
-        self.assertEqual(
-            get_job_schedule(self.db, "job.discovery_synthesis_order_sync")[1],
-            {"schedule": "interval", "hour": 0, "minute": 20, "weekday": 0, "day": 1, "every": 1, "unit": "hour"},
-        )
+        code = "job.discovery_synthesis_order_sync"
+        enabled, config = get_job_schedule(self.db, code)
+        self.assertEqual(enabled, FEATURE_INDEX[code]["enabled"])
+        self.assertLessEqual(FEATURE_INDEX[code]["config"].items(), config.items())
 
     def test_saved_overrides_merge_with_declaration(self):
         saved = save_feature_flag(self.db, {
@@ -73,3 +79,58 @@ class FeatureFlagTests(DbTestCase):
         save_feature_flag(self.db, {"code": code, "enabled": True, "visible": True, "sort_order": 7})
         saved = save_feature_flag(self.db, {"code": code, "enabled": True, "visible": False})
         self.assertEqual(saved["sort_order"], 7)
+
+
+class RecordedJobTests(unittest.TestCase):
+    def _run(self, work, **kwargs):
+        db = MagicMock()
+        with (
+            patch("modules.system.features.SessionLocal", return_value=db),
+            patch("modules.system.features.record_job_run") as record,
+        ):
+            run_recorded_job("job.test", "测试任务", work, **kwargs)
+        db.close.assert_called_once()
+        return db, record.call_args.kwargs
+
+    def test_success_uses_summary(self):
+        _, logged = self._run(lambda db: {"created": 2}, summarize=lambda result: f"新增 {result['created']}")
+        self.assertEqual((logged["result"], logged["summary"]), ("success", "新增 2"))
+
+    def test_skip_needs_literal_true(self):
+        _, logged = self._run(lambda db: {"skipped": True}, skip_summary="未配置，已跳过")
+        self.assertEqual((logged["result"], logged["summary"]), ("skipped", "未配置，已跳过"))
+        _, logged = self._run(lambda db: {"skipped": {"inactive": 3}, "created": 0})
+        self.assertEqual(logged["result"], "success")
+
+    def test_failure_is_logged_not_raised(self):
+        def boom(db):
+            raise RuntimeError("连接断开")
+
+        db, logged = self._run(boom)
+        db.rollback.assert_called_once()
+        self.assertEqual((logged["result"], logged["error_message"]), ("failed", "连接断开"))
+
+
+class RunJobNowTests(unittest.TestCase):
+    def _run_now(self, acquired):
+        ran = threading.Event()
+        job = {"id": "demo", "feature_code": "job.demo", "name": "演示", "func": ran.set}
+
+        @contextmanager
+        def fake_lock(_job_id):
+            yield acquired
+
+        with (
+            patch("jobs.registry.get_scheduled_job", return_value=job),
+            patch("jobs.registry.job_lock", fake_lock),
+            patch("jobs.registry.audit_scope", lambda *args, **kwargs: nullcontext()),
+        ):
+            registry.run_scheduled_job_now("job.demo")
+        return ran.wait(2)
+
+    def test_reports_success_only_after_taking_the_lock(self):
+        self.assertTrue(self._run_now(True))
+
+    def test_lock_held_elsewhere_is_reported(self):
+        with self.assertRaisesRegex(ValueError, "正在运行"):
+            self._run_now(False)

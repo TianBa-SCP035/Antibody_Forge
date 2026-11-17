@@ -881,9 +881,8 @@ const NAME_OPTION_SOURCES = {
   affinity_owners: 'affinity_owner',
 }
 const COMPLETED_ASSAY_MESSAGE = '工单已完成，不能再改实验状态；需要重新检测请先打回待检测'
-const ASSAY_MAIN_STATUS_MESSAGE = '实验员只能把已完成的工单打回待检测'
+const ASSAY_MAIN_STATUS_MESSAGE = '实验员只能把已完成的工单打回待检测，或把工单改为已取消'
 const ASSAY_STATUS_KEYS = new Set(['affinity_status', 'flow_status'])
-const ASSAY_ROLLBACK_OPTIONS = Object.freeze(['已完成', '待检测'])
 const DRAFT_ACTION_TITLE = '工单保存后才能操作'
 const UNCLAIMED_OWNER = '无人问津'
 function badgeTone(status) {
@@ -1326,15 +1325,22 @@ export default {
       }
       if (this.canAffinityEdit && AFFINITY_EDIT_FIELD_KEYS.has(fieldKey)) return true
       if (this.canFlowEdit && FLOW_EDIT_FIELD_KEYS.has(fieldKey)) return true
-      if (fieldKey === 'status' && this.canAssayMainEdit) return this.isCompletedRow(row)
+      if (fieldKey === 'status' && this.canAssayMainEdit) return this.savedStatus(row) !== '已取消'
       return false
     },
-    isCompletedRow(row) {
+    savedStatus(row) {
       const base = (row?.id && this.rowBaselines.get(row.id)) || row
-      return String(base?.status || '').trim() === '已完成'
+      return String(base?.status || '').trim()
     },
+    isCompletedRow(row) {
+      return this.savedStatus(row) === '已完成'
+    },
+    /** 双权限实验员：已完成可打回待检测，未取消的都可改为已取消。 */
     mainStatusOptions(row) {
-      return this.canFullEdit || this.engCoversRow(row) ? this.optionLists.status : ASSAY_ROLLBACK_OPTIONS
+      if (this.canFullEdit || this.engCoversRow(row)) return this.optionLists.status
+      const status = this.savedStatus(row)
+      const reachable = status === '已完成' ? ['待检测', '已取消'] : ['已取消']
+      return this.optionLists.status.filter((item) => item === status || reachable.includes(item))
     },
     deleteBlockReason(row) {
       if (row?.source_one_id) {

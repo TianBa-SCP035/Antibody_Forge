@@ -1,4 +1,4 @@
-/** localStorage durable summary + recent Q&A helpers (Cursor-like memory). */
+/** 基于 localStorage 的持久摘要和近期问答工具，采用摘要加近期记录的记忆方式。 */
 
 import {
   COMPRESS_EVERY_TURNS,
@@ -15,15 +15,15 @@ export type QaItem = { id: number; role: 'user' | 'pet'; text: string };
 export type ChatHistoryItem = { role: 'user' | 'assistant'; content: string };
 
 /**
- * Conversation memory belongs to the signed-in account; another login on this browser starts fresh.
- * Signed out (e.g. on the login page) nothing is read or written, so no one inherits that talk.
+ * 对话记忆归属当前登录账号，同一浏览器切换账号后使用独立记忆。
+ * 未登录时不读写任何记忆，避免后续用户继承对话。
  */
 function scoped(key: string): string | null {
   const user = currentUserKey();
   return user ? `${key}:${user}` : null;
 }
 
-/** Reads the account's copy; the old shared key (before per-account memory) moves to the first account that loads it. */
+/** 读取账号副本；旧的共享键会迁移给首个加载它的账号。 */
 function readScoped(key: string): string | null {
   const own = scoped(key);
   if (!own) return null;
@@ -56,7 +56,7 @@ export function saveMemorySummary(summary: string) {
   try {
     writeScoped(MEMORY_SUMMARY_KEY, String(summary || '').slice(0, MEMORY_SUMMARY_MAX));
   } catch {
-    /* ignore */
+    /* 存储不可用时保留内存状态。 */
   }
 }
 
@@ -73,7 +73,7 @@ export function saveTurnsSinceCompress(n: number) {
   try {
     writeScoped(MEMORY_TURNS_SINCE_COMPRESS_KEY, String(Math.max(0, Math.floor(n))));
   } catch {
-    /* ignore */
+    /* 存储不可用时保留内存状态。 */
   }
 }
 
@@ -103,11 +103,11 @@ export function saveQa(history: QaItem[]) {
       JSON.stringify(history.slice(-QA_KEEP).map(({ role, text }) => ({ role, text }))),
     );
   } catch {
-    /* ignore */
+    /* 存储不可用时保留内存状态。 */
   }
 }
 
-/** Map UI qaHistory → API recentHistory (last N only), without the question being sent now. */
+/** 将界面 qaHistory 映射为 API recentHistory，仅保留最近 N 条并排除本次问题。 */
 export function toRecentHistory(history: QaItem[], current: string, n = RECENT_HISTORY_SEND): ChatHistoryItem[] {
   const last = history[history.length - 1];
   const prior = last?.role === 'user' && last.text === current.trim() ? history.slice(0, -1) : history;
@@ -124,8 +124,8 @@ export function shouldCompress(historyLen: number, turnsSince: number, summary: 
 }
 
 /**
- * Turns older than the recent window, folded into the summary. With compression every
- * COMPRESS_EVERY_TURNS exchanges, a turn is folded in before it drops out of the QA_KEEP list.
+ * 返回近期窗口之外、需折叠进摘要的轮次。
+ * 每 COMPRESS_EVERY_TURNS 次交流压缩一次，确保轮次移出 QA_KEEP 前已写入摘要。
  */
 export function olderTurnsForCompress(history: QaItem[]): ChatHistoryItem[] {
   if (history.length <= RECENT_HISTORY_SEND) return [];

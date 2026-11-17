@@ -1082,7 +1082,7 @@ export default {
       const fields = [...valueKeys, ...qcFields]
       return this.submitRowFields(row, fields, {
         messages: { default: CATALOG_NAME_FIELDS[field] ? '保存引物或Index失败' : '保存失败' },
-        // 改建库类型会连带清掉不适用的字段，整行回填
+        // 建库类型会联动清空不适用字段，因此需整行回填。
         applyFields: field === 'build_type' ? null : fields,
       })
     },
@@ -1180,7 +1180,7 @@ export default {
             const cached = JSON.parse(cachedRaw)
             if (cached?.id === id) this.openDrawer(cached)
           } catch {
-            /* ignore */
+            /* 缓存无效时仅使用列表数据。 */
           }
         }
       } finally {

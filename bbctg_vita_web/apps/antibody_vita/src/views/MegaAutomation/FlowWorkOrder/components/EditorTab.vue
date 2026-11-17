@@ -1,8 +1,6 @@
 <template>
     <div class="editor-layout">
-      <!-- 左侧：板级信息表格 -->
       <div class="editor-col editor-col--left">
-        <!-- 工单表格：样本板 × 细胞 -->
         <section class="panel">
           <div class="panel-head">
             <div class="panel-head-left">
@@ -193,7 +191,6 @@
           @reordered="$emit('columns-reordered', $event)"
         />
 
-        <!-- PC 信息 -->
         <section class="panel">
           <div class="panel-head">
             <div class="panel-head-left">
@@ -245,7 +242,6 @@
         </section>
       </div>
 
-      <!-- 右侧：孔位 / 板可视化 -->
       <div class="editor-col editor-col--right">
         <SamplePlateLayout
           ref="samplePlateLayout"
@@ -258,7 +254,6 @@
           :warning-well-nos="warningWellNos"
         />
 
-        <!-- 细胞板视图（长条板转 90°：12 横向泳道） -->
         <section class="panel viz-panel">
           <div class="panel-head">
             <div class="panel-head-left">
@@ -749,7 +744,6 @@ $muted-color: var(--el-text-color-secondary);
   background: var(--el-fill-color-light);
 }
 
-/* 编辑区左右布局 */
 .editor-layout {
   display: grid;
   grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
@@ -761,7 +755,6 @@ $muted-color: var(--el-text-color-secondary);
   min-width: 0;
 }
 
-/* 表格 */
 .info-table {
   width: 100%;
 
@@ -857,12 +850,10 @@ $muted-color: var(--el-text-color-secondary);
   color: $muted-color;
 }
 
-/* 可视化面板 */
 .viz-panel {
   background: var(--el-bg-color);
 }
 
-/* 细胞板列视图（横向泳道） */
 .lane-list {
   display: flex;
   flex-direction: column;
@@ -956,7 +947,6 @@ $muted-color: var(--el-text-color-secondary);
   color: var(--el-text-color-regular);
 }
 
-/* 细胞板：一级，做成带底色的表头行 */
 .cell-picker-group-head {
   display: flex;
   align-items: center;
@@ -1005,7 +995,6 @@ $muted-color: var(--el-text-color-secondary);
   }
 }
 
-/* 细胞：二级，缩进 + 左侧引导线 */
 .cell-picker-group-body {
   padding: 2px 0;
 }

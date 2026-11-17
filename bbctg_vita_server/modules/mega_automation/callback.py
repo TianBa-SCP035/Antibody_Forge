@@ -57,7 +57,6 @@ def apply_labillion_status(
 
 
 def handle_labillion_status_push(db: Session, data: dict[str, Any]) -> dict[str, Any]:
-    """接收 Labillion 状态推送，按 dispatchId 更新工单与下发记录。"""
     dispatch_id = clean_text(data.get("dispatchId"))
     run_id = clean_text(data.get("runId"))
     labillion_status = normalize_labillion_status(data.get("status"))

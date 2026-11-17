@@ -1,4 +1,4 @@
-/** Collapse / dock / magnet geometry helpers for FatFish ball+capsule. */
+/** 大肥鱼球形和胶囊形态的收起、停靠与磁吸几何工具。 */
 
 import { BALL, CAP_H, CAP_PAD, CAP_W, MAGNET_RANGE, SIZE } from './constants';
 
@@ -59,7 +59,7 @@ export function settleAsFreeBall(pos: { x: number; y: number }) {
   pos.y = clamp(pos.y, inset, Math.max(inset, vh - BALL - inset));
 }
 
-/** Compute capsule dock snap target; caller animates and sets dockEdge/docked. */
+/** 计算胶囊停靠吸附目标；调用方负责动画并设置 dockEdge 和 docked。 */
 export function magnetSnapTarget(pos: { x: number; y: number }): {
   edge: DockEdge;
   targetX: number;
@@ -106,7 +106,7 @@ export function expandFromBall(pos: { x: number; y: number }) {
   pos.y = clamp(pos.y, inset, Math.max(inset, vh - SIZE - inset));
 }
 
-/** Animate pos toward target over ~220ms; returns cancel handle. */
+/** 在约 220 毫秒内将位置动画到目标，并返回可取消句柄。 */
 export function animateSnap(
   pos: { x: number; y: number },
   targetX: number,

@@ -1,7 +1,6 @@
 /**
- * Care / affinity for FatFish. Stats move on real time (including while the page is closed) and on what
- * the user does with her, so the state is something you can actually notice: idle animations, lines,
- * chat tone and the menu status all read from `careState`. Work quality never depends on it.
+ * 大肥鱼的照料与熟悉度状态。数值随真实时间（包括页面关闭期间）和用户互动变化，
+ * 待机动画、台词、聊天语气和菜单状态均读取 careState，但工作质量绝不受其影响。
  */
 
 import { computed, ref } from 'vue';
@@ -12,14 +11,14 @@ export type CareStats = {
   satiety: number;
   mood: number;
   energy: number;
-  /** Long-term affinity points; never decays, only gated by a daily cap. */
+  /** 长期熟悉度积分，不自然衰减，仅受每日上限限制。 */
   affinity: number;
-  /** Last time the stats were advanced (ms). */
+  /** 上次推进状态的毫秒时间戳。 */
   ts: number;
-  /** Affinity gained on `day` (YYYY-MM-DD), for the daily cap. */
+  /** day 当日获得的熟悉度，用于每日上限。 */
   day: string;
   dayGain: number;
-  /** Affinity from finished tasks on `day`; capped separately so using her for work alone doesn't max the bond. */
+  /** day 当日完成任务获得的熟悉度，单独限额，避免只靠工作刷满关系。 */
   dayTaskGain: number;
 };
 
@@ -36,7 +35,7 @@ export type CareEvent =
 
 export type CareState = 'happy' | 'normal' | 'hungry' | 'tired' | 'down';
 
-/** Shown at the top of the right-click menu, in her own words. */
+/** 以宠物口吻显示在右键菜单顶部。 */
 export const CARE_STATE_LABEL: Record<CareState, string> = {
   happy: '尾巴停不下来',
   normal: '摸鱼待机中',
@@ -45,20 +44,19 @@ export const CARE_STATE_LABEL: Record<CareState, string> = {
   down: '有点蔫',
 };
 
-/** Affinity needed to reach each level (index = level - 1). */
+/** 各等级所需熟悉度，索引等于等级减一。 */
 const LEVELS = [0, 15, 45, 90, 150, 230, 330, 450];
-/** Lv3 is when she starts calling the user 鱼片 (see careMoodHint). */
+/** 从 3 级起可称用户为「鱼片」，规则见 careMoodHint。 */
 const LEVEL_NAMES = ['刚冒泡', '眼熟了', '鱼片', '摸鱼搭子', '干饭搭子', '同一片海', '心照不宣', '专属鱼片'];
 const DAILY_AFFINITY_CAP = 25;
 const DAILY_TASK_AFFINITY_CAP = 5;
-/** Offline catch-up is capped so a long weekend doesn't zero everything. */
+/** 限制离线追算时长，避免长周末后状态全部归零。 */
 const MAX_CATCHUP_H = 16;
 const FEED_SATIETY = 30;
 
 /**
- * Hourly drift. Tuned by simulating 30 workdays (9–18 h, 10–25 agent tasks, dozing when left alone):
- * fed once a day she is never hungry, never fed she is; mood never sinks to 'down' from drift alone and
- * 'happy' comes from feeding, petting and work. Dozing on the page is a light nap; a closed page is a night's sleep.
+ * 每小时自然变化参数经 30 个工作日模拟校准：每日喂一次不会饥饿，从不喂则会饥饿；
+ * 心情不会仅因自然变化降到低落，开心来自喂食、抚摸和工作。页面内打盹按小睡处理，关闭页面按充分睡眠处理。
  */
 const RATE = {
   awake: { satiety: -2, energy: -6, energyNight: -10 },
@@ -66,7 +64,7 @@ const RATE = {
   away: { satiety: -0.5, energy: 24 },
 };
 
-/** Not rounded: the minute tick moves a stat by ~0.05, which rounding would erase. */
+/** 不取整，因为每分钟约 0.05 的变化会被舍入抹掉。 */
 export function clampCare(n: number) {
   return Math.max(0, Math.min(100, Number(n) || 0));
 }
@@ -137,7 +135,7 @@ export function useCare(opts: {
   const care = ref<CareStats>(loadCare());
   const careState = computed(() => stateOf(care.value));
   const careLevel = computed(() => levelOf(care.value.affinity));
-  /** Hours the page was closed before this session (for the boot greeting). */
+  /** 本次会话前页面关闭的小时数，用于启动问候。 */
   const awayHours = ref(0);
   const lastEventAt = new Map<CareEvent, number>();
 
@@ -145,13 +143,13 @@ export function useCare(opts: {
     try {
       localStorage.setItem(CARE_KEY, JSON.stringify(care.value));
     } catch {
-      /* ignore */
+      /* 存储不可用时仅保留当前会话状态。 */
     }
   }
 
   /**
-   * Advance stats by elapsed real time. Awake she slowly gets hungry and tired; a nap on the page recovers
-   * some energy; while the page is closed she "went home" and sleeps properly. Late at night she tires faster.
+   * 按真实经过时间推进状态。清醒时逐渐饥饿和疲劳，页面内小睡恢复部分精力，
+   * 页面关闭期间按充分睡眠处理，深夜清醒时疲劳更快。
    */
   function tick(sleeping: boolean, away = false) {
     const now = Date.now();
@@ -173,14 +171,14 @@ export function useCare(opts: {
     }
     satiety = clampCare(satiety);
     energy = clampCare(energy);
-    // Mood leans back toward a level set by how fed and rested she is.
+    // 心情逐渐回归由饱腹度和精力共同决定的水平。
     const target = 35 + 0.35 * ((satiety + energy) / 2);
     mood += (target - mood) * Math.min(1, 0.25 * h);
     care.value = { ...c, satiety, mood: clampCare(mood), energy, ts: now };
     saveCare();
   }
 
-  /** Called once at mount: catches up the time the page was closed (treated as sleeping). */
+  /** 挂载时调用一次，将页面关闭期间按睡眠补算。 */
   function resume() {
     awayHours.value = Math.max(0, (Date.now() - care.value.ts) / 3_600_000);
     tick(true, true);
@@ -200,7 +198,7 @@ export function useCare(opts: {
       affinity += add;
       gained += add;
     } else {
-      // Losses never drop below the floor of the current level: annoying her stings but doesn't erase history.
+      // 扣分不低于当前等级下限，惹恼她会受影响但不会抹去既有关系。
       affinity = Math.max(LEVELS[before - 1]!, affinity + n);
     }
     care.value = { ...care.value, affinity, day, dayGain: gained, dayTaskGain };
@@ -208,7 +206,7 @@ export function useCare(opts: {
     if (after.level > before) opts.onLevelUp?.(after.level, after.name);
   }
 
-  /** Apply what just happened. Repeating the same thing within a minute counts for less (no grinding). */
+  /** 应用刚发生的互动；一分钟内重复同类互动只按较低权重计算，防止刷取。 */
   function onCare(event: CareEvent, amount = 1) {
     tick(false);
     const now = Date.now();
@@ -260,7 +258,7 @@ export function useCare(opts: {
         affinity = spam ? 0 : -1;
         break;
       case 'task': {
-        // Work burns tokens: she gets a little hungry and tired, and feels useful.
+        // 工作会消耗少量饱腹度和精力，同时提升心情。
         c.satiety -= 1;
         c.energy -= 2;
         c.mood += 2;
@@ -295,7 +293,7 @@ export function useCare(opts: {
     try {
       localStorage.setItem(PIN_KEY, pinned.value ? '1' : '0');
     } catch {
-      /* ignore */
+      /* 存储不可用时仅保留当前会话状态。 */
     }
   }
 
@@ -305,7 +303,7 @@ export function useCare(opts: {
     opts.say(opts.pick(pinned.value ? opts.pinLines.on : opts.pinLines.off));
   }
 
-  /** Short hidden hint for the model — never shown as numbers. */
+  /** 提供给模型的简短隐藏提示，不展示具体数值。 */
   function careMoodHint(): string {
     const lv = careLevel.value;
     const bits: string[] = [];

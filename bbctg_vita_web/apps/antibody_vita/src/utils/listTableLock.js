@@ -1,6 +1,6 @@
 import { nextTick } from 'vue'
 
-/** 每页达到这个条数后，表格卡片占满一屏并固定表头。20 条仍整页滚动。 */
+/** 每页达到 50 条后，表格卡片占满一屏并固定表头；低于 50 条时整页滚动。 */
 export const LIST_TABLE_LOCK_MIN = 50
 
 export function shouldLockListTable(limit) {
@@ -165,9 +165,8 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
     if (!(body instanceof HTMLElement) || body.classList.contains('is-list-table-defer-body')) return
     const vms = getElTableVms(body)
     for (const vm of vms) {
-      // 1. Element Plus 2.13 的固定列已采用原生 CSS position: sticky（同处一个 <tr> 内），
-      //    禁用 setHoverRow mutation（改由纯 CSS tr:hover > td 高亮），
-      //    彻底消除滚动时鼠标划过行触发的 watch(hoverRow) -> Array.from(el.children) 500 行扫描
+      // Element Plus 2.13 的固定列使用 sticky 且与普通列共用 tr；需禁用 setHoverRow，
+      // 由 CSS :hover 高亮，避免滚动时 watch(hoverRow) 扫描所有行。
       if (vm.store?.states?.isComplex) {
         vm.store.states.isComplex.value = false
       }
@@ -196,9 +195,8 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
         }
       }
 
-      // 2. 锁定根容器为 is-scrolling-none（彻底阻断 EP 在横滑时切换根容器 class 导致 5.7 万节点样式失效 + 左固定列 border-right:none 引发 520ms 全表重排），
-      //    同时在 .el-table__inner-wrapper 上挂载 2 个独立 GPU 合成层叶子阴影条（左/右各 1 个 div，替代原来的 1000 个 td::before），
-      //    仅在阴影显隐布尔状态真正变化时才更新 opacity，保证表头与表体 100% 同步满帧滚动。
+      // 根容器必须保持 is-scrolling-none，避免横滑时切换 class 触发全表重排。
+      // 横滑提示由 .el-table__inner-wrapper 上的左右两个合成层阴影承担，仅在显隐变化时更新 opacity。
       const tableWrapper = vm.refs?.tableWrapper
       if (tableWrapper && !tableWrapper._vbenScrollClassPatched) {
         tableWrapper._vbenScrollClassPatched = true
@@ -226,7 +224,7 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
           vm.refs?.scrollBarRef?.$el
           || tableWrapper.querySelector('.el-table__body-wrapper .el-scrollbar')
 
-        // 阴影、表头时间轴、滑块拖拽用的几何，只在尺寸变化（ResizeObserver）和拖拽起手时刷新
+        // 阴影、表头时间轴和滑块拖拽共用的几何仅在尺寸变化或拖拽开始时刷新。
         let cachedCW = 0
         let cachedCH = 0
         let cachedSW = 0
@@ -324,14 +322,10 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
           },
         })
 
-        // 3. 表头跟手 + 滚动期间拦住 mouseenter 强制回流 + 滚动条拖拽零回流接管。
-        //    (a) 表体继续走合成器滚动（不拦截 wheel、不改 scrollLeft）；
-        //    (b) 非固定表头单元格用 ScrollTimeline 按表体横向滚动进度做 translate，和表体同一帧绘制；
-        //    (c) 滚动后 120ms 内拦住表体 mouseenter/mouseover，避免行划过静止指针时 show-overflow-tooltip 逐格测量；
-        //        mouseleave 和按住鼠标（拖选）时的事件必须放行，否则提示框关不掉、拖选终点跟不上滚动；
-        //    (d) 接管 .el-scrollbar__thumb 拖拽：仅在 mousedown 时测量一次几何，拖拽期间在 .el-scrollbar 内升起单节点透明护盾
-        //        （隔绝鼠标漂移到表格行和右侧操作列按钮上引发的 250 节点 tr:hover 样式重算与 el-button:hover 布局失效），
-        //        并以 rAF 合并高频 mousemove，用纯算术更新 scrollTop / scrollLeft。
+        // 表体保留原生合成器滚动，非固定表头用 ScrollTimeline 与表体同步位移。
+        // 滚动后 120ms 内拦截 mouseenter/mouseover，避免静止指针触发逐格溢出测量；
+        // mouseleave 和按住鼠标时必须放行，否则提示框和拖选终点无法更新。
+        // 滚动条拖拽仅在按下时测量几何，并用透明护盾隔离表格 hover；mousemove 通过 rAF 合并。
         const headerWrapper =
           vm.refs?.headerWrapper
           || tableWrapper.querySelector('.el-table__header-wrapper')
@@ -637,8 +631,8 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
     measure()
     bindScrollMemory(body)
     optimizeTableScroll(body)
-    // ElTable 在 onMounted -> await nextTick() 后才会执行 store.updateColumns() 渲染固定列并设置 isComplex，
-    // 因此在下一帧补充执行一次 optimizeTableScroll，确保固定列阴影几何与 hover 优化 100% 生效
+    // ElTable 在 onMounted 后的 nextTick 才执行 updateColumns 并设置 isComplex，
+    // 因此下一帧需再次优化，确保固定列阴影几何和 hover 处理生效。
     requestAnimationFrame(() => {
       if (body.isConnected) optimizeTableScroll(body)
     })
@@ -748,8 +742,8 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
       return
     }
     const body = getBody()
-    // 从 KeepAlive 缓存重新激活且处于表体延迟显现阶段、已知锁定高度时：
-    // 跳过点击帧的 offsetParent / clientHeight 同步强制布局（layoutMs = 0），待进场动画结束后再重绑 ResizeObserver
+    // KeepAlive 页面重新激活且表体延迟显现时，复用已知锁定高度，
+    // 避免点击帧读取 offsetParent/clientHeight，待进场动画结束后再绑定 ResizeObserver。
     if (knownHeight > 0 && body instanceof HTMLElement && body.classList.contains('is-list-table-defer-body')) {
       setHeight(knownHeight)
       if (savedScrollLeft > 0) {
@@ -773,7 +767,7 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
   }
 
   /**
-   * 严格的退场 -> 进场 -> 表格显现三段式顺序：
+   * 必须按退场、进场、表格显现的顺序执行：
    * 1. 离开锁高大表时冻结 el-table $ready（避免离屏 0x0 触发 ResizeObserver -> doLayout 重算 500 行），
    *    并通过纯 DOM class（is-list-table-defer-body）隐藏 tbody 并挂上局部转圈，绝不销毁/重建 Vue VNode；
    * 2. 切回该标签页时，整页固定骨架与表格转圈先以满帧 60fps 完成 320ms 进场滑入动画；
@@ -799,7 +793,7 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
       if (done || currentDeferGen !== deferGen) return
       done = true
       cancelDefer()
-      // 等 Vue Transition 移除 enter-active 后的下一帧再原位显现 tbody，确保整页绝不会二次播放进场动画
+      // Vue Transition 移除 enter-active 后的下一帧才显示 tbody，避免整页再次播放进场动画。
       deferRaf2 = requestAnimationFrame(() => {
         deferRaf2 = 0
         if (currentDeferGen !== deferGen) return
@@ -810,7 +804,7 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
         }
         hideDeferOverlay(false)
         onBodyResumed?.()
-        // 在 tbody 显现并跑完当帧 ResizeObserver 后的下一帧再恢复 $ready，避免高度变化触发多余 doLayout
+        // tbody 显现并完成当帧 ResizeObserver 后，下一帧再恢复 $ready，避免多余的 doLayout。
         deferRaf3 = requestAnimationFrame(() => {
           deferRaf3 = 0
           if (currentDeferGen !== deferGen) return
@@ -887,7 +881,6 @@ function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalI
   return { apply, destroy, pause, resumeRows }
 }
 
-/** 选项式列表页。 */
 export const listTableLockMixin = {
   data() {
     return {

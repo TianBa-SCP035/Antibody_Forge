@@ -1,6 +1,5 @@
 <template>
   <div class="serum-detail app-container" v-loading="loading">
-    <!-- Header -->
     <div class="page-header">
       <div class="title-wrap">
         <div class="title-row">
@@ -80,7 +79,6 @@
       </div>
     </div>
 
-    <!-- KPI -->
     <el-row :gutter="16" class="kpi-row">
       <el-col :xs="12" :sm="6">
         <div class="kpi-card">
@@ -112,7 +110,6 @@
       </el-col>
     </el-row>
 
-    <!-- Basic Info -->
     <el-card class="section-card">
       <template #header>
         <div class="section-header">
@@ -183,9 +180,7 @@
       </div>
     </el-card>
 
-    <!-- Main Tabs -->
     <el-tabs v-model="activeTab" type="card" class="main-tabs">
-      <!-- Schedule -->
       <el-tab-pane label="免疫方案" name="schedule">
         <div v-if="!groupCount" class="empty-block">
           <el-icon><Warning /></el-icon>
@@ -217,9 +212,7 @@
             </template>
 
             <el-row :gutter="16">
-              <!-- Left Column: Group Info and Antigen Info -->
               <el-col :xs="24" :md="10">
-                <!-- Group Info -->
                 <div class="subsection-title">
                   <el-icon><User /></el-icon>
                   分组信息
@@ -263,7 +256,6 @@
                   </el-descriptions-item>
                 </el-descriptions>
 
-                <!-- Antigen Info -->
                 <div class="subsection-title" style="margin-top: 16px;">
                   <el-icon><Collection /></el-icon>
                   抗原信息
@@ -287,7 +279,6 @@
                 </el-table>
               </el-col>
 
-              <!-- Right Column: Schedule Timeline -->
               <el-col :xs="24" :md="14">
                 <div class="subsection-title">
                   <el-icon><Calendar /></el-icon>
@@ -299,7 +290,6 @@
                 </div>
 
                 <div v-else class="schedule-wrap">
-                  <!-- Timeline Only -->
                   <div class="timeline">
                     <div
                       v-for="(s, i) in stepsByGroup[group.group_id]"
@@ -333,9 +323,7 @@
         </div>
       </el-tab-pane>
 
-      <!-- Plan Details -->
       <el-tab-pane label="方案详情" name="plan-details">
-        <!-- 第一张表：抗原信息表 -->
         <el-card class="section-card">
           <template #header>
             <div class="section-header">
@@ -379,7 +367,6 @@
           </el-table>
         </el-card>
 
-        <!-- 第二张表：按组分栏的步骤详情表 -->
         <el-card class="section-card" style="margin-top: 16px;">
           <template #header>
             <div class="section-header">
@@ -431,7 +418,6 @@
           </div>
         </el-card>
 
-        <!-- 第三张表：小鼠信息总表 -->
         <el-card class="section-card" style="margin-top: 16px;">
           <template #header>
             <div class="section-header">
@@ -469,7 +455,6 @@
         </el-card>
       </el-tab-pane>
 
-      <!-- Titer -->
       <el-tab-pane label="效价检测" name="titer">
         <SerumDetailTiterTab
           :project="postForm"
@@ -576,7 +561,7 @@ export default {
       loading: false,
       schemeExportLoading: false,
       activeTab: 'schedule',
-      activeGroupTab: '', // 用于跟踪免疫步骤详情中的分组标签
+      activeGroupTab: '',
       postForm: {
         id: undefined,
         experiment_id: '',
@@ -631,8 +616,8 @@ export default {
     totalMice() {
       const groups = this.postForm.mouse_groups || []
       return groups.reduce((sum, g) => {
-        const n = parseInt(g.mouse_count, 10)
-        return sum + (isNaN(n) ? 0 : n)
+        const text = String(g.mouse_count ?? '').trim()
+        return /^[0-9]+$/.test(text) ? sum + Number(text) : sum
       }, 0)
     },
     antigenMap() {
@@ -758,8 +743,6 @@ export default {
       this.$router.go(-1)
     },
     goEdit() {
-      // 尽量不强依赖你的具体路由；你可以按项目实际路由改这里
-      // 常见写法：跳到编辑页并带 id
       this.$router.push({
         path: '/serum/edit',
         query: { id: this.postForm.id }
@@ -840,7 +823,6 @@ export default {
   min-height: calc(100vh - 40px);
 }
 
-/* Header */
 .page-header {
   display: flex;
   align-items: center;
@@ -898,7 +880,6 @@ export default {
   align-items: center;
 }
 
-/* KPI */
 .kpi-row {
   margin-bottom: 14px;
 }
@@ -929,7 +910,6 @@ export default {
   color: #9aa7b3;
 }
 
-/* Sections */
 .section-card {
   border-radius: 12px;
   border: 1px solid var(--el-border-color-extra-light);
@@ -1022,7 +1002,6 @@ export default {
   white-space: pre-wrap;
 }
 
-/* Tabs */
 .main-tabs {
   margin-top: 8px;
 }
@@ -1164,7 +1143,6 @@ export default {
   overflow: hidden;
 }
 
-/* Sub cards */
 .sub-card {
   border-radius: 12px;
   border: 1px solid var(--el-border-color-extra-light);
@@ -1184,7 +1162,6 @@ export default {
   overflow: hidden;
 }
 
-/* Empty */
 .empty-block {
   padding: 34px 12px;
   text-align: center;
@@ -1219,7 +1196,6 @@ export default {
   font-size: 12px;
 }
 
-/* Group Tabs */
 .group-tabs {
   margin-top: 10px;
 }

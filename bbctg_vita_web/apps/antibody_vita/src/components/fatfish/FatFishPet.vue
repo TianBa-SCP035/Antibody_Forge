@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 /**
- * FatFish floating pet — Antibody Vita desktop companion.
- * WebM: PC2005-cloud/dsh-pet (entertainment/internal). See ATTRIBUTION.txt.
+ * 大肥鱼悬浮宠物，作为 Antibody Vita 桌面伴侣。
+ * WebM 来源：PC2005-cloud/dsh-pet（娱乐／内部使用），版权说明见 ATTRIBUTION.txt。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -46,7 +46,7 @@ setHostRouter(useRouter());
 
 type AnimKey = string;
 
-// Care/pin — say/pick are function declarations (hoisted) so this is safe.
+// say 和 pick 为提升的函数声明，可在初始化照料与固定状态时调用。
 const {
   pinned,
   care,
@@ -170,7 +170,7 @@ const PLAYFUL_ANIMS: AnimKey[] = [
 ];
 const DANCE_ANIMS: AnimKey[] = ['dance', 'sway', 'maidDance', 'swing', 'spin', 'lion', 'fireworks'];
 
-/** Props that only make sense for the day outside: heat, snow, spring wind, the Spring Festival season. */
+/** 根据炎热、降雪、春风和春节时段选择仅适合当日户外条件的动画。 */
 function seasonalAnims(): AnimKey[] {
   const month = new Date().getMonth() + 1;
   const w = weatherNow();
@@ -202,7 +202,7 @@ const pressing = ref(false);
 const ballDragging = ref(false);
 const hovered = ref(false);
 type HitMark = { id: number; x: number; y: number; text: string; kind: import('./pokeHitMark').PokeHitKind };
-/** Little 戳 / 咚 marks where each tap lands. */
+/** 在每次点击位置显示小型「戳／咚」标记。 */
 const hitMarks = ref<HitMark[]>([]);
 const hitShake = ref(false);
 const menuOpen = ref(false);
@@ -215,7 +215,7 @@ const bubbles = ref<Bubble[]>([]);
 const facing = ref<1 | -1>(1);
 const squish = ref(1);
 
-/** Dual-buffer videos: load into the back slot, then swap when its first frame is painted (blended only for mid-clip cuts). */
+/** 视频使用双缓冲：先载入后备槽，首帧绘制后再切换；仅片段中途切换时混合。 */
 const slotA = ref<HTMLVideoElement | null>(null);
 const slotB = ref<HTMLVideoElement | null>(null);
 const frontIsA = ref(true);
@@ -244,7 +244,7 @@ let fleeTimer: number | undefined;
 let fleeRaf = 0;
 let caughtAt = 0;
 
-/** After chat reply or being punched, clicks call doPunch(); petting comforts. */
+/** 聊天回复或挨打后的点击调用 doPunch()，抚摸则执行安抚。 */
 const soreUntil = ref(0);
 let soreTick: number | undefined;
 let ballDown: { x: number; y: number; px: number; py: number; t: number } | null = null;
@@ -264,7 +264,7 @@ let tapTimer: number | undefined;
 let petStage = 0;
 
 const preloaded = new Map<string, HTMLVideoElement>();
-// Repeated pokes are captured before chat/drag/menu handlers; normal first-press dragging stays intact.
+// 连续戳击在聊天、拖动和菜单处理器之前捕获，但首次普通按压仍保留拖动行为。
 const {
   active: discoActive, pending: discoPending, busy: discoBusy, message: discoMessage,
   play: playDisco, stop: stopDisco, replay: replayDisco,
@@ -284,7 +284,7 @@ const {
   },
   resetPointer: (preserveTaps = false) => {
     if (preserveTaps) {
-      // Reset only physical press/drag state; the native 260ms poke burst is independent.
+      // 仅重置物理按压和拖动状态；原生 260 毫秒连续戳击状态独立维护。
       window.clearTimeout(holdTimer);
       window.clearTimeout(tapTimer);
       tapTimer = undefined;
@@ -324,7 +324,7 @@ watch(discoActive, (dancing) => {
     sleeping.value = false;
     window.clearTimeout(sleepTimer);
     clearAnimQueue();
-    // Real dance WebM plus the outer audio-driven stage motion; never animate either WebM buffer slot.
+    // 舞蹈由真实 WebM 和音频驱动的外层舞台运动叠加，两个 WebM 缓冲槽自身不得参与位移动画。
     void playAnim('dance', { loop: true, restart: true, priority: 'urgent' });
   } else if (discoPetBefore) {
     const before = discoPetBefore;
@@ -344,9 +344,9 @@ watch(discoActive, (dancing) => {
 watch(discoUnlocked, (now, before) => {
   if (now && !before) say('解锁蹦迪啦！以后右键我选「蹦迪」就能直接开跳，不用再戳一百下～');
 });
-/** Hover = character pointer; only press/drag uses grabbing hand. */
+/** 悬停使用角色指针，仅按住或拖动时使用抓取手势。 */
 const petCursor = computed(() => {
-  // Grab only after a real hold or drag — a plain click / hammer tap must not flash the grab hand.
+  // 仅真实长按或拖动后显示抓取手势，普通点击或锤击不得闪现抓取手势。
   if (dragging.value || holding.value || ballDragging.value) {
     return CURSOR_GRABBING;
   }
@@ -357,24 +357,23 @@ const petCursor = computed(() => {
 });
 
 /**
- * Viewport-first bubble placement, then convert to stage-local.
- * NEVER use `inset - pos.x` (that teleports the stack to viewport x≈10).
- * Right side of screen → stack glued to her LEFT; left side → her RIGHT.
- * Top corners: drop the head-anchor so the stack does not clip off-screen.
+ * 先按视口定位气泡，再转换为舞台局部坐标。
+ * 禁止使用 `inset - pos.x`，否则气泡栈会跳到视口 x≈10。
+ * 宠物位于屏幕右侧时气泡贴左侧，位于左侧时贴右侧；靠近顶部角落时降低头部锚点，避免裁出屏幕。
  */
 /**
- * Place UI beside her HEAD toward SCREEN CENTER (inner side).
- * left/bottom-left/top-left → her RIGHT; right/*-right → her LEFT.
- * Candidates sit fully beside the sprite (not overlapping her face).
+ * 界面放在头部朝向屏幕中心的内侧。
+ * 左侧、左下、左上位置使用宠物右侧；右侧及右侧角落使用宠物左侧。
+ * 候选位置必须完整位于精灵旁边，不遮挡脸部。
  */
 function glueBesideHer(w: number, gap: number, inset: number) {
   const vw = window.innerWidth || 1280;
   const box = petBox();
   const herCenter = pos.x + box / 2;
-  // Prefer the inner side (toward viewport center).
+  // 优先选择朝向视口中心的内侧。
   const preferLeftOfHer = herCenter >= vw * 0.5;
-  const leftCandidate = pos.x - gap - w; // fully left of stage
-  const rightCandidate = pos.x + box + gap; // fully right of stage
+  const leftCandidate = pos.x - gap - w; // 完整位于舞台左侧。
+  const rightCandidate = pos.x + box + gap; // 完整位于舞台右侧。
   let side: 'left' | 'right' = preferLeftOfHer ? 'left' : 'right';
   let vx = preferLeftOfHer ? leftCandidate : rightCandidate;
   const lo = inset;
@@ -387,9 +386,9 @@ function glueBesideHer(w: number, gap: number, inset: number) {
       side = otherSide;
       vx = other;
     } else {
-      // Both clipped (narrow / corner): keep inner preference, clamp without teleporting away.
+      // 两侧都被裁切时保留内侧偏好，并就地限制坐标，避免界面跳远。
       vx = Math.max(lo, Math.min(hi, vx));
-      // If clamp would park the stack over her torso, nudge just outside her nearer edge.
+      // 若限制后气泡栈覆盖身体，则移到较近边缘之外。
       const overlap = vx < pos.x + box && vx + w > pos.x;
       if (overlap) {
         if (preferLeftOfHer) {
@@ -430,14 +429,13 @@ function petBox() {
 }
 
 function headLocalBottom(mode: 'bubbles' | 'pill') {
-  // Bubbles always sit on her head (same spot whether chat is open or not).
-  // Pill sits at shoulder height on her side. Extra messages scroll instead of
-  // shifting the whole column.
+  // 气泡始终位于头顶，聊天开关不改变位置；输入条位于身侧肩高处。
+  // 消息过多时内部滚动，不移动整列。
   const inset = 10;
   const vh = window.innerHeight || 800;
   const box = petH();
   let localBottom = mode === 'pill' ? Math.round(box * 0.40) : Math.round(box * 0.90);
-  // The rhythm lanes (.ff-fall: bottom 6%, 220px tall) reach above her head; keep lines clear of the hint.
+  // 节奏轨道（.ff-fall：底部 6%，高 220px）会超过头顶，台词需避开提示区。
   if (mode === 'bubbles' && rhythm.value) localBottom = Math.max(localBottom, Math.round(SIZE * 0.06) + 220 + 4);
   const viewBottom = pos.y + box - localBottom;
   if (viewBottom > vh - inset) {
@@ -446,7 +444,7 @@ function headLocalBottom(mode: 'bubbles' | 'pill') {
   return localBottom;
 }
 
-/** Shell game at her feet on the screen-centre side. The sprite sits ~58px inside the box, so a 52px reach stays just off her. */
+/** 猜碗游戏放在脚边朝屏幕中心的一侧；精灵内缩约 58px，52px 的伸入量可恰好避开身体。 */
 const shellGameStyle = computed(() => {
   const w = 190;
   const reach = 52;
@@ -461,17 +459,15 @@ const shellGameStyle = computed(() => {
 });
 
 const bubbleStackStyle = computed(() => {
-  // Same column above her head for idle chat and the input-open history.
-  // Flush to her outer edge (not centered) so leftover side space is used.
-  // Only the input pill moves to her left/right.
+  // 待机聊天和输入框打开后的历史记录共用头顶列。
+  // 气泡列贴齐外侧边缘而非居中，以利用剩余侧边空间；仅输入条左右移动。
   const w = hasCard.value ? 300 : 220;
   const inset = 10;
   const vw = window.innerWidth || 1280;
   const localBottom = headLocalBottom('bubbles');
   const box = petBox();
   const onLeft = pos.x + box / 2 < vw * 0.5;
-  // Character: flush to the outer edge. A docked ball hangs halfway off-screen,
-  // so park the stack on the inward (visible) side.
+  // 展开角色时贴齐外侧边缘；停靠球有一半悬在屏外，气泡栈需放在朝内的可见侧。
   let vx = collapsed.value
     ? (onLeft ? Math.max(inset, pos.x + box) : pos.x - w)
     : (onLeft ? pos.x : pos.x + box - w);
@@ -487,8 +483,7 @@ const bubbleStackStyle = computed(() => {
     transform: 'none',
   };
   if (chatOpen.value || hasCard.value) {
-    // Stack sits above her head and grows upward: use space to the top of the screen.
-    // (Old formula used vh - pos.y, i.e. space below her, so the lower she sat the less you saw.)
+    // 气泡栈位于头顶并向上增长，高度按屏幕顶部剩余空间限制。
     const stackBottom = pos.y + petH() - localBottom;
     const roomAbove = Math.floor(stackBottom - inset);
     style.maxHeight = `${Math.max(48, Math.min(400, roomAbove))}px`;
@@ -500,7 +495,7 @@ function petOnLeftHalf() {
   return pos.x + SIZE / 2 < (window.innerWidth || 1280) * 0.5;
 }
 
-/** Hers (pet/sys/wait) vs ours (user). On the left half: she left, we right; reverse on the right half. */
+/** 宠物、系统和等待气泡属于宠物侧，用户气泡属于用户侧；左半屏宠物在左，右半屏反向。 */
 function bubbleOnLeft(kind: Bubble['kind']) {
   const hers = kind !== 'user';
   return hers ? petOnLeftHalf() : !petOnLeftHalf();
@@ -511,14 +506,13 @@ function bubbleAlignClass(kind: Bubble['kind']) {
 }
 
 function bubbleTailClass(kind: Bubble['kind']) {
-  // Flipped again for symmetry: left bubbles sharp bottom-right, right bubbles sharp bottom-left.
+  // 为保持对称，左侧气泡使用右下尖角，右侧气泡使用左下尖角。
   return bubbleOnLeft(kind) ? 'tail-left' : 'tail-right';
 }
 
-/** Input pill glued under/ beside the bubble stack — same clamp, tiny gap. */
+/** 输入条贴在气泡栈下方或旁边，使用相同边界限制并保留小间距。 */
 const chatPillStyle = computed(() => {
-  // Input stays beside her. When chat is open, keep a gap from the
-  // bubble column so the field does not sit on top of the history.
+  // 输入条保持在宠物身侧；聊天打开时与气泡列留出间距，避免覆盖历史记录。
   const w = 210;
   const inset = 10;
   const pillH = 36;
@@ -563,7 +557,7 @@ const chatPillStyle = computed(() => {
 const chatOpen = ref(false);
 const chatInputEl = ref<HTMLInputElement | null>(null);
 const bubblesEl = ref<HTMLElement | null>(null);
-/** Fade the stack edges only where messages are scrolled out of view. */
+/** 仅在消息滚出可视区域的一侧淡化气泡栈边缘。 */
 const stackFade = reactive({ top: false, bottom: false });
 
 function updateStackFade() {
@@ -606,7 +600,7 @@ const {
   focusInput: () => nextTick(() => chatInputEl.value?.focus()),
   bubbles,
 });
-// The pet lives above the router, so logging out and in as someone else doesn't remount her.
+// 宠物位于路由层之上，切换登录账号不会重新挂载。
 watch(currentUserKey, (now, was) => {
   if (now === was) return;
   chatOpen.value = false;
@@ -636,7 +630,7 @@ type RhythmState = {
   notes: FallNote[];
   hits: number;
   misses: number;
-  /** First note leaves the top here; before it a 3-2-1 countdown shows. */
+  /** 首个音符从顶部出发的时间；此前显示 3、2、1 倒计时。 */
   startAt: number;
   endAt: number;
   pulseTimer?: number;
@@ -675,9 +669,9 @@ function laneFlashKind(dir: ArrowDir) {
 }
 let lastIdleSay = 0;
 const IDLE_SAY_COOLDOWN = 10000;
-/** `fresh`: also draw from the model-written lines for this kind (see linePool.ts). */
+/** 传入 fresh 时，还会从该类型的模型台词中抽取，见 linePool.ts。 */
 function maybeIdleSay(pool: readonly string[], chance = 0.35, fresh?: FreshKind) {
-  if (chatOpen.value) return; // while input open, keep stack for real Q&A only
+  if (chatOpen.value) return; // 输入框打开时，气泡栈仅保留真实问答。
   const now = Date.now();
   if (now - lastIdleSay < IDLE_SAY_COOLDOWN) return;
   if (Math.random() > chance) return;
@@ -690,7 +684,7 @@ function maybeIdleSay(pool: readonly string[], chance = 0.35, fresh?: FreshKind)
 function syncBubblesFromQaHistory() {
   const waits = bubbles.value.filter((b) => b.kind === 'wait' || b.kind === 'card');
   const recent = qaHistory.value.slice(-16);
-  // Keep QA ids stable so reopening chat doesn't remount every bubble and replay ff-pop.
+  // 保持问答 ID 稳定，避免重开聊天时所有气泡重新挂载并重播 ff-pop。
   bubbles.value = [
     ...recent.map((row) => ({
       id: row.id,
@@ -714,7 +708,7 @@ function openChatDialog() {
   window.clearTimeout(chatCloseTimer);
   menuOpen.value = false;
   chatOpen.value = true;
-  // Show recent real Q&A in the glued stack (not a far window). Sticky while input open.
+  // 在贴身气泡栈中显示近期真实问答，输入框打开期间保持不消失。
   if (qaHistory.value.length) {
     syncBubblesFromQaHistory();
   } else {
@@ -726,7 +720,7 @@ function openChatDialog() {
   });
 }
 
-/** Double-click opens the input; double-click again puts it away. */
+/** 双击打开输入框，再次双击收起。 */
 function toggleChatDialog() {
   if (chatOpen.value) closeChatDialog();
   else openChatDialog();
@@ -735,7 +729,7 @@ function toggleChatDialog() {
 function closeChatDialog() {
   window.clearTimeout(chatCloseTimer);
   chatOpen.value = false;
-  // Resume compact auto-dismiss: keep last couple, then fade. Cards stay until the user closes them.
+  // 恢复紧凑自动消失模式：保留最近两条后淡出，卡片则等待用户关闭。
   const lastIds = new Set(
     bubbles.value.filter((b) => b.kind !== 'wait' && b.kind !== 'card').slice(-2).map((b) => b.id),
   );
@@ -760,7 +754,7 @@ function urlOf(key: AnimKey) {
 }
 
 function placeDefault() {
-  // Sit in the left sidebar column: canvas matches sidebar width, art centered.
+  // 位于左侧栏列中，画布匹配侧栏宽度，角色居中。
   const sidebarW = measureSidebarWidth();
   pos.x = Math.round((sidebarW - SIZE) / 2);
   pos.y = Math.max(24, window.innerHeight - SIZE - 72);
@@ -773,7 +767,7 @@ function measureSidebarWidth() {
 }
 
 function say(text: string, kind: Bubble['kind'] = 'pet') {
-  // Live comic bubbles only — idle/互动 废话 never enter qaHistory.
+  // 此处仅处理即时漫画气泡，待机和互动闲聊绝不进入 qaHistory。
   const prev = bubbles.value.filter((b) => b.kind !== 'card').at(-1);
   if (kind === 'pet' && !chatOpen.value && prev?.kind === 'pet' && prev.text === text) return prev.id;
   const id = bubbleSeq++;
@@ -781,7 +775,7 @@ function say(text: string, kind: Bubble['kind'] = 'pet') {
   if (kind === 'wait') {
     list = list.filter((b) => b.kind !== 'wait');
   }
-  // While input is open: keep Q&A/wait sticky (no auto-dismiss) and allow a longer stack.
+  // 输入框打开时，问答和等待气泡不自动消失，并允许更长的气泡栈。
   const sticky =
     chatOpen.value && (kind === 'user' || kind === 'pet' || kind === 'sys' || kind === 'wait');
   const keep = chatOpen.value ? 20 : 4;
@@ -789,7 +783,7 @@ function say(text: string, kind: Bubble['kind'] = 'pet') {
   bubbles.value = [...list.filter((b) => b.kind === 'card' || kept.has(b.id)), { id, text, kind, sticky }];
   if (!sticky && kind !== 'wait') {
     window.setTimeout(() => {
-      if (chatOpen.value) return; // opened mid-timer — leave history alone
+      if (chatOpen.value) return; // 定时器运行期间打开聊天后，不再修改历史气泡。
       bubbles.value = bubbles.value.filter((b) => b.id !== id);
     }, 4200);
   }
@@ -800,7 +794,7 @@ function say(text: string, kind: Bubble['kind'] = 'pet') {
 const MAX_CARDS = 3;
 const hoveredCard = ref<number | null>(null);
 
-/** Answer cards fade after a reading-time delay (the text stays in chat history); hovering or an open chat holds them. */
+/** 回答卡片按阅读时长延迟淡出，文本仍保留在聊天历史中；悬停或聊天打开时暂停淡出。 */
 function expireCard(id: number, ms: number) {
   window.setTimeout(() => {
     if (!bubbles.value.some((b) => b.id === id)) return;
@@ -812,7 +806,7 @@ function expireCard(id: number, ms: number) {
   }, ms);
 }
 
-/** Wide card for agent answers / confirmations. Cards with actions wait for the user. */
+/** 代理回答和确认使用宽卡片；带操作的卡片等待用户处理。 */
 function addCard(card: CardInput) {
   const id = bubbleSeq++;
   const cards = bubbles.value.filter((b) => b.kind === 'card');
@@ -844,7 +838,7 @@ function preload(key: AnimKey) {
   try {
     v.load();
   } catch {
-    /* ignore */
+    /* 预加载失败时由实际播放流程重试。 */
   }
   preloaded.set(u, v);
   return v;
@@ -858,13 +852,13 @@ function pick<T extends string>(pool: readonly T[]): T {
   return pool[Math.floor(Math.random() * pool.length)]!;
 }
 
-/** Random clip from a pool, skipping the one already on screen (restarting it reads as a glitch). */
+/** 从池中随机选择片段并避开当前片段，防止重播造成跳帧感。 */
 function pickAnim(pool: readonly AnimKey[]): AnimKey {
   const others = pool.filter((k) => k !== currentAnim.value);
   return pick(others.length ? others : pool);
 }
 
-/** Shuffle bag per pool: every clip in it plays once before any of them repeats. */
+/** 每个池使用独立洗牌袋，所有片段各播放一次后才允许重复。 */
 const animBags = new Map<string, { bag: AnimKey[]; last?: AnimKey }>();
 function drawAnim(pool: readonly AnimKey[]): AnimKey {
   const id = pool.join();
@@ -875,7 +869,7 @@ function drawAnim(pool: readonly AnimKey[]): AnimKey {
       const j = Math.floor(Math.random() * (i + 1));
       [bag[i], bag[j]] = [bag[j]!, bag[i]!];
     }
-    // A fresh round must not open with the clip the last round ended on.
+    // 新一轮不得以整轮上一片段开场。
     if (bag.length > 1 && bag.at(-1) === entry.last) [bag[0], bag[bag.length - 1]] = [bag.at(-1)!, bag[0]!];
     entry.bag = bag;
     animBags.set(id, entry);
@@ -885,30 +879,29 @@ function drawAnim(pool: readonly AnimKey[]): AnimKey {
 }
 
 /**
- * Every clip (5 or 10 s) ends in the pose it started from, so a cut at a clip
- * boundary is a small pose change while a mid-clip cut is a visible pose jump.
- * - ambient: things she does on her own (idle cycle, nudges, dozing off) wait for the current clip to end.
- * - react:   answers to the user (poke, pet, feed, chat result) let the current reaction read for REACT_HOLD_MS first.
- * - urgent:  physical or state changes (drag, hold, throw, punch, wake) cut in at once.
+ * 每个 5 秒或 10 秒片段以起始姿势结束，因此边界切换仅有轻微姿势变化，中途切换则会明显跳姿势。
+ * ambient：待机、提醒和入睡等自主行为等待当前片段结束。
+ * react：戳击、抚摸、投喂和聊天结果等用户反馈至少展示 REACT_HOLD_MS。
+ * urgent：拖动、长按、抛掷、挨打和唤醒等物理或状态变化立即切入。
  */
 type AnimPriority = 'ambient' | 'react' | 'urgent';
 type AnimOpts = {
   loop?: boolean;
   thenIdle?: boolean;
-  /** Restart a loop that is already playing. How soon a clip cuts in is decided by `priority` alone. */
+  /** 是否重启正在播放的循环；切入时机仅由 priority 决定。 */
   restart?: boolean;
   then?: AnimKey;
   priority?: AnimPriority;
-  /** Runs when the clip actually appears (it may have waited in the queue). */
+  /** 片段实际出现时执行；片段可能曾在队列中等待。 */
   onStart?: () => void;
 };
 const REACT_HOLD_MS = 2000;
 const SWAP_TIMEOUT_MS = 3000;
-/** Must cover the CSS fade in `.ff-video.blend` (incoming 140ms; outgoing 120ms after a 70ms delay). */
+/** 必须覆盖 .ff-video.blend 的 CSS 淡变：入场 140ms，出场延迟 70ms 后持续 120ms。 */
 const BLEND_MS = 220;
 const blending = ref(false);
 let blendTimer: number | undefined;
-/** A back-slot load is in progress; the front clip ending meanwhile must not start a competing swap. */
+/** 后备槽加载期间，前台片段结束不得启动另一次竞争切换。 */
 let swapping = false;
 
 let clip: { priority: AnimPriority; loop: boolean; startedAt: number } = {
@@ -932,13 +925,13 @@ function runQueuedAnim() {
   if (q && !collapsed.value) void swapTo(q.key, q.opts);
 }
 
-/** Let the looping front clip finish its current cycle so `ended` fires at a clean boundary. */
+/** 让前台循环片段完成当前周期，使 ended 在完整边界触发。 */
 function endFrontLoop() {
   if (frontIsA.value) loopA.value = false;
   else loopB.value = false;
 }
 
-/** How long she has been sitting in plain idle with nothing waiting (0 if busy with a clip). */
+/** 返回无等待任务的纯待机时长；正忙于片段时为 0。 */
 function idleMs() {
   return currentAnim.value === 'idle' && !queuedAnim ? Date.now() - idleSince : 0;
 }
@@ -947,7 +940,7 @@ function playAnim(key: AnimKey, opts: AnimOpts = {}) {
   if (collapsed.value) return;
   if (!opts.restart && key === currentAnim.value && opts.loop) return;
   const priority = opts.priority ?? 'react';
-  // Already doing exactly this; restarting would snap her back to the clip's first frame.
+  // 当前已在执行同一动作，重启会突然跳回片段首帧。
   if (priority !== 'urgent' && !opts.loop && key === currentAnim.value) return;
 
   if (priority === 'urgent') {
@@ -977,7 +970,7 @@ function playAnim(key: AnimKey, opts: AnimOpts = {}) {
   animQueueTimer = window.setTimeout(runQueuedAnim, REACT_HOLD_MS - elapsed);
 }
 
-/** Dual-buffer swap: load into the back slot, promote it only once it has a painted frame. */
+/** 双缓冲切换：载入后备槽，绘制出画面后才提升为前台。 */
 async function swapTo(key: AnimKey, opts: AnimOpts) {
   if (collapsed.value) return;
   const wantLoop = !!opts.loop;
@@ -990,7 +983,7 @@ async function swapTo(key: AnimKey, opts: AnimOpts) {
   pendingEnd = null;
   swapping = true;
   const useA = !frontIsA.value;
-  // Even at a clip boundary the rest poses differ in hair, tail and face, so blend every cut from a painted frame.
+  // 即使位于片段边界，静止姿势的头发、尾巴和表情仍不同，因此每次都从已绘制帧混合切换。
   const outgoingNow = useA ? slotB.value : slotA.value;
   const blend = !!outgoingNow && outgoingNow.readyState >= 2;
   if (useA) {
@@ -1029,11 +1022,11 @@ async function swapTo(key: AnimKey, opts: AnimOpts) {
       try {
         outgoing.pause();
       } catch {
-        /* ignore */
+        /* 切换期间视频可能已卸载。 */
       }
     };
     if (blend) {
-      // Keep the old clip moving while it fades out; a frozen frame under the fade reads as a stutter.
+      // 旧片段淡出时继续播放，避免淡变下的冻结画面产生卡顿感。
       blendTimer = window.setTimeout(() => {
         blending.value = false;
         if (swapGen === animGen) stopOutgoing();
@@ -1044,7 +1037,7 @@ async function swapTo(key: AnimKey, opts: AnimOpts) {
     frontIsA.value = useA;
     if (key === 'idle' && currentAnim.value !== 'idle') idleSince = Date.now();
     currentAnim.value = key;
-    // An ambient clip queued while this one was loading must not wait behind an endless loop.
+    // 当前片段加载期间入队的 ambient 片段不得被无限循环阻塞。
     if (wantLoop && queuedAnim && queuedAnim.opts.priority === 'ambient') endFrontLoop();
     opts.onStart?.();
     if (!wantLoop) {
@@ -1065,7 +1058,7 @@ async function swapTo(key: AnimKey, opts: AnimOpts) {
     }
   };
 
-  // Only promote a frame from the clip's start; a reused slot may still hold the frame it was paused on.
+  // 仅提升片段起始处的帧，复用槽可能仍保留暂停时的旧帧。
   let frameTries = 0;
   const afterPlay = () => {
     if (swapGen !== animGen) return;
@@ -1082,7 +1075,7 @@ async function swapTo(key: AnimKey, opts: AnimOpts) {
     });
   };
 
-  // A clip that fails to load must not leave her frozen on the old one forever.
+  // 片段加载失败时必须恢复，不能让角色永久冻结在旧片段。
   const fail = () => {
     window.clearTimeout(watchdog);
     if (promoted || swapGen !== animGen) return;
@@ -1117,7 +1110,7 @@ async function swapTo(key: AnimKey, opts: AnimOpts) {
   };
 
   v.addEventListener('loadeddata', onReady);
-  // If already decoded for this src, loadeddata may not re-fire.
+  // 该 src 已解码时，loadeddata 可能不会再次触发。
   if (v.readyState >= 2) {
     onReady();
   }
@@ -1143,7 +1136,7 @@ function onEnded(which: 'a' | 'b') {
   }
 }
 
-/** How long she stays awake without attention, and how long a nap lasts before she wakes on her own. */
+/** 无人互动时保持清醒的时长，以及自行醒来前的小睡时长。 */
 function idleTimings() {
   switch (careState.value) {
     case 'tired':
@@ -1175,7 +1168,7 @@ function pokeIdleClock() {
     sleeping.value = true;
     sleepTimer = window.setTimeout(wakeOnOwn, nap);
     const start = Math.random() > 0.55 ? 'sleepStart' : Math.random() > 0.5 ? 'yawn' : 'nap';
-    // Doze off once the current clip is done, not mid-move; dozing outranks any idle flourish still queued.
+    // 当前片段结束后再入睡，不在动作中途切换；入睡优先于队列中的待机花式动作。
     clearAnimQueue();
     void playAnim(start, {
       thenIdle: false,
@@ -1186,10 +1179,10 @@ function pokeIdleClock() {
   }, awake);
 }
 
-/** The dedicated 点击回应 clips carry most pokes; the prop tricks are the occasional surprise. */
+/** 大多数戳击使用专用「点击回应」片段，道具花式仅作偶发惊喜。 */
 const POKE_ANIMS: AnimKey[] = ['pokeHappy', 'pokeWave', 'pokeShy', 'pokeTickle', 'curtsy', 'knock'];
 const POKE_SURPRISE_ANIMS: AnimKey[] = ['jump', 'spin', 'flower', 'bubbles', 'balloon', 'pigeon'];
-/** Kept apart so a poke never looks like a hit and a hit never looks like a poke. */
+/** 戳击和挨打动画分开维护，避免两种反馈混淆。 */
 const FLURRY_ANIMS: AnimKey[] = ['pokeAngry', 'tailSlap', 'rageGame'];
 const PUNCH_ANIMS: AnimKey[][] = [
   ['squash', 'scare'],
@@ -1232,7 +1225,7 @@ function placeMenu() {
   let x: number;
   let y: number;
 
-  // Prefer sitting beside her on the side with more room, so the menu does not cover her.
+  // 优先放在空间更充足的一侧，避免菜单遮挡角色。
   if (roomRight >= w && roomRight >= roomLeft) {
     x = petR + gap;
   } else if (roomLeft >= w) {
@@ -1267,12 +1260,11 @@ function placeMenu() {
 }
 
 function onContextMenu(ev: MouseEvent) {
-  // Non-blocking custom popover — never use window.confirm / native menus.
-  // Only cancel the browser context menu on the pet hit-target itself.
-  // Opening/moving over the menu must NOT start body animations.
+  // 使用非阻塞自定义弹出层，禁止 window.confirm 和原生菜单。
+  // 仅在宠物命中区域取消浏览器右键菜单；打开菜单或在其上移动不得触发身体动画。
   ev.preventDefault();
   ev.stopPropagation();
-  // Right-click again puts the menu away, like the double-click toggle for the input.
+  // 再次右键收起菜单，与双击切换输入框的行为一致。
   if (menuOpen.value) {
     closeMenu();
     return;
@@ -1306,7 +1298,7 @@ function resetPointer() {
 function onPointerDown(ev: PointerEvent) {
   if (collapsed.value || ev.button !== 0) return;
   (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
-  // Keep counting taps across presses; only a release decides whether the burst is over.
+  // 连续按压之间保留点击计数，仅松开后的等待期决定连续段是否结束。
   window.clearTimeout(tapTimer);
   tapTimer = undefined;
   cancelAnimationFrame(physicsRaf);
@@ -1318,7 +1310,7 @@ function onPointerDown(ev: PointerEvent) {
   petStage = 0;
   squish.value = 0.96;
   if (rhythm.value || shellPlay.value) {
-    // Rhythm is keyboard-only; the shell game handles its own pointer events with .stop.
+    // 节奏游戏仅使用键盘；猜碗游戏通过 .stop 自行处理指针事件。
     dropTaps();
     pointerMode = 'none';
     pressing.value = false;
@@ -1326,7 +1318,7 @@ function onPointerDown(ev: PointerEvent) {
     try {
       (ev.currentTarget as HTMLElement).releasePointerCapture(ev.pointerId);
     } catch {
-      /* ignore */
+      /* 指针捕获可能已提前释放。 */
     }
     return;
   }
@@ -1341,7 +1333,7 @@ function onPointerDown(ev: PointerEvent) {
   vel.x = 0;
   vel.y = 0;
   window.clearTimeout(holdTimer);
-  // snappier hold → squish
+  // 长按后快速压扁以增强响应感。
   holdTimer = window.setTimeout(() => {
     if (pointerMode !== 'pending') return;
     dropTaps();
@@ -1412,7 +1404,7 @@ function onPointerMove(ev: PointerEvent) {
     lastDrag = { x: ev.clientX, y: ev.clientY, t: now };
     pos.x = clamp(ev.clientX - dragOff.x, 0, window.innerWidth - SIZE);
     pos.y = clamp(ev.clientY - dragOff.y, 0, window.innerHeight - SIZE);
-    // Turn only on a clear sideways move; hand jitter used to mirror her back and forth (flicker).
+    // 仅明显横向移动时转身，避免手部抖动导致来回镜像闪烁。
     const dir = vel.x < 0 ? -1 : 1;
     if (Math.abs(vel.x) > 2.5 && dir !== facing.value && now - lastFlipAt > 300) {
       facing.value = dir;
@@ -1427,7 +1419,7 @@ function onPointerUp(ev: PointerEvent) {
   try {
     (ev.currentTarget as HTMLElement).releasePointerCapture(ev.pointerId);
   } catch {
-    /* ignore */
+    /* 指针捕获可能已提前释放。 */
   }
   const mode = pointerMode;
   pointerMode = 'none';
@@ -1455,7 +1447,7 @@ function onPointerUp(ev: PointerEvent) {
       maybeIdleSay(LINES.throw, 0.5);
       startPhysics();
     } else {
-      // soft land → bounce recover
+      // 轻柔落地后通过回弹恢复。
       void playAnim('squash', { priority: 'urgent' });
       maybeIdleSay(LINES.softLand, 0.4);
       pokeIdleClock();
@@ -1486,16 +1478,16 @@ function onPointerUp(ev: PointerEvent) {
   squish.value = 1;
 }
 
-/** Shared native visual/interaction path for ordinary and easter-egg captured pointerup. */
+/** 普通 pointerup 和彩蛋捕获的 pointerup 共用原生视觉与交互路径。 */
 function recordPetTap(ev: PointerEvent, streak?: number) {
   const hit = (ev.target as Element).closest('.ff-pet');
   if (!hit) return;
-  // Every tap answers at once (mark + squish); what the burst means is decided once the taps stop.
+  // 每次点击立即显示标记和压缩反馈，连续段含义在点击停止后判定。
   window.clearTimeout(tapTimer);
   tapCount += 1;
   const box = hit.getBoundingClientRect();
   const at = { x: ev.clientX - box.left, y: ev.clientY - box.top };
-  // The easter-egg streak survives the 260ms burst gap, so it is the count worth showing.
+  // 彩蛋连续计数跨越 260 毫秒段间隔，因此可见标记应显示该计数。
   const mark = pokeHitPresentation(Math.max(tapCount, streak ?? 0), Date.now() < soreUntil.value);
   if (mark.kind === 'punch') {
     squish.value = 0.88;
@@ -1530,18 +1522,18 @@ function shakeHit() {
   }, 260);
 }
 
-/** The third quick poke gets a reaction right away instead of after the burst ends. */
+/** 第三次快速戳击立即反馈，不等待连续段结束。 */
 function startFlurry() {
   void playAnim(pickAnim(FLURRY_ANIMS), { priority: 'urgent' });
   say(lineFor('flurry', LINES.pokeFlurry));
 }
 
-/** Taps within TAP_GAP_MS of each other form one burst: 1 = poke, 2 = open chat, 3+ = a poke flurry. */
+/** 间隔不超过 TAP_GAP_MS 的点击组成一段：1 次为戳击，2 次打开聊天，3 次以上为连戳。 */
 function resolveTaps() {
   const n = tapCount;
   dropTaps();
   if (!n || collapsed.value || dragging.value || holding.value || discoActive.value || discoPending.value) return;
-  // The press that caught her mid-flee already got its reaction; it is not also a punch.
+  // 逃跑途中被抓住的按压已产生反馈，不再重复算作挨打。
   if (Date.now() - caughtAt < 1000) return;
   if (sleeping.value) {
     sleeping.value = false;
@@ -1554,7 +1546,7 @@ function resolveTaps() {
     if (!discoFlurrying()) toggleChatDialog();
     return;
   }
-  // After a recent reply (or punch streak), a tap is a 揍 — a flurry counts as several hits.
+  // 近期回复或连续挨打后，点击视为「揍」；连戳按多次命中计。
   if (Date.now() < soreUntil.value) {
     punchCount += Math.max(0, n - 2);
     doPunch();
@@ -1562,7 +1554,7 @@ function resolveTaps() {
   }
   notePoke(n);
   if (n >= 3) {
-    // startFlurry() already reacted on the third tap; a long burst only gets one more word.
+    // startFlurry() 已在第三次点击时反馈，长连戳最多再补一句台词。
     if (n >= 6) say(lineFor('flurry', LINES.pokeFlurry));
   } else {
     void playAnim(pickPoke());
@@ -1595,7 +1587,7 @@ function startPhysics() {
       if (Math.abs(vel.y) < 2.6 && Math.abs(vel.x) < 1.5) {
         vel.x = 0;
         vel.y = 0;
-        // The throw clip carries the whole flight; only the final landing swaps clips.
+        // 抛掷片段覆盖整个飞行过程，仅最终落地时切换片段。
         void playAnim('squash', { priority: 'urgent' });
         maybeIdleSay(LINES.hardLand, 0.4);
         pokeIdleClock();
@@ -1630,7 +1622,7 @@ function nearMagnetEdge() {
 
 function magnetSnapBall() {
   const { edge, targetX, targetY } = magnetSnapTarget(pos);
-  // Keep the avatar where it is while the stage grows into a capsule, then slide the stage.
+  // 舞台扩展为胶囊时保持头像位置不动，再滑动舞台。
   const avatar = { x: pos.x, y: pos.y };
   dockEdge.value = edge;
   const o = avatarOriginInCapsuleOf(edge);
@@ -1673,7 +1665,7 @@ function onBallPointerUp(ev: PointerEvent) {
   try {
     (ev.currentTarget as HTMLElement).releasePointerCapture(ev.pointerId);
   } catch {
-    /* ignore */
+    /* 指针捕获可能已提前释放。 */
   }
   const moved = ballMoved;
   ballDown = null;
@@ -1696,7 +1688,7 @@ function toggleCollapse() {
   clearRhythm();
   clearPlay();
   collapsed.value = !collapsed.value;
-  // Keep the visual center: the pet box is SIZE, the ball is BALL.
+  // 宠物容器尺寸为 SIZE、球尺寸为 BALL，切换时保持视觉中心。
   const centerShift = (SIZE - BALL) / 2;
   if (collapsed.value) {
     docked.value = false;
@@ -1730,7 +1722,7 @@ function toggleCollapse() {
 
 function armSore(ms = 20000) {
   soreUntil.value = Date.now() + ms;
-  // Nudge cursor computed while window open (Date.now() alone is not reactive).
+  // 窗口打开期间主动刷新光标计算，因为 Date.now() 本身不具响应性。
   window.clearInterval(soreTick);
   soreTick = window.setInterval(() => {
     if (Date.now() >= soreUntil.value) {
@@ -1738,7 +1730,7 @@ function armSore(ms = 20000) {
       soreTick = undefined;
       soreUntil.value = 0;
     } else {
-      // touch ref to refresh cursor
+      // 触发 ref 更新以刷新光标。
       soreUntil.value = soreUntil.value;
     }
   }, 400);
@@ -1802,7 +1794,7 @@ function onCaughtWhileFleeing() {
 
 
 function doPunch() {
-  // 「揍她」— escalate on repeat punches within a short window.
+  // 短时间内连续「揍她」会逐级增强反应。
   punchCount += 1;
   armSore(12000);
   window.clearTimeout(punchTimer);
@@ -1817,7 +1809,7 @@ function doPunch() {
     say(lineFor('punch', LINES.punch1));
   } else if (n === 2) {
     say(pick(LINES.punch2));
-    // After a recent real reply, sometimes 重新回答 (once per question).
+    // 近期有真实回答时，每个问题最多触发一次重新回答。
     if (lastUserQuestion.value && Math.random() > 0.35) {
       void maybeRetryAnswer();
     }
@@ -1884,7 +1876,7 @@ function onShellRound(p: { round: number; win: boolean }) {
   }
 }
 
-/** One watching loop per shuffle; only round results get their own clip, so the game doesn't strobe through clips. */
+/** 每次洗牌只播放一个观察循环，仅回合结果使用独立片段，避免游戏频繁闪切。 */
 function onShellPhase(phase: 'ready' | 'show' | 'shuffle' | 'guess' | 'result') {
   if (phase === 'shuffle') void playAnim('think', { loop: true });
 }
@@ -2034,14 +2026,14 @@ async function menuAction(kind: string) {
     return;
   }
   if (kind === 'feed') {
-    // Always play an eat clip — even when "full" / anti-grind grants little satiety. 白饭 is her staple.
+    // 即使已饱或防刷机制仅增加少量饱腹度，也始终播放进食片段；白饭是主食。
     const eats: AnimKey[] = ['eat', 'eatRice', 'eatRice', 'eatBowl', 'eatToken'];
     const hour = hourNow();
     if (hour >= 11 && hour < 14) eats.push('eatLunch', 'eatLunch');
     eats.push(...seasonalAnims().filter((k) => k.startsWith('eat')));
     const before = careState.value;
     const stuffed = care.value.satiety >= 85;
-    // Picked from the menu on purpose, so it cuts in right away.
+    // 用户从菜单主动选择，动画应立即切入。
     void playAnim(pickAnim(stuffed ? ['eatCaught', 'fan'] : eats), { priority: 'urgent' });
     onCare('feed');
     say(stuffed ? pick(LINES.feedFull) : before === 'hungry' ? pick(LINES.feedHungry) : lineFor('feed', LINES.feed));
@@ -2057,7 +2049,7 @@ async function menuAction(kind: string) {
     return;
   }
   if (kind === 'disco') {
-    // Must stay before any await: the menu click is the user gesture that lets the song autoplay.
+    // 必须位于任何 await 之前，菜单点击是允许歌曲自动播放的用户手势。
     if (!discoActive.value && !discoPending.value) playDisco();
     return;
   }
@@ -2094,17 +2086,17 @@ function onBubblesWheel(ev: WheelEvent) {
 }
 
 function onDocClick() {
-  // Lightweight dismiss — does not capture or block page clicks.
+  // 轻量收起，不捕获或阻止页面点击。
   if (menuOpen.value) closeMenu();
   if (chatOpen.value) closeChatDialog();
 }
 
 function onHoverEnter() {
   hovered.value = true;
-  // No playAnim on hover — mouse sweeping used to force-refresh look/pokeShy/curtsy constantly.
+  // 悬停不调用 playAnim，避免鼠标扫过时持续重启 look、pokeShy 或 curtsy。
   if (collapsed.value || dragging.value || busy.value || sleeping.value || holding.value || menuOpen.value)
     return;
-  // Rare bubble only (long cooldown); never interrupt the current clip.
+  // 悬停气泡使用长冷却且不打断当前片段。
   const now = Date.now();
   if (now - lastHoverSay > 28000) {
     lastHoverSay = now;
@@ -2131,7 +2123,7 @@ function blocked() {
   );
 }
 
-/** Natural idle cycle: glance / stretch / hum / props / wander — more often. */
+/** 自然待机循环包含张望、伸展、哼歌、道具和漫步。 */
 const STATE_ANIMS: Partial<Record<CareState, AnimKey[]>> = {
   hungry: ['hungry', 'whatEat', 'eatCaught', 'sigh'],
   tired: ['yawn', 'nap', 'floatStep', 'yawn'],
@@ -2143,7 +2135,7 @@ const STATE_LINES: Partial<Record<CareState, readonly string[]>> = {
   down: LINES.stateDown,
   happy: LINES.stateHappy,
 };
-/** State lines are rarer than idle chatter: a mood you notice, not a nag. */
+/** 状态台词比待机闲聊更少，使情绪可感知但不打扰。 */
 const STATE_SAY_COOLDOWN = 5 * 60_000;
 let lastStateSay = 0;
 
@@ -2155,7 +2147,7 @@ function maybeSayState() {
   say(pick(pool));
 }
 
-/** Plain idle she keeps between self-started clips (each clip already runs ~10 s). */
+/** 自启动片段之间保持纯待机；每个片段本身约持续 10 秒。 */
 function ambientGap() {
   switch (careState.value) {
     case 'happy':
@@ -2167,7 +2159,7 @@ function ambientGap() {
   }
 }
 
-/** Self-started clips only from plain idle, and never under the cursor — that reads as a hover reaction. */
+/** 仅从纯待机启动自主片段，且鼠标悬停时不启动，避免被误解为悬停反馈。 */
 function canAmbient() {
   return !blocked() && !hovered.value && idleMs() >= ambientGap();
 }
@@ -2193,7 +2185,7 @@ function wanderStep() {
       maybeIdleSay(['自己玩会儿～', '嘿！', '看我的～', '摸鱼时间到', '发明新游戏', '自娱自乐中'], 0.22, 'idle'),
     );
 
-  // Bands: small 18% · calm 15% · seasonal (else toys) 10% · walk 27% · toys 16% · in place 14%.
+  // 概率分段：小动作 18%、安静动作 15%、季节动作或玩具 10%、行走 27%、玩具 16%、原地动作 14%。
   const roll = Math.random();
   if (roll < 0.18) {
     const small: AnimKey[] = ['look', 'stretch', 'floatStep'];
@@ -2208,7 +2200,7 @@ function wanderStep() {
     ambient(drawAnim(lively ? playful : calm), sayMood);
     return;
   }
-  // Tired/hungry/down she stays put instead of roaming or playing.
+  // 疲劳、饥饿或低落时原地活动，不漫步或玩耍。
   if (stateAnims) {
     ambient(drawAnim(['mutterIdle', 'mutterWipe', 'look', 'floatStep', 'hum']));
     return;
@@ -2229,7 +2221,7 @@ function wanderStep() {
     playToy();
     return;
   }
-  // In-place flourish (also where a pinned pet's walk turns go).
+  // 原地花式动作也承接固定状态下原本应行走的分支。
   ambient(
     drawAnim(
       lively
@@ -2240,7 +2232,7 @@ function wanderStep() {
   );
 }
 
-/** Glide sideways as a gait clip starts, easing to a stop; the clip itself still plays to its end. */
+/** 步态片段开始时横向滑行并缓停，片段本身仍播放到结束。 */
 function roam(gait: AnimKey, dir: 1 | -1) {
   facing.value = dir;
   cancelAnimationFrame(roamRaf);
@@ -2270,7 +2262,7 @@ function bootGreeting(): { text: string; anim: AnimKey } {
   return { text: lineFor('greet', LINES.boot), anim: 'pokeWave' };
 }
 
-/** Unprompted remarks (time of day, page events) share one budget so they never pile up. */
+/** 时段和页面事件等主动提醒共用一个冷却额度，避免堆叠。 */
 const NUDGE_COOLDOWN = 3 * 60_000;
 let lastNudgeAt = 0;
 function canNudge() {
@@ -2305,7 +2297,7 @@ function dailyRemark() {
     const saved = JSON.parse(localStorage.getItem(DAILY_REMARKS_KEY) || 'null');
     if (saved?.day === day) said = saved;
   } catch {
-    /* fresh day */
+    /* 无有效记录时按新的一天处理。 */
   }
   const due = DAILY_REMARKS.find((r) => hour >= r.from && hour < r.to && !said.ids.includes(r.id));
   if (!due) return;
@@ -2324,7 +2316,7 @@ function onVisibility() {
   hiddenAt = 0;
 }
 
-/** React to the host app's own toast messages (Element Plus), without knowing anything about the page. */
+/** 在不了解具体页面的情况下响应宿主应用自身的 Element Plus 消息提示。 */
 let toastObserver: MutationObserver | undefined;
 function watchAppToasts() {
   toastObserver = new MutationObserver((records) => {
@@ -2343,7 +2335,7 @@ function watchAppToasts() {
   toastObserver.observe(document.body, { childList: true });
 }
 
-/** First visit to a page with a real form (save button + several fields) gets one quiet hint. */
+/** 每个带保存按钮和多个字段的真实表单页面，首次访问时最多给一次轻提示。 */
 const hintedFormPages = new Set<string>();
 let lastPath = '';
 function checkNewPage() {
@@ -2361,8 +2353,8 @@ function checkNewPage() {
 }
 
 /**
- * Offer help only when the user seems stuck on an empty field (same field across two checks), at most once
- * per page per session, and with a local line — no model call, no interrupting real work.
+ * 仅当用户连续两次检查都停留在同一空字段时提供帮助，每页每会话最多一次。
+ * 使用本地台词，不调用模型，也不打断实际工作。
  */
 const offeredHelpOn = new Set<string>();
 let stuckOn = '';
@@ -2382,10 +2374,10 @@ function offerFormHelp() {
 }
 
 let linesBootTimer: number | undefined;
-/** False while the current batch was written before the home page had fetched the weather. */
+/** 当前批次生成时首页尚未取得天气，则为 false。 */
 let linesKnewWeather = true;
 
-/** Background refill of the model-written reaction lines; skipped while the models are serving the user. */
+/** 在后台补充模型生成的互动台词；模型正为用户服务时跳过。 */
 function refreshFreshLines(moodChanged = false) {
   if (busy.value) return;
   const knew = weatherNow() !== null;
@@ -2590,7 +2582,7 @@ onBeforeUnmount(() => {
         <img class="ff-ball-img" :src="BALL_IMG" alt="" draggable="false" />
       </button>
 
-      <!-- v-show, not v-else: remounting the videos on expand shows blank frames until they decode. -->
+      <!-- 必须使用 v-show；若用 v-else，展开时重新挂载视频会在解码前显示空白帧。 -->
       <div
         v-show="!collapsed"
         class="ff-pet"
@@ -2662,8 +2654,7 @@ onBeforeUnmount(() => {
         />
       </div>
 </div>
-    <!-- Non-blocking popover: no full-screen capture layer; page stays interactive.
-         Clicks outside dismiss via document listener; menu only receives its own hits. -->
+    <!-- 非阻塞弹出层不使用全屏捕获层，页面保持可交互。外部点击由 document 监听器收起，菜单只接收自身命中。 -->
     <div
       v-if="menuOpen"
       ref="menuEl"
@@ -2716,7 +2707,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* The pet is a self-contained character skin with its own fixed palette; it does not follow the dark theme. */
+/* 宠物是使用固定色板的独立角色皮肤，不跟随深色主题。 */
 @property --ff-fade-top {
   syntax: '<length>';
   inherits: false;
@@ -2744,14 +2735,14 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   pointer-events: auto;
-  /* cursor set inline: hover = character pointer; press/drag = grabbing */
+  /* 光标由行内样式设置：悬停为角色指针，按住或拖动为抓取手势。 */
   touch-action: none;
   user-select: none;
   transform-origin: center bottom;
   transition: transform 0.1s ease-out;
   filter: drop-shadow(0 14px 24px rgba(15, 23, 42, 0.24));
 }
-/* `translate` is separate from the inline squish `transform`, so the two don't fight. */
+/* translate 与行内压缩 transform 分离，避免两者互相覆盖。 */
 .ff-pet.hit {
   animation: ff-hit-shake 0.26s ease-out;
 }
@@ -2790,12 +2781,12 @@ onBeforeUnmount(() => {
 }
 .ff-hit.fever {
   font-size: 17px;
-  color: #ffd400; /* theme-ok: comic gold, distinct from flurry orange and punch red */
+  color: #ffd400; /* theme-ok：漫画金色，区别于连戳橙色和挨打红色。 */
   text-shadow:
     0 1px 0 #6b3a00, /* theme-ok */
     0 0 6px #ffb703; /* theme-ok */
 }
-/* Little flame in front of 戳×N once past 100: a teardrop with its point up, flickering. */
+/* 达到 100 次后在「戳×N」前显示向上尖角的闪烁水滴形小火焰。 */
 .ff-hit.fever::before {
   content: '';
   display: inline-block;
@@ -2861,8 +2852,7 @@ onBeforeUnmount(() => {
 .ff-video.front {
   z-index: 1;
 }
-/* Every cut: the incoming clip fades in on top while the outgoing one stays opaque a moment longer,
-   so the two alpha layers never both sit at half opacity (that reads as her turning see-through). */
+/* 每次切换时入场片段在上层淡入，出场片段稍后再淡出，避免两个透明层同时处于半透明而让角色看似透视。 */
 .ff-video.blend.front {
   transition: opacity 0.14s ease-out;
 }
@@ -3002,7 +2992,7 @@ button.ff-ball:active {
   filter: brightness(1.05);
 }
 .ff-pet.beat-pulse {
-  /* Never set transform here — inline squish scale wins and kills it. */
+  /* 此处禁止设置 transform，否则行内压缩 scale 会覆盖它。 */
   filter: drop-shadow(0 14px 24px rgba(15, 23, 42, 0.24))
     drop-shadow(0 0 28px rgba(56, 189, 248, 0.95))
     drop-shadow(0 0 48px rgba(125, 211, 252, 0.75))
@@ -3290,7 +3280,7 @@ button.ff-ball:active {
   filter: brightness(1.05);
 }
 .ff-menu {
-  /* Isolated hit-target only — no modal/backdrop that steals page input. */
+  /* 仅提供独立命中区域，不使用会夺取页面输入的模态层或遮罩。 */
   pointer-events: auto;
   position: fixed;
   z-index: 4801;

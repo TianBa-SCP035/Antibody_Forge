@@ -8,7 +8,7 @@ from typing import Any
 from utils.workbench_queue import PRIORITY_ORDER, canonicalize_priority
 
 DATE_FORMAT_MESSAGE = "日期必须是 YYYY-MM-DD"
-# 兼容 2026/1/5、2026.1.5 和带时间的写法，统一存成 YYYY-MM-DD
+# 接受 2026/1/5、2026.1.5 和带时间的写法，统一存成 YYYY-MM-DD。
 _DATE_PATTERN = re.compile(
     r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?"
 )

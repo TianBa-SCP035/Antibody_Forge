@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from typing import Any
 
 from sqlalchemy import select
@@ -33,21 +32,7 @@ SYNCABLE_ORDER_STATUSES = frozenset({
     "execution_error",
     "manual_failed",
 })
-SYNC_THROTTLE_SECONDS = 600
 _QUERY_BATCH_SIZE = 50
-
-_last_sync_at: dict[int, float] = {}
-
-
-def _is_throttled(work_order_id: int) -> bool:
-    last_at = _last_sync_at.get(int(work_order_id))
-    if not last_at:
-        return False
-    return (time.time() - last_at) < SYNC_THROTTLE_SECONDS
-
-
-def _mark_synced(work_order_id: int) -> None:
-    _last_sync_at[int(work_order_id)] = time.time()
 
 
 def _get_syncable_dispatch(
@@ -98,12 +83,7 @@ def _apply_query_entry(
     return apply_labillion_status(order, dispatch, labillion_status)
 
 
-def sync_work_order_labillion_status(
-    db: Session,
-    order_id: int,
-    *,
-    force: bool = False,
-) -> dict[str, Any]:
+def sync_work_order_labillion_status(db: Session, order_id: int) -> dict[str, Any]:
     from modules.mega_automation.service import get_work_order_detail
 
     if not is_labillion_enabled():
@@ -120,13 +100,6 @@ def sync_work_order_labillion_status(
             "applied": False,
             "reason": "order_not_syncable",
             "order_status": order.status,
-            "item": get_work_order_detail(db, order.id),
-        }
-
-    if not force and _is_throttled(order.id):
-        return {
-            "applied": False,
-            "reason": "throttled",
             "item": get_work_order_detail(db, order.id),
         }
 
@@ -161,7 +134,6 @@ def sync_work_order_labillion_status(
             order.id,
             dispatch.dispatchId,
         )
-        _mark_synced(order.id)
         return {
             "applied": False,
             "reason": "not_found_in_labillion",
@@ -183,7 +155,6 @@ def sync_work_order_labillion_status(
     else:
         db.rollback()
 
-    _mark_synced(order.id)
     return {
         "applied": changed,
         "dispatchId": dispatch.dispatchId,

@@ -9,7 +9,7 @@ from core.errors import NotFoundError
 
 DEFAULT_PRIORITY = "正常"
 PRIORITY_ORDER = ("吉吉国王", "非常紧急", "加急", "正常")
-# 下拉选项按从低到高排列，与队列顺序相反
+# 下拉选项按从低到高排列，与队列顺序相反。
 PRIORITY_OPTIONS = tuple(reversed(PRIORITY_ORDER))
 
 _WROTE_KEY = "workbench_queue_wrote"
@@ -78,7 +78,7 @@ def priority_rank(value: Any) -> int:
 
 
 def band_index_range(others: list[Any], priority: Any) -> tuple[int, int]:
-    """Insert indices in ``others`` for priority P: first of band .. after last peer."""
+    """返回该优先级在 others 中可插入的首个位置和同级末尾后一位。"""
     rank = priority_rank(priority)
     first_insert = 0
     last_peer_index = None

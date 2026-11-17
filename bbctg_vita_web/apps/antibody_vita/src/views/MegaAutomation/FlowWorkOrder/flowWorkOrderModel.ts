@@ -383,7 +383,7 @@ export function normalizeFlowWorkOrder(
   };
 }
 
-/** 换了细胞板条码后，这块板的列内容全部清掉，避免保存过的旧细胞盖住新条码的引用。 */
+/** 细胞板条码变更时必须清空列内容，避免旧细胞覆盖新条码引用。 */
 export function clearCellPlateColumns(plate: { columns?: LooseRecord[] } | null | undefined) {
   records(plate?.columns).forEach((column) => {
     CELL_CONTENT_FIELDS.forEach((field) => {

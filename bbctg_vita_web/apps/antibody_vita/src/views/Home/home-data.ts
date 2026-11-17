@@ -1,7 +1,4 @@
-/**
- * 首页数据与常量（纯前端占位，接 API 后替换 getter 即可）。
- * 界面文案：locales/page.json 的 page.home.*
- */
+/** 首页纯前端数据与常量；界面文案位于 locales/page.json 的 page.home.*。 */
 
 import { computed } from 'vue';
 
@@ -326,7 +323,7 @@ export function loadUserStartPagePath(): string | null {
     const path = normalizeInternalPath(String(parsed?.path ?? ''));
     return path || null;
   } catch {
-    /* ignore */
+    /* 本地存储不可用时不使用自定义起始页。 */
   }
   return null;
 }
@@ -342,7 +339,7 @@ export function saveUserStartPagePath(path: string | null) {
       JSON.stringify({ path: normalizeInternalPath(path) }),
     );
   } catch {
-    /* ignore */
+    /* 本地存储不可用不影响当前起始页。 */
   }
 }
 
@@ -394,7 +391,7 @@ export function getHomeGreeting(): string {
   return $t('page.home.greetingEvening');
 }
 
-/** mock 数据随语言切换自动更新 */
+/** 模拟数据随语言切换自动更新。 */
 export function useHomeLocalizedMocks() {
   const announcements = computed(() => {
     void preferences.app.locale;

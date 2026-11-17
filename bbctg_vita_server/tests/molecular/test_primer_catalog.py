@@ -1,15 +1,14 @@
-import unittest
+"""引物库：保存规范化、序列核对检索、批量编辑删除、建库引用保护、批量导入导出与表头筛选。"""
 
 from openpyxl import load_workbook
 
-from db.session import Base
 from models.molecular_cell import MolecularLibraryOrder, MolecularPrimerIndexCatalog
 from modules.molecular_cell.primer_catalog import service
 from support import DbTestCase
 
 
 class PrimerCatalogServiceTests(DbTestCase):
-    tables = (MolecularPrimerIndexCatalog,)
+    tables = (MolecularPrimerIndexCatalog, MolecularLibraryOrder)
 
     def test_save_normalizes_and_hides_inactive_from_options(self):
         saved = service.save(
@@ -129,8 +128,7 @@ class PrimerCatalogServiceTests(DbTestCase):
                 {"id": 999, "name": "X", "family": "UDP", "direction": "F", "short_sequence": "ACGT"},
             )
 
-    def test_check_keyword_and_batch_edit(self):
-        Base.metadata.create_all(self.engine, tables=[MolecularLibraryOrder.__table__])
+    def _batch_pair(self):
         first = service.save(
             self.db,
             {"name": "BATCH-F", "family": "UDP", "direction": "F", "short_sequence": "AAAA"},
@@ -149,12 +147,17 @@ class PrimerCatalogServiceTests(DbTestCase):
             )
         )
         self.db.commit()
+        return first, second
 
+    def test_check_keyword_matches_reverse_complement(self):
+        first, _ = self._batch_pair()
         matched = service.list_catalog(self.db, {"check_keyword": "tt"})
         self.assertEqual([item["name"] for item in matched["items"]], ["BATCH-F"])
         self.assertEqual(service.list_ids(self.db, {"check_keyword": "TTTT"}), [first["id"]])
         self.assertEqual(service.list_catalog(self.db, {"check_keyword": "AX"})["total"], 0)
 
+    def test_batch_edit_and_delete_skip_referenced_primers(self):
+        first, second = self._batch_pair()
         self.assertEqual(
             service.batch_update(self.db, [first["id"], second["id"]], family="自建系列", active=False)["total"],
             2,
@@ -177,7 +180,6 @@ class PrimerCatalogServiceTests(DbTestCase):
         self.assertIsNotNone(self.db.get(MolecularPrimerIndexCatalog, second["id"]))
 
     def test_delete_unused_primer_and_reject_referenced_one(self):
-        Base.metadata.create_all(self.engine, tables=[MolecularLibraryOrder.__table__])
         unused = service.save(
             self.db,
             {"name": "UNUSED-F", "family": "UDP", "direction": "F", "short_sequence": "AAAA"},
@@ -300,7 +302,3 @@ class PrimerCatalogServiceTests(DbTestCase):
         self.assertEqual(directions, [{"value": "F", "count": 1, "label": "正向"}, {"value": "R", "count": 1, "label": "反向"}])
         statuses = service.get_column_values(self.db, {"field": "active", **only_udp})["items"]
         self.assertEqual([(item["value"], item["count"], item["label"]) for item in statuses], [("active", 1, "启用"), ("inactive", 1, "停用")])
-
-
-if __name__ == "__main__":
-    unittest.main()

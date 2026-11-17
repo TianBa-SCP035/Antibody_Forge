@@ -540,7 +540,7 @@ const PLATE_ROWS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 const DILUTION_EXPONENTS = [2, 3, 4, 5, 2, 3, 4, 5]
 const DILUTION_SUPERSCRIPT = { 2: '²', 3: '³', 4: '⁴', 5: '⁵' }
 const DILUTION_LEGEND_PADDING_X = 12
-/** 将剪贴板文本拆成多个鼠号：多行、Tab/中英文逗号/顿号/分号分隔的单行 */
+/** 将剪贴板中的多行文本或由制表符、逗号、顿号、分号分隔的单行文本拆成多个鼠号。 */
 function splitPasteTokens(text) {
   const normalized = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
   if (!normalized) return []
@@ -684,7 +684,7 @@ export default {
     slotCount() {
       return SLOT_COUNT
     },
-    // 图片孔位区域在预览区内的像素矩形（overlay / 鼠号 / 稀释度行共用）
+    // 图片孔位区域的像素矩形由覆盖层、鼠号行和稀释度行共用。
     wellGridRect() {
       const { dx, dy, scale, dw, dh } = this.containRect
       const { x, y, width, height } = this.gridBBox
@@ -819,7 +819,7 @@ export default {
     },
     'plateData.image_file_id'(fileId, prevId) {
       if (fileId === prevId) return
-      // 首次挂载已有图片时不要清空，否则缓存图可能不触发 @load
+      // 首次挂载已有图片时不能清空布局，否则缓存图片可能不会触发 @load。
       if (prevId !== undefined) {
         this.resetPlateLayoutMetrics()
       }
@@ -1401,7 +1401,7 @@ export default {
   }
 }
 
-/* Component-local small size semantics */
+/* 当前组件沿用 Element Plus 的 small 尺寸语义。 */
 .plate-card :deep(.el-button--small) {
   height: 28px;
   padding: 7px 15px;
@@ -1432,12 +1432,12 @@ export default {
   font-size: 12px;
 }
 
-// 左 2 : 右 7；宽度不足时由 min-width 顶住，再窄则整行横向滚动
+// 左右栏比例为 2:7；空间不足时先保持最小宽度，再横向滚动。
 $plate-col-left-ratio: 2;
 $plate-col-right-ratio: 7;
 $plate-col-left-min: 300px;
 $plate-col-right-min: 900px;
-// 表单行：最长标签宽(max-content) | 间距(2fr,min) | 输入框(5fr,min)，间距:输入框 = 2:5
+// 表单行按最长标签、最小间距和最小输入框布局，间距与输入框的剩余空间比例为 2:5。
 $plate-form-gap-min: 10px;
 $plate-form-input-min: 96px;
 $plate-form-cols: max-content minmax(#{$plate-form-gap-min}, 2fr) minmax(#{$plate-form-input-min}, 5fr);

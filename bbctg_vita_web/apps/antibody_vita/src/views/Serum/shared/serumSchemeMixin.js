@@ -747,7 +747,7 @@ export default {
         const response = await fetchCatalogTargetOptions(keyword, this.postForm.target_codes)
         if (isLatest()) this.targetOptions = response?.items || []
       } catch {
-        // 无靶点库权限时仍可用 Shift+Enter 录入名称
+        // 无靶点库权限时仍可用 Shift+Enter 录入名称，因此无需提示查询错误。
       } finally {
         if (isLatest()) this.targetLoading = false
       }

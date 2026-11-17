@@ -1,7 +1,6 @@
 <template>
   <div class="app-container serum-titer-page">
     <div class="content-wrapper">
-      <!-- 1. Page Header -->
       <div class="page-header">
         <div class="header-left">
           <span class="header-icon">
@@ -17,9 +16,7 @@
         </div>
       </div>
 
-      <!-- 2. Top Section: Upload & Project Info -->
       <el-row :gutter="16" class="top-section">
-        <!-- 2:4 Ratio => 8:16 -->
         <el-col :md="8" :lg="8" :sm="24" class="upload-col">
           <el-card shadow="never" class="upload-card">
             <template #header>
@@ -82,7 +79,6 @@
         </el-col>
       </el-row>
 
-      <!-- 3. File Preview Section -->
       <div class="file-preview-section">
         <div class="section-header">
           <h2 class="section-title">
@@ -96,7 +92,6 @@
             <div v-for="file in fileList" :key="file.id" class="file-card-wrapper">
               <div class="file-card" @click="handleFileClick(file)">
                 <div class="file-preview-area">
-                  <!-- Image Preview -->
                   <el-image 
                     v-if="isImage(file.file_name)" 
                     :src="file.thumb_object_url || ''" 
@@ -114,7 +109,6 @@
                       </div>
                     </template>
                   </el-image>
-                  <!-- Other File Icon -->
                   <div v-else class="file-icon-box">
                     <el-icon class="type-icon" :class="getFileIconClass(file.file_name)">
                       <component :is="getFileIcon(file.file_name)" />
@@ -144,10 +138,8 @@
         </el-card>
       </div>
 
-      <!-- 4. Data Tables Section -->
       <div class="data-tables-section" style="margin-top: 16px;">
         <el-row :gutter="16">
-          <!-- Target Table -->
           <el-col :span="14" class="flex-col">
             <el-card shadow="never" class="table-card full-height">
               <template #header>
@@ -218,7 +210,6 @@
             </el-card>
           </el-col>
           
-          <!-- PC Table -->
           <el-col :span="10" class="flex-col">
             <el-card shadow="never" class="table-card full-height">
               <template #header>
@@ -261,7 +252,6 @@
         </el-row>
       </div>
 
-      <!-- 5. FACS Plate Management Section -->
       <div class="facs-plate-section" style="margin-top: 16px;">
         <div class="section-header">
           <h2 class="section-title">
@@ -341,7 +331,6 @@
         </div>
       </div>
 
-      <!-- 6. Titer Conclusion (read-only, computed from plates) -->
       <div class="titer-conclusion-section" style="margin-top: 8px; margin-bottom: 36px;">
         <div class="section-header">
           <h2 class="section-title">
@@ -394,7 +383,6 @@
       </el-form>
     </el-dialog>
 
-    <!-- 4. File Detail Dialog -->
     <el-dialog
       :title="currentFile ? currentFile.file_name : '文件详情'"
       v-model="detailDialogVisible"
@@ -404,7 +392,6 @@
     >
       <div v-if="currentFile" class="dialog-flex-layout">
         <div class="dialog-preview-side">
-          <!-- Large Preview -->
           <div v-if="isImage(currentFile.file_name)" class="preview-container">
             <el-image 
               :src="currentFile.preview_object_url || currentFile.thumb_object_url || ''" 
@@ -594,9 +581,7 @@ import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
 const serumApiBaseUrl = '/api'
 
-/** handleSavePlate 写入后端的防抖 */
 const PLATE_SAVE_DEBOUNCE_MS = 500
-/** 结论刷新固定延迟 */
 const CONCLUSION_REFRESH_DELAY_MS = 300
 
 export default {
@@ -663,21 +648,17 @@ export default {
       fileList: [],
       filesLoading: false,
       
-      // Dialog
       detailDialogVisible: false,
       currentFile: null,
       editFileName: '',
       
-      // Excel Preview
       excelData: [],
       excelLoading: false,
 
-      // Target & PC Tables
       titer_targets: [],
       titer_pcs: [],
       targetsLoading: false,
       pcsLoading: false,
-      // Plates
       facsPlates: [],
       elisaPlates: [],
       elisaAbsPreviewCache: {},
@@ -753,7 +734,7 @@ export default {
         return (a.tempId || 0) - (b.tempId || 0)
       })
     },
-    /** el-tabs 不随 v-for 顺序自动重排 nav，阶段变更时强制刷新 */
+    /** el-tabs 不会随 v-for 顺序自动重排导航项，因此阶段变更时需强制刷新。 */
     plateTabsKey() {
       return this.sortedAllPlates
         .map((p) => `${this.getPlateKey(p)}@${(p.immune_stage || '').trim()}`)
@@ -844,8 +825,8 @@ export default {
       }, CONCLUSION_REFRESH_DELAY_MS)
     },
     /**
-     * 结论刷新判定指纹（最小依赖集）：
-     * - FACS 板位与阳性孔
+     * 效价结论指纹仅包含结论计算依赖：
+     * - FACS 与 ELISA 板数据
      * - 靶标 id/name/species
      * - 方案里的分组/步骤/抗原类型
      */
@@ -961,7 +942,6 @@ export default {
     goBack() {
       this.$router.go(-1)
     },
-    // --- File Methods ---
     getFiles() {
       const expId = this.experiment_id || (this.project ? this.project.experiment_id : null)
       if (!expId) return
@@ -999,7 +979,6 @@ export default {
       })
     },
     
-    // --- Detail & Actions ---
     handleFileClick(file) {
       this.currentFile = file
       this.editFileName = file.file_name
@@ -1255,7 +1234,6 @@ export default {
       }
     },
 
-    // --- Table Actions ---
     handleAddTarget() {
       if (!this.canEditTiter()) {
         ElMessage.warning('您没有权限编辑此项目')
@@ -1282,7 +1260,7 @@ export default {
       clearTimeout(this[`${kind}Timer`])
       this[`${kind}Timer`] = setTimeout(() => this.flushChildSave(kind), 500)
     },
-    // 整表提交：上一次还没返回时只记待补发，返回后再交一次最新的表，避免中途的修改被丢掉或被回填覆盖
+    // 整表提交未返回时仅标记补发，返回后再提交最新数据，避免中途修改丢失或被回填覆盖。
     async flushChildSave(kind) {
       if (this[`${kind}Loading`]) {
         this[`${kind}Pending`] = true
@@ -1329,7 +1307,6 @@ export default {
       this.queueChildSave('pcs')
     },
 
-    // --- Plate Methods ---
     getPlates() {
       const expId = this.experiment_id || (this.project ? this.project.experiment_id : null)
       if (!expId) {
@@ -1754,7 +1731,7 @@ export default {
   }
 }
 
-/* Page-local size semantics */
+/* 当前页面沿用 Element Plus 的 small 尺寸语义。 */
 .serum-titer-page :deep(.el-table--small),
 .serum-titer-page :deep(.el-input--small),
 .serum-titer-page :deep(.el-select--small) {
@@ -1811,7 +1788,6 @@ export default {
   }
 }
 
-/* Header */
 .page-header {
   display: flex;
   align-items: center;
@@ -1859,14 +1835,11 @@ export default {
   }
 }
 
-/* Cards & Layout */
 .top-section {
   margin-bottom: 16px;
-  /* Flex layout is handled by Element Plus row styles. */
 }
 
 .upload-col, .info-col {
-  /* Stretch columns so the paired cards keep the same height. */
   display: flex;
   flex-direction: column; 
 }
@@ -1877,7 +1850,6 @@ export default {
   border-radius: 12px;
   box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05);
 
-  /* Flex column for full height cards */
   display: flex;
   flex-direction: column;
 
@@ -1885,7 +1857,6 @@ export default {
     box-shadow: 0 4px 16px 0 rgba(0,0,0,0.08);
   }
 
-  /* Body needs to flex to fill */
   :deep(.el-card__body) {
      flex: 1;
      display: flex;
@@ -1900,7 +1871,6 @@ export default {
   border-radius: 12px;
   box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05);
 
-  /* Flex column for full height cards */
   display: flex;
   flex-direction: column;
 
@@ -1908,7 +1878,6 @@ export default {
     box-shadow: 0 4px 16px 0 rgba(0,0,0,0.08);
   }
 
-  /* Body needs to flex to fill */
   :deep(.el-card__body) {
      flex: 1;
      display: flex;
@@ -1935,7 +1904,6 @@ export default {
   }
 }
 
-/* Styles for unified data table card */
 .table-card {
   border-radius: 12px;
   border: none;
@@ -1959,7 +1927,6 @@ export default {
   padding: 0;
 }
 
-/* Flex col wrapper */
 .flex-col {
   display: flex;
   flex-direction: column;
@@ -1971,7 +1938,6 @@ export default {
 
 .danger-text { color: var(--el-color-danger); }
 
-/* Custom Table Refined Styles */
 .refined-table {
   border-radius: 4px;
   overflow: hidden;
@@ -2038,7 +2004,7 @@ export default {
       cursor: pointer;
     }
     .el-input__suffix {
-      display: none; /* Hide arrow for ultra-minimal look, or keep if preferred */
+      display: none;
     }
     &:hover .el-input__suffix {
       display: block;
@@ -2046,7 +2012,6 @@ export default {
   }
 }
 
-/* Upload Styling */
 .titer-upload {
   height: 100%;
   display: flex;
@@ -2112,7 +2077,6 @@ export default {
   }
 }
 
-/* Project Info */
 .project-info-content {
   :deep(.el-descriptions__label.is-bordered-label) {
     width: 120px;
@@ -2130,7 +2094,6 @@ export default {
   padding: 10px 0;
 }
 
-/* File Preview Grid */
 .file-preview-section {
   .section-header {
     display: flex;
@@ -2282,14 +2245,12 @@ export default {
   }
 }
 
-/* Icon Colors */
 .excel-color { color: #217346 !important; }
 .word-color { color: #2b579a !important; }
 .ppt-color { color: #d24726 !important; }
 .pdf-color { color: #b30b00 !important; }
 .zip-color { color: var(--el-color-warning) !important; }
 
-/* Empty State */
 .empty-state {
   width: 100%;
   display: flex;
@@ -2307,7 +2268,6 @@ export default {
   }
 }
 
-/* Dialog Styling */
 :global(.el-dialog.serum-detail-dialog) {
   border-radius: 12px;
   overflow: hidden;
@@ -2405,7 +2365,7 @@ export default {
   }
 
   .action-section {
-    margin-top: auto; /* Push to bottom if space allows */
+    margin-top: auto;
     
     .button-group {
       margin-top: 16px;
@@ -2416,7 +2376,7 @@ export default {
       .el-button { 
         margin: 0; 
         width: 100%;
-        display: block; /* Ensure it takes full width */
+        display: block;
       }
       .replace-uploader { 
         width: 100%;
@@ -2429,7 +2389,6 @@ export default {
   }
 }
 
-/* Modern Excel Style */
 .modern-excel-table {
   border-collapse: collapse;
   width: max-content;
@@ -2458,7 +2417,6 @@ export default {
   .el-icon { font-size: 40px; margin-bottom: 12px; }
 }
 
-/* FACS Plate Section */
 .facs-plate-section {
   .section-header {
     display: flex;

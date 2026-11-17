@@ -9,7 +9,7 @@ from modules.immunology.workbench import service as workbench_service
 
 
 def delete_or_revert_project(db: Session, project_id: int) -> str:
-    """Refuse when titer data exists; otherwise revert to draft or hard-delete."""
+    """有效价工单或 FACS/ELISA 板数据时拒绝操作；否则退回草稿或彻底删除。"""
     project = lock_project_by_id(db, project_id)
     if not project:
         raise NotFoundError("项目不存在")

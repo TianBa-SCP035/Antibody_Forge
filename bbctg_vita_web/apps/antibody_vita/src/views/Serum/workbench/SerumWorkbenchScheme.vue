@@ -31,7 +31,6 @@
       </template>
 
       <el-form :model="postForm" label-width="100px">
-        <!-- Row 1: 项目编号, 实验ID, 负责人 -->
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="项目编号">
@@ -56,7 +55,6 @@
           </el-col>
         </el-row>
 
-        <!-- Row 2: 靶点名称, 靶点类型, 靶点大小 -->
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="靶点名称">
@@ -146,7 +144,6 @@
           </el-col>
         </el-row>
 
-        <!-- Row 3: 项目名称, 课题类型, 产品经理 -->
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="项目名称">
@@ -181,7 +178,6 @@
           </el-col>
         </el-row>
 
-        <!-- Row 4: 开始日期, 检测方法, 项目状态 -->
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="开始日期">
@@ -207,7 +203,6 @@
           </el-col>
         </el-row>
 
-        <!-- Row 5: 免疫间隔, 备注 -->
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="免疫间隔">
@@ -223,7 +218,6 @@
           </el-col>
         </el-row>
 
-        <!-- Row 6: 项目目的 -->
         <el-row :gutter="20">
           <el-col :span="24">
             <el-form-item label="项目目的">
@@ -238,7 +232,6 @@
       class="scheme-detail-editor"
       :class="{ 'is-readonly': !canEdit }"
     >
-      <!-- 2. Antigens (Full Width) -->
       <el-card class="box-card" :body-style="{ padding: '15px' }">
         <template #header>
           <div class="clearfix small-header">
@@ -247,7 +240,6 @@
           </div>
         </template>
         <el-table :data="postForm.antigens" border size="small" style="width: 100%" :inert="!canEdit">
-            <!-- Hidden IDs -->
             <el-table-column label="抗原ID" width="60">
                 <template #default="{ row }">
                     <el-input v-model="row.antigen_id" size="small" disabled />
@@ -336,7 +328,6 @@
         </el-table>
     </el-card>
 
-    <!-- 3. Mouse Groups (Full Width) -->
     <el-card class="box-card" :body-style="{ padding: '15px' }">
         <template #header>
           <div class="clearfix small-header">
@@ -439,7 +430,6 @@
         </el-table>
     </el-card>
 
-    <!-- 4. Immunization Scheme -->
     <el-card class="box-card" :body-style="{ padding: '15px' }">
       <template #header>
         <div class="clearfix small-header">
@@ -590,7 +580,6 @@
        </el-tabs>
       </div>
 
-      <!-- Remark Dialog -->
       <el-dialog title="编辑备注" v-model="remarkDialogVisible" width="500px">
         <el-input
           v-model="currentRemark"
@@ -644,7 +633,6 @@
 
 
 
-    <!-- 5. Titer Section -->
     <el-card class="box-card" :body-style="{ padding: '15px' }">
         <template #header>
           <div class="clearfix small-header">
@@ -1155,7 +1143,7 @@ export default {
           await this.doSubmit({ force: true })
           ElNotification({ type: 'success', message: '草稿已保存' })
         } catch {
-          // doSubmit 已统一提示保存错误
+          // doSubmit 已统一提示保存错误，finally 会复位提交状态。
         } finally {
           this.loading = false
         }
@@ -1261,7 +1249,6 @@ export default {
         let nextGroupId = 'G1'
         const existingGroups = this.postForm.mouse_groups.map(g => g.group_id)
 
-        // Find the next available group number
         for (let i = 1; i <= 100; i++) {
             const candidateId = `G${i}`
             if (!existingGroups.includes(candidateId)) {
@@ -1272,7 +1259,6 @@ export default {
 
         this.postForm.mouse_groups.push(this.createMouseGroup(nextGroupId, isFirstGroup))
 
-        // Auto-activate the newly added group
         this.$nextTick(() => {
             this.activeGroupTab = nextGroupId
             this.updateProjectName()
@@ -1396,7 +1382,7 @@ export default {
       try {
         await this.doSubmit({ force: false })
       } catch (err) {
-        // doSubmit 已统一提示保存错误
+        // doSubmit 已统一提示保存错误，此处无需重复提示。
       }
     }
   }
@@ -1537,18 +1523,15 @@ export default {
     color: #dd3d3d;
 }
 
-/* Keep border on active tab for better visual consistency */
 .el-tabs--card :deep(.el-tabs__item.is-active) {
     border-bottom-color: var(--el-border-color-light) !important;
 }
 
-/* Set tab width */
 .el-tabs--card :deep(.el-tabs__item) {
     min-width: 91px;
     text-align: center;
 }
 
-/* Remark icon styling */
 .remark-icon {
     color: var(--el-text-color-secondary);
     vertical-align: middle;
@@ -1562,7 +1545,6 @@ export default {
     color: #66b1ff;
 }
 
-/* Copy dialog styling */
 .copy-dialog-title {
     font-size: 18px;
     font-weight: bold;

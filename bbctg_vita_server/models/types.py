@@ -10,7 +10,7 @@ from utils.normalize import normalize_date, parse_date
 class DateString(TypeDecorator):
     """数据库按日期存，Python 侧读写都是 "YYYY-MM-DD" 字符串。
 
-    赋值时就统一格式、拒绝非法日期，内存里的对象和库里一致；表还是 VARCHAR 时读出的历史值原样返回。
+    赋值时统一格式并拒绝非法日期，保证内存对象与数据库一致；VARCHAR 列的已有值原样返回。
     和字符串比较（>=、LIKE、== ""）时按字符串绑定参数，VARCHAR 和 DATE 列都能用。
     """
 

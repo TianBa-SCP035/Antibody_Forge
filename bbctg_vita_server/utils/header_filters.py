@@ -508,7 +508,7 @@ def target_column(name_column, codes_column, *, colors: Callable[[list[str]], An
         return recorded_target_clause(db, name_column, codes_column, names, select(name_column, codes_column))
 
     def values(db: Session, scoped: Scoped, keyword: str) -> list[dict[str, Any]]:
-        # 选项要先按编号归组（同靶点不同写法合一项），不能先按关键字裁掉配对行
+        # 选项须先按编号归组（同靶点不同写法合一项），不能先按关键字裁掉配对行。
         pairs = db.execute(select(name_column, codes_column).distinct()).all()
         options = target_select_options(pairs, catalog_names_for_pairs(db, pairs))
         name_counts = db.execute(

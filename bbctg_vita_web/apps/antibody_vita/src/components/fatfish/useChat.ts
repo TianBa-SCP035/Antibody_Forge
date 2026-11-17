@@ -1,4 +1,4 @@
-/** Chat / wait-bubble / abort / memory compress / agent + confirmation-card wiring. */
+/** 串联聊天、等待气泡、中止、记忆压缩、代理和确认卡片。 */
 
 import { ref, type Ref } from 'vue';
 
@@ -45,9 +45,9 @@ const FILL_PROMPT =
 
 const STOP_HINT = '（点停）';
 const SHORT_ANSWER = 70;
-/** Replies right after a data answer ("BALB/c，5只") keep going to the agent. */
+/** 数据回答后的紧接回复（如「BALB/c，5只」）继续交给代理。 */
 const AGENT_FOLLOW_UP_MS = 3 * 60_000;
-/** Words that clearly ask for a file. "表格" / "清单" alone are left out: "看看这页的表格" is not a download request. */
+/** 明确请求文件的词；单独的「表格」或「清单」不计入，因为「看看这页的表格」并非下载请求。 */
 const EXPORT_INTENT = /导出|下载|excel|xlsx|拉个?表|出个?表|导个?表|做个?表/i;
 const UNDO_WINDOW_MS = 30_000;
 
@@ -78,12 +78,12 @@ export function useChat(deps: {
   const lastUserQuestion = ref('');
   const retriedForQuestion = ref('');
   const cardProposals = new Map<number, Proposal>();
-  /** Page a fill card was made for; applying it anywhere else could hit look-alike fields. */
+  /** 填写卡片生成时的页面；在其他页面应用可能误中同名字段。 */
   const cardPages = new Map<number, string>();
   const fillUndo = new Map<number, FillSnapshot[]>();
   const pageKey = () => location.pathname + location.search + location.hash;
   const HAS_ID = /[?&][\w-]*id=/i;
-  /** Same page as `asked`, allowing for a new record whose id the page adds to the URL once it auto-saves. */
+  /** 判断是否仍为 asked 页面；允许新记录自动保存后在 URL 中增加 ID。 */
   function stillSamePage(asked: string) {
     if (asked === pageKey()) return true;
     const [askedPath, askedQuery = ''] = asked.split('?');
@@ -150,7 +150,7 @@ export function useChat(deps: {
     try {
       chatAbort?.abort();
     } catch {
-      /* ignore */
+      /* 请求可能已经结束或中止。 */
     }
     chatAbort = null;
     clearWaitBubble();
@@ -191,7 +191,7 @@ export function useChat(deps: {
   function celebrate(event: 'chat' | 'task') {
     deps.onCare(event);
     deps.armSore(12000);
-    // A finished task costs her a little satiety ("吃 Token"), so sometimes that is what she does.
+    // 完成任务会消耗少量饱腹度（「吃 Token」），因此动画偶尔表现为吃 Token。
     const pool = event === 'task' ? (['celebrate', 'pokeHappy', 'eatToken'] as const) : (['pokeHappy', 'celebrate', 'curtsy'] as const);
     void deps.playAnim(deps.pick(pool));
   }
@@ -271,7 +271,7 @@ export function useChat(deps: {
     };
   }
 
-  /** `askedOn`: the page the question was asked on; a fill card made for it must not apply to a page opened meanwhile. */
+  /** askedOn 是提问时页面；为其生成的填写卡片不得应用到期间打开的其他页面。 */
   function showAgentAnswer(
     text: string,
     voice: string | undefined,
@@ -287,8 +287,7 @@ export function useChat(deps: {
       rememberReply(text);
     }
     for (const p of proposals) {
-      // Downloads skip the card only when the user asked for one; an export the model chose on its own
-      // (or was talked into by text inside the data) still waits for a click.
+      // 仅用户明确要求下载时才跳过卡片；模型自行选择或受数据内文本诱导的导出仍需点击确认。
       if (p.kind === 'export' && p.auto && askedToExport) {
         void (async () => {
           deps.say(`正在导出：${p.label}${p.count != null ? `（${p.count}）` : ''}`);
@@ -297,7 +296,7 @@ export function useChat(deps: {
         })();
         continue;
       }
-      // Offering the same page again (the model re-mentioning its card) keeps the first card and its question.
+      // 模型再次建议同一页面时保留首张卡片及其问题，不重复创建。
       if (p.kind === 'open_page' && [...cardProposals.values()].some((q) => q.kind === 'open_page' && q.path === p.path)) {
         continue;
       }
@@ -308,7 +307,7 @@ export function useChat(deps: {
     void maybeRunCompress();
   }
 
-  /** `keep`: leave the card up (the note lists things the user still has to fix). */
+  /** keep 为 true 时保留卡片，用备注列出仍需用户处理的内容。 */
   function finishCard(id: number, note: string, keep = false) {
     patchBubble(id, { actions: [], note, working: false });
     cardProposals.delete(id);
@@ -338,7 +337,7 @@ export function useChat(deps: {
     if (p.kind === 'fill' && action === 'apply') {
       patchBubble(id, { working: true, note: '填写中…' });
       const { applied, missed, overridden, snapshots } = await applyFillProposal(p.fills);
-      // The page's own auto-save sends the request; we can't see whether it succeeded, so don't claim it did.
+      // 请求由页面自身的自动保存发出，无法确认结果，因此不能声称保存成功。
       const savedHint = p.autoSave
         ? '已写入页面，页面会自己保存（是否保存成功以页面提示为准），不对就点撤销'
         : '还没保存，检查后自己点保存';
@@ -354,7 +353,7 @@ export function useChat(deps: {
         finishCard(id, note, keep);
         return;
       }
-      // Keep an undo button for a while; the card leaves on its own unless something still needs fixing.
+      // 临时保留撤销按钮；若无待处理问题，卡片随后自动消失。
       fillUndo.set(id, snapshots);
       patchBubble(id, { working: false, note, actions: [{ id: 'undo', label: '撤销这次填写' }] });
       if (!keep) {
@@ -403,13 +402,13 @@ export function useChat(deps: {
     }
   }
 
-  /** `forceAgent`: a data question asked again after the pet learned the page it needed. */
+  /** forceAgent 用于宠物学习所需页面后重新提交数据问题。 */
   async function chat(message: string, intent: ChatIntent = 'chat', forceAgent = false) {
     if (deps.busy.value) return;
     deps.busy.value = true;
     deps.sleeping.value = false;
     void deps.playAnim(deps.pick(['think', 'mutter', 'code', 'busy'] as const), { loop: true, restart: true });
-    // "谢谢" or "你累吗" right after a data answer is still small talk, not a follow-up question.
+    // 数据回答后的「谢谢」或「你累吗」仍属于闲聊，不是数据追问。
     const followUp = Date.now() - lastAgentAt < AGENT_FOLLOW_UP_MS && !looksLikeSmallTalk(message);
     const agentMode = forceAgent || intent === 'fill' || (intent === 'chat' && (looksLikeTask(message) || followUp));
     const fromDialog = deps.chatOpen.value && intent === 'chat';
@@ -429,7 +428,7 @@ export function useChat(deps: {
           onPhase: (phase) => patchWaitText(`${phase} ${STOP_HINT}`),
         });
         clearWaitBubble();
-        // Stop clicked while the last step was already on its way back: drop the answer, cards and auto-export.
+        // 若用户点击停止时最后一步已在返回途中，丢弃回答、卡片和自动导出。
         if (result.aborted || abort.signal.aborted) return;
         if (result.offline) {
           void deps.playAnim('sigh');
@@ -469,7 +468,7 @@ export function useChat(deps: {
       clearWaitBubble();
       if (abort.signal.aborted) return;
       if (data?.reroute === 'agent') {
-        // Small-talk model drifted into "I filled / exported it" — it has no tools, so let the agent actually do it.
+        // 闲聊模型若声称已填写或导出，应转给具备工具的代理实际执行。
         showWaitBubble(true);
         await askAgent();
         return;
@@ -490,7 +489,7 @@ export function useChat(deps: {
         deps.say(deps.pick(LINES.error));
       }
     } finally {
-      // After a stop, abortChat() already reset everything — and a newer chat may own the state by now.
+      // 停止后 abortChat() 已重置状态，且此时状态可能已属于更新的聊天。
       if (!abort.signal.aborted) {
         chatAbort = null;
         clearWaitBubble();
@@ -520,12 +519,12 @@ export function useChat(deps: {
     return true;
   }
 
-  /** Another account signed in (or out) without a page reload: drop this account's talk and cards, load the next one's. */
+  /** 未刷新页面时切换登录账号，应清除当前账号的对话和卡片并加载新账号内容。 */
   function reloadForUser() {
     try {
       chatAbort?.abort();
     } catch {
-      /* ignore */
+      /* 请求可能已经结束或中止。 */
     }
     chatAbort = null;
     clearWaitBubble();

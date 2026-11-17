@@ -25,7 +25,7 @@ from models.immunology import (
     SerumTiterOrder,
 )
 from models.system import SysUser
-from modules.auth.dependencies import get_current_user
+from modules.auth.dependencies import actor_name, get_current_user
 from modules.auth.permissions import (
     UserContext,
     get_user_context,
@@ -60,7 +60,7 @@ def file_save(
     context: UserContext = Depends(get_user_context),
 ) -> dict:
     _require_project_owner_or_edit_all(db, current_user, context, experiment_id=experiment_id)
-    return success(service.save_file(db, file, experiment_id, _operator_name(current_user)))
+    return success(service.save_file(db, file, experiment_id, actor_name(current_user)))
 
 
 @router.post("/file/delete", dependencies=[require("serum.file.manage", audit="删除效价文件")])
@@ -96,7 +96,7 @@ def file_replace(
     context: UserContext = Depends(get_user_context),
 ) -> dict:
     _require_project_owner_or_edit_all(db, current_user, context, file_id=id)
-    return success(service.replace_file(db, id, file, _operator_name(current_user)))
+    return success(service.replace_file(db, id, file, actor_name(current_user)))
 
 
 @router.get("/file/download", dependencies=[TITER_READ])
@@ -393,10 +393,6 @@ def _resolve_project(
     if not target_experiment_id:
         return None
     return db.scalar(select(SerumImmProject).where(SerumImmProject.experiment_id == target_experiment_id))
-
-
-def _operator_name(user: SysUser) -> str:
-    return (user.display_name or user.username or "unknown").strip()
 
 
 def _has_payload_keys(data: dict, keys: tuple[str, ...]) -> bool:

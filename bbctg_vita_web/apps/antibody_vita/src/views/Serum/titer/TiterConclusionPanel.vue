@@ -238,7 +238,7 @@ export default {
   color: var(--el-text-color-disabled);
 }
 
-/* 与 TITER 板管理 tabs 一致 */
+/* 阶段标签页与 TITER 板管理保持一致。 */
 .stage-tabs :deep(.el-tabs__header) {
   margin: 0 0 14px;
 }
@@ -279,7 +279,7 @@ export default {
   margin-bottom: 0;
 }
 
-/* 与鼠号明细弹窗 / FACS 信息区 meta 行一致 */
+/* 分组标题与鼠号明细弹窗、FACS 信息区的元信息行保持一致。 */
 .group-table-title {
   margin-bottom: 11px;
   display: flex;
@@ -317,7 +317,7 @@ export default {
   color: #7b8490;
 }
 
-/* 与页内 refined-table 一致 */
+/* 结论表格与页内 refined-table 保持一致。 */
 .conclusion-table {
   width: 100%;
   border-radius: 4px;

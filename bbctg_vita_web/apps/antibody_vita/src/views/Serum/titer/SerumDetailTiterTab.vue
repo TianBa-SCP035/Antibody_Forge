@@ -1,6 +1,5 @@
 <template>
   <div class="detail-titer-tab">
-    <!-- 1. Files -->
     <el-card class="section-card">
       <template #header>
         <div class="section-header">
@@ -64,7 +63,7 @@
       </div>
     </el-card>
 
-    <!-- 2. Targets & PC（列宽比例 14:10，与效价编辑页一致） -->
+    <!-- 靶标与阳性对照保持 14:10 的列宽比例，与效价编辑页一致。 -->
     <div class="data-tables-section">
       <el-row :gutter="16" class="targets-tables-row">
         <el-col :xs="24" :lg="14" class="flex-col">
@@ -126,7 +125,6 @@
       </el-row>
     </div>
 
-    <!-- 3. Plates -->
     <el-card class="section-card">
       <template #header>
         <div class="section-header">
@@ -189,7 +187,6 @@
       </template>
     </el-card>
 
-    <!-- 4. Conclusion -->
     <el-card class="section-card">
       <template #header>
         <div class="section-header">
@@ -202,7 +199,6 @@
       <TiterConclusionPanel :model="facsConclusionModel" />
     </el-card>
 
-    <!-- File preview dialog -->
     <el-dialog
       v-model="detailDialogVisible"
       :title="currentFile ? currentFile.file_name : '文件详情'"
@@ -632,7 +628,7 @@ export default {
           }
           this.detailDialogVisible = true
         } catch {
-          // 错误已在 loadPreviewImage 中提示
+          // loadPreviewImage 已提示错误，此处无需重复提示。
         }
         return
       }
@@ -1070,7 +1066,6 @@ export default {
   border-right: 3px solid var(--el-color-success);
 }
 
-/* 文件详情弹窗（与 SerumTiter 同源，右侧只读且无重命名/替换/删除） */
 :global(.el-dialog.serum-detail-dialog) {
   border-radius: 12px;
   overflow: hidden;

@@ -381,7 +381,7 @@ const COLUMNS = Object.freeze([
 ]);
 const SHEET_COLUMN_ORDER = createColumnOrder('primerLibrarySheetColumnOrder', COLUMNS);
 
-// 核对序列是算出来的，只有顶部筛选
+// 核对序列为计算值，仅支持顶部筛选。
 const PRIMER_HEADER_COLUMNS = Object.freeze({
   name: { type: 'text', label: '名称', values: 'recent', top: { query: 'name', kind: 'contains' } },
   family: { type: 'enum', label: '系列', values: 'all', top: { query: 'family' } },
@@ -392,7 +392,7 @@ const PRIMER_HEADER_COLUMNS = Object.freeze({
 });
 
 const CELL_CONFIG = Object.freeze({ height: 40 });
-// 只读表格：不开 Delete/Enter，免得 vxe 清空或进入编辑
+// 只读表格不启用 Delete/Enter，避免 vxe 清空单元格或进入编辑。
 const KEYBOARD_CONFIG = Object.freeze({
   isArrow: true,
   isShift: true,
@@ -582,7 +582,7 @@ export default {
       };
     },
     fetchHeaderValues(query) {
-      // 顶部状态换算成了 active，取状态列的值时要一并去掉
+      // 顶部状态会换算为 active，读取状态列时需排除该条件。
       if (query.field === 'active') delete query.active;
       return fetchPrimerColumnValues(query);
     },
@@ -748,7 +748,7 @@ export default {
     },
     selectSeries(value) {
       this.listQuery.family = this.listQuery.family === value ? '' : value;
-      // 点「全部」也要清掉表头里的系列条件，统计块高亮才和列表一致
+      // 选择「全部」时需清除表头系列条件，保持统计块高亮与列表一致。
       if (this.headerFilters.family) this.dropHeaderFilter('family');
       this.handleFilter();
     },

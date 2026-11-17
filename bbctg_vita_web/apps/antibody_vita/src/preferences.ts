@@ -1,12 +1,7 @@
 import { defineOverridesPreferences } from '@vben/preferences';
 
-/**
- * @description 项目配置文件
- * 只需要覆盖项目中的一部分配置，不需要的配置不用覆盖，会自动使用默认配置
- * !!! 更改配置后请清空缓存，否则可能不生效
- */
+/** 只覆盖项目自定义配置；修改后需清空缓存才能稳定生效。 */
 export const overridesPreferences = defineOverridesPreferences({
-  // overrides
   app: {
     defaultHomePath: '/home',
     defaultAvatar: '/Vita256.ico',

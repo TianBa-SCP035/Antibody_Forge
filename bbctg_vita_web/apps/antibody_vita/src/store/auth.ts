@@ -29,16 +29,10 @@ export const useAuthStore = defineStore('auth', () => {
   const router = useRouter();
 
   const loginLoading = ref(false);
-  /**
-   * 异步处理登录操作
-   * Asynchronously handle the login process
-   * @param params 登录表单数据
-   */
   async function authLogin(
     params: Recordable<any>,
     onSuccess?: () => Promise<void> | void,
   ) {
-    // 异步处理用户登录操作并获取 accessToken
     let userInfo: null | UserInfo = null;
     try {
       loginLoading.value = true;
@@ -107,12 +101,12 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       await logoutApi();
     } catch {
-      // 不做任何处理
+      // 服务端退出失败也必须清理本地会话。
     }
     resetAllStores();
     accessStore.setLoginExpired(false);
 
-    // 回登录页带上当前路由地址
+    // 保留当前地址，重新登录后可返回原页面。
     await router.replace({
       path: LOGIN_PATH,
       query: redirect

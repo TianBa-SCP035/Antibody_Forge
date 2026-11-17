@@ -149,7 +149,6 @@ $primary: var(--el-color-primary);
 $title-color: #1f2937;
 $label-color: #64748b;
 $muted-color: var(--el-text-color-secondary);
-/* 徽章 / 液柱：手调配色入口 */
 $normal-badge: rgb(35, 183, 252);
 $tumor-badge: rgb(251, 126, 36);
 $tube-radial: radial-gradient(ellipse 90% 38% at 50% 8%, rgb(255 255 255 / 70%) 0%, transparent 62%);

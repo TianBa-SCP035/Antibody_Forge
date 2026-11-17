@@ -209,9 +209,9 @@ SCOPE_EDIT_FIELDS = {
     "affinity": AFFINITY_EDIT_FIELDS,
     "flow": FLOW_EDIT_FIELDS,
 }
-# 同时有亲和力和流式权限的实验员：可把已完成的工单打回待检测
+# 同时有亲和力和流式权限的实验员：可把已完成的工单打回待检测，可把未取消的工单改为已取消
 ASSAY_SCOPES = frozenset({"affinity", "flow"})
-ASSAY_MAIN_STATUS_MESSAGE = "实验员只能把已完成的工单打回待检测"
+ASSAY_MAIN_STATUS_MESSAGE = "实验员只能把已完成的工单打回待检测，或把工单改为已取消"
 COMPLETED_ASSAY_MESSAGE = "工单已完成，不能再改实验状态；需要重新检测请先打回待检测"
 CLAIM_RETURN_EXPIRED_MESSAGE = f"认领已超过 {CLAIM_RETURN_DAYS} 天，不能退回「无人问津」"
 CREATE_REQUIRED_FIELDS = (
@@ -1242,9 +1242,10 @@ def save(
             if "flow" in scopes:
                 assay_keys |= FLOW_EDIT_FIELDS
             if ASSAY_SCOPES <= scopes and "status" in writable_keys - eng_keys:
-                if row.status != STATUS_COMPLETED or _normalize_status(
-                    payload["status"]
-                ) != STATUS_WAIT_ASSAY:
+                next_status = _normalize_status(payload["status"])
+                back_to_assay = row.status == STATUS_COMPLETED and next_status == STATUS_WAIT_ASSAY
+                to_cancelled = row.status != STATUS_CANCELLED and next_status == STATUS_CANCELLED
+                if not (back_to_assay or to_cancelled):
                     raise ForbiddenError(ASSAY_MAIN_STATUS_MESSAGE)
                 assay_keys.add("status")
             denied = writable_keys - pm_keys - eng_keys - assay_keys

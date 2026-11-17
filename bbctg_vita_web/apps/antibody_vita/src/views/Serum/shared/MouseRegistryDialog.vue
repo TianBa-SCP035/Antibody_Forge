@@ -135,7 +135,7 @@ import { ElButton, ElDialog, ElInput, ElMessage, ElSwitch } from 'element-plus'
 
 import { copyToClipboard } from '#/utils/clipboard'
 
-/** 换行拆行，行内按 Tab/逗号/空格等拆分 */
+/** 先按换行拆分，再按制表符、逗号或空格等分隔行内鼠号。 */
 function splitTokens(text) {
   const s = (text || '').replace(/\r\n?/g, '\n').trim()
   if (!s) return []
@@ -335,7 +335,7 @@ export default {
       this.bulkEditText = section.rows.map((r) => (r.no || '').trim()).filter(Boolean).join('\n')
       this.bulkEditVisible = true
     },
-    /** Excel 横向（制表符）或多格区域：粘贴进文本框时拆成一行一个鼠号 */
+    /** 从 Excel 横向或多格区域粘贴时，将每个鼠号拆成独立行。 */
     handleBulkEditPaste(e) {
       if (!this.bulkEditVisible) return
       const text = e.clipboardData?.getData('text/plain')

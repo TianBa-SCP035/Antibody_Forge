@@ -167,10 +167,7 @@ def parse_target_structure(
     structural_properties: str | None,
     structure_feature: str | None = None,
 ) -> dict[str, Any]:
-    """
-    公共映射纯函数：将靶点库的英文 `structural_properties` 与 `structure_feature`（跨膜次数）
-    解析为统一的结构化信息，供靶点库展示、搜索以及免疫/发现等下游业务模块二次映射使用。
-    """
+    """将 structural_properties 和跨膜次数解析为统一的靶点结构信息。"""
     raw_prop = str(structural_properties or "").strip() or None
     raw_feat = str(structure_feature or "").strip() or None
     tm_count = extract_tm_count(raw_feat)
@@ -235,12 +232,12 @@ def to_serum_target_type(
     structural_properties: str | None,
     structure_feature: str | None = None,
 ) -> str | None:
-    """二次映射：转换为小鼠免疫模块的靶点类型枚举（I型 / II型 / III型 / 分泌 / 多穿 / 胞内 / GPI）"""
+    """转换为小鼠免疫模块的靶点类型枚举。"""
     return parse_target_structure(structural_properties, structure_feature)["serum_type"]
 
 
 def match_structural_properties_by_keyword(keyword: str | None) -> list[str]:
-    """根据用户输入的中文靶点类型搜索词，精确反查对应的 `structural_properties` 枚举原值列表。"""
+    """按中文靶点类型搜索词反查 structural_properties 枚举原值。"""
     if not keyword:
         return []
     kw = keyword.strip().lower()
@@ -252,15 +249,8 @@ def match_structural_properties_by_keyword(keyword: str | None) -> list[str]:
         if kw == meta["label"].lower() or kw in meta["aliases"]
     ]
 
-
-# ---------------------------------------------------------------------------
-# UniProt 自动解析与容错补齐逻辑（用于新靶点入库及缺失数据补齐）
-# ---------------------------------------------------------------------------
-
 def strip_species_prefix(name: str | None) -> str | None:
-    """
-    剥离靶点名称开头的种属标记（如 `dogIGF1` -> `IGF1`, `dogPD-1` -> `PD-1`, `catNGF` -> `NGF`）。
-    """
+    """剥离靶点名称开头的种属标记，如 dogIGF1 转为 IGF1。"""
     if not name:
         return None
     match = re.match(
@@ -353,10 +343,7 @@ def simplify_uniprot_entry(entry: dict[str, Any]) -> dict[str, Any]:
 
 
 def infer_pm_fields_from_uniprot(entry: dict[str, Any] | None) -> dict[str, str | None]:
-    """
-    将简化后的 UniProt 条目映射为与 PM 系统 100% 兼容的字段值：
-    返回 `{"structural_properties": ..., "structure_feature": ...}`
-    """
+    """将简化后的 UniProt 条目映射为 PM 系统使用的结构字段。"""
     if not entry:
         return {"structural_properties": None, "structure_feature": None}
 
@@ -553,13 +540,11 @@ def query_uniprot_single_target(
     *,
     timeout: int = 10,
 ) -> dict[str, Any] | None:
-    """
-    针对单个靶点按优先级查询 UniProt REST API：
-      1. 人源 NCBI Gene ID (Swiss-Prot -> TrEMBL)
-      2. 鼠源 NCBI Gene ID (Swiss-Prot -> TrEMBL)
-      3. 人源官方基因名 / 剥离 dog 等种属前缀后的名称 (Swiss-Prot)
-      4. 鼠源官方基因名 (Swiss-Prot)
-    发生任何网络异常时捕获并返回 None，绝不中断主流程。
+    """按优先级查询单个靶点的 UniProt 条目。
+
+    依次尝试人源、鼠源 NCBI Gene ID，再尝试人源基因名、靶点名称和鼠源基因名。
+    NCBI Gene ID 先查 Swiss-Prot，再查 TrEMBL；基因名只查 Swiss-Prot。
+    网络异常返回 None，不中断主流程。
     """
     queries: list[str] = []
     for gid in extract_clean_ncbi_ids(human_ncbi_gene_id):
@@ -613,11 +598,10 @@ def enrich_missing_targets(
     allow_network: bool = True,
     max_network_queries: int = 30,
 ) -> dict[str, int]:
-    """
-    对缺失 `structural_properties` 的靶点列表进行无冲突补齐：
-      1. 先尝试同库复用（例如 `dogPD-1` 直接复用同库已有的 `PD-1` 的结构特性，或双靶点 `IL17A-IL17F` 复用首靶点 `IL17A`）；
-      2. 若同库未命中且允许网络请求（`allow_network=True`），调用 UniProt API 补齐（限制单次任务最大请求数 `max_network_queries` 防止阻塞）。
-    只填补空缺字段，绝不覆盖已有有效值。
+    """补齐缺失 structural_properties 的靶点。
+
+    先复用同库的同源或首靶点数据，再按需查询 UniProt；网络查询不超过
+    max_network_queries 次。只填空缺字段，不覆盖已有有效值。
     """
     stats = {"reused_local": 0, "fetched_uniprot": 0, "failed_or_empty": 0}
     if not candidates:
@@ -641,7 +625,6 @@ def enrich_missing_targets(
         if getattr(target, "structural_properties", None):
             continue
 
-        # 1. 尝试剥离 dog/cat 等种属前缀或双靶点连字符，在同库已有靶点中直接匹配
         raw_name = str(getattr(target, "name", "") or "").strip()
         lookup_keys: list[str] = []
         stripped = strip_species_prefix(raw_name)
@@ -667,7 +650,6 @@ def enrich_missing_targets(
             stats["reused_local"] += 1
             continue
 
-        # 2. 调用 UniProt API 在线补齐
         if not allow_network or network_calls >= max_network_queries:
             stats["failed_or_empty"] += 1
             continue
@@ -688,7 +670,6 @@ def enrich_missing_targets(
                 and inferred["structure_feature"]
             ):
                 target.structure_feature = inferred["structure_feature"]
-            # 将新解析出的结果加入本地字典，供同批次后续靶点复用
             if raw_name:
                 local_lookup.setdefault(
                     raw_name.upper(),

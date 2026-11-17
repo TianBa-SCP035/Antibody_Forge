@@ -355,7 +355,7 @@ export const EDITOR_SECTIONS = editorSections(FIELDS, [
 /** 靶点、品系沿用顶部筛选（品系显示的是方案分组合并值）；周龄是按出生日期推算的，不放表头。 */
 export const HEADER_MENU_COLUMNS = headerMenuColumns(FIELDS)
 
-// 本地存储键已发布，不要改值
+// 本地存储键已发布，不能更改。
 export const VIEW_PREFS_KEY = 'serumWorkbenchViewPrefs'
 export const SHEET_COLUMN_ORDER = createColumnOrder('workbenchSheetColumnOrder', SHEET_COLUMNS, {
   pinFirstKey: 'sort_order',

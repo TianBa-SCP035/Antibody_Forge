@@ -2,7 +2,7 @@ import time
 
 import requests
 
-# appid -> (access_token, expires_at_epoch)
+# 每个 appid 对应 access_token 和过期时间戳。
 _access_token_cache: dict[str, tuple[str, float]] = {}
 _TOKEN_EXPIRY_BUFFER_SECONDS = 60
 _DEFAULT_TOKEN_TTL_SECONDS = 7200

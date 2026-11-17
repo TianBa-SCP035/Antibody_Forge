@@ -55,14 +55,13 @@ class ExternalEmployee:
 
 
 def sync_employee_profiles(db: Session, employee_db: Session, *, dry_run: bool = False) -> dict[str, Any]:
-    """Sync basic employee profile fields from the external project-management DB.
+    """从外部项目管理数据库同步员工基础资料。
 
-    Identity is resolved in three short passes:
-    1. unique Yunzhijia openid (if several source rows share one, keep the unlocked row)
-    2. leftover local users by exact name + job number
-    3. create only when unlocked and unmatched; reuse one local user with the same name + mobile
+    身份按三轮匹配：先按唯一的云之家 openid；若多条来源记录共用 openid，
+    仅保留唯一未锁定记录。再按姓名和工号精确匹配剩余本地用户。
+    未锁定且仍未匹配的员工才可新建；姓名和手机号唯一匹配时复用本地用户。
 
-    The sync intentionally does not touch passwords, roles, permission overrides, or superuser flags.
+    同步不修改密码、角色、个人权限覆盖或超级管理员标记。
     """
     external_employees = _load_external_employees(employee_db)
     existing_users = list(db.scalars(select(SysUser)).all())
@@ -255,7 +254,7 @@ def _apply_employee_update(
         updates["openid"] = openid
     if employee.leave_date:
         updates["employment_status"] = "resigned"
-        # 仅当本次由在职变为离职时禁用账号；已是离职但仍为启用的历史数据不改动
+        # 仅当本次由在职变为离职时禁用账号；已离职但仍启用的账号保持原状。
         if user.employment_status != "resigned":
             updates["status"] = "disabled"
             disabled_account = True

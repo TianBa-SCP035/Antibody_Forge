@@ -140,9 +140,9 @@ const userFilters = reactive<{
   status: '',
 });
 
-/** 任一已绑定角色的名称包含「管理员」 */
+/** 任一已绑定角色的名称包含「管理员」。 */
 const systemAdminRoleFilter = ref<'' | 'no' | 'yes' | Array<'no' | 'yes'>>('');
-/** 有任意一条个人权限覆盖 */
+/** 存在任意一条个人权限覆盖。 */
 const permissionOverrideFilter = ref<'' | 'no' | 'yes' | Array<'no' | 'yes'>>('');
 const userRoleFilter = ref<'' | 'all' | number | Array<'all' | number>>('');
 
@@ -361,7 +361,7 @@ function formatRoleNames(roleIds?: number[]) {
     .join('、');
 }
 
-/** 角色名称含「管理员」即视为系统管理类角色，用于列表展示与筛选（不参与权限计算） */
+/** 角色名称含「管理员」即视为系统管理类角色，仅用于列表展示与筛选，不参与权限计算。 */
 function userRoleNameHasAdmin(roleIds?: number[]) {
   for (const roleId of roleIds || []) {
     const name = roleNameMap.value.get(roleId);
@@ -553,7 +553,7 @@ function formatAuditValue(
   }
 }
 
-// 目标类型的中文名和下拉选项都由后端给，筛选时直接传中文名
+// 目标类型的中文名和下拉选项均由后端提供，筛选时直接传中文名。
 const logTargetTypeOptions = ref<string[]>([]);
 
 function formatLogTargetType(log: SystemOperationLog) {

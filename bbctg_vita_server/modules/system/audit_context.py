@@ -90,10 +90,9 @@ def use_audit_action(code: str) -> None:
 
 
 def bind_audit_actor(user) -> None:
-    """Enrich the request context from the normal auth dependency.
+    """用认证依赖已查询的用户补全审计上下文。
 
-    This reuses the user lookup every protected endpoint already performs and
-    avoids a second audit-only query.
+    复用受保护接口已有的用户查询，避免为审计再次查询。
     """
     context = get_audit_context()
     if context is None:

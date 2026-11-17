@@ -60,9 +60,6 @@ _USER_TEXT_FIELDS = (
 )
 
 
-# ---------- 用户 ----------
-
-
 def list_users(
     db: Session,
     *,
@@ -264,9 +261,6 @@ def reset_password(db: Session, user_id: int, password: str, *, actor: SysUser) 
     db.commit()
 
 
-# ---------- 个人权限覆盖 ----------
-
-
 def get_user_permission_overrides(db: Session, user_id: int) -> dict[str, Any]:
     user = db.get(SysUser, user_id)
     if not user:
@@ -326,9 +320,6 @@ def save_user_permission_overrides(db: Session, user_id: int, data: dict[str, An
     db.commit()
 
 
-# ---------- 角色 ----------
-
-
 def list_roles(db: Session) -> list[dict[str, Any]]:
     roles = db.scalars(select(SysRole).order_by(SysRole.sort_order, SysRole.id)).all()
     bundle_map = _get_role_bundle_map(db, [role.id for role in roles])
@@ -369,9 +360,6 @@ def delete_role(db: Session, role_id: int) -> None:
     _delete_matching(db, SysRolePermissionBundle, SysRolePermissionBundle.role_id == role.id)
     db.delete(role)
     db.commit()
-
-
-# ---------- 权限点与权限包 ----------
 
 
 def list_permissions() -> list[dict[str, Any]]:
@@ -425,9 +413,6 @@ def delete_permission_bundle(db: Session, data: dict[str, Any]) -> None:
     _delete_matching(db, SysPermissionBundleItem, SysPermissionBundleItem.bundle_code == bundle.code)
     db.delete(bundle)
     db.commit()
-
-
-# ---------- 操作日志 ----------
 
 
 def list_operation_logs(
@@ -523,9 +508,6 @@ def get_operation_log_detail(db: Session, log_id: int) -> dict[str, Any]:
         .order_by(SysOperationLogItem.id)
     ).all()
     return {**_log_to_dict(log), "items": [_log_item_to_dict(item) for item in items]}
-
-
-# ---------- 内部工具 ----------
 
 
 def _log_target_type_labels() -> dict[str, str]:

@@ -55,9 +55,8 @@ async function generateAccess(options: GenerateMenuAndRoutesOptions) {
       });
       return await getAllMenusApi();
     },
-    // 可以指定没有权限跳转403页面
+    // menuVisibleWithForbidden 路由无权限时仍显示菜单，但访问时进入 403 页面。
     forbiddenComponent,
-    // 如果 route.meta.menuVisibleWithForbidden = true
     layoutMap,
     pageMap,
     routes: featureRoutes,

@@ -1,6 +1,6 @@
 /**
- * The signed-in account and the app's menu, read from the host app. The only place the pet touches host
- * state, so modules that just need "who is this" or "which pages exist" don't pull in business APIs.
+ * 从宿主应用读取登录账号和菜单。本文件是宠物访问宿主状态的唯一入口，
+ * 使只需账号或页面列表的模块无需引入业务 API。
  */
 
 import type { Router } from 'vue-router';
@@ -28,7 +28,7 @@ export function currentUserName(): string {
   }
 }
 
-/** Stable per-account id, so local pet memory stays apart when several people log in on one browser. */
+/** 返回稳定的账号 ID，使同一浏览器上的多个用户各自保存宠物记忆。 */
 export function currentUserKey(): string {
   try {
     const info: any = useUserStore().userInfo;
@@ -40,7 +40,7 @@ export function currentUserKey(): string {
 
 let hostRouter: Router | null = null;
 
-/** The pet component registers the app's router (it is mounted inside the app, so `useRouter()` works there). */
+/** 宠物组件注册宿主路由；组件挂载在应用内部，因此可在其中调用 useRouter()。 */
 export function setHostRouter(router: Router) {
   hostRouter = router;
 }
@@ -48,8 +48,8 @@ export function setHostRouter(router: Router) {
 export type MenuPage = { title: string; path: string };
 
 /**
- * Leaf pages of the menu the signed-in account can open (the router only holds routes the account may access).
- * Pages needing an id (`/edit/:id`), login pages and untranslated titles are left out.
+ * 返回当前账号可打开的菜单叶子页面；路由仅包含该账号有权访问的项。
+ * 排除需要 ID 的页面、登录页和标题未翻译的页面。
  */
 export function menuPages(): MenuPage[] {
   if (!hostRouter) return [];
@@ -63,7 +63,7 @@ export function menuPages(): MenuPage[] {
   return out;
 }
 
-/** Opens a menu page as if the user clicked it; anything not in the menu is refused. */
+/** 模拟用户点击菜单打开页面；拒绝不在菜单中的路径。 */
 export async function openMenuPage(path: string): Promise<boolean> {
   if (!hostRouter || !menuPages().some((p) => p.path === path)) return false;
   await hostRouter.push(path);

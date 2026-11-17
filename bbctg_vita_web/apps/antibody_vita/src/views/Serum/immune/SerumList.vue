@@ -1,6 +1,5 @@
 <template>
   <div class="app-container" :class="{ 'is-list-table-locked': listTableLocked }">
-    <!-- Advanced Ops: slide down overlay -->
     <AdvancedOpsBar v-model="showAdvancedOps">
       <el-input
         v-model="listQuery.lab_notebook"
@@ -46,9 +45,7 @@
       </template>
     </AdvancedOpsBar>
 
-    <!-- Dashboard / Overview -->
     <el-row :gutter="20" class="panel-group">
-      <!-- Total: Pie Chart Trigger -->
       <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
         <div class="card-panel blue-panel" @click="handleTotalClick">
           <div class="card-panel-icon-wrapper">
@@ -60,7 +57,6 @@
           </div>
         </div>
       </el-col>
-      <!-- Ongoing: Filter Trigger -->
       <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
         <div class="card-panel green-panel" :class="{'active-card': listQuery.project_status === 'ongoing'}" @click="handleStatusFilter('ongoing')">
           <div class="card-panel-icon-wrapper">
@@ -72,7 +68,6 @@
           </div>
         </div>
       </el-col>
-      <!-- Completed: Filter Trigger -->
       <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
         <div class="card-panel red-panel" :class="{'active-card': listQuery.project_status === 'completed'}" @click="handleStatusFilter('completed')">
           <div class="card-panel-icon-wrapper">
@@ -84,7 +79,6 @@
           </div>
         </div>
       </el-col>
-      <!-- Owner: User Filter Trigger -->
       <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
         <div class="card-panel orange-panel" :class="{'active-card': listQuery.owner === currentOwnerName}" @click="handleOwnerFilter(currentOwnerName)">
           <div class="card-panel-icon-wrapper">
@@ -98,7 +92,6 @@
       </el-col>
     </el-row>
 
-    <!-- Filter Header -->
     <div class="filter-wrapper list-filter-controls">
         <el-row :gutter="15" type="flex" align="middle" style="flex-wrap: wrap;">
             <el-col :span="4">
@@ -287,7 +280,6 @@
         </div>
     </div>
 
-    <!-- Main Table -->
     <el-card shadow="never" class="list-table-card">
         <div ref="listTableBody" class="list-table-body">
         <el-table
@@ -494,7 +486,6 @@
          </div>
     </el-card>
 
-    <!-- Pie Chart Dialog (Replaced with CSS Bar Chart to standard) -->
     <el-dialog v-model="chartVisible" title="☝️🤓疯狂牛马榜🐮🐴 o((>ω< ))o" width="500px" append-to-body>
         <div style="padding: 0px 20px 20px 20px;">
            <div v-if="stats.owner_counts.length === 0" style="text-align: center; color: var(--el-text-color-secondary);">暂无数据</div>
@@ -584,7 +575,7 @@ import {
   workbenchHeaderMenuMixin,
 } from '#/components/workbench'
 
-// 实验记录本顶部框输入「空」表示未填写，与表头的「包含」不同口径，所以不联动
+// 实验记录本顶部筛选支持用「空」查询未填写值，与表头的包含查询口径不同，因此两者不联动。
 const SERUM_HEADER_COLUMNS = Object.freeze({
   project_code: { type: 'text', label: '编号', values: 'recent', top: { query: 'project_code', kind: 'codes' } },
   project_name: { type: 'text', label: '项目名称', values: 'search', top: { query: 'project_name', kind: 'contains' } },
@@ -786,7 +777,7 @@ export default {
     }
   },
   deactivated() {
-    // 筛选栏过渡没走完就切走：离屏时增删扩展列会整表重渲染，正好卡在新页面的进场动画里，留到切回来再提交
+    // 筛选栏过渡未完成时切页，离屏增删扩展列会触发表格重渲染，因此延迟到返回页面后提交。
     if (this.extraColumnsTimer) {
       clearTimeout(this.extraColumnsTimer)
       this.extraColumnsTimer = 0
@@ -947,7 +938,7 @@ export default {
         notifyApiError(error, { messages: SERUM_ERRORS.list.initMeta })
       }
     },
-    /** 统计块跟随列表筛选；状态和负责人由统计块自己切换，不传。 */
+    /** 统计请求跟随列表筛选，但不传由统计块自身控制的状态和负责人。 */
     statsPayload() {
       const { page, limit, sort_field, sort_dir, project_status, owner, ...scope } = this.buildQuery()
       return scope
@@ -974,7 +965,6 @@ export default {
     getList() {
       const isLatest = this.beginListRequest()
       this.listLoading = true
-      // Handle Date Range
       if (this.dateRange && this.dateRange.length === 2) {
           this.listQuery.start_date = this.dateRange[0]
           this.listQuery.end_date = this.dateRange[1]
@@ -1012,8 +1002,7 @@ export default {
         tableVm.$ready = false
         tableVm._vbenFilterPaused = true
       }
-      // 1. 点击瞬间仅播放 220ms 筛选栏展开/收起过渡动画（期间冻结 ElTable.$ready，0ms 表格重排）；
-      // 2. 待筛选栏过渡定格后（transitionend 或 250ms 兜底），再批量切换 6 个扩展列。
+      // 先冻结 ElTable.$ready 并播放筛选栏过渡，再通过 transitionend 或 250 毫秒兜底批量切换扩展列。
       this.extraColumnsTimer = window.setTimeout(() => {
         this.extraColumnsTimer = 0
         this.commitExtraColumnsSync()
@@ -1118,9 +1107,9 @@ export default {
     },
     handleOwnerFilter(owner) {
          if (this.listQuery.owner === owner) {
-            this.listQuery.owner = undefined // Toggle off
+            this.listQuery.owner = undefined
         } else {
-            this.listQuery.owner = owner // Toggle on
+            this.listQuery.owner = owner
         }
         this.handleFilter()
     },
@@ -1571,7 +1560,6 @@ export default {
     color: var(--el-text-color-primary);
 }
 
-/* Dashboard Panel Styles */
 .panel-group {
   margin-top: 0px;
   margin-bottom: 20px;
@@ -1638,7 +1626,6 @@ export default {
   font-weight: bold;
 }
 
-/* Gradient Backgrounds */
 .blue-panel { background: linear-gradient(135deg, #36a3f7 0%, #1890ff 100%); }
 .green-panel { background: linear-gradient(135deg, #58d68d 0%, #2ecc71 100%); }
 .red-panel { background: linear-gradient(135deg, #8e44ad 0%, #9b59b6 100%); }

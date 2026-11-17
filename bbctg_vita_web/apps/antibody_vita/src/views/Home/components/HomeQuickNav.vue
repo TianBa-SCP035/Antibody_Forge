@@ -60,7 +60,7 @@ function loadPresetIds(): Array<string | null> {
       });
     }
   } catch {
-    /* ignore */
+    /* 本地存储无效时使用默认快捷导航。 */
   }
   return [...defaultQuickNavPresetIds];
 }
@@ -74,7 +74,7 @@ function persistSlots(next: QuickNavSlot[]) {
     const ids = next.map((s) => slotToPresetId(s));
     localStorage.setItem(HOME_QUICK_NAV_STORAGE_KEY, JSON.stringify(ids));
   } catch {
-    /* ignore */
+    /* 本地存储不可用不影响当前快捷导航。 */
   }
 }
 

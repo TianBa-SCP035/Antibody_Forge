@@ -34,7 +34,7 @@
 | `created_at`、`updated_at` | 创建与更新时间 | 数据库自动维护 |
 
 **引用保护与停用规则**：
-- 未被任何 `molecular_library_order` 引物外键（`h/k/l_forward/reverse_primer_id`、`i7_catalog_id`、`i5_catalog_id`）引用的引物可直接删除。
+- 未被任何 `molecular_library_order` 引物引用字段（`h/k/l_forward/reverse_primer_id`、`i7_catalog_id`、`i5_catalog_id`）引用的引物可直接删除。
 - 已被文库工单引用的引物禁止删除（单条删除返回 422 提示，批量删除自动跳过并返回跳过名单），只能停用；停用不影响工单上已保存的名称和序列快照。
 
 ## 3. 页面操作
@@ -74,7 +74,7 @@
 
 ## 4. 跨模块联动
 
-- 文库构建在抽屉、Excel 视图或质控详情页首次搜索引物时，调用 `GET /api/molecular-cell/library-orders/catalog/options` 拉取全部启用（`active = true`）引物并缓存；引物库每次加载列表时调用 `clearPrimerCatalogCache()` 清空前端缓存，保证文库构建页及时获取最新字典。
+- 文库构建在抽屉、Excel 视图或质控详情页首次搜索引物时，调用 `GET /api/molecular-cell/library-orders/catalog/options?limit=2000` 拉取最多 2000 条启用（`active = true`）引物并缓存，之后在页面内按名称包含、显示序列包含（纯 `A/C/G/T/N` 时同时匹配反向互补）过滤；引物库每次加载列表时调用 `clearPrimerCatalogCache()` 清空前端缓存，保证文库构建页及时获取最新字典。
 - 文库工单如何绑定引物字典 ID、快照序列及核对 `.seq`/`.ab1`/`.abi` 读段（含 `i5`/`i7` 同源臂拼接与反向互补比对）见 [文库构建](./library-construction.md) §2.3。
 
 ## 5. 接口

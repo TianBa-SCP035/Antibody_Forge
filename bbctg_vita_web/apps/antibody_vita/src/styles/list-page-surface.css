@@ -16,7 +16,6 @@
  */
 
 :root {
-  /* 页面壳 */
   --list-page-bg: var(--el-fill-color-light);
   --list-page-padding: 16px;
   --list-page-gap: 12px;
@@ -68,8 +67,6 @@ html.dark {
   --list-surface-shadow: none;
 }
 
-/* 表格 */
-
 .el-table.list-data-table {
   --el-table-header-bg-color: var(--list-table-header-bg);
   --el-table-header-text-color: var(--list-table-header-color);
@@ -79,7 +76,7 @@ html.dark {
   font-weight: var(--list-table-header-weight);
 }
 
-/* 右侧固定列交界用 1px 线，禁用 1000 个单元格 ::before 伪元素阴影，改由表格级单层独立阴影条提供横滑提示 */
+/* 右侧固定列交界使用 1px 线；表格级单层阴影条承担横滑提示，避免 1000 个单元格伪元素。 */
 .el-table.list-data-table.el-table--border
   .el-table-fixed-column--right.is-first-column.el-table__cell {
   box-shadow: -1px 0 0 0 var(--el-table-border-color);
@@ -264,8 +261,6 @@ html body .is-list-table-locked.is-list-table-locked {
   height: 15px;
   font-size: 15px;
 }
-
-/* 单元格 */
 
 .list-code-text {
   font-family: Consolas, monospace;

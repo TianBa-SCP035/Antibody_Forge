@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { RhythmGame } from './discoRhythm';
 
-/** Lets 收起舞台 → 进入节奏舞台 keep the score within the same song session. */
+/** 同一歌曲会话内收起并重进节奏舞台时保留分数。 */
 let kept = null as { session: number; game: RhythmGame } | null;
 </script>
 
@@ -23,7 +23,7 @@ const GLYPH: Record<RhythmKey, string> = { ArrowLeft: '←', ArrowUp: '↑', Arr
 const VERDICT_TEXT = { Perfect: 'PERFECT', Great: 'GREAT', Good: 'GOOD', Bad: 'BAD', Miss: 'MISS' } as const;
 const HOLD_TEXT = { start: '按住!', done: '长按成功', broken: '松早了' } as const;
 const KEYS: RhythmKey[] = [...ARROWS, 'Space'];
-/** Combo from which the console glows gold. */
+/** 控制台开始呈现金色光效的连击数。 */
 const FEVER_COMBO = 5;
 const SECTION_TAGLINE = ['热热身', '跟上节拍', '箭头变多了', '全力冲刺！'];
 const GRADE_LINE = {
@@ -40,7 +40,7 @@ const revision = ref(0);
 const spaceDown = ref(false);
 const best = ref(readBest());
 const newRecord = ref(false);
-/** Rolls toward the real score so points visibly count up. */
+/** 逐步逼近真实分数，使加分过程可见。 */
 const shownScore = ref(game.value.score);
 const banner = ref<{ section: number; at: number } | null>(null);
 let sfx: AudioContext | undefined;
@@ -61,7 +61,7 @@ const view = computed(() => {
   const last = g.last && now - g.last.at < 0.9 ? g.last : null;
   return {
     round, open: !!open, holding: !!holding, typed, complete, last,
-    // Once the row is typed (or between rows) the next one is shown early, so it can be read ahead.
+    // 当前组输完或处于组间空档时提前显示下一组，留出阅读时间。
     next: round && (complete || !open) ? upcomingRound(g, now, round.id) : undefined,
     sparkle: last && (last.verdict === 'Perfect' || last.verdict === 'Great') && last.hold !== 'start' ? last : null,
     timing: last && (last.verdict === 'Great' || last.verdict === 'Good' || last.verdict === 'Bad')
@@ -74,7 +74,7 @@ const view = computed(() => {
     holds: holdTally(g),
   };
 });
-/** Timeline of the shown round: its beats as ticks, the beat point, the hold bar, and the cursor. */
+/** 当前回合时间轴：节拍刻度、判定点、长按条和光标。 */
 const timeline = computed(() => {
   const r = view.value.round;
   if (!r) return null;
@@ -88,7 +88,7 @@ const timeline = computed(() => {
     held: view.value.holding ? x(props.clock) : null,
   };
 });
-/** Beats until the next row while waiting, so the count lands on the music. */
+/** 等待期间距下一组的拍数，使倒计时与音乐对齐。 */
 const countdown = computed(() => {
   const r = view.value.round;
   if (!props.active || !r || view.value.open) return 0;
@@ -117,7 +117,7 @@ const seconds = (value: number) => `${Math.floor(value / 60)}:${String(Math.floo
 function readBest() {
   try { return Math.max(0, Number(localStorage.getItem(DISCO_BEST_KEY)) || 0); } catch { return 0; }
 }
-/** Short synthesized blips; created on the first key press, which is the gesture audio needs. */
+/** 首次按键时创建短促合成音，以满足音频必须由用户手势启动的限制。 */
 function beep(kind: 'tick' | 'wrong' | Verdict) {
   if (kind === 'Miss') return;
   try {
@@ -135,7 +135,7 @@ function beep(kind: 'tick' | 'wrong' | Verdict) {
       osc.start(start);
       osc.stop(start + length);
     });
-  } catch { /* No Web Audio: play silently. */ }
+  } catch { /* Web Audio 不可用时静默运行。 */ }
 }
 function resetGame(joinAt = 0) {
   game.value = createRhythmGame(buildRhythmChart(props.duration), joinAt);
@@ -169,11 +169,11 @@ watch(() => props.ended, (ended) => {
   if (!ended || score <= best.value) return;
   newRecord.value = true;
   best.value = score;
-  try { localStorage.setItem(DISCO_BEST_KEY, String(score)); } catch { /* Private mode: the record just is not kept. */ }
+  try { localStorage.setItem(DISCO_BEST_KEY, String(score)); } catch { /* 隐私模式下不保存纪录。 */ }
 });
 function hit(key: RhythmKey) {
   if (!props.active || props.ended) return;
-  // Judge against the media element at the key event, not the previous animation frame.
+  // 按键判定读取媒体元素的实时位置，不使用上一动画帧的时间。
   const now = props.readTime();
   if (key === 'Space') {
     spaceDown.value = true;
@@ -220,7 +220,7 @@ onMounted(() => {
   previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   window.addEventListener('keydown', onKey, true);
   window.addEventListener('keyup', onKey, true);
-  // A key-up lost to another window must not leave the hold stuck down.
+  // 窗口切换导致 keyup 丢失时，不得让长按状态卡住。
   window.addEventListener('blur', release);
   void nextTick(() => stage.value?.focus({ preventScroll: true }));
 });
@@ -374,7 +374,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* Semi-transparent on purpose: the page keeps dancing behind the stage. Only the panels are dark. */
+/* 舞台刻意半透明，让后方页面继续随拍跳动；仅面板使用深色背景。 */
 .ff-disco-overlay { position: fixed; inset: 0; z-index: 7200; display: flex; flex-direction: column; gap: 10px; padding: clamp(10px, 1.6vw, 22px); color: hsl(210 100% 97%); background: linear-gradient(180deg, hsl(255 60% 10% / .45), hsl(265 60% 12% / .62)); font-family: 'Segoe UI', 'PingFang SC', sans-serif; outline: none; overflow: hidden; overscroll-behavior: contain; user-select: none; text-shadow: 0 1px 3px hsl(240 60% 8% / .8); }
 button { padding: 7px 13px; border: 1px solid hsl(200 90% 80% / .45); border-radius: 10px; color: inherit; background: hsl(228 55% 20% / .85); cursor: pointer; white-space: nowrap; font: inherit; font-size: 13px; }
 button:hover { background: hsl(250 70% 40% / .9); }
@@ -399,8 +399,7 @@ nav { display: flex; gap: 8px; }
 .ff-dance-light.right { right: 12%; background: linear-gradient(160deg, hsl(185 100% 65% / .45), transparent 70%); clip-path: polygon(40% 0, 60% 0, 100% 100%, 0 100%); transform: rotate(14deg); }
 .ff-dance-orbit { position: absolute; bottom: 6%; height: min(78%, 46vh); aspect-ratio: 1; border: 1px solid hsl(182 100% 74% / .55); border-radius: 50%; scale: calc(.95 + var(--ff-stage-pulse) * .08); box-shadow: 0 0 calc(12px + var(--ff-stage-pulse) * 22px) hsl(280 95% 65% / .35), inset 0 0 35px hsl(210 100% 65% / .18); pointer-events: none; }
 .ff-dance-glow { position: absolute; bottom: 0; width: min(46vw, 520px); aspect-ratio: 4 / 1; border-radius: 50%; background: radial-gradient(closest-side, hsl(290 100% 70% / calc(.22 + var(--ff-stage-pulse) * .35)), transparent); pointer-events: none; }
-/* The WebM frame has wide margins around the sprite (feet ~30% above its bottom), hence the extra
-   scale and the drop that puts her feet on the floor line. */
+/* WebM 画面在精灵四周留白较宽，脚部约在底边上方 30%，因此额外放大并下移以对齐地面线。 */
 .ff-dance-avatar { position: relative; z-index: 1; height: min(100%, 62vh); aspect-ratio: 1; scale: 1.6; translate: 0 48%; transform-origin: 50% 100%; pointer-events: none; }
 .ff-dance-avatar.dancing { translate: 0 calc(48% - var(--ff-stage-pulse) * 18px); }
 .ff-dance-avatar.miss { animation: ff-dance-shake .3s; }

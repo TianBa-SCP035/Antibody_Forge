@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     labillion_username: str = ""
     labillion_password: str = ""
     labillion_platform_id: str = ""
-    # 外部系统回调校验：留空不校验；令牌走请求头 X-Callback-Token，IP 用英文逗号分隔
+    # 外部系统回调校验留空即关闭；令牌使用请求头 X-Callback-Token，IP 用英文逗号分隔。
     labillion_callback_token: str = ""
     labillion_callback_ips: str = ""
     order_sync_token: str = ""

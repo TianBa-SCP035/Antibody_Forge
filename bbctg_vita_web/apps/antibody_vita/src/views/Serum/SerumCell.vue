@@ -813,7 +813,7 @@ export default {
   background: var(--el-bg-color);
 }
 
-/* Page-local small tag semantics: Element UI mini ~= Element Plus small. */
+/* 当前页面用 Element Plus small 对齐 Element UI mini 的标签尺寸。 */
 .app-container :deep(.el-tag--small) {
   height: 20px;
   padding: 0 5px;

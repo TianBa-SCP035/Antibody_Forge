@@ -14,7 +14,7 @@ class Base(DeclarativeBase):
 
 
 class AuditedSession(Session):
-    """Primary-database session; audit listeners are scoped to this subclass."""
+    """主数据库会话；审计监听器仅作用于此子类。"""
 
 
 _SKIP_SANITIZE_TABLES = frozenset({

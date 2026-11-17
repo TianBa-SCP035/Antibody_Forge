@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
-from core.errors import NotFoundError
+from core.errors import ConflictError, NotFoundError
 from integrations import drm_service
 from models.discovery import DiscoveryWorkbench
 from models.molecular_cell import (
@@ -88,6 +88,7 @@ from utils.batch_save import (
     parse_batch_items,
 )
 from utils.clock import now_local, today_local
+from utils.codes import is_duplicate_key
 from utils.filter_values import (
     DEFAULT_RECORDED_TARGET_LIMIT,
     filter_terms,
@@ -123,6 +124,7 @@ from utils.uploads import read_limited, upload_filename
 from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_OPTIONS
 
 MISSING_ROW = "文库构建工单不存在"
+LIBRARY_CODE_CONFLICT = "建库编号已被其他工单使用，请刷新后重试"
 MISSING_FILE = "结果文件不存在"
 MISSING_DISCOVERY = "发现工作台记录不存在"
 MISSING_CATALOG = "引物或Index字典记录不存在"
@@ -446,7 +448,7 @@ def _next_library_order_id(db: Session) -> str:
     raise ValueError("无法分配文库工单号")
 
 
-# 这些列有选项、联动或字典关联，在 _apply_fields 里单独处理；其余列按模型列类型清洗
+# 这些列涉及选项、联动或字典关联，由 _apply_fields 单独处理；其余列按模型列类型清洗。
 CUSTOM_FIELDS = frozenset({
     "build_type",
     "status",
@@ -819,7 +821,7 @@ def _advance_order_status(
     *,
     status_chosen: bool = False,
 ) -> None:
-    """按当前实验事实辅助刷新；当次手工选择及终态不覆盖。"""
+    """质检结论优先；无结论时，自动推导不覆盖当次手工选择、已完成或质检失败状态。"""
     if row.status == STATUS_CANCELLED:
         return
     if row.qc_result == QC_FAIL:
@@ -1017,7 +1019,6 @@ HEADER_COLUMNS = header_columns(
     source_experiment_type=HeaderColumn(_L.source_experiment_type, order=PHAGE_EXPERIMENT_TYPES),
     qc_result=HeaderColumn(_L.qc_result, order=QC_RESULT_OPTIONS),
 )
-# 这几列存的是代码，取值列表附上中文名
 _VALUE_LABELS = {
     "build_type": BUILD_TYPE_LABELS,
     "sample_source": SAMPLE_SOURCE_LABELS,
@@ -1161,7 +1162,7 @@ def get_options(db: Session) -> dict[str, list[str]]:
         "qc_results": list(QC_RESULT_OPTIONS),
         "cell_types": list(CELL_TYPE_OPTIONS),
         "mouse_strains": list(MOUSE_STRAIN_OPTIONS),
-        # 人员下拉没输关键字时先列出文库里出现过的人，输入后再查全部在职人员
+        # 人员下拉未输入关键字时先列出文库工单中的人员，输入后再查询全部在职人员。
         "people": sorted(people),
     }
 
@@ -1223,6 +1224,16 @@ def _ensure_unique_library_codes(
         raise ValueError(f"建库编号 {'、'.join(taken)} 已存在")
 
 
+def _flush_library_codes(db: Session) -> None:
+    """查重到写入之间别人可能抢先保存同一编号，由唯一键兜底。"""
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        if is_duplicate_key(exc) and "library_code" in str(exc.orig):
+            raise ConflictError(LIBRARY_CODE_CONFLICT) from exc
+        raise
+
+
 def save(
     db: Session,
     data: dict[str, Any],
@@ -1264,6 +1275,7 @@ def save(
         if "library_code" in payload:
             _ensure_unique_library_codes(db, [(row_id, payload.get("library_code"))])
     _apply_fields(db, row, payload)
+    _flush_library_codes(db)
     db.commit()
     db.refresh(row)
     return row.to_dict()
@@ -1306,6 +1318,17 @@ def batch_save(db: Session, items: list[dict[str, Any]]) -> dict[str, Any]:
             if "library_code" in payload
         ],
     )
+    recoded = [
+        rows_by_id[row_id]
+        for row_id, payload, _expected in payloads
+        if "library_code" in payload
+        and rows_by_id[row_id].library_code != _normalize_library_code(payload.get("library_code"))
+    ]
+    if len(recoded) > 1:
+        # 唯一键逐行检查，互换编号时要先腾出旧编号
+        for row in recoded:
+            row.library_code = None
+        db.flush()
     rows = []
     for row_id, payload, _expected in payloads:
         row = rows_by_id[row_id]
@@ -1314,6 +1337,7 @@ def batch_save(db: Session, items: list[dict[str, Any]]) -> dict[str, Any]:
         except ValueError as exc:
             raise ValueError(f"{row.library_order_id}：{exc}") from exc
         rows.append(row)
+    _flush_library_codes(db)
     db.commit()
     for row in rows:
         db.refresh(row)
@@ -2248,7 +2272,6 @@ def _merge_preflight_summary(
     actual: list[dict[str, Any]],
     preliminary: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """把未上传项和预检告警并入真实上传结果。"""
     by_key = {
         item.get("group_id") or item["name"]: item
         for item in actual
@@ -2517,7 +2540,7 @@ def _store_package(
         entry["role"] = role
         prepared.append(entry)
         if current_order is not None:
-            # 质检页：整包挂当前工单，只关联编号属于当前工单的测序文件
+            # 质检页将整包归入当前工单，但只关联编号属于当前工单的测序文件。
             if role != ROLE_READ:
                 continue
             targets, _reason = _upload_targets(db, role, entry["filename"])
@@ -3261,11 +3284,11 @@ def create_thumbnail(
 
 
 def read_trace_preview(file_path: Path) -> dict[str, Any]:
-    """读取 ABI/AB1 峰图，返回给前端绘制所需的结构化数据。"""
     try:
         from Bio import SeqIO
 
-        record = SeqIO.read(file_path, "abi")
+        with file_path.open("rb") as handle:
+            record = SeqIO.read(handle, "abi")
         raw = record.annotations["abif_raw"]
         order_value = raw.get("FWO_1", b"GATC")
         order = (

@@ -2,7 +2,7 @@ import { fetchUserOptions } from '#/api/options';
 
 const cache = new Map<string, string[]>();
 const inflight = new Map<string, Promise<string[]>>();
-// 粘贴校验要拿到全部在职人员（现约 2200 人），下拉只给 VxeSelect（自带虚拟滚动）用。
+// 粘贴校验需加载全部在职人员；完整名单仅供支持虚拟滚动的 VxeSelect 使用。
 const ALL_USERS_LIMIT = 5000;
 
 function uniqueNames(values: Array<string | null | undefined>) {

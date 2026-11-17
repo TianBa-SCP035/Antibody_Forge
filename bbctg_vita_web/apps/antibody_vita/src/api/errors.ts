@@ -120,7 +120,7 @@ export function resolveUserMessage(
   if (extracted.isNetworkError) {
     return { level: 'error', message: '网络异常，请检查连接' };
   }
-  // 后端统一响应体（带数字 code）里的 403/404 文案是写给用户的；框架默认的 {"detail": "Not Found"} 不是
+  // 仅展示后端统一响应体中带数字 code 的 403/404 文案；不展示框架默认的 {"detail": "Not Found"}。
   if (
     (extracted.httpStatus === 403 || extracted.httpStatus === 404) &&
     extracted.businessCode !== undefined &&
@@ -197,7 +197,7 @@ export function toastApiError(err: unknown, vbenFallbackMsg = '') {
   if (err && typeof err === 'object' && handledErrorObjects.has(err)) {
     return;
   }
-  // 延后一个宏任务：保证业务 catch 里的 notifyApiError 先标记 handled，再决定是否弹全局 toast
+  // 延后一个宏任务，等待业务 catch 通过 notifyApiError 标记 handled 后再决定是否弹全局提示。
   setTimeout(() => {
     if (err && typeof err === 'object') {
       if (handledErrorObjects.has(err)) return;

@@ -112,12 +112,12 @@ def _is_qc_conclusion_only(payload: dict) -> bool:
 def _require_save(context: UserContext, qc_conclusion_only: bool) -> None:
     """只改已有工单的质检结论时，文库编辑或质检管理任一即可，日志记为质检操作；其余改动要文库编辑权限。"""
     if qc_conclusion_only:
+        use_audit_action(FILE_PERMISSION)
         if not context.allows(EDIT_PERMISSION, FILE_PERMISSION):
             raise permission_denied(EDIT_PERMISSION)
-        use_audit_action(FILE_PERMISSION)
     else:
-        context.require(EDIT_PERMISSION)
         use_audit_action(EDIT_PERMISSION)
+        context.require(EDIT_PERMISSION)
 
 
 @router.get("/options", dependencies=[require(PAGE_PERMISSION, DETAIL_PERMISSION)])

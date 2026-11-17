@@ -1,18 +1,19 @@
 # Antibody Forge 文档
 
-本目录是**对内文档入口**。根目录 [README.md](../README.md) 只做 GitHub 对外介绍，不写业务现状与运维细节。
+本目录是**项目文档入口**。产品介绍与能力范围见根目录 [README.md](../README.md)；本页维护文档索引、开发约定和待建设事项。
 
 | 文档 | 内容 |
 |------|------|
-| **本文** | 业务现状、模块状态、开发计划 |
-| [overview.md](./overview.md) | 仓库地图、已落地路由、设计要点、定时任务 |
+| **本文** | 文档索引、开发约定、待建设事项 |
+| [overview.md](./overview.md) | 仓库地图、当前路由、设计要点、快速启动 |
 | [auth-permissions.md](./auth-permissions.md) | 认证、RBAC、功能开关、血清归属 |
-| [backend-structure.md](./backend-structure.md) | 后端目录、API 前缀、响应与错误约定 |
+| [backend-structure.md](./backend-structure.md) | 后端目录、路由注册、测试、响应与错误约定 |
 | [deploy.md](./deploy.md) | 环境与端口、配置、启动、Nginx、DRM、验收 |
+| [fatfish.md](./fatfish.md) | 桌宠「大肥鱼」：前端模块、本机代理接口、能力与安全边界 |
 | [vita-database.sql](./vita-database.sql) | 主库 DDL + 示例权限包和角色（空库执行一次） |
 | [modules/](./modules/) | 各业务模块详细说明（按模块分子目录），见下表 |
 
-`overview` / `auth-permissions` / `backend-structure` / `deploy` 只写**当前已实现**的行为；路线图只在本文维护。
+`overview` / `auth-permissions` / `backend-structure` / `deploy` 只写当前行为；待建设事项集中在本文末尾。
 
 **文档分层**：根目录文档 = 全景与运维概要；`modules/` = 已成型模块的详细设计。
 
@@ -31,7 +32,7 @@
 | 效价 → 流式工单 | [modules/mega-automation/titer-upstream-flow.md](./modules/mega-automation/titer-upstream-flow.md) |
 | 工单数据回传接口（对外协议） | [modules/mega-automation/order-experiment-sync-api.md](./modules/mega-automation/order-experiment-sync-api.md) |
 
-免疫实验列表、效价数据、效价实验列表、细胞库存暂无独立模块文档，路由与接口见 [overview.md](./overview.md)，权限见 [auth-permissions.md](./auth-permissions.md)。
+免疫实验列表、效价数据、效价实验列表、细胞库存暂无独立模块文档，路由前缀见 [overview.md](./overview.md)，权限见 [auth-permissions.md](./auth-permissions.md)。
 
 代码：`bbctg_vita_server/` 后端 · `bbctg_vita_web/apps/antibody_vita/` 前端 · `config/` 环境配置 · `repository/` 运行时文件。
 
@@ -43,10 +44,31 @@
 
 - **最小有效改动**：只解决当前需求，不顺手重构无关模块，不扩大 diff。
 - **拒绝幽灵代码**：不提交未使用的函数/变量、大段注释掉的旧逻辑、仅为「以后可能用到」的占位实现；临时调试代码不入库。
-- **不为未开工功能建壳**：空菜单、空路由、空表、假数据接口等一律不做（路线图见下文「开发计划」）。
+- **不为未开工功能建壳**：空菜单、空路由、空表、假数据接口等一律不做（路线图见下文「待建设事项」）。
 - **单一数据源**：同一业务事实只存一处；跨模块用已有主键关联，避免双写与「两边各改一半」。
 - **分层清晰**：业务规则放 service / 领域模块；路由与页面只做参数、权限与展示；对外集成（如 Labillion）独立在 `integrations/`。
-- **权限与审计**：新增写接口须显式鉴权，并按 [auth-permissions.md](./auth-permissions.md) §6 在路由上声明操作名（`require(..., audit=)`、`audit()` 或 `audit_quiet()`）；主库 ORM 写入自动记操作日志。新模块可先设路由查看权限和全部编辑权限，只加权限点，不改现网角色、权限包及其绑定。
+- **权限与审计**：新增写接口须显式鉴权，并按 [auth-permissions.md「操作审计」](./auth-permissions.md#6-操作审计) 在路由上声明操作名（`require(..., audit=)`、`audit()` 或 `audit_quiet()`）；主库 ORM 写入自动记操作日志。新模块可先设路由查看权限和全部编辑权限，只加权限点，不改现网角色、权限包及其绑定。
+- **测试**：后端与前端测试目录、命名、公共基类和执行命令统一见 [backend-structure.md「测试」](./backend-structure.md#测试)。
+- **新模块**：按 [modules/workbench.md「新模块全栈接入清单」](./modules/workbench.md#新模块全栈接入清单) 接入，照参照模块（发现工作台）写，不另起一套结构。
+
+### 注释
+
+- **中文、短句**：注释和 docstring 用中文完整短句；标识符、字段名、权限码、状态值按代码原样写。
+- **只写代码表达不了的**：外部接口的特殊行为、加锁和事务顺序、看似多余的判断为什么要有、业务规则的口径。不复述下一行在做什么，不加没有内容的分节标题。
+- **不写修改经过**：不写「改为」「修复」「新增」「原来」、日期、需求人，这些写进提交说明。
+- **不留旧代码**：不提交注释掉的代码和已经完成的 TODO。
+- **随代码一起改**：改行为时同步改相关注释。发现注释和代码不一致时，按代码修正注释；怀疑是代码错了，单独确认后再改代码。
+- **前端同样适用**：包括 JSDoc、模板 `<!-- -->` 和样式注释；公共组件对外的 props、事件和方法写 JSDoc。`/* theme-ok */` 这类工具标记保留。
+
+### 文字风格
+
+界面提示和后端业务报错按下面写；文档按正常中文书写，同样用全角标点，引用界面文字时用「」：
+
+- **中文、全角标点，句末不加句号**；一句以上用「，」「；」连接。
+- **用界面上的叫法**：字段、状态、按钮用页面显示的中文名，不出现英文、异常类名、SQL 或内部字段名；引用具体值或字段时用「」，如「不支持按「{field}」表头筛选」。
+- **报错先说原因，能给下一步就接在后面**：如「工单已完成，不能再改实验状态；需要重新检测请先打回待检测」。常用句式「X不能为空」「X不存在」「仅…可以…」「请先…」。
+- **成功提示简短**：「已保存」「X已保存」。
+- **后端报错要能直接给用户看**：页面配置的操作级文案优先，没有配置时显示后端 `message`，分层见 [backend-structure.md「前端错误分层」](./backend-structure.md#前端错误分层l0l3)。
 
 ### 前端颜色
 
@@ -73,7 +95,7 @@
 
 ### 接口
 
-- **沿用统一约定**：新接口对齐 [backend-structure.md](./backend-structure.md)——路由前缀与模块目录对应、响应 `{ code, data }` / 业务错误 `{ code: 1, message }`、HTTP 状态与 `BusinessError` 用法、写操作权限与审计登记。
+- **沿用统一约定**：新接口对齐 [backend-structure.md](./backend-structure.md)——路由前缀与模块目录对应、响应 `{ code, data }` / 业务错误 `{ code: 1, message, data: null }`、HTTP 状态与 `BusinessError` 用法、写操作权限与审计登记。
 - **前后端同步**：改后端路径或请求/响应字段时，同步改前端 API 客户端（如 `api/*.ts`）与类型，避免页面内散落裸 URL 或重复封装。
 - **对外/设备接口**：特殊格式（如 `order-experiment/sync` multipart）在模块文档或 `backend-structure.md` 中说明，不单独搞一套无文档约定。
 
@@ -81,7 +103,8 @@
 
 - **代码与文档同步提交**：行为、字段、状态机、对外协议或权限有变时，同一 PR / 提交内更新对应文档，不留「代码已改、文档待补」。
 - **写到哪里**：表结构 → `vita-database.sql`；全景与路由 → `overview.md`；权限/功能开关 → `auth-permissions.md`；后端约定 → `backend-structure.md`；部署与环境变量 → `deploy.md`；单模块详述 → `modules/<模块>/`。
-- **只写已实现**：`overview` 等概要文档描述当前行为；规划与菜单蓝图**仅在本 README「开发计划」**维护，不在多处重复写「将来可能」。
+- **只写已实现**：`overview` 等概要文档描述当前行为；规划与菜单蓝图**仅在本 README「待建设事项」**维护，不在多处重复写「将来可能」。
+- **不写修改经过**：文档描述现在是什么样，不写「已修复」「新增了」「之前是」、版本演变和进度。历史截止日期等边界会影响当前逻辑时，直接写当前规则和边界值。
 - **简洁直述**：句子短、结构清楚；同一事实不在多篇文档间来回复制——模块内细节一篇为主，跨模块边界文首互链即可（参考 `modules/mega-automation/` 两篇分工）。
 
 ### 协作
@@ -90,109 +113,12 @@
 - **提交说明**：写清「为什么改」；涉及对外集成、**已有库表结构变更**或数据迁移时，在描述中注明需手动执行的 SQL 与配置项（DDL 主文件仍只更新 `vita-database.sql` 当前态）。
 - **Review 关注点**：除功能外，看是否引入双写、幽灵代码、文档遗漏、权限/审计漏登记。
 
----
+## 待建设事项
 
-## 业务概览
+后续计划只记录尚未实现的工作，不预建空菜单、空路由或占位表：
 
-业务架构沿用上文「开发约定」中的垂直切片与单一数据源；需设备执行的环节统一走「工单 + 下发快照 + 回传核对」（镁伽流式工单已落地）。
-
-### 模块与现状
-
-| 模块 | 状态 | 说明 |
-|------|------|------|
-| 千鼠万抗 · 靶点库 | 已上线 | 本地靶点主数据搜索、快速预览与完整档案 |
-| 项目工作台 | 已上线 | 开做前准备；草稿号 `SCP-YYYYMMDD-HHMMSS-XXXX`，开展后写入免疫实验列表 |
-| 免疫实验列表 | 已上线 | 项目维护、方案导出、笼位与状态 |
-| 效价数据 / 效价实验列表 | 已上线 | FACS、ELISA、附件；效价工单 |
-| 效价 → 镁伽流式工单 | 已上线 | 「工单」入口：选鼠向导、样本板预填、`source_id` 关联 |
-| 抗体发现 · 项目工作台 | 已上线 | 剖鼠取细胞与筛选安排；独立表；工作台 / Excel |
-| 抗体发现 · 合成与验证 | 已上线 | 序列送合成订单、到货、流式与亲和力初筛验证及序列改造跟踪；One 库同步 |
-| 效价 → 发现工作台（「测序」按钮） | 已上线 | 选鼠向导 → 效价简要说明快照 → 新建一条发现安排 |
-| 发现 → 文库构建（「交接」） | 已上线 | 核对取样日与阳性细胞数 → 按类型新建建库工单 |
-| 分子与细胞 · 文库构建 | 已上线 | 统一建库工单；胶图与质检文件；无项目工作台 |
-| 分子与细胞 · 引物库 | 已上线 | 引物主数据维护与导入导出；建库测序引物核对的数据来源 |
-| 镁伽流式工单 | 已上线 | 编辑、校验、铺板、Payload 下发；Labillion 推送/回调/状态查询 |
-| 工单数据回传 | 接收已上线 | `POST /api/order-experiment/sync`；业务解析入库待做 |
-| 单细胞筛选 / 噬菌体展示 | 规划中 | 筛选与发现子路线 |
-| 测序分析 | 规划中 | 正式 NGS、Sanger、序列分析 |
-| 分子与细胞其余子模块 / 抗体评价 | 规划中 | 质粒、表达、纯化、评价 |
-| 系统管理 / 认证 | 已上线 | RBAC、审计、云之家登录 |
-
-### 流程与数据关联（简）
-
-```text
-serum_imm_workbench（草稿 experiment_id=SCP-YYYYMMDD-HHMMSS-XXXX）
-  → 开展后写入 serum_imm_project（正式 experiment_id）
-  → titer_order_id（效价工单）
-  → 流式工单 source_id + orderType=TITER
-  → dispatchId（镁伽下发，设备回传匹配）
-  → 效价「测序」下发拷贝 → discovery_workbench（discovery_id）
-  → 发现「交接」快照 → molecular_library_order（source_discovery_id）
-```
-
-字段与交互细节见 [modules/workbench.md](./modules/workbench.md)、[modules/immunology/workbench.md](./modules/immunology/workbench.md)、[modules/discovery/workbench.md](./modules/discovery/workbench.md)、[modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)、[modules/mega-automation/titer-upstream-flow.md](./modules/mega-automation/titer-upstream-flow.md)、[modules/mega-automation/flow-work-order.md](./modules/mega-automation/flow-work-order.md)。
-
----
-
-## 开发计划
-
-按实验流程推进；不为未开工模块预先建空菜单或占位表。当前已落地路由见 [overview.md](./overview.md)，下表是目标信息架构，条目随实现逐步补齐。
-
-### 推进顺序
-
-1. **千鼠万抗** — 靶点库已落地；下一步建设免疫与小鼠计划、发现订单和路线编排
-2. **抗体发现工作台** — 工作台 / Excel 与效价「测序」下发已落地
-3. **文库构建** — 发现交接与建库工单已落地
-4. **筛选路线执行** — 在发现工作台上择一条主路线（单细胞或噬菌体）做透
-5. **测序分析** — 与所选路线配套的正式 NGS / Sanger
-6. **回传业务入库** — `order_sync` 核对快照后写入效价等业务表
-7. **分子与细胞其余子模块 → 抗体评价** — 随上游产出逐步展开
-
-### 目标菜单结构（规划）
-
-```text
-首页
-
-千鼠万抗
-├─ 靶点库（已上线）
-├─ 免疫与小鼠计划
-└─ 发现订单
-
-小鼠免疫
-├─ 项目工作台（已上线）
-├─ 免疫实验列表
-└─ 效价实验列表
-
-抗体发现
-├─ 项目工作台（已上线）
-└─ 合成与验证（已上线）
-
-分子与细胞
-├─ 引物库（已上线）
-├─ 文库构建（已上线）
-├─ 质粒构建
-├─ 质粒制备
-├─ 细胞制备
-├─ 细胞转染
-├─ 抗体表达
-└─ 抗体纯化
-
-筛选与发现
-├─ 单B细胞筛选
-└─ 噬菌体展示筛选
-
-测序分析
-├─ Sanger测序列表
-├─ NGS测序列表
-└─ 序列分析
-
-抗体评价
-├─ 结合检测
-├─ 分子互作
-├─ 功能评价
-└─ 成药性评价
-
-模组自动化
-
-系统管理
-```
+1. 建设千鼠万抗的免疫与小鼠计划、发现订单和路线编排。
+2. 在单 B 细胞筛选或噬菌体展示中选择一条主路线，打通筛选执行。
+3. 建设与筛选路线配套的 Sanger / NGS 测序和序列分析。
+4. 在核对回传快照后，将 `order_sync` 数据写入对应业务表。
+5. 随上游产出建设质粒构建、细胞制备与转染、表达、纯化与抗体评价模块（现有细胞库存为外部只读查询，不在此列）。

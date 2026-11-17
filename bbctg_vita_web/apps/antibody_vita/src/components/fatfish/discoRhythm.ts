@@ -1,22 +1,19 @@
-/** Classic dance-game rounds laid on the song's own bar grid: type the arrow row, then hit Space as
- * the cursor reaches the beat point. The last round of each phrase ends with a held Space through
- * the phrase's closing bar.
- * Tempo, phase and phrase ends were measured from the bundled track (onset autocorrelation and per-bar
- * energy), so beat points land on the music. Every judgement reads the SAME media currentTime. */
+/** 节奏回合按歌曲小节网格排列：依次输入方向键，光标到达节拍点时按空格；每个乐句的最后一回合需按住空格直到结束小节。
+ * 速度、相位和乐句终点根据内置音轨测得，所有判定必须读取同一个媒体 currentTime。 */
 export const RHYTHM_BPM = 129.7;
 export const BEAT_SECONDS = 60 / RHYTHM_BPM;
 export const BAR_SECONDS = BEAT_SECONDS * 4;
 export const FULL_TRACK_SECONDS = 187.402;
-/** First bar line: the first beat is heard at 0.176s and bar lines fall on its fourth beat. */
+/** 第一条小节线：首拍出现在 0.176 秒，小节线落在其第四拍。 */
 export const FIRST_BAR_SECONDS = 0.176 + 3 * BEAT_SECONDS;
-/** Grid origin for the page dance: one bar before the first bar line, so beat 0 of every four is a downbeat. */
+/** 页面舞动网格从第一条小节线前一小节开始，使每四拍的第 0 拍为强拍。 */
 export const BEAT_OFFSET_SECONDS = FIRST_BAR_SECONDS - BAR_SECONDS;
-/** Bars (counted from FIRST_BAR_SECONDS) that close a phrase: the energy drops and the song breathes. */
+/** 从 FIRST_BAR_SECONDS 起计数的乐句收尾小节。 */
 const PHRASE_ENDS = [8, 16, 24, 32, 40, 43, 51, 59, 67, 75, 83, 99];
-/** Song sections by bar, used for difficulty and the stage label. */
+/** 按小节划分的歌曲段落，用于难度和舞台标签。 */
 const SECTION_STARTS = [1, 25, 44, 68];
 export const SECTION_NAMES = ['前奏', '主歌', '推进', '高潮'] as const;
-/** Arrows per row by section: two-bar rows, and the one-bar row before a phrase's held Space. */
+/** 各段落每组的方向键数量；普通组跨两小节，乐句长按前的一组跨一小节。 */
 const ROW_ARROWS = [3, 4, 5, 6];
 const SHORT_ROW_ARROWS = [2, 3, 3, 4];
 
@@ -24,20 +21,20 @@ export const ARROWS = ['ArrowLeft', 'ArrowUp', 'ArrowDown', 'ArrowRight'] as con
 export type Arrow = typeof ARROWS[number];
 export type RhythmKey = Arrow | 'Space';
 export type Verdict = 'Perfect' | 'Great' | 'Good' | 'Bad' | 'Miss';
-/** Seconds from the beat point; anything later than Bad is a Miss. */
+/** 相对节拍点的秒数窗口；超过 Bad 窗口即为 Miss。 */
 export const WINDOWS = { Perfect: 0.05, Great: 0.1, Good: 0.15, Bad: 0.22 } as const;
-/** A hold released this close to its end still counts as held. */
+/** 在结束前此时间范围内松开仍算完成长按。 */
 export const HOLD_RELEASE_GRACE = WINDOWS.Good;
 const POINTS: Record<Verdict, number> = { Perfect: 1000, Great: 700, Good: 400, Bad: 150, Miss: 0 };
 const HOLD_BONUS = 400;
 
 export interface RhythmRound {
   id: number;
-  /** Row appears and typing opens (a bar line). */
+  /** 本组出现并允许输入的时间点，即一条小节线。 */
   start: number;
-  /** Beat point for Space (the next bar line). */
+  /** 按空格的节拍点，即下一条小节线。 */
   hit: number;
-  /** For a held round: Space must stay down until this bar line. */
+  /** 长按回合中，空格必须保持到此小节线。 */
   hold?: number;
   arrows: Arrow[];
   section: number;
@@ -47,14 +44,14 @@ export interface RoundResult { verdict: Verdict; delta: number; at: number; hold
 export interface RhythmGame {
   rounds: RhythmRound[];
   results: Map<number, RoundResult | 'Skipped'>;
-  /** Correct arrows typed so far in the open round. */
+  /** 当前回合已正确输入的方向键数量。 */
   typed: number;
   score: number; combo: number; maxCombo: number;
   counts: Record<Verdict, number>;
   last: (RoundResult & { round: number; combo: number }) | null;
-  /** Last key press, for the press / wrong flash. */
+  /** 最近一次按键，用于按下和错误闪烁效果。 */
   press: { key: RhythmKey; ok: boolean; at: number } | null;
-  /** Space held on a held round, judged on release or at the hold's end. */
+  /** 长按回合的空格状态，在松开或长按结束时判定。 */
   holding: { round: number; verdict: Verdict; delta: number; at: number } | null;
 }
 
@@ -67,22 +64,21 @@ export function sectionAt(time: number) {
 }
 
 const MIRROR: Record<Arrow, Arrow> = { ArrowLeft: 'ArrowRight', ArrowRight: 'ArrowLeft', ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown' };
-/** Rows repeat with the music: the same slot of every phrase in a section gets the same row,
- * mirrored left/right on alternate phrases. */
+/** 键组随音乐重复：同一段落各乐句的相同位置使用同一组，奇偶乐句左右镜像。 */
 function rowFor(section: number, slot: number, length: number, mirror: boolean): Arrow[] {
   let seed = ((section + 1) * 7919 + (slot + 1) * 104729) >>> 0 || 1;
   const next = () => { seed ^= seed << 13; seed >>>= 0; seed ^= seed >>> 17; seed ^= seed << 5; seed >>>= 0; return seed; };
   const row: Arrow[] = [];
   while (row.length < length) {
     const pick = ARROWS[next() % 4]!;
-    // Never three of the same in a row; it reads as a typo.
+    // 禁止连续三个相同方向，避免看起来像误输入。
     if (row.length >= 2 && row.at(-1) === pick && row.at(-2) === pick) continue;
     row.push(pick);
   }
   return mirror ? row.map((a) => MIRROR[a]) : row;
 }
 
-/** Each phrase is cut into two-bar rows; its last row ends on the closing bar, held to the next phrase. */
+/** 每个乐句按两小节分组；最后一组在收尾小节到点，并长按到下一乐句。 */
 export function buildRhythmChart(duration = FULL_TRACK_SECONDS): RhythmRound[] {
   const rounds: RhythmRound[] = [];
   let first = 1;
@@ -104,7 +100,7 @@ export function buildRhythmChart(duration = FULL_TRACK_SECONDS): RhythmRound[] {
 
 export function createRhythmGame(rounds = buildRhythmChart(), joinAt = 0): RhythmGame {
   const results = new Map<number, RoundResult | 'Skipped'>();
-  // Joining mid-song: a row already showing cannot be read and typed fairly, so it is skipped.
+  // 中途加入时跳过已经显示的键组，避免因来不及阅读和输入而误判。
   if (joinAt > 0) for (const r of rounds) if (r.start < joinAt + 0.5) results.set(r.id, 'Skipped');
   return {
     rounds, results, typed: 0, score: 0, combo: 0, maxCombo: 0,
@@ -112,7 +108,7 @@ export function createRhythmGame(rounds = buildRhythmChart(), joinAt = 0): Rhyth
   };
 }
 
-/** Back on stage mid-song: rows that ran while the stage was folded away are skipped, not missed. */
+/** 歌曲中途返回舞台时，收起期间经过的键组记为跳过而非 Miss。 */
 export function resumeRhythmGame(game: RhythmGame, now: number) {
   releaseSpace(game, now);
   game.typed = 0;
@@ -120,7 +116,7 @@ export function resumeRhythmGame(game: RhythmGame, now: number) {
   return game;
 }
 
-/** Held rounds completed / held rounds played, for the results screen. */
+/** 返回长按完成数和参与数，供结算页显示。 */
 export function holdTally(game: RhythmGame) {
   let done = 0, played = 0;
   for (const r of game.rounds) {
@@ -132,13 +128,13 @@ export function holdTally(game: RhythmGame) {
   return { done, played };
 }
 
-/** The round whose row is on screen: started, not yet judged, and its window not yet closed. */
+/** 返回已开始、未判定且判定窗口尚未关闭的当前回合。 */
 export function openRound(game: RhythmGame, now: number) {
   return game.rounds.find((r) => !game.results.has(r.id) && game.holding?.round !== r.id
     && r.start <= now && now <= r.hit + WINDOWS.Bad);
 }
 
-/** The next round still to be played, for the "get ready" preview. */
+/** 返回下一待玩回合，供准备预览。 */
 export function upcomingRound(game: RhythmGame, now: number, after = -1) {
   return game.rounds.find((r) => r.id > after && !game.results.has(r.id) && game.holding?.round !== r.id
     && now <= r.hit + WINDOWS.Bad);
@@ -162,7 +158,7 @@ function settle(game: RhythmGame, round: RhythmRound, verdict: Verdict, now: num
   return game.last;
 }
 
-/** Rounds whose window closed without a Space become Miss; a hold kept to its end completes. */
+/** 判定窗口关闭前未按空格的回合记为 Miss；保持到终点的长按记为完成。 */
 export function advanceRhythm(game: RhythmGame, now: number) {
   const h = game.holding;
   if (h) {
@@ -180,11 +176,11 @@ export function verdictFor(delta: number): Verdict {
   return d <= WINDOWS.Perfect ? 'Perfect' : d <= WINDOWS.Great ? 'Great' : d <= WINDOWS.Good ? 'Good' : d <= WINDOWS.Bad ? 'Bad' : 'Miss';
 }
 
-/** An arrow either advances the row or, like the original game, clears it so it must be retyped. */
+/** 方向正确时推进，错误时按原游戏规则清空并要求重输。 */
 export function typeArrow(game: RhythmGame, key: Arrow, now: number) {
   advanceRhythm(game, now);
   const round = openRound(game, now);
-  // Between rows or after the row is complete an arrow is simply ignored, never counted as wrong.
+  // 两组之间或本组完成后输入方向键只忽略，不记错。
   if (!round || game.typed >= round.arrows.length) {
     game.press = { key, ok: true, at: now };
     return false;
@@ -195,7 +191,7 @@ export function typeArrow(game: RhythmGame, key: Arrow, now: number) {
   return ok;
 }
 
-/** Space judges the open round; an unfinished row is a Miss. On a held round a good press starts the hold. */
+/** 空格用于判定当前回合；方向键未输完记为 Miss，长按回合命中后进入保持状态。 */
 export function hitSpace(game: RhythmGame, now: number) {
   advanceRhythm(game, now);
   game.press = { key: 'Space', ok: true, at: now };
@@ -203,7 +199,7 @@ export function hitSpace(game: RhythmGame, now: number) {
   const round = openRound(game, now);
   if (!round) return null;
   const delta = now - round.hit;
-  if (delta < -WINDOWS.Bad * 2) return null; // Still typing: a stray Space is ignored, not punished.
+  if (delta < -WINDOWS.Bad * 2) return null; // 仍在输入阶段时，误按空格只忽略而不处罚。
   const verdict = game.typed < round.arrows.length ? 'Miss' : verdictFor(delta);
   game.press.ok = verdict !== 'Miss';
   if (round.hold && verdict !== 'Miss') {
@@ -214,7 +210,7 @@ export function hitSpace(game: RhythmGame, now: number) {
   return settle(game, round, verdict, now, delta);
 }
 
-/** Space released: letting go before the hold ends drops the round to Bad. */
+/** 松开空格时，提前结束长按会把本回合降为 Bad。 */
 export function releaseSpace(game: RhythmGame, now: number) {
   const h = game.holding;
   if (!h) return null;
@@ -237,7 +233,7 @@ export function normalizeRhythmKey(code: string, key = ''): RhythmKey | null {
   return pick(key) ?? pick(code);
 }
 
-/** Only an active mounted stage calls this; idle pages/editors never lose their keys. */
+/** 仅已挂载且激活的舞台接管按键，空闲页面和编辑器不得丢失键盘事件。 */
 export function dispatchRhythmKey(
   event: Pick<KeyboardEvent, 'type' | 'code' | 'key' | 'repeat' | 'preventDefault' | 'stopImmediatePropagation'>,
   active: boolean, editing: boolean, hit: (key: RhythmKey) => void, release: () => void,
@@ -260,8 +256,7 @@ export function sampleDiscoBeat(time: number) {
   return { index, phase, heavy, pulse: Math.pow(Math.max(0, 1 - phase), 3) * (heavy ? 1 : .65) };
 }
 
-/** Each page area dances its own way: the header hops, the side menu sways, the content breathes,
- * the pet jumps highest. */
+/** 页面各区域使用不同舞动幅度：页头跳动、侧栏摇摆、内容呼吸，宠物跳得最高。 */
 export type DanceKind = 'pet' | 'header' | 'aside' | 'main';
 const DANCE: Record<DanceKind, { lift: number; squash: number; sway: number }> = {
   pet: { lift: 25, squash: .035, sway: 0 },
@@ -269,14 +264,14 @@ const DANCE: Record<DanceKind, { lift: number; squash: number; sway: number }> =
   aside: { lift: 5, squash: 0, sway: 1.6 },
   main: { lift: 7, squash: .004, sway: 0 },
 };
-/** Four-beat keyframes; caller pauses the animation and writes currentTime from audio. */
+/** 四拍关键帧；调用方暂停动画，并用音频时间写入 currentTime。 */
 export function discoMotionFrames(kind: DanceKind = 'main', reduced = false): Keyframe[] {
   const { lift, squash, sway } = DANCE[kind];
   const amp = (beat: number) => (reduced ? 1.5 : lift) * (beat % 4 === 0 ? 1.35 : 1);
   const s = reduced ? 0 : squash;
   const frames: Keyframe[] = [];
   for (let beat = 0; beat < 4; beat++) {
-    // Peak on the beat, just like sampleDiscoBeat(); decay, settle, then a short lead into the next kick.
+    // 峰值与 sampleDiscoBeat() 同样落在拍点，随后衰减、稳定，并短暂引向下一拍。
     const side = beat % 2 === 0 ? -1 : 1;
     const points = [
       { p: 0, e: 1, a: amp(beat), side },
@@ -298,7 +293,7 @@ export function discoMotionFrames(kind: DanceKind = 'main', reduced = false): Ke
   return frames;
 }
 
-/** Corner lights: a flash on every beat, brightest on the bar's first beat. */
+/** 角落灯光每拍闪烁，小节首拍最亮。 */
 export function discoLightFrames(reduced = false): Keyframe[] {
   const frames: Keyframe[] = [];
   for (let beat = 0; beat < 4; beat++) {

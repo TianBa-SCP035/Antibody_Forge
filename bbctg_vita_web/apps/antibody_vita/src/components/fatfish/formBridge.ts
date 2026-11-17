@@ -1,11 +1,9 @@
 /**
- * Read and fill Element Plus forms/tables on the current page through the controls' own
- * v-model handlers, so selects, user pickers, date pickers and table cells behave exactly as if
- * the user had picked the value (page @change side effects included). Never clicks submit/save;
- * on auto-save pages the page itself persists the change, which is why those are flagged.
+ * 通过控件自身的 v-model 处理器读取并填写当前页 Element Plus 表单和表格，使下拉框、人员选择器、
+ * 日期选择器和表格单元格与用户手动选择时行为一致，包括页面 @change 副作用。
+ * 本模块绝不点击提交或保存；自动保存页面会自行持久化改动，因此必须单独标记。
  *
- * Production Vue builds don't put `__vueParentComponent` on elements, so the element → owner
- * component map is rebuilt from the app root vnode on every scan.
+ * 生产环境 Vue 不会在元素上保留 __vueParentComponent，因此每次扫描都从应用根 vnode 重建元素到所属组件的映射。
  */
 
 import { isSecretInput, maskContacts, PRIVATE_NAME } from './pageContext';
@@ -29,7 +27,7 @@ type Control = {
   options?: Option[];
   allowCreate?: boolean;
   multiple?: boolean;
-  /** Remote-search select: it only holds the options of its last search, so a value has to be searched first. */
+  /** 远程搜索下拉框只保留最近一次搜索结果，因此必须先搜索目标值。 */
   remote?: (query: string) => unknown;
   disabled: boolean;
 };
@@ -45,7 +43,7 @@ export type FormFieldInfo = {
 export type TableInfo = {
   title: string;
   columns: string[];
-  /** rows[r][c] — null when the cell has no editable control */
+  /** rows[r][c] 表示单元格控件；无可编辑控件时为 null。 */
   cells: Array<Array<{ control: Control; value: string } | null>>;
   addButton: HTMLElement | null;
   tabHeader: HTMLElement | null;
@@ -54,9 +52,9 @@ export type TableInfo = {
 export type PageForm = {
   fields: FormFieldInfo[];
   tables: TableInfo[];
-  /** Label of the page's own save/submit button; null means edits may take effect immediately. */
+  /** 页面自身保存或提交按钮的标签；null 表示修改可能立即生效。 */
   saveButton: string | null;
-  /** The page saves by itself shortly after a change; applied fills reach the server without a click. */
+  /** 页面会在修改后自动保存，应用填写内容后无需点击即可写入服务端。 */
   autoSave: boolean;
 };
 
@@ -65,8 +63,6 @@ export type ResolvedFill = FillTarget & { value: string; reason?: string; displa
 
 const LEAF_SELECTOR =
   'input, textarea, .el-select__wrapper, .el-select, .el-switch, .el-radio, .el-checkbox, .el-input-number, .el-date-editor, .el-cascader';
-
-// ---------------- vnode → owner map ----------------
 
 function rootVNodes(): any[] {
   const hosts = new Set<Element>();
@@ -115,8 +111,6 @@ function ownerOf(el: Element | null): any {
   return null;
 }
 
-// ---------------- controls ----------------
-
 function text(v: unknown) {
   return v == null ? '' : String(v).trim();
 }
@@ -143,7 +137,7 @@ function selectStates(inst: any) {
   return st && (st.options instanceof Map || st.cachedOptions instanceof Map) ? st : null;
 }
 
-/** `includeSelf`: the container is the control's own root element (loose controls outside form items). */
+/** includeSelf 表示容器本身就是控件根元素，用于表单项外的独立控件。 */
 function readControl(container: HTMLElement, includeSelf = false): Control {
   const tops = new Set<any>();
   let select: any = null;
@@ -166,12 +160,11 @@ function readControl(container: HTMLElement, includeSelf = false): Control {
     return { kind: tops.size ? 'custom' : 'readonly', inst: null, disabled: true };
   }
   const inst = [...tops][0];
-  // Passwords are neither read (they'd go to the models) nor filled.
+  // 密码既不读取也不填写，避免其进入模型。
   if (inst.props?.type === 'password' || inst.props?.showPassword || leaves.some((l) => isSecretInput(l))) {
     return { kind: 'readonly', inst: null, disabled: true };
   }
-  // A bound `loading` prop on a switch is the instant-save pattern (feature toggles that call the API on change).
-  // Selects are excluded: remote-search selects bind `loading` for their option fetch.
+  // 开关绑定 loading 通常表示修改即保存；下拉框除外，因为远程搜索也会用 loading 表示选项加载。
   const instantSave = !select && !!container.querySelector('.el-switch') && 'loading' in vnodeProps(inst);
   const disabled =
     lockedByPage || instantSave || !!inst.props?.disabled || !!inst.props?.readonly || !!select?.props?.disabled;
@@ -194,7 +187,7 @@ function readControl(container: HTMLElement, includeSelf = false): Control {
       disabled,
     };
   }
-  // Time pickers share the date editor's class but take times, which the date conversion would get wrong.
+  // 时间选择器与日期编辑器共用类名，但日期转换会错误处理其值，因此不自动填写。
   if (container.querySelector('.el-date-editor--time, .el-date-editor--timerange')) return { kind: 'custom', inst: null, disabled: true };
   if (container.querySelector('.el-date-editor')) return { kind: 'date', inst, disabled };
   if (container.querySelector('.el-input-number')) return { kind: 'number', inst, disabled };
@@ -232,8 +225,6 @@ function displayValue(c: Control): string {
   return one(v);
 }
 
-// ---------------- scanning ----------------
-
 function formRoot(): ParentNode {
   const overlays = Array.from(document.querySelectorAll('.el-dialog, .el-drawer')).filter(displayed);
   return (overlays[overlays.length - 1] as HTMLElement | undefined) || document;
@@ -242,8 +233,7 @@ function formRoot(): ParentNode {
 const HEADISH = /(^|[-_\s])(head|header|title|toolbar|bar)([-_\s]|$)/i;
 
 /**
- * Section header for a table: the el-card header, or the nearest header-like block that precedes the
- * table inside one of its ancestors (e.g. `<section><div class="panel-head">…</div><el-table/></section>`).
+ * 表格分区标题取 el-card 头部，或祖先容器内位于表格之前且最近的标题类块。
  */
 function sectionHeader(table: Element): HTMLElement | null {
   const cardHead = table.closest('.el-card')?.querySelector(':scope > .el-card__header') as HTMLElement | null;
@@ -275,7 +265,7 @@ function tabFor(table: Element): { label: string; header: HTMLElement | null } {
   return { label: text(header?.innerText), header };
 }
 
-/** What the user would call a table: its card / section heading plus the tab it sits in. */
+/** 表格的用户可识别名称由卡片或分区标题与所在标签页组成。 */
 export function tableTitleOf(table: Element, head: HTMLElement | null = sectionHeader(table)): string {
   const tab = tabFor(table);
   const headTitle = headerText(head);
@@ -299,7 +289,7 @@ function tableVisible(table: Element) {
   return !!tabs && displayed(tabs);
 }
 
-/** Paginated tables are data lists (rows are saved records), never form input. */
+/** 带分页的表格属于已保存记录的数据列表，不作为表单输入。 */
 function isDataList(table: Element) {
   let cur: Element | null = table.parentElement;
   for (let depth = 0; depth < 3 && cur; depth += 1, cur = cur.parentElement) {
@@ -310,7 +300,7 @@ function isDataList(table: Element) {
 
 const SAVE_BUTTON = /^(保存|提交|确定|确认|创建|暂存|更新|下发)/;
 
-/** Popovers (rename bubbles etc.) carry their own small 保存 button; it doesn't make the page a save-later form. */
+/** 重命名气泡等弹出层自带的小型「保存」按钮，不代表页面属于延后保存表单。 */
 function findSaveButton(root: ParentNode): string | null {
   for (const b of Array.from(root.querySelectorAll('button'))) {
     if (b.closest('.ff-root, .el-table, .el-message-box, .el-popper, .el-popover') || !displayed(b)) continue;
@@ -323,7 +313,7 @@ function findSaveButton(root: ParentNode): string | null {
 
 const AUTO_SAVE_KEY = /auto_?sav|^persist/i;
 
-/** A short visible label such as「自动保存」/「已自动保存」next to the form (not the pet's own cards). */
+/** 检测表单附近的「自动保存」或「已自动保存」短标签，排除宠物自身卡片。 */
 function hasAutoSaveLabel(root: ParentNode): boolean {
   const walker = document.createTreeWalker(root as Node, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -335,7 +325,7 @@ function hasAutoSaveLabel(root: ParentNode): boolean {
   return false;
 }
 
-/** Auto-saving pages write to the server a few seconds after any change, so "not saved yet" isn't true there. */
+/** 自动保存页面会在修改后数秒写入服务端，因此不能声称内容尚未保存。 */
 function detectAutoSave(root: ParentNode, sample: any): boolean {
   if (root.querySelector('[title*="自动保存"]') || hasAutoSaveLabel(root)) return true;
   for (let cur = sample, depth = 0; cur && depth < 40; cur = cur.parent, depth += 1) {
@@ -351,7 +341,7 @@ function detectAutoSave(root: ParentNode, sample: any): boolean {
 
 const CONTROL_ROOTS = '.el-input, .el-textarea, .el-select, .el-date-editor, .el-input-number, .el-switch, .el-radio-group, .el-cascader';
 
-/** Label for a control that isn't inside an el-form-item: wrapping <label>, a short text sibling, or the placeholder. */
+/** 表单项外控件的标签取外层 label、相邻短文本或占位文字。 */
 function looseLabel(el: HTMLElement): string {
   const clean = (s: string) =>
     text(s)
@@ -375,14 +365,14 @@ function looseLabel(el: HTMLElement): string {
   return clean(hint.replace(/^(请输入|请选择|输入|选择)/, '')).slice(0, 20);
 }
 
-/** Field labels of the form on screen, to tell whether a fill card still belongs to it. */
+/** 返回屏幕上表单的字段标签，用于判断填写卡片是否仍属于该表单。 */
 export function formLabels(form: PageForm = scanPageForm()): string[] {
   return form.fields.map((f) => f.field);
 }
 
 /**
- * Same form as when the card was made? Mostly the same labels (a tab switch hides a few) — a different dialog
- * opened on the same URL shares few of them.
+ * 以标签重合度判断是否仍为生成卡片时的表单；标签切换可能隐藏少数字段，
+ * 而同一 URL 上打开的另一对话框通常只共享少量标签。
  */
 export function sameForm(before: string[] | undefined, now: string[]): boolean {
   if (!before?.length) return true;
@@ -456,8 +446,6 @@ export function scanPageForm(): PageForm {
   return { fields, tables, saveButton: findSaveButton(root), autoSave: detectAutoSave(root, sample) };
 }
 
-// ---------------- describe for the model ----------------
-
 function controlMeta(c: Control) {
   const meta: Record<string, unknown> = { kind: c.kind };
   if (c.options?.length) meta.options = c.options.slice(0, 25).map((o) => o.label);
@@ -519,8 +507,6 @@ export function describePageForm(form: PageForm) {
   };
 }
 
-// ---------------- resolve + apply ----------------
-
 function norm(s: string) {
   return s.replace(/\s+/g, '').toLowerCase();
 }
@@ -550,7 +536,7 @@ function columnIndex(table: TableInfo, field: string) {
 
 type Converted = { ok: true; value: unknown; display: string } | { ok: false; why: string };
 
-/** Values of a multi-select; option labels may themselves contain a separator ("Human CD74 Protein, Fc Tag"). */
+/** 拆分多选值时需允许选项标签自身包含分隔符，如「Human CD74 Protein, Fc Tag」。 */
 const MULTI_SEP = /[,，、;；]/;
 
 function multiParts(v: string, options: Option[] = []): string[] {
@@ -629,7 +615,7 @@ export function convertValue(c: Control, raw: string): Converted {
   }
 }
 
-/** Validate one suggestion against the current page; rows past the end are OK when the table can add rows. */
+/** 根据当前页面校验一条建议；表格可新增行时允许目标行超出现有末尾。 */
 export function resolveFill(
   form: PageForm,
   f: FillTarget & { value: string },
@@ -708,14 +694,14 @@ async function ensureRows(title: string, need: number): Promise<boolean> {
 }
 
 /**
- * Run the select's own remote search for the value and wait for its options to come back; returns the control
- * as it is after the search with the converted value, or null when the search never offered it.
+ * 调用下拉框自身的远程搜索并等待选项返回；成功时返回搜索后的控件和转换值，
+ * 搜索始终未提供目标值时返回 null。
  */
 async function searchFor(f: ResolvedFill): Promise<{ control: Control; converted: Converted & { ok: true } } | null> {
   const hit = locate(scanPageForm(), f);
   if (!hit?.control.remote) return null;
   const parts = hit.control.multiple ? multiParts(text(f.value), hit.control.options) : [text(f.value)];
-  // A search replaces the options, so only one searched value can be picked at a time.
+  // 每次搜索会替换全部选项，因此一次只能选择一个远程搜索值。
   if (parts.length !== 1) return null;
   hit.control.remote(parts[0]!);
   for (let i = 0; i < 30; i += 1) {
@@ -728,7 +714,7 @@ async function searchFor(f: ResolvedFill): Promise<{ control: Control; converted
   return null;
 }
 
-/** Current control + display value of a fill target, or null when it can't be found. */
+/** 返回填写目标的当前控件和展示值；找不到时返回 null。 */
 function locate(form: PageForm, f: FillTarget): { control: Control; value: string } | null {
   if (!f.table) return matchName(form.fields, f.field, (x) => x.field) ?? null;
   const table = findTable(form, f.table);
@@ -740,7 +726,7 @@ function currentDisplay(form: PageForm, f: ResolvedFill): string | null {
   return locate(form, f)?.value ?? null;
 }
 
-/** What a field held before we wrote it, so the user can undo a whole card. */
+/** 记录字段写入前的值，使用户可撤销整张卡片。 */
 export type FillSnapshot = { fill: ResolvedFill; prev: unknown; addedRow: boolean };
 
 function fillLabel(f: FillTarget) {
@@ -758,7 +744,7 @@ function controlEl(c: Control): HTMLElement | null {
   return el?.nextElementSibling instanceof HTMLElement ? el.nextElementSibling : null;
 }
 
-/** Briefly outline the fields that changed so the user can see what to review before saving. */
+/** 短暂勾勒已修改字段，便于用户在保存前检查。 */
 function highlight(fills: ResolvedFill[]) {
   const form = scanPageForm();
   for (const f of fills) {
@@ -783,8 +769,8 @@ export async function applyFills(fills: ResolvedFill[]): Promise<{
 }> {
   const snapshots: FillSnapshot[] = [];
   const pass = await applyOnce(fills, snapshots);
-  // Page watchers can rewrite a field after a later one changes (e.g. project name regenerated from the target type):
-  // put the user's confirmed value back once, then report whatever the page still insists on.
+  // 页面 watcher 可能在后续字段变化后改写先前字段；将用户确认值回填一次，
+  // 若页面仍覆盖该值，则报告页面最终保留的内容。
   await sleep(120);
   const done = new Set(pass.applied);
   const drifted = () => {
@@ -804,8 +790,8 @@ export async function applyFills(fills: ResolvedFill[]): Promise<{
 }
 
 /**
- * Put snapshotted fields back. Rows we added can't be removed safely, so they're reported instead; a field
- * the user (or the page) has changed since the fill is left alone so undo never wipes their later edits.
+ * 恢复快照字段。新增行无法安全删除，只报告而不处理；
+ * 填写后被用户或页面再次修改的字段保持不动，避免撤销覆盖后续改动。
  */
 export async function undoFills(
   snapshots: FillSnapshot[],

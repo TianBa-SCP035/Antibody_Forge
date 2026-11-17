@@ -1,5 +1,4 @@
 <template>
-  <!-- 右键：关联流式工单列表 -->
   <el-dialog
     v-model="flowListVisible"
     width="720px"

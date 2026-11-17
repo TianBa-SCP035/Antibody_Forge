@@ -215,7 +215,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* Placement (left/bottom/width/height) comes from the parent. */
+/* left、bottom、width 和 height 均由父组件提供。 */
 .shell-game {
   position: absolute;
   z-index: 7;

@@ -1,8 +1,8 @@
 /**
- * Reads the tables rendered on the current page (Element Plus, vxe-table, plain <table>) into flat rows.
+ * 将当前页渲染的 Element Plus、vxe-table 和原生 table 表格读取为平面行。
  *
- * Works on any page without page-specific code, but it only sees what the page rendered: one page of a
- * paginated list, or the visible window of a virtual-scroll table. `partial` says so.
+ * 无需页面专用代码，但只能读取页面实际渲染的内容，即分页列表的一页或虚拟滚动表格的可见窗口。
+ * partial 用于标记数据不完整。
  */
 
 import { tableTitleOf } from './formBridge';
@@ -12,7 +12,7 @@ import type { DataTable, Row } from './reportBuilder';
 export type PageTable = DataTable & {
   title: string;
   kind: 'el-table' | 'vxe-table' | 'table';
-  /** Rows the backend says exist (pagination "共 N 条"), when the page shows it. */
+  /** 页面显示分页总数时，记录后端声明的总行数。 */
   total?: number;
   partial: boolean;
   partialWhy?: string;
@@ -21,7 +21,7 @@ export type PageTable = DataTable & {
 const MAX_ROWS = 2000;
 const MAX_COLS = 40;
 const SKIP_HEADER = /^(操作|操作栏|管理)$/;
-/** Sort / filter glyphs some headers render as text. */
+/** 部分表头会以文本渲染的排序和筛选符号。 */
 const HEADER_ICONS = /[▾▼▲△▽↑↓⇅⌄]/g;
 const OWN_UI = '.ff-root';
 
@@ -33,10 +33,10 @@ function squashText(s: string) {
   return s.replace(/\s+/g, ' ').trim().slice(0, 500);
 }
 
-/** Placeholder text an empty select renders as a span ("请选择"); it is not a value. */
+/** 空下拉框以 span 渲染的占位文字（如「请选择」）不属于单元格值。 */
 const PLACEHOLDER = '.el-select__placeholder.is-transparent, .el-select__placeholder:empty, .el-input__placeholder';
 
-/** Cell text plus the values of inputs inside it (never password-like inputs). */
+/** 单元格文本与内部输入框值合并读取，但绝不读取密码类输入框。 */
 function cellText(cell: HTMLTableCellElement): string {
   let t = cell.innerText || '';
   for (const p of Array.from(cell.querySelectorAll(PLACEHOLDER))) {
@@ -54,7 +54,7 @@ function cellText(cell: HTMLTableCellElement): string {
 
 const TOTAL_ROW = /^(合计|总计|汇总|小计|total)$/i;
 
-/** Expands rowspan/colspan into a full grid (merged values repeat in every covered cell). */
+/** 将 rowspan 和 colspan 展开为完整网格，合并值复制到覆盖的每个单元格。 */
 function grid(trs: HTMLTableRowElement[]): string[][] {
   const out: string[][] = trs.map(() => []);
   trs.forEach((tr, r) => {
@@ -74,7 +74,7 @@ function grid(trs: HTMLTableRowElement[]): string[][] {
   return out;
 }
 
-/** Leaf column names; grouped headers become "组 / 列". */
+/** 生成叶级列名，分组表头组合为「组 / 列」。 */
 function headerNames(head: string[][], width: number): string[] {
   const names: string[] = [];
   for (let c = 0; c < width; c += 1) {
@@ -90,7 +90,7 @@ function headerNames(head: string[][], width: number): string[] {
 
 const DATA_TABLES = '.el-table, .vxe-table';
 
-/** The pager that belongs to this table: visible, and in the nearest container that holds no other visible table. */
+/** 查找属于本表的分页器：必须可见，且位于不包含其他可见表格的最近容器中。 */
 function paginationNear(table: Element): { total?: number; paged: boolean } {
   let cur: Element | null = table.parentElement;
   for (let depth = 0; depth < 5 && cur; depth += 1, cur = cur.parentElement) {
@@ -130,11 +130,11 @@ function toTable(
     keep.push({ i, name: n > 1 ? `${raw}${n}` : raw });
   });
   if (!keep.length) return null;
-  // Credential and contact columns are masked: their values must not reach the model or the file.
+  // 凭据和联系方式列必须掩码，值不得进入模型或文件。
   const rows: Row[] = body
     .map((cells) => Object.fromEntries(keep.map(({ i, name }) => [name, isSensitiveName(name) ? '***' : cells[i] ?? ''])) as Row)
     .filter((r) => Object.values(r).some((v) => String(v ?? '').trim()))
-    // A 合计 row inside the body would be counted again by every sum.
+    // 表体内的合计行会在后续求和中重复计算，因此过滤掉。
     .filter((r) => !TOTAL_ROW.test(String(Object.values(r).find((v) => String(v ?? '').trim()) ?? '').trim()));
   if (!rows.length) return null;
 
@@ -142,7 +142,7 @@ function toTable(
   const reasons: string[] = [];
   let virtual = false;
   if (kind === 'vxe-table') {
-    // Virtual scrolling renders only the visible window, so a bigger page size wouldn't help.
+    // 虚拟滚动只渲染可见窗口，增大每页条数也无法读取更多行。
     const wrap = root.querySelector('.vxe-table--body-wrapper') as HTMLElement | null;
     const bodyTable = wrap?.querySelector('table') as HTMLElement | null;
     const ySpace = root.querySelector('.vxe-body--y-space') as HTMLElement | null;
@@ -210,7 +210,7 @@ export function readPageTables(): PageTable[] {
   return out.slice(0, 8);
 }
 
-/** Exact or partial title match; otherwise the table with the most rows. */
+/** 优先精确或部分匹配标题，否则选择行数最多的表格。 */
 export function pickPageTable(tables: PageTable[], want?: string): PageTable | undefined {
   const w = (want || '').trim();
   if (w) {

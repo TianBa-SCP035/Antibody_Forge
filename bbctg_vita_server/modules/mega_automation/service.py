@@ -71,7 +71,7 @@ WORK_ORDER_STATUSES = [
     {"value": "sent", "label": "已发送"},
     {"value": "running", "label": "执行中"},
     {"value": "paused", "label": "已暂停"},
-    # 筛选/统计里 execution_failed 代表三种执行异常的合计，单条工单仍显示具体状态
+    # 筛选和统计中的 execution_failed 汇总三种执行异常，单条工单仍显示具体状态。
     {"value": "execution_failed", "label": "执行异常"},
     {"value": "completed", "label": "已完成"},
     {"value": "failed", "label": "校验失败"},
@@ -102,10 +102,6 @@ ACTIVE_EXECUTION_STATUSES = frozenset({"sent", "running"})
 PAUSED_CHANGE_CONFIRM_MESSAGE = (
     "工单内容已变更。确认后将使此前有效的下发记录失效，且无法再通过「继续」恢复为原发送状态。"
 )
-
-def _operator_name(user: Any) -> str:
-    return clean_text(getattr(user, "display_name", None) or getattr(user, "username", None) or "unknown")
-
 
 def _get_order_or_raise(
     db: Session,
@@ -185,7 +181,7 @@ def _labillion_withdraw_pause(
     dispatch_id = current.dispatchId
     order_id = int(order.id)
     _mark_withdrawn(order, current)
-    # 删除接口会同步回调 deleted。先提交已撤回并放开行锁，回调才能立刻返回，对方才会结束这次 HTTP。
+    # 删除接口会同步回调 deleted；先提交已撤回并释放行锁，回调才能立即返回并结束本次 HTTP 请求。
     db.commit()
     if simulate:
         return
@@ -349,7 +345,6 @@ def _apply_content(order: MegaFlowWorkOrder, data: dict[str, Any]) -> str:
 
 
 def _apply_order_data(order: MegaFlowWorkOrder, data: dict[str, Any]) -> str:
-    """写入工单列字段与 content（及派生检索字段、content_hash）。"""
     _apply_order_columns(order, data)
     return _apply_content(order, data)
 
@@ -381,10 +376,9 @@ def _apply_order_display(
 
 
 def _enrich_detail(data: dict[str, Any], order: MegaFlowWorkOrder) -> dict[str, Any]:
-    """详情补充：是否有下发历史、以及当前未终止下发的 pause 显示态。"""
     dispatches = data.get("dispatches") or []
     data["has_dispatches"] = bool(dispatches)
-    # dispatches 已按 id desc；与 get_current_dispatch 相同，无需再查库
+    # dispatches 已按 id 降序排列，首个未终止项与 get_current_dispatch 的结果相同，无需再次查询数据库。
     current = next(
         (item for item in dispatches if item.get("status") not in TERMINAL_DISPATCH_STATUSES),
         None,
@@ -406,7 +400,7 @@ def get_meta() -> dict[str, Any]:
     }
 
 
-def save_work_order(db: Session, data: dict[str, Any], user: Any) -> dict[str, Any]:
+def save_work_order(db: Session, data: dict[str, Any], created_by: str) -> dict[str, Any]:
     order_id = data.get("id")
     if order_id:
         order = _get_order_or_raise(db, int(order_id), for_update=True)
@@ -430,7 +424,7 @@ def save_work_order(db: Session, data: dict[str, Any], user: Any) -> dict[str, A
         db.commit()
         return get_work_order_detail(db, order.id)
 
-    order = MegaFlowWorkOrder(status="draft", created_by=_operator_name(user))
+    order = MegaFlowWorkOrder(status="draft", created_by=created_by)
     _ensure_cell_columns_free(db, build_content_body(data), None)
     _apply_order_data(order, data)
     db.add(order)
@@ -480,7 +474,7 @@ def _list_status_clause(status: str):
 
 
 _W = MegaFlowWorkOrder
-# 状态与统计块同口径：三种执行异常合为 execution_failed
+# 状态筛选与统计使用同一口径，将三种执行异常合并为 execution_failed。
 _STATUS_GROUP = case((_W.status.in_(sorted(EXECUTION_ISSUE_STATUSES)), "execution_failed"), else_=_W.status)
 HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "orderNum": HeaderColumn(_W.orderNum),
@@ -497,7 +491,7 @@ HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "sent_at": HeaderColumn(func.date(_W.sent_at), "date"),
     "updated_at": HeaderColumn(func.date(_W.updated_at), "date"),
 }
-# 时间列按日筛选，排序仍按完整时间
+# 时间列按日期筛选，但仍按完整时间排序。
 _SORT_COLUMNS = {
     "sent_at": HeaderColumn(_W.sent_at, "date"),
     "updated_at": HeaderColumn(_W.updated_at, "date"),
@@ -869,7 +863,7 @@ def validate_work_order(db: Session, order_id: int, data: dict[str, Any] | None 
 def dispatch_work_order(
     db: Session,
     order_id: int,
-    user: Any,
+    operator_name: str,
     *,
     simulate: bool = False,
 ) -> dict[str, Any]:
@@ -879,7 +873,7 @@ def dispatch_work_order(
         raise ValueError("请先校验通过后再发送")
 
     _ensure_cell_columns_free(db, get_order_content(order), order.id)
-    dispatch = create_dispatch_record(db, order, operator_name=_operator_name(user))
+    dispatch = create_dispatch_record(db, order, operator_name=operator_name)
     if not simulate:
         try:
             push_flow_work_order(dispatch.payload if isinstance(dispatch.payload, dict) else {})
@@ -895,7 +889,7 @@ def dispatch_work_order(
 
 
 def pause_work_order(db: Session, order_id: int, *, simulate: bool = False) -> dict[str, Any]:
-    # 先锁下发再锁工单，与回调的加锁顺序一致。
+    # 先锁下发再锁工单，保持与回调一致的加锁顺序。
     current = lock_current_dispatch(db, int(order_id))
     order = _get_order_or_raise(db, int(order_id), for_update=True)
     _ensure_not_cancelled(order)
@@ -1053,9 +1047,9 @@ def cancel_work_order(db: Session, order_id: int) -> dict[str, Any]:
     return get_work_order_detail(db, order.id)
 
 
-def sync_work_order_labillion_status(db: Session, order_id: int, *, force: bool = True) -> dict[str, Any]:
+def sync_work_order_labillion_status(db: Session, order_id: int) -> dict[str, Any]:
     from modules.mega_automation.labillion_sync import (
         sync_work_order_labillion_status as sync_status,
     )
 
-    return sync_status(db, order_id, force=force)
+    return sync_status(db, order_id)

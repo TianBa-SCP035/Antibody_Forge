@@ -310,7 +310,7 @@ export default {
       };
       this.projectOptions = this.experimentId ? [this.selectedProject] : [];
       this.bloodCollections = Array.isArray(row.blood_collections) ? row.blood_collections : [];
-      // 跟随字段不带入推导值，避免保存时被写成覆盖；仅展示表内已固定的值
+      // 跟随字段不带入推导值，避免保存时写成覆盖值；仅展示表内已固定的值。
       const following = row.following || {};
       this.batchForm = {
         cage_position: following.cage_position ? '' : (row.cage_position || ''),

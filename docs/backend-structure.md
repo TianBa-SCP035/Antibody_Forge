@@ -10,11 +10,12 @@
 bbctg_vita_server/
   server.py            # 启动入口
   main.py              # CORS、日志、审计中间件、挂载路由、定时任务
-  api.py               # 汇总各模块 router（含 /health、/user/info）
+  api.py               # 按模块登记表挂载 router，提供 api_routes()（含 /health、/user/info）
   core/                # 配置、统一响应、异常、请求日志
   db/                  # 主库 + 外部只读库 session
   models/              # ORM（types.py：DateString）
   modules/
+    registry.py        # ACCESS 权限登记与 MOUNTS 路由挂载表
     auth/              # 登录、JWT、当前用户；external.py 外部回调来源校验
     options/           # 跨模块下拉：靶点库搜索、在职人员搜索
     immunology/        # serum / workbench / titer / cell
@@ -27,12 +28,53 @@ bbctg_vita_server/
   integrations/        # 云之家、Labillion、drm_service（SDK 在 drm/，gitignore）
   jobs/                # 定时任务实现与 registry（含手动触发入口）；lock.py 用 MySQL GET_LOCK 防多进程重复执行
   utils/               # 通用工具（Excel 导入导出等）
-  tests/
+  tests/               # 按领域分目录：core / system / discovery / immunology / molecular / mega
+  pytest.ini           # 测试路径与导入方式
 ```
 
 ## 测试
 
-在 `bbctg_vita_server/` 下运行 `python -m pytest`，用内存 SQLite，几秒跑完，不连任何真实库。`tests/` 只放以后改代码时容易被碰坏的东西：业务规则（状态推导、权限、队列）、口径一致（列表 / 统计 / 导出 / 表头取值）、审计，以及同步、文件归档这类分支多的逻辑的回归。写完功能做的一次性核对（格式、重构前后是否等价、SQL 条数等实现细节）跑完即删，不进 `tests/`；修 bug 只在这条规则容易再被改坏时补断言，优先并进已有用例。
+### 后端
+
+测试位于 `bbctg_vita_server/tests/`，按领域分一级子目录，文件在子目录内按 `test_<功能>.py` 命名：
+
+| 目录 | 覆盖范围 |
+|------|------|
+| `core/` | `core/`、`utils/` 与模块登记表 |
+| `system/` | `modules/system`、`modules/auth`、`modules/options`，以及员工、靶点同步任务 |
+| `discovery/` | `modules/discovery` |
+| `immunology/` | `modules/immunology` |
+| `molecular/` | `modules/molecular_cell` |
+| `mega/` | `modules/mega_automation` 与 Labillion 对接 |
+
+新增业务模块时在对应领域目录下加文件；新增领域时新建同名子目录。子目录不放 `__init__.py`：`pytest.ini` 使用 `--import-mode=importlib`，不同目录可以有同名文件（如 `discovery/test_workbench.py` 与 `immunology/test_workbench.py`），并把 `tests/` 加入导入路径，测试统一 `from support import ...`。测试类使用 `unittest` 风格，由 pytest 统一运行。
+
+`tests/support.py` 提供：
+
+- `DbTestCase`：每个测试建立独立的内存 SQLite；子类在 `tables` 中列出需要建表的 ORM 模型；测试库注册业务查询使用的 MySQL JSON 函数。
+- `FakeSourceDb`：模拟员工库、靶点源库等外部只读数据库。
+
+在 `bbctg_vita_server/` 下执行：
+
+```powershell
+$env:DATABASE_URL='sqlite://'; python -m pytest -q
+```
+
+`tests/system/test_audit_routes.py` 检查每个写路由都有审计声明，并检查 `api_routes()` 列出的路径与实际服务路径一致。
+
+测试名称使用 `test_<条件>_<行为>`，每个测试只验证一个行为。测试以公开的 service 或 route 入口为边界；一次性核对和只针对单次修复的临时用例不进入测试集，稳定业务规则需要回归保护时并入对应领域用例。
+
+### 前端
+
+前端测试与源码放在一起，命名为 `src/**/*.test.mjs`，公共加载器位于 `src/test-support/`。在 `bbctg_vita_web/apps/antibody_vita/` 下执行：
+
+```powershell
+pnpm run test
+pnpm run typecheck
+pnpm run lint:components
+```
+
+`pnpm run test` 使用 Node test runner；`typecheck` 执行 Vue/TypeScript 类型检查，`lint:components` 使用 ESLint 检查 Vue 组件。
 
 ## 公共工具（新代码先找这里，不要在模块里再写一份）
 
@@ -61,35 +103,18 @@ DRM：业务只 import `integrations/drm_service.py`；上传密文解密、Offi
 
 外部主数据：`EMPLOYEE_DB_URL` 只读连接外部平台库；`modules/system/employee_sync.py` 同步员工资料，`modules/system/target_sync.py` 全量同步靶点至本地 `target`。两者使用独立定时任务，共用外部连接。
 
-## API 前缀
+## 路由注册与 API 前缀
 
-| 前缀 | 后端位置 |
-|------|----------|
-| `/api/health` | `api.py` |
-| `/api/auth` | `modules/auth` |
-| `/api/user/info` | `api.py`（Vben 用户信息） |
-| `/api/atlas` | `modules/atlas` |
-| `/api/options` | `modules/options`（`/targets`、`/users`） |
-| `/api/discovery/workbench` | `modules/discovery/workbench` |
-| `/api/discovery/synthesis-progress` | `modules/discovery/synthesis_progress` |
-| `/api/molecular-cell/library-orders` | `modules/molecular_cell/library_orders` |
-| `/api/molecular-cell/library-orders/catalog` | `modules/molecular_cell/primer_catalog`（引物库） |
-| `/api/serum` | `modules/immunology/serum` |
-| `/api/serum/workbench` | `modules/immunology/workbench` |
-| `/api/serum/titer` | `modules/immunology/titer` |
-| `/api/serum/cell_inventory` | `modules/immunology/cell` |
-| `/api/mega-automation` | `modules/mega_automation` |
-| `/api/order-experiment` | `modules/order_sync` |
-| `/api/system` | `modules/system` |
+`modules/registry.py` 的 `MOUNTS` 是业务路由挂载表。`api.py` 逐项导入并挂载这些 router，同时用 `api_routes()` 返回带完整 `/api` 前缀的路由清单。`main.py` 再以 `API_PREFIX="/api"` 调用 `include_router`，并在 `FastAPI` 上注册全局 `bind_route_audit` 依赖，使审计层能在路由匹配后读取各接口的声明。应用启动时通过 `api_routes()` 检查写路由覆盖情况，未声明审计分类的写路由会记录警告。
 
-前后端路径对照见 [overview.md](./overview.md)。前端开发时业务请求统一走 `/api`。
+前后端路径对照统一维护在 [overview.md](./overview.md)；各接口细节见对应模块文档。前端业务请求统一走 `/api`。
 
 ## 响应格式
 
 业务接口统一如下；健康检查、设备回传、镁伽回调三处例外列在最后：
 
 - 成功：`{ "code": 0, "data": ... }`
-- 业务失败：HTTP 422 / 403 / 404 / 409，`{ "code": 1, "message": "..." }`（`BusinessError` 可带其他 `code` 和 `errorCode`）；前端对带数字 `code` 的 403/404 直接显示后端文案
+- 业务失败：HTTP 422 / 403 / 404 / 409，`{ "code": 1, "message": "...", "data": null }`（`BusinessError` 可带其他 `code` 和 `errorCode`）；前端对带数字 `code` 的 403/404 直接显示后端文案
 - 其他 HTTP 异常（401、未登记路由的 404、500）：保留状态码，body 同上；500 只返回通用提示
 - 健康检查 `/api/health`：`{ "status": "ok" }`（不走上述 envelope）
 - 设备回传 `/api/order-experiment/sync`：`{ "code", "message", "trace_id", "data" }`（multipart 上传 `order_json`）

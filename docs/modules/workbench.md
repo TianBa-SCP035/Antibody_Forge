@@ -19,7 +19,7 @@
 
 ### 组件选项
 
-接口、字段和列写在组件选项里，混入从 `this.$options` 读取，页面不再写只做转发的方法：
+接口、字段和列写在组件选项里，混入从 `this.$options` 读取，页面只保留实际业务方法：
 
 | 选项 | 内容 | 读取方 |
 |---|---|---|
@@ -28,9 +28,9 @@
 | `workbenchSheet` | `{ columns, order, aliases }`：Excel 的全部列、`createColumnOrder` 实例、旧表头别名 | `sheetSelectionMixin`（`sheetColumns` 初值、列序列宽记忆）、`workbenchExcelMixin`（带表头粘贴时识别列） |
 | `listFilterKey` | 筛选暂存键 | `listPageMixin` |
 
-视图模式由 `workbenchExcelMixin` 按页面 `name` 记住，切走再回来恢复上次的视图（刷新浏览器后回到工作台视图）；人员名单 `allUserOptions` 切到 Excel 视图时才加载。页面不再声明 `viewMode`、`allUserOptions`、`sheetColumns`。
+视图模式由 `workbenchExcelMixin` 按页面 `name` 记住，切走再回来恢复上次的视图（刷新浏览器后回到工作台视图）；人员名单 `allUserOptions` 切到 Excel 视图时才加载。`viewMode`、`allUserOptions`、`sheetColumns` 由混入提供。
 
-免疫实验列表、效价实验列表是早期页面，只复用表头菜单和靶点筛选（效价实验列表另用顶部面板）；公共模块不为它们加分支，兼容不了的留在页面里。流式工单列表只用顶部面板和表头菜单。
+免疫实验列表、效价实验列表只复用表头菜单和靶点筛选（效价实验列表另用顶部面板）；公共模块不为它们加分支，兼容不了的留在页面里。流式工单列表只用顶部面板和表头菜单。
 
 ## 组件清单
 
@@ -68,13 +68,13 @@
 - 字段定义的 `type` 决定控件：`date`、`target`（靶点选择，联动名称和编号）、`target_codes`（只读编号）、`user`、`select`、`textarea`、`number`，缺省单行文本；`sync: true` 的文本与同排对齐高度（同排只有一个时按内容撑高），`maxlength`、`resize`、`clearable: false`、`allowCreate` 写在字段上。终态行的排序号显示 `-`。
 - 字段控件的钩子都有默认实现，按需覆写：`drawerFieldOptions(field, row)`（下拉选项，默认 `field.options`）、`drawerUserOptions(field, row)`、`drawerSelectClass(field, row)`（下拉色调；优先级默认按档位着色，页面只管自己的字段）、`drawerSelectProps(field, row)`（可清空、可搜索、可新建）、`isDrawerFieldDisabled(field, row)`（默认看 `canEditField`）、`drawerFieldValue(field, row)`。
 - 外观参数：`size` 宽度默认 `520px`、`label-width` 默认 `80px`，字段特别多的页面自行加宽（文库构建 560px / 92px）；分组小标题默认不带色条，要的页面写 `title-mark`（文库构建），单个分组在 `editorSections` 里写 `mark: true` / `mark: false` 覆盖。
-- 提供 `editorSections`（名字固定，兜底补存按它找字段；开发环境缺了会在控制台警告）、`canEditField(row, key)`。列表行原样使用接口返回值，数组、状态和优先级默认值由后端序列化和数据库默认值保证，前端不再补形。
+- 提供 `editorSections`（名字固定，兜底补存按它找字段；开发环境缺了会在控制台警告）、`canEditField(row, key)`。列表行原样使用接口返回值，数组、状态和优先级默认值由后端序列化和数据库默认值保证，前端不补形。
 - 实现 `saveRowField(row, field, options)`：只保存这一个字段（靶点名称和编号一起）。标准写法是 `normalizeDrawerValue` 校验，`rowFieldsUnchanged(row, keys)` 为真时直接返回，最后 `return this.submitRowFields(row, keys, options)`；页面只在中间加自己的联动字段（如审核人、质检人）。没改值或校验不过返回 `undefined`，不算失败。
 - `submitRowFields(row, fields, { save, messages, applyFields, reload })`：先把列表行的新值同步到打开着的抽屉副本，再调 `workbenchApi.save(rowSavePayload(row, fields))`；成功后 `applySavedFields(saved, applyFields)` 并返回保存结果（`applyFields` 默认就是 `fields`，传 `null` 整行回填）；失败按 `messages`（默认 `workbenchApi.errors.save`）提示，带上 `reload` 静默刷新列表，再 `revertDrawerFields` 退回这几个字段并返回 `null`，免得兜底补存再提交一次。保存前要确认的（如合成的完成确认）传 `save` 换掉保存函数。
 - 所有保存都调 `persistRow(row, field)`，它按行排队后再调 `saveRowField`，避免后发先至。行内下拉直接改值用 `persistRowValue(row, key, value)`（写值后 `persistRow`，返回保存结果），状态、优先级都这样接。前一个保存回填时，`patchExistingListRow` 不覆盖同一行仍在排队的字段，用户刚改的值不会被旧结果冲掉。
 - `getList({ flushEditor = true, silent = false })`：`flushEditor` 时先 `await this.flushAllEdits()`，表格或抽屉有存不上的编辑（失败已在保存处提示）就不刷新、返回 `false`；拿到数据赋给 `list` 后调 `acceptListRows()`，抽屉副本里没改过的字段换成新数据，再记基线。抽屉里的已入库行不在新列表里（被删、被筛掉）时关闭抽屉；未入库草稿不受影响。
 - `type: 'target'` 的字段由 `WorkbenchDrawerField` 自动接 `onDrawerTargetChange`（`workbenchTargetMixin` 提供），编号和名称一起保存；自己写 `WorkbenchTargetSelect` 时绑 `@change="onDrawerTargetChange(editingRow, $event)"`。
-- 行操作（交接、质检等）开头 `if (!await this.flushEditorForAction(row)) return`；删除成功后 `discardDrawer(row.id)`，不再补存。
+- 行操作（交接、质检等）开头 `if (!await this.flushEditorForAction(row)) return`；删除成功后 `discardDrawer(row.id)`，不执行补存。
 - 可覆写：`drawerComparable`（字段比较值）、`drawerValueKeys`（一个字段占用的多个值键，如筛选方法的文本和数组）、`savedFieldKeys`、`onDrawerRowSynced`、`onDrawerOpened`（如加载明细）、`releaseDrawerRow`（切走前处理未入库草稿）。
 
 ## 粘贴保存约定
@@ -92,21 +92,21 @@
 | `applySheetPasteSaved(saved, fields)` | `applySavedFields` | 回填时补派生字段 |
 | `sheetPasteErrorMessages()` | `{ default: '表格保存失败' }` | 接口错误文案 |
 
-单行提交内容由 `rowSavePayload(row, fields)` 生成（见下文“保存与并发”），页面的 `saveRowField` 经 `submitRowFields` 也用它，不再单独覆写。
+单行提交内容由 `rowSavePayload(row, fields)` 生成（见下文“保存与并发”），页面的 `saveRowField` 经 `submitRowFields` 也使用该逻辑，无需单独覆写。
 
 日期和选项校验由 `fieldSchema.coerceFieldValue` 统一处理，页面不要再写一份 `normalizeSheetDate` / `matchOption`。
 
 ## Excel 表格外壳
 
-Excel 视图的表格一行 `<WorkbenchSheet v-else>`，外层的划选、复制、粘贴、键入事件，vxe-table 的配置和事件，三种标准列和选区遮罩都在里面接好，页面不再写 `ref` 和事件绑定；混入里用 `sheetEl('table' | 'wrap' | 'stage' | 'rangeOverlay' | 'dropLine' | 'ghost')` 取元素。其余属性（`header-cell-style`、`row-class-name`、`empty-text`、事件）透传给 vxe-table。
+Excel 视图的表格一行 `<WorkbenchSheet v-else>`，外层的划选、复制、粘贴、键入事件，vxe-table 的配置和事件，三种标准列和选区遮罩都在里面接好，页面无需编写 `ref` 和事件绑定；混入里用 `sheetEl('table' | 'wrap' | 'stage' | 'rangeOverlay' | 'dropLine' | 'ghost')` 取元素。其余属性（`header-cell-style`、`row-class-name`、`empty-text`、事件）透传给 vxe-table。
 
 标准列按 `SHEET_COLUMNS` 的 `edit` 分：`target` 靶点列，`select` / `multi` 选择列（`isSheetChoiceColumn`），其余普通列（`align` 写在列定义上）。选择列的钩子都有默认实现：
 
 | 钩子 | 默认 | 何时覆写 |
 |---|---|---|
-| `isUserColumn(column)` | `false` | 人员列，下拉可搜索 |
+| `isUserColumn(column)` | 字段 `type` 为 `user` / `users` | 人员列判定不同（人员列下拉可搜索） |
 | `isSheetMultiColumn(column)` | `edit === 'multi'` | 多选判定不同 |
-| `sheetChoiceClearable(column)` | `false` | 非必填可清空（文库构建） |
+| `sheetChoiceClearable(column)` | 字段非 `required` 时可清空 | 可清空规则不同 |
 | `sheetChoiceModelKey(column)` | `column.key` | 下拉绑定另一个字段（发现工作台的筛选方法绑数组） |
 | `isSheetPickerCell(column, row)` | `true` | 这一格不给下拉、只能键入（文库构建的细胞类型） |
 | `sheetChoiceDirectValue` / `setSheetChoiceDirectValue(row, column, value)` | 走 `sheetDirectTextValue` / `setSheetDirectValue` | 键入时显示值和存储值不同 |
@@ -125,7 +125,7 @@ Excel 视图的表格一行 `<WorkbenchSheet v-else>`，外层的划选、复制
 
 ## 单格编辑约定
 
-`workbenchExcelMixin` 自带单格编辑的完整流程，页面只需实现 `coerceSheetValue(key, value, row)`（返回 `{ ok, value }` 或 `{ ok: false, reason }`）。以下方法都有默认实现，页面有特殊字段时才覆写：
+`workbenchExcelMixin` 自带单格编辑的完整流程。`coerceSheetValue(key, value, row)`（返回 `{ ok, value }` 或 `{ ok: false, reason }`）默认按 `workbenchFields` 的类型、必填、长度和选项校验，页面只为特殊字段覆写。以下方法也都有默认实现，页面有特殊字段时才覆写：
 
 | 方法 | 默认行为 | 何时覆写 |
 |---|---|---|
@@ -144,7 +144,7 @@ Excel 视图的表格一行 `<WorkbenchSheet v-else>`，外层的划选、复制
 
 - **批量编辑**：在多格选区里双击任意一格，选区收成这一格所在的列（行不变），编辑这一格；Enter、Ctrl+Enter 或点别处提交时，把这一格的新值按「单个值粘贴」交给 `saveSheetCells` 填满这几行，不可编辑的格子跳过。在多格选区里直接键入和 Excel 一样：选区同样收成这一列，但 Enter 或点别处只改当前格，按 Ctrl+Enter 才填满，免得想复制时手滑打字覆盖整列。值没改、按 Esc（在下拉面板里按也算）都不同步，Esc 把这一格退回原值；选区只有一行时就是普通单格编辑。未入库的草稿行不参与。
 - **清空**：Delete 把选区内可编辑的格子清空，排序列除外，一次提交；优先级（共用字段 `PRIORITY_FIELD`）清空或贴空时回到「正常」，和后端一致；其余必填列清空校验不过时整次不保存。
-- **撤回**：Excel 视图里不在输入框时按 Ctrl+Z，撤回最近一步表格修改（单格编辑、粘贴、批量编辑、清空各算一步）。只保留 10 分钟内、最多 20 步；确认框列出「第几行、哪一列、现值 → 原值」，确认后按原文字走 `saveSheetCells` 重新保存，取消或保存失败时这一步留着，可以再按 Ctrl+Z。之后又改过（包括在抽屉里改）的格子不撤回；这一步改的行都不在当前页（翻页、筛选）时这一步也留着，回到那一页再撤回；撤回本身不再记撤回，也没有重做。抽屉和行内下拉的修改不进撤回。
+- **撤回**：Excel 视图里不在输入框时按 Ctrl+Z，撤回最近一步表格修改（单格编辑、粘贴、批量编辑、清空各算一步）。只保留 10 分钟内、最多 20 步；确认框列出「第几行、哪一列、现值 → 原值」，确认后按原文字走 `saveSheetCells` 重新保存，取消或保存失败时这一步留着，可以再按 Ctrl+Z。之后又改过（包括在抽屉里改）的格子不撤回；这一步改的行都不在当前页（翻页、筛选）时这一步也留着，回到那一页再撤回；撤回操作本身不进入撤回记录，也没有重做。抽屉和行内下拉的修改不进撤回。
 
 ## 表头筛选与排序
 
@@ -161,7 +161,7 @@ Excel 视图的表格一行 `<WorkbenchSheet v-else>`，外层的划选、复制
 | `value_limit` | 返回上限，后端限制为 1–1000 |
 | `value_order` | `value`、`value_desc` 或 `recent` |
 
-`all` 列在前端加载取值后搜索；`recent` 默认取最近出现的 200 个值；`search` 列输入关键字后请求。后端 `utils/header_filters.py` 的 `HEADER_COLUMNS` 生成列表、统计、导出共用的筛选和排序条件。取值查询保留其他列条件，并排除当前列自身条件。`recent` 最多扫描最近 5000 行。业务枚举按登记顺序排列，空值始终排在末尾。
+`all` 列在前端加载取值后搜索；`recent` 默认取最近出现的 200 个值；`search` 列输入关键字后请求。后端各模块用 `utils/header_filters.py` 的 `header_columns()` 定义自己的 `HEADER_COLUMNS`，列表、统计、导出共用其生成的筛选和排序条件。取值查询保留其他列条件，并排除当前列自身条件。`recent` 最多扫描最近 5000 行。业务枚举按登记顺序排列，空值始终排在末尾。
 
 值在内存里推算、SQL 筛不准的列登记 `sortOnly: true`，菜单只有排序（效价的采血日期，空值在后）；效价笼位不登记。效价的只数、FACS、ELISA 按显示值筛：单上没填跟随方案，只数为全项目小鼠只数之和，空按 0。统计块自己切换的维度（免疫实验的状态、负责人；效价的负责人、血清状态、小结、检测日期）不看这些列的表头条件；效价这四列由统计块改写顶部筛选，表头条件不写回顶部，与顶部同时生效。
 
@@ -176,7 +176,7 @@ Excel 视图中，有菜单的表头单击打开菜单；按住约 350 ms 或拖
 
 两种视图均通过 `createColumnOrder` 保存列序和拖拽后的列宽。`Shift` 拖动业务列表头调整顺序；有菜单的表头平时显示点击手型，按住 `Shift` 时可拖动的表头才显示抓手。右键“视图”恢复当前视图默认列序和列宽；工作台视图同时恢复默认显示字段。“显示字段”可以调整业务列顺序和可见性，固定列不可隐藏；字段后的圆点循环切换个人列字体颜色（红、橙、绿、蓝、紫，存在同一 `viewPrefsStorageKey`），Excel 视图同样生效；颜色挂在单元格上，原有的标签、状态色、靶点标色等特殊颜色优先。全站表格统一不弹浏览器右键菜单（`utils/tableContextMenu.ts`），输入框里和右键点在选中文字上时除外；抽屉打开时右键行关闭抽屉。
 
-Excel 操作范围是当前分页。单值粘贴到多格选区会填满选区；任一单元格校验失败时整批不保存。批量编辑、清空和撤回见上文“批量编辑、清空与撤回”。日期、枚举、正整数和非负整数由页面在提交前校验。单元格能否编辑由页面的 `sheetCellLockReason` 返回原因，双击或键入不可编辑的单元格时提示该原因。多行文本按页面登记保留换行。
+Excel 操作范围是当前分页。单值粘贴到多格选区会填满选区；任一单元格校验失败时整批不保存。批量编辑、清空和撤回见上文“批量编辑、清空与撤回”。日期、枚举和整数字段在提交前默认由 `workbenchExcelMixin` 按 `workbenchFields` 校验，页面只补特殊业务校验。单元格能否编辑由页面的 `sheetCellLockReason` 返回原因，双击或键入不可编辑的单元格时提示该原因。多行文本按页面登记保留换行。
 
 靶点顶部筛选使用 `WorkbenchTargetFilter` 搜索本表已录入值。编辑区使用 `WorkbenchTargetSelect` 或 `workbenchTargetMixin` 搜索靶点主数据，并同时保存靶点名称和编号。
 
@@ -186,7 +186,7 @@ Excel 操作范围是当前分页。单值粘贴到多格选区会填满选区�
 
 列表默认按 `id DESC`，首列显示当前页序号。点击“序号”切换到队列模式：请求 `sort_field=sort_order`，首列显示 `sort_order`，并开放改号和拖行。再次点击恢复默认模式。
 
-`sort_order` 只分配给非终态记录，并保持稠密的 `1..N`。终态记录为 `NULL`，不参与改号或拖行。改排序号和拖行不会改变优先级，目标位置会限制在当前优先级档位内。只改优先级时，升档放到目标档末尾，降档放到目标档开头。新记录按默认优先级加入该档末尾。项目状态写入终态或离开终态时，由写操作同步出队或入队；列表和导出不改队列。重编号时被顺移的其他行用一条批量 `UPDATE` 写入、不进操作审计；本次被移动的行和本次请求里已改过排序的行照常记审计。
+`sort_order` 只分配给非终态记录，并保持稠密的 `1..N`。终态记录为 `NULL`，不参与改号或拖行。改排序号和拖行不会改变优先级，目标位置会限制在当前优先级档位内。只改优先级时，升档放到目标档末尾，降档放到目标档开头。新记录按默认优先级加入该档末尾。项目状态写入终态或离开终态时，由写操作同步出队或入队；列表和导出不改队列。重编号时被顺移的其他行用一条批量 `UPDATE` 写入、不进操作审计；直接移动的行和请求中已改过排序的行照常记审计。
 
 写队列前 `lock_queue` 按主键顺序锁住整表的行，并发写入者排队。MySQL 可重复读下，事务里第一次普通查询（如登录校验）就定了读快照，等锁期间别人提交的排序加锁后仍读不到；所以本事务还没写过东西时，加锁前先提交一次，让之后的读取从拿到锁后开始。
 
@@ -241,7 +241,7 @@ Excel 操作范围是当前分页。单值粘贴到多格选区会填满选区�
 开发环境下漏了必需的声明会在控制台警告：`workbenchApi`、`buildQuery`（`workbenchCrudMixin`），`workbenchFields`（`workbenchExcelMixin`），`workbenchSheet.order`（`sheetSelectionMixin`），`editorSections`、`saveRowField`（`workbenchDrawerMixin`）。
 
 - [ ] 定义 `WORKBENCH_COLUMNS`、`SHEET_COLUMNS`、独立存储键和 `createColumnOrder`，组件选项写 `workbenchSheet: { columns, order }`（有旧表头再加 `aliases`）；列随类型变化时覆写 `availableSheetColumns()`。
-- [ ] 接入 `WorkbenchDataTable`、`WorkbenchViewToggle`、`workbenchExcelMixin`，Excel 视图放 `<WorkbenchSheet v-else>`（见上文“Excel 表格外壳”），实现 `coerceSheetValue`、`sheetCellLockReason`；特有校验文案写 `sheetValidationExtraMessage`，其余见上文“单格编辑约定”，没有特殊字段就不覆写。
+- [ ] 接入 `WorkbenchDataTable`、`WorkbenchViewToggle`、`workbenchExcelMixin`，Excel 视图放 `<WorkbenchSheet v-else>`（见上文“Excel 表格外壳”），实现 `sheetCellLockReason`，特殊字段再覆写 `coerceSheetValue`；特有校验文案写 `sheetValidationExtraMessage`，其余见上文“单格编辑约定”，没有特殊字段就不覆写。
 - [ ] 接入 `workbenchDrawerMixin` 和 `WorkbenchDrawer`，字段用 `WorkbenchDrawerField`，按上文“抽屉保存约定”用 `submitRowFields` 实现 `saveRowField`，接口写 `workbenchApi.save`；工作台视图的优先级列用 `WorkbenchPriorityCell`，行内下拉用 `persistRowValue`。
 - [ ] 多格保存（粘贴、批量编辑、清空、撤回）配置 `workbenchApi.saveBatch`（或覆写 `saveSheetPasteItems`）和需要的钩子，不覆写 `onSheetPaste`、`saveSheetCells`。
 - [ ] 后端 `/save`、`/save_batch` 按上文“保存与并发”锁行并校验 `_expected`，列表用 `paginate_select`，路由不写 try/except。
@@ -268,9 +268,9 @@ Excel 操作范围是当前分页。单值粘贴到多格选区会填满选区�
 
 ## 新模块全栈接入清单
 
-以下按「数据库与后端 → 权限与审计 → 前端基础层 → 前端页面与文档」顺序列出新工作台/业务模块需要改动的位置，已自动推导的项目不再要求手工登记。
+以下按「数据库与后端 → 权限与审计 → 前端基础层 → 前端页面与文档」顺序列出新工作台或业务模块的接入位置；能够由模块声明推导的内容无需手工登记。
 
-> 参照模块是发现工作台：前端 `src/views/Discovery/workbench/`，后端 `modules/discovery/workbench/` 与 `modules/discovery/permissions.py`。权限、审计、功能开关、存储键都已回到模块内声明，不再登记 `sys_permission` / `sys_permission_api`、`RECORDED_TARGET_ENDPOINTS`、`WORKBENCH_VIEW_PREFS_KEYS` 或中心权限文件。
+> 参照模块是发现工作台：前端 `src/views/Discovery/workbench/`，后端 `modules/discovery/workbench/` 与 `modules/discovery/permissions.py`。权限、审计、功能开关和存储键均按模块声明；`sys_permission`、`sys_permission_api` 不是登记入口，已录入靶点接口由各模块自己提供，视图偏好键写在对应 columns 文件里，没有中心清单。
 
 1. **后端 ORM 模型（有新表时必选）**：在 `bbctg_vita_server/models/<module>.py` 新增模型（`__audit_label__` / `__log_label__` 按需），列补齐中文 `comment`；日期字符串优先用 `models/types.py` 的 `DateString`。`models/__init__.py` 当前无运行时引用，不是必需登记点。
 2. **数据库 DDL（有新表时必选）**：在 `docs/vita-database.sql` 维护当前态 DDL。现网升级 SQL 单独交付，不放仓库。
@@ -280,4 +280,5 @@ Excel 操作范围是当前分页。单值粘贴到多格选区会填满选区�
 6. **前端路由与 API（必选）**：`src/router/routes/modules/<module>.ts`（`meta.authority` / `featureCode`）；`src/api/<module>.ts` 放权限码常量与接口。`WorkbenchTargetFilter` 的已录入靶点搜索由页面传入函数，不必改公共 options 表。
 7. **字段单一定义与页面（必选）**：`src/views/<Module>/<module>Columns.js` 用 `defineFields`；页面接 `workbenchCrudMixin` / `workbenchExcelMixin` / `workbenchDrawerMixin` 等，配置 `workbenchApi`、`workbenchFields` 与 `workbenchSheet`（见上文“组件选项”）。视图偏好键写在 columns 文件的 `VIEW_PREFS_KEY`，不必改 `storageKeys.ts`。
 8. **细粒度权限辅助（可选）**：只有真有业务规则时才写 `src/utils/<module>Permission.ts`。
-9. **首页快捷导航与文档（可选/必选）**：首页预设才改 `home-data.ts` 与文案；文档同步 `docs/overview.md`、`docs/backend-structure.md`、`docs/auth-permissions.md` 与 `docs/README.md`。
+9. **测试（必选）**：在 `bbctg_vita_server/tests/<领域>/` 加 `test_<模块>.py`，继承 `support.DbTestCase`，经 service 或 route 的公开入口覆盖本模块特有的业务规则（状态推导、权限范围、冲突校验等）；公共工具已有的行为不重复测。前端有独立的纯函数逻辑时，在同目录加 `*.test.mjs`。约定见 [backend-structure.md「测试」](../backend-structure.md#测试)。
+10. **首页快捷导航与文档（可选/必选）**：首页预设才改 `home-data.ts` 与文案；文档同步 `docs/overview.md`、`docs/backend-structure.md`、`docs/auth-permissions.md` 与 `docs/README.md`。

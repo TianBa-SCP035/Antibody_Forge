@@ -175,7 +175,7 @@ function writeWeatherCache(snapshot: WeatherSnapshot) {
       JSON.stringify({ ...snapshot, savedAt: Date.now() } satisfies WeatherCachePayload),
     );
   } catch {
-    /* 隐私模式等场景可能无法写入 */
+    /* 隐私模式等场景可能无法写入。 */
   }
 }
 

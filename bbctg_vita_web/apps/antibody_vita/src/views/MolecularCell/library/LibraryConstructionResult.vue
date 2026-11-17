@@ -2447,8 +2447,6 @@ export default {
   background: var(--list-page-bg);
 }
 
-/* ---------- 工单概览 ---------- */
-
 .detail-overview {
   flex: none;
   overflow: hidden;
@@ -2624,8 +2622,6 @@ export default {
   background: #9ca3af;
 }
 
-/* ---------- 样品来源条 ---------- */
-
 .sample-strip {
   display: flex;
   flex: none;
@@ -2676,8 +2672,6 @@ export default {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* ---------- 结果判读 ---------- */
 
 .viewer-panel {
   display: flex;
@@ -3262,8 +3256,6 @@ export default {
   border: 0;
 }
 
-/* ---------- 右侧信息 ---------- */
-
 .metric-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3301,13 +3293,9 @@ export default {
   resize: none;
 }
 
-/* ---------- 表单通用 ---------- */
-
 .field-grid {
   display: grid;
 }
-
-/* ---------- 自适应 ---------- */
 
 @media (max-width: 1440px) {
   .topbar-meta div:last-child {
@@ -3346,8 +3334,6 @@ export default {
   }
 
 }
-
-/* ---------- 文件 / 画布 / 信息三栏审阅台 ---------- */
 
 .review-workspace {
   display: grid;

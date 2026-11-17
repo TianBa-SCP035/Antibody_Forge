@@ -21,7 +21,7 @@ function latin1(bytes) {
   return String.fromCharCode(...bytes)
 }
 
-test('a zip whose files sit at the root uses the zip name as the folder', () => {
+test('zip 内文件在根目录时用 zip 名作文件夹', () => {
   assert.deepEqual(
     pathsFromZipEntries([
       '测序结果/a.seq',
@@ -38,7 +38,7 @@ test('a zip whose files sit at the root uses the zip name as the folder', () => 
   )
 })
 
-test('a zip whose only folder is a marker uses the zip name', () => {
+test('zip 内只有标记文件夹时用 zip 名作文件夹', () => {
   assert.deepEqual(
     pathsFromZipEntries(['测序合格结果/a.ab1', '完成/b.seq'], 'batch.zip'),
     ['batch/测序合格结果/a.ab1', 'batch/完成/b.seq'],
@@ -49,7 +49,7 @@ test('a zip whose only folder is a marker uses the zip name', () => {
   )
 })
 
-test('a zip that already contains one folder keeps that folder name', () => {
+test('zip 内已有一个文件夹时保留该文件夹名', () => {
   assert.deepEqual(
     pathsFromZipEntries([
       'TJ6936-/测序结果/a.seq',
@@ -63,13 +63,13 @@ test('a zip that already contains one folder keeps that folder name', () => {
   )
 })
 
-test('zip names without the utf-8 flag are read as utf-8 or gbk', () => {
+test('zip 文件名无 UTF-8 标记时按 UTF-8 或 GBK 解码', () => {
   assert.equal(zipEntryName(latin1(Buffer.from('b2e2d0f2bde1b9fb2f612e736571', 'hex'))), '测序结果/a.seq')
   assert.equal(zipEntryName(latin1(Buffer.from('测序结果/a.seq'))), '测序结果/a.seq')
   assert.equal(zipEntryName('测序结果/a.seq'), '测序结果/a.seq')
 })
 
-test('expandResultArchives unpacks zips next to plain files', async () => {
+test('解压结果包时 zip 与普通文件并列展开', async () => {
   const rows = await expandResultArchives([
     {
       file: zipFile('TJ6936.zip', {
@@ -94,7 +94,7 @@ test('expandResultArchives unpacks zips next to plain files', async () => {
   })
 })
 
-test('a zip is limited by the batch size, not the single file size', async () => {
+test('zip 按整批大小限制，不按单文件大小限制', async () => {
   const dropped = await readDroppedFiles({ items: [], files: [{ name: 'big.zip', size: 60 * MB }] })
   assert.equal(dropped.length, 1)
   await assert.rejects(

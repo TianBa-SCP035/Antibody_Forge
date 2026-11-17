@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-// FatFishPet lives in app.vue (global overlay for login + business pages)
+// FatFishPet 位于 app.vue，需覆盖登录页和业务页。
 import { computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 

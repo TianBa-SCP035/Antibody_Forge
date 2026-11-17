@@ -1,3 +1,3 @@
-# locale
+# 语言包
 
-每个app使用的国际化可能不同，这里用于扩展国际化的功能，例如扩展 dayjs、antd组件库的多语言切换，以及app本身的国际化文件。
+本目录维护 Antibody Vita 的应用语言包，并为 Element Plus 与 dayjs 加载对应语言配置

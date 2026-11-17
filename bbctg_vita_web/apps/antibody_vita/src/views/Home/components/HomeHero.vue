@@ -43,7 +43,7 @@ const weatherSubline = computed(() => {
   return parts;
 });
 
-/** 背景图渲染 Meteocons，动画不依赖整页 document 就绪（内联 Icon 会冻住数秒） */
+/** Meteocons 作为背景图渲染，避免内联图标等待 document 就绪时动画卡顿。 */
 const weatherIconStyle = ref<{ backgroundImage?: string }>({});
 
 async function syncWeatherIconBackground(icon: string) {
@@ -157,7 +157,7 @@ watch(
 </template>
 
 <style scoped>
-/* 原型：左淡蓝 → 中薄荷绿 → 右白（三段，不是单色绿渐变） */
+/* 渐变固定为左淡蓝、中薄荷绿、右侧页面底色三段。 */
 .home-hero {
   border-color: rgb(191 219 254 / 45%);
   background: linear-gradient(

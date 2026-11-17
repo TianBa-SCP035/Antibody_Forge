@@ -897,7 +897,6 @@ def collect_validation_issues(
     content: dict[str, Any] | None = None,
     column_usage: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
-    """统一校验入口：返回带 field 的结构化问题列表。"""
     payload = safe_dict(data)
     if content is None:
         existing_content = get_order_content(order) if order else None

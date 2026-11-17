@@ -1,8 +1,9 @@
-"""测试公用：内存 SQLite 库。"""
+"""测试公用：内存 SQLite 库与外部只读库桩。"""
 
+import json
 import unittest
 
-from sqlalchemy import BigInteger, create_engine
+from sqlalchemy import BigInteger, create_engine, event
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.schema import CreateIndex
@@ -24,9 +25,22 @@ def _compile_create_index_for_sqlite(create, compiler, **kwargs):
     return compiler.visit_create_index(create, **kwargs)
 
 
+def _json_items(value):
+    return json.loads(value or "[]")
+
+
+def _register_mysql_json_functions(dbapi_connection, _record):
+    # 列表筛选用到的 MySQL JSON 函数，SQLite 没有
+    dbapi_connection.create_function("json_length", 1, lambda value: len(_json_items(value)))
+    dbapi_connection.create_function(
+        "json_overlaps", 2, lambda left, right: bool(set(_json_items(left)) & set(_json_items(right)))
+    )
+
+
 def memory_engine(*models):
     """新建内存 SQLite 库，只建给定模型的表。"""
     engine = create_engine("sqlite+pysqlite:///:memory:")
+    event.listen(engine, "connect", _register_mysql_json_functions)
     Base.metadata.create_all(engine, tables=[model.__table__ for model in models])
     return engine
 
@@ -43,3 +57,19 @@ class DbTestCase(unittest.TestCase):
         self.Session = sessionmaker(bind=self.engine, **self.session_options)
         self.db = self.Session()
         self.addCleanup(self.db.close)
+
+
+class FakeSourceDb:
+    """外部只读库（员工库、靶点源库）：任何查询都返回给定的行。"""
+
+    def __init__(self, rows):
+        self.rows = [dict(row) for row in rows]
+
+    def execute(self, _stmt, _params=None):
+        return self
+
+    def mappings(self):
+        return self
+
+    def all(self):
+        return self.rows

@@ -101,9 +101,9 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 | `mega.flow_work_order.edit` | action | 保存、校验、删除、作废工单 |
 | `mega.flow_work_order.dispatch` | action | 发送、撤回/停止/继续、确认执行、完成/失败及设备暂停确认等调度操作 |
 
-**Labillion 回调** `POST /api/mega-automation/labillion/callback` **无需登录**（镁伽服务器推送）；路由不挂权限依赖，响应恒为 HTTP 200。来源校验可选：配置 `LABILLION_CALLBACK_TOKEN`（请求头 `X-Callback-Token`）或 `LABILLION_CALLBACK_IPS` 后，不满足的请求返回 401 / 403，不进业务处理；设备回传 `POST /api/order-experiment/sync` 同理，对应 `ORDER_SYNC_TOKEN` / `ORDER_SYNC_IPS`。实现见 `modules/auth/external.py`，配置说明见 [deploy.md](./deploy.md)。
+**Labillion 回调** `POST /api/mega-automation/labillion/callback` **无需登录**（镁伽服务器推送）；路由不挂权限依赖，进入业务处理后恒返回 HTTP 200。来源校验可选：配置 `LABILLION_CALLBACK_TOKEN`（请求头 `X-Callback-Token`）或 `LABILLION_CALLBACK_IPS` 后，不满足的请求返回 401 / 403，不进业务处理；设备回传 `POST /api/order-experiment/sync` 同理，对应 `ORDER_SYNC_TOKEN` / `ORDER_SYNC_IPS`。实现见 `modules/auth/external.py`，配置说明见 [deploy.md](./deploy.md)。
 
-**主动状态同步** `POST .../sync-labillion-status` 使用 `mega.page.flow_work_order`（与详情只读同级），供详情页进入时拉取镁伽最新状态；不登记人员权限动作映射，审计操作名为「同步镁伽工单状态」，实际数据变化仍由通用审计自动记录。
+**主动状态同步** `POST .../sync-labillion-status` 使用 `mega.page.flow_work_order`（与详情只读同级），供详情页进入时拉取镁伽最新状态；不登记人员权限动作映射，审计操作名为「同步镁伽状态」，实际数据变化仍由通用审计自动记录。
 
 **手动执行定时任务** `POST /api/system/features/jobs/run` 需 `system.feature.manage`；body `{ "job_code": "job.xxx" }`。后台线程执行，结果记入 `sys_job_run_log` 与操作日志。
 
@@ -115,7 +115,7 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 |--------|------|------|
 | `atlas.page.target_library` | page | 靶点库列表与详情浏览 |
 
-靶点库首版只读；列表与详情接口均使用该页面权限，没有写接口和操作日志。
+靶点库为只读模块；列表与详情接口均使用该页面权限，没有写接口和操作日志。
 
 ### 2.4 抗体发现（`discovery.*`）
 
@@ -128,7 +128,7 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 | `discovery.synthesis_progress.pm_edit` | action | PM操作合成与验证：新建工单（PM 自动填本人且不可改，负责人不可填）、认领「无人问津」合成结果（不限工单归属），认领 7 天内可改回「无人问津」，不能改给他人；仅限归属本人的工单（有负责人时只归负责人，负责人为空或「无人问津」时归 PM）可编辑项目与改造需求字段（项目编号、课题类型、靶点、小鼠品系、优先级、排序、订单性质、供应方式、改造类型/方式/母本/要求、备注）、调整排序及删除待下单工单；不能改 PM、实验号、靶点类型 |
 | `discovery.synthesis_progress.eng_edit` | action | 改造实验员操作合成与验证：只管改造、内部转染、改亚型的工单。可新建这类工单（下单人填本人，PM 默认本人可改，负责人不可填），可修改其中除负责人、靶点底色、亲和力与流式外的全部字段（含状态、合成订单与到货信息、合成公司），可调整排序、删除未关联 One 的工单；能看到这类工单的合成公司。不能认领 |
 | `discovery.synthesis_progress.affinity_edit` | action | 亲和力操作合成与验证：在状态列往返修改亲和力实验状态（待检测/检测中/已完成），并编辑亲和力人员、亲和力结果、亲和力日期、未出原因（填亲和力日期时亲和力人员为空会自动填本人）；不能打回已完成的工单 |
-| `discovery.synthesis_progress.flow_edit` | action | 流式操作合成与验证：在状态列往返修改流式实验状态（待检测/已完成/不做），并编辑流式日期、流式说明；不能打回已完成的工单。与亲和力权限同时具备时，可在有未出原因时把亲和力标为已完成（结案），也可把已完成的工单打回待检测重做 |
+| `discovery.synthesis_progress.flow_edit` | action | 流式操作合成与验证：在状态列往返修改流式实验状态（待检测/已完成/不做），并编辑流式日期、流式说明；不能打回已完成的工单。与亲和力权限同时具备时，可在有未出原因时把亲和力标为已完成（结案），也可把已完成的工单打回待检测重做，或把任何未取消的工单改为已取消（不能从已取消改回） |
 
 写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/delete`、`/reorder` 及 `/api/discovery/synthesis-progress/save`、`/save_batch`、`/claim`、`/reorder`、`/delete`、`/adopt_source`、`/sync_now` 在路由上用 `require(..., audit=)` 声明操作日志名称。字段与规则见 [modules/discovery/workbench.md](./modules/discovery/workbench.md) 与 [modules/discovery/synthesis-progress.md](./modules/discovery/synthesis-progress.md)。权限码和菜单开关（`menu.discovery` / `menu.discovery.workbench` / `menu.discovery.synthesis_progress`）在 `modules/discovery/permissions.py`。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。选靶点 / 人名时复用公共选项接口 `GET /api/options/targets` 与 `/api/options/users`：能打开任一业务页面（系统管理以外的 page 类权限）即可访问，新模块的页面权限自动包含在内。
 
@@ -143,13 +143,16 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 | `molecular.page.primer` | page | 引物库 |
 | `molecular.primer.edit` | action | 新增、修改、停用、删除、改系列、改方向和批量导入引物 |
 
-写接口 `POST /api/molecular-cell/library-orders/save`、`/batch_save`、`/delete`、`/handoff`、`/files/preflight`、`/files/upload_batch`、`/files/update`、`/files/delete`、`/catalog/save`、`/catalog/delete`、`/catalog/batch_update`、`/catalog/batch_delete`、`/catalog/batch_save` 在路由上声明操作日志名称；使用 POST 返回文件的 `/catalog/export` 按页面权限检查，和其他导出一样不记日志。查询 `/catalog/list`、`/catalog/column_values` 和全选 `/catalog/ids` 不记操作日志。取消统一通过 `/save` 更新状态。只改质检结论、质检人、质检日期、质检说明时，`/save` 也接受 `molecular.library.file.manage`；`/batch_save` 在每一条都只改这些字段时同样接受。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。权限码和菜单开关（`menu.molecular_cell` / `menu.molecular_cell.library` / `menu.molecular_cell.primer`）在 `modules/molecular_cell/permissions.py`。不写入示例角色/权限包。靶点 / 人名复用血清目录接口，这两条同时接受文库页权限。
+写接口 `POST /api/molecular-cell/library-orders/save`、`/batch_save`、`/delete`、`/handoff`、`/files/upload_batch`、`/files/update`、`/files/delete`、`/catalog/save`、`/catalog/delete`、`/catalog/batch_update`、`/catalog/batch_delete`、`/catalog/batch_save` 在路由上声明操作日志名称；使用 POST 返回文件的 `/catalog/export` 按页面权限检查，和其他导出一样不记日志。上传前的路径预检 `/files/preflight` 不写库，用 `audit_quiet()` 不记日志。查询 `/catalog/list`、`/catalog/column_values` 和全选 `/catalog/ids` 不记操作日志。取消统一通过 `/save` 更新状态。只改质检结论、质检人、质检日期、质检说明时，`/save` 也接受 `molecular.library.file.manage`；`/batch_save` 在每一条都只改这些字段时同样接受。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。权限码和菜单开关（`menu.molecular_cell` / `menu.molecular_cell.library` / `menu.molecular_cell.primer`）在 `modules/molecular_cell/permissions.py`。不写入示例角色/权限包。已录入靶点搜索用本模块的 `GET /api/molecular-cell/library-orders/recorded_targets`；选靶点 / 人名用公共选项接口 `GET /api/options/targets` 与 `/api/options/users`。
 
 ### 2.6 系统模块（`system.*`）
 
 | 权限码 | 类型 | 说明 |
 |--------|------|------|
-| `system.page.user` / `role` / `permission` / `operation_log` | page | 用户权限管理页（进路由） |
+| `system.page.user` | page | 用户管理页 |
+| `system.page.role` | page | 角色管理页 |
+| `system.page.permission` | page | 权限管理页 |
+| `system.page.operation_log` | page | 操作日志页 |
 | `system.page.feature` | page | 系统功能页 |
 | `system.user.manage` | action | 用户增删改、重置密码、批量角色 |
 | `system.role.manage` | action | 角色 CRUD |
@@ -157,19 +160,19 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 | `system.operation_log.view` | action | 查看操作日志 |
 | `system.feature.manage` | action | 修改功能开关、定时任务配置；手动执行定时任务（查看用 `page.feature`） |
 
-**page 与 action**：`page.*` 管进路由；Tab 与写接口靠对应的 `manage` / `view` action。
+**page 与 action**：`page.*` 管进路由；各 Tab 及其读写接口靠对应的 `manage` / `view` action。
 
 ### 2.7 权限包与角色（示例种子）
 
 `docs/vita-database.sql` 文末的权限包 / 角色仅为空库示例；新增页面只加权限点，不要改现网角色/权限包。
 
-新模块首版可设置一个路由查看权限和一个全部编辑权限；二者长期保留，后续再按操作拆分更细权限。
+新模块可先设置一个路由查看权限和一个全部编辑权限；二者长期保留，需要时再按操作拆分更细权限。
 
 示例三档（角色 code 与权限包 code 相同，1:1 绑定）：
 
 | 角色 / 包 code | 名称 | 大致范围 |
 |----------------|------|----------|
-| `guest` | 访客 | 血清 / 镁伽普通页面只读及 `serum.cell.view`；不含操作日志权限 |
+| `guest` | 访客 | 血清 / 镁伽普通页面只读及 `serum.cell.view`；另含用户、角色、权限、系统功能四个 `system.page.*`，因没有对应 action，只能只读查看系统功能页；不含操作日志权限 |
 | `operator` | 业务员 | 血清 + 镁伽日常编辑；工作台默认使用草稿编辑和实验保障权限，无工作台全部编辑、`edit_all`、`auto_update`、删工单等管理权限 |
 | `system_admin` | 系统管理 | `system.*` 全部 10 个权限点 |
 
@@ -275,7 +278,7 @@ flowchart LR
     FEAT[meta.featureCode]
   end
   subgraph L3["层 3：控件"]
-    SP[serumPermission.ts / megaPermission.ts]
+    SP[serumPermission.ts / src/api/*.ts + hasAccessCode]
   end
   JWT --> AUTH
   JWT --> SP
@@ -307,7 +310,7 @@ flowchart LR
 - `canUpdateSerumStatus` → `status.update` 且（owner 或 `edit_all`）；**比后端略严**（后端负责人还可凭 `titer.edit` 改状态，见 §4.2）
 - `canEditSerumTiter` → `titer.edit` 且（owner、效价负责人或 `titer.edit_all`）
 
-镁伽流式工单使用 `utils/megaPermission.ts`：`canEditMegaFlowWorkOrder`、`canDispatchMegaFlowWorkOrder`。
+各业务模块的权限码常量放在对应的 `src/api/*.ts`。例如镁伽流式工单常量位于 `api/megaAutomation.ts`，页面通过 `hasAccessCode` 判断 `FLOW_WORK_ORDER_EDIT` 与 `FLOW_WORK_ORDER_DISPATCH`。`utils/serumPermission.ts` 只保留血清模块需要结合项目负责人等数据判断的业务规则。
 
 系统管理页各 Tab 按 `system.*.manage` / `operation_log.view` 显隐。
 
@@ -336,13 +339,15 @@ flowchart LR
 - **事务**：SAVEPOINT 归入根事务；只有根事务提交成功才算日志已持久化。
 - **容量**：单事务最多 200 个实体、每实体 500 处变化；超限截断详情，不限制日志表总量。启动时校验审计表字段并缓存数据库注释。
 
-操作名和资源分类写在路由上（`modules/system/audit_routes.py`），每个写接口必须有一种声明，标准只读后缀（`/list`、`/column_values`、`/export_list`、`/export`、`/stats`）除外：
+操作名和资源分类由各模块的 `routes.py` 在路由依赖中声明；`modules/system/audit_routes.py` 提供 `audit`、`audit_quiet`、`permission_action` 与 `route_audit`。每个写接口必须有一种声明，标准只读后缀（`/list`、`/column_values`、`/export_list`、`/export`、`/stats`）除外：
 
 - `require(code, audit="操作名")`：权限检查和操作名一起声明，操作类型、资源取自权限点；
 - `audit(...)`：权限要按数据在函数体里判断，或不走权限点（登录、设备回调）时单独声明；
 - `audit_quiet(...)`：查询、核对类 `POST`，没有数据变化不记日志。
 
-同一路由若同时挂 create/edit，以是否插入了对应主资源为准，避免已有项目加子记录被标成新建。新增写接口继续走主库 ORM；`python -m pytest` 会检查审计事务、敏感值和每个写接口都有声明。
+`main.py` 通过 `FastAPI(dependencies=[Depends(bind_route_audit)])` 注册全局依赖；`audit_middleware.py` 中的 `bind_route_audit` 在路由匹配后绑定该路由的审计声明。同一路由可以声明多个权限动作，并在运行时调用 `audit_context.py` 的 `use_audit_action(code)` 缩小到实际动作；文库工单保存接口据此把只修改质检结论的请求记为 `molecular.library.file.manage`。
+
+同一路由若同时挂 create/edit，以是否插入了对应主资源为准，避免已有项目加子记录被标成新建。`main.py` 启动时用 `api_routes()` 检查未分类写路由并记录警告；测试通过 `modules/system/audit_coverage.py` 与 `api_routes()` 检查每个写路由都有声明，并核对登记路径与实际服务路径一致。
 
 ## 7. 功能开关（`sys_feature_flag`）
 
@@ -400,7 +405,7 @@ sequenceDiagram
 |----------|------|
 | 权限点与功能开关登记 | `bbctg_vita_server/modules/<模块>/permissions.py`，汇总在 `modules/registry.py` |
 | 有效权限与路由权限声明 | `bbctg_vita_server/modules/auth/permissions.py` |
-| 写接口审计声明 | `bbctg_vita_server/modules/system/audit_routes.py` |
+| 写接口审计声明 | 各模块 `routes.py`；声明工具与解析在 `bbctg_vita_server/modules/system/audit_routes.py` |
 | 写操作审计 | `bbctg_vita_server/modules/system/audit.py`（入口）、`audit_session.py`、`audit_middleware.py`、`audit_config.py` |
 | 功能开关 | `bbctg_vita_server/modules/system/features.py` |
 | 系统管理 API | `bbctg_vita_server/modules/system/routes.py` |
@@ -415,7 +420,6 @@ sequenceDiagram
 | 路由守卫 | `bbctg_vita_web/apps/antibody_vita/src/router/guard.ts` |
 | 系统首页 | `bbctg_vita_web/apps/antibody_vita/src/views/Home/` |
 | 血清前端权限 | `bbctg_vita_web/apps/antibody_vita/src/utils/serumPermission.ts` |
-| 镁伽前端权限 | `bbctg_vita_web/apps/antibody_vita/src/utils/megaPermission.ts` |
-| 抗体发现前端权限 | `bbctg_vita_web/apps/antibody_vita/src/utils/discoveryPermission.ts` |
-| 文库构建前端权限 | `bbctg_vita_web/apps/antibody_vita/src/utils/molecularPermission.ts` |
+| 前端权限码常量 | `bbctg_vita_web/apps/antibody_vita/src/api/*.ts` |
+| 前端通用权限判断 | `bbctg_vita_web/apps/antibody_vita/src/utils/accessCode.ts` |
 | ORM 模型 | `bbctg_vita_server/models/system.py` |

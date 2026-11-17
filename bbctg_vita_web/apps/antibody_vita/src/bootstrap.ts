@@ -5,8 +5,6 @@ import { registerLoadingDirective } from '@vben/common-ui';
 import { preferences } from '@vben/preferences';
 import { initStores } from '@vben/stores';
 import '@vben/styles';
-// Temporarily disable Vben's Element Plus-specific style overrides.
-// import '@vben/styles/ele';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 
 import './styles/theme.css';
@@ -27,53 +25,35 @@ import App from './app.vue';
 import { router } from './router';
 
 async function bootstrap(namespace: string) {
-  // 初始化组件适配器
   await initComponentAdapter();
 
-  // 初始化表单组件
   await initSetupVbenForm();
 
-  // // 设置弹窗的默认配置
-  // setDefaultModalProps({
-  //   fullscreenButton: false,
-  // });
-  // // 设置抽屉的默认配置
-  // setDefaultDrawerProps({
-  //   zIndex: 2000,
-  // });
   const app = createApp(App);
 
   app.directive('loading', isolatedLoadingDirective);
 
-  // 注册Vben提供的v-loading和v-spinning指令
   registerLoadingDirective(app, {
-    loading: false, // Vben提供的v-loading指令和Element Plus提供的v-loading指令二选一即可，此处false表示不注册Vben提供的v-loading指令
+    loading: false, // v-loading 使用 Element Plus 实现，避免与 Vben 指令冲突。
     spinning: 'spinning',
   });
 
-  // 国际化 i18n 配置
   await setupI18n(app);
 
-  // 配置 pinia-tore
   await initStores(app, { namespace });
 
-  // 安装权限指令
   registerAccessDirective(app);
 
-  // 初始化 tippy
   const { initTippy } = await import('@vben/common-ui/es/tippy');
   initTippy(app);
 
-  // 配置路由及路由守卫
   app.use(router);
   initSessionExpiryWatcher();
   initTableContextMenu();
 
-  // 配置Motion插件
   const { MotionPlugin } = await import('@vben/plugins/motion');
   app.use(MotionPlugin);
 
-  // 动态更新标题
   watchEffect(() => {
     if (preferences.app.dynamicTitle) {
       const routeTitle = router.currentRoute.value.meta?.title;

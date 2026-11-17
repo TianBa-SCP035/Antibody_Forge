@@ -77,7 +77,7 @@ def _merge_resources() -> dict[str, str]:
 
 PERMISSION_INDEX = _index_permissions()
 PERMISSIONS: dict[str, Permission] = {code: permission for code, (_access, permission) in PERMISSION_INDEX.items()}
-# 业务模块（系统管理以外）的页面权限码：公共选项接口按“能打开任一业务页面”放行
+# 业务模块（系统管理以外）的页面权限码；公共选项接口按“能打开任一业务页面”放行。
 BUSINESS_PAGE_CODES: tuple[str, ...] = tuple(
     code for code, (access, permission) in PERMISSION_INDEX.items()
     if access.module != system.ACCESS.module and permission.type == "page"

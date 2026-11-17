@@ -20,7 +20,7 @@ PAUSE_STATE_READY_FOR_EDIT = frozenset({PAUSE_STATE_WITHDRAWN})
 DISPATCH_ID_PREFIX = "DSP"
 DISPATCH_ID_RANDOM_DIGITS = 6
 DISPATCH_ID_RETRY_LIMIT = 30
-# 列表/状态查询不需要完整下发 JSON，默认跳过加载。
+# 列表和状态查询不需要完整下发 JSON，因此默认跳过加载。
 _DISPATCH_META_DEFER = (defer(MegaFlowWorkOrderDispatch.payload),)
 
 
@@ -94,7 +94,6 @@ def batch_current_dispatches(db: Session, work_order_ids: list[int]) -> dict[int
 
 
 def generate_dispatch_id(now: datetime | None = None) -> str:
-    """生成下发编号：DSP + yyMMdd + 6 位随机数，例如 DSP260710482913。"""
     stamp = (now or now_local()).strftime("%y%m%d")
     suffix = f"{random.randint(0, 10**DISPATCH_ID_RANDOM_DIGITS - 1):0{DISPATCH_ID_RANDOM_DIGITS}d}"
     return f"{DISPATCH_ID_PREFIX}{stamp}{suffix}"

@@ -56,7 +56,7 @@ def get_audit_set_like_fields(
 
 
 def load_database_field_labels(engine: Engine) -> int:
-    """Load labels and validate audit V2 schema with one startup query."""
+    """启动时用一次查询加载字段名并校验审计 V2 表结构。"""
     if engine.dialect.name != "mysql":
         return 0
     try:

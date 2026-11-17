@@ -2,7 +2,7 @@ import type { UserInfo } from '@vben/types';
 
 import { requestClient } from '#/api/request';
 
-/** Personal center fields returned by GET /user/info */
+/** GET /user/info 返回的个人中心字段。 */
 export interface ProfileUserInfo extends UserInfo {
   department?: string;
   email?: string;

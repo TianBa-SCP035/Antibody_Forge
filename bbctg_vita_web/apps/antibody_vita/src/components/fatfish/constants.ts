@@ -1,12 +1,12 @@
-/** Shared geometry, asset bases, and storage keys for FatFish. */
+/** 大肥鱼共用的尺寸、资源路径和存储键。 */
 
-/** On-screen character box (just under the 224px sidebar). Sprite inside is scaled to 0.80 and centered. */
+/** 角色容器略窄于 224px 侧栏，内部精灵缩放为 0.8 并居中。 */
 export const SIZE = 220;
 export const SIDEBAR_WIDTH = 224;
-/** Free-floating collapsed size. Near a screen edge it becomes a slim half-capsule. */
+/** 自由悬浮时的收起尺寸；靠近屏幕边缘时变成窄半胶囊。 */
 export const BALL = 30;
 export const CAP_PAD = 2;
-export const CAP_H = BALL + CAP_PAD * 2; // 34, thickness stays
+export const CAP_H = BALL + CAP_PAD * 2; // 固定厚度为 34。
 export const CAP_W = 64;
 export const MAGNET_RANGE = 56;
 
@@ -24,18 +24,18 @@ export const MEMORY_SUMMARY_KEY = 'fatfish-memory-summary';
 export const MEMORY_TURNS_SINCE_COMPRESS_KEY = 'fatfish-memory-turns-since-compress';
 export const DAILY_REMARKS_KEY = 'fatfish-daily-remarks';
 export const LINE_POOL_KEY = 'fatfish-line-pool';
-/** Best rhythm-stage score on this browser. */
+/** 当前浏览器的节奏舞台最高分。 */
 export const DISCO_BEST_KEY = 'fatfish-disco-best';
-/** Set once the poke easter egg has played here; the pet menu then offers 蹦迪 directly. */
+/** 戳击彩蛋触发后写入，宠物菜单随后直接显示「蹦迪」。 */
 export const DISCO_UNLOCKED_KEY = 'fatfish-disco-unlocked';
-/** List endpoints the pet has seen pages call (per account; no tokens). */
+/** 宠物观察到的列表接口，按账号隔离且不含令牌。 */
 export const DATA_SOURCES_KEY = 'fatfish-data-sources';
 
-/** Raw turns kept for display / local QA list. */
+/** 用于展示和本地问答列表的原始轮次上限。 */
 export const QA_KEEP = 28;
-/** Raw turns sent to the model (Cursor-like: summary + recent only). */
+/** 发送给模型的近期原始轮次上限；更早内容只发送摘要。 */
 export const RECENT_HISTORY_SEND = 8;
-/** Compress after this many new turns since last summary update. */
+/** 摘要更新后累积到此轮次时再次压缩。 */
 export const COMPRESS_EVERY_TURNS = 8;
-/** Same hard cap as the proxy's SUMMARY_MAX_CHARS (the compress prompt aims for ≤400). */
+/** 与代理的 SUMMARY_MAX_CHARS 硬上限一致；压缩提示词以不超过 400 字为目标。 */
 export const MEMORY_SUMMARY_MAX = 800;

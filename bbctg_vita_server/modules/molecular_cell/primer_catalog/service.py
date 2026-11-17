@@ -1,5 +1,3 @@
-"""引物库数据查询与写入。"""
-
 import re
 from io import BytesIO
 from typing import Any
@@ -59,7 +57,7 @@ def _sequence(value: Any, field: str, required: bool = False) -> str | None:
 
 
 def check_sequence(value: str) -> str:
-    """核对序列。显示序列按测序读数转过一次，得到的就是测序文件里那一串。"""
+    """核对序列是显示序列的反向互补序列。"""
     return value.translate(COMPLEMENT)[::-1]
 
 
@@ -80,7 +78,7 @@ def normalize(data: dict[str, Any]) -> dict[str, Any]:
         "note": _text(data.get("note"), "note"),
         "active": active,
     }
-    # 表单和导入不再编辑版本、同源臂。缺省或空值不写回，避免把库里的旧值清掉。
+    # 版本和同源臂仅在提交非空值时写入，避免清空库中的旧值。
     version = _text(data.get("version"), "version") if "version" in data else None
     if version:
         clean["version"] = version
@@ -113,7 +111,7 @@ def _new(data: dict[str, Any]) -> Primer:
     return row
 
 
-# 核对序列由显示序列算出，库里没有这一列，靠顶部筛选
+# 核对序列由显示序列计算，库中没有该列，只能使用顶部筛选。
 HEADER_COLUMNS = header_columns(
     FIELDS,
     family=HeaderColumn(Primer.family, order=PRESET_LIBRARIES),

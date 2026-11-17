@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from core.response import success
 from db.session import get_db
 from models.system import SysUser
-from modules.auth.dependencies import get_current_user
+from modules.auth.dependencies import actor_name, get_current_user
 from modules.auth.external import require_labillion_caller
 from modules.auth.permissions import require
 from modules.mega_automation import callback, service
@@ -174,7 +174,7 @@ def flow_work_order_save(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
-    return success(service.save_work_order(db, data or {}, current_user))
+    return success(service.save_work_order(db, data or {}, actor_name(current_user)))
 
 
 @router.post("/flow-work-orders/{order_id}/validate", dependencies=[require("mega.flow_work_order.edit", audit="校验流式工单")])
@@ -195,7 +195,7 @@ def flow_work_order_dispatch(
 ) -> dict:
     simulate = bool((data or {}).get("simulate"))
     return success(
-        service.dispatch_work_order(db, order_id, current_user, simulate=simulate)
+        service.dispatch_work_order(db, order_id, actor_name(current_user), simulate=simulate)
     )
 
 

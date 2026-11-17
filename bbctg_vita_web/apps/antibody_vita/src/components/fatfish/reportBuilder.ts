@@ -1,15 +1,14 @@
 /**
- * Custom summaries and Excel files from a flat table plus a model-written spec.
+ * 根据平面表格和模型生成的规格构建自定义汇总与 Excel 文件。
  *
- * The model only describes what it wants (filters, grouping, metrics, columns, sort); every count and
- * sum is computed here so the numbers in the answer and in the file are the same and exact.
- * No business imports: any source that can produce `DataTable` works.
+ * 模型只描述筛选、分组、指标、列和排序；计数与求和均在此计算，确保回答和文件中的数值一致且准确。
+ * 本模块不导入业务代码，任何能生成 DataTable 的数据源均可使用。
  */
 import { writeXlsx } from './xlsxWriter';
 
 export type Cell = string | number | null;
 export type Row = Record<string, Cell>;
-/** `aliases`: raw API field name → the column it is shown as, so the field name still works in a spec. */
+/** aliases 将 API 原始字段名映射到展示列名，使规格仍可引用原始字段名。 */
 export type DataTable = { columns: string[]; rows: Row[]; aliases?: Record<string, string> };
 
 export const CONDITION_OPS = ['=', '!=', 'contains', 'not_contains', '>', '>=', '<', '<=', 'empty', 'not_empty', 'in'] as const;
@@ -54,7 +53,7 @@ function squash(s: string) {
   return s.toLowerCase().replace(/[\s_\-·（）()]/g, '');
 }
 
-/** Exact, then case/space-insensitive, then a unique partial match ("负责" → "负责人"). */
+/** 依次尝试精确匹配、忽略大小写和空格匹配、唯一部分匹配（如「负责」匹配「负责人」）。 */
 export function resolveColumn(name: string, columns: string[], aliases?: Record<string, string>): string | null {
   const want = str(name);
   if (!want) return null;
@@ -64,7 +63,7 @@ export function resolveColumn(name: string, columns: string[], aliases?: Record<
   const sq = squash(want);
   const loose = columns.filter((c) => squash(c) === sq);
   if (loose.length === 1) return loose[0]!;
-  // "靶点名称" may mean "靶点", but "实验ID" must not fall back to a bare "id" key.
+  // 「靶点名称」可匹配「靶点」，但「实验ID」不得退化匹配单独的 id 键。
   const partial = columns.filter((c) => squash(c).includes(sq) || (/[^\x00-\x7f]/.test(c) && sq.includes(squash(c))));
   return partial.length === 1 ? partial[0]! : null;
 }
@@ -72,7 +71,7 @@ export function resolveColumn(name: string, columns: string[], aliases?: Record<
 export function toNumber(v: Cell | undefined): number | null {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   const s = str(v).replace(/[,，\s]/g, '').replace(/%$/, '');
-  // Leading zeros mean an ID ("0012"), not the number 12.
+  // 前导零表示编号（如「0012」），不能按数字 12 处理。
   if (!s || /^[-+]?0\d/.test(s)) return null;
   const pow = /^([-+]?\d+\.?\d*)?[x×*]?10\^([-+]?\d+)$/i.exec(s);
   if (pow) return Number(pow[1] ?? 1) * 10 ** Number(pow[2]);
@@ -82,10 +81,10 @@ export function toNumber(v: Cell | undefined): number | null {
 }
 
 const DATE_RE = /^(\d{4})\s*[-/.年]\s*(\d{1,2})\s*[-/.月]\s*(\d{1,2})\s*日?/;
-// Epoch timestamps between 2000 and 2100, in milliseconds (13 digits) or seconds (10 digits).
+// 仅接受 2000 至 2100 年之间的时间戳，13 位按毫秒、10 位按秒。
 const EPOCH_RE = /^(\d{13}|\d{10})$/;
 
-/** `2026-9-5 08:00`, `2026年9月5日`, an epoch timestamp → `2026-09-05`; null for anything else or an impossible date. */
+/** 将日期文本或时间戳转换为 YYYY-MM-DD；格式无效或日期不存在时返回 null。 */
 function dateKey(s: string): string | null {
   if (EPOCH_RE.test(s)) {
     const ms = Number(s) * (s.length === 10 ? 1000 : 1);
@@ -101,13 +100,13 @@ function dateKey(s: string): string | null {
   return `${m[1]}-${m[2]!.padStart(2, '0')}-${m[3]!.padStart(2, '0')}`;
 }
 
-/** Sort key keeping the time of day: `2026-9-28 8:00` → `2026-09-28 8:00`. */
+/** 生成保留时刻的排序键，如 `2026-9-28 8:00` 转为 `2026-09-28 8:00`。 */
 function dateTimeKey(s: string): string | null {
   const d = dateKey(s);
   return d && !EPOCH_RE.test(s) ? `${d} ${s.replace(DATE_RE, '').trim()}`.trim() : d;
 }
 
-/** Equality for filters: case-insensitive text, numbers by value, a bare date matches any time on that day. */
+/** 筛选等值规则：文本忽略大小写，数字按数值比较，纯日期匹配当天任意时刻。 */
 function sameCell(s: string, want: string): boolean {
   if (s.toLowerCase() === want.toLowerCase()) return true;
   const ns = toNumber(s);
@@ -117,7 +116,7 @@ function sameCell(s: string, want: string): boolean {
   return !!dw && dateKey(s) === dw;
 }
 
-/** Beijing wall-clock time as an ISO string, whatever the browser's time zone. */
+/** 无论浏览器时区如何，均返回北京时间的 ISO 字符串。 */
 export function beijingIso(offsetDays = 0): string {
   return new Date(Date.now() + 8 * 3600_000 + offsetDays * 86_400_000).toISOString();
 }
@@ -126,7 +125,7 @@ function localDate(offsetDays = 0): string {
   return beijingIso(offsetDays).slice(0, 10);
 }
 
-/** `today`, `today-30`, `today+7` → YYYY-MM-DD, so "overdue" style filters don't need the model to know the date math. */
+/** 将 today、today-30、today+7 转为 YYYY-MM-DD，使逾期类筛选无需模型计算日期。 */
 function expandValue(raw: string): string {
   const m = /^today\s*([+-]\s*\d+)?$/i.exec(raw.trim());
   return m ? localDate(m[1] ? Number(m[1].replace(/\s/g, '')) : 0) : raw.trim();
@@ -138,7 +137,7 @@ function compare(a: Cell | undefined, b: string): number | null {
   const na = toNumber(a);
   const nb = toNumber(b);
   if (na != null && nb != null) return na - nb;
-  // "N/A" or "待测" is not greater than 10: a number compares only with a number.
+  // 「N/A」或「待测」不能与 10 比较，数字只和数字比较。
   if (nb != null) return null;
   const da = dateKey(sa);
   const db = b.length <= 10 ? dateKey(b) : null;
@@ -188,7 +187,7 @@ function sumOf(rows: Row[], column: string): number {
   return rows.reduce((a, r) => a + (toNumber(r[column]) ?? 0), 0);
 }
 
-/** `all` = every matched row, the denominator for `pct`. */
+/** all 包含全部匹配行，作为 pct 的分母。 */
 function metricValue(m: Metric, rows: Row[], all: Row[]): Cell {
   if (m.op === 'count') return rows.length;
   if (m.op === 'pct') {
@@ -202,7 +201,7 @@ function metricValue(m: Metric, rows: Row[], all: Row[]): Cell {
     const texts = rows.map((r) => str(r[m.column!])).filter(Boolean);
     if (!texts.length) return null;
     if (nums.length === texts.length) return nums.reduce((a, b) => (m.op === 'min' ? Math.min(a, b) : Math.max(a, b)));
-    // Dates (keeping the time of day) and other text: earliest / latest in natural order, as written.
+    // 日期保留时刻，其他文本按自然顺序取最早或最晚，并返回原文。
     const keyed = texts
       .map((t) => ({ t, k: dateTimeKey(t) ?? t }))
       .sort((a, b) => a.k.localeCompare(b.k, 'zh-CN', { numeric: true }));
@@ -210,7 +209,7 @@ function metricValue(m: Metric, rows: Row[], all: Row[]): Cell {
   }
   if (!nums.length) return null;
   const total = nums.reduce((a, b) => a + b, 0);
-  // 12 significant digits drop float noise (0.1 + 0.2) without rounding small values away.
+  // 12 位有效数字用于消除浮点噪声，同时避免将小数值舍为零。
   if (m.op === 'sum') return Number(total.toPrecision(12));
   const avg = total / nums.length;
   return Math.abs(avg) >= 1 ? Math.round(avg * 100) / 100 : Number(avg.toPrecision(4));
@@ -242,7 +241,7 @@ const SHEET_BAD = /[\\/?*[\]:]/g;
 function sheetName(raw: string, used: Set<string>): string {
   const base = (raw.replace(SHEET_BAD, ' ').trim() || 'Sheet').slice(0, 28);
   let name = base;
-  // Excel compares sheet names case-insensitively.
+  // Excel 比较工作表名称时不区分大小写。
   for (let i = 2; used.has(name.toLowerCase()); i += 1) name = `${base.slice(0, 25)}_${i}`;
   used.add(name.toLowerCase());
   return name;
@@ -263,7 +262,7 @@ const BUCKETS: Record<string, { label: string; key: (d: string) => string }> = {
 };
 const BUCKET_ALIASES: Record<string, string> = { 日: 'day', 天: 'day', 周: 'week', 月: 'month', 季: 'quarter', 季度: 'quarter', 年: 'year' };
 
-/** `开始日期:month` style references become derived columns such as 「开始日期（月）」 holding `2026-11`. */
+/** 将 `开始日期:month` 形式的引用派生为「开始日期（月）」等列，值如 `2026-11`。 */
 function deriveBuckets(table: DataTable, refs: string[]) {
   const rename = new Map<string, string>();
   const derived = new Set<string>();
@@ -345,7 +344,7 @@ export function buildReport(input: DataTable, spec: ReportSpec): BuildResult {
   const split = spec.split_by ? col(spec.split_by) : null;
   if (spec.split_by && !split) return unknown(spec.split_by);
 
-  // A metric title must not collide with a grouped column ("数量" as both), or the row object loses one.
+  // 指标标题不得与分组列同名，否则行对象会丢失其中一个值。
   const labels: string[] = [];
   for (const m of metrics) {
     let label = metricLabel(m);
@@ -355,7 +354,7 @@ export function buildReport(input: DataTable, spec: ReportSpec): BuildResult {
   const countLabel = labels[metrics.findIndex((m) => m.op === 'count')];
   const header = [...groupBy, ...labels];
 
-  // Sort keys must resolve somewhere: summary headers when grouped, otherwise / also the data columns.
+  // 排序键必须能解析到分组汇总表头或数据列。
   const groupSort: Array<{ get: (r: Row) => Cell | undefined; desc?: boolean }> = [];
   const detailSort: Array<{ get: (r: Row) => Cell | undefined; desc?: boolean }> = [];
   for (const s of spec.sort || []) {
@@ -369,7 +368,7 @@ export function buildReport(input: DataTable, spec: ReportSpec): BuildResult {
     if (inCols) detailSort.push({ get: (r) => r[inCols], desc: s.desc });
   }
 
-  // An exclusion that removes nothing is almost always a misspelt value (已结题 vs 结题): fail loudly, not silently.
+  // 排除条件未排除任何行通常表示值拼错，应明确报错而不是静默继续。
   for (const c of where) {
     if ((c.op === '!=' || c.op === 'not_contains') && table.rows.length && table.rows.every((r) => matches(r, c))) {
       return {
@@ -406,11 +405,11 @@ export function buildReport(input: DataTable, spec: ReportSpec): BuildResult {
       metrics.forEach((m, i) => (row[labels[i]!] = metricValue(m, b.rows, matched)));
       return row;
     });
-    // Time buckets read best in time order; other groups biggest first.
+    // 时间分桶默认按时间排序，其他分组默认按数量降序。
     const defaultSort = derived.has(groupBy[0]!)
       ? [{ get: (r: Row) => r[groupBy[0]!] }]
       : [{ get: (r: Row) => r[countLabel!], desc: true }];
-    // The "(空)" group still sorts last, like an empty cell.
+    // 「(空)」分组和空单元格一样始终排在末尾。
     const keys = (groupSort.length ? groupSort : defaultSort).map((k) => ({
       ...k,
       get: (r: Row) => {
@@ -420,7 +419,7 @@ export function buildReport(input: DataTable, spec: ReportSpec): BuildResult {
     }));
     groupRows = sortRows(list, keys);
     if (groupBy.length > 1) {
-      // Per first-column totals, so "which month had the most" doesn't need every (month × owner) group.
+      // 按第一分组列生成小计，使「哪个月最多」无需汇总所有“月份×负责人”组合。
       const first = groupBy[0]!;
       const byFirst = new Map<Cell, Row[]>();
       for (const r of groupRows) if (!byFirst.has(r[first]!)) byFirst.set(r[first]!, []);
@@ -433,13 +432,13 @@ export function buildReport(input: DataTable, spec: ReportSpec): BuildResult {
         return row;
       });
     }
-    // With grouping, `limit` means "top N groups"; the 合计 row still covers every matched row.
+    // 存在分组时，limit 表示前 N 组；合计行仍覆盖全部匹配行。
     if (spec.limit && spec.limit > 0) groupRows = groupRows.slice(0, spec.limit);
     const out = groupRows.map((r) => header.map((h) => r[h] ?? null));
     out.push(['合计', ...groupBy.slice(1).map(() => ''), ...metrics.map((m) => metricValue(m, matched, matched))]);
     sheets.push({ name: sheetName('汇总', used), columns: header, rows: out, totalRow: true });
   } else if (metrics.length) {
-    // "金额合计是多少" with no grouping: one summary row over every matched row.
+    // 无分组的指标查询只生成一行，汇总全部匹配行。
     const row: Row = {};
     metrics.forEach((m, i) => (row[labels[i]!] = metricValue(m, matched, matched)));
     groupRows = [row];
@@ -488,8 +487,7 @@ function distinctKeys(t: DataTable, c: string): Set<string> {
 }
 
 /**
- * Column pairs whose values actually overlap, ranked by how many distinct values they share,
- * so ID-like keys beat low-cardinality columns such as owner names.
+ * 按实际重叠的不同值数量对列组合排序，使编号类键优先于负责人等低基数列。
  */
 export function suggestKeys(left: DataTable, right: DataTable, top = 3) {
   const rightSets = right.columns.slice(0, 60).map((c) => [c, distinctKeys(right, c)] as const).filter(([, s]) => s.size > 1);
@@ -514,7 +512,7 @@ export function suggestKeys(left: DataTable, right: DataTable, top = 3) {
     }));
 }
 
-/** Most common values of a column, for telling the model what a filter could have matched. */
+/** 返回列中最常见的值，帮助模型判断筛选条件可能匹配的内容。 */
 export function columnValues(table: DataTable, column: string, top = 15): Array<[string, number]> {
   const name = resolveColumn(column, table.columns, table.aliases);
   if (!name) return [];
@@ -527,9 +525,8 @@ export function columnValues(table: DataTable, column: string, top = 15): Array<
 }
 
 /**
- * Joins two tables on one key column (trimmed, case-insensitive):
- * inner / left = one row per match (SQL semantics), anti = left rows with no match,
- * count = every left row plus a "<rightName>条数" column.
+ * 按单个键列关联两张表，键值去首尾空格且忽略大小写。
+ * inner 和 left 每个匹配项生成一行；anti 保留左表未匹配行；count 为每个左表行增加「<右表名>条数」列。
  */
 export function joinTables(
   left: DataTable,
@@ -548,7 +545,7 @@ export function joinTables(
     if (k) index.set(k, [...(index.get(k) || []), r]);
   }
   const matchedLeft = left.rows.filter((r) => index.has(keyOf(r[lk]))).length;
-  // Zero overlap almost always means the wrong key column; an anti join would silently return everything.
+  // 完全无重叠通常表示关联键选错；此时 anti 关联会静默返回全部左表行，因此直接报错。
   if (!matchedLeft && left.rows.length && right.rows.length) {
     return {
       ok: false,
@@ -598,8 +595,8 @@ function stamp(): string {
 }
 
 /**
- * Writes an .xlsx (never CSV: xlsx stores "=…" text as a string cell, so cell text can't run as a formula).
- * `info` becomes a trailing 说明 sheet: source, filters, time, row counts, whether the data is partial.
+ * 写入 .xlsx 而非 CSV；xlsx 会把以「=」开头的文本存为字符串，避免执行公式。
+ * info 生成末尾的「说明」工作表，记录来源、筛选、时间、行数和数据是否完整。
  */
 export async function reportFile(report: BuiltReport, info: string[]): Promise<{ blob: Blob; name: string }> {
   const used = new Set(report.sheets.map((s) => s.name.toLowerCase()));

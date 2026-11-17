@@ -1,19 +1,5 @@
 import assert from 'node:assert/strict'
-import { register } from 'node:module'
 import test from 'node:test'
-
-// node 不认 vite 的 #/ 别名；Element Plus 只在渲染函数里用到，这里换成空模块。
-const SRC = new URL('../../', import.meta.url).href
-register(`data:text/javascript,${encodeURIComponent(`
-const STUBS = {
-  'element-plus': 'export const ElIcon = {}',
-  '@element-plus/icons-vue': 'export const Filter = {}',
-}
-export async function resolve(specifier, context, next) {
-  if (STUBS[specifier]) return { url: 'data:text/javascript,' + encodeURIComponent(STUBS[specifier]), shortCircuit: true }
-  if (specifier.startsWith('#/')) return next(new URL(specifier.slice(2) + '.js', ${JSON.stringify(SRC)}).href, context)
-  return next(specifier, context)
-}`)}`)
 
 const { default: mixin } = await import('./workbenchHeaderMenu.js')
 
@@ -56,7 +42,7 @@ function apply(vm, key, state) {
   vm.onHeaderMenuApply(state)
 }
 
-test('a value pick the top select can express is written to the top select', () => {
+test('顶部下拉能表达的值选直接写回顶部下拉', () => {
   const vm = page()
   apply(vm, 'status', { values: ['进行中'] })
   assert.equal(vm.listQuery.status, '进行中')
@@ -69,7 +55,7 @@ test('a value pick the top select can express is written to the top select', () 
   assert.deepEqual(vm.headerFilterState('status'), { values: ['进行中', '已完成'] })
 })
 
-test('conditions the top cannot express stay in the header and clear the top', () => {
+test('顶部表达不了的条件留在表头并清空顶部', () => {
   const vm = page({ status: '进行中' })
   apply(vm, 'status', { values: ['进行中', ''] })
   assert.equal(vm.listQuery.status, '')
@@ -83,7 +69,7 @@ test('conditions the top cannot express stay in the header and clear the top', (
   assert.deepEqual(vm.headerTop('remark', '备注'), { placeholder: '表头：不包含 旧', class: 'is-header-filtered' })
 })
 
-test('applying in the header replaces the earlier header or top condition', () => {
+test('在表头应用会替换先前的表头或顶部条件', () => {
   const vm = page()
   apply(vm, 'remark', { condition: { op: 'not_contains', value: '旧' } })
   apply(vm, 'remark', { condition: { op: 'contains', value: ' 新 ' } })
@@ -95,7 +81,7 @@ test('applying in the header replaces the earlier header or top condition', () =
   assert.equal(vm.headerFilterState('remark'), null)
 })
 
-test('code tops split on commas and spaces into a value pick', () => {
+test('编码顶部框：多值回填顶部框，单值或含分隔符的编码留在表头精确筛选', () => {
   const vm = page({ batch: 'B1, B2' })
   assert.deepEqual(vm.headerFilterState('batch'), { values: ['B1', 'B2'] })
   vm.listQuery.batch = 'B1'
@@ -106,10 +92,7 @@ test('code tops split on commas and spaces into a value pick', () => {
   apply(vm, 'batch', { condition: { op: 'contains', value: 'B5 B6' } })
   assert.equal(vm.listQuery.batch, '')
   assert.deepEqual(vm.headerFilters.batch, { condition: { op: 'contains', value: 'B5 B6' } })
-})
 
-test('a single picked code or a code with separators stays an exact header pick', () => {
-  const vm = page()
   apply(vm, 'batch', { values: ['P1'] })
   assert.equal(vm.listQuery.batch, '')
   assert.deepEqual(vm.headerFilters.batch, { values: ['P1'] })
@@ -119,7 +102,7 @@ test('a single picked code or a code with separators stays an exact header pick'
   assert.deepEqual(vm.headerFilters.batch, { values: ['批次 A', 'B2'] })
 })
 
-test('token tops are always an exact value pick, even for a single value', () => {
+test('令牌顶部框始终按精确值选，单值也不例外', () => {
   const vm = page({ plates: 'P1' })
   assert.deepEqual(vm.headerFilterState('plates'), { values: ['P1'] })
   vm.listQuery.plates = 'P1, P2'
@@ -134,7 +117,7 @@ test('token tops are always an exact value pick, even for a single value', () =>
   assert.deepEqual(vm.headerFilters.plates, { values: ['A B'] })
 })
 
-test('the default value search also matches labels', () => {
+test('默认的值搜索同时匹配标签', () => {
   const vm = page()
   vm.headerMenu = { key: 'pm', anchor: null }
   const items = [{ value: 'TITER', label: '效价' }, { value: 'PCR' }, { value: '', count: 2 }]
@@ -142,14 +125,14 @@ test('the default value search also matches labels', () => {
   assert.deepEqual(vm.headerMenuSearch(items, 'pc').map((item) => item.value), ['PCR'])
 })
 
-test('a multi-term contains top is shown as a hint instead of a header state', () => {
+test('多词包含的顶部条件只作提示，不成表头状态', () => {
   const vm = page({ remark: ['甲', '乙'] })
   assert.equal(vm.headerFilterState('remark'), null)
   assert.equal(vm.headerExternalHint('remark'), '甲、乙')
   assert.equal(vm.headerMenuStates.remark.filtered, true)
 })
 
-test('date ranges map to between in both directions; open ranges stay in the header', () => {
+test('日期范围双向映射为区间，开区间留在表头', () => {
   const vm = page()
   vm.instrumentRange = ['2026-10-01', '2026-10-31']
   assert.deepEqual(vm.headerFilterState('instrument_on'), {
@@ -164,14 +147,14 @@ test('date ranges map to between in both directions; open ranges stay in the hea
   assert.deepEqual(vm.headerFilters.instrument_on, { condition: { op: 'gte', value: '2026-11-01' } })
 })
 
-test('columns without a top keep every condition in the header', () => {
+test('没有顶部框的列，所有条件都留在表头', () => {
   const vm = page()
   apply(vm, 'pm', { values: ['张三'] })
   assert.deepEqual(vm.headerFilters.pm, { values: ['张三'] })
   assert.deepEqual(vm.headerTop('pm', '项目经理'), { placeholder: '表头：张三', class: 'is-header-filtered' })
 })
 
-test('loading values drops the column own top condition and keeps the other filters', () => {
+test('加载候选值时去掉本列顶部条件，保留其他筛选', () => {
   const vm = page({ status: '进行中', remark: '新' })
   vm.instrumentRange = ['2026-10-01', '2026-10-31']
   vm.headerFilters = { pm: { values: ['张三'] } }
@@ -192,7 +175,7 @@ test('loading values drops the column own top condition and keeps the other filt
   assert.deepEqual([calls[1].value_keyword, calls[1].value_limit, calls[1].value_order], ['2026', 20, 'count'])
 })
 
-test('header sort counts as filtering only for registered columns', () => {
+test('表头排序只对已注册列算作筛选中', () => {
   const vm = page({ sort_field: 'status', sort_dir: 'desc' })
   assert.equal(vm.headerSortActive, true)
   assert.equal(vm.headerFiltering, true)

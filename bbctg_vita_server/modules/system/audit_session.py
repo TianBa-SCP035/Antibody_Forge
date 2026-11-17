@@ -169,7 +169,7 @@ def _record_entity_snapshot(
     mapper: Any,
     change_type: str,
 ) -> None:
-    """Record one row per column. Nested JSON is summarized, not expanded."""
+    """每列记录一项；嵌套 JSON 只记摘要，不展开。"""
     is_create = change_type == "create"
     for prop in mapper.column_attrs:
         key = prop.key
@@ -718,10 +718,10 @@ def _action_change_type(
     actions: tuple[Any, ...],
     aggregate_type: str,
 ) -> str:
-    """Pick the request-level action type.
+    """选择请求级操作类型。
 
-    Child-row inserts on an existing parent are still entity creates, but the
-    HTTP action should stay "edit" when the route also has a create mapping.
+    给现有主记录新增子记录仍属于实体新增；如果路由同时声明了新增和编辑操作，
+    只有新增主资源时才按新增记录。
     """
     if aggregate_type != "create":
         return aggregate_type

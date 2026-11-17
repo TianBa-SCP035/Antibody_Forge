@@ -64,7 +64,7 @@ export function mergeTiterSerumStatusOptions(
   return merged;
 }
 
-/** Element Plus el-tag type for serum project_status display. */
+/** 血清项目状态对应的 Element Plus el-tag 类型。 */
 export function getSerumProjectStatusTagType(
   status: string | null | undefined,
 ): SerumProjectStatusTagType {
@@ -76,7 +76,7 @@ export function getSerumProjectStatusTagType(
   return 'info';
 }
 
-/** Element Plus el-tag type for titer order serum_status display. */
+/** 效价工单血清状态对应的 Element Plus el-tag 类型。 */
 export function getSerumTiterStatusTagType(
   status: string | null | undefined,
 ): SerumProjectStatusTagType {

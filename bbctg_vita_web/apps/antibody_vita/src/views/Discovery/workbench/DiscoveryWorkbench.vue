@@ -569,7 +569,7 @@ import {
 
 const QUEUE_TERMINAL_STATUSES = ['已完成', '已取消']
 const QUEUE_KEYS = ['status', 'priority', 'sort_order']
-/** 选项接口里的名单字段 -> optionLists 的字段键。 */
+/** 选项接口名单字段与 optionLists 字段键的映射。 */
 const NAME_OPTION_SOURCES = {
   pms: 'pm',
   owners: 'owner',
@@ -1007,7 +1007,7 @@ export default {
           }
           sessionStorage.removeItem(DISCOVERY_WORKBENCH_CREATED_KEY)
         } catch {
-          /* 没有暂存仍按 id 打开 */
+          /* 暂存缺失时仍按 id 打开。 */
         }
         const nextQuery = { ...this.$route.query }
         delete nextQuery.created

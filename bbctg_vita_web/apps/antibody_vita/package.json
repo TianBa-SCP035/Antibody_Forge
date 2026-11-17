@@ -16,7 +16,7 @@
     "dev:test": "pnpm vite --mode test",
     "lint:components": "eslint \"src/**/*.vue\"",
     "preview": "vite preview",
-    "test": "node --test \"src/**/*.test.mjs\"",
+    "test": "node --import ./src/test-support/register.mjs --test \"src/**/*.test.mjs\"",
     "typecheck": "vue-tsc --noEmit --skipLibCheck"
   },
   "imports": {

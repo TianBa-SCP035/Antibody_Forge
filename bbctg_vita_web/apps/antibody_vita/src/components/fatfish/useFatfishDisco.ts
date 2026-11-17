@@ -6,13 +6,13 @@ import {
   RHYTHM_BPM, BEAT_OFFSET_SECONDS, FULL_TRACK_SECONDS, discoLightFrames, discoMotionFrames, type DanceKind,
 } from './discoRhythm';
 
-// Tempo measured from the bundled track, shared with the rhythm chart and the page dance.
+// 节拍速度由内置音轨测得，节奏谱面和页面舞动共用。
 export const DISCO_BPM = RHYTHM_BPM;
 export const POKE_GAP_MS = 1250;
 export const POKE_THRESHOLD = 100;
-/** Pause after the last poke (once past the threshold) before the party starts. */
+/** 达到阈值后，从最后一次戳击到派对开始的等待时间。 */
 export const SETTLE_MS = 700;
-/** From the third poke on the streak owns the pet; one or two taps keep native drag, double-click and menu. */
+/** 从第三次连续戳击起接管宠物；一两次点击仍保留原生拖动、双击和菜单行为。 */
 const FLURRY = 3;
 const BEAT_MS = 60_000 / DISCO_BPM;
 const AUDIO_URL = `${import.meta.env.BASE_URL}fatfish/easter/friends-wine-dj-full.mp3`;
@@ -23,11 +23,11 @@ interface Options {
   enabled: () => boolean;
   prepare: () => void;
   resetPointer: (preserveTaps?: boolean) => void;
-  /** `streak` is the hidden poke count including this one, so the visible stamp shows the real total. */
+  /** streak 包含本次戳击，使可见标记显示真实总数。 */
   tap: (ev: PointerEvent, streak: number) => void;
 }
 
-/** Pure streak state, also used by the Node regression tests (no real UI clicks). */
+/** 纯连续戳击状态，也供不执行真实界面点击的 Node 回归测试使用。 */
 export function createPokeStreak() {
   let count = 0;
   let last = -Infinity;
@@ -44,7 +44,7 @@ export function createPokeStreak() {
   };
 }
 
-/** Capture only the pet/ball hit-targets; cards, inputs and mini-games are excluded. */
+/** 仅捕获宠物和球的命中区域，排除卡片、输入框和小游戏。 */
 export function useFatfishDisco(options: Options) {
   const active = ref(false);
   const pending = ref(false);
@@ -66,7 +66,7 @@ export function useFatfishDisco(options: Options) {
   let observer: MutationObserver | undefined;
   const targets = new Set<HTMLElement>();
   const motions = new Map<HTMLElement, Animation>();
-  /** Beat-flashing corner lights over the page; created per dance, removed with it. */
+  /** 覆盖页面的逐拍角灯，每次舞动创建并随之移除。 */
   let lights: { el: HTMLElement; motion?: Animation } | undefined;
   const reduced = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : undefined;
   let down: {
@@ -87,7 +87,7 @@ export function useFatfishDisco(options: Options) {
     if (!down) return;
     try {
       if (down.hit.hasPointerCapture(down.id)) down.hit.releasePointerCapture(down.id);
-    } catch { /* Target may have unmounted during navigation. */ }
+    } catch { /* 导航期间目标可能已卸载。 */ }
   }
   function clearBurst() {
     window.clearTimeout(burstTimer);
@@ -111,7 +111,7 @@ export function useFatfishDisco(options: Options) {
     document.documentElement.classList.remove('ff-disco-running');
   }
   function stop() {
-    generation += 1; // Invalidates a delayed play() promise, including after Esc/unmount.
+    generation += 1; // 使延迟返回的 play() Promise 失效，包括按 Esc 或卸载后的结果。
     active.value = false;
     pending.value = false;
     message.value = '';
@@ -131,8 +131,8 @@ export function useFatfishDisco(options: Options) {
   function syncTargets() {
     frame = 0;
     if (!active.value) return;
-    // Verified Vben layout landmarks. Animate only these peers, never nested cards.
-    // The pet's positioning stage is outside #app's layout and outside its WebM slots.
+    // 只让已确认的 Vben 同级布局区域参与动画，不处理嵌套卡片。
+    // 宠物定位舞台位于 #app 布局和 WebM 槽位之外。
     const found = [...document.querySelectorAll<HTMLElement>(
       '#app aside.fixed, #app header.bg-header, #app main.bg-background-deep, .ff-stage',
     )].filter((el, i, all) => !all.some((parent, j) => i !== j && parent.contains(el)));
@@ -148,7 +148,7 @@ export function useFatfishDisco(options: Options) {
     const dialogOpen = [...document.querySelectorAll<HTMLElement>(DIALOG)]
       .some((el) => !el.closest('.ff-disco-overlay') && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden');
     found.forEach((el) => {
-      // A focused editor's whole enclosing landmark stays still (no inverse transforms).
+      // 编辑器聚焦时，其所属布局区域保持静止，不使用反向变换抵消。
       const editing = focused instanceof Element && focused.matches(EDITOR) && el.contains(focused);
       el.classList.toggle('ff-disco-paused', editing || dialogOpen);
       if (!targets.has(el)) {
@@ -195,7 +195,7 @@ export function useFatfishDisco(options: Options) {
     lightUp();
     syncTargets();
     observer = new MutationObserver((records) => {
-      // Game notes and HUD update every frame; do not rescan business layout for those mutations.
+      // 游戏音符和 HUD 每帧更新，这些变更不得触发业务布局扫描。
       if (records.some((record) => {
         const el = record.target instanceof Element ? record.target : record.target.parentElement;
         return !el?.closest('.ff-disco-overlay, .ff-disco-controls');
@@ -259,8 +259,8 @@ export function useFatfishDisco(options: Options) {
     busy.value = true;
     message.value = '';
     if (player.error) player.load();
-    // The poke trigger runs from a timer; a hundred pokes give the page sticky activation, so
-    // autoplay allows it. If a browser still refuses, the catch below offers a click-to-start.
+    // 戳击触发器由定时器执行，但连续交互会保留页面激活状态，通常允许自动播放。
+    // 浏览器仍拒绝时，由下方 catch 提供点击播放入口。
     void player.play().then(() => {
       if (disposed || token !== generation) return;
       pending.value = false;
@@ -283,7 +283,7 @@ export function useFatfishDisco(options: Options) {
   function unlock() {
     if (unlocked.value) return;
     unlocked.value = true;
-    try { localStorage.setItem(DISCO_UNLOCKED_KEY, '1'); } catch { /* Private mode: unlocked for this visit only. */ }
+    try { localStorage.setItem(DISCO_UNLOCKED_KEY, '1'); } catch { /* 隐私模式下仅本次访问保持解锁。 */ }
   }
   function openStage() { stageOpen.value = true; }
   function closeStage() { stageOpen.value = false; }
@@ -301,7 +301,7 @@ export function useFatfishDisco(options: Options) {
     streak.expire(performance.now());
     window.clearTimeout(burstTimer);
     const suppressed = streak.count >= FLURRY;
-    // Unsuppressed presses reach the native handlers, which must still see a fleeing pet to catch her.
+    // 未拦截的按压继续交给原生处理器，使逃跑中的宠物仍可被抓住。
     if (suppressed) {
       options.prepare();
       options.resetPointer(true);
@@ -314,7 +314,7 @@ export function useFatfishDisco(options: Options) {
       swallow(ev);
       hit.setPointerCapture(ev.pointerId);
     }
-    // Early presses still use the normal hold/drag handlers. A running flurry does not.
+    // 前两次按压仍使用普通长按和拖动处理；连续戳击开始后不再使用。
   }
   function onMove(ev: PointerEvent) {
     if (!down || ev.pointerId !== down.id) return;
@@ -337,7 +337,7 @@ export function useFatfishDisco(options: Options) {
     swallow(ev);
     options.resetPointer(true);
     busy.value = true;
-    // Past the threshold the user may keep poking; the party starts once they let go.
+    // 达到阈值后仍可继续戳击，松手后才开始派对。
     const ready = streak.release(performance.now());
     options.tap(ev, streak.count);
     burstTimer = window.setTimeout(() => {
@@ -345,7 +345,7 @@ export function useFatfishDisco(options: Options) {
       if (ready && !disposed) play();
     }, ready ? SETTLE_MS : POKE_GAP_MS);
   }
-  /** True once the streak is past an ordinary double-tap, so its pairs must not open chat. */
+  /** 连续次数超过普通双击后返回 true，防止后续成对点击打开聊天。 */
   function flurrying() { return streak.count >= FLURRY; }
   function onCancel(ev: PointerEvent) {
     if (!down || ev.pointerId !== down.id) return;
@@ -368,7 +368,7 @@ export function useFatfishDisco(options: Options) {
   }
   function onVisibility() { if (document.hidden) stop(); }
   function onBlur() {
-    // Do not leave a captured pointer or latent double-click behind on an Alt-Tab.
+    // Alt+Tab 切换窗口时不得遗留指针捕获或待触发的双击。
     if (down || (!active.value && !pending.value)) {
       releaseCapture(); down = undefined; clearBurst(); options.resetPointer();
     }

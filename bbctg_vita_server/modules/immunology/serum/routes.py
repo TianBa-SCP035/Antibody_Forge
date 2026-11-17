@@ -9,7 +9,7 @@ from core.response import success
 from db.session import get_db
 from models.immunology import SerumImmProject
 from models.system import SysUser
-from modules.auth.dependencies import get_current_user
+from modules.auth.dependencies import actor_name, get_current_user
 from modules.auth.permissions import (
     UserContext,
     get_user_context,
@@ -23,7 +23,7 @@ from modules.system.audit_routes import audit, audit_quiet, permission_action
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
 
 router = APIRouter()
-# 鼠号分组查询、鼠号明细保存：免疫方案编辑或效价编辑任一即可
+# 鼠号分组查询和明细保存允许使用免疫方案编辑或效价编辑权限。
 MOUSE_REGISTRY_PERMISSIONS = ("serum.project.edit", "serum.project.edit_all", "serum.titer.edit", "serum.titer.edit_all")
 
 
@@ -271,7 +271,7 @@ def _require_project_save_permission(db: Session, user: SysUser, context: UserCo
         context.require("serum.project.create")
         owner = str(data.get("owner") or "").strip()
         if not owner:
-            data["owner"] = _default_owner_name(user)
+            data["owner"] = actor_name(user)
             return
         if not is_owner_name(user, owner) and not context.allows("serum.project.edit_all"):
             raise ValueError("普通用户只能将自己设为项目负责人")
@@ -331,6 +331,3 @@ def _require_status_update_access(db: Session, user: SysUser, context: UserConte
         return
     raise permission_denied("serum.status.update")
 
-
-def _default_owner_name(user: SysUser) -> str:
-    return (user.display_name or user.username or "").strip()

@@ -34,7 +34,7 @@ class MolecularLibraryOrder(Base):
     __audit_label__ = ("library_order_id",)
     __table_args__ = (
         UniqueConstraint("library_order_id", name="uk_molecular_library_order_id"),
-        Index("idx_molecular_library_order_library_code", "library_code"),
+        UniqueConstraint("library_code", name="uk_molecular_library_order_library_code"),
         Index("idx_molecular_library_order_source_discovery_id", "source_discovery_id"),
         {"comment": "文库构建工单"},
     )
@@ -142,7 +142,7 @@ class MolecularPrimerIndexCatalog(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
     name: Mapped[str] = mapped_column(String(128), nullable=False, comment="名称")
     family: Mapped[str] = mapped_column(String(32), nullable=False, comment="系列")
-    direction: Mapped[str | None] = mapped_column(String(8), comment="原始方向")
+    direction: Mapped[str | None] = mapped_column(String(8), comment="引物方向")
     version: Mapped[str | None] = mapped_column(String(16), comment="版本")
     short_sequence: Mapped[str] = mapped_column(String(64), nullable=False, comment="显示序列")
     homology_arm_1: Mapped[str | None] = mapped_column(String(128), comment="同源臂1")

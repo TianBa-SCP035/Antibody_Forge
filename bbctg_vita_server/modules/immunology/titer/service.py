@@ -1,5 +1,6 @@
 import json
 import random
+import re
 from datetime import datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -192,6 +193,7 @@ def _normalize_owner_names(value: Any) -> list[str]:
 ASSAY_FILTER_FACS = "__facs__"
 ASSAY_FILTER_ELISA = "__elisa__"
 ASSAY_FILTER_FACS_ELISA = "__facs_elisa__"
+MOUSE_COUNT_PATTERN = "^[0-9]+$"
 
 
 def _assay_method_expr():
@@ -205,18 +207,18 @@ def _assay_plate_expr(method: str):
 
 
 def _scheme_mouse_count_expr():
-    """方案只数：全项目小鼠只数之和，不是整数的格不计，与 _sum_mouse_count 一致。"""
+    """与 _sum_mouse_count 同一口径，筛选、排序才和列表显示的只数一致。"""
     count = func.trim(SerumImmMouse.mouse_count)
     return (
         select(cast(func.sum(cast(count, Integer)), Integer))
-        .where(SerumImmMouse.experiment_id == SerumTiterOrder.experiment_id, count.regexp_match("^-?[0-9]+$"))
+        .where(SerumImmMouse.experiment_id == SerumTiterOrder.experiment_id, count.regexp_match(MOUSE_COUNT_PATTERN))
         .correlate(SerumTiterOrder)
         .scalar_subquery()
     )
 
 
 def _assay_method_clause(assay_method: str):
-    """检测方法筛选：按检测方法文案列匹配。多个值满足任一即可。"""
+    """普通值按整段匹配；FACS/ELISA 快捷条件按文案包含关系匹配，联合条件要求两者都存在；多个筛选值取任一。"""
     expr = _assay_method_expr()
     if assay_method == ASSAY_FILTER_FACS:
         return expr.like("%FACS%")
@@ -321,15 +323,13 @@ def generate_titer_order_id(db: Session, project_code: str | None, experiment_id
 
 
 def _sum_mouse_count(mice: list[SerumImmMouse]) -> int | None:
-    total = 0
-    has_value = False
-    for mouse in mice:
-        try:
-            total += int(str(mouse.mouse_count or "").strip())
-            has_value = True
-        except ValueError:
-            continue
-    return total if has_value else None
+    """方案的免疫数量是自由文本（如「/」「10+2」），只累加去掉首尾空白后为纯数字的值。"""
+    counts = [
+        int(text)
+        for mouse in mice
+        if re.match(MOUSE_COUNT_PATTERN, text := str(mouse.mouse_count or "").strip())
+    ]
+    return sum(counts) if counts else None
 
 
 def _unique_cages(mice: list[SerumImmMouse]) -> list[str]:
@@ -369,14 +369,14 @@ BLOOD_COLLECTION_STAGE_NAME = "采血"
 PENDING_BLOOD_COLLECTION_STATUS = "待采血"
 PENDING_BLOOD_COLLECTION_BOOST_STATUS = "待采血-加免"
 TITER_ORDER_PRIORITY_DEFAULT = DEFAULT_PRIORITY
-# 检测单列表按优先级升序时「正常」在前，所以与队列顺序相反
+# 检测单列表按优先级升序时「正常」在前，因此顺序与队列相反。
 TITER_ORDER_PRIORITIES = tuple(reversed(PRIORITY_ORDER))
 TITER_SERUM_STATUS_ORDER = ("待采血", "待采血-加免", "已采血", "已检测", "已交接", "已销毁")
 TITER_SERUM_STATUS_POST_TEST = ("已检测", "已交接", "已销毁")
 TITER_FLOW_ORDER_TYPE = "TITER"
 MAX_LIST_LIMIT = MAX_PAGE_LIMIT
 
-# NULL=跟随免疫方案；非 NULL=用户覆盖（字段互相独立）
+# 这些字段为 NULL 时跟随免疫方案；非 NULL 时分别使用用户覆盖值。
 FOLLOWABLE_BATCH_KEYS = (
     "cage_position",
     "blood_collection_date",
@@ -396,7 +396,6 @@ def _normalize_blood_collection_date(raw: Any) -> str | None:
 
 
 def _all_blood_collection_dates(steps: list[SerumImmStep]) -> list[str]:
-    """方案全部采血日：去重升序。"""
     dates: list[str] = []
     seen: set[str] = set()
     for step in steps:
@@ -716,7 +715,7 @@ def get_titer_order_batch_preview(db: Session, experiment_id: str) -> dict[str, 
     project, batch, steps = _immune_batch_for_experiment(db, experiment_id)
     blood_dates = _all_blood_collection_dates(steps)
     preview = _batch_fields_to_preview(batch)
-    # 采血日默认空：由次数跟随方案；仅用户填自定义日期时才写入
+    # 采血日默认留空并按次数跟随方案，仅用户填写自定义日期时写入。
     preview["blood_collection_date"] = ""
     preview["blood_collection_seq"] = _default_blood_collection_seq(db, project.experiment_id, steps)
     return {
@@ -857,7 +856,7 @@ def _latest_order_status_expr():
     )
 
 
-# 笼位、采血日期大多跟随免疫步骤推算，SQL 里筛不准，不登记；采血日期只在内存里排序。
+# 笼位和采血日期主要由免疫步骤推导，无法可靠映射为 SQL 表头筛选；采血日期的筛选与排序均在内存中完成。
 HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "project_code": HeaderColumn(SerumImmProject.project_code),
     "target_name": target_column(SerumImmProject.target_name, SerumImmProject.target_codes),
@@ -1118,8 +1117,8 @@ def create_titer_order_for_blood_collection_if_absent(
     blood_collection_date: str,
 ) -> bool:
     """
-    仅为当前这次采血建一张空单：写入 blood_collection_seq，批次字段保持 NULL。
-    已有相同 seq 则跳过；不补齐更早次数。不 commit。
+    仅为当前采血创建一张空单：写入 blood_collection_seq，批次字段保持 NULL。
+    已有相同 seq 时跳过，不补齐更早次数，也不提交事务。
     """
     experiment_id = str(project.experiment_id or "").strip()
     blood_date = _normalize_blood_collection_date(blood_collection_date)
@@ -1194,7 +1193,7 @@ def save_titer_order(db: Session, data: dict[str, Any]) -> dict:
         if not experiment_id:
             raise ValueError("请选择免疫实验")
         project, immune_batch, steps = _immune_batch_for_experiment(db, experiment_id)
-        # 手动创建：预填方法/笼位等；采血日默认 NULL，由 seq 跟随方案
+        # 手工创建时预填方法和笼位等字段；采血日保持 NULL，由 seq 跟随方案。
         immune_batch = dict(immune_batch)
         immune_batch["blood_collection_date"] = None
         order = SerumTiterOrder(
@@ -1360,7 +1359,7 @@ def get_titer_order_page_meta(db: Session) -> dict:
     }
 
 
-# 统计块自己切换的维度（负责人、血清状态、小结、检测日期）不参与统计范围
+# 统计块自行切换的负责人、血清状态、小结和检测日期不参与统计范围。
 _TITER_STAT_OWN_KEYS = frozenset({
     "titer_order_id",
     "titer_owner",

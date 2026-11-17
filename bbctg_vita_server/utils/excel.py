@@ -50,7 +50,7 @@ def _cell_display_width(value: Any) -> float:
         return float(len(value.strftime("%Y-%m-%d"))) * 1.25
     width = 0.0
     for ch in str(value):
-        # 微软雅黑数字/英文比 Excel 默认列宽单位略宽，纯数字串按 1.0 会裁切
+        # 微软雅黑数字和英文比 Excel 默认列宽单位略宽，纯数字串按 1.0 会被裁切。
         width += 2.0 if ord(ch) > 127 else 1.25
     return width
 

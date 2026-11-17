@@ -700,7 +700,7 @@ export default {
         owner: [],
         reviewer: [],
       },
-      // 顶部筛选用：库里出现过的值（含开展后的项目状态、方案分组里的品系）
+      // 顶部筛选需包含数据库已有值，包括开展后的项目状态和方案分组中的品系。
       filterLists: {
         display_status: [...PLAN_STATUS_OPTIONS, '已开展'],
         mouse_strain: [...FIELDS.mouse_strain.options],
@@ -938,7 +938,7 @@ export default {
       if (field === 'plan_status') row.display_status = value
       return this.persistRow(row, field)
     },
-    /** 失败时刷新列表，抽屉里这几个字段退回入库值。 */
+    /** 保存失败时刷新列表，并将抽屉中的相关字段恢复为入库值。 */
     async saveRowField(row, field) {
       if (!row?.id || !this.canEditField(row, field)) return
       if (field === 'plan_status' && row.plan_status === '已开展') {
@@ -1008,7 +1008,7 @@ export default {
       }
       return classes.join(' ')
     },
-    // 鼠龄空着时显示按出生日期推算的周数；撤回和批量编辑记的是填写的值，推算值不能当成填写值存回去
+    // 鼠龄为空时仅展示按出生日期推算的周数；撤回和批量编辑只能使用实际填写值。
     sheetCellText(row, key) {
       if (key === 'mouse_age_weeks') return String(row?.mouse_age_weeks ?? '').trim()
       return String(this.sheetDirectTextValue(row, key) ?? '').trim()

@@ -149,6 +149,6 @@ export function clearTiterInstrumentWizardDraft() {
   try {
     sessionStorage.removeItem(TITER_INSTRUMENT_WIZARD_DRAFT_KEY);
   } catch {
-    /* ignore */
+    /* 会话存储不可用不影响当前工单。 */
   }
 }

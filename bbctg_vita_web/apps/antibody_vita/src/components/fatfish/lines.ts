@@ -1,7 +1,7 @@
 /**
- * Casual lines — idle/互动 only (never enter qaHistory).
- * Voice follows the community 鲸鱼娘/大肥鱼 persona: smart but lazy, 傲娇嘴硬心软, a bit 天然呆, overthinks,
- * loves 白饭 and Token, refuses to be called fat. Jokes land on herself, not on the user.
+ * 仅用于待机和互动的闲聊台词，绝不进入 qaHistory。
+ * 语气遵循社区鲸鱼娘／大肥鱼人设：聪明但懒、傲娇嘴硬心软、略天然呆且容易想太多，
+ * 喜欢白饭和 Token，拒绝被叫胖；玩笑针对自己，不针对用户。
  */
 
 export const LINES = {
@@ -444,7 +444,7 @@ export const LINES = {
     '哼，勉强承认你是自己人',
     '又熟了一点，干活更顺手了',
   ],
-  /** One line per level reached (index = level), matching the level names in useCare. */
+  /** 每个已达等级对应一条台词，索引等于等级，并与 useCare 中的等级名称一致。 */
   levelUpAt: [
     '',
     '',

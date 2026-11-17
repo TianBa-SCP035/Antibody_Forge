@@ -24,9 +24,9 @@ def write_operation_log(
     result: str = "success",
     error_message: str | None = None,
 ) -> None:
-    """Write explicit events such as authentication attempts.
+    """记录登录尝试等显式事件。
 
-    ORM entity changes are captured automatically by audit_session.
+    ORM 实体变更由 audit_session 自动记录。
     """
     context = get_audit_context()
     source = context.source if context else "system"

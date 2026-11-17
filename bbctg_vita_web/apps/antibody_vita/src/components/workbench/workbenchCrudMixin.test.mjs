@@ -1,23 +1,7 @@
 import assert from 'node:assert/strict'
-import { register } from 'node:module'
 import test from 'node:test'
 
-// node 不认 vite 的 #/ 别名；弹窗、报错和下载换成记录调用的桩。
-register(`data:text/javascript,${encodeURIComponent(`
-const STUBS = {
-  'element-plus': \`
-    const log = (entry) => globalThis.crudCalls.push(entry)
-    export const ElMessage = { warning: (m) => log(['warning', m]), success: (m) => log(['success', m]) }
-    export const ElMessageBox = { confirm: (text) => { log(['confirm', text]); return globalThis.crudConfirm() } }
-  \`,
-  '#/api/errors': 'export const notifyApiError = (error, { messages }) => globalThis.crudCalls.push(["error", messages.default])',
-  '#/utils/downloadExcel': 'export const downloadListExcel = (load, name) => globalThis.crudCalls.push(["download", name]) && load(); export const excelTimestamp = () => "T"',
-}
-export async function resolve(specifier, context, next) {
-  if (STUBS[specifier]) return { url: 'data:text/javascript,' + encodeURIComponent(STUBS[specifier]), shortCircuit: true }
-  return next(specifier, context)
-}`)}`)
-
+// 弹窗、报错和下载的桩在共享 loader 里，调用记录仍经 globalThis.crudCalls / crudConfirm 传递
 const { default: mixin } = await import('./workbenchCrudMixin.js')
 
 function page({ api = {}, range = null, ...overrides } = {}) {

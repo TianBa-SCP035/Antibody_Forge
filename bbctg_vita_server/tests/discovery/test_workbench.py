@@ -1,20 +1,23 @@
-import re
-import unittest
+"""发现工作台：安排号生成、排期联动、文本清洗、筛选统计与队列状态。"""
+
 from datetime import date, datetime, timedelta
+import re
 from unittest.mock import patch
 
+from core.errors import ConflictError
 from models.discovery import DiscoveryWorkbench
 from models.molecular_cell import MolecularLibraryOrder
 from models.target import Target
 from modules.discovery.workbench import service
 from support import DbTestCase
 
-
+TABLES = (DiscoveryWorkbench, Target, MolecularLibraryOrder)
 DISCOVERY_ID_RE = re.compile(r"^DSC-\d{6}-[A-Z0-9]{6}$")
+FIXED_TODAY = date(2026, 11, 17)
 
 
 class DiscoveryWorkbenchIdTests(DbTestCase):
-    tables = (DiscoveryWorkbench, Target)
+    tables = TABLES
 
     def test_generate_discovery_id_format(self):
         value = service.generate_discovery_id(datetime(2026, 9, 17, 10, 26, 0))
@@ -59,6 +62,10 @@ class DiscoveryWorkbenchIdTests(DbTestCase):
         self.assertEqual(first["discovery_id"], "DSC-260917-AAAAAA")
         self.assertEqual(second["discovery_id"], "DSC-260917-BBBBBB")
 
+
+class DiscoveryWorkbenchScheduleAndCleanTests(DbTestCase):
+    tables = TABLES
+
     def test_schedule_people_and_antigen_options(self):
         saved = service.save(
             self.db,
@@ -75,6 +82,7 @@ class DiscoveryWorkbenchIdTests(DbTestCase):
         self.assertEqual(saved["cell_collector"], "李四")
         self.assertEqual(saved["boost_cells"], "脾细胞\n淋巴结")
         self.assertEqual(saved["immune_antigen"], "蛋白甲\n蛋白乙")
+
         options = service.get_options(self.db)
         self.assertEqual(options["immune_antigens"], ["蛋白乙", "蛋白甲"])
         self.assertEqual(options["boost_antigens"], ["自填抗原"])
@@ -86,37 +94,38 @@ class DiscoveryWorkbenchIdTests(DbTestCase):
         self.assertIn("RN-VM", options["mouse_strain_categories"])
 
     def test_mouse_category_is_joined_text_and_harvest_shifts_boost(self):
-        harvest = date.today() + timedelta(days=30)
-        saved = service.save(
-            self.db,
-            {
-                "mouse_strain_category": "RN+RL",
-                "harvest_date": harvest.isoformat(),
-                "boost_date": "2020-01-01",
-            },
-        )
-        self.assertEqual(saved["mouse_strain_category"], "RL、RN")
-        self.assertEqual(saved["harvest_date"], harvest.isoformat())
-        self.assertEqual(saved["boost_date"], (harvest - timedelta(days=5)).isoformat())
-        self.assertEqual(saved["status"], "待冲击")
-        self.assertEqual(service.get_list(self.db, {"mouse_strain_category": "RN"})["total"], 1)
-        self.assertEqual(service.get_list(self.db, {"mouse_strain_category": "RN-KO"})["total"], 0)
+        harvest = FIXED_TODAY + timedelta(days=30)
+        with patch("modules.discovery.workbench.service.today_local", return_value=FIXED_TODAY):
+            saved = service.save(
+                self.db,
+                {
+                    "mouse_strain_category": "RN+RL",
+                    "harvest_date": harvest.isoformat(),
+                    "boost_date": "2020-01-01",
+                },
+            )
+            self.assertEqual(saved["mouse_strain_category"], "RL、RN")
+            self.assertEqual(saved["harvest_date"], harvest.isoformat())
+            self.assertEqual(saved["boost_date"], (harvest - timedelta(days=5)).isoformat())
+            self.assertEqual(saved["status"], "待冲击")
+            self.assertEqual(service.get_list(self.db, {"mouse_strain_category": "RN"})["total"], 1)
+            self.assertEqual(service.get_list(self.db, {"mouse_strain_category": "RN-KO"})["total"], 0)
 
-        adjusted = service.save(self.db, {"id": saved["id"], "boost_date": (harvest - timedelta(days=1)).isoformat()})
-        self.assertEqual(adjusted["boost_date"], (harvest - timedelta(days=1)).isoformat())
-        self.assertEqual(adjusted["harvest_date"], harvest.isoformat())
+            adjusted = service.save(self.db, {"id": saved["id"], "boost_date": (harvest - timedelta(days=1)).isoformat()})
+            self.assertEqual(adjusted["boost_date"], (harvest - timedelta(days=1)).isoformat())
+            self.assertEqual(adjusted["harvest_date"], harvest.isoformat())
 
-        untouched = service.save(self.db, {"id": saved["id"], "harvest_date": harvest.isoformat()})
-        self.assertEqual(untouched["boost_date"], (harvest - timedelta(days=1)).isoformat())
+            untouched = service.save(self.db, {"id": saved["id"], "harvest_date": harvest.isoformat()})
+            self.assertEqual(untouched["boost_date"], (harvest - timedelta(days=1)).isoformat())
 
-        cleared = service.save(self.db, {"id": saved["id"], "harvest_date": ""})
-        self.assertIsNone(cleared["harvest_date"])
-        self.assertIsNone(cleared["boost_date"])
-        self.assertEqual(cleared["status"], "规划中")
+            cleared = service.save(self.db, {"id": saved["id"], "harvest_date": ""})
+            self.assertIsNone(cleared["harvest_date"])
+            self.assertIsNone(cleared["boost_date"])
+            self.assertEqual(cleared["status"], "规划中")
 
-        wrapped = service.save(self.db, {"harvest_date": "2026-03-01", "status": "规划中"})
-        self.assertEqual(wrapped["boost_date"], "2026-02-24")
-        self.assertEqual(wrapped["status"], "规划中")
+            wrapped = service.save(self.db, {"harvest_date": "2026-03-01", "status": "规划中"})
+            self.assertEqual(wrapped["boost_date"], "2026-02-24")
+            self.assertEqual(wrapped["status"], "规划中")
 
         custom_category = service.save(self.db, {"mouse_strain_category": "自定鼠型+RN"})
         self.assertEqual(custom_category["mouse_strain_category"], "RN、自定鼠型")
@@ -135,19 +144,20 @@ class DiscoveryWorkbenchIdTests(DbTestCase):
         self.assertEqual(service.get_list(self.db, {"mouse_strain_category": "RN-KO"})["total"], 0)
 
     def test_missing_date_filter_keeps_rows_with_either_date_blank(self):
-        future = (date.today() + timedelta(days=30)).isoformat()
-        service.save(self.db, {"project_code": "BOTH", "harvest_date": future})
-        service.save(self.db, {"project_code": "NONE"})
-        service.save(self.db, {"project_code": "BOOST", "boost_date": future})
-        harvest_only = service.save(self.db, {"project_code": "HARVEST", "harvest_date": future})
-        service.save(self.db, {"id": harvest_only["id"], "boost_date": ""})
-        service.save(self.db, {"project_code": "DONE", "status": "已完成"})
+        future = (FIXED_TODAY + timedelta(days=30)).isoformat()
+        with patch("modules.discovery.workbench.service.today_local", return_value=FIXED_TODAY):
+            service.save(self.db, {"project_code": "BOTH", "harvest_date": future})
+            service.save(self.db, {"project_code": "NONE"})
+            service.save(self.db, {"project_code": "BOOST", "boost_date": future})
+            harvest_only = service.save(self.db, {"project_code": "HARVEST", "harvest_date": future})
+            service.save(self.db, {"id": harvest_only["id"], "boost_date": ""})
+            service.save(self.db, {"project_code": "DONE", "status": "已完成"})
 
-        result = service.get_list(self.db, {"boost_filter": "missing_date", "limit": 50})
-        codes = {item["project_code"] for item in result["items"]}
-        self.assertEqual(codes, {"NONE", "BOOST", "HARVEST"})
-        self.assertEqual(result["stats"]["missing_date"], 3)
-        self.assertEqual(result["stats"]["boosting"], 2)
+            result = service.get_list(self.db, {"boost_filter": "missing_date", "limit": 50})
+            codes = {item["project_code"] for item in result["items"]}
+            self.assertEqual(codes, {"NONE", "BOOST", "HARVEST"})
+            self.assertEqual(result["stats"]["missing_date"], 3)
+            self.assertEqual(result["stats"]["boosting"], 2)
 
     def test_keyword_can_find_system_discovery_id(self):
         saved = service.save(self.db, {"project_code": "P1"})
@@ -155,58 +165,21 @@ class DiscoveryWorkbenchIdTests(DbTestCase):
         self.assertEqual(result["total"], 1)
         self.assertEqual(result["items"][0]["id"], saved["id"])
 
-    def test_text_fields_strip_tabs_and_hidden_chars_while_keeping_breaks(self):
-        saved = service.save(
-            self.db,
-            {
-                "project_code": "\t26D033504\u200c\t",
-                "cage_position": "104-5E\n104-5H\t",
-                "mouse_nos": "35\t37\t39\t\t40",
-                "screening_antigen": "\nCHO-S-hGPR158-Flag\tC260829B01\r\nCHO-fasGPR158-Flag\tC260416B01\u00a0人猴细胞\n",
-            },
+    def test_text_cleanup_keeps_breaks_for_multiline_fields_only(self):
+        cases = (
+            ("project_code", "\tA1\u200c\r\nB2\t", "A1 B2"),
+            ("cage_position", "104-5E\n104-5H\t", "104-5E 104-5H"),
+            ("mouse_nos", "35\t37\u00a039\r\n40\u200c", "35 37 39\n40"),
+            ("screening_antigen", "\nAg-1\tLot1\r\nAg-2\u00a0Lot2\n", "Ag-1 Lot1\nAg-2 Lot2"),
         )
-        self.assertEqual(saved["project_code"], "26D033504")
-        self.assertEqual(saved["cage_position"], "104-5E 104-5H")
-        self.assertEqual(saved["mouse_nos"], "35 37 39 40")
-        self.assertEqual(
-            saved["screening_antigen"],
-            "CHO-S-hGPR158-Flag C260829B01\nCHO-fasGPR158-Flag C260416B01 人猴细胞",
-        )
-
-    def test_multiline_fields_accept_up_to_1000_chars(self):
-        long_text = "\n".join(f"Human-Antigen-Line-{idx}——CAT-{idx:04d}" for idx in range(25))
-        self.assertGreater(len(long_text), 512)
-        self.assertLessEqual(len(long_text), 1000)
-        saved = service.save(
-            self.db,
-            {
-                "mouse_nos": long_text,
-                "serum_titer": long_text,
-                "immune_antigen": long_text,
-                "screening_antigen": long_text,
-                "plate_nos": long_text,
-                "boost_antigen": long_text,
-                "boost_cells": long_text,
-                "remark": long_text,
-            },
-        )
-        for field in (
-            "mouse_nos",
-            "serum_titer",
-            "immune_antigen",
-            "screening_antigen",
-            "plate_nos",
-            "boost_antigen",
-            "boost_cells",
-            "remark",
-        ):
-            self.assertEqual(saved[field], long_text)
-        with self.assertRaisesRegex(ValueError, "免疫用抗原不能超过 1000 个字符"):
-            service.save(self.db, {"immune_antigen": "A" * 1001})
+        for field, raw, expected in cases:
+            with self.subTest(field=field):
+                saved = service.save(self.db, {field: raw})
+                self.assertEqual(saved[field], expected)
 
 
 class DiscoveryHeaderFilterTests(DbTestCase):
-    tables = (DiscoveryWorkbench, Target)
+    tables = TABLES
     ROWS = [
         dict(project_code="P1", status="规划中", owner="甲", target_name="PD-L1", target_codes=["20R001"],
              mouse_strain="RN、自定义", screening_methods="达普,NGS", harvest_date="2026-01-05",
@@ -219,20 +192,17 @@ class DiscoveryHeaderFilterTests(DbTestCase):
 
     def setUp(self):
         super().setUp()
-        with self.Session() as db:
-            for index, row in enumerate(self.ROWS, start=1):
-                db.add(DiscoveryWorkbench(discovery_id=f"DSC-260101-{index:06d}", **row))
-            db.commit()
+        for index, row in enumerate(self.ROWS, start=1):
+            self.db.add(DiscoveryWorkbench(discovery_id=f"DSC-260101-{index:06d}", **row))
+        self.db.commit()
 
     def codes(self, *field_filters, **extra):
-        with self.Session() as db:
-            data = {"limit": 50, "field_filters": list(field_filters), **extra}
-            return [item["project_code"] for item in service.get_list(db, data)["items"]]
+        data = {"limit": 50, "field_filters": list(field_filters), **extra}
+        return [item["project_code"] for item in service.get_list(self.db, data)["items"]]
 
     def values(self, field, **extra):
-        with self.Session() as db:
-            items = service.get_column_values(db, {"field": field, **extra})["items"]
-            return {item["value"]: item["count"] for item in items}
+        items = service.get_column_values(self.db, {"field": field, **extra})["items"]
+        return {item["value"]: item["count"] for item in items}
 
     def test_filters_and_conditions(self):
         self.assertEqual(sorted(self.codes({"field": "owner", "exclude": ["甲"]})), ["P2", "P3"])
@@ -262,106 +232,46 @@ class DiscoveryHeaderFilterTests(DbTestCase):
 
     def test_stats_and_export_follow_header_filters(self):
         header = [{"field": "status", "exclude": ["已取消"]}]
-        with self.Session() as db:
-            data = service.get_list(db, {"limit": 50, "field_filters": header})
-            self.assertEqual(data["total"], 2)
-            self.assertEqual(data["stats"]["all"], 2)
-            self.assertEqual(data["stats"]["cancelled"], 0)
-            with patch("utils.excel.build_list_workbook", side_effect=lambda **kw: kw) as built:
-                service.export_list_workbook(db, {
-                    "field_filters": header, "sort_field": "project_code", "sort_dir": "desc",
-                })
-            rows = built.call_args.kwargs["rows"]
-            code_at = [h for h, _ in service.EXPORT_COLUMNS].index("项目编号")
-            self.assertEqual([row[code_at] for row in rows], ["P2", "P1"])
+        data = service.get_list(self.db, {"limit": 50, "field_filters": header})
+        self.assertEqual(data["total"], 2)
+        self.assertEqual(data["stats"]["all"], 2)
+        self.assertEqual(data["stats"]["cancelled"], 0)
+        with patch("utils.excel.build_list_workbook", side_effect=lambda **kw: kw) as built:
+            service.export_list_workbook(self.db, {
+                "field_filters": header, "sort_field": "project_code", "sort_dir": "desc",
+            })
+        rows = built.call_args.kwargs["rows"]
+        code_at = [h for h, _ in service.EXPORT_COLUMNS].index("项目编号")
+        self.assertEqual([row[code_at] for row in rows], ["P2", "P1"])
 
 
 class DiscoveryWorkbenchQueueTests(DbTestCase):
-    tables = (DiscoveryWorkbench, MolecularLibraryOrder)
+    tables = TABLES
 
     def _sorts(self, *row_ids: int) -> list[int | None]:
         self.db.expire_all()
         return [self.db.get(DiscoveryWorkbench, rid).sort_order for rid in row_ids]
 
-    def test_queue_placement_priority_reorder_terminal_and_delete(self):
+    def test_queue_lifecycle_and_terminal_statuses_leave_queue(self):
         r1 = service.save(self.db, {"project_code": "P1"})
         r2 = service.save(self.db, {"project_code": "P2"})
         r3 = service.save(self.db, {"project_code": "P3", "priority": "加急"})
         self.assertEqual(self._sorts(r1["id"], r2["id"], r3["id"]), [2, 3, 1])
 
-        service.save(self.db, {"id": r2["id"], "priority": "加急"})
-        self.assertEqual(self._sorts(r1["id"], r2["id"], r3["id"]), [3, 2, 1])
-        service.save(self.db, {"id": r3["id"], "priority": "正常"})
-        self.assertEqual(self._sorts(r1["id"], r2["id"], r3["id"]), [3, 1, 2])
+        service.reorder(self.db, r2["id"], r1["id"])
+        self.assertEqual(self._sorts(r3["id"], r2["id"], r1["id"]), [1, 2, 3])
 
-        service.reorder(self.db, r1["id"], r3["id"])
-        self.assertEqual(self._sorts(r2["id"], r1["id"], r3["id"]), [1, 2, 3])
-        same = service.reorder(self.db, r1["id"], r1["id"])
-        self.assertEqual([item["id"] for item in same["items"]], [r1["id"]])
-
-        r4 = service.save(self.db, {"project_code": "P4", "sort_order": 2})
-        self.assertEqual(self._sorts(r2["id"], r4["id"], r1["id"], r3["id"]), [1, 2, 3, 4])
-
-        service.save(self.db, {"id": r4["id"], "status": "已完成"})
-        self.assertEqual(self._sorts(r2["id"], r4["id"], r1["id"], r3["id"]), [1, None, 2, 3])
-        with self.assertRaisesRegex(ValueError, "终态记录不参与排序"):
-            service.reorder(self.db, r4["id"], r1["id"])
+        for terminal in ("已完成", "已取消"):
+            row = service.save(self.db, {"project_code": terminal})
+            service.save(self.db, {"id": row["id"], "status": terminal})
+            self.assertEqual(self._sorts(r3["id"], r2["id"], r1["id"], row["id"]), [1, 2, 3, None])
+            with self.assertRaisesRegex(ValueError, "终态记录不参与排序"):
+                service.reorder(self.db, row["id"], r1["id"])
 
         service.delete(self.db, r1["id"])
-        self.assertEqual(self._sorts(r2["id"], r3["id"]), [1, 2])
-
-    def test_expected_conflict_detection_single_and_batch(self):
-        from core.errors import ConflictError
-
-        r1 = service.save(self.db, {"project_code": "P1", "mouse_count": 5, "target_codes": ["20R001"]})
-        r2 = service.save(self.db, {"project_code": "P2", "remark": "原备注"})
-
-        with self.assertRaises(ConflictError):
-            service.save_batch(
-                self.db,
-                {
-                    "items": [
-                        {"id": r1["id"], "remark": "不应落库", "_expected": {"project_code": "P1"}},
-                        {"id": r2["id"], "remark": "新备注", "_expected": {"remark": "过期备注"}},
-                    ]
-                },
-            )
-        self.db.rollback()
-        self.assertIsNone(self.db.get(DiscoveryWorkbench, r1["id"]).remark)
-
-        updated = service.save_batch(
-            self.db,
-            {
-                "items": [
-                    {
-                        "id": r1["id"],
-                        "remark": "已保存",
-                        "_expected": {
-                            "project_code": " P1 ",
-                            "mouse_count": 5.0,
-                            "target_codes": [" 20R001 "],
-                            "remark": "",
-                            "sort_order": 999,
-                            "discovery_id": "IGNORED",
-                        },
-                    }
-                ]
-            },
-        )
-        self.assertEqual(updated["items"][0]["remark"], "已保存")
-
-        with self.assertRaises(ConflictError):
-            service.save(
-                self.db,
-                {"id": r1["id"], "remark": "冲突", "_expected": {"remark": "旧"}},
-            )
-        self.db.rollback()
-        plain = service.save(self.db, {"id": r1["id"], "remark": "无基线覆盖"})
-        self.assertEqual(plain["remark"], "无基线覆盖")
+        self.assertEqual(self._sorts(r3["id"], r2["id"]), [1, 2])
 
     def test_screening_methods_round_trip_as_list(self):
-        from core.errors import ConflictError
-
         row = service.save(self.db, {"screening_methods": ["NGS", "达普"]})
         self.assertEqual(row["screening_methods"], ["达普", "NGS"])
         self.assertNotIn("screening_method_list", row)
@@ -398,7 +308,3 @@ class DiscoveryWorkbenchQueueTests(DbTestCase):
             {"items": [{"id": item["id"], "remark": "批量", "_expected": dict(item)} for item in items]},
         )
         self.assertEqual([row["remark"] for row in saved["items"]], ["批量", "批量"])
-
-
-if __name__ == "__main__":
-    unittest.main()

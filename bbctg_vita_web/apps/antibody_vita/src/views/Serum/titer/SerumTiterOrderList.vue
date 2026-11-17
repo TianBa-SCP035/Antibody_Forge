@@ -894,14 +894,14 @@ const DEFAULT_STATS = {
 
 const STATS_AFFECTING_LABELS = new Set(['效价负责人', '检测日期', '血清状态', '效价小结']);
 
-/** 可划选后改一处同步的列；值仅用于选区计数，无板数含义 */
+/** 这些列支持划选后同步修改；值仅用于选区计数，不表示板数。 */
 const FIELD_SELECT_COLUMNS = new Set(['owner', 'test_dates', 'serum_status', 'priority']);
 
 const ASSAY_FILTER_FACS = '__facs__';
 const ASSAY_FILTER_ELISA = '__elisa__';
 const ASSAY_FILTER_FACS_ELISA = '__facs_elisa__';
 
-// 效价负责人、检测日期、血清状态、小结的顶部筛选由统计块联动改写，表头条件与它们并列、不写回
+// 效价负责人、检测日期、血清状态和小结由统计块控制；表头条件独立生效，不写回顶部筛选。
 const TITER_HEADER_COLUMNS = Object.freeze({
   project_code: { type: 'text', label: '项目编号', values: 'recent', top: { query: 'project_code', kind: 'codes' } },
   target_name: { type: 'text', label: '靶点', values: 'all', search: 'target', top: { query: 'target_name' } },
@@ -930,7 +930,7 @@ const TITER_HEADER_COLUMNS = Object.freeze({
 
 const SERUM_STATUS_PENDING_TEST = '已采血';
 
-/** 统计「待汇报」：已检测且效价小结为空 */
+/** 「待汇报」指已检测且效价小结为空。 */
 const SERUM_STATUS_TESTED = '已检测';
 
 function summaryTerms(value) {
@@ -945,7 +945,7 @@ function formatLocalDate(date) {
   return `${y}-${m}-${day}`;
 }
 
-/** 与后端 _current_week_range 一致：周一至周日 */
+/** 周范围与后端 _current_week_range 一致，均为周一至周日。 */
 function getCurrentWeekRange() {
   const now = new Date();
   const weekday = now.getDay();
@@ -1019,7 +1019,7 @@ function formatMonthRangeLabel(startMonth, endMonth) {
   return `${formatMonthLabel(startMonth)} - ${formatMonthLabel(endMonth)}`;
 }
 
-/** 效价负责人标签：17 色法式马卡龙（清透 pastel，色相拉开） */
+/** 效价负责人标签使用 17 个易区分的浅色配色。 */
 const OWNER_TAG_COLORS = [
   { bg: '#eef4fc', color: '#70b0e8' }, // 天蓝
   { bg: '#ffe6e4', color: '#e06058' }, // 珊瑚
@@ -1644,7 +1644,7 @@ export default {
       };
       return map[column] || '';
     },
-    /** 点在下拉/日期上先挂起，拖到其他行再亮选区，避免单击闪框 */
+    /** 在下拉框或日期控件上按下时暂缓选区，拖到其他行后再显示，避免单击闪框。 */
     onFieldCellMouseDown(column, index, event) {
       if (event.button !== 0) {
         return;
@@ -1708,7 +1708,7 @@ export default {
       const selected = inSelection && keySet.size > 1
         ? this.getTableDisplayRows().filter((row) => keySet.has(String(row.id)))
         : [sourceRow];
-      // 赋值前跳过无权限行，界面也不改
+      // 无权限行既不赋值，也不更新界面。
       const targets = selected.filter((row) => this.canEditFieldForRow(row, label));
       const skipped = selected.length - targets.length;
       if (!targets.length) {
@@ -1742,7 +1742,7 @@ export default {
       }
     },
     getPlateSelectSegments(column) {
-      // 空选区的连续拖选直接返回单段 [min, max]，避免 500 行每帧建 Set 与排序
+      // 空选区连续拖选时直接返回 [min, max]，避免每帧为 500 行创建 Set 并排序。
       if (
         this.plateDragging
         && column === this.plateSelectColumn
@@ -1887,7 +1887,7 @@ export default {
       let nextClipPath = this.plateLastClipPath || '';
       let baseSegments = null;
 
-      // 纯滚动且已有基准几何时：直接用 scrollTop/scrollLeft 差值计算，零 getBoundingClientRect / 零强制布局
+      // 纯滚动且已有基准几何时，使用滚动差值计算，避免 getBoundingClientRect 和强制布局。
       if (
         fromScroll
         && !this.plateDragging
@@ -1923,7 +1923,7 @@ export default {
           return;
         }
 
-        // 先完成全部几何读取（Read Phase），再统一写 DOM
+        // 先读取全部几何信息，再统一写入 DOM，避免布局抖动。
         const wrapRect = wrapEl.getBoundingClientRect();
         const bodyRect = bodyWrapper.getBoundingClientRect();
         wrapWidth = wrapRect.width;
@@ -1995,7 +1995,7 @@ export default {
         baseSegments = measured;
       }
 
-      // 统一进入 DOM 写入阶段（Write Phase）
+      // 几何读取完成后再进入 DOM 写入阶段。
       if (this.plateLastClipPath !== nextClipPath) {
         this.plateLastClipPath = nextClipPath;
         overlayEl.style.clipPath = nextClipPath;
@@ -2015,8 +2015,7 @@ export default {
       }
 
       const prevSegCount = this.plateRenderedSegmentCount || 0;
-      // 拖选拉伸过程保持 0.12s 丝滑纵向过渡；
-      // 仅在滚动跟随（fromScroll）或点中间格拆段/并段取消选中（rects.length !== prevSegCount）时瞬切
+      // 拖选拉伸保留 0.12 秒纵向过渡；滚动跟随或选区拆分、合并时立即切换。
       const enableStretchTransition =
         !fromScroll
         && prevSegCount > 0
@@ -2070,7 +2069,7 @@ export default {
       const maxX = Math.max(minX, wrapWidth - clipRight - bubbleHalfW - 6);
       const x = Math.min(Math.max(minX, last.left + last.width / 2), maxX);
       let y = last.top + last.height + 6;
-      // 底部空间不足（如划选到最后一行被卡片底边或屏幕底边遮挡）时，优先翻转到选区上方，若上下均满则内嵌于选区底部内侧
+      // 底部空间不足时优先显示在选区上方；上下均不足时内嵌到选区底部。
       if (y + bubbleH > maxVisibleBottom) {
         if (last.top - bubbleH - 6 >= minVisibleTop) {
           y = last.top - bubbleH - 6;
@@ -2143,7 +2142,7 @@ export default {
       this.plateDragPending = null;
       this.$refs.floatingLayerRef?.closeEditor?.();
       this.invalidatePlateGeometryCache();
-      // 换列：立刻清选区，不做淡出，避免和左右滑动叠在一起发卡
+      // 换列时立即清除选区，避免淡出动画与横向滚动叠加。
       if (this.plateSelectColumn && this.plateSelectColumn !== column) {
         this.plateSelectedCounts = {};
         this.plateDragStartIndex = -1;
@@ -2381,7 +2380,7 @@ export default {
         notifyApiError(error, { messages: { default: '加载效价列表信息失败' } });
       }
     },
-    /** 统计块跟随列表筛选；统计块自己切换的负责人、血清状态、小结、检测日期不传。 */
+    /** 统计请求跟随列表筛选，但不传由统计块自身控制的负责人、血清状态、小结和检测日期。 */
     statsPayload() {
       const {
         page, limit, sort_field, sort_dir, titer_order_id,
@@ -2532,7 +2531,7 @@ export default {
         try {
           sessionStorage.setItem(DISCOVERY_WORKBENCH_CREATED_KEY, JSON.stringify(saved));
         } catch {
-          /* 没有暂存仍可按 id 打开 */
+          /* 暂存失败时仍可按 id 打开发现工作台。 */
         }
         this.discoveryWizardVisible = false;
         await this.$router.push({
@@ -3198,7 +3197,7 @@ export default {
   vertical-align: middle;
 }
 
-/* 血清状态：沿用 el-tag 色系，仅给选中项轻量着色 */
+/* 血清状态沿用 el-tag 色系，仅为选中项添加轻量底色。 */
 .table-card :deep(.serum-status-select.status-tone-info .el-select__wrapper) {
   background-color: var(--el-color-info-light-9);
 }
@@ -3276,12 +3275,11 @@ export default {
   padding-right: 5px;
 }
 
-/* 效价负责人多选：标签胶囊样式 */
 .owner-select {
   width: 100%;
 }
 
-/* 效价负责人 → 优先级：行内控件统一空态高度 */
+/* 行内控件需保留统一的空态高度。 */
 .table-card :deep(.inline-cell-control .el-select__wrapper),
 .table-card :deep(.inline-cell-control .el-input__wrapper) {
   min-height: 24px;

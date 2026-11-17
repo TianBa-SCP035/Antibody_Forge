@@ -152,7 +152,6 @@ onMounted(loadProfile);
   <div v-loading="loading" class="profile-shell">
     <div class="profile-inner">
       <div class="profile-layout">
-        <!-- 顶栏摘要 -->
         <ElCard shadow="never" class="panel-card panel-card--hero profile-layout__hero">
           <div class="hero-inner">
             <div class="hero-avatar-wrap">
@@ -182,7 +181,6 @@ onMounted(loadProfile);
           </div>
         </ElCard>
 
-        <!-- 左：我的信息（通高） -->
         <ElCard shadow="never" class="panel-card panel-card--info profile-layout__info">
           <template #header>
             <div class="panel-head">
@@ -205,7 +203,6 @@ onMounted(loadProfile);
           </div>
         </ElCard>
 
-        <!-- 右：名片 + 密码（上下叠放） -->
         <div class="profile-layout__aside">
           <ElCard shadow="never" class="panel-card panel-card--signature">
             <template #header>
@@ -307,7 +304,6 @@ onMounted(loadProfile);
   margin: 0 auto;
 }
 
-/* 交错布局：顶栏通栏 + 左信息 / 右双卡 */
 .profile-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -345,7 +341,6 @@ onMounted(loadProfile);
   }
 }
 
-/* 通用卡片 */
 .panel-card {
   overflow: hidden;
   border: none;
@@ -399,7 +394,6 @@ onMounted(loadProfile);
   flex-direction: column;
 }
 
-/* 标题区：标题旁小色条（非卡片侧边条） */
 .panel-head {
   padding: 18px 20px 14px;
   border-bottom: 1px solid rgba(15, 23, 42, 0.06);
@@ -456,7 +450,6 @@ onMounted(loadProfile);
   color: var(--el-text-color-secondary);
 }
 
-/* Hero */
 .hero-inner {
   display: flex;
   flex-direction: column;
@@ -551,7 +544,6 @@ onMounted(loadProfile);
   color: var(--el-text-color-placeholder);
 }
 
-/* 内部表格：无边框、值右对齐 */
 .info-table {
   flex: 1;
   padding: 4px 0 8px;
@@ -587,7 +579,6 @@ onMounted(loadProfile);
   word-break: break-word;
 }
 
-/* 名片 / 密码 */
 .signature-input :deep(.el-textarea__inner) {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.9);

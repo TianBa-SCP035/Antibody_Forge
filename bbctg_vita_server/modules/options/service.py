@@ -13,7 +13,7 @@ from utils.filter_values import like_literal
 DEFAULT_TARGET_LIMIT = 20
 MAX_TARGET_LIMIT = 50
 DEFAULT_USER_LIMIT = 30
-# 在职人员规模有限；表格粘贴校验需要整份名单
+# 在职人员规模有限；表格粘贴校验需要整份名单。
 MAX_USER_LIMIT = 5000
 
 

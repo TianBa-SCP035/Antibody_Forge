@@ -1,10 +1,8 @@
 /**
- * Learns the host app's list endpoints by watching the requests its own pages send, so the pet can pull a
- * whole module's data without per-module code.
+ * 通过观察宿主页面发出的请求学习列表接口，使宠物无需模块专用代码即可读取整个模块的数据。
  *
- * Only requests a page itself made are ever replayed, only when the response looked like a list, and only
- * the paging parameters are changed. Paths with write-like words are never recorded. Auth headers are
- * reused in memory for the replay and never stored or sent to the model.
+ * 仅重放页面实际发出且响应形似列表的请求，并且只修改分页参数。含写操作词的路径不记录。
+ * 鉴权请求头仅在内存中供重放使用，不持久化也不发送给模型。
  */
 
 import { DATA_SOURCES_KEY } from './constants';
@@ -19,31 +17,31 @@ export type DataSource = {
   name: string;
   route: string;
   method: 'GET' | 'POST';
-  /** Same-origin request path without query string. */
+  /** 不含查询字符串的同源请求路径。 */
   path: string;
-  /** Non-paging query / body params of the broadest request seen (fewest filters) and of the latest one. */
+  /** 已观察到的最宽请求和最新请求中的非分页查询或正文参数。 */
   baseParams: Record<string, unknown>;
   lastParams: Record<string, unknown>;
   pageKey?: string;
-  /** First page number the page sent (some backends count from 0). */
+  /** 页面发送的首页页码；部分后端从 0 开始。 */
   pageBase?: 0 | 1;
   sizeKey?: string;
   itemsPath: string[];
   totalPath?: string[];
-  /** Response field → column label on the page (matched by values); unmatched fields keep their key. */
+  /** 响应字段到页面列名的映射，通过值匹配；未匹配字段保留原键。 */
   labels: Record<string, string>;
-  /** Headers the model gave fields no page column named (asked once per field); `labels` wins. A field it couldn't name maps to itself. */
+  /** 模型为无页面列名的字段生成的表头，每字段仅询问一次；labels 优先，无法命名时映射到字段自身。 */
   guessed?: Record<string, string>;
-  /** Code field → raw value → text the page shows for it (`status` 1 → 进行中); codes never shown stay raw. */
+  /** 代码字段到“原始值→页面文本”的映射，如 status 的 1 映射为「进行中」；未展示过的代码保留原值。 */
   values?: Record<string, Record<string, string>>;
   fields: string[];
   total?: number;
   seenAt: number;
-  /** Joins that matched real rows before, so the next cross-module question doesn't have to guess the key. */
+  /** 曾匹配真实行的关联，供后续跨模块问题复用关联键。 */
   joins?: VerifiedJoin[];
 };
 
-/** `matched` of `rows` rows in `countedOn` (the main source of that report) found a partner. */
+/** countedOn 主数据源的 rows 行中，有 matched 行找到关联项。 */
 export type VerifiedJoin = { with: string; on: string; withOn: string; matched: number; rows: number; countedOn: string; at: number };
 const MAX_JOINS_PER_SOURCE = 5;
 
@@ -52,19 +50,19 @@ const MAX_RESPONSE_CHARS = 8_000_000;
 export const MAX_SOURCE_ROWS = 5000;
 const REPLAY_PAGE_SIZE = 500;
 
-/** Words in a path that suggest a request changes data (or isn't a list); such requests are never learned. */
+/** 表示请求可能修改数据或并非列表的路径词；命中后绝不学习该请求。 */
 const WRITE_WORDS = new Set(
   ('update delete del remove save create add insert import upload submit batch set copy move sync approve audit confirm send ' +
     'start stop reset auto export download login logout refresh token password apply cancel bind unbind publish execute run ' +
     'edit modify change generate assign allocate archive restore transfer notify push lock unlock revoke reject enable disable ' +
     'finish complete commit merge clear init calc compute put patch upsert destroy').split(' '),
 );
-/** POST isn't read-only by convention, so a POST is only learned when its path also says it reads. */
+/** POST 默认不视为只读，仅在路径同时含读取语义时学习。 */
 const READ_WORDS = new Set(
   'list lists page query search find get select catalog options tree records stat stats statistics summary overview detail details count lookup'.split(' '),
 );
 
-/** `/serum/auto_update_status`, `/user/resetPassword` → individual lower-case words. */
+/** 将 `/serum/auto_update_status`、`/user/resetPassword` 拆为独立小写词。 */
 function pathWords(path: string): string[] {
   return path.split(/[/_\-.]+|(?=[A-Z])/).map((w) => w.toLowerCase());
 }
@@ -104,11 +102,11 @@ function persist() {
   try {
     writeUserItem(DATA_SOURCES_KEY, JSON.stringify(load().slice(0, MAX_SOURCES)));
   } catch {
-    /* quota: keep in memory */
+    /* 存储配额不足时仅保留内存副本。 */
   }
 }
 
-/** Account switch: forget the in-memory copy so the next read loads the new account's sources. */
+/** 账号切换时清空内存副本，使下次读取加载新账号的数据源。 */
 export function reloadSources() {
   sources = null;
   lastResponse.clear();
@@ -119,7 +117,7 @@ function getPath(obj: any, path: string[]): any {
   return path.reduce((o, k) => (o == null ? undefined : o[k]), obj);
 }
 
-/** Finds the row array (and a sibling total) in a JSON response, e.g. `{code:0,data:{items:[…],total:9}}`. */
+/** 在 JSON 响应中查找行数组及同级总数，如 `{code:0,data:{items:[…],total:9}}`。 */
 function findList(json: any): { itemsPath: string[]; totalPath?: string[] } | null {
   const rowsLike = (v: unknown) => Array.isArray(v) && v.length > 0 && v.slice(0, 5).every(isPlainObject);
   if (rowsLike(json)) return { itemsPath: [] };
@@ -171,7 +169,7 @@ function record(method: string, rawUrl: string, body: unknown, responseText: str
   }
   if (isPlainObject(json) && 'code' in json && json.code !== 0 && json.code !== 200) return;
   const known = load().find((s) => s.method === m && s.path === url.pathname);
-  // An empty result is still the page's current filter for a source we already know (a tab with 0 rows).
+  // 已知数据源的空结果仍代表页面当前筛选状态，例如结果为 0 行的标签页。
   const found =
     findList(json) ??
     (known && Array.isArray(getPath(json, known.itemsPath)) ? { itemsPath: known.itemsPath, totalPath: known.totalPath } : null);
@@ -195,8 +193,7 @@ function record(method: string, rawUrl: string, body: unknown, responseText: str
 
   const list = load();
   let src = known;
-  // Other pages call the same list API for dropdowns etc.; those calls must not rewrite the owning page's
-  // filters or total, only offer a broader request.
+  // 其他页面可能为下拉框调用同一列表接口；这类调用只能提供更宽请求，不能改写归属页面的筛选或总数。
   const home = !src || src.route === location.pathname;
   if (!src) {
     src = {
@@ -241,19 +238,19 @@ function record(method: string, rawUrl: string, body: unknown, responseText: str
 
 let matchTimer: ReturnType<typeof setTimeout> | undefined;
 
-/** Once the page has rendered the rows, pair its tables with the responses so column names are learned on visit. */
+/** 页面渲染行后，将表格与响应配对，以便在访问时学习列名。 */
 function scheduleTableMatch() {
   clearTimeout(matchTimer);
   matchTimer = setTimeout(() => {
     try {
       for (const t of readPageTables()) sourceForTable(t);
     } catch {
-      /* best effort */
+      /* 匹配失败不得影响页面。 */
     }
   }, 1200);
 }
 
-/** Patches XHR and fetch once to observe responses; never changes requests or responses. */
+/** 仅修补一次 XHR 和 fetch 以观察响应，绝不改变请求或响应。 */
 export function installApiWatch() {
   if (installed || typeof window === 'undefined') return;
   installed = true;
@@ -284,7 +281,7 @@ export function installApiWatch() {
                 : '';
           record(req.method, req.url, body, text);
         } catch {
-          /* observing must never break the page */
+          /* 观察逻辑不得影响页面。 */
         }
       });
     }
@@ -304,7 +301,7 @@ export function installApiWatch() {
           .catch(() => {});
       }
     } catch {
-      /* ignore */
+      /* 观察失败不得影响页面请求。 */
     }
     return res;
   };
@@ -316,7 +313,7 @@ function norm(v: unknown): string {
   return String(v).replace(/[\s,，、;；]+/g, ',').replace(/^,|,$/g, '').trim().toLowerCase();
 }
 
-/** 2 = same value, 1 = one is a long prefix of the other (a cut-off cell), 0 = different. */
+/** 返回 2 表示值相同，1 表示一方是另一方的长前缀（单元格被截断），0 表示不同。 */
 function sameValue(a: string, b: string): number {
   if (!a || !b) return 0;
   if (a === b) return 2;
@@ -326,7 +323,7 @@ function sameValue(a: string, b: string): number {
   return a.length >= 8 && b.length >= 8 && (a.startsWith(b) || b.startsWith(a)) ? 1 : 0;
 }
 
-/** What pages render for an empty value. */
+/** 页面用于表示空值的文本。 */
 const EMPTY_TEXT = /^(-+|—+|\/|无|暂无|n\/a)$/;
 const MAX_CODE_LEN = 32;
 const MAX_CODES_PER_FIELD = 60;
@@ -341,9 +338,8 @@ function codeOf(v: unknown): string | null {
 }
 
 /**
- * Enum-like fields the page shows translated (`status` 1 → 进行中): a one-to-one mapping between a field's
- * raw values and a column's texts, seen on at least 4 rows. Values must repeat, so an id ↔ name pair of
- * unique columns is never taken for a code list.
+ * 识别页面已翻译的枚举类字段，如 status 的 1 显示为「进行中」。
+ * 原始值与列文本必须在至少 4 行中一一对应且存在重复，避免把唯一的 id 与名称列误认成代码表。
  */
 function matchCodes(items: any[], table: PageTable, n: number, keys: string[], labels: string[]) {
   const out: Array<{ key: string; label: string; map: Record<string, string>; rows: number }> = [];
@@ -356,7 +352,7 @@ function matchCodes(items: any[], table: PageTable, n: number, keys: string[], l
       for (let i = 0; i < n && ok; i += 1) {
         const text = String(table.rows[i]![label] ?? '').trim();
         const raw = items[i]?.[key];
-        // An empty value is shown as "-" or nothing by the page; it has no code to learn.
+        // 空值在页面显示为「-」或空白，没有可学习的代码。
         if (raw == null || raw === '') continue;
         const code = codeOf(raw);
         if (!text || code == null || text === '***') {
@@ -369,7 +365,7 @@ function matchCodes(items: any[], table: PageTable, n: number, keys: string[], l
         back.set(text, code);
       }
       if (!ok || rows < 4 || fwd.size < 2 || fwd.size > rows / 2) continue;
-      // The page shows the value itself (only formatted differently): that is not a translation.
+      // 页面仅以不同格式显示原值时，不视为翻译映射。
       if ([...fwd].every(([c, t]) => norm(c) === norm(t))) continue;
       out.push({ key, label, map: Object.fromEntries(fwd), rows });
     }
@@ -377,7 +373,7 @@ function matchCodes(items: any[], table: PageTable, n: number, keys: string[], l
   return out.sort((a, b) => b.rows - a.rows);
 }
 
-/** Pairs page columns with response fields by comparing values row by row (no framework internals needed). */
+/** 逐行比较值，将页面列与响应字段配对，无需读取框架内部状态。 */
 function matchLabels(items: any[], table: PageTable): { labels: Record<string, string>; values: Record<string, Record<string, string>> } {
   const n = Math.min(items.length, table.rows.length, 30);
   if (!n) return { labels: {}, values: {} };
@@ -397,7 +393,7 @@ function matchLabels(items: any[], table: PageTable): { labels: Record<string, s
         if (s) hit += 1;
         if (s === 2) exact += 1;
       }
-      // Exact matches outrank prefix matches: "25D285601" is project_code, not experiment_id "25D28560101".
+      // 精确匹配优先于前缀匹配，例如「25D285601」应匹配 project_code，而非「25D28560101」的 experiment_id。
       if (both && hit >= 1 && hit / both >= 0.8) scored.push({ key, label, score: exact * 2 + hit + hit / both });
     }
   }
@@ -422,8 +418,8 @@ function matchLabels(items: any[], table: PageTable): { labels: Record<string, s
 }
 
 /**
- * The learned source behind a table on the current page: its latest response rows must line up with what
- * the table shows. Also refreshes the field → label map and the source name.
+ * 查找当前页面表格背后的已学习数据源；其最新响应行必须与表格展示一致。
+ * 同时刷新字段到列名的映射和数据源名称。
  */
 export function sourceForTable(table: PageTable): DataSource | null {
   let best: { src: DataSource } & ReturnType<typeof matchLabels> | null = null;
@@ -440,14 +436,14 @@ export function sourceForTable(table: PageTable): DataSource | null {
   }
   if (!best || !bestResp) return null;
   const src = best.src;
-  // The table the user sees decides which page owns this API (it may first have been seen as a dropdown elsewhere).
+  // 用户实际看到的表格决定接口归属页面；该接口可能最初只作为其他页面的下拉数据源被观察到。
   if (src.route !== location.pathname) {
     src.route = location.pathname;
     src.labels = {};
     src.values = {};
   }
   src.lastParams = bestResp.params;
-  // One label per column name: a newer match takes the name over from an older (wrong) field.
+  // 每个列名只对应一个字段，新匹配会从旧的错误字段接管该列名。
   const merged = { ...src.labels };
   const values = { ...src.values };
   for (const [key, label] of Object.entries(best.labels)) {
@@ -458,7 +454,7 @@ export function sourceForTable(table: PageTable): DataSource | null {
       }
     }
     merged[key] = label;
-    // Codes add up over visits (another page of the list shows other statuses); a plain match ends a code list.
+    // 代码映射跨访问累积；普通值匹配出现后，终止该字段的代码映射。
     const learned = best.values[key];
     if (learned) values[key] = Object.fromEntries(Object.entries({ ...values[key], ...learned }).slice(-MAX_CODES_PER_FIELD));
     else delete values[key];
@@ -474,8 +470,8 @@ export function sourceForTable(table: PageTable): DataSource | null {
 }
 
 /**
- * A response with rows isn't necessarily a data module (menus, options, config). Count it only when it pages,
- * reports a total, or its rows lined up with a table the user saw.
+ * 含行的响应未必是数据模块，也可能是菜单、选项或配置。
+ * 只有存在分页、报告总数，或响应行与用户看到的表格一致时才计为模块。
  */
 function isModule(s: DataSource) {
   const rowKey = s.itemsPath[s.itemsPath.length - 1] || '';
@@ -486,12 +482,12 @@ export function listSources(): DataSource[] {
   return load().filter(isModule);
 }
 
-/** Filters the page last sent (scope=page_filters), e.g. a status tab that isn't a column value. */
+/** 页面最近发送的筛选条件，对应 scope=page_filters，例如并非列值的状态标签页。 */
 export function pageFilterText(src: DataSource): string {
   return paramText(src.lastParams);
 }
 
-/** Filters still present in the broadest request seen: scope=all is "everything with these", not the whole table. */
+/** 最宽请求仍携带的筛选条件；scope=all 表示满足这些条件的全部数据，并非整张表。 */
 export function allScopeFilterText(src: DataSource): string {
   return paramText(src.baseParams);
 }
@@ -505,8 +501,8 @@ function paramText(params: Record<string, unknown>): string {
 }
 
 /**
- * Records a join that matched rows, on every learned source involved (the built-in `projects` is not one).
- * `leftRef` / `rightRef` are what build_report was given: a source id, `projects` or `page_table`.
+ * 在涉及的每个已学习数据源上记录成功匹配行的关联；内置 projects 不记录。
+ * leftRef 和 rightRef 是 build_report 收到的数据源 ID、projects 或 page_table。
  */
 export function rememberJoin(leftRef: string, rightRef: string, leftOn: string, rightOn: string, matched: number, rows: number) {
   if (!matched) return;
@@ -534,8 +530,7 @@ export function joinText(src: DataSource): string {
 }
 
 /**
- * One line per learned source for the model's context, e.g. `s2 免疫工作台（/serum/workbench，277条，当前页）`,
- * then the menu pages not opened yet.
+ * 为模型上下文按行描述每个已学习数据源，随后列出尚未打开的菜单页面。
  */
 export function describeSources(limit = 20): string {
   const unopened = unopenedPages()
@@ -558,15 +553,15 @@ export function describeSources(limit = 20): string {
   return [...learned, unopened ? `还没打开过的页面：${unopened}` : ''].filter(Boolean).join('\n');
 }
 
-/** Menu pages whose list the pet hasn't seen yet: opening one is how she learns it. */
+/** 宠物尚未观察到列表请求的菜单页面；打开页面后才能学习。 */
 export function unopenedPages(): MenuPage[] {
   const learned = new Set(listSources().map((s) => s.route));
   return menuPages().filter((p) => !learned.has(p.path) && p.path !== location.pathname);
 }
 
 /**
- * Opens a menu page (after the user agreed on a card) and waits for its own list request to be learned.
- * The page loads exactly as if the user had clicked it in the menu; nothing is requested on its behalf.
+ * 用户在卡片中同意后打开菜单页面，并等待学习该页面自己的列表请求。
+ * 页面加载过程与用户点击菜单一致，不代替页面额外发起请求。
  */
 export async function openAndLearn(path: string, timeoutMs = 12_000): Promise<DataSource | null> {
   if (!(await openMenuPage(path))) return null;
@@ -588,17 +583,17 @@ export function findSource(ref: string): DataSource | undefined {
 function headerOf(src: DataSource, key: string): string {
   if (src.labels[key]) return src.labels[key]!;
   const guess = src.guessed?.[key];
-  // A page column learned later may have taken the same name; two fields must not share a header.
+  // 后学习的页面列可能占用同名表头，两个字段不得共享一个表头。
   return guess && !Object.values(src.labels).includes(guess) ? guess : key;
 }
 
-/** Column names the model can use: page labels first, then model-given headers, raw keys for the rest. */
+/** 模型可用的列名依次采用页面标签、模型生成表头和原始键。 */
 export function sourceColumns(src: DataSource): string[] {
   const fields = src.fields || [];
   return [...new Set([...fields.filter((k) => k in src.labels), ...fields.filter((k) => !(k in src.labels))].map((k) => headerOf(src, k)))];
 }
 
-/** Fields the page never named get a header from the model, once per source; on failure they keep their key. */
+/** 页面未命名的字段由模型为每个数据源生成一次表头，失败时保留原始键。 */
 async function guessHeaders(src: DataSource, items: any[], signal?: AbortSignal) {
   const sample = items.slice(0, 50);
   const keys = [...new Set(sample.flatMap((it) => Object.keys(it || {})))]
@@ -643,7 +638,7 @@ function flatten(v: unknown): string | number | null {
 }
 
 function toTable(src: DataSource, items: any[]): DataTable {
-  // Credential and contact fields are dropped entirely: they must not reach the model or the file.
+  // 凭据和联系方式字段必须彻底移除，不得进入模型或文件。
   const keys = [...new Set(items.slice(0, 50).flatMap((it) => Object.keys(it || {})))].filter(
     (k) => items.slice(0, 50).some((it) => !isPlainObject(it?.[k])) && !isSensitiveName(k) && !isSensitiveName(src.labels[k] || ''),
   );
@@ -664,8 +659,8 @@ function toTable(src: DataSource, items: any[]): DataTable {
 export type FetchResult = { table: DataTable; total?: number; fetched: number; truncated: boolean; scope: 'page_filters' | 'all' };
 
 /**
- * Replays a learned request page by page. `scope`: `page_filters` keeps the filters the page last used,
- * `all` uses the broadest request seen. Nothing but the paging parameters is changed.
+ * 逐页重放已学习请求。scope=page_filters 保留页面最近的筛选，scope=all 使用已观察到的最宽请求。
+ * 除分页参数外不修改任何内容。
  */
 export async function fetchSource(
   src: DataSource,
@@ -680,10 +675,10 @@ export async function fetchSource(
   let total: number | undefined;
   const size = src.sizeKey ? REPLAY_PAGE_SIZE : 0;
   const base = src.pageBase ?? 1;
-  // What the backend really returns per page: it may cap below what we ask for, so it's taken from page one.
+  // 后端可能将每页数量限制在请求值以下，因此以第一页实际返回量为准。
   let pageSize = 0;
   let firstOfLast = '';
-  // 60 pages still covers 5000 rows at 100 a page.
+  // 最多 60 页可覆盖每页 100 行时的 5000 行上限。
   for (let page = 0; rows.length < maxRows && page < 60; page += 1) {
     const p: Record<string, unknown> = { ...params };
     if (src.pageKey) p[src.pageKey] = base + page;
@@ -716,7 +711,7 @@ export async function fetchSource(
       const t = Number(getPath(json, src.totalPath));
       if (Number.isFinite(t)) total = t;
     }
-    // A backend that ignores the page number returns page one again: stop instead of duplicating it.
+    // 后端忽略页码并重复返回第一页时停止，避免复制重复数据。
     const first = JSON.stringify(batch[0] ?? null);
     if (page > 0 && first === firstOfLast) break;
     firstOfLast = first;

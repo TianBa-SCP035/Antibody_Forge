@@ -130,7 +130,7 @@ def run_scheduled_job_now(job_code: str) -> None:
     func = job.get("func")
     if not callable(func):
         raise ValueError("定时任务未配置执行函数")
-    # 由后台线程取锁再回报结果，避免先查再取之间被别的进程抢走、接口却报成功
+    # 后台线程取得锁后才回报结果，避免锁被其他进程抢占时接口仍报告成功。
     locked = threading.Event()
     outcome: list[bool] = []
 

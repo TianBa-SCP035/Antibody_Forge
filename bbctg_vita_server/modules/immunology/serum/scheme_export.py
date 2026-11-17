@@ -1,5 +1,3 @@
-"""免疫方案 Excel 导出：单项目工作簿构建 + 单/批量统一响应。"""
-
 from __future__ import annotations
 
 import math
@@ -30,7 +28,7 @@ from models.immunology import (
 )
 from utils.clock import now_local
 
-# A1 留边距（仅屏幕阅读）；正文 B2:P*。B=侧栏，C~P=数据区，宽列 D:H。
+# A1 仅为屏幕阅读留边距；正文位于 B2:P*，B 列为侧栏，C～P 列为数据区，D～H 列为宽列。
 MARGIN_ROW = 1
 MARGIN_COL = 1
 CONTENT_START_ROW = 2
@@ -63,20 +61,19 @@ DEFAULT_ROW_HEIGHT = 20.0
 MIN_COL_WIDTH = 6.0
 MAX_COL_WIDTH = 42.0
 
-# 打印页边距（英寸）：略窄于上一版（原左右 0.5 / 上下 0.8 / 页眉页脚 0.3）
 PRINT_MARGIN_LEFT = 0.35
 PRINT_MARGIN_RIGHT = 0.35
 PRINT_MARGIN_TOP = 0.6
 PRINT_MARGIN_BOTTOM = 0.6
 PRINT_MARGIN_HEADER = 0.2
 PRINT_MARGIN_FOOTER = 0.2
-# Excel 纸张代码：9=A4，13=ISO B5（176×250mm）；写入文件后打印预览默认跟此走
+# Excel 纸张代码中 9 表示 A4，13 表示 ISO B5（176×250 mm）；打印预览默认使用写入的代码。
 PRINT_PAPER_SIZE = 13
 
 CATALOG_COLS = (11, 12)
 MOUSE_STRAIN_COLS = (4, 5)
 MOUSE_NO_COLS = range(12, 16)
-PLAN_DATE_COL = 4  # D 列：步骤表「计划日期」
+PLAN_DATE_COL = 4
 
 TableCol = tuple[int, int, str]
 
@@ -224,7 +221,7 @@ def _iter_logical_units(ws: Worksheet, min_row: int, max_row: int, min_col: int,
 
 
 def _apply_sheet_borders(ws: Worksheet, min_row: int, max_row: int) -> None:
-    """拆合 → 正文区逐格 thin → 合并 → 逻辑单元 master 再补一遍。"""
+    """合并单元格需先拆分并逐格设置边框，重新合并后再补主单元格边框。"""
     merges = [
         (m.min_row, m.min_col, m.max_row, m.max_col)
         for m in list(ws.merged_cells.ranges)
@@ -322,7 +319,7 @@ def _autofit_columns(ws: Worksheet) -> None:
             for col in range(wide_start, wide_end + 1):
                 ws.column_dimensions[get_column_letter(col)].width = share
 
-    # D 列兼抗原宽列与步骤「计划日期」，宽列均分后再保底，避免表头「计划日期」换行
+    # D 列同时属于抗原宽列和步骤日期列，宽列均分后仍需保证日期表头不换行。
     letter = get_column_letter(PLAN_DATE_COL)
     ws.column_dimensions[letter].width = max(ws.column_dimensions[letter].width or 0, 12.0)
 
@@ -474,7 +471,7 @@ class _SchemeSheetWriter:
         self.row += 1
 
     def _write_kv_row_wide_last(self, label1: str, value1: str, label2: str, value2: str) -> None:
-        """两对 label-value；第二对 value 合并至末列（用于实验备注行）。"""
+        """写入两组标签和值，第二组值合并至末列，供实验备注行使用。"""
         col = SECTION_COL
         self._merge_write(self.row, col, col + 1, label1, font=FONT_BOLD, fill=LABEL_FILL, alignment=Alignment(horizontal="center", vertical="center", wrap_text=True))
         self._merge_write(self.row, col + 2, col + 4, value1, alignment=Alignment(horizontal="left", vertical="center", wrap_text=True))
@@ -613,7 +610,7 @@ class _SchemeSheetWriter:
 
 _SCHEME_PDF_NOT_FOUND = "未找到可导出的项目"
 
-# 固定安装路径（Windows 开发机 / Linux bbctg 服务器实测，不用 PATH 猜测）
+# LibreOffice 使用固定安装路径，不依赖 PATH。
 _SOFFICE_WINDOWS = Path(r"C:\Program Files\LibreOffice\program\soffice.exe")
 _SOFFICE_LINUX = Path("/usr/lib/libreoffice/program/soffice")
 

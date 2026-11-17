@@ -15,7 +15,7 @@ DEFAULT_ATTEMPTS = 8
 _MYSQL_DUPLICATE_KEY = 1062
 
 
-def _is_duplicate_key(error: IntegrityError) -> bool:
+def is_duplicate_key(error: IntegrityError) -> bool:
     args = getattr(error.orig, "args", ())
     if args and args[0] == _MYSQL_DUPLICATE_KEY:
         return True
@@ -42,7 +42,7 @@ def insert_with_retry(
                 db.flush()
             return obj
         except IntegrityError as error:
-            if not _is_duplicate_key(error):
+            if not is_duplicate_key(error):
                 raise
             logger.info("code conflict on %s, attempt %s: %s", type(obj).__name__, attempt + 1, error.orig)
     raise ValueError(conflict_message)

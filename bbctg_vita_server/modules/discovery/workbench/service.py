@@ -500,7 +500,7 @@ def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-# 抗原建议只取最近录入的行，开销固定；更早的冷门写法用户可直接手填
+# 抗原建议仅扫描最近 5000 行以固定开销；更早的值仍可手工填写。
 ANTIGEN_SUGGESTION_SCAN_ROWS = 5000
 
 

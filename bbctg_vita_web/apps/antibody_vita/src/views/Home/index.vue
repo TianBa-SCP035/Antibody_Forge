@@ -52,7 +52,7 @@ watch(note, (value) => {
   try {
     localStorage.setItem(HOME_WARM_NOTE_STORAGE_KEY, value);
   } catch {
-    /* ignore */
+    /* 本地存储不可用时仅保留内存中的便签。 */
   }
 });
 
@@ -254,7 +254,7 @@ function onViewAllMessages() {
   background-color: hsl(var(--border));
 }
 
-/* 暖心便签：与改版前 textarea 区块接近的固定高度 */
+/* 固定便签高度，避免输入时页面跳动。 */
 .home-page :deep(.home-warm-note) {
   min-height: 11.5rem;
 }

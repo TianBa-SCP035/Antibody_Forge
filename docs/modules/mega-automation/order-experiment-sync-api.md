@@ -24,12 +24,12 @@ Content-Type: multipart/form-data
 
 配置为空时不校验对应项。两项都配置时必须同时通过。Token 不接受 URL 参数。
 
-认证失败由 FastAPI 直接返回：
+认证失败时，由全局异常处理器按统一错误格式返回：
 
 | HTTP 状态 | 条件 | 响应 |
 |---|---|---|
-| 401 | Token 缺失或不匹配 | `{"detail":"调用方校验失败"}` |
-| 403 | 调用方 IP 不在白名单 | `{"detail":"调用方不在允许列表"}` |
+| 401 | Token 缺失或不匹配 | `{"code":1,"message":"调用方校验失败","data":null}` |
+| 403 | 调用方 IP 不在白名单 | `{"code":1,"message":"调用方不在允许列表","data":null}` |
 
 ## 3. `order_json` 格式
 
@@ -171,7 +171,7 @@ HTTP 200：
 
 成功后执行以下操作：
 
-1. JSON 原文保存到 `repository/order_sync/<YYYYMMDD>/`。
+1. JSON 原文保存到 `<REPOSITORY_ROOT>/order_sync/<YYYYMMDD>/`（`REPOSITORY_ROOT` 默认 `repository`，见 [deploy.md](../../deploy.md)）。
 2. `order_sync` 表写入 `trace_id`、相对文件路径、订单数量、订单号列表、项目数量和项目摘要列表。
 3. 接收记录状态写为 `pending`。
 

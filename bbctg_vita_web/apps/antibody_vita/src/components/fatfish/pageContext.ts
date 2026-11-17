@@ -11,7 +11,7 @@ export type PageContextSnapshot = {
   interactive: boolean
 }
 
-/** index.html's static fallback banner and loading screen (always in the DOM), and the pet itself: never page content. */
+/** index.html 中常驻 DOM 的降级横幅、加载画面和宠物自身均不属于页面内容。 */
 function isIgnoredRoot(el: Element | null): boolean {
   return !el || !!el.closest('#unsupported-browser, #__app-loading__, .ff-root')
 }
@@ -59,22 +59,22 @@ function pickMain(): Element | null {
 }
 
 export const SECRET_NAME = /密码|口令|password|passwd|pwd|secret|token/i
-/** Contact / identity fields: their values are hidden from the models (the field name is still shown). */
+/** 联系方式和身份字段仅向模型隐藏值，字段名仍可显示。 */
 export const PRIVATE_NAME = /手机|电话|联系方式|邮箱|e-?mail|身份证|证件号|open_?id|cookie|authorization|api[_ ]?key|密钥|mobile|phone/i
 
-/** Credential or personal-data field name. */
+/** 判断凭据或个人数据字段名。 */
 export function isSensitiveName(name: string): boolean {
   return SECRET_NAME.test(name) || PRIVATE_NAME.test(name)
 }
 
-/** Email addresses and mainland mobile numbers in free text. */
+/** 隐去自由文本中的邮箱地址和中国大陆手机号。 */
 export function maskContacts(s: string): string {
   return s.replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '(邮箱已隐藏)').replace(/(?<!\d)1[3-9]\d{9}(?!\d)/g, '(手机号已隐藏)')
 }
 
 /**
- * Inputs whose value must never be read, sent to the models or filled. Element Plus `show-password` turns the
- * input into type="text" while revealed, so the eye icon and the field's name/placeholder count too.
+ * 识别绝不能读取、发送给模型或填写的输入框。
+ * Element Plus 的 show-password 在显示密码时会把 input 改为 text，因此还需检查眼睛图标、字段名和占位文字。
  */
 export function isSecretInput(el: Element | null): boolean {
   if (!el) return false
@@ -174,7 +174,7 @@ export function collectPageContext(): PageContextSnapshot {
   return { path, title, heading, mainText, focused, fields, summary, interactive }
 }
 
-/** WMO weather code (Open-Meteo, used by the home page widget) → short Chinese. */
+/** 将首页天气组件使用的 Open-Meteo WMO 天气代码转换为简短中文。 */
 function weatherText(code: number): string {
   if (code === 0) return '晴'
   if (code <= 3) return '多云'
@@ -198,7 +198,7 @@ function dayPart(hour: number): string {
 
 export type WeatherNow = { sky: string; temp: number | null; aqi: number }
 
-/** The home page's cached weather (it refetches every 30 min while open), if recent enough to call "now". */
+/** 返回仍可视为当前天气的首页缓存；首页打开时每 30 分钟重新获取。 */
 export function weatherNow(): WeatherNow | null {
   try {
     const w = JSON.parse(localStorage.getItem(WEATHER_CACHE_KEY) || 'null')
@@ -210,7 +210,7 @@ export function weatherNow(): WeatherNow | null {
   }
 }
 
-/** Time and (when the host page has cached it) weather, so small talk can be about the actual day. */
+/** 提供当前时间和宿主页已缓存的天气，使闲聊可结合当天实际情况。 */
 export function ambientHint(now = new Date()): string {
   const week = '日一二三四五六'[now.getDay()]
   const hm = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`

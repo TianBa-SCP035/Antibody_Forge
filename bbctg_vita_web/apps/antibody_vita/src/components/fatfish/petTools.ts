@@ -1,10 +1,8 @@
 /**
- * Browser-side executors for the pet agent's tools (names match pet-proxy/agent_tools.py).
+ * 宠物代理工具的浏览器端执行器，名称与 pet-proxy/agent_tools.py 一致。
  *
- * Data comes from the normal API client or from replaying list requests the pages already made
- * (apiWatch.ts), always with the user's own token, so backend permissions apply. Numbers the model reports (counts, titers, day offsets) are computed
- * here; models are unreliable at arithmetic. `propose_*` tools never act — they return a
- * proposal the user must confirm on a card.
+ * 数据来自常规 API 客户端或 apiWatch.ts 重放的页面列表请求，始终使用用户自己的令牌并受后端权限约束。
+ * 计数、效价和日期偏移等数值在此计算，避免依赖模型算术。propose_* 工具不直接执行，只返回需用户在卡片确认的方案。
  */
 
 import {
@@ -82,7 +80,7 @@ export type Proposal =
       fills: ResolvedFill[];
       manual: ManualFill[];
       autoSave?: boolean;
-      /** Auto-save page for a record not created yet: applying creates it, and undo can't delete it. */
+      /** 自动保存页面中尚未创建的记录；应用后会创建记录，撤销无法删除它。 */
       newRecord?: boolean;
       formLabels?: string[];
     }
@@ -94,13 +92,13 @@ export type Proposal =
       count?: number;
       projectId?: number;
       projectCode?: string;
-      /** Skip the confirm card: filters are clear and the download is read-only. */
+      /** 筛选明确且下载只读时可跳过确认卡片。 */
       auto?: boolean;
     }
   | {
       kind: 'report';
       report: BuiltReport;
-      /** Lines of the 说明 sheet: source, filters, time, counts, partial-data warning. */
+      /** 「说明」工作表的内容：来源、筛选、时间、数量和非完整数据警告。 */
       info: string[];
       source: string;
       partialWhy?: string;
@@ -109,7 +107,7 @@ export type Proposal =
       kind: 'open_page';
       path: string;
       title: string;
-      /** The question to ask again once the page's list is learned (set by the chat, not the tool). */
+      /** 学习页面列表后重新提问的原问题，由聊天层而非工具设置。 */
       question?: string;
     };
 
@@ -195,7 +193,7 @@ function baseFilters(args: Record<string, any>) {
   return f;
 }
 
-/** The list API has no free-text keyword; try code/ID, name and target, then merge. */
+/** 列表接口没有自由文本关键字，因此分别按编号、ID、名称和靶点查询后合并。 */
 async function keywordSearch(keyword: string, filters: Record<string, any>, limit: number) {
   const tries = await Promise.allSettled([
     listRows({ ...filters, project_code: keyword }, limit),
@@ -426,14 +424,14 @@ function numeric(v: ConclusionCellValue | undefined): v is number {
   return typeof v === 'number' && Number.isFinite(v) && v > 0;
 }
 
-/** Titers are dilution steps; with an even count take the lower middle value so the median is a titer that was actually measured. */
+/** 效价是离散稀释档位；偶数个值时取较低的中位实测值。 */
 function median(values: number[]): number | null {
   if (!values.length) return null;
   const s = [...values].sort((a, b) => a - b);
   return s[Math.ceil(s.length / 2) - 1]!;
 }
 
-/** Flatten the conclusion model into per-row stats plus stage-over-stage fold changes. */
+/** 将结论模型展开为逐行统计和相邻阶段倍数变化。 */
 function summarizeTiter(model: FacsConclusionModel, stageFilter?: string, methodFilter?: string) {
   type Row = {
     stage: string;
@@ -562,8 +560,6 @@ async function getTiterSummary(args: Record<string, any>, signal?: AbortSignal) 
   };
 }
 
-// ---------------- current page form ----------------
-
 function checkCurrentForm() {
   const form = scanPageForm();
   if (!form.fields.length && !form.tables.length) {
@@ -595,7 +591,7 @@ function proposeFormFill(args: Record<string, any>): ToolOutcome {
     }
     return { content: JSON.stringify({ error: '建议都没法用', rejected, hint: '按 rejected 的原因修正后再调用 propose_form_fill' }) };
   }
-  // An auto-save page without a record id in the URL is a "new" form: the first save creates a record that undo can't remove.
+  // 自动保存页面的 URL 不含记录 ID 时视为新建表单；首次保存会创建撤销无法删除的记录。
   const newRecord = form.autoSave && !/[?&][\w-]*id=/i.test(location.search);
   return {
     content: JSON.stringify({
@@ -629,8 +625,6 @@ export async function undoFillProposal(snapshots: FillSnapshot[]) {
   return undoFills(snapshots);
 }
 
-// ---------------- export proposals ----------------
-
 const EXPORT_NAMES = { project_list: '免疫项目列表', mouse_list: '小鼠免疫明细', scheme: '免疫方案' } as const;
 
 const FILTER_LABELS: Record<string, string> = {
@@ -641,14 +635,14 @@ const FILTER_LABELS: Record<string, string> = {
   project_status: '状态',
 };
 
-/** The list API filters one field at a time; find which of code / target / name the keyword hits. */
+/** 列表接口每次只能筛一个字段，因此需判断关键字命中编号、靶点还是名称。 */
 async function keywordHits(filters: Record<string, any>, keyword: string): Promise<Array<{ field: string; total: number }>> {
   const fields = ['project_code', 'target_name', 'project_name'];
   const totals = await Promise.all(fields.map((k) => listRows({ ...filters, [k]: keyword }, 1).then((r) => r.total)));
   return fields.map((field, i) => ({ field, total: totals[i]! })).filter((h) => h.total > 0);
 }
 
-/** For APIs that take one field: the field with the most hits (a code hit must not hide 40 target hits). */
+/** 对单字段接口选择命中数最多的字段，避免少量编号命中掩盖大量靶点命中。 */
 async function keywordField(filters: Record<string, any>, keyword: string): Promise<string> {
   const hits = await keywordHits(filters, keyword);
   return hits.sort((a, b) => b.total - a.total)[0]?.field || '';
@@ -700,7 +694,7 @@ async function proposeExport(args: Record<string, any>, signal?: AbortSignal): P
   abortIf(signal);
   if (!total) return { content: JSON.stringify({ empty: true, filters, note: '按这些条件没有项目，未生成导出' }) };
   const label = `${EXPORT_NAMES[kind]} · ${describeFilters(filters)}`;
-  // Clear, bounded filters → download without a confirm card. "all projects" still asks.
+  // 条件明确且结果量受限时可免确认下载；「全部项目」仍需确认。
   const auto = total != null && total > 0 && total <= 40 && Object.keys(filters).length > 0;
   return {
     content: JSON.stringify({
@@ -740,14 +734,12 @@ export async function runExportProposal(p: Extract<Proposal, { kind: 'export' }>
   }
 }
 
-// ---------------- custom report (summary + Excel) ----------------
-
 const REPORT_MAX_ROWS = MAX_SOURCE_ROWS;
 const REPORT_PAGE = 500;
 
 const joined = (v: unknown) => (Array.isArray(v) ? v.map(text).filter(Boolean).join(',') : text(v));
 
-/** Same columns as the system's own list export, plus 开始月份 / 效价负责人 for grouping. */
+/** 与系统列表导出使用相同列，并增加「开始月份」和「效价负责人」供分组。 */
 const PROJECT_COLUMNS: Array<[string, (r: any) => string | number | null]> = [
   ['编号', (r) => text(r.project_code)],
   ['实验ID', (r) => text(r.experiment_id)],
@@ -829,9 +821,8 @@ function sourceCatalog() {
 }
 
 /**
- * One data source for a report: `projects` (built-in plugin), `page_table` (current page; pulls every page
- * through the page's own list request when it can), or a learned source id / name.
- * `useFilters`: the report's project filters apply to the main source only, not to a joined one.
+ * 报表数据源可为内置 projects、当前页 page_table，或已学习的数据源 ID/名称。
+ * page_table 会尽可能通过页面自己的列表请求读取全部分页；useFilters 仅将项目筛选应用于主数据源，不应用于关联源。
  */
 const UNKNOWN_COLUMN_HINT =
   'available_columns 里有同一个意思、只是叫法不同的列（如 负责人/owner）就换成它重试；' +
@@ -841,8 +832,8 @@ const SOURCE_TTL_MS = 5 * 60_000;
 const sourceCache = new Map<string, { at: number; loaded: Exclude<Loaded, { error: unknown }> }>();
 
 /**
- * Same data within a few minutes is reused, so "now split it by month" doesn't refetch thousands of rows.
- * The current page's table is always read fresh (the user may have changed its filters).
+ * 数分钟内复用相同数据，避免「再按月拆分」等追问重新拉取数千行。
+ * 当前页面表格始终重新读取，因为用户可能已更改筛选。
  */
 async function loadSource(ref: string, args: Record<string, any>, signal: AbortSignal | undefined, useFilters: boolean): Promise<Loaded> {
   if (ref === 'page_table') return loadSourceFresh(ref, args, signal, useFilters);
@@ -852,7 +843,7 @@ async function loadSource(ref: string, args: Record<string, any>, signal: AbortS
     currentUserKey(),
     ref,
     pageFilters ? 'page_filters' : 'all',
-    // The page's filters may have changed since: they are part of what was fetched.
+    // 页面筛选可能已变化，缓存键必须包含本次取数使用的筛选。
     pageFilters ? findSource(ref)?.lastParams ?? null : null,
     ...['keyword', 'target_name', 'owner', 'status', 'mine'].map(pick),
   ]);
@@ -874,7 +865,7 @@ const REPORT_ARG_KEYS = ['source', 'scope', 'join', 'title', 'keyword', 'target_
   'where', 'group_by', 'metrics', 'columns', 'sort', 'split_by', 'limit'];
 let lastReport: { user: string; at: number; args: Record<string, unknown> } | null = null;
 
-/** The previous report's spec, so a follow-up ("drop the finished ones, split by month") can edit it. */
+/** 保存上一份报表规格，使「去掉已结题，再按月拆分」等追问可在其上修改。 */
 export function lastReportContext(): string {
   if (!lastReport || lastReport.user !== currentUserKey() || Date.now() - lastReport.at > LAST_REPORT_MS) return '';
   return JSON.stringify(lastReport.args);
@@ -892,7 +883,7 @@ async function loadSourceFresh(ref: string, args: Record<string, any>, signal: A
     let r: { table: DataTable; total: number };
     let label: string;
     if (keyword) {
-      // Code, target and name hits are unioned: the list API only filters one field per request.
+      // 列表接口每次只能筛一个字段，因此合并编号、靶点和名称的命中结果。
       const hits = await keywordHits(filters, keyword);
       if (!hits.length) return { error: { not_found: true, keyword, filters } };
       const parts = await Promise.all(hits.map((h) => projectTable({ ...filters, [h.field]: keyword }, signal)));
@@ -985,7 +976,7 @@ async function loadSourceFresh(ref: string, args: Record<string, any>, signal: A
   }
 }
 
-/** What the pet knows how to fetch, with column names; refreshes column labels from tables on this page. */
+/** 返回宠物可读取的数据源及列名，并从当前页表格刷新列标签。 */
 function listDataSources() {
   for (const t of readPageTables()) sourceForTable(t);
   return {
@@ -1008,7 +999,7 @@ function listDataSources() {
   };
 }
 
-/** Keeps what the model sees small (long remarks would blow the request size); the file keeps full text. */
+/** 截短模型看到的长文本以控制请求大小，文件仍保留全文。 */
 function clipRow(row: Row): Row {
   return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, typeof v === 'string' && v.length > 60 ? `${v.slice(0, 60)}…` : v]));
 }
@@ -1016,7 +1007,7 @@ function clipRow(row: Row): Row {
 const QUERY_ROWS = 20;
 const QUERY_COLS = 20;
 
-/** `asFile=false` is query_data: the same spec answered in chat, no card and no 上一份报表. */
+/** asFile=false 对应 query_data：同一规格直接在聊天中回答，不生成卡片，也不更新上一份报表。 */
 async function buildReportTool(args: Record<string, any>, signal?: AbortSignal, asFile = true): Promise<ToolOutcome> {
   const wrap = (obj: unknown): ToolOutcome => ({ content: JSON.stringify(obj) });
   const spec: ReportSpec = {
@@ -1078,7 +1069,7 @@ async function buildReportTool(args: Record<string, any>, signal?: AbortSignal, 
     });
   }
   const { report, groups, countColumn } = built;
-  // More first-level groups than we send: keep the biggest, so "谁最多" is never the one cut off.
+  // 一级分组超过发送上限时保留数量最大的项，避免「谁最多」的答案被截掉。
   const subtotals =
     built.subtotals && built.subtotals.length > 30 && countColumn
       ? [...built.subtotals].sort((a, b) => (Number(b[countColumn]) || 0) - (Number(a[countColumn]) || 0))
@@ -1181,7 +1172,7 @@ export async function runReportProposal(p: Extract<Proposal, { kind: 'report' }>
   }
 }
 
-/** A module the pet hasn't seen: a card that opens its menu page, so the page's own list request teaches her. */
+/** 对尚未观察的模块生成打开菜单页的卡片，以便从页面自己的列表请求学习。 */
 function proposeOpenPage(args: Record<string, any>): ToolOutcome {
   const wrap = (obj: unknown): ToolOutcome => ({ content: JSON.stringify(obj) });
   const want = text(args.page);
@@ -1206,8 +1197,6 @@ function proposeOpenPage(args: Record<string, any>): ToolOutcome {
     proposal: { kind: 'open_page', path: page.path, title: page.title },
   };
 }
-
-// ---------------- dispatcher ----------------
 
 export async function runPetTool(call: ToolCall, signal?: AbortSignal): Promise<ToolOutcome> {
   const wrap = (obj: unknown): ToolOutcome => ({ content: JSON.stringify(obj) });

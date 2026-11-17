@@ -4,7 +4,7 @@
 
 ## 环境与端口
 
-Linux 上会根据**仓库根的上一级目录名**自动判定环境（`core/config.py`）：上一级叫 `prod` → 生产，否则 → 测试。Windows 固定为本地。也可用 `APP_ENV` 或 `VITA_SERVER_ENV_FILE` 手动指定。
+Linux 上会根据**仓库根的上一级目录名**自动判定环境（`core/config.py`）：上一级叫 `prod` → 生产，否则 → 测试。Windows 固定为本地。`APP_ENV` 可覆盖后端的环境识别，`VITA_SERVER_ENV_FILE` 只换 env 文件路径；`start_dev.sh`、看门狗和 `backup.sh` 仍按上一级目录名选端口和备份目录，手动覆盖时要一并核对。
 
 后端实际监听端口写在 `config/<环境>/vita_server.env` 的 `PORT=`，请与下表一致（代码不会按目录自动改端口；`start_dev.sh` 也会按同一规则释放对应端口）。
 
@@ -37,9 +37,9 @@ Windows： 无需路径约定，固定环境为 local。
 | `ORDER_SYNC_TOKEN` / `ORDER_SYNC_IPS` / `ORDER_SYNC_MAX_MB` | 工单数据回传 `POST /api/order-experiment/sync` 的同类校验与 JSON 文件上限（默认 20MB） |
 | `YUNZHIJIA_*` | 云之家（可选） |
 | `CELL_DB_URL` / `EMPLOYEE_DB_URL` / `ONE_DB_URL` | 外部只读库（可选）；分别提供细胞库存、员工与靶点主数据、One 合成订单与交付进度 |
-| `LABILLION_BASE_URL` / `LABILLION_USERNAME` / `LABILLION_PASSWORD` / `LABILLION_PLATFORM_ID` | 镁伽 Labillion（可选；URL 留空则不推送。`PLATFORM_ID` 是登录后请求头 `Platform`） |
+| `LABILLION_BASE_URL` / `LABILLION_USERNAME` / `LABILLION_PASSWORD` / `LABILLION_PLATFORM_ID` | 镁伽 Labillion（可选；URL 留空则不推送。配了 URL 后用户名、密码和 `PUBLIC_API_BASE_URL` 必填。`PLATFORM_ID` 是登录后请求头 `Platform`） |
 | `PUBLIC_API_BASE_URL` | 本系统对外 API 根，用于生成下发 Payload 的 `replyAddress` |
-| `DRM_*` | DRM（可选；另需功能开关） |
+| `DRM_*` | DRM（可选；另需功能开关，开启后 `DRM_SERVER_HOST` / `DRM_SERVER_PORT` / `DRM_USER_ID` / `DRM_PASSWORD` 必填） |
 
 一般不用设：`VITA_SERVER_ENV_FILE`（改用别的 env 路径时）、`APP_ENV`（覆盖自动识别时）、`APP_NAME`（接口文档标题）。
 首个账号无 env 捷径：须在 `sys_user` 建库（超管见 `vita-database.sql` 文末）；之后可在系统管理里增用户。登录方式：账号密码，或云之家 `openid` 绑定。
@@ -116,7 +116,7 @@ rsync -a ~/backups/antibody_forge/prod/files/uploads/ <仓库>/repository/upload
 | prod | `1314` | `http://127.0.0.1:8848/api/` | 该环境的 `…/apps/antibody_vita/dist` |
 | test | `9958` | `http://127.0.0.1:9527/api/` | 同上，指向**本机该环境**的 dist |
 
-桌宠单独反代：`/api/pet/` → prod `http://127.0.0.1:18765`、test `http://127.0.0.1:18766`（样例 conf 已写在 `/api/` 之前，勿剥前缀）。代理由 `start_dev.sh` 随后端一起启动和看护，只听本机。已部署的旧 conf 没有这段时，照样例补进两个 `server` 后 `nginx -t` 再 reload。说明见 `docs/fatfish.md`。
+桌宠单独反代：`/api/pet/` → prod `http://127.0.0.1:18765`、test `http://127.0.0.1:18766`（样例 conf 写在 `/api/` 之前，勿剥前缀）。代理由 `start_dev.sh` 随后端一起启动和看护，只听本机。Nginx 尚无 `/api/pet/` location 时，按样例在两个 `server` 里补入，再执行 `nginx -t` 并 reload。说明见 `docs/fatfish.md`。
 
 未装 Nginx 时（Debian/Ubuntu）：
 ```bash
@@ -188,7 +188,7 @@ sudo apt install -y libreoffice
 - 调度：只在一个后端进程开（prod 默认开，test/local 默认关）。
 - 外部接口：镁伽回调、工单数据回传按需配置令牌或 IP 白名单；经 Nginx 转发时后端看到的来源 IP 来自 `X-Forwarded-For`（样例配置已带）。
 - 索引命名：普通索引 `idx_<表>_<列>`，唯一键 `uk_<表>_<列>`。已有表改索引要手写 `ALTER`（`create_all` 不会给已存在的表加索引），只是改名用 `RENAME INDEX`，不要 `DROP` 后重建。
-- 上传：Nginx `client_max_body_size` 不小于 `UPLOAD_MAX_MB`。文库批量上传一次请求后端最多收 500MB、990 个文件，样例 Nginx 与线上均配 500m；调小会让大批次被 Nginx 拒掉（413）。
+- 上传：Nginx `client_max_body_size` 不小于 `UPLOAD_MAX_MB`。文库批量上传一次请求后端最多收 500MB、990 个文件，样例 Nginx 与线上均配 500m；调小会让大批次被 Nginx 拒掉（413）。Nginx 按整个请求体计算，含 multipart 分隔和表单头，文件合计贴近 500MB 时也可能先被拒。
 
 ## 验收清单
 

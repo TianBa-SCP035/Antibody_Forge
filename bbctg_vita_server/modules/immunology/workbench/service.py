@@ -130,7 +130,7 @@ SCHEME_HEADER_FIELDS = [
 ]
 
 FIELDS = model_fields(SerumImmWorkbench)
-# 开展后对齐字段跟随免疫实验，工作台只能再改其余的准备字段
+# 项目开展后，对齐字段跟随免疫实验；工作台只能修改其余准备字段。
 PREP_FIELDS = [field for field in FIELDS if field not in ALIGNED_FIELDS]
 DRAFT_PROTECTED_FIELDS = frozenset(
     {"plan_status", "reviewer", "review_status", "can_start"}
@@ -334,7 +334,7 @@ def sync_project_queue_status(
     *,
     is_terminal: bool,
 ) -> None:
-    """Apply one project's terminal transition without rebuilding the full queue."""
+    """单个项目进入或退出终态时，只更新对应队列项，不重建整个队列。"""
     lock_queue(db, SerumImmWorkbench)
     row = db.scalar(
         select(SerumImmWorkbench)
@@ -497,7 +497,7 @@ def _project_name_strains(db: Session, row: SerumImmWorkbench) -> list[str]:
 
 
 def _auto_project_name(target_name: Any, strains: list[str]) -> str:
-    # 与方案页、正式编辑页的 updateProjectName 同一句。
+    # 项目名称生成规则必须与方案页和正式编辑页保持一致。
     return f"{str(target_name or '')}基于{','.join(strains)}的抗体发现"[:255]
 
 
@@ -790,11 +790,11 @@ def _target_pair_stmt():
 
 _W = SerumImmWorkbench
 _YES_NO = ("是", "否")
-# 对齐字段开展后显示免疫实验的值，表头筛选要按同一口径，不能用工作台列自动生成
+# 项目开展后，对齐字段显示免疫实验值；表头筛选必须使用同一口径。
 HEADER_COLUMNS = header_columns(
     {key: field for key, field in FIELDS.items() if key not in ALIGNED_FIELDS},
     priority=HeaderColumn(_W.priority, order=tuple(PRIORITY_ORDER)),
-    # 表格视图的 plan_status 列在前端是 status 的别名；显示的是开展后跟随项目的状态
+    # 前端将 plan_status 列显示为 status，其值在项目开展后跟随项目状态。
     status=HeaderColumn(_display_status_expr()),
     pm=HeaderColumn(_aligned_value_expr(_W.pm, SerumImmProject.pm)),
     owner=HeaderColumn(_aligned_value_expr(_W.owner, SerumImmProject.owner)),

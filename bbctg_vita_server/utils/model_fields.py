@@ -17,7 +17,7 @@ from utils.filter_values import clean_field_text
 from utils.normalize import parse_date
 
 SYSTEM_FIELDS = frozenset({"created_by", "created_at", "updated_by", "updated_at"})
-# 队列顺序由排序模块维护：可写，但不进表头筛选，也不参与保存冲突比较
+# 队列顺序由排序模块维护；可写，但不进表头筛选，也不参与保存冲突比较。
 SORT_FIELD = "sort_order"
 
 

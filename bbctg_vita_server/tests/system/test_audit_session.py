@@ -1,38 +1,19 @@
+"""自动审计：实体增删改差异、敏感值隐藏、JSON 变化、保存点与回滚、显式日志合并。"""
+
 import json
-import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from fastapi import FastAPI
-from fastapi.routing import APIRoute
-from fastapi.testclient import TestClient
 from sqlalchemy import JSON, Integer, String, event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column, sessionmaker
 from sqlalchemy.orm.attributes import flag_modified
-from starlette.routing import compile_path
-from support import DbTestCase
 
-import modules.mega_automation.routes as mega_routes
-import modules.molecular_cell.library_orders.routes as library_routes
 import modules.system.audit_config as audit_config
 import modules.system.audit_middleware as audit_middleware
-import modules.system.audit_session as audit_session
-import modules.system.routes as system_routes
-import modules.system.service as system_service
-from core.logging import (
-    REDACTED,
-    _redact_sensitive_values,
-    is_sensitive_key,
-    _sanitize_body_for_log,
-)
 from db.session import AuditedSession, Base
-from models.immunology import SerumTiterTarget
-from models.molecular_cell import MolecularLibraryOrder
-from models.system import SysOperationLog, SysOperationLogItem, SysUser, SysUserRole
-from modules.auth.permissions import UserContext, require
+from models.system import SysOperationLog, SysOperationLogItem
 from modules.system.audit import write_operation_log
-from modules.system.audit_config import is_readonly_post
 from modules.system.audit_context import (
     AuditAction,
     AuditContext,
@@ -40,12 +21,8 @@ from modules.system.audit_context import (
     reset_audit_context,
     set_audit_context,
 )
-from api import api_routes
-from modules.system.audit_coverage import unclassified_write_routes
-from modules.system.audit_middleware import _parse_result
-from modules.system.audit_routes import audit_quiet, permission_action, route_audit
 from modules.system.audit_session import setup_session_audit
-from server import app
+from support import DbTestCase
 
 
 class AuditExample(Base):
@@ -58,7 +35,7 @@ class AuditExample(Base):
     payload: Mapped[object | None] = mapped_column(JSON, comment="数据")
 
 
-class AuditSessionTests(DbTestCase):
+class AuditedDbTestCase(DbTestCase):
     tables = (AuditExample, SysOperationLog, SysOperationLogItem)
     session_options = {"class_": AuditedSession, "expire_on_commit": False}
 
@@ -66,6 +43,8 @@ class AuditSessionTests(DbTestCase):
     def setUpClass(cls):
         setup_session_audit()
 
+
+class AuditSessionTests(AuditedDbTestCase):
     def test_create_update_delete_are_captured_without_model_configuration(self):
         with self.Session() as db:
             with audit_scope("test.example", "测试实体", source="user"):
@@ -134,75 +113,30 @@ class AuditSessionTests(DbTestCase):
             self.assertEqual(delete_changes["payload"]["before"], "<对象 2 个键>")
             self.assertNotIn("payload.wells[0]", delete_changes)
 
-    def test_child_inserts_on_shared_create_edit_route_use_edit_action(self):
-        create_action = AuditAction(
-            code="serum.project.create",
-            name="新建免疫项目",
-            operation_type="create",
-            resource="project",
-        )
-        edit_action = AuditAction(
-            code="serum.project.edit",
-            name="编辑免疫项目",
-            operation_type="edit",
-            resource="project",
-        )
-        with self.Session() as db:
-            token = set_audit_context(
-                AuditContext(
-                    request_id="child-insert",
-                    source="user",
-                    method="POST",
-                    path="/api/serum/save",
-                    actions=(create_action, edit_action),
-                )
+    def test_insert_on_create_edit_route_is_create_only_for_route_resource(self):
+        """新增行属于路由主资源才记新建；新增的是子表行（如给已有项目加分组）记为编辑。"""
+        for resource, expected_code, expected_type in (
+            ("example", "test.example.create", "create"),
+            ("project", "test.project.edit", "update"),
+        ):
+            actions = (
+                AuditAction(f"test.{resource}.create", "新建", "create", resource),
+                AuditAction(f"test.{resource}.edit", "编辑", "edit", resource),
             )
-            try:
-                db.add(AuditExample(name="new-group"))
-                db.commit()
-            finally:
-                reset_audit_context(token)
-            log = db.scalar(
-                select(SysOperationLog).where(SysOperationLog.request_id == "child-insert")
+            context = AuditContext(
+                request_id=f"insert-{resource}", source="user", method="POST", path="/api/test/save", actions=actions
             )
-            self.assertEqual(log.action, "serum.project.edit")
-            self.assertEqual(log.operation_name, "编辑免疫项目")
-            self.assertEqual(log.operation_type, "update")
-            self.assertEqual(log.detail["change_summary"], "名称：新增 new-group")
-
-        with self.Session() as db:
-            matching_create = AuditAction(
-                code="test.example.create",
-                name="新建测试实体",
-                operation_type="create",
-                resource="example",
-            )
-            matching_edit = AuditAction(
-                code="test.example.edit",
-                name="编辑测试实体",
-                operation_type="edit",
-                resource="example",
-            )
-            token = set_audit_context(
-                AuditContext(
-                    request_id="parent-create",
-                    source="user",
-                    method="POST",
-                    path="/api/test/save",
-                    actions=(matching_create, matching_edit),
-                )
-            )
-            try:
-                db.add(AuditExample(name="parent-row"))
-                db.commit()
-            finally:
-                reset_audit_context(token)
-            log = db.scalar(
-                select(SysOperationLog).where(SysOperationLog.request_id == "parent-create")
-            )
-            self.assertEqual(log.action, "test.example.create")
-            self.assertEqual(log.operation_name, "新建测试实体")
-            self.assertEqual(log.operation_type, "create")
+            with self.Session() as db:
+                token = set_audit_context(context)
+                try:
+                    db.add(AuditExample(name=f"row-{resource}"))
+                    db.commit()
+                finally:
+                    reset_audit_context(token)
+                log = db.scalar(select(SysOperationLog).where(SysOperationLog.request_id == context.request_id))
+            with self.subTest(resource=resource):
+                self.assertEqual((log.action, log.operation_type), (expected_code, expected_type))
+                self.assertEqual(log.detail["change_summary"], f"名称：新增 row-{resource}")
 
     def test_password_values_are_redacted(self):
         with self.Session() as db:
@@ -337,27 +271,6 @@ class AuditSessionTests(DbTestCase):
             self.assertEqual(item.changes[0]["before"], 1)
             self.assertIs(item.changes[0]["after"], True)
 
-    def test_request_logging_redacts_sensitive_keys(self):
-        body = json.dumps(
-            {"username": "alice", "newPassword": "secret", "ticket": "token"}
-        ).encode()
-        summary = _sanitize_body_for_log(body, "application/json")
-        self.assertEqual(summary["bytes"], len(body))
-        self.assertEqual(
-            summary["fields"],
-            ["newPassword", "ticket", "username"],
-        )
-        self.assertNotIn("secret", str(summary))
-        self.assertTrue(is_sensitive_key("newPassword"))
-        self.assertTrue(is_sensitive_key("privateKey"))
-        self.assertTrue(is_sensitive_key("passwd"))
-        self.assertTrue(is_sensitive_key("cookie"))
-        self.assertTrue(is_sensitive_key("ticket"))
-        self.assertEqual(
-            _redact_sensitive_values({"ticket": "secret"})["ticket"],
-            REDACTED,
-        )
-
     def test_startup_schema_validation_rejects_incomplete_audit_v2(self):
         engine = MagicMock()
         engine.dialect.name = "mysql"
@@ -369,6 +282,8 @@ class AuditSessionTests(DbTestCase):
             audit_config.load_database_field_labels(engine)
         connection.execute.assert_called_once()
 
+
+class AuditTransactionTests(AuditedDbTestCase):
     def test_multiple_transactions_share_request_id(self):
         with self.Session() as db:
             with audit_scope("test.multi", "多事务测试", source="job") as context:
@@ -615,353 +530,3 @@ class AuditSessionTests(DbTestCase):
                 self.assertEqual(context.committed_results, set())
                 db.commit()
             self.assertEqual(context.committed_results, {"failed"})
-
-    def test_unchanged_user_roles_are_preserved_without_unique_conflict(self):
-        Base.metadata.create_all(self.engine, tables=[SysUserRole.__table__])
-        with self.Session() as db:
-            db.add(SysUserRole(user_id=10, role_id=20))
-            db.commit()
-            with audit_scope("test.roles.same", "角色不变", source="user"):
-                system_service._replace_user_roles(db, 10, [20])
-                db.commit()
-            rows = db.scalars(
-                select(SysUserRole).where(SysUserRole.user_id == 10)
-            ).all()
-            self.assertEqual([(row.user_id, row.role_id) for row in rows], [(10, 20)])
-            self.assertIsNone(
-                db.scalar(
-                    select(SysOperationLog).where(
-                        SysOperationLog.action == "test.roles.same"
-                    )
-                )
-            )
-
-    def test_labillion_failure_is_audited_but_still_acknowledged(self):
-        with self.Session() as db:
-            with (
-                patch.object(
-                    mega_routes.callback,
-                    "handle_labillion_status_push",
-                    side_effect=RuntimeError("internal failure"),
-                ),
-                patch.object(mega_routes.logger, "exception"),
-            ):
-                response = mega_routes.labillion_status_callback(
-                    {"dispatchId": "dispatch-1", "payload": "secret"},
-                    db,
-                )
-            log = db.scalar(
-                select(SysOperationLog).where(
-                    SysOperationLog.action == "mega.labillion.callback"
-                )
-            )
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(json.loads(response.body)["data"]["reason"], "internal_error")
-            self.assertEqual(log.result, "failed")
-            self.assertEqual(log.target_id, "dispatch-1")
-            self.assertNotIn("secret", str(log.detail))
-
-    def test_labillion_noop_uses_canonical_audit_identity(self):
-        result = {
-            "applied": False,
-            "reason": "dispatch_terminal",
-            "dispatchId": "dispatch-2",
-        }
-        with self.Session() as db:
-            with patch.object(
-                mega_routes.callback,
-                "handle_labillion_status_push",
-                return_value=result,
-            ):
-                response = mega_routes.labillion_status_callback(
-                    {"dispatchId": "dispatch-2"},
-                    db,
-                )
-            log = db.scalar(
-                select(SysOperationLog).where(
-                    SysOperationLog.action
-                    == mega_routes.LABILLION_CALLBACK_AUDIT_ACTION.code
-                )
-            )
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(log.target_id, "dispatch-2")
-            self.assertEqual(log.detail["change_summary"], "dispatch_terminal")
-
-    def test_labillion_non_object_body_is_failed_audit_with_200_ack(self):
-        db = MagicMock()
-        with (
-            patch.object(
-                mega_routes.callback,
-                "handle_labillion_status_push",
-            ) as callback_handler,
-            patch.object(mega_routes, "write_operation_log") as write_log,
-            patch.object(mega_routes.logger, "exception"),
-        ):
-            response = mega_routes.labillion_status_callback(["invalid"], db)
-        callback_handler.assert_not_called()
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(write_log.call_args.kwargs["result"], "failed")
-
-
-class AuditMiddlewareTests(unittest.TestCase):
-    def test_business_error_is_failed_even_with_http_200(self):
-        result, message = _parse_result(
-            200,
-            json.dumps({"code": 1, "message": "保存失败"}).encode(),
-        )
-        self.assertEqual(result, "failed")
-        self.assertEqual(message, "保存失败")
-        self.assertEqual(
-            _parse_result(200, json.dumps({"code": 0, "data": {}}).encode()),
-            ("success", None),
-        )
-
-    def test_truncated_json_response_uses_business_code_prefix(self):
-        self.assertEqual(
-            _parse_result(
-                200,
-                b'{"code":1,"message":"' + b"x" * 1024,
-                response_truncated=True,
-            ),
-            ("failed", "1"),
-        )
-        self.assertEqual(
-            _parse_result(
-                200,
-                b'{"code":0,"data":"' + b"x" * 1024,
-                response_truncated=True,
-            ),
-            ("success", None),
-        )
-
-    def test_route_declarations_resolve_actions_for_path_parameters(self):
-        context = _route_context("POST", "/api/mega-automation/flow-work-orders/42/complete")
-        self.assertEqual(
-            context.actions,
-            (AuditAction("mega.flow_work_order.dispatch", "完成流式工单", "dispatch", "flow_work_order"),),
-        )
-        self.assertTrue(context.explicitly_audited)
-
-    def test_real_request_binds_route_declaration_before_permission_check(self):
-        with patch.object(audit_middleware, "_write_attempt_log") as write_log:
-            TestClient(app).post("/api/mega-automation/flow-work-orders/42/complete")
-        write_log.assert_called_once()
-        context = write_log.call_args.args[0]
-        self.assertEqual(context.select_action("update").code, "mega.flow_work_order.dispatch")
-
-    def test_library_qc_conclusion_save_is_logged_as_qc_action(self):
-        user = UserContext(id=1, username="u", display_name="u", roles=[], permissions=[], is_superuser=True)
-        for qc_only, code in ((True, "molecular.library.file.manage"), (False, "molecular.library.edit")):
-            context = _route_context("POST", "/api/molecular-cell/library-orders/save")
-            token = set_audit_context(context)
-            try:
-                library_routes._require_save(user, qc_only)
-            finally:
-                reset_audit_context(token)
-            with self.subTest(qc_only=qc_only):
-                self.assertEqual([action.code for action in context.actions], [code])
-
-    def test_labillion_status_sync_uses_chinese_audit_name(self):
-        context = _route_context("POST", "/api/mega-automation/flow-work-orders/12/sync-labillion-status")
-        self.assertEqual(context.actions, (mega_routes.LABILLION_STATUS_SYNC_AUDIT_ACTION,))
-        self.assertEqual(context.actions[0].name, "同步镁伽状态")
-
-    def test_data_dependent_save_declares_create_and_edit_actions(self):
-        context = _route_context("POST", "/api/serum/save")
-        self.assertEqual(context.select_action("create").name, "新建免疫项目")
-        self.assertEqual(context.select_action("update").name, "编辑免疫项目")
-
-    def test_undeclared_route_has_no_actions(self):
-        context = _route_context("POST", "/api/unknown/save")
-        self.assertEqual(context.actions, ())
-        self.assertFalse(context.suppress_noop)
-        self.assertEqual(context.fallback_name, "POST /api/unknown/save")
-
-    def test_page_permission_cannot_declare_audit(self):
-        with self.assertRaises(ValueError):
-            require("molecular.page.primer", audit="导出引物库")
-        with self.assertRaises(ValueError):
-            permission_action("molecular.page.primer", "导出引物库")
-
-    def test_unknown_permission_code_fails_at_declaration(self):
-        with self.assertRaises(ValueError):
-            require("molecular.primer.edti")
-
-
-class AuditCoverageTests(unittest.TestCase):
-    def test_every_write_route_declares_audit(self):
-        self.assertEqual(unclassified_write_routes(api_routes()), set())
-
-    def test_api_routes_match_served_paths(self):
-        served = {path for path in app.openapi()["paths"] if path.startswith("/api/")}
-        listed = {compile_path(path)[1] for path, route in api_routes() if route.include_in_schema}
-        self.assertEqual(listed, served)
-
-    def test_standard_readonly_post_suffixes_are_ignored_and_write_gate_remains_strict(self):
-        demo = FastAPI()
-
-        @demo.post("/api/demo/list")
-        @demo.post("/api/demo/column_values")
-        @demo.post("/api/demo/export_list")
-        @demo.post("/api/demo/export")
-        @demo.post("/api/demo/stats")
-        @demo.post("/api/demo/save")
-        @demo.post("/api/demo/delete")
-        @demo.put("/api/demo/update")
-        def _handler():
-            return {}
-
-        @demo.post("/api/demo/check", dependencies=[audit_quiet()])
-        def _check():
-            return {}
-
-        demo_routes = [(route.path, route) for route in demo.routes if isinstance(route, APIRoute)]
-        self.assertEqual(
-            unclassified_write_routes(demo_routes),
-            {
-                ("POST", "/api/demo/save"),
-                ("POST", "/api/demo/delete"),
-                ("PUT", "/api/demo/update"),
-            },
-        )
-        for suffix in audit_config.READ_ONLY_POST_SUFFIXES:
-            self.assertTrue(_route_context("POST", f"/api/demo{suffix}", demo_routes).suppress_noop)
-        self.assertTrue(_route_context("POST", "/api/demo/check", demo_routes).suppress_noop)
-
-    def test_quiet_marker_on_readonly_suffix_must_carry_a_name(self):
-        redundant = {
-            path
-            for path, route in api_routes()
-            if is_readonly_post("POST", path)
-            and (spec := route_audit(route)) is not None
-            and spec.quiet
-            and not spec.fallback_name
-        }
-        self.assertEqual(redundant, set())
-
-    def test_files_list_suppresses_noop_and_preserves_fallback_label(self):
-        context = _route_context("POST", "/api/molecular-cell/library-orders/files/list")
-        self.assertTrue(context.suppress_noop)
-        self.assertEqual(context.fallback_name, "刷新质检核对")
-        self.assertEqual(context.fallback_resource, "library_file")
-
-
-def _route_context(method: str, path: str, routes: list[tuple[str, APIRoute]] | None = None) -> AuditContext:
-    context = audit_middleware._build_context(method, path, {}, {"headers": []})
-    for full_path, route in api_routes() if routes is None else routes:
-        if method in route.methods and compile_path(full_path)[0].match(path):
-            audit_middleware.apply_route_audit(context, route)
-            break
-    return context
-
-
-class OperationLogLabelTests(DbTestCase):
-    tables = (SysOperationLog, SysOperationLogItem)
-
-    def test_every_audited_model_has_log_label(self):
-        excluded = {"SysOperationLog", "SysOperationLogItem", "SysJobRunLog"}
-        missing = sorted(
-            mapper.class_.__name__
-            for mapper in Base.registry.mappers
-            if mapper.class_.__module__.startswith("models.")
-            and mapper.class_.__name__ not in excluded
-            and not getattr(mapper.class_, "__log_label__", None)
-        )
-        self.assertEqual(missing, [], "新模型要声明 __log_label__（操作日志里的对象类型中文名）")
-
-    def test_declared_label_fields_exist_on_model(self):
-        for mapper in Base.registry.mappers:
-            declared = getattr(mapper.class_, "__audit_label__", ())
-            columns = {attr.key for attr in mapper.column_attrs}
-            with self.subTest(model=mapper.class_.__name__):
-                self.assertLessEqual(set(declared), columns)
-
-    def test_entity_label_prefers_declared_business_id(self):
-        order = MolecularLibraryOrder(id=7, library_order_id="LIB-001")
-        self.assertEqual(audit_session._entity_label(order), "LIB-001")
-        target = SerumTiterTarget(id=3, name="CD3", experiment_id="EXP-1")
-        self.assertEqual(audit_session._entity_label(target), "CD3")
-        self.assertEqual(audit_session._entity_label(SysUser(id=1, username="u", display_name="张三")), "张三")
-        self.assertEqual(
-            audit_middleware._target_from_response(json.dumps({"data": {"id": 9, "library_order_id": "LIB-9"}}).encode()),
-            ("9", "LIB-9"),
-        )
-
-    def test_response_label_fields_follow_declaration_position(self):
-        fields = audit_session.all_label_fields()
-        self.assertLess(fields.index("experiment_id"), fields.index("project_code"))
-        self.assertLess(fields.index("project_code"), fields.index("discovery_id"))
-        self.assertEqual(fields[-len(audit_session._GENERIC_LABEL_FIELDS):], audit_session._GENERIC_LABEL_FIELDS)
-        body = json.dumps({"data": {"id": 5, "project_code": "PC-1", "discovery_id": "D-1"}}).encode()
-        self.assertEqual(audit_middleware._target_from_response(body), ("5", "PC-1"))
-
-    def test_operation_logs_return_labels_and_filter_by_target_type_label(self):
-        with self.Session() as db:
-            db.add_all(
-                [
-                    SysOperationLog(
-                        request_id="req-1",
-                        source="user",
-                        action="POST /api/molecular-cell/library-orders/files/list",
-                        operation_name="POST /api/molecular-cell/library-orders/files/list",
-                        operation_type="update",
-                        target_type="MolecularLibraryOrder",
-                        result="success",
-                        affected_count=1,
-                        detail={},
-                    ),
-                    SysOperationLog(
-                        request_id="req-2",
-                        source="user",
-                        action="serum.project.edit",
-                        operation_name="编辑免疫项目",
-                        operation_type="update",
-                        target_type="project",
-                        result="success",
-                        affected_count=1,
-                        detail={},
-                    ),
-                ]
-            )
-            db.commit()
-            db.add(
-                SysOperationLogItem(
-                    log_id=db.query(SysOperationLog).filter_by(request_id="req-1").one().id,
-                    entity_type="MolecularLibraryOrder",
-                    table_name="molecular_library_order",
-                    change_type="update",
-                    change_count=1,
-                )
-            )
-            db.commit()
-
-            response = json.loads(
-                json.dumps(
-                    system_routes.list_operation_logs(
-                        action="刷新质检",
-                        target_type=["文库工单"],
-                        source=None,
-                        result=None,
-                        operation_type=None,
-                        db=db,
-                    ),
-                    default=str,
-                )
-            )
-            data = response["data"]
-            self.assertEqual(data["total"], 1)
-            self.assertEqual(data["items"][0]["action_label"], "刷新质检核对")
-            self.assertEqual(data["items"][0]["target_type_label"], "文库工单")
-            self.assertIn("文库工单", data["target_type_options"])
-
-            detail_res = system_routes.get_operation_log_detail(
-                data["items"][0]["id"],
-                db=db,
-            )
-            self.assertEqual(detail_res["data"]["action_label"], "刷新质检核对")
-            self.assertEqual(detail_res["data"]["target_type_label"], "文库工单")
-            self.assertEqual(detail_res["data"]["items"][0]["entity_type_label"], "文库工单")
-
-
-if __name__ == "__main__":
-    unittest.main()

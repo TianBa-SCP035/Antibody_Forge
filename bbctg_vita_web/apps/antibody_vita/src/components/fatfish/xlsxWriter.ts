@@ -1,7 +1,7 @@
 /**
- * Styled .xlsx without a styling library: SheetJS CE drops styles on write, so the parts are written
- * here and zipped with SheetJS's bundled CFB. Every text cell is an inline string, so "=…" never runs.
- * Formatting follows the data's shape only (numbers, shares, short categories, long text, a 合计 row).
+ * 不依赖样式库生成带样式的 .xlsx。SheetJS CE 写入时会丢弃样式，因此在此生成各部件，
+ * 再用其内置 CFB 打包。文本单元格均为内联字符串，以「=」开头的内容不会执行。
+ * 格式只由数据形态决定，包括数字、占比、短分类、长文本和合计行。
  */
 import type { Cell } from './reportBuilder';
 
@@ -9,9 +9,9 @@ export type XlsxSheet = {
   name: string;
   columns: string[];
   rows: Cell[][];
-  /** Last row is a 合计 row: bold, kept out of the filter range and category colours. */
+  /** 最后一行为合计行：加粗，且不纳入筛选范围和分类配色。 */
   totalRow?: boolean;
-  /** Free-text sheet (说明): wrapped, no filter or freeze. */
+  /** 自由文本工作表（说明）：自动换行，不启用筛选或冻结。 */
   notes?: boolean;
 };
 
@@ -49,7 +49,7 @@ function textWidth(v: Cell): number {
 
 type Xf = { bold?: boolean; size?: number; white?: boolean; fill?: string; numFmt?: number; align: 'left' | 'center'; wrap?: boolean };
 
-/** Index of `xml` in `list`, appending it the first time. */
+/** 返回 xml 在 list 中的索引，首次出现时追加。 */
 function intern(list: string[], xml: string): number {
   const at = list.indexOf(xml);
   return at >= 0 ? at : list.push(xml) - 1;
@@ -58,13 +58,13 @@ function intern(list: string[], xml: string): number {
 const fontXml = (bold: boolean, size: number, white: boolean) =>
   `<font>${bold ? '<b/>' : ''}<sz val="${size}"/><color rgb="FF${white ? 'FFFFFF' : '000000'}"/><name val="${FONT}"/><family val="2"/><charset val="134"/></font>`;
 
-/** Fonts, fills and cell formats for styles.xml; index 0 of each is the workbook default. */
+/** 管理 styles.xml 的字体、填充和单元格格式；各集合索引 0 为工作簿默认值。 */
 class Styles {
   private fonts = [fontXml(false, 10, false)];
   private fills = ['<fill><patternFill patternType="none"/></fill>', '<fill><patternFill patternType="gray125"/></fill>'];
   private xfs = ['<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'];
 
-  /** Every styled cell gets the thin border. */
+  /** 所有带样式的单元格均使用细边框。 */
   id(x: Xf): number {
     const font = intern(this.fonts, fontXml(!!x.bold, x.size ?? 10, !!x.white));
     const fill = x.fill
@@ -98,7 +98,7 @@ class Styles {
 type ColKind = {
   numeric: boolean;
   integer: boolean;
-  /** Has values two decimals would show as 0.00: keep General. */
+  /** 存在保留两位小数会显示为 0.00 的值时，保持常规格式。 */
   tiny: boolean;
   pct: boolean;
   center: boolean;

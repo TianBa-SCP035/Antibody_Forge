@@ -260,12 +260,12 @@ def _target_values(row: Any) -> dict[str, Any]:
 def _apply_values(target: Target, values: dict[str, Any]) -> bool:
     merged = dict(values)
 
-    # 防冲突规则 1：PM 有 structural_properties 则以 PM 为准；PM 为空则保留本地已有的补齐值
+    # PM 的 structural_properties 非空时优先；为空时保留本地补齐值。
     incoming_sp = merged.get("structural_properties")
     effective_sp = incoming_sp if incoming_sp is not None else target.structural_properties
     merged["structural_properties"] = effective_sp
 
-    # 防冲突规则 2：PM 有有效跨膜次数则以 PM 为准；PM 为空或占位符(NA/未知)且最终类型非“非跨膜冲突”时，保留本地有效跨膜次数
+    # PM 的 structure_feature 无效时，仅在最终类型为空或跨膜蛋白时保留本地有效值。
     incoming_sf = merged.get("structure_feature")
     if (
         not is_meaningful_structure_feature(incoming_sf)

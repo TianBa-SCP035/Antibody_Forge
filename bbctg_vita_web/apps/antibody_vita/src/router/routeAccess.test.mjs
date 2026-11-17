@@ -1,39 +1,8 @@
 import assert from 'node:assert/strict'
 import { readdirSync } from 'node:fs'
-import { register } from 'node:module'
 import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-
-const SRC = new URL('../', import.meta.url).href
-
-register(`data:text/javascript,${encodeURIComponent(`
-const STUBS = {
-  '#/locales': 'export const $t = (key) => key',
-  '@vben/preferences': 'export const preferences = { app: { defaultHomePath: "/home", locale: "zh-CN" } }',
-  '#/constants/storageKeys': 'export const HOME_START_PAGE_STORAGE_KEY = "test-start-page"',
-  '#/router/routes': 'export const accessRoutes = globalThis.__TEST_ACCESS_ROUTES__ || []',
-  'vue': 'export const computed = (fn) => ({ get value() { return fn() } })',
-}
-export async function resolve(specifier, context, next) {
-  if (STUBS[specifier]) {
-    return { url: 'data:text/javascript,' + encodeURIComponent(STUBS[specifier]), shortCircuit: true }
-  }
-  if (specifier.startsWith('#/')) {
-    const rel = specifier.slice(2)
-    const suffix = rel.endsWith('.ts') || rel.endsWith('.js') ? '' : '.ts'
-    return next(new URL(rel + suffix, ${JSON.stringify(SRC)}).href, context)
-  }
-  if (
-    specifier.startsWith('./') &&
-    !specifier.endsWith('.ts') &&
-    !specifier.endsWith('.mjs') &&
-    context.parentURL?.includes('/src/router/')
-  ) {
-    return next(new URL(specifier + '.ts', context.parentURL).href, context)
-  }
-  return next(specifier, context)
-}`)}`)
 
 const { canAccessRoutePath } = await import('./routeAccess.ts')
 const { setCachedFeatureFilter } = await import('./featureFilter.ts')
@@ -53,7 +22,7 @@ function checker(codes) {
   return (required) => required.some((code) => set.has(code))
 }
 
-test('all existing start paths resolve to the exact route meta.authority permissions', () => {
+test('已有起始路径按路由 meta.authority 精确校验权限', () => {
   const cases = [
     ['/serum/workbench', 'serum.page.workbench'],
     ['/serum/list', 'serum.page.list'],
@@ -74,7 +43,7 @@ test('all existing start paths resolve to the exact route meta.authority permiss
   }
 })
 
-test('/system routes derive permissions from system.ts route records', () => {
+test('/system 路由权限来自 system.ts 的路由记录', () => {
   const userPermCodes = [
     'system.page.user',
     'system.page.role',
@@ -91,13 +60,13 @@ test('/system routes derive permissions from system.ts route records', () => {
   assert.equal(canAccessRoutePath('/system', allRoutes, checker([])), false)
 })
 
-test('public routes without authority and unknown paths remain accessible', () => {
+test('无 authority 的公开路由与未知路径可访问', () => {
   assert.equal(canAccessRoutePath('/home', allRoutes, checker([])), true)
   assert.equal(canAccessRoutePath('/profile', allRoutes, checker([])), true)
   assert.equal(canAccessRoutePath('/custom/unknown', allRoutes, checker([])), true)
 })
 
-test('ancestor authority is enforced just like generateRoutesByFrontend', () => {
+test('祖先路由的 authority 与子路由一并校验', () => {
   const mockRoutes = [
     {
       path: '/parent',
@@ -114,7 +83,7 @@ test('ancestor authority is enforced just like generateRoutesByFrontend', () => 
   assert.equal(canAccessRoutePath('/parent/child', mockRoutes, checker(['parent.view', 'child.view'])), true)
 })
 
-test('featureCode filtering mirrors filterRouteTree in router access', () => {
+test('featureCode 过滤与路由生成的过滤行为一致', () => {
   const disabledChild = new Map([
     ['menu.serum', { code: 'menu.serum', enabled: true, visible: true }],
     ['menu.serum.workbench', { code: 'menu.serum.workbench', enabled: false, visible: true }],
@@ -153,12 +122,9 @@ test('featureCode filtering mirrors filterRouteTree in router access', () => {
     }),
     false,
   )
-
-  // Ensure cached feature state helper updates cleanly without throwing
-  setCachedFeatureFilter(disabledChild, false)
 })
 
-test('home-data canAccessStartPath delegates to route records and cached feature flags', async () => {
+test('首页起始路径校验走路由记录与缓存的功能开关', async () => {
   globalThis.__TEST_ACCESS_ROUTES__ = allRoutes
   const { canAccessStartPath } = await import('#/views/Home/home-data')
   setCachedFeatureFilter(

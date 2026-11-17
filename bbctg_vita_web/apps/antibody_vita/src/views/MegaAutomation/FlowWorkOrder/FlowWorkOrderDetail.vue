@@ -1,6 +1,5 @@
 <template>
   <div class="app-container flow-order-detail">
-    <!-- 顶部标题 + 操作 -->
     <div class="detail-header">
       <div class="header-title">
         <el-button text class="back-btn" @click="goBack">
@@ -219,7 +218,6 @@
         当前为未保存草稿，填写订单编号后可保存。
       </div>
 
-      <!-- 基础信息 + 时间线 -->
       <section class="panel base-panel">
         <div class="panel-head">
           <div class="panel-head-left">
@@ -1485,7 +1483,6 @@ $radius: 8px;
   transform: translateY(-4px);
 }
 
-/* 顶部 */
 .detail-header {
   display: flex;
   align-items: center;
@@ -1697,7 +1694,6 @@ $radius: 8px;
 
 
 
-/* 基础信息 */
 .base-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1757,7 +1753,6 @@ $radius: 8px;
 
 
 
-/* JSON */
 .json-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

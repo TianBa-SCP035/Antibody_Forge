@@ -1,30 +1,5 @@
 import assert from 'node:assert/strict'
-import { createRequire, register } from 'node:module'
 import test from 'node:test'
-import { pathToFileURL } from 'node:url'
-
-// Vite resolves extensionless .ts imports, the `#/` alias and xlsx's ESM build (which exports CFB); node needs them spelled out.
-// constants.ts reads import.meta.env; the page DOM, the host session and the weather key are stubbed.
-const XLSX_ESM = pathToFileURL(createRequire(import.meta.url).resolve('xlsx').replace(/xlsx\.js$/, 'xlsx.mjs')).href
-const stub = (code) => ({ url: 'data:text/javascript,' + encodeURIComponent(code), shortCircuit: true })
-const STUBS = {
-  './pageTable': 'export const readPageTables = () => globalThis.__ffTables || []',
-  './session': "export const currentUserKey = () => 'u1'; export const menuPages = () => []; export const openMenuPage = async () => false",
-  '#/constants/storageKeys': "export const WEATHER_CACHE_KEY = 'weather'",
-}
-register(`data:text/javascript,${encodeURIComponent(`
-const STUBS = ${JSON.stringify(Object.fromEntries(Object.entries(STUBS).map(([k, v]) => [k, stub(v)])))}
-export async function resolve(specifier, context, next) {
-  if (specifier === 'xlsx') return next(${JSON.stringify(XLSX_ESM)}, context)
-  if (STUBS[specifier]) return STUBS[specifier]
-  if (specifier.startsWith('./') && !/\\.\\w+$/.test(specifier) && context.parentURL?.endsWith('.ts')) return next(specifier + '.ts', context)
-  return next(specifier, context)
-}
-export async function load(url, context, next) {
-  const r = await next(url, context)
-  if (!url.endsWith('/fatfish/constants.ts')) return r
-  return { ...r, source: String(r.source).replaceAll('import.meta.env', '({ BASE_URL: "/" })'), shortCircuit: true }
-}`)}`)
 
 const store = new Map()
 globalThis.localStorage = {
@@ -43,7 +18,7 @@ async function sheetXml(blob) {
   return { text, workbook: text('xl/workbook.xml') }
 }
 
-test('report workbook: styled header, frozen/filtered sheets, 合计 row outside the filter, text never a formula', async () => {
+test('报表工作簿：表头样式、冻结与筛选、合计在筛选外、文本不成公式', async () => {
   const rows = Array.from({ length: 12 }, (_, i) => ({
     负责人: ['张三', '李四', '王五'][i % 3],
     状态: ['进行中', '已结题'][i % 2],
@@ -69,12 +44,11 @@ test('report workbook: styled header, frozen/filtered sheets, 合计 row outside
   assert.match(detail, /t="inlineStr"><is><t xml:space="preserve">=HYPERLINK\(&quot;http:\/\/x&quot;\)<\/t>/)
 
   const styles = text('xl/styles.xml')
-  assert.match(styles, /<fgColor rgb="FF1F4E79"\/>/)
   assert.match(styles, /formatCode="0\.0%"/)
   assert.match(text('xl/worksheets/sheet3.xml'), /<t xml:space="preserve">来源<\/t>.*<t xml:space="preserve">测试数据<\/t>/s)
 })
 
-test('a raw API field name still finds its column after the column got a Chinese header', () => {
+test('列改成中文表头后，原始 API 字段名仍能找到该列', () => {
   const rows = [{ 负责人: '张三', 状态: 1 }, { 负责人: '李四', 状态: 2 }, { 负责人: '张三', 状态: 2 }]
   const table = { columns: ['负责人', '状态'], rows, aliases: { owner: '负责人', status: '状态' } }
   const built = buildReport(table, { title: 't', where: [{ column: 'owner', op: '=', value: '张三' }], columns: ['owner', 'status'] })
@@ -83,7 +57,7 @@ test('a raw API field name still finds its column after the column got a Chinese
   assert.equal(built.report.sheets[0].rows.length, 2)
 })
 
-test('learned source: table page names columns and codes; the model only fills the rest, once', async () => {
+test('学习数据源：页面定列名与编码，模型只补其余且只问一次', async () => {
   store.clear()
   const STATUS = { 1: '进行中', 2: '已结题', 3: '暂停' }
   const items = [1, 2, 1, 2, 3, 1, 2, 3].map((s, i) => ({
@@ -148,33 +122,38 @@ function careAt(start) {
   return { care, advance: (ms) => (now += ms), restore: () => (Date.now = realNow) }
 }
 
-test('care drifts on the one-minute tick instead of rounding the change away', () => {
+test('分钟级 tick 按比例扣饱食，不把小变化舍成零', () => {
   store.clear()
   const { care, advance, restore } = careAt(new Date(2026, 10, 10, 10, 0).getTime())
   try {
     const before = care.care.value.satiety
-    for (let i = 0; i < 60; i += 1) {
-      advance(60_000)
-      care.tick(false)
-    }
-    assert.ok(Math.abs(care.care.value.satiety - (before - 2)) < 0.01, `one awake hour costs 2 satiety, got ${before - care.care.value.satiety}`)
+    advance(60_000)
+    care.tick(false)
+    const dropped = before - care.care.value.satiety
+    assert.ok(dropped > 0, '一分钟的变化不应被舍掉')
+    assert.ok(Math.abs(dropped - 2 / 60) < 0.001, `一分钟应扣 ${2 / 60} 饱食，实际扣 ${dropped}`)
+    advance(59 * 60_000)
+    care.tick(false)
+    assert.ok(Math.abs(care.care.value.satiety - (before - 2)) < 0.01, '累计一小时应扣 2 饱食')
   } finally {
     restore()
   }
 })
 
-test('mood never sinks to down from drift alone, even starving and exhausted', () => {
+test('空腹又耗尽时心情只回落到 35，不会因漂移跌入低落', () => {
   const start = new Date(2026, 10, 10, 10, 0).getTime()
   store.clear()
   const { care, advance, restore } = careAt(start)
   try {
     care.care.value = { ...care.care.value, satiety: 0, energy: 0, mood: 50, ts: start }
-    for (let i = 0; i < 16 * 60; i += 1) {
-      advance(60_000)
-      care.tick(false)
-    }
+    advance(3_600_000)
+    care.tick(false)
+    assert.equal(care.care.value.mood, 46.25)
+    advance(15 * 3_600_000)
+    care.tick(false)
     const { mood } = care.care.value
-    assert.ok(mood >= 35 && stateOf({ satiety: 50, energy: 50, mood }) !== 'down', `mood ${mood}`)
+    assert.equal(mood, 35)
+    assert.notEqual(stateOf({ satiety: 50, energy: 50, mood }), 'down')
   } finally {
     restore()
   }

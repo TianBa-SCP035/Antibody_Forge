@@ -59,7 +59,7 @@ from utils.pagination import MAX_PAGE_LIMIT, parse_page_limit
 SERUM_CAGE_NO_MOUSE = "SERUM_CAGE_NO_MOUSE"
 TERMINAL_PROJECT_STATUSES = frozenset({"结题", "无效价处死"})
 STATUS_AUTO_UPDATE_SKIP_STATUSES = TERMINAL_PROJECT_STATUSES | {"加免中"}
-# 进行中：自动推导的「待X / 已X」阶段状态，加上手动的「加免中」
+# 进行中状态包括自动推导的「待 X／已 X」阶段和手工设置的「加免中」。
 ONGOING_STATUS_MARKS = ("待", "已")
 ONGOING_FIXED_STATUSES = frozenset({"加免中"})
 
@@ -179,7 +179,7 @@ def _collect_titer_owners_by_experiment(db: Session, experiment_ids: list[str]) 
     return owners_map
 
 
-# 笼位按小鼠汇总显示，不登记
+# 笼位由小鼠分组汇总显示，不注册为 SQL 表头列。
 HEADER_COLUMNS: dict[str, HeaderColumn] = {
     "project_code": HeaderColumn(SerumImmProject.project_code),
     "project_name": HeaderColumn(SerumImmProject.project_name),

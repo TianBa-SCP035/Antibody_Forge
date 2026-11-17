@@ -89,7 +89,7 @@ export function createColumnOrder(
         }
       }
     } catch {
-      /* ignore */
+      /* 本地设置不可读时使用默认列配置。 */
     }
     return null
   }
@@ -98,7 +98,7 @@ export function createColumnOrder(
     try {
       localStorage.setItem(storageKey, JSON.stringify(store))
     } catch {
-      /* ignore */
+      /* 持久化失败不影响当前列配置。 */
     }
   }
 
@@ -175,7 +175,7 @@ export function createColumnOrder(
     try {
       localStorage.removeItem(storageKey)
     } catch {
-      /* ignore */
+      /* 清理失败不影响恢复默认列配置。 */
     }
   }
 

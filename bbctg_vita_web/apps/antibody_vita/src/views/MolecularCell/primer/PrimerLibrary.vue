@@ -44,33 +44,33 @@
         </template>
       </template>
     </AdvancedOpsBar>
-    <section class="workbench-panel">
-      <div class="page-header-band">
-        <div class="title-group">
-          <h1 class="page-title">引物库</h1>
-          <p class="page-subtitle">达普仪器用达普Barcode，其他仪器或步骤用 UDP。输入新系列名即可自建。停用后不再出现在选项中。</p>
-        </div>
-        <div class="header-actions">
-          <span class="total-count">共 {{ total }} 条</span>
-          <ElButton :icon="Download" :loading="exporting" @click="handleExport">导出</ElButton>
-          <ElButton
-            :icon="Upload"
-            :class="{ 'no-permission-btn': !canEdit }"
-            @click="openImport"
-          >
-            导入
-          </ElButton>
-          <ElButton
-            type="primary"
-            :icon="Plus"
-            :class="{ 'no-permission-btn': !canEdit }"
-            @click="openCreate"
-          >
-            新增
-          </ElButton>
-        </div>
+    <div class="page-header-band">
+      <div class="title-group">
+        <h1 class="page-title">引物库</h1>
+        <p class="page-subtitle">达普仪器用达普Barcode，其他用 UDP；输入新系列名即可自建。</p>
       </div>
+      <div class="header-actions">
+        <span class="total-count">共 {{ total }} 条</span>
+        <ElButton :icon="Download" :loading="exporting" @click="handleExport">导出</ElButton>
+        <ElButton
+          :icon="Upload"
+          :class="{ 'no-permission-btn': !canEdit }"
+          @click="openImport"
+        >
+          导入
+        </ElButton>
+        <ElButton
+          type="primary"
+          :icon="Plus"
+          :class="{ 'no-permission-btn': !canEdit }"
+          @click="openCreate"
+        >
+          新增
+        </ElButton>
+      </div>
+    </div>
 
+    <section class="workbench-panel">
       <div class="stats-strip">
         <button
           v-for="item in seriesCards"
@@ -87,76 +87,76 @@
           <strong class="stat-value">{{ item.count }}</strong>
         </button>
       </div>
-
-      <div class="filter-strip list-filter-controls">
-        <ElInput
-          v-model="listQuery.name"
-          class="filter-name"
-          clearable
-          v-bind="headerTop('name', '名称')"
-          @keyup.enter="handleFilter"
-          @clear="handleFilter"
-        />
-        <ElInput
-          v-model="listQuery.sequence"
-          class="filter-sequence"
-          clearable
-          v-bind="headerTop('short_sequence', '显示序列')"
-          @keyup.enter="handleFilter"
-          @clear="handleFilter"
-        />
-        <ElInput
-          v-model="listQuery.checkKeyword"
-          class="filter-check"
-          clearable
-          placeholder="核对序列"
-          @keyup.enter="handleFilter"
-          @clear="handleFilter"
-        />
-        <ElInput
-          v-model="listQuery.note"
-          class="filter-note"
-          clearable
-          v-bind="headerTop('note', '备注')"
-          @keyup.enter="handleFilter"
-          @clear="handleFilter"
-        />
-        <ListFilterSelect
-          v-model="listQuery.direction"
-          class="filter-item"
-          clearable
-          v-bind="headerTop('direction', '方向')"
-          @change="handleFilter"
-        >
-          <ElOption label="正向" value="F" />
-          <ElOption label="反向" value="R" />
-        </ListFilterSelect>
-        <ListFilterSelect
-          v-model="listQuery.status"
-          class="filter-item"
-          clearable
-          v-bind="headerTop('active', '状态')"
-          @change="handleFilter"
-        >
-          <ElOption label="启用" value="active" />
-          <ElOption label="停用" value="inactive" />
-        </ListFilterSelect>
-        <div class="filter-actions list-filter-actions">
-          <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
-          <button
-            type="button"
-            class="list-advanced-trigger"
-            :class="{ 'is-active': showAdvancedOps }"
-            title="高级操作"
-            @click="showAdvancedOps = !showAdvancedOps"
-          >
-            <ElIcon><Tools /></ElIcon>
-          </button>
-          <ElButton type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="reset">查询</ElButton>
-          <ElButton :icon="Refresh" @click="reset">重置</ElButton>
-        </div>
-      </div>
     </section>
+
+    <div class="filter-strip list-filter-controls">
+      <ElInput
+        v-model="listQuery.name"
+        class="filter-name"
+        clearable
+        v-bind="headerTop('name', '名称')"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <ElInput
+        v-model="listQuery.sequence"
+        class="filter-sequence"
+        clearable
+        v-bind="headerTop('short_sequence', '显示序列')"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <ElInput
+        v-model="listQuery.checkKeyword"
+        class="filter-check"
+        clearable
+        placeholder="核对序列"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <ElInput
+        v-model="listQuery.note"
+        class="filter-note"
+        clearable
+        v-bind="headerTop('note', '备注')"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <ListFilterSelect
+        v-model="listQuery.direction"
+        class="filter-item"
+        clearable
+        v-bind="headerTop('direction', '方向')"
+        @change="handleFilter"
+      >
+        <ElOption label="正向" value="F" />
+        <ElOption label="反向" value="R" />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.status"
+        class="filter-item"
+        clearable
+        v-bind="headerTop('active', '状态')"
+        @change="handleFilter"
+      >
+        <ElOption label="启用" value="active" />
+        <ElOption label="停用" value="inactive" />
+      </ListFilterSelect>
+      <div class="filter-actions list-filter-actions">
+        <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
+        <button
+          type="button"
+          class="list-advanced-trigger"
+          :class="{ 'is-active': showAdvancedOps }"
+          title="高级操作"
+          @click="showAdvancedOps = !showAdvancedOps"
+        >
+          <ElIcon><Tools /></ElIcon>
+        </button>
+        <ElButton type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="reset">查询</ElButton>
+        <ElButton :icon="Refresh" @click="reset">重置</ElButton>
+      </div>
+    </div>
 
     <ElCard shadow="never" class="list-table-card">
       <p class="sheet-hint">

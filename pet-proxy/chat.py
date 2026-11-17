@@ -19,15 +19,25 @@ _FAKE_ACTION = re.compile(
 )
 
 
-_SELF_TITLE = re.compile(r"本(小姐|鲸|鱼|女仆)")
 # Short action asides like （尾巴晃了一下） fit the bubble; long roleplay narration doesn't. 内心OS is kept.
 _LONG_ASIDE = re.compile(r"[（(](?!内心)[^（）()]{15,}[）)]")
+# Any aside, action or 内心. The model copies them from its own previous reply, so allowing two in a row
+# snowballs into one in every reply. 「已思考（用时3秒）」 is a meme, not an aside.
+_ASIDE = re.compile(r"[（(](?!用时)[^（）()\n]+[）)]")
 
 
 def _tidy(reply: str) -> str:
-    text = _LONG_ASIDE.sub("", _SELF_TITLE.sub("我", reply))
+    text = _LONG_ASIDE.sub("", reply)
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     return "\n".join(lines)
+
+
+def _drop_repeat_aside(reply: str, recent: list) -> str:
+    last = next((str(h.get("content") or "") for h in reversed(recent)
+                 if isinstance(h, dict) and h.get("role") == "assistant"), "")
+    if not _ASIDE.search(last):
+        return reply
+    return _tidy(_ASIDE.sub("", reply)) or reply
 
 
 def _as_text(value) -> str:
@@ -78,7 +88,8 @@ def handle_chat(data: dict) -> dict:
                          + _data_block("页面", page_context[:2500])})
     if intent == "comment":
         messages.append({"role": "system", "content": INTENT_COMMENT})
-    for h in _pick_recent(data):
+    recent = _pick_recent(data)
+    for h in recent:
         if isinstance(h, dict) and h.get("role") in ("user", "assistant") and h.get("content"):
             messages.append({"role": h["role"], "content": str(h["content"])[:1000]})
     # The model copies its own past replies over the persona; an old slip (a made-up name) must not stick.
@@ -91,7 +102,10 @@ def handle_chat(data: dict) -> dict:
         return {"http": 200, "body": {"ok": True, "reroute": "agent", "reply": ""}}
     return {
         "http": 200 if status == 200 else status,
-        "body": {"ok": status == 200, "reply": _tidy(message_text(upstream)) if status == 200 else ""},
+        "body": {
+            "ok": status == 200,
+            "reply": _drop_repeat_aside(_tidy(message_text(upstream)), recent) if status == 200 else "",
+        },
     }
 
 
@@ -99,8 +113,8 @@ LINE_KINDS = (
     "poke", "flurry", "punch", "pet", "feed", "idle",
     "greet", "morning", "welcomeBack", "lunch", "offWork", "lateNight", "saved",
 )
-# Qwen drifts now and then: mocking or rushing the user, bro-talk, titles, self-calling fat, numbers.
-_BAD_LINE = re.compile(r"闲|别(磨蹭|发呆|偷懒)|快(去)?干活|兄弟|哥们|主人|本(小姐|鲸|鱼)|胖|AI|模型|\d|[a-zA-Z]{4,}")
+# Qwen drifts now and then: mocking or rushing the user, self-calling fat, numbers.
+_BAD_LINE = re.compile(r"闲|别(磨蹭|发呆|偷懒)|快(去)?干活|胖|AI|模型|\d|[a-zA-Z]{4,}")
 # Lines of these kinds wait in the browser until the weather has changed, and the model still slips it in.
 _UNDATED_KINDS = {"poke", "flurry", "punch", "pet", "feed", "greet", "morning", "welcomeBack", "saved"}
 _DATED_WORDS = re.compile(r"[雨雪晴阴雾霾风冷热]|周[一二三四五六日天末]|星期|上午|下午|傍晚|凌晨")

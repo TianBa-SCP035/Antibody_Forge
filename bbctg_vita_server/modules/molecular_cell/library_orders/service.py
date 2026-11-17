@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
-from core.errors import ConflictError, NotFoundError
+from core.errors import ConflictError, ForbiddenError, NotFoundError
 from integrations import drm_service
 from models.discovery import DiscoveryWorkbench
 from models.molecular_cell import (
@@ -128,6 +128,11 @@ LIBRARY_CODE_CONFLICT = "建库编号已被其他工单使用，请刷新后重�
 MISSING_FILE = "结果文件不存在"
 MISSING_DISCOVERY = "发现工作台记录不存在"
 MISSING_CATALOG = "引物或Index字典记录不存在"
+OUT_OF_SCOPE = "只能使用你可查看的建库类型"
+
+# 当前用户可见的建库类型：由路由按建库类型权限点算出，不取自请求；None 表示不限。
+# 查看和修改共用这一个范围：范围外的已有工单按不存在处理，建成或改成范围外的类型按无权限拒绝。
+TypeScope = frozenset[str] | None
 
 LIBRARY_ID_PREFIX = "LIB"
 LIBRARY_ID_RANDOM_LEN = 6
@@ -992,12 +997,35 @@ def _append_code_search(
     filters.append(like_contains(column, parts[0]))
 
 
+def _in_scope(build_type: str | None, scope: TypeScope) -> bool:
+    return scope is None or build_type in scope
+
+
+def _require_in_scope(build_type: str | None, scope: TypeScope) -> None:
+    if not _in_scope(build_type, scope):
+        raise ForbiddenError(OUT_OF_SCOPE)
+
+
+def _scope_clauses(scope: TypeScope) -> list:
+    return [] if scope is None else [MolecularLibraryOrder.build_type.in_(scope)]
+
+
+def _scope_payload(scope: TypeScope) -> list[str] | None:
+    """交给前端的可见类型（按建库类型顺序），前端据此收窄统计块和类型选项。"""
+    return None if scope is None else [build_type for build_type in BUILD_TYPE_ORDER if build_type in scope]
+
+
 def _library_target_pairs():
     return select(MolecularLibraryOrder.target_name, MolecularLibraryOrder.target_codes)
 
 
-def search_recorded_targets(db: Session, keyword: str = "", limit: int = DEFAULT_RECORDED_TARGET_LIMIT) -> list[dict]:
-    return recorded_target_search(db, _library_target_pairs(), keyword, limit)
+def search_recorded_targets(
+    db: Session,
+    keyword: str = "",
+    limit: int = DEFAULT_RECORDED_TARGET_LIMIT,
+    scope: TypeScope = None,
+) -> list[dict]:
+    return recorded_target_search(db, _library_target_pairs().where(*_scope_clauses(scope)), keyword, limit)
 
 
 _L = MolecularLibraryOrder
@@ -1035,8 +1063,15 @@ def _list_order(data: dict[str, Any]):
     return (MolecularLibraryOrder.id.desc(),)
 
 
-def _apply_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None, header_except: str | None = None):
-    filters = []
+def _apply_list_filters(
+    stmt,
+    data: dict[str, Any],
+    *,
+    db: Session | None = None,
+    header_except: str | None = None,
+    scope: TypeScope = None,
+):
+    filters = _scope_clauses(scope)
     _append_code_search(
         filters,
         MolecularLibraryOrder.library_code,
@@ -1111,7 +1146,7 @@ def _apply_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None
     return stmt.where(*filters) if filters else stmt
 
 
-def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
+def _list_stats(db: Session, payload: dict[str, Any], scope: TypeScope) -> dict[str, int]:
     stats = {code: 0 for code in BUILD_TYPE_ORDER}
     for sample_type in PLASMA_SAMPLE_TYPES:
         stats[f"{BUILD_PLASMA_NGS}:{sample_type}"] = 0
@@ -1126,6 +1161,7 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
         .group_by(MolecularLibraryOrder.build_type),
         filtered,
         db=db,
+        scope=scope,
     )
     for build_type, count in db.execute(stmt).all():
         number = int(count or 0)
@@ -1141,6 +1177,7 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
         .group_by(MolecularLibraryOrder.sample_type),
         filtered,
         db=db,
+        scope=scope,
     )
     for sample_type, count in db.execute(plasma_stmt).all():
         key = f"{BUILD_PLASMA_NGS}:{sample_type}"
@@ -1149,7 +1186,7 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
     return stats
 
 
-def get_options(db: Session) -> dict[str, list[str]]:
+def get_options(db: Session, scope: TypeScope = None) -> dict[str, list[str] | None]:
     people: set[str] = set()
     for column in (_L.owner, _L.pm, _L.qc_owner):
         for value in db.scalars(select(column).where(column.is_not(None)).distinct()).all():
@@ -1164,13 +1201,16 @@ def get_options(db: Session) -> dict[str, list[str]]:
         "mouse_strains": list(MOUSE_STRAIN_OPTIONS),
         # 人员下拉未输入关键字时先列出文库工单中的人员，输入后再查询全部在职人员。
         "people": sorted(people),
+        "build_type_scope": _scope_payload(scope),
     }
 
 
-def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+def get_list(db: Session, data: dict[str, Any], scope: TypeScope = None) -> dict[str, Any]:
     payload = data or {}
-    stmt = _apply_list_filters(select(MolecularLibraryOrder), payload, db=db)
-    count_stmt = _apply_list_filters(select(func.count()).select_from(MolecularLibraryOrder), payload, db=db)
+    stmt = _apply_list_filters(select(MolecularLibraryOrder), payload, db=db, scope=scope)
+    count_stmt = _apply_list_filters(
+        select(func.count()).select_from(MolecularLibraryOrder), payload, db=db, scope=scope
+    )
     return paginate_select(
         db,
         stmt,
@@ -1178,16 +1218,16 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
         payload,
         order_by=_list_order(payload),
         clamp_page=True,
-        stats=_list_stats(db, payload),
+        stats=_list_stats(db, payload, scope),
     )
 
 
-def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+def get_column_values(db: Session, data: dict[str, Any], scope: TypeScope = None) -> dict[str, Any]:
     return header_column_values(
         db,
         HEADER_COLUMNS,
         data,
-        lambda stmt, payload, field: _apply_list_filters(stmt, payload, db=db, header_except=field),
+        lambda stmt, payload, field: _apply_list_filters(stmt, payload, db=db, header_except=field, scope=scope),
         id_column=MolecularLibraryOrder.id,
         labels=_VALUE_LABELS,
     )
@@ -1238,6 +1278,7 @@ def save(
     db: Session,
     data: dict[str, Any],
     created_by: str | None = None,
+    scope: TypeScope = None,
 ) -> dict[str, Any]:
     payload = dict(data or {})
     expected = payload.pop("_expected", None)
@@ -1265,7 +1306,7 @@ def save(
             .where(MolecularLibraryOrder.id == row_id)
             .with_for_update()
         )
-        if not row:
+        if not row or not _in_scope(row.build_type, scope):
             raise NotFoundError(MISSING_ROW)
         check_expected(
             row.to_dict(),
@@ -1275,13 +1316,14 @@ def save(
         if "library_code" in payload:
             _ensure_unique_library_codes(db, [(row_id, payload.get("library_code"))])
     _apply_fields(db, row, payload)
+    _require_in_scope(row.build_type, scope)
     _flush_library_codes(db)
     db.commit()
     db.refresh(row)
     return row.to_dict()
 
 
-def batch_save(db: Session, items: list[dict[str, Any]]) -> dict[str, Any]:
+def batch_save(db: Session, items: list[dict[str, Any]], scope: TypeScope = None) -> dict[str, Any]:
     parsed_items, row_ids = parse_batch_items(
         items,
         invalid_id_message="工单 ID 不正确",
@@ -1304,6 +1346,8 @@ def batch_save(db: Session, items: list[dict[str, Any]]) -> dict[str, Any]:
         row_ids,
         missing_message=MISSING_ROW,
     )
+    if any(not _in_scope(row.build_type, scope) for row in rows_by_id.values()):
+        raise NotFoundError(MISSING_ROW)
     for row_id, _payload, expected in payloads:
         check_expected(
             rows_by_id[row_id].to_dict(),
@@ -1336,6 +1380,8 @@ def batch_save(db: Session, items: list[dict[str, Any]]) -> dict[str, Any]:
             _apply_fields(db, row, payload)
         except ValueError as exc:
             raise ValueError(f"{row.library_order_id}：{exc}") from exc
+        if not _in_scope(row.build_type, scope):
+            raise ForbiddenError(f"{row.library_order_id}：{OUT_OF_SCOPE}")
         rows.append(row)
     _flush_library_codes(db)
     db.commit()
@@ -1344,10 +1390,8 @@ def batch_save(db: Session, items: list[dict[str, Any]]) -> dict[str, Any]:
     return {"items": [row.to_dict() for row in rows]}
 
 
-def delete_order(db: Session, row_id: int) -> dict[str, int]:
-    row = db.get(MolecularLibraryOrder, int(row_id))
-    if not row:
-        raise NotFoundError(MISSING_ROW)
+def delete_order(db: Session, row_id: int, scope: TypeScope = None) -> dict[str, int]:
+    row = _load_order(db, row_id, scope=scope)
     links = list(
         db.scalars(
             select(MolecularLibraryResultLink).where(
@@ -1494,6 +1538,7 @@ def list_by_discovery(
     db: Session,
     discovery_id: str | None = None,
     discovery_workbench_id: int | None = None,
+    scope: TypeScope = None,
 ) -> dict[str, Any]:
     row = _load_discovery(
         db,
@@ -1507,8 +1552,12 @@ def list_by_discovery(
     ).all()
     return {
         "discovery": _handoff_preview(row),
-        "items": [item.to_dict() for item in items],
-        "suggested_items": _suggested_handoff(row, items),
+        "items": [item.to_dict() for item in items if _in_scope(item.build_type, scope)],
+        # 建议按全部已有工单算，范围外已建过的类型不会被重复建议
+        "suggested_items": [
+            item for item in _suggested_handoff(row, items) if _in_scope(item["build_type"], scope)
+        ],
+        "build_type_scope": _scope_payload(scope),
     }
 
 
@@ -1555,6 +1604,7 @@ def handoff(
     db: Session,
     data: dict[str, Any],
     created_by: str | None = None,
+    scope: TypeScope = None,
 ) -> dict[str, Any]:
     payload = data or {}
     raw_items = payload.get("items") or []
@@ -1570,6 +1620,8 @@ def handoff(
     if row.status in DISCOVERY_TERMINAL_STATUSES:
         raise ValueError("已完成或已取消的发现安排不能交接")
     normalized = [_validate_handoff_item(row, item) for item in raw_items]
+    for build_type, _sample_source, _sample_type in normalized:
+        _require_in_scope(build_type, scope)
     codes = row.target_codes if isinstance(row.target_codes, list) else []
     created: list[MolecularLibraryOrder] = []
     for build_type, sample_source, sample_type in normalized:
@@ -1688,11 +1740,13 @@ EXPORT_COLUMNS = (
 )
 
 
-def export_list_workbook(db: Session, data: dict[str, Any]):
+def export_list_workbook(db: Session, data: dict[str, Any], scope: TypeScope = None):
     from utils.excel import build_list_workbook, cell_text
 
+    payload = data or {}
     rows = db.scalars(
-        _apply_list_filters(select(MolecularLibraryOrder), data or {}, db=db).order_by(*_list_order(data or {}))
+        _apply_list_filters(select(MolecularLibraryOrder), payload, db=db, scope=scope)
+        .order_by(*_list_order(payload))
     ).all()
     table_rows = []
     for row in rows:
@@ -1736,6 +1790,7 @@ def _load_order(
     order_id: int,
     *,
     for_update: bool = False,
+    scope: TypeScope = None,
 ) -> MolecularLibraryOrder:
     row = (
         db.scalar(
@@ -1746,7 +1801,7 @@ def _load_order(
         if for_update
         else db.get(MolecularLibraryOrder, int(order_id))
     )
-    if not row:
+    if not row or not _in_scope(row.build_type, scope):
         raise NotFoundError(MISSING_ROW)
     return row
 
@@ -1899,8 +1954,8 @@ def _refresh_listed_sequences(
     return changed
 
 
-def list_files(db: Session, order_id: int) -> dict[str, Any]:
-    order = _load_order(db, order_id)
+def list_files(db: Session, order_id: int, scope: TypeScope = None) -> dict[str, Any]:
+    order = _load_order(db, order_id, scope=scope)
     link_counts = (
         select(
             MolecularLibraryResultLink.file_id.label("file_id"),
@@ -2260,6 +2315,19 @@ def _upload_targets(
     )
 
 
+def _scope_targets(
+    targets: list[MolecularLibraryOrder],
+    reason: str,
+    scope: TypeScope,
+) -> tuple[list[MolecularLibraryOrder], str]:
+    """批量入口先按全部工单匹配再收窄：先收窄会把范围外工单的文件误判成别的编号或无主文件。"""
+    allowed = [target for target in targets if _in_scope(target.build_type, scope)]
+    if targets and not allowed:
+        codes = "、".join(dict.fromkeys(str(target.library_code or "").strip().upper() for target in targets))
+        return [], f"建库编号 {codes} 不在你可查看的建库类型内"
+    return allowed, reason
+
+
 def _issue_rows(reasons: list[str]) -> list[dict[str, Any]]:
     counts: dict[str, int] = {}
     for reason in reasons:
@@ -2334,19 +2402,20 @@ def _preflight_targets(
     filename: str,
     orders_by_code: dict[str, list[MolecularLibraryOrder]],
     read_orders: list[MolecularLibraryOrder],
+    scope: TypeScope,
 ) -> tuple[list[MolecularLibraryOrder], str]:
     if role == ROLE_READ:
-        return _read_targets(filename, read_orders)
-    return _resolve_upload_targets(
-        role,
-        filename,
-        lambda code: orders_by_code.get(code, []),
+        return _scope_targets(*_read_targets(filename, read_orders), scope)
+    return _scope_targets(
+        *_resolve_upload_targets(role, filename, lambda code: orders_by_code.get(code, [])),
+        scope,
     )
 
 
 def preflight_upload(
     db: Session,
     relative_paths: list[str],
+    scope: TypeScope = None,
 ) -> dict[str, Any]:
     """只检查批量入口的路径、文件名和工单匹配，不读取文件内容。"""
     if not relative_paths:
@@ -2397,7 +2466,7 @@ def preflight_upload(
             prepared.append(index)
             if role != ROLE_READ:
                 continue
-            targets, reason = _preflight_targets(role, names[index], orders_by_code, read_orders)
+            targets, reason = _preflight_targets(role, names[index], orders_by_code, read_orders, scope)
             if targets:
                 has_target = True
                 matched_count += 1
@@ -2438,7 +2507,7 @@ def preflight_upload(
     loose_matched_files: dict[str, int] = {}
     for index in plan.loose_indexes:
         role = roles[index]
-        targets, reason = _preflight_targets(role, names[index], orders_by_code, read_orders)
+        targets, reason = _preflight_targets(role, names[index], orders_by_code, read_orders, scope)
         if targets:
             accepted.add(index)
             loose_accepted += 1
@@ -2502,12 +2571,15 @@ def _extendable_package(
     db: Session,
     name: str,
     prepared: list[dict[str, Any]],
+    scope: TypeScope,
 ) -> MolecularLibraryResultPackage | None:
     """同名包里的文件这次都原样还在（路径和内容都相同），才往里追加。"""
     incoming = {(entry["inner_path"].casefold(), entry["digest"]) for entry in prepared}
     best = None
     best_count = 0
     for candidate in _same_named_packages(db, name):
+        if not _package_within_scope(db, candidate.id, scope):
+            continue
         stored = {
             (str(record.relative_path or "").casefold(), record.sha256)
             for record in _package_file_rows(db, candidate.id)
@@ -2527,6 +2599,7 @@ def _store_package(
     user_name: str,
     created_paths: list[Path],
     now: datetime,
+    scope: TypeScope,
 ) -> tuple[list[MolecularLibraryResultLink], dict[str, Any]]:
     name = package_name(root)
     prepared = []
@@ -2552,7 +2625,7 @@ def _store_package(
                 matched.append((entry, current_order))
             matched_order_ids.add(int(current_order.id))
             continue
-        targets, reason = _upload_targets(db, role, entry["filename"])
+        targets, reason = _scope_targets(*_upload_targets(db, role, entry["filename"]), scope)
         if role == ROLE_READ and not targets and reason:
             reasons.append(reason)
         for target in targets:
@@ -2601,7 +2674,7 @@ def _store_package(
         .with_for_update()
     )
     if package is None:
-        package = _extendable_package(db, name, prepared)
+        package = _extendable_package(db, name, prepared, scope)
     created = False
     if package is None:
         folder = f"{clean_path_part(name, 'package')}--{signature[:8]}"
@@ -2758,12 +2831,15 @@ def _store_loose(
     user_name: str,
     created_paths: list[Path],
     now: datetime,
+    scope: TypeScope,
 ) -> tuple[list[MolecularLibraryResultLink], str, int]:
     role = loose_file_role(entry["path"], current_order=current_order is not None)
     filename = entry["filename"]
     targets, reason = _upload_targets(db, role, filename)
     if current_order is not None:
         targets, reason = _restrict_qc_page_loose_targets(targets, current_order)
+    else:
+        targets, reason = _scope_targets(targets, reason, scope)
     if not targets:
         return [], reason or "无法按建库编号归入工单", 0
 
@@ -2833,6 +2909,7 @@ def upload_batch(
     relative_paths: list[str],
     user_name: str = "unknown",
     order_id: int | None = None,
+    scope: TypeScope = None,
 ) -> dict[str, Any]:
     if not files:
         raise ValueError("请选择文件")
@@ -2844,7 +2921,7 @@ def upload_batch(
     ]
     preliminary_summary: list[dict[str, Any]] = []
     if order_id is None:
-        preflight = preflight_upload(db, raw_paths)
+        preflight = preflight_upload(db, raw_paths, scope)
         accepted_indexes = preflight["accepted_indexes"]
         preliminary_summary = preflight["summary"]
         if not accepted_indexes:
@@ -2868,7 +2945,7 @@ def upload_batch(
             "digest": _hash_bytes(content),
         })
 
-    current_order = _load_order(db, order_id, for_update=True) if order_id else None
+    current_order = _load_order(db, order_id, for_update=True, scope=scope) if order_id else None
     paths = [entry["path"] for entry in prepared]
     path_plan = plan_upload_paths(paths)
     grouped = {
@@ -2895,6 +2972,7 @@ def upload_batch(
                 user_name=user_name,
                 created_paths=created_paths,
                 now=now,
+                scope=scope,
             )
             links.extend(stored_links)
             summary.append(result)
@@ -2910,6 +2988,7 @@ def upload_batch(
                 user_name=user_name,
                 created_paths=created_paths,
                 now=now,
+                scope=scope,
             )
             loose_links.extend(stored_links)
             loose_new_count += new_count
@@ -3064,8 +3143,9 @@ def update_file_link(
     link_id: int,
     order_id: int,
     data: dict[str, Any],
+    scope: TypeScope = None,
 ) -> dict[str, Any]:
-    order = _load_order(db, order_id)
+    order = _load_order(db, order_id, scope=scope)
     link = db.get(MolecularLibraryResultLink, int(link_id))
     if not link or link.order_id != order.id:
         raise NotFoundError(MISSING_FILE)
@@ -3119,14 +3199,15 @@ def _finish_file_delete(
     return path is not None and _remove_file_if_exists(path)
 
 
-def delete_file(db: Session, link_id: int, order_id: int | None = None) -> dict[str, Any]:
-    link = db.get(MolecularLibraryResultLink, int(link_id))
-    if not link:
+def delete_file(
+    db: Session,
+    link_id: int,
+    order_id: int | None = None,
+    scope: TypeScope = None,
+) -> dict[str, Any]:
+    link = _scoped_link(db, link_id, scope)
+    if order_id and link.order_id != int(order_id):
         raise NotFoundError(MISSING_FILE)
-    if order_id:
-        _load_order(db, order_id)
-        if link.order_id != int(order_id):
-            raise NotFoundError(MISSING_FILE)
     record = db.get(MolecularLibraryResultFile, link.file_id)
     in_package = bool(record and record.package_id)
     affected_order = db.get(MolecularLibraryOrder, link.order_id)
@@ -3142,9 +3223,9 @@ def delete_file(db: Session, link_id: int, order_id: int | None = None) -> dict[
     }
 
 
-def delete_stored_file(db: Session, order_id: int, file_id: int) -> dict[str, Any]:
+def delete_stored_file(db: Session, order_id: int, file_id: int, scope: TypeScope = None) -> dict[str, Any]:
     """文件夹预览里删除：取消所有工单关联，并删除磁盘文件。"""
-    order = _load_order(db, order_id)
+    order = _load_order(db, order_id, scope=scope)
     record = db.get(MolecularLibraryResultFile, int(file_id))
     if not record or not record.package_id:
         raise NotFoundError(MISSING_FILE)
@@ -3165,6 +3246,8 @@ def delete_stored_file(db: Session, order_id: int, file_id: int) -> dict[str, An
     )
     if not visible:
         raise NotFoundError(MISSING_FILE)
+    if not _package_within_scope(db, package.id, scope):
+        raise ForbiddenError("该测序包还关联了你可查看范围外的工单，不能删除其中的文件")
     links = list(db.scalars(
         select(MolecularLibraryResultLink).where(
             MolecularLibraryResultLink.file_id == record.id
@@ -3183,8 +3266,8 @@ def delete_stored_file(db: Session, order_id: int, file_id: int) -> dict[str, An
     }
 
 
-def delete_package(db: Session, order_id: int, package_id: int) -> dict[str, Any]:
-    order = _load_order(db, order_id)
+def delete_package(db: Session, order_id: int, package_id: int, scope: TypeScope = None) -> dict[str, Any]:
+    order = _load_order(db, order_id, scope=scope)
     package = db.get(MolecularLibraryResultPackage, int(package_id))
     if not package:
         raise NotFoundError(MISSING_FILE)
@@ -3237,9 +3320,33 @@ def delete_package(db: Session, order_id: int, package_id: int) -> dict[str, Any
     }
 
 
-def get_stored_file(db: Session, file_id: int) -> tuple[str, Path]:
+def _package_build_types(db: Session, package_id: int) -> set[str | None]:
+    """和 _sequencing_packages 同一口径：能看到这个包的工单 = 包的归属工单 + 包内文件关联的工单。"""
+    owner = select(MolecularLibraryResultPackage.owner_order_id).where(MolecularLibraryResultPackage.id == package_id)
+    linked = (
+        select(MolecularLibraryResultLink.order_id)
+        .join(MolecularLibraryResultFile, MolecularLibraryResultFile.id == MolecularLibraryResultLink.file_id)
+        .where(MolecularLibraryResultFile.package_id == package_id)
+    )
+    return set(db.scalars(
+        select(MolecularLibraryOrder.build_type)
+        .where(or_(MolecularLibraryOrder.id.in_(owner), MolecularLibraryOrder.id.in_(linked)))
+        .distinct()
+    ).all())
+
+
+def _package_visible(db: Session, package_id: int, scope: TypeScope) -> bool:
+    return scope is None or any(_in_scope(build_type, scope) for build_type in _package_build_types(db, package_id))
+
+
+def _package_within_scope(db: Session, package_id: int, scope: TypeScope) -> bool:
+    """测序包是多张工单共看的文件夹，改动包内容（追加、删除文件）要求这些工单都在范围内。"""
+    return scope is None or all(_in_scope(build_type, scope) for build_type in _package_build_types(db, package_id))
+
+
+def get_stored_file(db: Session, file_id: int, scope: TypeScope = None) -> tuple[str, Path]:
     record = db.get(MolecularLibraryResultFile, int(file_id))
-    if not record or record.package_id is None:
+    if not record or record.package_id is None or not _package_visible(db, record.package_id, scope):
         raise NotFoundError(MISSING_FILE)
     full_path = _full_path(record.storage_path)
     if not full_path.exists():
@@ -3248,13 +3355,20 @@ def get_stored_file(db: Session, file_id: int) -> tuple[str, Path]:
     return name, full_path
 
 
+def _scoped_link(db: Session, link_id: int, scope: TypeScope) -> MolecularLibraryResultLink:
+    link = db.get(MolecularLibraryResultLink, int(link_id))
+    order = db.get(MolecularLibraryOrder, link.order_id) if link else None
+    if not order or not _in_scope(order.build_type, scope):
+        raise NotFoundError(MISSING_FILE)
+    return link
+
+
 def get_download_record(
     db: Session,
     link_id: int,
+    scope: TypeScope = None,
 ) -> tuple[MolecularLibraryResultLink, Path]:
-    link = db.get(MolecularLibraryResultLink, int(link_id))
-    if not link:
-        raise NotFoundError(MISSING_FILE)
+    link = _scoped_link(db, link_id, scope)
     record = db.get(MolecularLibraryResultFile, link.file_id)
     if not record:
         raise NotFoundError(MISSING_FILE)

@@ -42,6 +42,11 @@ def action(code: str, name: str, *, resource: str, action: str, parent_code: str
                       ui_key=ui_key, parent_code=parent_code)
 
 
+def data(code: str, name: str, *, resource: str, parent_code: str, sort_order: int, message: str) -> Permission:
+    """数据范围：不放行接口，由模块按它收窄能看、能改的数据。"""
+    return Permission(code, name, "data", resource, "view", message, sort_order, parent_code=parent_code)
+
+
 @dataclass(frozen=True)
 class ModuleAccess:
     """一个业务模块的权限登记：module 是权限管理页的模块分组；resources 是资源码到操作日志中文名。"""

@@ -74,26 +74,26 @@
       </template>
     </AdvancedOpsBar>
 
-    <section class="workbench-panel">
-      <div class="page-header-band">
-        <div class="title-group">
-          <h1 class="page-title">文库构建</h1>
-          <p class="page-subtitle">按实际建库工艺安排任务，记录必要来源、产物与质控信息。</p>
-        </div>
-        <div class="header-actions">
-          <span class="total-count text-secondary">共 {{ total }} 条工单</span>
-          <el-button
-            type="primary"
-            :icon="Plus"
-            :class="{ 'no-permission-btn': !canEdit }"
-            :title="!canEdit ? '您没有权限新建文库工单' : ''"
-            @click="handleCreate"
-          >
-            新建
-          </el-button>
-        </div>
+    <div class="page-header-band">
+      <div class="title-group">
+        <h1 class="page-title">文库构建</h1>
+        <p class="page-subtitle">按实际建库工艺安排任务，记录必要来源、产物与质控信息。</p>
       </div>
+      <div class="header-actions">
+        <span class="total-count text-secondary">共 {{ total }} 条工单</span>
+        <el-button
+          type="primary"
+          :icon="Plus"
+          :class="{ 'no-permission-btn': !canEdit }"
+          :title="!canEdit ? '您没有权限新建文库工单' : ''"
+          @click="handleCreate"
+        >
+          新建
+        </el-button>
+      </div>
+    </div>
 
+    <section class="workbench-panel">
       <div class="stats-strip">
         <div
           v-for="item in typeSheets"
@@ -109,80 +109,80 @@
           <strong class="stat-value">{{ stats[item.statKey] || 0 }}</strong>
         </div>
       </div>
-
-      <div class="filter-strip list-filter-controls">
-        <el-input
-          v-model="listQuery.library_code"
-          class="filter-item filter-keyword"
-          clearable
-          v-bind="headerTop('library_code', '建库编号')"
-          title="多个编号用逗号、空格或换行分隔，按完整编号查找；只填一个时按包含查找"
-          :prefix-icon="Search"
-          @keyup.enter="handleFilter"
-          @clear="handleFilter"
-        />
-        <ListFilterSelect v-model="listQuery.status" class="filter-item" clearable v-bind="headerTop('status', '状态')" @change="handleFilter">
-          <el-option v-for="item in optionLists.status" :key="item" :label="item" :value="item" />
-        </ListFilterSelect>
-        <ListFilterSelect v-model="listQuery.priority" class="filter-item" clearable v-bind="headerTop('priority', '优先级')" @change="handleFilter">
-          <el-option v-for="item in optionLists.priority" :key="item" :label="item" :value="item" />
-        </ListFilterSelect>
-        <UserSelect
-          v-model="listQuery.owner"
-          class="filter-item"
-          multi-gesture
-          :options="optionLists.owner"
-          v-bind="headerTop('owner', '负责人')"
-          clearable
-          @change="handleFilter"
-        />
-        <ListFilterSelect v-model="listQuery.sample_source" class="filter-item" clearable v-bind="headerTop('sample_source', '样品来源')" @change="handleFilter">
-          <el-option v-for="item in optionLists.sample_source" :key="item.value" :label="item.label" :value="item.value" />
-        </ListFilterSelect>
-        <WorkbenchTargetFilter
-          v-model="listQuery.target_name"
-          class="filter-item"
-          v-bind="headerTop('target_name', '靶点')"
-          :search="fetchLibraryRecordedTargets"
-          @change="handleFilter"
-        />
-        <el-date-picker
-          v-model="instrumentRange"
-          class="filter-range"
-          type="daterange"
-          value-format="YYYY-MM-DD"
-          range-separator="至"
-          v-bind="headerTop('instrument_on', '上机日起', 'startPlaceholder')"
-          end-placeholder="上机日止"
-          @change="handleFilter"
-        />
-        <div class="filter-actions list-filter-actions">
-          <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
-          <button
-            type="button"
-            class="list-advanced-trigger"
-            :class="{ 'is-active': showAdvancedOps || hasAdvancedFilters }"
-            :title="hasAdvancedFilters ? '高级筛选已启用' : '高级操作'"
-            @click="showAdvancedOps = !showAdvancedOps"
-          >
-            <el-icon><Tools /></el-icon>
-          </button>
-          <el-button
-            class="list-filter-action-button"
-            type="primary"
-            :icon="Search"
-            title="右键清空筛选"
-            @click="handleFilter"
-            @contextmenu.prevent="resetFilters"
-          >查询</el-button>
-          <WorkbenchViewToggle
-            :model-value="viewMode"
-            @toggle="toggleViewMode"
-            @reset-columns="resetSheetColumnOrder"
-          />
-        </div>
-      </div>
     </section>
+
+    <div class="filter-strip list-filter-controls">
+      <el-input
+        v-model="listQuery.library_code"
+        class="filter-item filter-keyword"
+        clearable
+        v-bind="headerTop('library_code', '建库编号')"
+        title="多个编号用逗号、空格或换行分隔，按完整编号查找；只填一个时按包含查找"
+        :prefix-icon="Search"
+        @keyup.enter="handleFilter"
+        @clear="handleFilter"
+      />
+      <ListFilterSelect v-model="listQuery.status" class="filter-item" clearable v-bind="headerTop('status', '状态')" @change="handleFilter">
+        <el-option v-for="item in optionLists.status" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <ListFilterSelect v-model="listQuery.priority" class="filter-item" clearable v-bind="headerTop('priority', '优先级')" @change="handleFilter">
+        <el-option v-for="item in optionLists.priority" :key="item" :label="item" :value="item" />
+      </ListFilterSelect>
+      <UserSelect
+        v-model="listQuery.owner"
+        class="filter-item"
+        multi-gesture
+        :options="optionLists.owner"
+        v-bind="headerTop('owner', '负责人')"
+        clearable
+        @change="handleFilter"
+      />
+      <ListFilterSelect v-model="listQuery.sample_source" class="filter-item" clearable v-bind="headerTop('sample_source', '样品来源')" @change="handleFilter">
+        <el-option v-for="item in optionLists.sample_source" :key="item.value" :label="item.label" :value="item.value" />
+      </ListFilterSelect>
+      <WorkbenchTargetFilter
+        v-model="listQuery.target_name"
+        class="filter-item"
+        v-bind="headerTop('target_name', '靶点')"
+        :search="fetchLibraryRecordedTargets"
+        @change="handleFilter"
+      />
+      <el-date-picker
+        v-model="instrumentRange"
+        class="filter-range"
+        type="daterange"
+        value-format="YYYY-MM-DD"
+        range-separator="至"
+        v-bind="headerTop('instrument_on', '上机日起', 'startPlaceholder')"
+        end-placeholder="上机日止"
+        @change="handleFilter"
+      />
+      <div class="filter-actions list-filter-actions">
+        <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
+        <button
+          type="button"
+          class="list-advanced-trigger"
+          :class="{ 'is-active': showAdvancedOps || hasAdvancedFilters }"
+          :title="hasAdvancedFilters ? '高级筛选已启用' : '高级操作'"
+          @click="showAdvancedOps = !showAdvancedOps"
+        >
+          <el-icon><Tools /></el-icon>
+        </button>
+        <el-button
+          class="list-filter-action-button"
+          type="primary"
+          :icon="Search"
+          title="右键清空筛选"
+          @click="handleFilter"
+          @contextmenu.prevent="resetFilters"
+        >查询</el-button>
+        <WorkbenchViewToggle
+          :model-value="viewMode"
+          @toggle="toggleViewMode"
+          @reset-columns="resetSheetColumnOrder"
+        />
+      </div>
+    </div>
 
     <el-card shadow="never" class="table-card list-table-card">
       <div ref="listTableBody" class="list-table-body">
@@ -209,6 +209,15 @@
         @row-click="onWorkbenchRowClick"
         @row-contextmenu="onWorkbenchRowContextMenu"
       >
+        <template #source_project_code="{ row }">
+          <span
+            v-if="row.source_discovery_id"
+            class="list-code-text is-clickable"
+            title="查看来源发现安排"
+            @click.stop="openSourceDiscovery(row.source_discovery_id)"
+          >{{ row.source_project_code }}</span>
+          <span v-else class="list-code-text">{{ row.source_project_code }}</span>
+        </template>
         <template #priority="{ row }">
           <WorkbenchPriorityCell
             :value="row.priority"
@@ -543,10 +552,12 @@ import { uniqueNames } from '#/utils/userOptions'
 import {
   BUILD_PLASMA_NGS,
   buildTypeLabel,
+  buildTypeOptions,
   CATALOG_NAME_FIELDS,
   FIELDS,
-  HANDOFF_METHOD_ROWS,
+  handoffRowsInScope,
   HEADER_MENU_COLUMNS,
+  inBuildTypeScope,
   isIndexFieldRecorded,
   isSheetFieldApplicable,
   LIBRARY_VIEW_PREFS_KEY,
@@ -703,6 +714,7 @@ export default {
     return {
       viewPrefsStorageKey: LIBRARY_VIEW_PREFS_KEY,
       optionLists: { ...fieldOptionLists(FIELDS), pm: [], owner: [], qc_owner: [] },
+      buildTypeScope: null,
       excelRowSelectKey: 'id',
       showAdvancedOps: false,
       loading: false,
@@ -776,10 +788,9 @@ export default {
     },
     typeSheets() {
       const tones = ['stat-blue', 'stat-purple', 'stat-orange', 'stat-red', 'stat-slate']
-      return STAT_TILES.map((item, index) => ({
-        ...item,
-        tone: tones[index % tones.length],
-      }))
+      return STAT_TILES
+        .map((item, index) => ({ ...item, tone: tones[index % tones.length] }))
+        .filter((item) => inBuildTypeScope(this.buildTypeScope, item.value))
     },
     sheetCatalogSelectOptions() {
       const options = this.catalogOptions.map((item) => ({
@@ -798,10 +809,10 @@ export default {
       return WORKBENCH_COLUMNS
     },
     createRows() {
-      return HANDOFF_METHOD_ROWS
+      return handoffRowsInScope(this.buildTypeScope)
     },
     createPicks() {
-      return HANDOFF_METHOD_ROWS.flatMap((row) => row.picks)
+      return this.createRows.flatMap((row) => row.picks)
     },
     drawerTitle() {
       const row = this.editingRow
@@ -1058,6 +1069,8 @@ export default {
     async loadOptionLists() {
       try {
         const data = await fetchLibraryOrderOptions()
+        this.buildTypeScope = data?.build_type_scope ?? null
+        this.optionLists.build_type = buildTypeOptions(this.buildTypeScope)
         const people = uniqueNames(data?.people || [])
         PEOPLE_FIELDS.forEach((key) => { this.optionLists[key] = people })
         applyOptionLists(this.optionLists, data, OPTION_SOURCES)

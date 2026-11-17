@@ -907,6 +907,7 @@ import {
   BUILD_POOLED_BARCODE,
   BUILD_POOLED_BCR,
   buildTypeLabel,
+  buildTypeOptions,
   FIELDS,
   normalizePlateInputText,
   libraryFieldOptions,
@@ -998,6 +999,7 @@ export default {
       loading: false,
       loadRequest: 0,
       peopleOptions: [],
+      buildTypeScope: null,
       activeInspector: 'summary',
       order: {},
       plateDraft: '',
@@ -1305,7 +1307,7 @@ export default {
   },
   created() {
     this.load()
-    this.loadPeopleOptions()
+    this.loadOptions()
   },
   mounted() {
     this.bindViewerListeners()
@@ -1353,6 +1355,7 @@ export default {
       return libraryFileDownloadUrl(linkId, '&preview=true')
     },
     fieldOptions(field) {
+      if (field.key === 'build_type') return buildTypeOptions(this.buildTypeScope)
       return libraryFieldOptions(field, this.order) ?? field.options ?? []
     },
     onTagsChange(field, values) {
@@ -1393,12 +1396,13 @@ export default {
     goBack() {
       this.$router.push('/molecular-cell/library-construction')
     },
-    async loadPeopleOptions() {
+    async loadOptions() {
       try {
         const data = await fetchLibraryOrderOptions()
         this.peopleOptions = Array.isArray(data?.people) ? data.people : []
+        this.buildTypeScope = data?.build_type_scope ?? null
       } catch {
-        // 拿不到常用人员不影响输入关键字搜索
+        // 拿不到常用人员不影响输入关键字搜索；建库类型范围以后端校验为准
         this.peopleOptions = []
       }
     },

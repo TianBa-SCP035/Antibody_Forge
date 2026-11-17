@@ -1,4 +1,9 @@
-from core.module_spec import ModuleAccess, action, menu, page
+from core.module_spec import ModuleAccess, action, data, menu, page
+
+# 可单独授权的建库类型：配了任一个的人在文库构建里只能看、改这些类型的工单（改仍要编辑或质检权限）；
+# 一个都没配的不限。
+LIBRARY_SCOPE_TYPES = {"plate_single_cell": "单细胞孔板"}
+LIBRARY_TYPE_PERMISSIONS = {f"molecular.library.type.{build_type}": build_type for build_type in LIBRARY_SCOPE_TYPES}
 
 ACCESS = ModuleAccess(
     module="molecular",
@@ -8,6 +13,11 @@ ACCESS = ModuleAccess(
         action("molecular.library.edit", "编辑文库构建工单", resource="library", action="edit",
                ui_key="molecular.library.edit_button", parent_code="molecular.page.library", sort_order=431,
                message="没有权限编辑文库构建工单"),
+        *(
+            data(code, f"限定{LIBRARY_SCOPE_TYPES[build_type]}", resource="library",
+                 parent_code="molecular.page.library", sort_order=432, message="只能处理部分建库类型")
+            for code, build_type in LIBRARY_TYPE_PERMISSIONS.items()
+        ),
         page("molecular.page.library_detail", "文库构建详情", resource="library_detail",
              route_path="/molecular-cell/library-construction/result", parent_code="molecular.page.library",
              sort_order=433, message="没有权限查看文库构建详情"),

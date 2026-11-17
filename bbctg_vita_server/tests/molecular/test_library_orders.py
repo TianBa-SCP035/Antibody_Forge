@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from starlette.routing import compile_path
 
 from api import api_routes
-from core.errors import ConflictError
+from core.errors import ConflictError, ForbiddenError, NotFoundError
 
 from models.discovery import DiscoveryWorkbench
 from models.molecular_cell import (
@@ -24,6 +24,7 @@ from modules.molecular_cell.library_orders import routes as order_routes
 from modules.molecular_cell.library_orders import service
 import modules.system.audit_middleware as audit_middleware
 from modules.molecular_cell.library_orders.result_upload import assembled_primer
+from modules.molecular_cell.permissions import LIBRARY_TYPE_PERMISSIONS
 from modules.auth.permissions import UserContext
 from modules.system.audit_context import AuditContext, reset_audit_context, set_audit_context
 from support import DbTestCase
@@ -130,6 +131,96 @@ class LibraryOrderTests(DbTestCase):
         last_page = service.get_list(self.db, {"page": 99, "limit": 2})
         self.assertEqual(last_page["page"], 2)
         self.assertEqual([item["id"] for item in last_page["items"]], [first["id"]])
+
+    def test_type_scope_limits_list_stats_values_and_export(self):
+        from openpyxl import load_workbook
+
+        service.save(self.db, {"build_type": service.BUILD_PLATE, "library_code": "P1"})
+        service.save(self.db, {"build_type": service.BUILD_POOLED_BCR, "library_code": "B1"})
+        plate_only = frozenset({service.BUILD_PLATE})
+
+        listed = service.get_list(self.db, {}, plate_only)
+        self.assertEqual([item["library_code"] for item in listed["items"]], ["P1"])
+        self.assertEqual(listed["stats"][service.BUILD_PLATE], 1)
+        self.assertEqual(listed["stats"][service.BUILD_POOLED_BCR], 0)
+        self.assertEqual(service.get_list(self.db, {"build_type": service.BUILD_POOLED_BCR}, plate_only)["items"], [])
+        values = service.get_column_values(self.db, {"field": "build_type"}, plate_only)["items"]
+        self.assertEqual([item["value"] for item in values], [service.BUILD_PLATE])
+        output, _ = service.export_list_workbook(self.db, {}, plate_only)
+        rows = list(load_workbook(output, read_only=True).active.iter_rows(min_row=2, values_only=True))
+        self.assertEqual(len(rows), 1)
+
+        self.assertEqual(service.get_options(self.db, plate_only)["build_type_scope"], [service.BUILD_PLATE])
+        self.assertIsNone(service.get_options(self.db)["build_type_scope"])
+        self.assertEqual(len(service.get_list(self.db, {})["items"]), 2)
+
+    def test_type_scope_limits_edits_to_scoped_types(self):
+        plate = service.save(self.db, {"build_type": service.BUILD_PLATE, "library_code": "P1"})
+        bcr = service.save(self.db, {"build_type": service.BUILD_POOLED_BCR, "library_code": "B1"})
+        plate_only = frozenset({service.BUILD_PLATE})
+
+        self.assertEqual(service.save(self.db, {"id": plate["id"], "owner": "王五"}, scope=plate_only)["owner"], "王五")
+        created = service.save(self.db, {"build_type": service.BUILD_PLATE}, scope=plate_only)
+        self.assertEqual(created["build_type"], service.BUILD_PLATE)
+        with self.assertRaisesRegex(NotFoundError, service.MISSING_ROW):
+            service.save(self.db, {"id": bcr["id"], "owner": "王五"}, scope=plate_only)
+        self.db.rollback()
+        with self.assertRaisesRegex(ForbiddenError, service.OUT_OF_SCOPE):
+            service.save(self.db, {"build_type": service.BUILD_POOLED_BCR}, scope=plate_only)
+        self.db.rollback()
+        with self.assertRaisesRegex(ForbiddenError, service.OUT_OF_SCOPE):
+            service.save(self.db, {"id": plate["id"], "build_type": service.BUILD_POOLED_BCR}, scope=plate_only)
+        self.db.rollback()
+
+        with self.assertRaisesRegex(NotFoundError, service.MISSING_ROW):
+            service.batch_save(self.db, [{"id": plate["id"]}, {"id": bcr["id"]}], plate_only)
+        self.db.rollback()
+        with self.assertRaisesRegex(ForbiddenError, f"{plate['library_order_id']}：{service.OUT_OF_SCOPE}"):
+            service.batch_save(self.db, [{"id": plate["id"], "build_type": service.BUILD_POOLED_BCR}], plate_only)
+        self.db.rollback()
+
+        with self.assertRaisesRegex(NotFoundError, service.MISSING_ROW):
+            service.delete_order(self.db, bcr["id"], plate_only)
+        service.delete_order(self.db, created["id"], plate_only)
+        self.assertEqual(
+            {(item["library_code"], item["build_type"], item["owner"]) for item in service.get_list(self.db, {})["items"]},
+            {("P1", service.BUILD_PLATE, "王五"), ("B1", service.BUILD_POOLED_BCR, None)},
+        )
+
+    def test_type_scope_limits_handoff(self):
+        row = self._discovery(
+            screening_methods=",".join(
+                (service.SCREENING_METHOD_BEACON, service.SCREENING_METHOD_DAPU, service.SCREENING_METHOD_PHAGE)
+            )
+        )
+        service.handoff(self.db, {
+            "discovery_workbench_id": row["id"],
+            "items": [{"build_type": service.BUILD_POOLED_BCR, "sample_source": service.SOURCE_DAPU_TUBE}],
+        })
+        plate_only = frozenset({service.BUILD_PLATE})
+
+        everything = service.list_by_discovery(self.db, discovery_workbench_id=row["id"])
+        self.assertEqual(len(everything["items"]), 1)
+        self.assertEqual(
+            [item["build_type"] for item in everything["suggested_items"]],
+            [service.BUILD_PLATE, service.BUILD_PHAGE_DISPLAY],
+        )
+        self.assertIsNone(everything["build_type_scope"])
+        scoped = service.list_by_discovery(self.db, discovery_workbench_id=row["id"], scope=plate_only)
+        self.assertEqual(scoped["items"], [])
+        self.assertEqual([item["build_type"] for item in scoped["suggested_items"]], [service.BUILD_PLATE])
+        self.assertEqual(scoped["build_type_scope"], [service.BUILD_PLATE])
+
+        with self.assertRaisesRegex(ForbiddenError, service.OUT_OF_SCOPE):
+            service.handoff(self.db, {
+                "discovery_workbench_id": row["id"],
+                "items": [{"build_type": service.BUILD_PHAGE_DISPLAY, "sample_source": service.SOURCE_DIRECT}],
+            }, scope=plate_only)
+        created = service.handoff(self.db, {
+            "discovery_workbench_id": row["id"],
+            "items": [{"build_type": service.BUILD_PLATE, "sample_source": service.SOURCE_BEACON_DAPU}],
+        }, scope=plate_only)
+        self.assertEqual([item["build_type"] for item in created["items"]], [service.BUILD_PLATE])
 
     def test_library_code_fill_rejects_a_code_used_by_another_order(self):
         service.save(self.db, {"build_type": service.BUILD_POOLED_BCR, "library_code": "C124"})
@@ -1173,7 +1264,29 @@ def _route_context(method: str, path: str) -> AuditContext:
     return context
 
 
+def _user(permissions, superuser=False) -> UserContext:
+    return UserContext(id=1, username="u", display_name="u", roles=[], permissions=permissions, is_superuser=superuser)
+
+
 class LibraryOrderRouteTests(unittest.TestCase):
+    def test_type_permissions_map_to_build_types(self):
+        self.assertTrue(set(LIBRARY_TYPE_PERMISSIONS.values()) <= set(service.BUILD_TYPE_ORDER))
+
+    def test_type_scope_comes_from_type_permissions(self):
+        plate = "molecular.library.type.plate_single_cell"
+        self.assertIsNone(order_routes._type_scope(_user(["molecular.page.library", "molecular.library.edit"])))
+        self.assertIsNone(order_routes._type_scope(_user([plate], superuser=True)))
+        scoped = _user(["molecular.page.library", plate, "molecular.library.edit"])
+        self.assertEqual(order_routes._type_scope(scoped), frozenset({service.BUILD_PLATE}))
+
+    def test_every_library_route_applies_type_scope(self):
+        def uses_scope(dependant) -> bool:
+            return any(dep.call is order_routes._type_scope or uses_scope(dep) for dep in dependant.dependencies)
+
+        routes = order_routes.router.routes
+        self.assertTrue(routes)
+        self.assertEqual([route.path for route in routes if not uses_scope(route.dependant)], [])
+
     def test_qc_expected_payload_uses_file_manage_permission(self):
         self.assertTrue(
             order_routes._is_qc_conclusion_only(

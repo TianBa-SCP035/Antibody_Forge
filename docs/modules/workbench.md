@@ -13,7 +13,7 @@
 | 队列排序 | `workbenchQueueSortMixin`、`WorkbenchSortHeader`、`WorkbenchSortCell` | 有 | 无 | 无 |
 | 编辑抽屉 | `workbenchDrawerMixin`、`WorkbenchDrawer` | 有 | 有 | 无 |
 | 靶点 | `workbenchTargetMixin`、`WorkbenchTargetSelect` | 有 | 有 | 无 |
-| 顶部面板 | 工作台模式 `workbenchConsole.css`（阶段卡片），实验模式 `workbenchPanel.css`（标题带、统计块、筛选条） | 工作台模式 | 实验模式 | 实验模式 |
+| 顶部面板 | 工作台模式 `workbenchConsole.css`（标题和阶段卡片同一张卡，筛选另一张），实验模式 `workbenchPanel.css`（标题带一张卡、每个统计块各一张小卡、筛选条一张卡） | 工作台模式 | 实验模式 | 实验模式 |
 
 混入顺序：`workbenchExcelMixin` 在前，`workbenchQueueSortMixin` 紧随其后（它把行选择列和首列固定改成 `sort_order`）。不排序的页面把 `excelRowSelectKey` 设成自己的首列（如 `id`）。
 
@@ -48,7 +48,7 @@
 | `workbenchQueueSortMixin.js`、`WorkbenchSortHeader.vue`、`WorkbenchSortCell.vue` | 队列排序：表头切换队列序、排序列显示与改号、工作台视图拖行、锁定提示 | 免疫、发现、合成与验证 |
 | `workbenchDrawerMixin.js`、`WorkbenchDrawer.vue`、`workbenchDrawer.css` | 无遮罩编辑抽屉：逐字段保存、按行排队、兜底补存；外壳负责标题栏、上一条 / 下一条、分组卡片 | 双视图页面 |
 | `WorkbenchDrawerField.vue` | 抽屉标准字段控件：日期、靶点、靶点编号、人员、下拉、多行文本、数字和单行文本 | 双视图页面 |
-| `workbenchPanel.css` | 实验模式顶部面板：标题带、统计块（`stat-*` 色调或 `--stat-accent`）、筛选条 | 文库构建、效价实验列表、流式工单列表、引物库 |
+| `workbenchPanel.css` | 实验模式顶部：渐变标题卡；统计块每个一张白卡片，直接放在页面底色上，左侧色条和阴影取 `stat-*` 色调或 `--stat-accent`；筛选卡。用得少的筛选放进高级操作栏 | 文库构建、效价实验列表、流式工单列表、引物库 |
 | `WorkbenchHeaderMenu.vue`、`workbenchHeaderMenu.js` | 表头取值筛选、条件筛选、颜色筛选和排序 | 上述双视图页面、免疫实验列表、效价实验列表、流式工单列表、引物库 |
 | `WorkbenchStatusEditor.vue` | 行内状态选择 | 双视图页面、文库构建结果页 |
 | `WorkbenchMultiTagEditor.vue` | 行内多选标签 | 发现 |
@@ -274,7 +274,7 @@ Excel 操作范围是当前分页。单值粘贴到多格选区会填满选区�
 
 1. **后端 ORM 模型（有新表时必选）**：在 `bbctg_vita_server/models/<module>.py` 新增模型（`__audit_label__` / `__log_label__` 按需），列补齐中文 `comment`；日期字符串优先用 `models/types.py` 的 `DateString`。`models/__init__.py` 当前无运行时引用，不是必需登记点。
 2. **数据库 DDL（有新表时必选）**：在 `docs/vita-database.sql` 维护当前态 DDL。现网升级 SQL 单独交付，不放仓库。
-3. **模块权限、功能开关与挂载（必选）**：在 `bbctg_vita_server/modules/<module>/permissions.py` 用 `page()` / `action()` / `menu()` / `feature()` / `job()` 声明；在 `modules/registry.py` 的 `ACCESS` / `MOUNTS` 各加一项。`api.py` 按登记表挂载，不必再改中心权限/功能/审计文件。
+3. **模块权限、功能开关与挂载（必选）**：在 `bbctg_vita_server/modules/<module>/permissions.py` 用 `page()` / `action()` / `data()` / `menu()` / `feature()` / `job()` 声明；在 `modules/registry.py` 的 `ACCESS` / `MOUNTS` 各加一项。`api.py` 按登记表挂载，不必再改中心权限/功能/审计文件。
 4. **路由与服务（必选）**：`routes.py` 用 `require(..., audit=)`，不写 try/except；可写字段用 `utils/model_fields.model_fields`，表头用 `header_columns`；业务错误抛 `BusinessError` / `ForbiddenError` / `NotFoundError` / `ConflictError`。
 5. **公共下拉选项授权**：`GET /api/options/targets` 与 `/users` 对任一业务页面权限放行（`BUSINESS_PAGE_CODES`），新页面用 `page()` 声明后自动包含。
 6. **前端路由与 API（必选）**：`src/router/routes/modules/<module>.ts`（`meta.authority` / `featureCode`）；`src/api/<module>.ts` 放权限码常量与接口。`WorkbenchTargetFilter` 的已录入靶点搜索由页面传入函数，不必改公共 options 表。

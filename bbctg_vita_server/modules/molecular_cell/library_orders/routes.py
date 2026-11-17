@@ -31,6 +31,7 @@ from modules.molecular_cell.library_orders.result_upload import (
     TRACE_EXTENSIONS,
     preview_extension,
 )
+from modules.molecular_cell.permissions import LIBRARY_TYPE_PERMISSIONS
 from modules.system.audit_context import use_audit_action
 from modules.system.audit_routes import audit, audit_quiet, permission_action
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
@@ -43,6 +44,16 @@ DETAIL_PERMISSION = "molecular.page.library_detail"
 FILE_PERMISSION = "molecular.library.file.manage"
 QC_CONCLUSION_FIELDS = {"qc_result", "qc_owner", "qc_on", "qc_note"}
 HANDOFF_PERMISSIONS = (EDIT_PERMISSION, "discovery.workbench.edit")
+
+
+def _type_scope(context: UserContext = Depends(get_user_context)) -> service.TypeScope:
+    """配了建库类型权限的人只能看、改这些类型；超级管理员和一个都没配的人不限。"""
+    if context.is_superuser:
+        return None
+    types = frozenset(
+        build_type for code, build_type in LIBRARY_TYPE_PERMISSIONS.items() if code in context.permissions
+    )
+    return types or None
 
 
 OrderFields = fields_request_model("LibraryOrderFields", service.FIELDS)
@@ -123,8 +134,9 @@ def _require_save(context: UserContext, qc_conclusion_only: bool) -> None:
 @router.get("/options", dependencies=[require(PAGE_PERMISSION, DETAIL_PERMISSION)])
 def order_options(
     db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
-    return success(service.get_options(db))
+    return success(service.get_options(db, scope))
 
 
 @router.get("/recorded_targets", dependencies=[require(PAGE_PERMISSION)])
@@ -132,24 +144,27 @@ def recorded_targets(
     keyword: str = Query(default="", max_length=128),
     limit: int = Query(default=DEFAULT_RECORDED_TARGET_LIMIT, ge=1, le=MAX_RECORDED_TARGET_LIMIT),
     db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
-    return success({"items": service.search_recorded_targets(db, keyword, limit)})
+    return success({"items": service.search_recorded_targets(db, keyword, limit, scope)})
 
 
 @router.post("/list", dependencies=[require(PAGE_PERMISSION)])
 def list_orders(
     data: OrderListRequest | None = None,
     db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
-    return success(service.get_list(db, data.model_dump() if data else {}))
+    return success(service.get_list(db, data.model_dump() if data else {}, scope))
 
 
 @router.post("/column_values", dependencies=[require(PAGE_PERMISSION)])
 def order_column_values(
     data: OrderColumnValuesRequest,
     db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
-    return success(service.get_column_values(db, data.model_dump()))
+    return success(service.get_column_values(db, data.model_dump(), scope))
 
 
 @router.get("/by-discovery", dependencies=[require(*HANDOFF_PERMISSIONS)])
@@ -157,12 +172,14 @@ def by_discovery(
     discovery_workbench_id: int | None = Query(default=None),
     discovery_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
     return success(
         service.list_by_discovery(
             db,
             discovery_id=discovery_id,
             discovery_workbench_id=discovery_workbench_id,
+            scope=scope,
         )
     )
 
@@ -173,7 +190,7 @@ def by_discovery(
         audit(
             permission_action(EDIT_PERMISSION, "保存文库构建工单"),
             permission_action(FILE_PERMISSION, "保存文库质检结论"),
-        )
+        ),
     ],
 )
 def save_order(
@@ -181,10 +198,11 @@ def save_order(
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
     context: UserContext = Depends(get_user_context),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
     payload = data.model_dump(exclude_unset=True)
     _require_save(context, data.id is not None and _is_qc_conclusion_only(payload))
-    return success(service.save(db, payload, created_by=actor_name(current_user)))
+    return success(service.save(db, payload, created_by=actor_name(current_user), scope=scope))
 
 
 @router.post(
@@ -193,27 +211,29 @@ def save_order(
         audit(
             permission_action(EDIT_PERMISSION, "批量保存文库构建工单"),
             permission_action(FILE_PERMISSION, "批量保存文库质检结论"),
-        )
+        ),
     ],
 )
 def batch_save_orders(
     data: OrderBatchSaveRequest,
     db: Session = Depends(get_db),
     context: UserContext = Depends(get_user_context),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
     payloads = [item.model_dump(exclude_unset=True) for item in data.items]
     _require_save(context, all(_is_qc_conclusion_only(payload) for payload in payloads))
-    return success(service.batch_save(db, payloads))
+    return success(service.batch_save(db, payloads, scope))
 
 
 @router.post("/export_list", dependencies=[require(PAGE_PERMISSION)])
 def export_orders(
     data: OrderListRequest | None = None,
     db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> Response:
     from utils.excel import xlsx_response
 
-    output, filename = service.export_list_workbook(db, data.model_dump() if data else {})
+    output, filename = service.export_list_workbook(db, data.model_dump() if data else {}, scope)
     return xlsx_response(output, filename)
 
 
@@ -222,24 +242,27 @@ def handoff(
     data: HandoffRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
-    return success(service.handoff(db, data.model_dump(), created_by=actor_name(current_user)))
+    return success(service.handoff(db, data.model_dump(), created_by=actor_name(current_user), scope=scope))
 
 
 @router.post("/delete", dependencies=[require(EDIT_PERMISSION, audit="删除文库构建工单")])
 def delete_order(
     data: OrderIdRequest,
     db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
-    return success(service.delete_order(db, data.id))
+    return success(service.delete_order(db, data.id, scope))
 
 
 @router.post("/files/list", dependencies=[require(DETAIL_PERMISSION), audit_quiet("刷新质检核对", "library_file")])
 def file_list(
     data: FileListRequest,
     db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
-    return success(service.list_files(db, data.order_id))
+    return success(service.list_files(db, data.order_id, scope))
 
 
 @router.post("/files/upload_batch", dependencies=[require(FILE_PERMISSION, audit="批量上传文库构建结果")])
@@ -249,6 +272,7 @@ def file_upload_batch(
     order_id: int | None = Form(default=None),
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
     return success(
         service.upload_batch(
@@ -257,6 +281,7 @@ def file_upload_batch(
             paths,
             actor_name(current_user),
             order_id,
+            scope,
         )
     )
 
@@ -268,34 +293,37 @@ def file_upload_batch(
 def file_preflight(
     data: FilePreflightRequest,
     db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
-    return success(service.preflight_upload(db, data.paths))
+    return success(service.preflight_upload(db, data.paths, scope))
 
 
 @router.post("/files/delete", dependencies=[require(FILE_PERMISSION, audit="删除文库构建结果文件")])
 def file_delete(
     data: FileDeleteRequest,
     db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
     if (data.package_id or data.file_id) and not data.order_id:
         raise HTTPException(status_code=422, detail="请指定工单")
     if data.package_id:
         return success(
-            service.delete_package(db, data.order_id, data.package_id)
+            service.delete_package(db, data.order_id, data.package_id, scope)
         )
     if data.file_id:
         return success(
-            service.delete_stored_file(db, data.order_id, data.file_id)
+            service.delete_stored_file(db, data.order_id, data.file_id, scope)
         )
     if not data.link_id:
         raise HTTPException(status_code=422, detail="请选择要删除的文件")
-    return success(service.delete_file(db, data.link_id, data.order_id))
+    return success(service.delete_file(db, data.link_id, data.order_id, scope))
 
 
 @router.post("/files/update", dependencies=[require(FILE_PERMISSION, audit="更新文库构建结果文件标记")])
 def file_update(
     data: FileUpdateRequest,
     db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
     payload = data.model_dump(exclude_unset=True)
     return success(
@@ -304,6 +332,7 @@ def file_update(
             data.link_id,
             data.order_id,
             payload,
+            scope,
         )
     )
 
@@ -318,11 +347,12 @@ def file_download(
     w: int = Query(default=400, ge=32, le=1600),
     h: int = Query(default=400, ge=32, le=1600),
     db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
 ):
     if file_id:
-        original_name, file_path = service.get_stored_file(db, file_id)
+        original_name, file_path = service.get_stored_file(db, file_id, scope)
     elif id:
-        record, file_path = service.get_download_record(db, id)
+        record, file_path = service.get_download_record(db, id, scope)
         original_name = record.original_name
     else:
         raise ValueError("缺少文件")

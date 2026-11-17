@@ -31,6 +31,71 @@
           :value="name"
         />
       </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.immune_owner"
+        clearable
+        filterable
+        popper-class="titer-select-dropdown"
+        :filter-method="filterMethodFor('immuneOwnerFilterQuery')"
+        v-bind="headerTop('immune_owner', '免疫负责人')"
+        @clear="clearFilterQuery('immuneOwnerFilterQuery')"
+        @change="handleFilter"
+      >
+        <el-option
+          v-for="name in filterOptions(allImmuneOwnerOptions, immuneOwnerFilterQuery)"
+          :key="name"
+          :label="name"
+          :value="name"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.immune_status"
+        clearable
+        filterable
+        popper-class="titer-select-dropdown"
+        :filter-method="filterMethodFor('immuneStatusFilterQuery')"
+        v-bind="headerTop('immune_status', '免疫状态')"
+        @clear="clearFilterQuery('immuneStatusFilterQuery')"
+        @change="handleFilter"
+      >
+        <el-option
+          v-for="item in filterOptions(allImmuneStatusOptions, immuneStatusFilterQuery)"
+          :key="item"
+          :label="item"
+          :value="item"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.priority"
+        clearable
+        v-bind="headerTop('priority', '检测优先级')"
+        @change="handleFilter"
+      >
+        <el-option
+          v-for="item in titerPriorityOptions"
+          :key="item"
+          :label="item"
+          :value="item"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.summary_status"
+        clearable
+        placeholder="小结状态"
+        @change="handleSummaryStatusFilterChange"
+      >
+        <el-option label="未填写小结" value="empty" />
+        <el-option label="已填写小结" value="filled" />
+      </ListFilterSelect>
+      <el-date-picker
+        v-model="testDatesRange"
+        type="daterange"
+        range-separator="至"
+        start-placeholder="检测起始"
+        end-placeholder="检测截止"
+        value-format="YYYY-MM-DD"
+        @change="handleTestDatesFilterChange"
+      />
       <template #actions>
         <el-button type="warning" :icon="Download" @click="handleListExport">
           列表导出
@@ -38,26 +103,26 @@
       </template>
     </AdvancedOpsBar>
 
-    <section class="workbench-panel">
-      <div class="page-header-band">
-        <div class="title-group">
-          <h1 class="page-title">效价实验列表</h1>
-          <p class="page-subtitle">按效价工单安排负责人与检测日期，在列表中维护血清状态和效价小结。</p>
-        </div>
-        <div class="header-actions">
-          <span class="total-count text-secondary">共 {{ total }} 条工单</span>
-          <el-button
-            type="primary"
-            :icon="Plus"
-            :class="{ 'no-permission-btn': !canEditTiterOrder() }"
-            :title="!canEditTiterOrder() ? '您没有权限编辑效价工单' : ''"
-            @click="openCreateDialog"
-          >
-            新增
-          </el-button>
-        </div>
+    <div class="page-header-band">
+      <div class="title-group">
+        <h1 class="page-title">效价实验列表</h1>
+        <p class="page-subtitle">按效价工单安排负责人与检测日期，在列表中维护血清状态和效价小结。</p>
       </div>
+      <div class="header-actions">
+        <span class="total-count text-secondary">共 {{ total }} 条工单</span>
+        <el-button
+          type="primary"
+          :icon="Plus"
+          :class="{ 'no-permission-btn': !canEditTiterOrder() }"
+          :title="!canEditTiterOrder() ? '您没有权限编辑效价工单' : ''"
+          @click="openCreateDialog"
+        >
+          新增
+        </el-button>
+      </div>
+    </div>
 
+    <section class="workbench-panel">
       <div class="stats-strip">
         <div
           class="stat-tile stat-blue stat-tile-interactive"
@@ -120,173 +185,103 @@
           <strong class="stat-value">{{ allOwnerOptions.length }}</strong>
         </div>
       </div>
-
-      <div class="filter-strip list-filter-controls">
-        <el-input
-          v-model="listQuery.project_code"
-          class="filter-item"
-          clearable
-          v-bind="headerTop('project_code', '项目编号')"
-          :prefix-icon="Search"
-          @keyup.enter="handleFilter"
-        />
-        <WorkbenchTargetFilter
-          v-model="listQuery.target_name"
-          class="filter-item"
-          popper-class="titer-select-dropdown"
-          v-bind="headerTop('target_name', '靶点')"
-          :search="fetchTiterOrderRecordedTargets"
-          @change="handleFilter"
-        />
-        <ListFilterSelect
-          v-model="listQuery.assay_method"
-          class="filter-item"
-          clearable
-          filterable
-          popper-class="titer-select-dropdown"
-          :filter-method="filterMethodFor('assayMethodFilterQuery')"
-          v-bind="headerTop('assay_method', '检测方法')"
-          @clear="clearFilterQuery('assayMethodFilterQuery')"
-          @change="handleFilter"
-        >
-          <el-option label="FACS" :value="ASSAY_FILTER_FACS" />
-          <el-option label="ELISA" :value="ASSAY_FILTER_ELISA" />
-          <el-option label="FACS+ELISA" :value="ASSAY_FILTER_FACS_ELISA" />
-          <el-option
-            v-for="item in filterOptions(allAssayMethodOptions, assayMethodFilterQuery)"
-            :key="item"
-            :label="item"
-            :value="item"
-          />
-        </ListFilterSelect>
-        <ListFilterSelect
-          v-model="listQuery.immune_owner"
-          class="filter-item"
-          clearable
-          filterable
-          popper-class="titer-select-dropdown"
-          :filter-method="filterMethodFor('immuneOwnerFilterQuery')"
-          v-bind="headerTop('immune_owner', '免疫负责人')"
-          @clear="clearFilterQuery('immuneOwnerFilterQuery')"
-          @change="handleFilter"
-        >
-          <el-option
-            v-for="name in filterOptions(allImmuneOwnerOptions, immuneOwnerFilterQuery)"
-            :key="name"
-            :label="name"
-            :value="name"
-          />
-        </ListFilterSelect>
-        <ListFilterSelect
-          v-model="listQuery.titer_owner"
-          class="filter-item"
-          clearable
-          filterable
-          popper-class="titer-select-dropdown"
-          :filter-method="filterMethodFor('ownerFilterQuery')"
-          placeholder="效价负责人"
-          @clear="clearFilterQuery('ownerFilterQuery')"
-          @change="handleTiterOwnerFilterChange"
-        >
-          <el-option
-            v-for="name in filterOptions(allOwnerOptions, ownerFilterQuery)"
-            :key="name"
-            :label="name"
-            :value="name"
-          />
-        </ListFilterSelect>
-        <ListFilterSelect
-          v-model="listQuery.immune_status"
-          class="filter-item"
-          clearable
-          filterable
-          popper-class="titer-select-dropdown"
-          :filter-method="filterMethodFor('immuneStatusFilterQuery')"
-          v-bind="headerTop('immune_status', '免疫状态')"
-          @clear="clearFilterQuery('immuneStatusFilterQuery')"
-          @change="handleFilter"
-        >
-          <el-option
-            v-for="item in filterOptions(allImmuneStatusOptions, immuneStatusFilterQuery)"
-            :key="item"
-            :label="item"
-            :value="item"
-          />
-        </ListFilterSelect>
-        <el-date-picker
-          v-model="bloodCollectionRange"
-          class="filter-item"
-          type="daterange"
-          range-separator="至"
-          start-placeholder="采血起始"
-          end-placeholder="采血截止"
-          value-format="YYYY-MM-DD"
-          @change="handleFilter"
-        />
-        <el-date-picker
-          v-model="testDatesRange"
-          class="filter-item"
-          type="daterange"
-          range-separator="至"
-          start-placeholder="检测起始"
-          end-placeholder="检测截止"
-          value-format="YYYY-MM-DD"
-          @change="handleTestDatesFilterChange"
-        />
-        <ListFilterSelect
-          v-model="listQuery.serum_status"
-          class="filter-item"
-          clearable
-          placeholder="血清状态"
-          @change="handleSerumStatusFilterChange"
-        >
-          <el-option
-            v-for="item in allSerumStatusOptions"
-            :key="item"
-            :label="item"
-            :value="item"
-          />
-        </ListFilterSelect>
-        <ListFilterSelect
-          v-model="listQuery.priority"
-          class="filter-item"
-          clearable
-          v-bind="headerTop('priority', '检测优先级')"
-          @change="handleFilter"
-        >
-          <el-option
-            v-for="item in titerPriorityOptions"
-            :key="item"
-            :label="item"
-            :value="item"
-          />
-        </ListFilterSelect>
-        <ListFilterSelect
-          v-model="listQuery.summary_status"
-          class="filter-item"
-          clearable
-          placeholder="小结状态"
-          @change="handleSummaryStatusFilterChange"
-        >
-          <el-option label="未填写小结" value="empty" />
-          <el-option label="已填写小结" value="filled" />
-        </ListFilterSelect>
-        <div class="filter-actions list-filter-actions">
-          <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
-          <button
-            type="button"
-            class="list-advanced-trigger"
-            :class="{ 'is-active': showAdvancedOps }"
-            title="高级操作"
-            @click="showAdvancedOps = !showAdvancedOps"
-          >
-            <el-icon><Tools /></el-icon>
-          </button>
-          <el-button class="list-filter-action-button" type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilter()">查询</el-button>
-          <el-button class="list-filter-action-button" :icon="Refresh" @click="resetFilter">重置</el-button>
-        </div>
-      </div>
     </section>
+
+    <div class="filter-strip list-filter-controls">
+      <el-input
+        v-model="listQuery.project_code"
+        class="filter-item"
+        clearable
+        v-bind="headerTop('project_code', '项目编号')"
+        :prefix-icon="Search"
+        @keyup.enter="handleFilter"
+      />
+      <WorkbenchTargetFilter
+        v-model="listQuery.target_name"
+        class="filter-item"
+        popper-class="titer-select-dropdown"
+        v-bind="headerTop('target_name', '靶点')"
+        :search="fetchTiterOrderRecordedTargets"
+        @change="handleFilter"
+      />
+      <ListFilterSelect
+        v-model="listQuery.assay_method"
+        class="filter-item"
+        clearable
+        filterable
+        popper-class="titer-select-dropdown"
+        :filter-method="filterMethodFor('assayMethodFilterQuery')"
+        v-bind="headerTop('assay_method', '检测方法')"
+        @clear="clearFilterQuery('assayMethodFilterQuery')"
+        @change="handleFilter"
+      >
+        <el-option label="FACS" :value="ASSAY_FILTER_FACS" />
+        <el-option label="ELISA" :value="ASSAY_FILTER_ELISA" />
+        <el-option label="FACS+ELISA" :value="ASSAY_FILTER_FACS_ELISA" />
+        <el-option
+          v-for="item in filterOptions(allAssayMethodOptions, assayMethodFilterQuery)"
+          :key="item"
+          :label="item"
+          :value="item"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.titer_owner"
+        class="filter-item"
+        clearable
+        filterable
+        popper-class="titer-select-dropdown"
+        :filter-method="filterMethodFor('ownerFilterQuery')"
+        placeholder="效价负责人"
+        @clear="clearFilterQuery('ownerFilterQuery')"
+        @change="handleTiterOwnerFilterChange"
+      >
+        <el-option
+          v-for="name in filterOptions(allOwnerOptions, ownerFilterQuery)"
+          :key="name"
+          :label="name"
+          :value="name"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.serum_status"
+        class="filter-item"
+        clearable
+        placeholder="血清状态"
+        @change="handleSerumStatusFilterChange"
+      >
+        <el-option
+          v-for="item in allSerumStatusOptions"
+          :key="item"
+          :label="item"
+          :value="item"
+        />
+      </ListFilterSelect>
+      <el-date-picker
+        v-model="bloodCollectionRange"
+        class="filter-item"
+        type="daterange"
+        range-separator="至"
+        start-placeholder="采血起始"
+        end-placeholder="采血截止"
+        value-format="YYYY-MM-DD"
+        @change="handleFilter"
+      />
+      <div class="filter-actions list-filter-actions">
+        <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
+        <button
+          type="button"
+          class="list-advanced-trigger"
+          :class="{ 'is-active': showAdvancedOps }"
+          title="高级操作"
+          @click="showAdvancedOps = !showAdvancedOps"
+        >
+          <el-icon><Tools /></el-icon>
+        </button>
+        <el-button class="list-filter-action-button" type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilter()">查询</el-button>
+        <el-button class="list-filter-action-button" :icon="Refresh" @click="resetFilter">重置</el-button>
+      </div>
+    </div>
 
     <el-card shadow="never" class="table-card list-table-card">
       <div ref="listTableBody" class="list-table-body">
@@ -3044,8 +3039,7 @@ export default {
 
 .filter-strip {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  grid-template-rows: repeat(2, auto);
+  grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.6fr) auto;
   gap: 8px var(--list-filter-action-gap);
 }
 

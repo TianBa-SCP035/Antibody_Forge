@@ -8,26 +8,26 @@
       </template>
     </AdvancedOpsBar>
 
-    <section class="workbench-panel">
-      <div class="page-header-band">
-        <div class="title-group">
-          <h1 class="page-title">流式工单总览</h1>
-          <p class="page-subtitle">维护样本板、细胞板与下发状态，在列表中查看工单摘要。</p>
-        </div>
-        <div class="header-actions">
-          <span class="total-count">共 {{ total }} 条工单</span>
-          <el-button
-            type="primary"
-            :icon="Plus"
-            :class="{ 'no-permission-btn': !canEdit() }"
-            :title="!canEdit() ? '您没有权限新建流式工单' : ''"
-            @click="createDraft"
-          >
-            新建
-          </el-button>
-        </div>
+    <div class="page-header-band">
+      <div class="title-group">
+        <h1 class="page-title">流式工单总览</h1>
+        <p class="page-subtitle">维护样本板、细胞板与下发状态，在列表中查看工单摘要。</p>
       </div>
+      <div class="header-actions">
+        <span class="total-count">共 {{ total }} 条工单</span>
+        <el-button
+          type="primary"
+          :icon="Plus"
+          :class="{ 'no-permission-btn': !canEdit() }"
+          :title="!canEdit() ? '您没有权限新建流式工单' : ''"
+          @click="createDraft"
+        >
+          新建
+        </el-button>
+      </div>
+    </div>
 
+    <section class="workbench-panel">
       <div class="stats-strip">
         <div
           v-for="item in statusOptions"
@@ -43,88 +43,88 @@
           <strong class="stat-value">{{ stats[item.value] || 0 }}</strong>
         </div>
       </div>
-
-      <div class="filter-strip list-filter-controls">
-        <el-input
-          v-model="listQuery.keyword"
-          class="filter-item filter-keyword"
-          clearable
-          placeholder="订单编号 / 订单名称"
-          :prefix-icon="Search"
-          @keyup.enter="handleFilter"
-        />
-        <ListFilterSelect
-          v-model="listQuery.orderType"
-          class="filter-item"
-          clearable
-          v-bind="headerTop('orderType', '检测类型')"
-          @change="handleFilter"
-        >
-          <el-option
-            v-for="item in orderTypeOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </ListFilterSelect>
-        <ListFilterSelect
-          v-model="listQuery.status"
-          class="filter-item"
-          clearable
-          v-bind="headerTop('status', '状态')"
-          @change="handleFilter"
-        >
-          <el-option
-            v-for="item in statusOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </ListFilterSelect>
-        <el-input
-          v-model="listQuery.project_no"
-          class="filter-item"
-          clearable
-          v-bind="headerTop('project_nos', '项目号')"
-          @keyup.enter="handleFilter"
-        />
-        <el-input
-          v-model="listQuery.target"
-          class="filter-item"
-          clearable
-          placeholder="靶点"
-          @keyup.enter="handleFilter"
-        />
-        <el-input
-          v-model="listQuery.sample_plate_barcode"
-          class="filter-item"
-          clearable
-          v-bind="headerTop('sample_plate_barcodes', '样本板条码')"
-          @keyup.enter="handleFilter"
-        />
-        <el-input
-          v-model="listQuery.cell_plate_barcode"
-          class="filter-item"
-          clearable
-          v-bind="headerTop('cell_plate_barcodes', '细胞板条码')"
-          @keyup.enter="handleFilter"
-        />
-        <button
-          type="button"
-          class="list-advanced-trigger"
-          :class="{ 'is-active': showAdvancedOps }"
-          title="高级操作"
-          @click="showAdvancedOps = !showAdvancedOps"
-        >
-          <el-icon><Tools /></el-icon>
-        </button>
-        <div class="filter-actions list-filter-actions">
-          <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
-          <el-button class="list-filter-action-button" type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilter">查询</el-button>
-          <el-button class="list-filter-action-button" :icon="Refresh" @click="resetFilter">重置</el-button>
-        </div>
-      </div>
     </section>
+
+    <div class="filter-strip list-filter-controls">
+      <el-input
+        v-model="listQuery.keyword"
+        class="filter-item filter-keyword"
+        clearable
+        placeholder="订单编号 / 订单名称"
+        :prefix-icon="Search"
+        @keyup.enter="handleFilter"
+      />
+      <ListFilterSelect
+        v-model="listQuery.orderType"
+        class="filter-item"
+        clearable
+        v-bind="headerTop('orderType', '检测类型')"
+        @change="handleFilter"
+      >
+        <el-option
+          v-for="item in orderTypeOptions"
+          :key="item.value"
+          :label="item.label"
+          :value="item.value"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.status"
+        class="filter-item"
+        clearable
+        v-bind="headerTop('status', '状态')"
+        @change="handleFilter"
+      >
+        <el-option
+          v-for="item in statusOptions"
+          :key="item.value"
+          :label="item.label"
+          :value="item.value"
+        />
+      </ListFilterSelect>
+      <el-input
+        v-model="listQuery.project_no"
+        class="filter-item"
+        clearable
+        v-bind="headerTop('project_nos', '项目号')"
+        @keyup.enter="handleFilter"
+      />
+      <el-input
+        v-model="listQuery.target"
+        class="filter-item"
+        clearable
+        placeholder="靶点"
+        @keyup.enter="handleFilter"
+      />
+      <el-input
+        v-model="listQuery.sample_plate_barcode"
+        class="filter-item"
+        clearable
+        v-bind="headerTop('sample_plate_barcodes', '样本板条码')"
+        @keyup.enter="handleFilter"
+      />
+      <el-input
+        v-model="listQuery.cell_plate_barcode"
+        class="filter-item"
+        clearable
+        v-bind="headerTop('cell_plate_barcodes', '细胞板条码')"
+        @keyup.enter="handleFilter"
+      />
+      <button
+        type="button"
+        class="list-advanced-trigger"
+        :class="{ 'is-active': showAdvancedOps }"
+        title="高级操作"
+        @click="showAdvancedOps = !showAdvancedOps"
+      >
+        <el-icon><Tools /></el-icon>
+      </button>
+      <div class="filter-actions list-filter-actions">
+        <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
+        <el-button class="list-filter-action-button" type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilter">查询</el-button>
+        <el-button class="list-filter-action-button" :icon="Refresh" @click="resetFilter">重置</el-button>
+      </div>
+    </div>
 
     <div v-if="listLoadError" class="preview-banner">
       工单列表加载失败，请稍后重试或联系管理员确认接口与权限。

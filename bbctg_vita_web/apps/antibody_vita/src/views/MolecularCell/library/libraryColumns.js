@@ -184,6 +184,18 @@ export const HANDOFF_METHOD_ROWS = [
     ],
   },
 ]
+/** scope 是后端按建库类型权限给出的可见类型（build_type_scope），null 表示不限；超出范围的类型看不到也建不了。 */
+export function inBuildTypeScope(scope, buildType) {
+  return !scope || scope.includes(buildType)
+}
+export function buildTypeOptions(scope) {
+  return BUILD_TYPE_OPTIONS.filter((item) => inBuildTypeScope(scope, item.value))
+}
+export function handoffRowsInScope(scope) {
+  return HANDOFF_METHOD_ROWS
+    .map((row) => ({ ...row, picks: row.picks.filter((pick) => inBuildTypeScope(scope, pick.buildType)) }))
+    .filter((row) => row.picks.length)
+}
 export function normalizePlateInputText(value) {
   return cleanFieldText(String(value ?? '').replace(/[，,、\t]+/g, '\n'), { keepBreaks: true })
 }

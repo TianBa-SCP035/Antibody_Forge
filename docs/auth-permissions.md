@@ -47,7 +47,7 @@ erDiagram
 | `sys_operation_log` | 操作日志摘要 |
 | `sys_operation_log_item` | 操作日志实体/字段明细 |
 
-**权限点不在库里**：每个模块在自己的 `permissions.py` 用 `page()` / `action()` 声明权限点（名称、类型、资源、403 文案），`modules/registry.py` 汇总成 `PERMISSIONS`；权限管理页、有效权限、操作日志动作名都读它。授权表里代码已不登记的权限码运行时忽略。
+**权限点不在库里**：每个模块在自己的 `permissions.py` 用 `page()` / `action()` / `data()` 声明权限点（名称、类型、资源、403 文案），`modules/registry.py` 汇总成 `PERMISSIONS`；权限管理页、有效权限、操作日志动作名都读它。授权表里代码已不登记的权限码运行时忽略。
 
 DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 
@@ -59,6 +59,7 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 |--------|------|----------|
 | `page` | 页面级 | 控制路由 `meta.authority`、能否进入某页 |
 | `action` | 操作级 | 控制按钮显隐；后端写接口及少量读接口用 `require(...)` 检查 |
+| `data` | 数据范围 | 不放行接口，由模块按它收窄能看、能改的数据（能不能改仍看 `action` 权限），如文库构建按建库类型限定（见 [library-construction.md](./modules/molecular-cell/library-construction.md) §1） |
 
 ### 2.1 血清模块（`serum.*`）
 
@@ -138,6 +139,7 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 |--------|------|------|
 | `molecular.page.library` | page | 文库构建列表与字典查询 |
 | `molecular.library.edit` | action | 两页的工单编辑：保存、取消、Excel、手工新增、删除 |
+| `molecular.library.type.plate_single_cell` | data | 限定单细胞孔板：配了任一类型权限点的人只能看、改这些类型（改仍需编辑或质检权限），一个都没配的不限 |
 | `molecular.page.library_detail` | page | 质控详情、文件列表与下载 |
 | `molecular.library.file.manage` | action | 质检文件，以及质检结论、质检人、质检日期、质检说明 |
 | `molecular.page.primer` | page | 引物库 |

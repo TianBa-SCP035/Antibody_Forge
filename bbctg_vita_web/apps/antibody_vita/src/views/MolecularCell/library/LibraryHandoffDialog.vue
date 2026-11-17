@@ -91,7 +91,7 @@ import { hasAccessCode } from '#/utils/accessCode'
 
 import {
   buildTypeLabel,
-  HANDOFF_METHOD_ROWS,
+  handoffRowsInScope,
   INSTRUMENT_DATE_BUILDS,
   sampleSourceLabel,
 } from './libraryColumns'
@@ -119,6 +119,7 @@ export default {
       saving: false,
       preview: {},
       existing: [],
+      buildTypeScope: null,
       selectedIds: [],
       loadRequestId: 0,
     }
@@ -143,7 +144,7 @@ export default {
       ]
     },
     rows() {
-      return HANDOFF_METHOD_ROWS
+      return handoffRowsInScope(this.buildTypeScope)
     },
     picks() {
       return this.rows.flatMap((row) => row.picks)
@@ -222,6 +223,7 @@ export default {
         if (requestId !== this.loadRequestId || !this.modelValue) return
         this.preview = data?.discovery || {}
         this.existing = data?.items || []
+        this.buildTypeScope = data?.build_type_scope ?? null
         const suggestions = data?.suggested_items || []
         const ids = []
         suggestions.forEach((item) => {

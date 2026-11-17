@@ -9,6 +9,7 @@ from unittest.mock import patch
 from fastapi import BackgroundTasks, UploadFile
 from sqlalchemy import select
 
+from core.errors import ForbiddenError, NotFoundError
 from models.discovery import DiscoveryWorkbench
 from models.molecular_cell import (
     MolecularLibraryOrder,
@@ -358,6 +359,7 @@ class LibraryFileTests(DbTestCase):
                 w=400,
                 h=400,
                 db=self.db,
+                scope=None,
             )
         self.assertEqual(response, {"sample_count": 1})
         self.assertEqual(read.call_args.args[0].suffix, ".ab1")
@@ -1245,6 +1247,109 @@ class LibraryFileTests(DbTestCase):
         after = service.list_files(self.db, self.order["id"])
         self.assertEqual(after["packages"], [])
         self.assertEqual(after["items"], [])
+
+    def test_type_scope_hides_files_of_other_build_types(self):
+        gel = self._upload("gel.png", b"gel-bytes")
+        service.upload_batch(
+            self.db,
+            [
+                UploadFile(filename="C999-1_M13F.seq", file=io.BytesIO(b"ATGC")),
+                UploadFile(filename="明细表.xlsx", file=io.BytesIO(b"sheet")),
+            ],
+            ["pkg/测序结果/C999-1_M13F.seq", "pkg/明细表.xlsx"],
+            "tester",
+            self.order["id"],
+        )
+        package_file = service.list_files(self.db, self.order["id"])["packages"][0]["files"][0]
+
+        plate_only = frozenset({service.BUILD_PLATE})
+        with self.assertRaisesRegex(NotFoundError, service.MISSING_ROW):
+            service.list_files(self.db, self.order["id"], plate_only)
+        with self.assertRaisesRegex(NotFoundError, service.MISSING_FILE):
+            service.get_download_record(self.db, gel["id"], plate_only)
+        with self.assertRaisesRegex(NotFoundError, service.MISSING_FILE):
+            service.get_stored_file(self.db, package_file["file_id"], plate_only)
+
+        own_type = frozenset({service.BUILD_POOLED_BCR})
+        self.assertEqual(service.list_files(self.db, self.order["id"], own_type)["order"]["id"], self.order["id"])
+        self.assertEqual(service.get_download_record(self.db, gel["id"], own_type)[0].id, gel["id"])
+        self.assertEqual(
+            service.get_stored_file(self.db, package_file["file_id"], own_type)[0],
+            package_file["relative_path"].rsplit("/", 1)[-1],
+        )
+
+    def _scoped_pair(self):
+        plate = service.save(self.db, {"build_type": service.BUILD_PLATE, "library_code": "C777"})
+        bcr = service.save(self.db, {"build_type": service.BUILD_POOLED_BCR, "library_code": "C888"})
+        return plate, bcr
+
+    def test_type_scope_batch_upload_skips_orders_outside_scope(self):
+        plate, bcr = self._scoped_pair()
+        result = service.upload_batch(
+            self.db,
+            [
+                UploadFile(filename="C777_M13F.seq", file=io.BytesIO(b"TTTT")),
+                UploadFile(filename="C888_M13F.seq", file=io.BytesIO(b"GGGG")),
+            ],
+            ["C777_M13F.seq", "C888_M13F.seq"],
+            "tester",
+            scope=frozenset({service.BUILD_PLATE}),
+        )
+        self.assertEqual([item["order_id"] for item in result["items"]], [plate["id"]])
+        self.assertIn(
+            "建库编号 C888 不在你可查看的建库类型内",
+            [issue["reason"] for issue in result["summary"][0]["issues"]],
+        )
+        self.assertEqual(service.list_files(self.db, bcr["id"])["items"], [])
+
+    def test_type_scope_guards_file_writes_of_other_types(self):
+        gel = self._upload("gel.png", b"gel-bytes")
+        plate_only = frozenset({service.BUILD_PLATE})
+        with self.assertRaisesRegex(NotFoundError, service.MISSING_ROW):
+            service.upload_batch(
+                self.db,
+                [UploadFile(filename="x.png", file=io.BytesIO(b"x"))],
+                ["x.png"],
+                "tester",
+                self.order["id"],
+                plate_only,
+            )
+        with self.assertRaisesRegex(NotFoundError, service.MISSING_ROW):
+            service.update_file_link(self.db, gel["id"], self.order["id"], {"is_final_qc": True}, plate_only)
+        with self.assertRaisesRegex(NotFoundError, service.MISSING_FILE):
+            service.delete_file(self.db, gel["id"], None, plate_only)
+        self.assertIsNotNone(self.db.get(MolecularLibraryResultLink, gel["id"]))
+
+    def test_type_scope_does_not_change_packages_shared_with_other_types(self):
+        plate, bcr = self._scoped_pair()
+        paths = ["pkg/测序结果/C777_M13F.seq", "pkg/测序结果/C888_M13F.seq", "pkg/明细表.xlsx"]
+
+        def files(*extra):
+            return [
+                UploadFile(filename="C777_M13F.seq", file=io.BytesIO(b"TTTT")),
+                UploadFile(filename="C888_M13F.seq", file=io.BytesIO(b"GGGG")),
+                UploadFile(filename="明细表.xlsx", file=io.BytesIO(b"sheet")),
+                *extra,
+            ]
+
+        shared_id = service.upload_batch(self.db, files(), paths, "tester")["summary"][0]["id"]
+        plate_only = frozenset({service.BUILD_PLATE})
+        extended = service.upload_batch(
+            self.db,
+            files(UploadFile(filename="C777-2_M13F.seq", file=io.BytesIO(b"AAAA"))),
+            [*paths, "pkg/测序结果/C777-2_M13F.seq"],
+            "tester",
+            scope=plate_only,
+        )
+        self.assertNotEqual(extended["summary"][0]["id"], shared_id)
+        self.assertEqual(len(service._package_file_rows(self.db, shared_id)), 3)
+
+        shared_file = service._package_file_rows(self.db, shared_id)[0]
+        with self.assertRaises(ForbiddenError):
+            service.delete_stored_file(self.db, plate["id"], shared_file.id, plate_only)
+        unlinked = service.delete_package(self.db, plate["id"], shared_id, plate_only)
+        self.assertEqual((unlinked["unlinked"], unlinked["package_deleted"]), (1, False))
+        self.assertEqual(service.list_files(self.db, bcr["id"])["packages"][0]["id"], shared_id)
 
     def test_qc_page_package_stays_on_current_order_even_if_codes_match_others(self):
         current = self._barcode_order("C456", i5_sequence="CCCC")

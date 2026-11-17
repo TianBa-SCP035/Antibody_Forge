@@ -440,13 +440,10 @@
                     <span v-if="item.short_sequence" class="catalog-sequence">{{ item.short_sequence }}</span>
                   </el-option>
                 </el-select>
-                <el-input
+                <WorkbenchLineInput
                   v-else-if="field.type === 'plate-list'"
                   :model-value="plateDraft"
-                  type="textarea"
-                  :autosize="{ minRows: 1, maxRows: 6 }"
-                  resize="none"
-                  placeholder="输入板号；回车、逗号或制表符均可分隔"
+                  placeholder="一行一个板号"
                   :disabled="!canEdit"
                   @update:model-value="onPlateDraftInput"
                   @blur="persistRow(editingRow, 'plate_nos')"
@@ -528,6 +525,7 @@ import {
   WorkbenchHeaderFilterChip,
   WorkbenchHeaderMenu,
   WorkbenchInlineDatePicker,
+  WorkbenchLineInput,
   WorkbenchPriorityCell,
   WorkbenchSheet,
   workbenchCrudMixin,
@@ -562,7 +560,6 @@ import {
   isSheetFieldApplicable,
   LIBRARY_VIEW_PREFS_KEY,
   libraryFieldOptions,
-  normalizePlateInputText,
   optionsForBuild,
   orderEditorSections,
   plateNumbersFromText,
@@ -683,6 +680,7 @@ export default {
     WorkbenchDrawerField,
     WorkbenchHeaderFilterChip,
     WorkbenchHeaderMenu,
+    WorkbenchLineInput,
     WorkbenchSheet,
     WorkbenchTargetFilter,
     ElButton,
@@ -900,6 +898,9 @@ export default {
       if (!isIndexFieldRecorded(row?.build_type, row?.index_mode, key)) {
         return `当前 Barcode 方式不填写「${label}」`
       }
+      if (key === 'plate_nos' && Array.isArray(row?.plate_nos) && row.plate_nos.length > 1) {
+        return '单元格只能写一行，多个板号请在详情里修改'
+      }
       return this.sheetReadonlyLockReason(key)
     },
     async onBuildTypeFilter(value) {
@@ -1104,8 +1105,8 @@ export default {
     },
     onPlateDraftInput(value) {
       if (!this.editingRow) return
-      this.plateDraft = normalizePlateInputText(value)
-      this.editingRow.plate_nos = plateNumbersFromText(this.plateDraft)
+      this.plateDraft = value
+      this.editingRow.plate_nos = plateNumbersFromText(value)
     },
     openSourceDiscovery(discoveryId) {
       const id = String(discoveryId || '').trim()
@@ -1204,7 +1205,7 @@ export default {
       return column.edit === 'catalog'
     },
     sheetCellValue(row, key) {
-      return key === 'plate_nos' ? (row.plate_nos || []).join('、') : row[key]
+      return key === 'plate_nos' ? plateNumbersText(row.plate_nos) : row[key]
     },
     sheetFormatter(column) {
       return column.key === 'plate_nos' ? this.formatSheetCellValue : this.sheetTypeFormatter(column)
@@ -1220,7 +1221,7 @@ export default {
     },
     coerceSheetValue(key, text, row) {
       if (key === 'plate_nos') {
-        return { ok: true, value: plateNumbersFromText(Array.isArray(text) ? text.join(',') : text) }
+        return { ok: true, value: plateNumbersFromText(Array.isArray(text) ? text.join('\n') : text) }
       }
       if (key === 'i7_sequence' || key === 'i5_sequence') return this.normalizeSheetSequence(key, text)
       if (key === 'library_code') return this.coerceSheetField(key, String(text ?? '').toUpperCase(), row)

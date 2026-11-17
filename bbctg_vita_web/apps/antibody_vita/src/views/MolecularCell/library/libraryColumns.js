@@ -196,11 +196,9 @@ export function handoffRowsInScope(scope) {
     .map((row) => ({ ...row, picks: row.picks.filter((pick) => inBuildTypeScope(scope, pick.buildType)) }))
     .filter((row) => row.picks.length)
 }
-export function normalizePlateInputText(value) {
-  return cleanFieldText(String(value ?? '').replace(/[，,、\t]+/g, '\n'), { keepBreaks: true })
-}
+/** 一行一个板号，行内原样保留（逗号、点号常用来写同前缀的多块板），与后端、发现台交接同一规则。 */
 export function plateNumbersFromText(value) {
-  return [...new Set(normalizePlateInputText(value).split('\n').map((item) => item.trim()).filter(Boolean))]
+  return [...new Set(cleanFieldText(value, { keepBreaks: true }).split('\n').map((item) => item.trim()).filter(Boolean))]
 }
 export function plateNumbersText(values) {
   return (Array.isArray(values) ? values : []).map((item) => String(item || '').trim()).filter(Boolean).join('\n')
@@ -375,7 +373,7 @@ export const FIELDS = defineFields({
   plate_nos: {
     label: '板号',
     header: allValues('csv'),
-    list: { minWidth: 150 },
+    list: { minWidth: 150, keepLineBreaks: true, format: plateNumbersText },
     sheet: { minWidth: 150 },
     drawer: { type: 'plate-list', wide: true },
   },

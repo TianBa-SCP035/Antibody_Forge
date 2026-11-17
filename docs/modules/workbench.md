@@ -48,6 +48,7 @@
 | `workbenchQueueSortMixin.js`、`WorkbenchSortHeader.vue`、`WorkbenchSortCell.vue` | 队列排序：表头切换队列序、排序列显示与改号、工作台视图拖行、锁定提示 | 免疫、发现、合成与验证 |
 | `workbenchDrawerMixin.js`、`WorkbenchDrawer.vue`、`workbenchDrawer.css` | 无遮罩编辑抽屉：逐字段保存、按行排队、兜底补存；外壳负责标题栏、上一条 / 下一条、分组卡片 | 双视图页面 |
 | `WorkbenchDrawerField.vue` | 抽屉标准字段控件：日期、靶点、靶点编号、人员、下拉、多行文本、数字和单行文本 | 双视图页面 |
+| `WorkbenchLineInput.vue` | 一行一项的多行文本框：不自动折行，框高等于行数，不显示滚动条，长行用光标、拖选、Shift+滚轮或触控板左右滚动，失焦回行首；用法同 `ElInput` | 发现（板号、抗原、冲击免细胞）、文库构建（板号） |
 | `workbenchPanel.css` | 实验模式顶部：渐变标题卡；统计块每个一张白卡片，直接放在页面底色上，左侧色条和阴影取 `stat-*` 色调或 `--stat-accent`；筛选卡。用得少的筛选放进高级操作栏 | 文库构建、效价实验列表、流式工单列表、引物库 |
 | `WorkbenchHeaderMenu.vue`、`workbenchHeaderMenu.js` | 表头取值筛选、条件筛选、颜色筛选和排序 | 上述双视图页面、免疫实验列表、效价实验列表、流式工单列表、引物库 |
 | `WorkbenchStatusEditor.vue` | 行内状态选择 | 双视图页面、文库构建结果页 |
@@ -65,7 +66,7 @@
 页面要做的：
 
 - 混入 `workbenchDrawerMixin`，模板放 `WorkbenchDrawer`，`#field` 插槽里标准字段一行 `<WorkbenchDrawerField v-bind="drawerFieldBind(field)" />`，页面特有的控件（多选标签、引物矩阵等）用 `v-if` 写在它前面；`#actions` 放行操作按钮，`#meta` 放标题下摘要，明细表等放 `#after-fields`。
-- 字段定义的 `type` 决定控件：`date`、`target`（靶点选择，联动名称和编号）、`target_codes`（只读编号）、`user`、`select`、`textarea`、`number`，缺省单行文本；`sync: true` 的文本与同排对齐高度（同排只有一个时按内容撑高），`maxlength`、`resize`、`clearable: false`、`allowCreate` 写在字段上。终态行的排序号显示 `-`。
+- 字段定义的 `type` 决定控件：`date`、`target`（靶点选择，联动名称和编号）、`target_codes`（只读编号）、`user`、`select`、`textarea`、`number`，缺省单行文本；`sync: true` 的文本与同排对齐高度（同排只有一个时按内容撑高），`nowrap: true` 的多行文本一行一项、改用 `WorkbenchLineInput`，`maxlength`、`resize`、`clearable: false`、`allowCreate` 写在字段上。终态行的排序号显示 `-`。
 - 字段控件的钩子都有默认实现，按需覆写：`drawerFieldOptions(field, row)`（下拉选项，默认 `field.options`）、`drawerUserOptions(field, row)`、`drawerSelectClass(field, row)`（下拉色调；优先级默认按档位着色，页面只管自己的字段）、`drawerSelectProps(field, row)`（可清空、可搜索、可新建）、`isDrawerFieldDisabled(field, row)`（默认看 `canEditField`）、`drawerFieldValue(field, row)`。
 - 外观参数：`size` 宽度默认 `520px`、`label-width` 默认 `80px`，字段特别多的页面自行加宽（文库构建 560px / 92px）；分组小标题默认不带色条，要的页面写 `title-mark`（文库构建），单个分组在 `editorSections` 里写 `mark: true` / `mark: false` 覆盖。
 - 提供 `editorSections`（名字固定，兜底补存按它找字段；开发环境缺了会在控制台警告）、`canEditField(row, key)`。列表行原样使用接口返回值，数组、状态和优先级默认值由后端序列化和数据库默认值保证，前端不补形。

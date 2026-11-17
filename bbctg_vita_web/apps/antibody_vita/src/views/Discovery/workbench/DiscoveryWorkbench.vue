@@ -441,11 +441,8 @@
           @change="persistRow(editingRow, 'screening_methods')"
         />
         <div v-else-if="field.type === 'lines'" class="line-field">
-          <el-input
+          <WorkbenchLineInput
             v-model="editingRow[field.key]"
-            type="textarea"
-            resize="none"
-            :autosize="{ minRows: 1, maxRows: 4 }"
             :disabled="!canEdit"
             @focus="openLineSuggest(field, $event)"
             @input="placeLineSuggest($event)"
@@ -513,6 +510,7 @@ import {
   WorkbenchHeaderFilterChip,
   WorkbenchHeaderMenu,
   WorkbenchInlineDatePicker,
+  WorkbenchLineInput,
   WorkbenchPriorityCell,
   WorkbenchSheet,
   workbenchCrudMixin,
@@ -666,6 +664,7 @@ export default {
     WorkbenchHeaderFilterChip,
     WorkbenchHeaderMenu,
     WorkbenchInlineDatePicker,
+    WorkbenchLineInput,
     WorkbenchPriorityCell,
     WorkbenchSheet,
     Search,

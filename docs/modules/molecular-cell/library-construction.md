@@ -52,7 +52,7 @@
 | `owner`、`notebook_no`、`library_batch_no` | 负责人、实验记录本号、建库批号 | 最长 64 字符；`library_batch_no` 仅噬菌体展示和噬菌体 NGS 使用 |
 | `received_on`、`instrument_on`、`blood_collected_on`、`started_at`、`finished_at`、`qc_on` | 实验与排程日期 | `DATE`（`YYYY-MM-DD`） |
 | `positive_cell_count`、`fragment_size_bp` | 阳性细胞数、片段大小 | 自由文本（阳性细胞数最长 255 字符，片段大小 64 字符），按实验员原文保存并保留换行；抽屉与详情页并排时两框同高 |
-| `plate_nos` | 板号 | JSON 字符串数组；前端单框输入，回车、中英文逗号、顿号、制表符均按分隔符解析去重 |
+| `plate_nos` | 板号 | JSON 字符串数组；一行一个板号，行内原样保留（逗号、点号等不当分隔符），去首尾空格、空行和重复行。抽屉/详情输入框不自动折行，长行左右滚动；Excel 视图只能直接改空或单个板号的单元格，多个板号在抽屉/详情里改；导出按行写在同一单元格 |
 | `cell_type` | 细胞类型 | 最长 64 字符；`plasma_ngs` 与 `phage_display` 限定为 `全细胞`、`浆细胞`、`流穿液`（`plasma_ngs` 为空时默认写入 `浆细胞`） |
 | `target_forms` | 靶点形式 | 仅 `phage_display` 使用，单选：`多穿`、`分泌`、`I型`、`II型` |
 | `source_experiment_type`、`project_goal` | 实验类型、实验目标 | 仅 `phage_display` 与 `phage_ngs` 使用；实验类型单选 `抗体发现` 或 `亲和力改造`，实验目标最长 1000 字符（保留换行） |
@@ -231,7 +231,7 @@
     - `RL`、`RLB/C`、`RLSJL`、`RLKO`、`RLCKO`、`RLDF` → `lite`（`Lite`）；
     - `RN`、`RNKO`、`RNVR`、`RNVM`、`RNVMKO` → `nano`（`Nano`）；
     - 其余品系（如 `RM`、`RMB/C`、`RMSJL`、`RMKO`、`RMCKO` 及自填项）不自动推导或覆盖已有 `sample_type`。手动修改 `sample_type` 不会反向改动 `mouse_strain`。
-  - **上机日期与细胞数**：`plate_single_cell`、`pooled_bcr`、`pooled_barcode`、`phage_display` 四类交接时必须先在发现台填写 `harvest_date`（剖鼠日期），交接后写入 `instrument_on`；`plasma_ngs` 有 `harvest_date` 时亦写入 `instrument_on`，无日期不阻断交接。`plate_single_cell`、`pooled_bcr`、`pooled_barcode`、`plasma_ngs`、`peripheral_blood_bcr` 自动复制 `positive_cell_count`。
+  - **上机日期与细胞数**：`plate_single_cell`、`pooled_bcr`、`pooled_barcode`、`phage_display` 四类交接时必须先在发现台填写 `harvest_date`（剖鼠日期），交接后写入 `instrument_on`；`plasma_ngs` 有 `harvest_date` 时亦写入 `instrument_on`，无日期不阻断交接。`plate_single_cell`、`pooled_bcr`、`pooled_barcode`、`plasma_ngs`、`peripheral_blood_bcr` 自动复制 `positive_cell_count`。`plate_single_cell` 按行复制发现台 `plate_nos`（一行一个板号，行内原样），其余类型不带板号。
 - **发现状态推进与删除保护**：
   - 交接创建包含 `phage_display` 且发现安排处于 `规划中`、`待冲击`、`待剖鼠`、`待建库` 时，发现状态推进为 `待噬菌体`；否则若处于 `规划中`、`待冲击`、`待剖鼠`，推进为 `待建库`。文库构建完成不会自动将发现安排推进为 `待测序`。
   - 只要 `molecular_library_order` 中存在 `source_discovery_id = discovery_id` 的工单（含 `已取消`），发现工作台即禁止删除该发现安排，需先删除关联的建库工单。

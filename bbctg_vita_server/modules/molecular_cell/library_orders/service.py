@@ -504,6 +504,25 @@ def _normalize_string_list(value: Any, label: str) -> list[str]:
     return result
 
 
+def _normalize_plate_nos(value: Any) -> list[str]:
+    """一行一个板号，行内原样保留：逗号、点号等常用来写同前缀的多块板，不能当分隔符。发现台交接沿用同一规则。"""
+    if value in (None, "", []):
+        return []
+    if isinstance(value, str):
+        values = [value]
+    elif isinstance(value, list):
+        values = value
+    else:
+        raise ValueError("板号必须是数组")
+    result: list[str] = []
+    for item in values:
+        for line in str(item).splitlines():
+            text = line.strip()
+            if text and text not in result:
+                result.append(text)
+    return result
+
+
 def _normalize_sequence(field: str, value: Any) -> str | None:
     text = clean_text(FIELDS[field], value)
     if not text:
@@ -624,7 +643,7 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
     if "target_forms" in data:
         row.target_forms = _normalize_target_form(data.get("target_forms"))
     if "plate_nos" in data:
-        row.plate_nos = _normalize_string_list(data.get("plate_nos"), "板号")
+        row.plate_nos = _normalize_plate_nos(data.get("plate_nos"))
 
     if "mouse_strain" in data:
         row.mouse_strain = _normalize_mouse_strain(data.get("mouse_strain"))
@@ -1655,7 +1674,7 @@ def handoff(
             status=STATUS_PENDING,
             priority=row.priority,
             target_forms=None,
-            plate_nos=[],
+            plate_nos=_normalize_plate_nos(row.plate_nos) if "plate_nos" in PROFILE_FIELDS[build_type] else [],
             created_by=(created_by or "").strip() or None,
         )
         db.add(order)
@@ -1759,6 +1778,7 @@ def export_list_workbook(db: Session, data: dict[str, Any], scope: TypeScope = N
             item["sample_type"], item["sample_type"]
         )
         item["index_mode"] = INDEX_MODE_LABELS.get(item["index_mode"], item["index_mode"])
+        item["plate_nos"] = cell_text(item["plate_nos"], "\n")
         table_rows.append(
             [cell_text(item.get(key)) for _, key in EXPORT_COLUMNS]
         )

@@ -606,6 +606,36 @@ class LibraryOrderTests(DbTestCase):
         )
         self.assertEqual(updated["plate_nos"], ["P01", "P03"])
 
+    def test_plate_numbers_are_one_per_line_and_kept_verbatim(self):
+        from openpyxl import load_workbook
+
+        saved = service.save(self.db, {
+            "build_type": service.BUILD_PLATE,
+            "plate_nos": " 20261110-PD1-D-93,94 \r\n\n20261112-PTK7-BC-67.68、69\n20261110-PD1-D-93,94",
+        })
+        self.assertEqual(saved["plate_nos"], ["20261110-PD1-D-93,94", "20261112-PTK7-BC-67.68、69"])
+        output, _ = service.export_list_workbook(self.db, {})
+        sheet = load_workbook(output).active
+        column = [cell.value for cell in sheet[1]].index("板号") + 1
+        self.assertEqual(sheet.cell(row=2, column=column).value, "20261110-PD1-D-93,94\n20261112-PTK7-BC-67.68、69")
+
+    def test_handoff_carries_plate_numbers_line_by_line_to_plate_orders(self):
+        row = self._discovery(plate_nos="20261110-PD1-D-93,94\n20261112-PTK7-BC-67.68, 20261112-PTK7-D-69")
+        created = service.handoff(self.db, {
+            "discovery_workbench_id": row["id"],
+            "items": [
+                {"build_type": service.BUILD_PLATE, "sample_source": service.SOURCE_BEACON_DAPU},
+                {"build_type": service.BUILD_POOLED_BCR, "sample_source": service.SOURCE_DAPU_TUBE},
+            ],
+        })["items"]
+        self.assertEqual(
+            {item["build_type"]: item["plate_nos"] for item in created},
+            {
+                service.BUILD_PLATE: ["20261110-PD1-D-93,94", "20261112-PTK7-BC-67.68, 20261112-PTK7-D-69"],
+                service.BUILD_POOLED_BCR: [],
+            },
+        )
+
     def test_profile_rejects_wrong_route(self):
         with self.assertRaisesRegex(ValueError, "不匹配"):
             service.save(

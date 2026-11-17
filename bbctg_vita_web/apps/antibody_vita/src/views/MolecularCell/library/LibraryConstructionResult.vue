@@ -792,13 +792,10 @@
                       :value="item.value || item"
                     />
                   </el-select>
-                  <el-input
+                  <WorkbenchLineInput
                     v-else-if="field.type === 'plate-list'"
                     :model-value="plateDraft"
-                    type="textarea"
-                    :autosize="{ minRows: 1, maxRows: 6 }"
-                    resize="none"
-                    placeholder="输入板号；回车、逗号或制表符均可分隔"
+                    placeholder="一行一个板号"
                     :disabled="!canEdit"
                     @update:model-value="onPlateDraftInput"
                     @blur="persist('plate_nos')"
@@ -889,6 +886,7 @@ import {
   splitTags,
   syncTextareaHeights,
   WorkbenchDrawerField,
+  WorkbenchLineInput,
   WorkbenchStatusEditor,
   WorkbenchTargetSelect,
 } from '#/components/workbench'
@@ -909,7 +907,6 @@ import {
   buildTypeLabel,
   buildTypeOptions,
   FIELDS,
-  normalizePlateInputText,
   libraryFieldOptions,
   orderEditorSections,
   plateNumbersFromText,
@@ -990,6 +987,7 @@ export default {
     UploadFilled,
     WorkbenchStatusEditor,
     WorkbenchDrawerField,
+    WorkbenchLineInput,
     WorkbenchTargetSelect,
     ZoomIn,
     ZoomOut,
@@ -2431,8 +2429,8 @@ export default {
     },
     onPlateDraftInput(value) {
       if (!this.canEdit) return
-      this.plateDraft = normalizePlateInputText(value)
-      this.order.plate_nos = plateNumbersFromText(this.plateDraft)
+      this.plateDraft = value
+      this.order.plate_nos = plateNumbersFromText(value)
     },
   },
 }

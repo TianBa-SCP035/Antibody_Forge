@@ -87,7 +87,7 @@ export const FIELDS = defineFields({
     header: { type: 'text', values: 'search', top: { query: 'screening_antigen', kind: 'contains' } },
     list: { show: true, minWidth: 120 },
     sheet: { minWidth: 140 },
-    drawer: { wide: true, resize: 'none' },
+    drawer: { wide: true, nowrap: true },
   },
   boost_antigen: {
     label: '冲击免抗原',
@@ -210,7 +210,7 @@ export const FIELDS = defineFields({
     header: { type: 'text', values: 'search', top: { query: 'immune_antigen', kind: 'contains' } },
     list: { minWidth: 140 },
     sheet: { minWidth: 140 },
-    drawer: { wide: true, resize: 'none' },
+    drawer: { wide: true, nowrap: true },
   },
   boost_cells: {
     label: '冲击免细胞',
@@ -219,7 +219,7 @@ export const FIELDS = defineFields({
     header: { type: 'text', values: 'search' },
     list: { minWidth: 140 },
     sheet: { minWidth: 140 },
-    drawer: { wide: true, resize: 'none' },
+    drawer: { wide: true, nowrap: true },
   },
   positive_cell_count: {
     label: '阳性细胞数',
@@ -237,7 +237,7 @@ export const FIELDS = defineFields({
     header: { type: 'text', values: 'search', top: { query: 'plate_nos', kind: 'contains' } },
     list: { minWidth: 140 },
     sheet: { minWidth: 140 },
-    drawer: { wide: true },
+    drawer: { wide: true, nowrap: true },
   },
 })
 

@@ -8,6 +8,7 @@ import UserSelect from '#/components/UserSelect.vue'
 
 import { optionValue } from './fieldSchema'
 import { uniqueTargetCodes } from './targetOptions'
+import WorkbenchLineInput from './WorkbenchLineInput.vue'
 import WorkbenchTargetSelect from './WorkbenchTargetSelect.vue'
 
 /**
@@ -19,7 +20,8 @@ import WorkbenchTargetSelect from './WorkbenchTargetSelect.vue'
  * 靶点选完 target-change；
  * 文本输入时 input、失焦时 blur。
  * 日期选中时先 input 写回：ElDatePicker 关面板时用传入的 modelValue 判断是否 change，不写回就永远不触发保存。
- * 字段定义可用：maxlength；textarea 的 resize；sync 并排等高（单行文本也按一行高的多行框渲染）；type: 'number' 数字框。
+ * 字段定义可用：maxlength；textarea 的 resize、nowrap（一行一项的字段，改用 WorkbenchLineInput）；
+ * sync 并排等高（单行文本也按一行高的多行框渲染）；type: 'number' 数字框。
  */
 defineOptions({ name: 'WorkbenchDrawerField' })
 
@@ -154,6 +156,14 @@ const numberMin = computed(() => {
       :value="item.value"
     />
   </ElSelect>
+  <WorkbenchLineInput
+    v-else-if="kind === 'textarea' && field.nowrap"
+    :model-value="value"
+    :maxlength="field.maxlength"
+    :disabled="disabled"
+    @update:model-value="emit('input', $event)"
+    @blur="emit('blur')"
+  />
   <ElInput
     v-else-if="kind === 'textarea'"
     :model-value="value"

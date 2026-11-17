@@ -47,7 +47,7 @@ erDiagram
 | `sys_operation_log` | 操作日志摘要 |
 | `sys_operation_log_item` | 操作日志实体/字段明细 |
 
-**权限点不在库里**：每个模块在自己的 `permissions.py` 用 `page()` / `action()` 声明权限点（名称、类型、资源、403 文案），`modules/registry.py` 汇总成 `PERMISSIONS`；权限管理页、有效权限、操作日志动作名都读它。授权表里代码已不登记的权限码运行时忽略。已有环境里旧版的 `sys_permission`、`sys_permission_api` 两张表不再读取，保留不影响功能。
+**权限点不在库里**：每个模块在自己的 `permissions.py` 用 `page()` / `action()` 声明权限点（名称、类型、资源、403 文案），`modules/registry.py` 汇总成 `PERMISSIONS`；权限管理页、有效权限、操作日志动作名都读它。授权表里代码已不登记的权限码运行时忽略。
 
 DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 
@@ -242,7 +242,7 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 | 靶点搜索 | `serum.page.edit` 或 `serum.page.workbench` |
 | 保存项目（有 id） | 当前负责人或审核人且不改负责人 → `serum.project.edit`；否则 `serum.project.edit_all` |
 | 新建项目 | `serum.project.create`；无 `edit_all` 时只能把自己设为 `owner` |
-| 改实验记录本 / 审核人 | 与方案编辑相同：`serum.project.edit_all`，或 `serum.project.edit` 且为项目负责人 |
+| 改实验记录本 / 审核人 | 与方案编辑相同：`serum.project.edit_all`，或 `serum.project.edit` 且为项目负责人或审核人 |
 | 改笼位 | `serum.cage.update` + 项目负责人或 `edit_all` |
 | 改状态 | 项目负责人：`status.update` 或 `titer.edit`；非负责人：`status.update`+`edit_all`，或 `titer.edit`+`titer.edit_all` |
 | 鼠号分组查询 / 鼠号明细保存 | `serum.project.edit` / `edit_all` / `serum.titer.edit` / `titer.edit_all` **任一**；有意不校验项目负责人，因为效价工单的选鼠向导（`TiterMouseSelectWizard`）也给效价负责人用 |

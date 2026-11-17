@@ -193,7 +193,6 @@ def save_workbench_scheme(
 def delete_workbench(
     data: WorkbenchIdRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
     context: UserContext = Depends(get_user_context),
 ) -> dict:
     service.delete(db, data.id, edit_scopes=_edit_scopes(context))
@@ -243,7 +242,6 @@ def copy_workbench(
 def reorder_workbench(
     data: WorkbenchReorderRequest,
     db: Session = Depends(get_db),
-    current_user: SysUser = Depends(get_current_user),
     context: UserContext = Depends(get_user_context),
 ) -> dict:
     return success(service.reorder(db, data.moved_id, data.target_id, edit_scopes=_edit_scopes(context)))

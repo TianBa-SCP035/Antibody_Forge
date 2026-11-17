@@ -191,10 +191,7 @@ def save_synthesis_order_batch(
     context: UserContext = Depends(get_user_context),
 ) -> dict:
     scopes = _user_scopes(context)
-    payload = {
-        "items": [item.model_dump(exclude_unset=True) for item in data.items],
-        "confirm_complete": data.confirm_complete,
-    }
+    payload = {"items": [item.model_dump(exclude_unset=True) for item in data.items]}
     return _save_confirming(
         db,
         lambda: service.save_batch(

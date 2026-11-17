@@ -815,17 +815,18 @@ def label_fields(model: type) -> tuple[str, ...]:
 def all_label_fields() -> tuple[str, ...]:
     """接口返回值里找对象标题用：各模型声明的业务编号，再加通用名称字段。
 
+    业务编号按在各模型声明里的最靠前位置排序，同位置按字段名，保证每次启动顺序一致。
     通用名称字段（name 等）即使写进了某个模型的 __audit_label__，这里也一律放最后，
     避免扫通用响应时误用别的实体的 name。不缓存：等全部模型导入后再取。
     """
     generic = set(_GENERIC_LABEL_FIELDS)
-    declared = (
-        field
-        for mapper in Base.registry.mappers
-        for field in getattr(mapper.class_, "__audit_label__", ())
-        if field not in generic
-    )
-    return tuple(dict.fromkeys((*declared, *_GENERIC_LABEL_FIELDS)))
+    rank: dict[str, int] = {}
+    for mapper in Base.registry.mappers:
+        for index, name in enumerate(getattr(mapper.class_, "__audit_label__", ())):
+            if name not in generic:
+                rank[name] = min(index, rank.get(name, index))
+    declared = sorted(rank, key=lambda name: (rank[name], name))
+    return (*declared, *_GENERIC_LABEL_FIELDS)
 
 
 def _entity_label(obj: Any) -> str | None:

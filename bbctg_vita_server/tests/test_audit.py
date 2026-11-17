@@ -14,6 +14,7 @@ from starlette.routing import compile_path
 from support import DbTestCase
 
 import modules.mega_automation.routes as mega_routes
+import modules.molecular_cell.library_orders.routes as library_routes
 import modules.system.audit_config as audit_config
 import modules.system.audit_middleware as audit_middleware
 import modules.system.audit_session as audit_session
@@ -29,7 +30,7 @@ from db.session import AuditedSession, Base
 from models.immunology import SerumTiterTarget
 from models.molecular_cell import MolecularLibraryOrder
 from models.system import SysOperationLog, SysOperationLogItem, SysUser, SysUserRole
-from modules.auth.permissions import require
+from modules.auth.permissions import UserContext, require
 from modules.system.audit import write_operation_log
 from modules.system.audit_config import is_readonly_post
 from modules.system.audit_context import (
@@ -748,6 +749,18 @@ class AuditMiddlewareTests(unittest.TestCase):
         context = write_log.call_args.args[0]
         self.assertEqual(context.select_action("update").code, "mega.flow_work_order.dispatch")
 
+    def test_library_qc_conclusion_save_is_logged_as_qc_action(self):
+        user = UserContext(id=1, username="u", display_name="u", roles=[], permissions=[], is_superuser=True)
+        for qc_only, code in ((True, "molecular.library.file.manage"), (False, "molecular.library.edit")):
+            context = _route_context("POST", "/api/molecular-cell/library-orders/save")
+            token = set_audit_context(context)
+            try:
+                library_routes._require_save(user, qc_only)
+            finally:
+                reset_audit_context(token)
+            with self.subTest(qc_only=qc_only):
+                self.assertEqual([action.code for action in context.actions], [code])
+
     def test_labillion_status_sync_uses_chinese_audit_name(self):
         context = _route_context("POST", "/api/mega-automation/flow-work-orders/12/sync-labillion-status")
         self.assertEqual(context.actions, (mega_routes.LABILLION_STATUS_SYNC_AUDIT_ACTION,))
@@ -873,6 +886,14 @@ class OperationLogLabelTests(DbTestCase):
             audit_middleware._target_from_response(json.dumps({"data": {"id": 9, "library_order_id": "LIB-9"}}).encode()),
             ("9", "LIB-9"),
         )
+
+    def test_response_label_fields_follow_declaration_position(self):
+        fields = audit_session.all_label_fields()
+        self.assertLess(fields.index("experiment_id"), fields.index("project_code"))
+        self.assertLess(fields.index("project_code"), fields.index("discovery_id"))
+        self.assertEqual(fields[-len(audit_session._GENERIC_LABEL_FIELDS):], audit_session._GENERIC_LABEL_FIELDS)
+        body = json.dumps({"data": {"id": 5, "project_code": "PC-1", "discovery_id": "D-1"}}).encode()
+        self.assertEqual(audit_middleware._target_from_response(body), ("5", "PC-1"))
 
     def test_operation_logs_return_labels_and_filter_by_target_type_label(self):
         with self.Session() as db:

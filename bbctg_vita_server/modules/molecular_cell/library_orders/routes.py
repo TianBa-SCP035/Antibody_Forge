@@ -31,6 +31,7 @@ from modules.molecular_cell.library_orders.result_upload import (
     TRACE_EXTENSIONS,
     preview_extension,
 )
+from modules.system.audit_context import use_audit_action
 from modules.system.audit_routes import audit, audit_quiet, permission_action
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
 from utils.model_fields import fields_request_model
@@ -109,12 +110,14 @@ def _is_qc_conclusion_only(payload: dict) -> bool:
 
 
 def _require_save(context: UserContext, qc_conclusion_only: bool) -> None:
-    """只改已有工单的质检结论时，文库编辑或质检管理任一即可；其余改动要文库编辑权限。"""
+    """只改已有工单的质检结论时，文库编辑或质检管理任一即可，日志记为质检操作；其余改动要文库编辑权限。"""
     if qc_conclusion_only:
         if not context.allows(EDIT_PERMISSION, FILE_PERMISSION):
             raise permission_denied(EDIT_PERMISSION)
+        use_audit_action(FILE_PERMISSION)
     else:
         context.require(EDIT_PERMISSION)
+        use_audit_action(EDIT_PERMISSION)
 
 
 @router.get("/options", dependencies=[require(PAGE_PERMISSION, DETAIL_PERMISSION)])
@@ -164,7 +167,15 @@ def by_discovery(
     )
 
 
-@router.post("/save", dependencies=[audit(permission_action(EDIT_PERMISSION, "保存文库构建工单"))])
+@router.post(
+    "/save",
+    dependencies=[
+        audit(
+            permission_action(EDIT_PERMISSION, "保存文库构建工单"),
+            permission_action(FILE_PERMISSION, "保存文库质检结论"),
+        )
+    ],
+)
 def save_order(
     data: OrderSaveRequest,
     db: Session = Depends(get_db),
@@ -176,7 +187,15 @@ def save_order(
     return success(service.save(db, payload, created_by=actor_name(current_user)))
 
 
-@router.post("/batch_save", dependencies=[audit(permission_action(EDIT_PERMISSION, "批量保存文库构建工单"))])
+@router.post(
+    "/batch_save",
+    dependencies=[
+        audit(
+            permission_action(EDIT_PERMISSION, "批量保存文库构建工单"),
+            permission_action(FILE_PERMISSION, "批量保存文库质检结论"),
+        )
+    ],
+)
 def batch_save_orders(
     data: OrderBatchSaveRequest,
     db: Session = Depends(get_db),
@@ -242,7 +261,10 @@ def file_upload_batch(
     )
 
 
-@router.post("/files/preflight", dependencies=[require(FILE_PERMISSION, audit="预检文库构建结果路径")])
+@router.post(
+    "/files/preflight",
+    dependencies=[require(FILE_PERMISSION), audit_quiet("预检文库构建结果路径", "library_file")],
+)
 def file_preflight(
     data: FilePreflightRequest,
     db: Session = Depends(get_db),

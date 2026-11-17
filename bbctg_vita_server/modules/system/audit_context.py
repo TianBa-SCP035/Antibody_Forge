@@ -78,6 +78,17 @@ def reset_audit_context(token: Token) -> None:
     _AUDIT_CONTEXT.reset(token)
 
 
+def use_audit_action(code: str) -> None:
+    """接口声明了多个同类操作、要看数据才知道执行的是哪一个时，在函数体里指定。"""
+    context = get_audit_context()
+    if context is None or context.suppress_noop:
+        return
+    chosen = tuple(action for action in context.actions if action.code == code)
+    if not chosen:
+        raise RuntimeError(f"接口没有声明审计操作：{code}")
+    context.actions = chosen
+
+
 def bind_audit_actor(user) -> None:
     """Enrich the request context from the normal auth dependency.
 

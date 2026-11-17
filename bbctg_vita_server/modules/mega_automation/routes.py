@@ -84,9 +84,7 @@ def labillion_status_callback(
 
 
 @router.get("/flow-work-orders/meta", dependencies=[require("mega.page.flow_work_order")])
-def flow_work_order_meta(
-    db: Session = Depends(get_db),
-) -> dict:
+def flow_work_order_meta() -> dict:
     return success(service.get_meta())
 
 

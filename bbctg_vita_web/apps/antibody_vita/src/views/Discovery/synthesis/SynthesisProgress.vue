@@ -773,7 +773,6 @@ import {
   fieldOptionLists,
   syncDrawerControlTooltip,
   uniqueTargetCodes,
-  WORKBENCH_VIEW,
   WorkbenchColorMark,
   WorkbenchDataTable,
   WorkbenchDrawer,

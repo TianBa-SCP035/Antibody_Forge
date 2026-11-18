@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     order_sync_token: str = ""
     order_sync_ips: str = ""
     order_sync_max_mb: int = 20
+    supernatant_receive_token: str = ""
+    supernatant_receive_ips: str = ""
     public_api_base_url: str = ""
 
     model_config = SettingsConfigDict(

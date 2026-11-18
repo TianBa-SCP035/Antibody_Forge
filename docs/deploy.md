@@ -35,6 +35,7 @@ Windows： 无需路径约定，固定环境为 local。
 | `ENABLE_SCHEDULER` | 是否强制开定时任务；prod 环境即使为 false 也会开 |
 | `LABILLION_CALLBACK_TOKEN` / `LABILLION_CALLBACK_IPS` | 镁伽回调校验（可选）。令牌放请求头 `X-Callback-Token`（不收 URL 参数，免得进访问日志），IP 英文逗号分隔；留空不校验，两项都配则都要满足 |
 | `ORDER_SYNC_TOKEN` / `ORDER_SYNC_IPS` / `ORDER_SYNC_MAX_MB` | 工单数据回传 `POST /api/order-experiment/sync` 的同类校验与 JSON 文件上限（默认 20MB） |
+| `SUPERNATANT_RECEIVE_TOKEN` / `SUPERNATANT_RECEIVE_IPS` | 上清板布局接收 `POST /api/protein-supernatant/receive` 的同类校验；对接合成公司后应配置令牌 |
 | `YUNZHIJIA_*` | 云之家（可选） |
 | `CELL_DB_URL` / `EMPLOYEE_DB_URL` / `ONE_DB_URL` | 外部只读库（可选）；分别提供细胞库存、员工与靶点主数据、One 合成订单与交付进度 |
 | `LABILLION_BASE_URL` / `LABILLION_USERNAME` / `LABILLION_PASSWORD` / `LABILLION_PLATFORM_ID` | 镁伽 Labillion（可选；URL 留空则不推送。配了 URL 后用户名、密码和 `PUBLIC_API_BASE_URL` 必填。`PLATFORM_ID` 是登录后请求头 `Platform`） |

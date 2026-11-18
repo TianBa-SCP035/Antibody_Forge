@@ -177,6 +177,26 @@ CREATE TABLE IF NOT EXISTS order_sync (
 ) COMMENT='工单实验结果回传记录';
 
 -- ---------------------------------------------------------------------------
+-- 上清板布局接收（models/supernatant.py）
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS synthesis_supernatant_well (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  order_no VARCHAR(64) NOT NULL COMMENT '合成订单号',
+  corp_name VARCHAR(64) NOT NULL COMMENT '合成公司',
+  plate_no VARCHAR(64) NOT NULL COMMENT '板号',
+  well_no VARCHAR(8) NOT NULL COMMENT '孔号',
+  sample_name VARCHAR(128) NOT NULL COMMENT '蛋白名称',
+  potency DECIMAL(16,4) NOT NULL COMMENT '浓度(ug/mL)',
+  specs DECIMAL(16,4) NOT NULL COMMENT '规格(mL/支)',
+  volume DECIMAL(16,4) NOT NULL COMMENT '体积(mL)',
+  sample_enter_vol DECIMAL(16,4) NOT NULL COMMENT '质粒量(ug)',
+  received_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '接收时间',
+  UNIQUE KEY uk_synthesis_supernatant_well_order_plate_well (order_no, plate_no, well_no),
+  KEY idx_synthesis_supernatant_well_sample_name (sample_name)
+) COMMENT='合成公司推送的上清板布局，一孔一行';
+
+-- ---------------------------------------------------------------------------
 -- 靶点主数据（models/target.py；外部平台只读同步镜像）
 -- ---------------------------------------------------------------------------
 

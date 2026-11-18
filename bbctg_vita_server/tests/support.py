@@ -6,6 +6,7 @@ import unittest
 from sqlalchemy import BigInteger, create_engine, event
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.schema import CreateIndex
 
 from db.session import Base
@@ -39,7 +40,10 @@ def _register_mysql_json_functions(dbapi_connection, _record):
 
 def memory_engine(*models):
     """新建内存 SQLite 库，只建给定模型的表。"""
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+    # 单连接跨线程共用：TestClient 在线程池里跑同步路由，否则看到的是另一个空库
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
     event.listen(engine, "connect", _register_mysql_json_functions)
     Base.metadata.create_all(engine, tables=[model.__table__ for model in models])
     return engine

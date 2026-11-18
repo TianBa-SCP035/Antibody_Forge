@@ -47,6 +47,7 @@ Windows 在仓库根运行 `start_dev.bat`；Linux test/prod 运行 `./start_dev
 | 效价实验列表 | `/serum/titer-orders` | `/api/serum/titer/order/*` | 效价工单；「工单」→ 镁伽流式；「测序」→ 发现工作台 |
 | 镁伽流式工单 | `/mega-automation/flow-work-orders`（含 `/detail`） | `/api/mega-automation` | 铺板、校验、下发；Labillion 集成见 flow-work-order 文档 |
 | 工单数据回传 | 无前端 | `/api/order-experiment` | 设备 JSON → 落盘并记 `order_sync` |
+| 上清板布局接收 | 无前端 | `/api/protein-supernatant` | 合成公司推送上清板布局 → `synthesis_supernatant_well`（一孔一行） |
 | 细胞库存 | `/serum/cell` | `/api/serum/cell_inventory` | 外部库只读 |
 | 系统管理 | `/system/user-permission`、`/system/features` | `/api/system` | 用户、角色、权限、日志、功能开关 |
 | 首页 / 个人中心 | `/home`、`/profile` | （复用认证接口） | 非业务主链路 |

@@ -38,3 +38,8 @@ def require_labillion_caller(request: Request) -> None:
 def require_order_sync_caller(request: Request) -> None:
     settings = get_settings()
     check_external_caller(request, settings.order_sync_token, settings.order_sync_ips)
+
+
+def require_supernatant_caller(request: Request) -> None:
+    settings = get_settings()
+    check_external_caller(request, settings.supernatant_receive_token, settings.supernatant_receive_ips)

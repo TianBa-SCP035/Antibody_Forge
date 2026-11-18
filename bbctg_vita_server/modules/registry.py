@@ -14,6 +14,7 @@ from modules.immunology import permissions as immunology
 from modules.mega_automation import permissions as mega_automation
 from modules.molecular_cell import permissions as molecular_cell
 from modules.order_sync import permissions as order_sync
+from modules.supernatant_receive import permissions as supernatant_receive
 from modules.system import permissions as system
 
 ACCESS: tuple[ModuleAccess, ...] = (
@@ -23,6 +24,7 @@ ACCESS: tuple[ModuleAccess, ...] = (
     molecular_cell.ACCESS,
     mega_automation.ACCESS,
     order_sync.ACCESS,
+    supernatant_receive.ACCESS,
     system.ACCESS,
 )
 
@@ -42,6 +44,7 @@ MOUNTS: tuple[Mount, ...] = (
     Mount("modules.molecular_cell.transfection.routes:router", "/molecular-cell/transfection",
           "分子与细胞-转染与表达"),
     Mount("modules.order_sync.routes:router", "/order-experiment", "工单数据回传"),
+    Mount("modules.supernatant_receive.routes:router", "/protein-supernatant", "上清板布局接收"),
     Mount("modules.options.routes:router", "/options", "公共选项"),
     Mount("modules.system.routes:router", "/system", "系统管理"),
 )

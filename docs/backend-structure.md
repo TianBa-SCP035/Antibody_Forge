@@ -24,6 +24,7 @@ bbctg_vita_server/
     molecular_cell/    # 分子与细胞：library_orders（文库构建）/ primer_catalog（引物库）/ transfection（转染与表达）
     mega_automation/   # 镁伽流式工单（含 callback、labillion_sync）
     order_sync/        # 工单数据回传
+    supernatant_receive/  # 合成公司上清板布局接收
     system/            # 用户角色权限、审计、功能开关
   integrations/        # 云之家、Labillion、drm_service（SDK 在 drm/，gitignore）
   jobs/                # 定时任务实现与 registry（含手动触发入口）；lock.py 用 MySQL GET_LOCK 防多进程重复执行

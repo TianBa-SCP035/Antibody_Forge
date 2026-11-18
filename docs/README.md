@@ -32,6 +32,7 @@
 | 镁伽流式工单 | [modules/mega-automation/flow-work-order.md](./modules/mega-automation/flow-work-order.md) |
 | 效价 → 流式工单 | [modules/mega-automation/titer-upstream-flow.md](./modules/mega-automation/titer-upstream-flow.md) |
 | 工单数据回传接口（对外协议） | [modules/mega-automation/order-experiment-sync-api.md](./modules/mega-automation/order-experiment-sync-api.md) |
+| 上清板布局接收接口（对外协议） | [modules/discovery/supernatant-receive-api.md](./modules/discovery/supernatant-receive-api.md) |
 
 免疫实验列表、效价数据、效价实验列表、细胞库存暂无独立模块文档，路由前缀见 [overview.md](./overview.md)，权限见 [auth-permissions.md](./auth-permissions.md)。
 

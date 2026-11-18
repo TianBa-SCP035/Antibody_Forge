@@ -41,6 +41,8 @@
     "presetDiscoverySynthesisSubtitle": "序列合成与验证进度",
     "presetLibraryConstructionTitle": "文库构建",
     "presetLibraryConstructionSubtitle": "建库工单与质检文件",
+    "presetTransfectionTitle": "转染与表达",
+    "presetTransfectionSubtitle": "转染工单与转染表",
     "presetPrimerLibraryTitle": "引物库",
     "presetPrimerLibrarySubtitle": "查看、编辑和导入引物",
     "presetFlowWorkOrderTitle": "流式工单总览",

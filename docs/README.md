@@ -28,6 +28,7 @@
 | 抗体发现 · 合成与验证 | [modules/discovery/synthesis-progress.md](./modules/discovery/synthesis-progress.md) |
 | 分子与细胞 · 文库构建 | [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md) |
 | 分子与细胞 · 引物库 | [modules/molecular-cell/primer-library.md](./modules/molecular-cell/primer-library.md) |
+| 分子与细胞 · 转染与表达 | [modules/molecular-cell/transfection.md](./modules/molecular-cell/transfection.md) |
 | 镁伽流式工单 | [modules/mega-automation/flow-work-order.md](./modules/mega-automation/flow-work-order.md) |
 | 效价 → 流式工单 | [modules/mega-automation/titer-upstream-flow.md](./modules/mega-automation/titer-upstream-flow.md) |
 | 工单数据回传接口（对外协议） | [modules/mega-automation/order-experiment-sync-api.md](./modules/mega-automation/order-experiment-sync-api.md) |

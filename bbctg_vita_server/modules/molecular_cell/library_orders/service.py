@@ -26,6 +26,7 @@ from models.molecular_cell import (
     MolecularLibraryResultLink,
     MolecularLibraryResultPackage,
     MolecularPrimerIndexCatalog,
+    MolecularTransfectionOrder,
 )
 from modules.discovery.workbench.constants import (
     MOUSE_STRAIN_OPTIONS,
@@ -91,12 +92,12 @@ from utils.clock import now_local, today_local
 from utils.codes import is_duplicate_key
 from utils.filter_values import (
     DEFAULT_RECORDED_TARGET_LIMIT,
+    code_search_clause,
     filter_terms,
     like_contains,
     match_any,
     recorded_target_clause,
     recorded_target_search,
-    split_code_tokens,
 )
 from utils.header_filters import (
     HeaderColumn,
@@ -113,6 +114,7 @@ from utils.header_filters import (
 from utils.model_fields import clean_field, clean_text, model_fields
 from utils.normalize import (
     normalize_choice,
+    normalize_plate_nos,
     normalize_priority,
     order_tokens,
     parse_date,
@@ -504,25 +506,6 @@ def _normalize_string_list(value: Any, label: str) -> list[str]:
     return result
 
 
-def _normalize_plate_nos(value: Any) -> list[str]:
-    """一行一个板号，行内原样保留：逗号、点号等常用来写同前缀的多块板，不能当分隔符。发现台交接沿用同一规则。"""
-    if value in (None, "", []):
-        return []
-    if isinstance(value, str):
-        values = [value]
-    elif isinstance(value, list):
-        values = value
-    else:
-        raise ValueError("板号必须是数组")
-    result: list[str] = []
-    for item in values:
-        for line in str(item).splitlines():
-            text = line.strip()
-            if text and text not in result:
-                result.append(text)
-    return result
-
-
 def _normalize_sequence(field: str, value: Any) -> str | None:
     text = clean_text(FIELDS[field], value)
     if not text:
@@ -643,7 +626,7 @@ def _apply_fields(db: Session, row: MolecularLibraryOrder, data: dict[str, Any])
     if "target_forms" in data:
         row.target_forms = _normalize_target_form(data.get("target_forms"))
     if "plate_nos" in data:
-        row.plate_nos = _normalize_plate_nos(data.get("plate_nos"))
+        row.plate_nos = normalize_plate_nos(data.get("plate_nos"))
 
     if "mouse_strain" in data:
         row.mouse_strain = _normalize_mouse_strain(data.get("mouse_strain"))
@@ -988,34 +971,6 @@ def _append_date_range(filters: list, column, data: dict[str, Any], start_key: s
         filters.append(column <= end)
 
 
-_CODE_SEARCH_SEPARATORS = (",", "\t", "\n", "\r", "，", "、", " ")
-_MAX_CODE_SEARCH = 500
-
-
-def _append_code_search(
-    filters: list,
-    column,
-    value: Any,
-    *,
-    upper: bool = False,
-    label: str,
-) -> None:
-    text = str(value or "").strip()
-    if not text:
-        return
-    parts = split_code_tokens(text)
-    if not parts:
-        return
-    if upper:
-        parts = [part.upper() for part in parts]
-    if any(separator in text for separator in _CODE_SEARCH_SEPARATORS):
-        if len(parts) > _MAX_CODE_SEARCH:
-            raise ValueError(f"{label}一次最多搜索 {_MAX_CODE_SEARCH} 个")
-        filters.append(column.in_(parts))
-        return
-    filters.append(like_contains(column, parts[0]))
-
-
 def _in_scope(build_type: str | None, scope: TypeScope) -> bool:
     return scope is None or build_type in scope
 
@@ -1091,32 +1046,15 @@ def _apply_list_filters(
     scope: TypeScope = None,
 ):
     filters = _scope_clauses(scope)
-    _append_code_search(
-        filters,
-        MolecularLibraryOrder.library_code,
-        data.get("library_code"),
-        upper=True,
-        label="建库编号",
-    )
-    _append_code_search(
-        filters,
-        MolecularLibraryOrder.source_project_code,
-        data.get("source_project_code"),
-        label="项目编号",
-    )
-    _append_code_search(
-        filters,
-        MolecularLibraryOrder.library_batch_no,
-        data.get("library_batch_no"),
-        label="建库批号",
-    )
-    _append_code_search(
-        filters,
-        MolecularLibraryOrder.source_discovery_id,
-        data.get("source_discovery_id"),
-        upper=True,
-        label="发现编号",
-    )
+    for column, key, upper, label in (
+        (MolecularLibraryOrder.library_code, "library_code", True, "建库编号"),
+        (MolecularLibraryOrder.source_project_code, "source_project_code", False, "项目编号"),
+        (MolecularLibraryOrder.library_batch_no, "library_batch_no", False, "建库批号"),
+        (MolecularLibraryOrder.source_discovery_id, "source_discovery_id", True, "发现编号"),
+    ):
+        clause = code_search_clause(column, data.get(key), upper=upper, label=label)
+        if clause is not None:
+            filters.append(clause)
     target_clause = recorded_target_clause(
         db,
         MolecularLibraryOrder.target_name,
@@ -1411,6 +1349,13 @@ def batch_save(db: Session, items: list[dict[str, Any]], scope: TypeScope = None
 
 def delete_order(db: Session, row_id: int, scope: TypeScope = None) -> dict[str, int]:
     row = _load_order(db, row_id, scope=scope)
+    transfection_id = db.scalar(
+        select(MolecularTransfectionOrder.transfection_order_id).where(
+            MolecularTransfectionOrder.source_library_order_id == row.library_order_id
+        )
+    )
+    if transfection_id:
+        raise ValueError(f"已交接为转染工单 {transfection_id}，不能删除")
     links = list(
         db.scalars(
             select(MolecularLibraryResultLink).where(
@@ -1674,7 +1619,7 @@ def handoff(
             status=STATUS_PENDING,
             priority=row.priority,
             target_forms=None,
-            plate_nos=_normalize_plate_nos(row.plate_nos) if "plate_nos" in PROFILE_FIELDS[build_type] else [],
+            plate_nos=normalize_plate_nos(row.plate_nos) if "plate_nos" in PROFILE_FIELDS[build_type] else [],
             created_by=(created_by or "").strip() or None,
         )
         db.add(order)

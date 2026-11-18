@@ -289,3 +289,117 @@ class MolecularLibraryResultLink(Base):
             column.name: _format_value(getattr(self, column.name))
             for column in self.__table__.columns
         }
+
+
+class MolecularTransfectionOrder(Base):
+    __tablename__ = "molecular_transfection_order"
+    __log_label__ = "转染工单"
+    __audit_label__ = ("transfection_order_id",)
+    __table_args__ = (
+        UniqueConstraint("transfection_order_id", name="uk_molecular_transfection_order_id"),
+        UniqueConstraint("source_library_order_id", name="uk_molecular_transfection_order_source_library"),
+        {"comment": "转染与表达工单"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    transfection_order_id: Mapped[str] = mapped_column(String(32), nullable=False, comment="系统工单号")
+    transfection_type: Mapped[str] = mapped_column(String(16), nullable=False, comment="转染类型")
+    source_library_order_id: Mapped[str | None] = mapped_column(String(32), comment="来源文库工单号")
+    project_code: Mapped[str | None] = mapped_column(String(64), comment="项目编号")
+    study_type: Mapped[str | None] = mapped_column(String(64), comment="课题类型")
+    target_name: Mapped[str | None] = mapped_column(String(128), comment="靶点名称")
+    target_codes: Mapped[list[str] | None] = mapped_column(JSON, comment="靶点编号列表")
+    pm: Mapped[str | None] = mapped_column(String(64), comment="PM")
+    mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="小鼠品系")
+    plate_nos: Mapped[list[str] | None] = mapped_column(JSON, comment="孔板编号列表")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="待转染", comment="状态")
+    priority: Mapped[str] = mapped_column(String(24), nullable=False, default="正常", comment="优先级")
+    owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
+    transfected_on: Mapped[date | None] = mapped_column(Date, comment="转染日期")
+    finished_on: Mapped[date | None] = mapped_column(Date, comment="完成日期")
+    remark: Mapped[str | None] = mapped_column(String(1000), comment="备注")
+    created_by: Mapped[str | None] = mapped_column(String(64), comment="创建人")
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), comment="创建时间"
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+        comment="更新时间",
+    )
+
+    def to_dict(self) -> dict:
+        data = {
+            column.name: getattr(self, column.name)
+            for column in self.__table__.columns
+        }
+        data["target_codes"] = self.target_codes if isinstance(self.target_codes, list) else []
+        data["plate_nos"] = self.plate_nos if isinstance(self.plate_nos, list) else []
+        return {key: _format_value(value) for key, value in data.items()}
+
+
+class MolecularTransfectionProtein(Base):
+    __tablename__ = "molecular_transfection_protein"
+    __log_label__ = "转染表"
+    __audit_label__ = ("protein_name",)
+    __table_args__ = (
+        UniqueConstraint("protein_name", name="uk_molecular_transfection_protein_name"),
+        Index("idx_molecular_transfection_protein_source_order_id", "source_order_id"),
+        {"comment": "转染表：蛋白与重轻链质粒对应"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    protein_name: Mapped[str] = mapped_column(String(128), nullable=False, comment="蛋白名称")
+    heavy_chain: Mapped[str] = mapped_column(String(128), nullable=False, comment="重链")
+    light_chain: Mapped[str | None] = mapped_column(String(128), comment="轻链")
+    target_name: Mapped[str | None] = mapped_column(String(128), comment="靶点名称")
+    target_codes: Mapped[list[str] | None] = mapped_column(JSON, comment="靶点编号列表")
+    mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="小鼠品系")
+    source_order_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("molecular_transfection_order.id"),
+        comment="登记工单ID",
+    )
+    created_by: Mapped[str | None] = mapped_column(String(64), comment="创建人")
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), comment="创建时间"
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+        comment="更新时间",
+    )
+
+    def to_dict(self) -> dict:
+        data = {
+            column.name: getattr(self, column.name)
+            for column in self.__table__.columns
+        }
+        data["target_codes"] = self.target_codes if isinstance(self.target_codes, list) else []
+        return {key: _format_value(value) for key, value in data.items()}
+
+
+class MolecularTransfectionItem(Base):
+    __tablename__ = "molecular_transfection_item"
+    __log_label__ = "转染蛋白"
+    __table_args__ = (
+        UniqueConstraint("order_id", "protein_id", name="uk_molecular_transfection_item"),
+        Index("idx_molecular_transfection_item_protein_id", "protein_id"),
+        {"comment": "转染工单蛋白"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    order_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("molecular_transfection_order.id"),
+        nullable=False,
+        comment="转染工单ID",
+    )
+    protein_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("molecular_transfection_protein.id"),
+        nullable=False,
+        comment="蛋白ID",
+    )

@@ -37,6 +37,7 @@ def is_readonly_post(method: str, path: str) -> bool:
 
 AUDIT_SET_LIKE_FIELDS: dict[str, frozenset[str]] = {
     "MolecularLibraryOrder": frozenset({"plate_nos", "target_codes"}),
+    "MolecularTransfectionOrder": frozenset({"plate_nos", "target_codes"}),
     "DiscoveryWorkbench": frozenset({"target_codes"}),
     "DiscoverySynthesisOrder": frozenset({"target_codes"}),
     "SerumImmProject": frozenset({"target_codes"}),

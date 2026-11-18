@@ -163,6 +163,14 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
     url: '/molecular-cell/library-construction',
   },
   {
+    id: 'transfection',
+    titleKey: 'page.home.presetTransfectionTitle',
+    subtitleKey: 'page.home.presetTransfectionSubtitle',
+    icon: 'lucide:test-tubes',
+    iconClass: 'bg-teal-500/15 text-teal-600',
+    url: '/molecular-cell/transfection',
+  },
+  {
     id: 'flow-work-order-list',
     titleKey: 'page.home.presetFlowWorkOrderTitle',
     subtitleKey: 'page.home.presetFlowWorkOrderSubtitle',

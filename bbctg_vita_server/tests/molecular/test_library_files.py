@@ -17,6 +17,7 @@ from models.molecular_cell import (
     MolecularLibraryResultLink,
     MolecularLibraryResultPackage,
     MolecularPrimerIndexCatalog,
+    MolecularTransfectionOrder,
 )
 from modules.molecular_cell.library_orders import routes as order_routes
 from modules.molecular_cell.library_orders import service
@@ -51,6 +52,7 @@ TABLES = (
     MolecularLibraryResultPackage,
     MolecularLibraryResultFile,
     MolecularLibraryResultLink,
+    MolecularTransfectionOrder,
 )
 
 

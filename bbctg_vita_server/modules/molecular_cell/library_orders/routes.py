@@ -31,7 +31,7 @@ from modules.molecular_cell.library_orders.result_upload import (
     TRACE_EXTENSIONS,
     preview_extension,
 )
-from modules.molecular_cell.permissions import LIBRARY_TYPE_PERMISSIONS
+from modules.molecular_cell.permissions import library_type_scope
 from modules.system.audit_context import use_audit_action
 from modules.system.audit_routes import audit, audit_quiet, permission_action
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
@@ -47,13 +47,7 @@ HANDOFF_PERMISSIONS = (EDIT_PERMISSION, "discovery.workbench.edit")
 
 
 def _type_scope(context: UserContext = Depends(get_user_context)) -> service.TypeScope:
-    """配了建库类型权限的人只能看、改这些类型；超级管理员和一个都没配的人不限。"""
-    if context.is_superuser:
-        return None
-    types = frozenset(
-        build_type for code, build_type in LIBRARY_TYPE_PERMISSIONS.items() if code in context.permissions
-    )
-    return types or None
+    return library_type_scope(context.permissions, context.is_superuser)
 
 
 OrderFields = fields_request_model("LibraryOrderFields", service.FIELDS)

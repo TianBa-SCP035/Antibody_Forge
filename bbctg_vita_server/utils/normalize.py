@@ -76,6 +76,25 @@ def normalize_target_codes(value: Any, *, upper: bool = False) -> list[str]:
     return [code.upper() for code in codes] if upper else codes
 
 
+def normalize_plate_nos(value: Any) -> list[str]:
+    """一行一个板号，行内原样保留：逗号、点号等常用来写同前缀的多块板，不能当分隔符。"""
+    if value in (None, "", []):
+        return []
+    if isinstance(value, str):
+        values = [value]
+    elif isinstance(value, list):
+        values = value
+    else:
+        raise ValueError("板号必须是数组")
+    result: list[str] = []
+    for item in values:
+        for line in str(item).splitlines():
+            text = line.strip()
+            if text and text not in result:
+                result.append(text)
+    return result
+
+
 def normalize_choice(
     value: Any,
     options: Iterable[str],

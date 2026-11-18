@@ -1,4 +1,4 @@
-export { default as sheetSelectionMixin } from './sheetSelectionMixin'
+export { default as sheetSelectionMixin, SHEET_ROW_NO_COLUMN } from './sheetSelectionMixin'
 export { default as workbenchCrudMixin } from './workbenchCrudMixin'
 export { default as workbenchExcelMixin } from './workbenchExcelMixin'
 export { default as workbenchQueueSortMixin } from './workbenchQueueSortMixin'

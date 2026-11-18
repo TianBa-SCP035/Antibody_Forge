@@ -21,7 +21,7 @@ bbctg_vita_server/
     immunology/        # serum / workbench / titer / cell
     atlas/             # 千鼠万抗
     discovery/         # 抗体发现：workbench / synthesis_progress（合成与验证，含 One 库同步）
-    molecular_cell/    # 分子与细胞：library_orders（文库构建）/ primer_catalog（引物库）
+    molecular_cell/    # 分子与细胞：library_orders（文库构建）/ primer_catalog（引物库）/ transfection（转染与表达）
     mega_automation/   # 镁伽流式工单（含 callback、labillion_sync）
     order_sync/        # 工单数据回传
     system/            # 用户角色权限、审计、功能开关
@@ -80,14 +80,14 @@ pnpm run lint:components
 
 | 位置 | 用途 |
 |------|------|
-| `utils/normalize.py` | 文本、日期、非负整数、靶点编号、多值拼接、状态、优先级的清洗 |
+| `utils/normalize.py` | 文本、日期、非负整数、靶点编号、板号（`normalize_plate_nos`，一行一个）、多值拼接、状态、优先级的清洗 |
 | `utils/workbench_queue.py` | 优先级常量（`PRIORITY_ORDER` 队列顺序从高到低；`PRIORITY_OPTIONS` 下拉顺序从低到高）、队列锁与重编号；`QueueSpec` 描述一个队列，入队、出队、改号、拖行共用 |
 | `utils/pagination.py` | `parse_page_limit`、`paginate_select`：列表分页（上限 500），返回 `{ items, total, page, limit }` |
 | `utils/model_fields.py` | `model_fields(Model, readonly=...)` 从模型列推出可写字段（中文名取列注释、长度取 `String(n)`）；`clean_field` / `clean_text` / `clean_date` / `clean_int` 按列类型整理写入值，报错文案全系统一致；`fields_request_model(名, FIELDS)` 生成保存接口的请求模型（接口文档列出全部可写字段，值不转换、未登记的键照常保留，取值必须 `model_dump(exclude_unset=True)`） |
 | `utils/batch_save.py` | 批量保存：解析请求、按主键顺序锁行、`check_expected(当前行序列化结果, _expected, fields=FIELDS)` 比对（不一致抛 `ConflictError`） |
 | `core/errors.py` | 业务异常：`BusinessError`（422）、`ForbiddenError`（403）、`NotFoundError`（404）、`ConflictError`（409），裸 `ValueError` 也按 422；全局处理器统一返回，`db/session.get_db` 出错即回滚。路由不写 try/except |
 | `utils/header_filters.py` | 表头筛选；`header_columns(FIELDS, **显式列)` 按列类型自动生成普通文本/日期/整数列，枚举、靶点、多值写在显式列里；多值字段匹配统一用 `csv_token_clause`（已转义 `%` `_`）；统计块去掉本维度的表头条件用 `without_header_fields` |
-| `utils/filter_values.py` | `like_literal`、`recorded_target_search`（各模块 `GET /recorded_targets` 共用，关键字与上限都进 SQL） |
+| `utils/filter_values.py` | `like_literal`、`recorded_target_search`（各模块 `GET /recorded_targets` 共用，关键字与上限都进 SQL）、`code_search_clause`（编号筛选：单个包含匹配，多个按完整编号，单次最多 500 个） |
 | `utils/codes.py` | 编号生成；唯一键冲突时重试 |
 | `utils/clock.py` | `now_local()`，固定 Asia/Shanghai，不要再用裸 `datetime.now()` |
 | `utils/uploads.py` | 上传文件名清洗、落盘路径必须在上传根目录内、`read_limited` 读取限长 |

@@ -159,10 +159,6 @@
     </div>
 
     <ElCard shadow="never" class="list-table-card">
-      <p class="sheet-hint">
-        拖拽划选单元格，Ctrl+C 复制，右键取消选中。点表头筛选或排序，按住表头选中整列。双击一行可编辑。
-        <template v-if="selectionMode">勾选列可拖拽或按住 Shift 连选，表头菜单可当页全选、全部全选或取消。</template>
-      </p>
       <div ref="listTableBody" class="list-table-body">
       <WorkbenchSheet
         :cell-config="cellConfig"
@@ -335,6 +331,7 @@ import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
 import ListFilterSelect from '#/components/ListFilterSelect.vue';
 import {
   createColumnOrder,
+  SHEET_ROW_NO_COLUMN,
   sheetSelectionMixin,
   WorkbenchHeaderFilterChip,
   WorkbenchHeaderLabel,
@@ -371,6 +368,7 @@ import {
 } from './primerSeries';
 
 const COLUMNS = Object.freeze([
+  SHEET_ROW_NO_COLUMN,
   { key: 'name', label: '名称', minWidth: 160 },
   { key: 'family', label: '系列', minWidth: 120 },
   { key: 'direction', label: '方向', minWidth: 60, align: 'center' },
@@ -379,7 +377,9 @@ const COLUMNS = Object.freeze([
   { key: 'note', label: '备注', minWidth: 180 },
   { key: 'active', label: '状态', width: 90, align: 'center' },
 ]);
-const SHEET_COLUMN_ORDER = createColumnOrder('primerLibrarySheetColumnOrder', COLUMNS);
+const SHEET_COLUMN_ORDER = createColumnOrder('primerLibrarySheetColumnOrder', COLUMNS, {
+  pinFirstKey: SHEET_ROW_NO_COLUMN.key,
+});
 
 // 核对序列为计算值，仅支持顶部筛选。
 const PRIMER_HEADER_COLUMNS = Object.freeze({
@@ -482,6 +482,8 @@ export default {
     return {
       list: [],
       listQuery: emptyQuery(),
+      excelRowSelectKey: SHEET_ROW_NO_COLUMN.key,
+      sheetPinFirstKey: SHEET_ROW_NO_COLUMN.key,
       total: 0,
       statsTotal: 0,
       libraryStats: [],
@@ -548,13 +550,14 @@ export default {
   },
   methods: {
     displayCell(row, key) {
-      return cellText(row, key) || '—';
+      return this.sheetDirectTextValue(row, key) || '—';
     },
     rowClassName({ row }) {
       return row.active ? '' : 'is-inactive';
     },
     sheetDirectTextValue(row, key) {
-      return row ? cellText(row, key) : '';
+      if (!row) return '';
+      return key === SHEET_ROW_NO_COLUMN.key ? this.sheetRowNo(row) : cellText(row, key);
     },
     replaceSelected(next) {
       this.selectedIds = next;
@@ -911,13 +914,6 @@ export default {
 
 .check-readonly {
   pointer-events: none;
-}
-
-.sheet-hint {
-  margin: 0 0 8px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 18px;
 }
 
 .sheet-wrap :deep(.vxe-header--column) {

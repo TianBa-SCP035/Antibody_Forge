@@ -18,7 +18,7 @@
         plain
         :icon="CopyDocument"
         :class="{ 'no-permission-btn': !canHandoff }"
-        :title="!canHandoff ? '您没有权限交接工单' : '交接至下游模块'"
+        :title="!canHandoff ? '您没有权限交接工单' : '单细胞孔板交接到转染与表达'"
         @click="$emit('handoff', row)"
       >
         交接

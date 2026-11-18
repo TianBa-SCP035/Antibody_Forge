@@ -764,6 +764,64 @@ CREATE TABLE IF NOT EXISTS molecular_library_result_link (
     FOREIGN KEY (order_id) REFERENCES molecular_library_order (id)
 ) COMMENT='文库结果关联';
 
+CREATE TABLE IF NOT EXISTS molecular_transfection_order (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  transfection_order_id VARCHAR(32) NOT NULL COMMENT '系统工单号',
+  transfection_type VARCHAR(16) NOT NULL COMMENT '转染类型',
+  source_library_order_id VARCHAR(32) NULL COMMENT '来源文库工单号',
+  project_code VARCHAR(64) NULL COMMENT '项目编号',
+  study_type VARCHAR(64) NULL COMMENT '课题类型',
+  target_name VARCHAR(128) NULL COMMENT '靶点名称',
+  target_codes JSON NULL COMMENT '靶点编号列表',
+  pm VARCHAR(64) NULL COMMENT 'PM',
+  mouse_strain VARCHAR(128) NULL COMMENT '小鼠品系',
+  plate_nos JSON NULL COMMENT '孔板编号列表',
+  status VARCHAR(24) NOT NULL DEFAULT '待转染' COMMENT '状态',
+  priority VARCHAR(24) NOT NULL DEFAULT '正常' COMMENT '优先级',
+  owner VARCHAR(64) NULL COMMENT '负责人',
+  transfected_on DATE NULL COMMENT '转染日期',
+  finished_on DATE NULL COMMENT '完成日期',
+  remark VARCHAR(1000) NULL COMMENT '备注',
+  created_by VARCHAR(64) NULL COMMENT '创建人',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_molecular_transfection_order_id (transfection_order_id),
+  UNIQUE KEY uk_molecular_transfection_order_source_library (source_library_order_id)
+) COMMENT='转染与表达工单';
+
+CREATE TABLE IF NOT EXISTS molecular_transfection_protein (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  protein_name VARCHAR(128) NOT NULL COMMENT '蛋白名称',
+  heavy_chain VARCHAR(128) NOT NULL COMMENT '重链',
+  light_chain VARCHAR(128) NULL COMMENT '轻链',
+  target_name VARCHAR(128) NULL COMMENT '靶点名称',
+  target_codes JSON NULL COMMENT '靶点编号列表',
+  mouse_strain VARCHAR(128) NULL COMMENT '小鼠品系',
+  source_order_id BIGINT NULL COMMENT '登记工单ID',
+  created_by VARCHAR(64) NULL COMMENT '创建人',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_molecular_transfection_protein_name (protein_name),
+  KEY idx_molecular_transfection_protein_source_order_id (source_order_id),
+  CONSTRAINT fk_molecular_transfection_protein_source_order
+    FOREIGN KEY (source_order_id) REFERENCES molecular_transfection_order (id)
+) COMMENT='转染表：蛋白与重轻链质粒对应';
+
+CREATE TABLE IF NOT EXISTS molecular_transfection_item (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  order_id BIGINT NOT NULL COMMENT '转染工单ID',
+  protein_id BIGINT NOT NULL COMMENT '蛋白ID',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_molecular_transfection_item (order_id, protein_id),
+  KEY idx_molecular_transfection_item_protein_id (protein_id),
+  CONSTRAINT fk_molecular_transfection_item_order
+    FOREIGN KEY (order_id) REFERENCES molecular_transfection_order (id),
+  CONSTRAINT fk_molecular_transfection_item_protein
+    FOREIGN KEY (protein_id) REFERENCES molecular_transfection_protein (id)
+) COMMENT='转染工单蛋白';
+
 
 -- =============================================================================
 -- 权限包 / 角色（仅示例三档：访客、业务员、系统管理；生产环境完全自定义）

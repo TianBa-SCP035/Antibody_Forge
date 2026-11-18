@@ -247,7 +247,7 @@
           <LibraryRowActions
             :row="row"
             :can-edit="canEdit"
-            :can-handoff="canEdit"
+            :can-handoff="canHandoff"
             :can-view="canViewDetail"
             @qc="openResult"
             @handoff="handleDownstreamHandoff"
@@ -295,7 +295,7 @@
             <LibraryRowActions
               :row="row"
               :can-edit="canEdit"
-              :can-handoff="canEdit"
+              :can-handoff="canHandoff"
               :can-view="canViewDetail"
               @qc="openResult"
               @handoff="handleDownstreamHandoff"
@@ -357,7 +357,7 @@
         <LibraryRowActions
           :row="editingRow"
           :can-edit="canEdit"
-          :can-handoff="canEdit"
+          :can-handoff="canHandoff"
           :can-view="canViewDetail"
           @qc="openResult"
           @handoff="handleDownstreamHandoff"
@@ -513,6 +513,11 @@ import {
   LIBRARY_FILE_MANAGE,
   LIBRARY_PAGE_DETAIL,
 } from '#/api/molecularLibrary'
+import {
+  handoffLibraryToTransfection,
+  TRANSFECTION_LIBRARY_HANDOFF,
+  TRANSFECTION_PAGE,
+} from '#/api/molecularTransfection'
 import { notifyApiError } from '#/api/errors'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
@@ -549,6 +554,7 @@ import { applyOptionLists } from '#/utils/optionLists'
 import { uniqueNames } from '#/utils/userOptions'
 import {
   BUILD_PLASMA_NGS,
+  BUILD_PLATE,
   buildTypeLabel,
   buildTypeOptions,
   CATALOG_NAME_FIELDS,
@@ -753,6 +759,12 @@ export default {
     },
     canViewDetail() {
       return hasAccessCode(useUserStore().userInfo, LIBRARY_PAGE_DETAIL)
+    },
+    canHandoff() {
+      return hasAccessCode(useUserStore().userInfo, ...TRANSFECTION_LIBRARY_HANDOFF)
+    },
+    canViewTransfection() {
+      return hasAccessCode(useUserStore().userInfo, TRANSFECTION_PAGE)
     },
     canManageFiles() {
       return hasAccessCode(useUserStore().userInfo, LIBRARY_FILE_MANAGE)
@@ -1121,12 +1133,47 @@ export default {
       }
       this.$router.push({ path: '/molecular-cell/library-construction/result', query: { id: row.id } })
     },
-    handleDownstreamHandoff() {
-      if (!this.canEdit) {
+    async handleDownstreamHandoff(row) {
+      if (!this.canHandoff) {
         ElMessage.warning('您没有权限交接文库工单')
         return
       }
-      ElMessage.info('下游测序模块尚未开放')
+      if (row.build_type !== BUILD_PLATE) {
+        ElMessage.info('只有单细胞孔板工单交接到转染与表达')
+        return
+      }
+      try {
+        await ElMessageBox.confirm(
+          `把 ${row.library_code || row.library_order_id} 交接到转染与表达？会新建一条 PCR 转染工单，带上项目、靶点、PM、小鼠品系和板号；交接后这条文库工单不能删除。`,
+          '交接确认',
+          { type: 'warning', confirmButtonText: '交接' },
+        )
+      } catch {
+        return
+      }
+      if (!await this.flushEditorForAction(row)) return
+      let created
+      try {
+        created = await handoffLibraryToTransfection(row.id)
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '交接失败' } })
+        return
+      }
+      const code = created.transfection_order_id
+      if (!this.canViewTransfection) {
+        ElMessage.success(`已交接为转染工单 ${code}`)
+        return
+      }
+      try {
+        await ElMessageBox.confirm(`已交接为转染工单 ${code}，现在去转染与表达查看？`, '交接成功', {
+          type: 'success',
+          confirmButtonText: '去查看',
+          cancelButtonText: '留在本页',
+        })
+      } catch {
+        return
+      }
+      this.$router.push({ name: 'TransfectionList', query: { order: code } })
     },
     deleteConfirmText(row) {
       return `确认删除 ${row.library_code || row.library_order_id || '这条工单'}？工单及其独占质检文件将一并删除，且无法恢复。`

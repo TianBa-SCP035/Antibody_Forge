@@ -42,6 +42,7 @@ Windows 在仓库根运行 `start_dev.bat`；Linux test/prod 运行 `./start_dev
 | 抗体发现 · 合成与验证 | `/discovery/synthesis-progress` | `/api/discovery/synthesis-progress` | 合成订单、到货及流式/亲和力初筛验证跟踪；One 库同步与比对 |
 | 分子与细胞 · 引物库 | `/molecular-cell/primer-library` | `/api/molecular-cell/library-orders/catalog` | 引物的查看、编辑、导入导出 |
 | 分子与细胞 · 文库构建 | `/molecular-cell/library-construction`、`/molecular-cell/library-construction/result` | `/api/molecular-cell/library-orders` | 建库工单、胶图与质检文件；发现交接 |
+| 分子与细胞 · 转染与表达 | `/molecular-cell/transfection`、`/molecular-cell/transfection/proteins` | `/api/molecular-cell/transfection` | 转染工单与转染表；文库单细胞孔板交接进来，交接到合成与验证 |
 | 效价数据 | `/serum/titer` | `/api/serum/titer` | 靶点、FACS、ELISA、附件（可选 DRM） |
 | 效价实验列表 | `/serum/titer-orders` | `/api/serum/titer/order/*` | 效价工单；「工单」→ 镁伽流式；「测序」→ 发现工作台 |
 | 镁伽流式工单 | `/mega-automation/flow-work-orders`（含 `/detail`） | `/api/mega-automation` | 铺板、校验、下发；Labillion 集成见 flow-work-order 文档 |

@@ -55,6 +55,7 @@ from modules.discovery.synthesis_progress.constants import (
     SYNTHETIC_CORP_OPTIONS,
     TARGET_COLOR_OPTIONS,
     TARGET_TYPE_OPTIONS,
+    TRANSFECTION_ORDER_PREFIX,
     UNCLAIMED_OWNER,
 )
 from modules.discovery.synthesis_progress.one_sync import (
@@ -1106,6 +1107,10 @@ def _infer_target_type(db: Session, target_codes: Any) -> str | None:
     return parse_target_structure(row[0], row[1])["label"] if row else None
 
 
+def _is_transfection_order_no(value: Any) -> bool:
+    return str(value or "").strip().upper().startswith(TRANSFECTION_ORDER_PREFIX)
+
+
 def _apply_fields(
     row: DiscoverySynthesisOrder,
     data: dict[str, Any],
@@ -1147,6 +1152,12 @@ def _apply_fields(
 
     if "affinity_date" in data and not row.affinity_date and "affinity_result" not in data:
         row.affinity_result = None
+
+    if row.order_no != prev_order_no:
+        if _is_transfection_order_no(prev_order_no):
+            raise ValueError("订单号是转染与表达交接时写入的转染工单号，不能修改")
+        if _is_transfection_order_no(row.order_no):
+            raise ValueError(f"{TRANSFECTION_ORDER_PREFIX} 开头的订单号只能由转染与表达交接写入")
 
     methods = split_tokens(row.selection_method)
     if "selection_method" in data and RECHOOSE_TOKEN in methods:

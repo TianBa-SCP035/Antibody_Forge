@@ -844,6 +844,7 @@ import {
   FLOW_STATUS_OPTIONS,
   HEADER_MENU_COLUMNS,
   isEngineeringRow,
+  isTransfectionOrderNo,
   PM_EDIT_FIELD_KEYS,
   QUEUE_TERMINAL_STATUSES,
   SHEET_COLUMN_ORDER,
@@ -852,6 +853,7 @@ import {
   STATUS_FILTER_GROUPS,
   STATUS_VIEWS,
   SYNTHESIS_VIEW_PREFS_KEY,
+  TRANSFECTION_ORDER_NO_MESSAGE,
   WORKBENCH_COLUMNS,
 } from './synthesisColumns'
 
@@ -1313,6 +1315,7 @@ export default {
       if (fieldKey === 'synthesis_order_id' || fieldKey === 'order_sender') {
         return false
       }
+      if (fieldKey === 'order_no' && isTransfectionOrderNo(row?.order_no)) return false
       if (fieldKey === 'sort_order' && this.isQueueTerminalRow(row)) {
         return false
       }
@@ -1376,6 +1379,7 @@ export default {
       if (!row || this.canEditField(row, key)) return ''
       const label = FIELD_LABELS[key] || '该字段'
       if (key === 'synthesis_order_id' || key === 'order_sender') return `「${label}」由系统自动生成，不能修改`
+      if (key === 'order_no' && isTransfectionOrderNo(row.order_no)) return TRANSFECTION_ORDER_NO_MESSAGE
       if (key === 'sort_order' && this.isQueueTerminalRow(row)) return '已结束的记录不在队列里，不能改排序'
       if (!row.id && DRAFT_LOCKED_FIELD_KEYS.has(key)) return `工单保存后才能填写「${label}」`
       if (!this.canEdit) return '你没有编辑合成与验证的权限'

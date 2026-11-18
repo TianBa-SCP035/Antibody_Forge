@@ -31,6 +31,13 @@ const SHEET_VIRTUAL_X_CONFIG = Object.freeze({
 const SHEET_HEADER_HOLD_MS = 350
 
 /**
+ * 只读查询页的序号列：只是显示用的行号，和数据库无关，翻页后接着编号。
+ * 页面把它放在列定义第一个，excelRowSelectKey、sheetPinFirstKey 和 createColumnOrder 的 pinFirstKey 都设成它的 key，
+ * 取值用 sheetRowNo(row)。点序号选整行，点表头全选。
+ */
+export const SHEET_ROW_NO_COLUMN = Object.freeze({ key: 'row_no', label: '序号', width: 64, align: 'center' })
+
+/**
  * vxe 表格的划选、复制、整列整行选择、Shift 拖列和列宽记忆，不含单元格编辑。
  * 只读表格直接混入本层；可编辑的工作台用 workbenchExcelMixin（已包含本层）。
  *
@@ -164,6 +171,13 @@ export default {
       const column = this.sheetEl('table')?.getColumnById?.(colid)
       const field = column?.field
       return field ? this.sheetColumnByKey.get(field)?.index : undefined
+    },
+    /** 序号列的值：按当前页码和每页条数接着编号。 */
+    sheetRowNo(row) {
+      const index = this.getSheetRowIndex(row)
+      if (index < 0) return ''
+      const { page = 1, limit = 0 } = this.listQuery || {}
+      return String((page - 1) * limit + index + 1)
     },
     sheetColumnTitle(column) {
       if (this.isExcelRowSelectField(column?.key) && this.sortColumnLabel) return this.sortColumnLabel

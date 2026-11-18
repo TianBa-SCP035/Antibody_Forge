@@ -41,6 +41,8 @@
     "presetDiscoverySynthesisSubtitle": "Sequence synthesis and assay progress",
     "presetLibraryConstructionTitle": "Library construction",
     "presetLibraryConstructionSubtitle": "Orders, gels and QC files",
+    "presetTransfectionTitle": "Transfection",
+    "presetTransfectionSubtitle": "Transfection orders and protein table",
     "presetPrimerLibraryTitle": "Primer library",
     "presetPrimerLibrarySubtitle": "View, edit and import primers",
     "presetFlowWorkOrderTitle": "Flow work orders",

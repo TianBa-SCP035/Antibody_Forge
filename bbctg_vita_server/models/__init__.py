@@ -7,6 +7,9 @@ from models.molecular_cell import (
     MolecularLibraryResultLink,
     MolecularLibraryResultPackage,
     MolecularPrimerIndexCatalog,
+    MolecularTransfectionItem,
+    MolecularTransfectionOrder,
+    MolecularTransfectionProtein,
 )
 from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
 from models.immunology import (
@@ -46,6 +49,9 @@ __all__ = [
     "MolecularLibraryResultLink",
     "MolecularLibraryResultPackage",
     "MolecularPrimerIndexCatalog",
+    "MolecularTransfectionItem",
+    "MolecularTransfectionOrder",
+    "MolecularTransfectionProtein",
     "MegaFlowWorkOrder",
     "MegaFlowWorkOrderDispatch",
     "SerumElisaPlate",

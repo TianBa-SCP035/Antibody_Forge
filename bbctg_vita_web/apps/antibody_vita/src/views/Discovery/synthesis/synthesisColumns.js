@@ -197,6 +197,14 @@ export function isEngineeringRow(row) {
   return row?.order_kind === '改造' || ENG_SUPPLY_MODES.has(row?.supply_mode);
 }
 
+/** 转染与表达交接生成的合成单，订单号是转染工单号，只由交接写入。 */
+const TRANSFECTION_ORDER_PREFIX = 'TRF-';
+export const TRANSFECTION_ORDER_NO_MESSAGE = '订单号是转染与表达交接时写入的转染工单号，不能修改';
+
+export function isTransfectionOrderNo(value) {
+  return String(value ?? '').trim().toUpperCase().startsWith(TRANSFECTION_ORDER_PREFIX);
+}
+
 /** 新建时先在页面上填，下列字段齐了才真正保存；target 指靶点名称或编号任填其一。 */
 export const CREATE_REQUIRED_FIELDS = [
   ['order_kind', '订单性质'],

@@ -18,6 +18,7 @@ from models.molecular_cell import (
     MolecularLibraryResultLink,
     MolecularLibraryResultPackage,
     MolecularPrimerIndexCatalog,
+    MolecularTransfectionOrder,
 )
 from modules.discovery.workbench import service as discovery_service
 from modules.molecular_cell.library_orders import routes as order_routes
@@ -48,6 +49,7 @@ TABLES = (
     MolecularLibraryResultPackage,
     MolecularLibraryResultFile,
     MolecularLibraryResultLink,
+    MolecularTransfectionOrder,
 )
 
 

@@ -1,11 +1,12 @@
 import type { RouteRecordRaw } from 'vue-router';
 
 const LIBRARY_TAB_GROUP = '/molecular-cell/library-construction';
+const TRANSFECTION_TAB_GROUP = '/molecular-cell/transfection';
 
 const routes: RouteRecordRaw[] = [
   {
     meta: {
-      authority: ['molecular.page.library', 'molecular.page.primer'],
+      authority: ['molecular.page.library', 'molecular.page.primer', 'molecular.page.transfection'],
       featureCode: 'menu.molecular_cell',
       icon: 'lucide:dna',
       order: 30,
@@ -55,6 +56,36 @@ const routes: RouteRecordRaw[] = [
           activePath: LIBRARY_TAB_GROUP,
           tabGroup: LIBRARY_TAB_GROUP,
           title: '文库质控',
+        },
+      },
+      {
+        name: 'TransfectionList',
+        path: '/molecular-cell/transfection',
+        component: () => import('#/views/MolecularCell/transfection/TransfectionList.vue'),
+        meta: {
+          authority: ['molecular.page.transfection'],
+          featureCode: 'menu.molecular_cell.transfection',
+          fullPathKey: false,
+          icon: 'lucide:test-tubes',
+          keepAlive: true,
+          order: 20,
+          tabGroup: TRANSFECTION_TAB_GROUP,
+          title: '转染与表达',
+        },
+      },
+      {
+        name: 'TransfectionProteins',
+        path: '/molecular-cell/transfection/proteins',
+        component: () => import('#/views/MolecularCell/transfection/TransfectionProteins.vue'),
+        meta: {
+          authority: ['molecular.page.transfection'],
+          hideInMenu: true,
+          icon: 'lucide:table',
+          fullPathKey: false,
+          keepAlive: true,
+          activePath: TRANSFECTION_TAB_GROUP,
+          tabGroup: TRANSFECTION_TAB_GROUP,
+          title: '转染表',
         },
       },
     ],

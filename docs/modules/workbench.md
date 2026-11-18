@@ -1,12 +1,12 @@
 # 项目工作台共用约定
 
-> 适用页面：免疫工作台、发现工作台、发现合成与验证、文库构建使用工作台 / Excel 双视图；免疫实验列表、效价实验列表、流式工单列表、引物库也使用共用表头菜单。模块事实见 [免疫工作台](./immunology/workbench.md) 与 [发现工作台](./discovery/workbench.md)。
+> 适用页面：免疫工作台、发现工作台、发现合成与验证、文库构建、转染与表达使用工作台 / Excel 双视图；免疫实验列表、效价实验列表、流式工单列表、引物库、转染表也使用共用表头菜单。模块事实见 [免疫工作台](./immunology/workbench.md) 与 [发现工作台](./discovery/workbench.md)。
 
 ## 页面模式
 
 一级表单页按功能组合模块：要哪项功能就混入哪一层，不要的不混入，页面里不写开关。
 
-| 功能 | 模块 | 免疫工作台 / 发现工作台 / 合成与验证 | 文库构建 | 引物库 |
+| 功能 | 模块 | 免疫工作台 / 发现工作台 / 合成与验证 | 文库构建 / 转染与表达 | 引物库 / 转染表 |
 |---|---|---|---|---|
 | 划选、复制 | `sheetSelectionMixin`（`workbenchExcelMixin` 已带） | 有 | 有 | 有 |
 | Excel 编辑、粘贴、双视图 | `workbenchExcelMixin`、`WorkbenchViewToggle` | 有 | 有 | 无（只读表格） |
@@ -36,11 +36,11 @@
 
 | 组件 | 职责 | 使用页面 |
 |---|---|---|
-| `WorkbenchDataTable.vue` | 工作台表格、显示字段、固定首末列、`Shift` 拖列表头 | 免疫、发现、合成与验证、文库构建 |
+| `WorkbenchDataTable.vue` | 工作台表格、显示字段、固定首末列、`Shift` 拖列表头 | 免疫、发现、合成与验证、文库构建、转染与表达 |
 | `WorkbenchViewToggle.vue`、`viewMode.js` | 切换 `workbench` / `excel`；右键恢复当前视图列设置 | 同上 |
-| `columnOrder.js` | `createColumnOrder` 持久化 `{ order, hidden, widths, colors }`，合并新增列并保持固定列 | 双视图页面、引物库 |
-| `WorkbenchSheet.vue`、`workbenchExcel.css` | Excel 表格外壳：外层划选容器、vxe-table 和全部配置事件、三种标准列（靶点 / 选择 / 普通）、选区遮罩和拖列指示；样式只在这里引入 | 双视图页面、引物库 |
-| `sheetSelectionMixin.js` | 只读划选层：选区、复制、整行/整列选择、`Shift` 拖列、列宽和列序记忆 | 引物库；其余经 `workbenchExcelMixin` 带入 |
+| `columnOrder.js` | `createColumnOrder` 持久化 `{ order, hidden, widths, colors }`，合并新增列并保持固定列 | 双视图页面、引物库、转染表 |
+| `WorkbenchSheet.vue`、`workbenchExcel.css` | Excel 表格外壳：外层划选容器、vxe-table 和全部配置事件、三种标准列（靶点 / 选择 / 普通）、选区遮罩和拖列指示；样式只在这里引入 | 双视图页面、引物库、转染表 |
+| `sheetSelectionMixin.js` | 只读划选层：选区、复制、整行/整列选择、`Shift` 拖列、列宽和列序记忆 | 引物库、转染表；其余经 `workbenchExcelMixin` 带入 |
 | `workbenchExcelMixin.js` | 编辑层（含划选层）：键入、双击编辑、删除、粘贴保存、视图切换、日期和选项校验 | 双视图页面 |
 | `workbenchCrudMixin.js` | 列表加载、删除、导出、表头取值，逐字段保存的提交与失败回退（`submitRowFields`） | 双视图页面 |
 | `WorkbenchPriorityCell.vue` | 工作台视图的优先级格：可改时行内下拉，不可改时标签，按档位着色；样式在组件里 | 双视图页面 |
@@ -48,9 +48,9 @@
 | `workbenchQueueSortMixin.js`、`WorkbenchSortHeader.vue`、`WorkbenchSortCell.vue` | 队列排序：表头切换队列序、排序列显示与改号、工作台视图拖行、锁定提示 | 免疫、发现、合成与验证 |
 | `workbenchDrawerMixin.js`、`WorkbenchDrawer.vue`、`workbenchDrawer.css` | 无遮罩编辑抽屉：逐字段保存、按行排队、兜底补存；外壳负责标题栏、上一条 / 下一条、分组卡片 | 双视图页面 |
 | `WorkbenchDrawerField.vue` | 抽屉标准字段控件：日期、靶点、靶点编号、人员、下拉、多行文本、数字和单行文本 | 双视图页面 |
-| `WorkbenchLineInput.vue` | 一行一项的多行文本框：不自动折行，框高等于行数，不显示滚动条，长行用光标、拖选、Shift+滚轮或触控板左右滚动，失焦回行首；用法同 `ElInput` | 发现（板号、抗原、冲击免细胞）、文库构建（板号） |
-| `workbenchPanel.css` | 实验模式顶部：渐变标题卡；统计块每个一张白卡片，直接放在页面底色上，左侧色条和阴影取 `stat-*` 色调或 `--stat-accent`；筛选卡。用得少的筛选放进高级操作栏 | 文库构建、效价实验列表、流式工单列表、引物库 |
-| `WorkbenchHeaderMenu.vue`、`workbenchHeaderMenu.js` | 表头取值筛选、条件筛选、颜色筛选和排序 | 上述双视图页面、免疫实验列表、效价实验列表、流式工单列表、引物库 |
+| `WorkbenchLineInput.vue` | 一行一项的多行文本框：不自动折行，框高等于行数，不显示滚动条，长行用光标、拖选、Shift+滚轮或触控板左右滚动，失焦回行首；用法同 `ElInput` | 发现（板号、抗原、冲击免细胞）、文库构建与转染与表达（板号） |
+| `workbenchPanel.css` | 实验模式顶部：渐变标题卡；统计块每个一张白卡片，直接放在页面底色上，左侧色条和阴影取 `stat-*` 色调或 `--stat-accent`；筛选卡。用得少的筛选放进高级操作栏 | 文库构建、转染与表达、效价实验列表、流式工单列表、引物库、转染表 |
+| `WorkbenchHeaderMenu.vue`、`workbenchHeaderMenu.js` | 表头取值筛选、条件筛选、颜色筛选和排序 | 上述双视图页面、免疫实验列表、效价实验列表、流式工单列表、引物库、转染表 |
 | `WorkbenchStatusEditor.vue` | 行内状态选择 | 双视图页面、文库构建结果页 |
 | `WorkbenchMultiTagEditor.vue` | 行内多选标签 | 发现 |
 | `WorkbenchTargetSelect.vue`、`workbenchTargetMixin.js` | 编辑区远程选靶点，联动名称与编号；粘贴时统一解析靶点 | 双视图页面（抽屉里经 `WorkbenchDrawerField`）、文库构建结果页、流式工单编辑 |

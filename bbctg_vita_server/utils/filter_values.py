@@ -48,6 +48,25 @@ def like_contains(column, text: str):
     return column.like(f"%{like_literal(text)}%", escape="\\")
 
 
+_CODE_SEARCH_SEPARATORS = (",", "\t", "\n", "\r", "，", "、", " ")
+MAX_CODE_SEARCH = 500
+
+
+def code_search_clause(column, value: Any, *, label: str, upper: bool = False):
+    """编号搜索：多个编号（逗号、空格、换行分隔）按完整编号查找；只填一个时按包含查找。没填返回 None。"""
+    text = str(value or "").strip()
+    parts = split_code_tokens(text)
+    if not parts:
+        return None
+    if upper:
+        parts = [part.upper() for part in parts]
+    if any(separator in text for separator in _CODE_SEARCH_SEPARATORS):
+        if len(parts) > MAX_CODE_SEARCH:
+            raise ValueError(f"{label}一次最多搜索 {MAX_CODE_SEARCH} 个")
+        return column.in_(parts)
+    return like_contains(column, parts[0])
+
+
 def filter_terms(value: Any) -> list[str]:
     if value is None or value is False:
         return []

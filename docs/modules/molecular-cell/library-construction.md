@@ -1,5 +1,5 @@
 # 分子与细胞 · 文库构建
-> 承接上游发现交接或手工创建的建库任务，记录各工艺关键数据、产物位置与内部胶图/引物质控。相关：[引物库](./primer-library.md) · [发现工作台](../discovery/workbench.md) · [项目工作台共用约定](../workbench.md)
+> 承接上游发现交接或手工创建的建库任务，记录各工艺关键数据、产物位置与内部胶图/引物质控。相关：[引物库](./primer-library.md) · [转染与表达](./transfection.md) · [发现工作台](../discovery/workbench.md) · [项目工作台共用约定](../workbench.md)
 
 ## 1. 入口与权限
 
@@ -155,8 +155,8 @@
 | 按钮 | 权限 | 行为 |
 |---|---|---|
 | **质检** | `molecular.page.library_detail` | 跳转 `/molecular-cell/library-construction/result?id=<id>` |
-| **交接** | `molecular.library.edit` | 提示「下游测序模块尚未开放」 |
-| **删除** | `molecular.library.edit` | 二次确认后调用 `POST /delete`，删除工单并清理无其他工单引用的独占质检文件与测序包 |
+| **交接** | `molecular.library.edit` 或 `molecular.transfection.edit` | 只对单细胞孔板开放：确认后调用 `POST /api/molecular-cell/transfection/handoff_library` 新建一条 PCR 转染工单，见 [转染与表达](./transfection.md) §4；其他类型提示「只有单细胞孔板工单交接到转染与表达」 |
+| **删除** | `molecular.library.edit` | 二次确认后调用 `POST /delete`，删除工单并清理无其他工单引用的独占质检文件与测序包；已交接为转染工单的不能删除 |
 
 ### 4.2 新建、Excel 批量编辑与导出
 
@@ -236,6 +236,8 @@
   - 交接创建包含 `phage_display` 且发现安排处于 `规划中`、`待冲击`、`待剖鼠`、`待建库` 时，发现状态推进为 `待噬菌体`；否则若处于 `规划中`、`待冲击`、`待剖鼠`，推进为 `待建库`。文库构建完成不会自动将发现安排推进为 `待测序`。
   - 只要 `molecular_library_order` 中存在 `source_discovery_id = discovery_id` 的工单（含 `已取消`），发现工作台即禁止删除该发现安排，需先删除关联的建库工单。
 
+单细胞孔板工单向下游交接到转染与表达（未取消即可，不要求质检结论；一条只交接一次），字段携带见 [转染与表达](./transfection.md) §4。
+
 ## 7. 接口
 
 引物库 `/api/molecular-cell/library-orders/catalog/*` 接口见 [引物库](./primer-library.md)。
@@ -251,7 +253,7 @@
 | `POST` | `/api/molecular-cell/library-orders/batch_save` | `molecular.library.edit`（每条均仅改上述 4 个质检字段时也接受 `molecular.library.file.manage`） | 批量事务更新已有工单（单次最多 500 条，任一条失败整批回滚） |
 | `POST` | `/api/molecular-cell/library-orders/export_list` | `molecular.page.library` | 按当前筛选与排序导出工单 Excel |
 | `POST` | `/api/molecular-cell/library-orders/handoff` | `discovery.workbench.edit` 或 `molecular.library.edit` | 从发现工作台交接批量创建建库工单并更新发现状态 |
-| `POST` | `/api/molecular-cell/library-orders/delete` | `molecular.library.edit` | 删除工单并清理无其他工单引用的独占质检文件与测序包 |
+| `POST` | `/api/molecular-cell/library-orders/delete` | `molecular.library.edit` | 删除工单并清理无其他工单引用的独占质检文件与测序包（已交接为转染工单的不能删除） |
 | `POST` | `/api/molecular-cell/library-orders/files/list` | `molecular.page.library_detail` | 查询指定 `order_id` 的工单信息、已配置引物序列、质检文件及测序包（打开时自动按最新规则重核序列） |
 | `POST` | `/api/molecular-cell/library-orders/files/upload_batch` | `molecular.library.file.manage` | 批量上传文件或测序包（`order_id` 可选：传则挂当前工单，不传则按预检跨工单关联） |
 | `POST` | `/api/molecular-cell/library-orders/files/preflight` | `molecular.library.file.manage` | 列表批量上传前的无状态路径与建库编号预检 |

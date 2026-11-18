@@ -39,6 +39,8 @@ MOUNTS: tuple[Mount, ...] = (
     Mount("modules.molecular_cell.library_orders.routes:router", "/molecular-cell/library-orders", "分子与细胞-文库构建"),
     Mount("modules.molecular_cell.primer_catalog.routes:router", "/molecular-cell/library-orders/catalog",
           "分子与细胞-引物库"),
+    Mount("modules.molecular_cell.transfection.routes:router", "/molecular-cell/transfection",
+          "分子与细胞-转染与表达"),
     Mount("modules.order_sync.routes:router", "/order-experiment", "工单数据回传"),
     Mount("modules.options.routes:router", "/options", "公共选项"),
     Mount("modules.system.routes:router", "/system", "系统管理"),

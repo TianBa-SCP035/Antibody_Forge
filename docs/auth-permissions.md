@@ -144,8 +144,10 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 | `molecular.library.file.manage` | action | 质检文件，以及质检结论、质检人、质检日期、质检说明 |
 | `molecular.page.primer` | page | 引物库 |
 | `molecular.primer.edit` | action | 新增、修改、停用、删除、改系列、改方向和批量导入引物 |
+| `molecular.page.transfection` | page | 转染与表达和转染表查询 |
+| `molecular.transfection.edit` | action | 转染工单新建、编辑、删除，导入和删除蛋白清单，交接到合成与验证，在文库构建交接单细胞孔板 |
 
-写接口 `POST /api/molecular-cell/library-orders/save`、`/batch_save`、`/delete`、`/handoff`、`/files/upload_batch`、`/files/update`、`/files/delete`、`/catalog/save`、`/catalog/delete`、`/catalog/batch_update`、`/catalog/batch_delete`、`/catalog/batch_save` 在路由上声明操作日志名称；使用 POST 返回文件的 `/catalog/export` 按页面权限检查，和其他导出一样不记日志。上传前的路径预检 `/files/preflight` 不写库，用 `audit_quiet()` 不记日志。查询 `/catalog/list`、`/catalog/column_values` 和全选 `/catalog/ids` 不记操作日志。取消统一通过 `/save` 更新状态。只改质检结论、质检人、质检日期、质检说明时，`/save` 也接受 `molecular.library.file.manage`；`/batch_save` 在每一条都只改这些字段时同样接受。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。权限码和菜单开关（`menu.molecular_cell` / `menu.molecular_cell.library` / `menu.molecular_cell.primer`）在 `modules/molecular_cell/permissions.py`。不写入示例角色/权限包。已录入靶点搜索用本模块的 `GET /api/molecular-cell/library-orders/recorded_targets`；选靶点 / 人名用公共选项接口 `GET /api/options/targets` 与 `/api/options/users`。
+写接口 `POST /api/molecular-cell/library-orders/save`、`/batch_save`、`/delete`、`/handoff`、`/files/upload_batch`、`/files/update`、`/files/delete`、`/catalog/save`、`/catalog/delete`、`/catalog/batch_update`、`/catalog/batch_delete`、`/catalog/batch_save` 在路由上声明操作日志名称；使用 POST 返回文件的 `/catalog/export` 按页面权限检查，和其他导出一样不记日志。上传前的路径预检 `/files/preflight` 不写库，用 `audit_quiet()` 不记日志。查询 `/catalog/list`、`/catalog/column_values` 和全选 `/catalog/ids` 不记操作日志。取消统一通过 `/save` 更新状态。只改质检结论、质检人、质检日期、质检说明时，`/save` 也接受 `molecular.library.file.manage`；`/batch_save` 在每一条都只改这些字段时同样接受。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。转染与表达的写接口 `POST /api/molecular-cell/transfection/save`、`/batch_save`、`/delete`、`/handoff_library`、`/handoff_synthesis`、`/proteins/import`、`/proteins/clear` 声明操作日志名称；`/handoff_library` 同时接受 `molecular.library.edit`，并按文库构建的建库类型范围收窄；查询与导出不记日志，见 [modules/molecular-cell/transfection.md](./modules/molecular-cell/transfection.md)。权限码和菜单开关（`menu.molecular_cell` / `menu.molecular_cell.library` / `menu.molecular_cell.primer` / `menu.molecular_cell.transfection`）在 `modules/molecular_cell/permissions.py`。不写入示例角色/权限包。已录入靶点搜索用本模块的 `GET /api/molecular-cell/library-orders/recorded_targets`；选靶点 / 人名用公共选项接口 `GET /api/options/targets` 与 `/api/options/users`。
 
 ### 2.6 系统模块（`system.*`）
 
@@ -417,6 +419,7 @@ sequenceDiagram
 | 抗体发现 API | `bbctg_vita_server/modules/discovery/workbench/routes.py` |
 | 文库构建 API | `bbctg_vita_server/modules/molecular_cell/library_orders/routes.py` |
 | 引物库 API | `bbctg_vita_server/modules/molecular_cell/primer_catalog/routes.py` |
+| 转染与表达 API | `bbctg_vita_server/modules/molecular_cell/transfection/routes.py` |
 | 镁伽 API | `bbctg_vita_server/modules/mega_automation/routes.py` |
 | 认证 | `bbctg_vita_server/modules/auth/` |
 | 路由守卫 | `bbctg_vita_web/apps/antibody_vita/src/router/guard.ts` |

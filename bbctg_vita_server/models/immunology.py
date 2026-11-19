@@ -4,6 +4,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from db.session import Base
 from models.types import DateString
 
+# 效价文件、FACS 板卡的来源：镁伽回传只能覆盖自己写入且没被人改过的记录。
+SOURCE_MANUAL = "manual"
+SOURCE_MEGA = "mega"
+
 
 class SerumImmProject(Base):
     __tablename__ = "serum_imm_project"
@@ -114,6 +118,7 @@ class SerumFile(Base):
     upload_user: Mapped[str | None] = mapped_column(String(64))
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default=SOURCE_MANUAL, server_default=SOURCE_MANUAL)
     created_time: Mapped[object] = mapped_column(
         DateTime,
         nullable=False,
@@ -138,6 +143,7 @@ class SerumFile(Base):
             "upload_user": self.upload_user,
             "file_name": self.file_name,
             "file_path": self.file_path,
+            "source": self.source or SOURCE_MANUAL,
             "created_time": format_time(self.created_time),
             "updated_time": format_time(self.updated_time),
             "thumb_url": f"/serum/titer/file/download?id={self.id}&preview=true&thumb=1&w=400",
@@ -344,6 +350,7 @@ class SerumFacsPlate(Base):
     lower_slot_groups: Mapped[object | None] = mapped_column(JSON)
     positive_well_list: Mapped[object | None] = mapped_column(JSON)
     instrument_type: Mapped[str | None] = mapped_column(String(64))
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default=SOURCE_MANUAL, server_default=SOURCE_MANUAL)
 
     def to_dict(self) -> dict:
         return {
@@ -366,6 +373,7 @@ class SerumFacsPlate(Base):
             "lower_slot_groups": self.lower_slot_groups,
             "positive_well_list": self.positive_well_list,
             "instrument_type": self.instrument_type,
+            "source": self.source or SOURCE_MANUAL,
             "plate_type": "facs",
         }
 

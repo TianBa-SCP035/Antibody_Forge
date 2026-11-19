@@ -186,3 +186,10 @@ class ExternalCallerTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as raised:
             check_external_caller(_request(host="10.0.0.9"), "", "10.0.0.5,10.0.0.6")
         self.assertEqual(raised.exception.status_code, 403)
+
+    def test_ip_is_checked_before_token(self):
+        for token in ("s3cret", "wrong"):
+            request = _request(headers={"X-Callback-Token": token}, host="10.0.0.9")
+            with self.subTest(token=token), self.assertRaises(HTTPException) as raised:
+                check_external_caller(request, "s3cret", "10.0.0.5")
+            self.assertEqual(raised.exception.status_code, 403)

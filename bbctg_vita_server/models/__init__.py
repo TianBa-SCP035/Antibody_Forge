@@ -1,4 +1,4 @@
-from models.order_sync import OrderSync
+from models.order_sync import OrderSync, OrderSyncBoard
 from models.supernatant import SynthesisSupernatantWell
 from models.target import Target
 from models.discovery import DiscoverySynthesisOrder, DiscoveryWorkbench
@@ -42,6 +42,7 @@ from models.system import (
 
 __all__ = [
     "OrderSync",
+    "OrderSyncBoard",
     "SynthesisSupernatantWell",
     "Target",
     "DiscoveryWorkbench",

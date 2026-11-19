@@ -399,3 +399,89 @@ export function cancelFlowWorkOrder(id: number | string) {
     skipGlobalErrorHandler,
   );
 }
+
+export interface OrderSyncBoard {
+  cell_name: null | string;
+  csv_path: null | string;
+  detect_barcode: null | string;
+  dispatch_id: null | string;
+  excel_file_id: null | number;
+  experiment_date: null | string;
+  experiment_id: null | string;
+  facs_plate_id: null | number;
+  id: number;
+  image_file_id: null | number;
+  image_path: null | string;
+  import_message: null | string;
+  import_status: string;
+  order_no: string;
+  received_at?: null | string;
+  sample_barcode: null | string;
+  seq: number;
+  sync_id: number;
+  trace_id?: string;
+  updated_at: null | string;
+  verify_message: null | string;
+  verify_status: string;
+  work_order_id: null | number;
+}
+
+export interface OrderSyncRecord {
+  error_message: null | string;
+  http_status: null | number;
+  id: number;
+  import_status: null | string;
+  order_count: number;
+  order_nos: null | string[];
+  processed_at: null | string;
+  received_at: null | string;
+  status: string;
+  status_label: string;
+  trace_id: string;
+}
+
+export interface OrderSyncRecordDetail extends OrderSyncRecord {
+  boards: OrderSyncBoard[];
+  response_body: null | Record<string, unknown>;
+}
+
+export interface OrderSyncListQuery {
+  import_status: string;
+  keyword: string;
+  limit: number;
+  page: number;
+  status: string;
+}
+
+export function fetchOrderSyncList(data: OrderSyncListQuery) {
+  return requestClient.post<{
+    items: OrderSyncRecord[];
+    page: number;
+    stats: Record<string, number>;
+    total: number;
+  }>('/mega-automation/order-sync/list', data, skipGlobalErrorHandler);
+}
+
+export function fetchOrderSyncDetail(id: number) {
+  return requestClient.get<OrderSyncRecordDetail>(`/mega-automation/order-sync/${id}`, skipGlobalErrorHandler);
+}
+
+export function downloadOrderSyncRaw(id: number) {
+  return requestClient.download(`/mega-automation/order-sync/${id}/raw`, downloadConfig);
+}
+
+export function reprocessOrderSync(id: number) {
+  return requestClient.post<OrderSyncRecordDetail>(
+    `/mega-automation/order-sync/${id}/reprocess`,
+    {},
+    skipGlobalErrorHandler,
+  );
+}
+
+export function fetchWorkOrderSyncBoards(workOrderId: number, config?: RequestConfig) {
+  return requestClient.get<{ items: OrderSyncBoard[] }>('/mega-automation/order-sync/boards', {
+    params: { work_order_id: workOrderId },
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}

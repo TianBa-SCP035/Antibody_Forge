@@ -1,33 +1,18 @@
 import logging
-from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from db.session import get_db
 from modules.auth.external import require_order_sync_caller
-from modules.order_sync import service
+from modules.order_sync import service, titer_import
 from modules.order_sync.service import OrderSyncError
 from modules.system.audit_context import AuditAction
 from modules.system.audit_routes import audit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-def device_success(trace_id: str, data: dict[str, Any]) -> JSONResponse:
-    return JSONResponse(
-        status_code=200,
-        content={"code": 0, "message": "success", "trace_id": trace_id, "data": data},
-    )
-
-
-def device_error(code: int, message: str, trace_id: str) -> JSONResponse:
-    return JSONResponse(
-        status_code=code if code >= 400 else 400,
-        content={"code": code, "message": message, "trace_id": trace_id, "data": None},
-    )
 
 
 @router.post(
@@ -38,16 +23,19 @@ def device_error(code: int, message: str, trace_id: str) -> JSONResponse:
     ],
 )
 def sync_order_experiment(
-    trace_id: str = Form(...),
-    order_json: UploadFile = File(...),
+    background_tasks: BackgroundTasks,
+    trace_id: str = Form(""),
+    order_json: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ) -> JSONResponse:
     normalized_trace_id = (trace_id or "").strip()
     try:
-        data = service.receive_sync(db, trace_id, order_json)
-        return device_success(normalized_trace_id, data)
+        reply = service.receive_sync(db, trace_id, order_json)
     except OrderSyncError as exc:
-        return device_error(exc.code, exc.message, normalized_trace_id)
+        return JSONResponse(status_code=exc.code, content=service.device_body(exc.code, exc.message, normalized_trace_id))
     except Exception:
         logger.exception("order sync failed: trace_id=%s", normalized_trace_id)
-        return device_error(500, "服务端异常", normalized_trace_id)
+        return JSONResponse(status_code=500, content=service.device_body(500, "服务端异常", normalized_trace_id))
+    if reply.plans and reply.sync_id is not None:
+        background_tasks.add_task(titer_import.run_import, reply.sync_id, reply.plans)
+    return JSONResponse(status_code=reply.http_status, content=reply.body)

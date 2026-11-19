@@ -414,6 +414,7 @@ class LabillionCallbackAuditTests(DbTestCase):
                 )
             )
             self.assertEqual(response.status_code, 200)
+            self.assertEqual(json.loads(response.body)["data"], {"applied": False, "reason": "dispatch_terminal"})
             self.assertEqual(log.target_id, "dispatch-2")
             self.assertEqual(log.detail["change_summary"], "dispatch_terminal")
 

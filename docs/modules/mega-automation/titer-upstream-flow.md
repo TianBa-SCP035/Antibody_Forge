@@ -129,6 +129,8 @@ mega_flow_work_order.source_id = serum_titer_order.titer_order_id
 
 向导勾选只用于生成本地流式草稿，不写入效价业务表。鼠号和死活在鼠号弹窗确认时直接保存到小鼠数据。流式工单的保存、校验、发送、状态和 Labillion 行为见 [流式工单](./flow-work-order.md)。
 
+镁伽回传的结果按同一关联写回效价实验：生成的文件和流式板卡标「镁伽」（`serum_file.source`、`serum_facs_plate.source` = `mega`），页面保存板卡、替换或重命名文件后转为手工（`manual`），镁伽不再覆盖。规则见 [工单数据回传接口 §8](./order-experiment-sync-api.md#8-导入效价)。
+
 ## 5. 接口
 
 | 方法 | 路径 | 权限 | 用途 |

@@ -35,6 +35,7 @@ Windows： 无需路径约定，固定环境为 local。
 | `ENABLE_SCHEDULER` | 是否强制开定时任务；prod 环境即使为 false 也会开 |
 | `LABILLION_CALLBACK_TOKEN` / `LABILLION_CALLBACK_IPS` | 镁伽回调校验（可选）。令牌放请求头 `X-Callback-Token`（不收 URL 参数，免得进访问日志），IP 英文逗号分隔；留空不校验，两项都配则都要满足 |
 | `ORDER_SYNC_TOKEN` / `ORDER_SYNC_IPS` / `ORDER_SYNC_MAX_MB` | 工单数据回传 `POST /api/order-experiment/sync` 的同类校验与 JSON 文件上限（默认 20MB） |
+| `FCS_SMB_HOST` / `FCS_SMB_PORT` / `FCS_SMB_SHARE` / `FCS_SMB_USER` / `FCS_SMB_PASSWORD` | 镁伽流式结果共享（SMB，只读下载回传引用的可视化图和热图，单文件上限同 `UPLOAD_MAX_MB`）；`HOST` 留空则不下载，回传核对照常、效价导入记「下载失败」。依赖 `smbprotocol`（已在 `requirements.txt`） |
 | `SUPERNATANT_RECEIVE_TOKEN` / `SUPERNATANT_RECEIVE_IPS` | 上清板布局接收 `POST /api/protein-supernatant/receive` 的同类校验；对接合成公司后应配置令牌 |
 | `YUNZHIJIA_*` | 云之家（可选） |
 | `CELL_DB_URL` / `EMPLOYEE_DB_URL` / `ONE_DB_URL` | 外部只读库（可选）；分别提供细胞库存、员工与靶点主数据、One 合成订单与交付进度 |
@@ -143,7 +144,7 @@ sudo nginx -t && sudo systemctl reload nginx
 
 效价附件：`repository/uploads/titer_files/<experiment_id>/`，库内路径 `/titer_files/...`。运行用户需对 `repository/` 可写。
 
-工单数据回传 JSON：`repository/order_sync/<YYYYMMDD>/`，库内路径 `/order_sync/...`；接口 `POST /api/order-experiment/sync`。
+工单数据回传 JSON：`repository/order_sync/<YYYYMMDD>/`，库内路径 `/order_sync/...`；接口 `POST /api/order-experiment/sync`。回传导入的可视化图和热图存进效价附件目录。
 
 临时目录：`repository/tmp/scheme_export/`（方案 PDF）、`repository/tmp/drm_download/`（下载加密临时文件）。
 

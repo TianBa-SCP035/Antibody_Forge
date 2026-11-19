@@ -15,6 +15,7 @@
       </div>
       <div class="header-actions">
         <span class="total-count">共 {{ total }} 条工单</span>
+        <el-button :icon="Tickets" @click="openSyncRecords">回传记录</el-button>
         <el-button
           type="primary"
           :icon="Plus"
@@ -267,6 +268,7 @@ import {
   Plus,
   Refresh,
   Search,
+  Tickets,
   Tools,
   View,
 } from '@element-plus/icons-vue';
@@ -378,6 +380,7 @@ export default {
       Plus,
       Refresh,
       Search,
+      Tickets,
       View,
     };
   },
@@ -497,6 +500,9 @@ export default {
     },
     canEdit() {
       return hasAccessCode(this.currentUserInfo, FLOW_WORK_ORDER_EDIT);
+    },
+    openSyncRecords() {
+      this.$router.push({ name: 'MegaOrderSyncRecords' });
     },
     createDraft() {
       if (!this.canEdit()) {

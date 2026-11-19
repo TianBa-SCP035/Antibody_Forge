@@ -34,6 +34,7 @@ test('已有起始路径按路由 meta.authority 精确校验权限', () => {
     ['/molecular-cell/transfection', 'molecular.page.transfection'],
     ['/molecular-cell/transfection/proteins', 'molecular.page.transfection'],
     ['/mega-automation/flow-work-orders', 'mega.page.flow_work_order'],
+    ['/mega-automation/flow-work-orders/sync-records', 'mega.page.flow_work_order'],
     ['/atlas/targets', 'atlas.page.target_library'],
   ]
 

@@ -8,6 +8,7 @@ python-multipart
 openpyxl
 apscheduler
 requests
+smbprotocol
 pillow
 biopython
 pytest

@@ -170,11 +170,43 @@ CREATE TABLE IF NOT EXISTS order_sync (
   order_nos JSON NULL COMMENT '订单号',
   project_count INT NOT NULL DEFAULT 0 COMMENT '项目数',
   project_infos JSON NULL COMMENT '项目摘要',
-  status VARCHAR(64) NOT NULL COMMENT '处理状态',
+  status VARCHAR(64) NOT NULL COMMENT '核对结论',
   error_message TEXT NULL COMMENT '错误信息',
+  http_status INT NULL COMMENT '回复HTTP状态',
+  response_body JSON NULL COMMENT '回复内容',
+  import_status VARCHAR(32) NULL COMMENT '导入进度',
+  processed_at DATETIME NULL COMMENT '最近处理时间',
   received_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '接收时间',
   UNIQUE KEY uk_order_sync_trace_id (trace_id)
 ) COMMENT='工单实验结果回传记录';
+
+CREATE TABLE IF NOT EXISTS order_sync_board (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  sync_id BIGINT NOT NULL COMMENT '回传记录ID',
+  seq INT NOT NULL COMMENT '回传内顺序',
+  order_no VARCHAR(255) NOT NULL COMMENT '订单号',
+  data_type VARCHAR(32) NULL COMMENT '检测类型',
+  work_order_id BIGINT NULL COMMENT '流式工单ID',
+  dispatch_id VARCHAR(64) NULL COMMENT '下发编号',
+  detect_barcode VARCHAR(128) NULL COMMENT '检测板条码（回传 barcode）',
+  sample_barcode VARCHAR(128) NULL COMMENT '样本板条码（回传 sample_code）',
+  cell_name VARCHAR(255) NULL COMMENT '细胞',
+  experiment_date VARCHAR(32) NULL COMMENT '实验日期',
+  image_path VARCHAR(1024) NULL COMMENT '可视化图路径',
+  csv_path VARCHAR(1024) NULL COMMENT '热图路径',
+  verify_status VARCHAR(32) NOT NULL COMMENT '核对结果',
+  verify_message TEXT NULL COMMENT '核对说明',
+  import_status VARCHAR(32) NOT NULL COMMENT '导入结果',
+  import_message TEXT NULL COMMENT '导入说明',
+  experiment_id VARCHAR(64) NULL COMMENT '效价实验编号',
+  facs_plate_id BIGINT NULL COMMENT 'FACS板卡ID',
+  image_file_id BIGINT NULL COMMENT '可视化图文件ID',
+  excel_file_id BIGINT NULL COMMENT '热图文件ID',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  KEY idx_order_sync_board_sync (sync_id),
+  KEY idx_order_sync_board_work_order (work_order_id)
+) COMMENT='工单回传检测板，一块检测板一行';
 
 -- ---------------------------------------------------------------------------
 -- 上清板布局接收（models/supernatant.py）
@@ -409,6 +441,7 @@ CREATE TABLE IF NOT EXISTS serum_file (
   upload_user VARCHAR(64) NULL COMMENT '上传人',
   file_name VARCHAR(255) NOT NULL COMMENT '文件名',
   file_path VARCHAR(1024) NOT NULL COMMENT '文件位置',
+  source VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT '来源：manual 手工，mega 镁伽回传',
   created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
   updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间',
   PRIMARY KEY (id),
@@ -498,6 +531,7 @@ CREATE TABLE IF NOT EXISTS serum_facs_plate (
   upper_slot_groups JSON NULL COMMENT '上半板孔位分组标题',
   lower_slot_groups JSON NULL COMMENT '下半板孔位分组标题',
   positive_well_list JSON NULL COMMENT '阳性孔位列表',
+  source VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT '来源：manual 手工，mega 镁伽回传',
   PRIMARY KEY (id),
   KEY idx_serum_facs_plate_experiment_id (experiment_id)
 ) COMMENT='FACS效价板信息表';

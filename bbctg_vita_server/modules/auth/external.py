@@ -18,16 +18,17 @@ def _ip_list(raw: str) -> set[str]:
 
 
 def check_external_caller(request: Request, token: str, ips: str) -> None:
-    expected = str(token or "").strip()
-    if expected:
-        supplied = request.headers.get(CALLBACK_TOKEN_HEADER) or ""
-        if not hmac.compare_digest(supplied.strip().encode("utf-8"), expected.encode("utf-8")):
-            raise HTTPException(status_code=401, detail="调用方校验失败")
+    # 先查 IP：白名单外的来源无从得知令牌对不对。
     allowed = _ip_list(ips)
     if allowed:
         client_ip = request.client.host if request.client else ""
         if client_ip not in allowed:
             raise HTTPException(status_code=403, detail="调用方不在允许列表")
+    expected = str(token or "").strip()
+    if expected:
+        supplied = request.headers.get(CALLBACK_TOKEN_HEADER) or ""
+        if not hmac.compare_digest(supplied.strip().encode("utf-8"), expected.encode("utf-8")):
+            raise HTTPException(status_code=401, detail="调用方校验失败")
 
 
 def require_labillion_caller(request: Request) -> None:

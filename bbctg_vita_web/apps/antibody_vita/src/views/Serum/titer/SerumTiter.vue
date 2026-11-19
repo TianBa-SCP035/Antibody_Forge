@@ -122,7 +122,10 @@
                 </div>
                 <div class="file-info-area">
                   <div class="file-name-text" :title="file.file_name">{{ file.file_name }}</div>
-                  <div class="file-meta-text">{{ file.created_time ? file.created_time.split(' ')[0] : '' }}</div>
+                  <div class="file-meta-text">
+                    {{ file.created_time ? file.created_time.split(' ')[0] : '' }}
+                    <el-tag v-if="file.source === 'mega'" size="small" type="success" effect="plain" class="file-source-tag">镁伽</el-tag>
+                  </div>
                 </div>
               </div>
             </div>
@@ -434,6 +437,10 @@
                 <span class="m-value">{{ currentFile.upload_user || '-' }}</span>
               </div>
               <div class="meta-item">
+                <span class="m-label">来源:</span>
+                <span class="m-value">{{ currentFile.source === 'mega' ? '镁伽回传（替换或重命名后转为手工）' : '手工上传' }}</span>
+              </div>
+              <div class="meta-item">
                 <span class="m-label">创建时间:</span>
                 <span class="m-value">{{ currentFile.created_time || '-' }}</span>
               </div>
@@ -532,6 +539,7 @@ import {
   ElTable,
   ElTableColumn,
   ElTabs,
+  ElTag,
   ElUpload,
 } from 'element-plus'
 import * as XLSX from 'xlsx'
@@ -614,6 +622,7 @@ export default {
     ElTable,
     ElTableColumn,
     ElTabs,
+    ElTag,
     ElUpload,
     ElisaPlateCard,
     FacsPlateCard,
@@ -1015,6 +1024,7 @@ export default {
       }).then(() => {
         ElMessage.success('重命名成功')
         this.currentFile.file_name = this.editFileName
+        this.currentFile.source = 'manual'
         this.getFiles()
       }).catch((err) => {
         notifyApiError(err, { messages: SERUM_ERRORS.titer.rename })
@@ -1041,9 +1051,11 @@ export default {
           const uploadUser = savedFile.upload_user || this.currentUserName
           const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
           const newFileName = savedFile.file_name || param.file.name
+          const source = savedFile.source || 'manual'
 
           this.currentFile.file_name = newFileName
           this.currentFile.upload_user = uploadUser
+          this.currentFile.source = source
           this.currentFile.updated_time = savedFile.updated_time || now
           this.currentFile._timestamp = Date.now()
           this.editFileName = newFileName
@@ -1056,6 +1068,7 @@ export default {
           if (fileInList) {
             fileInList.file_name = newFileName
             fileInList.upload_user = uploadUser
+            fileInList.source = source
             fileInList.updated_time = savedFile.updated_time || now
             fileInList._timestamp = Date.now()
           }
@@ -1616,6 +1629,7 @@ export default {
             } else {
               list[index].id = newId
               list[index]._uid = newKey
+              if (res.source !== undefined) list[index].source = res.source
             }
 
             if (oldKey !== newKey) {
@@ -2241,6 +2255,10 @@ export default {
     .file-meta-text {
       font-size: 12px;
       color: var(--el-text-color-secondary);
+    }
+
+    .file-source-tag {
+      margin-left: 4px;
     }
   }
 }

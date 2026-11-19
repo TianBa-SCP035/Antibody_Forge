@@ -24,7 +24,9 @@ LABILLION_STATUS_SYNC_AUDIT_ACTION = AuditAction("mega.labillion.status_sync", "
 
 
 def labillion_callback_success(data: dict[str, Any] | None = None) -> JSONResponse:
-    return JSONResponse(status_code=200, content={"success": True, "data": data or {}})
+    """只回是否生效和原因；工单、下发的内部状态只进日志，不回给设备。"""
+    reply = {key: data[key] for key in ("applied", "reason") if key in (data or {})}
+    return JSONResponse(status_code=200, content={"success": True, "data": reply})
 
 
 @router.post(

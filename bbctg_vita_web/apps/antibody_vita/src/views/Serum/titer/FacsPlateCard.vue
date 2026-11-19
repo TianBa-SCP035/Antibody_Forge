@@ -243,6 +243,15 @@
               <div class="header-left">
                 <el-icon><Picture /></el-icon>
                 <span>96孔板图片预览</span>
+                <el-tag
+                  v-if="plateData.source === 'mega'"
+                  size="small"
+                  type="success"
+                  effect="plain"
+                  title="镁伽回传自动生成；手工保存后转为手工，镁伽不再覆盖"
+                >
+                  镁伽回传
+                </el-tag>
               </div>
               <div class="header-right">
                 <el-button link class="delete-btn" :disabled="!canMutate" @click="handleDelete">
@@ -515,6 +524,7 @@ import {
   ElInputNumber,
   ElOption,
   ElSelect,
+  ElTag,
   ElTooltip,
   ElMessage,
 } from 'element-plus'
@@ -569,6 +579,7 @@ export default {
     ElInputNumber,
     ElOption,
     ElSelect,
+    ElTag,
     ElTooltip,
     FolderOpened,
     Loading,

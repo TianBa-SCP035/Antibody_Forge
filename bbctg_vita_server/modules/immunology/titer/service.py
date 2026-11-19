@@ -1,6 +1,7 @@
 import json
 import random
 import re
+import shutil
 from datetime import datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -27,6 +28,8 @@ from core.config import get_settings
 from core.errors import NotFoundError
 from integrations import drm_service
 from models.immunology import (
+    SOURCE_MANUAL,
+    SOURCE_MEGA,
     SerumElisaPlate,
     SerumFacsPlate,
     SerumFile,
@@ -62,6 +65,9 @@ from utils.normalize import normalize_date
 from utils.pagination import MAX_PAGE_LIMIT, parse_page_limit
 from utils.uploads import contained_path, read_limited, safe_path_part, upload_filename
 from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_ORDER
+
+
+MEGA_UPLOAD_USER = "镁伽回传"
 
 
 def _upload_root() -> Path:
@@ -131,6 +137,7 @@ def rename_file(db: Session, file_id: int, new_name: str) -> None:
     if not record:
         raise NotFoundError("文件不存在")
     record.file_name = new_name
+    record.source = SOURCE_MANUAL
     db.commit()
 
 
@@ -152,9 +159,46 @@ def replace_file(db: Session, file_id: int, file_obj: UploadFile, user_name: str
     record.file_name = file_obj.filename or save_name
     record.file_path = f"/titer_files/{record.experiment_id}/{save_name}"
     record.upload_user = user_name
+    record.source = SOURCE_MANUAL
     db.commit()
     db.refresh(record)
     return record.to_dict()
+
+
+def write_mega_file(
+    db: Session,
+    experiment_id: str,
+    file_name: str,
+    content_path: Path,
+    record: SerumFile | None = None,
+) -> tuple[SerumFile, Path, Path | None]:
+    """把镁伽回传的文件放进效价文件区，不提交事务。
+
+    record 为空时新建记录，否则原地替换内容（记录 ID 不变，板卡引用不断）。
+    返回记录、新写入的文件、被替换的旧文件；旧文件要等事务提交后再删，回滚时删新文件。
+    """
+    experiment_id = safe_path_part(experiment_id, "实验 ID")
+    file_name = upload_filename(file_name)
+    exp_dir = contained_path(_upload_root(), experiment_id)
+    exp_dir.mkdir(parents=True, exist_ok=True)
+    target = exp_dir / _upload_save_name(file_name)
+    stem, extension = target.stem, target.suffix
+    counter = 1
+    while target.exists():
+        target = exp_dir / f"{stem}_{counter}{extension}"
+        counter += 1
+    shutil.copyfile(content_path, target)
+
+    old_path: Path | None = None
+    if record is None:
+        record = SerumFile(experiment_id=experiment_id, source=SOURCE_MEGA)
+        db.add(record)
+    else:
+        old_path = get_full_path(record.file_path)
+    record.upload_user = MEGA_UPLOAD_USER
+    record.file_name = file_name
+    record.file_path = f"/titer_files/{experiment_id}/{target.name}"
+    return record, target, old_path
 
 
 def get_download_record(db: Session, file_id: int) -> tuple[SerumFile, Path]:
@@ -1663,6 +1707,7 @@ def save_facs_plate(db: Session, plate_data: dict[str, Any]) -> dict:
 
     for field in PLATE_FIELDS:
         setattr(plate, field, plate_data.get(field))
+    plate.source = SOURCE_MANUAL
     db.commit()
     db.refresh(plate)
     return plate.to_dict()

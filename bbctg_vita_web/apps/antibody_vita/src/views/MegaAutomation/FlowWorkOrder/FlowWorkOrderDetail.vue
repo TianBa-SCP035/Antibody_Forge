@@ -318,6 +318,10 @@
             </section>
           </div>
         </el-tab-pane>
+
+        <el-tab-pane label="回传结果" name="sync" lazy>
+          <OrderSyncTab :work-order-id="order.id || null" />
+        </el-tab-pane>
       </el-tabs>
       </div>
     </Transition>
@@ -379,6 +383,7 @@ import {
   resolveOrderDisplayStatus,
 } from '#/utils/megaFlowWorkOrderStatus';
 import EditorTab from './components/EditorTab.vue';
+import OrderSyncTab from './components/OrderSyncTab.vue';
 import PlatingTab from './components/PlatingTab.vue';
 import {
   applyCellPlateUsage,
@@ -417,6 +422,7 @@ export default {
     ElTabs,
     ElTag,
     Menu,
+    OrderSyncTab,
     PlatingTab,
   },
   setup() {

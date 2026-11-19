@@ -7,13 +7,14 @@
 |---|---|
 | 列表路由 | `/mega-automation/flow-work-orders` |
 | 详情路由 | `/mega-automation/flow-work-orders/detail` |
+| 回传记录路由 | `/mega-automation/flow-work-orders/sync-records`（不进菜单，列表右上「回传记录」进入） |
 | 一级菜单开关 | `menu.mega_automation` |
 | 列表菜单开关 | `menu.mega_automation.flow_work_orders` |
 | 页面权限 | `mega.page.flow_work_order` |
 | 编辑权限 | `mega.flow_work_order.edit` |
 | 下发权限 | `mega.flow_work_order.dispatch` |
 
-页面权限控制列表、详情、元数据、筛选值、导出、当前 Payload 和状态同步。编辑权限控制保存、校验、删除和作废。下发权限控制发送及手动状态操作。
+页面权限控制列表、详情、元数据、筛选值、导出、当前 Payload、状态同步和回传记录查看。编辑权限控制保存、校验、删除、作废和回传重新处理。下发权限控制发送及手动状态操作。
 
 ## 2. 数据与编号
 
@@ -185,7 +186,7 @@ stateDiagram-v2
 
 ### 4.2 详情
 
-详情包含“工单编辑”“铺板”“Payload”三个页签。Payload 页签按需读取当前未终止下发的快照。
+详情包含“工单编辑”“铺板”“Payload”“回传结果”四个页签。Payload 页签按需读取当前未终止下发的快照；回传结果页签首次打开时读取这张工单历次回传的检测板，含核对与导入结论。
 
 | 条件 | 页面操作 |
 |---|---|
@@ -203,6 +204,10 @@ stateDiagram-v2
 细胞板条码改成已有板时，按那块板带入列信息：其他未作废工单已选用的列只读，并取消本单对这些列的选择；其他工单填过但未选用的列带入后可改；名称或类型不一致时提示核对。打开已保存工单不会用其他工单的内容覆盖本单。已有工单加载失败时禁止保存和操作，避免误建新单。
 
 手动控制只改本系统状态，不调用设备。实际撤回会调用 Labillion 删除；已撤回后的继续会重新推送同一 `dispatchId`。详情加载或重新激活时，对 `sent`、`running`、`paused` 和三种执行异常异步查询 Labillion，每次打开都实时查询，执行进度只在查询结果里返回、不落库。
+
+### 4.3 回传记录
+
+列表右上「回传记录」进入。按核对结论统计，可按 trace_id / 订单号、核对结论、导入进度筛选，按接收时间倒序。详情抽屉显示每块检测板的核对与导入说明、当初回给镁伽的回复，可下载原文；有编辑权限时可「重新处理」。
 
 ## 5. 跨模块联动与外部集成
 
@@ -236,9 +241,11 @@ Payload 不包含数据库主键、工单状态和检索数组。`sample_plates[
 | `LABILLION_CALLBACK_TOKEN` | 可选；回调请求头 `X-Callback-Token` |
 | `LABILLION_CALLBACK_IPS` | 可选；回调来源 IP 白名单，英文逗号分隔 |
 
-令牌和 IP 都配置时必须同时通过。Labillion HTTP 超时为 5 秒。状态回调按 `dispatchId` 匹配下发记录；业务处理异常也返回 HTTP 200 和 `success: true`，避免设备重试阻塞。
+令牌和 IP 都配置时必须同时通过，先查 IP 再查令牌，不通过返回 403 / 401（`{"code": 1, "message": "调用方校验失败", "data": null}`）。状态回调与工单数据回传约定用同一个令牌，分别配在两个配置项。Labillion HTTP 超时为 5 秒。
 
-实验结果 JSON 使用独立接口 `POST /api/order-experiment/sync`，见 [工单数据回传接口](./order-experiment-sync-api.md)。
+状态回调请求体为 JSON 对象：`dispatchId`（必填，按它匹配下发记录）、`status`（必填，取 §3.3 的 Labillion 状态，不区分大小写）、`runId`（可选，只记日志）。通过校验后一律返回 HTTP 200 和 `{"success": true, "data": {"applied": ..., "reason": ...}}`：`data` 只含 `applied` 及未生效时的 `reason`（如 `missing_dispatch_id`、`dispatch_not_found`、`order_terminal`），工单与下发的内部状态只记操作日志、不回给设备；业务处理异常也同样返回，避免设备重试阻塞。
+
+实验结果 JSON 使用独立接口 `POST /api/order-experiment/sync`，核对、回复与导入效价规则见 [工单数据回传接口](./order-experiment-sync-api.md)。
 
 ## 6. 接口
 
@@ -267,6 +274,11 @@ Payload 不包含数据库主键、工单状态和检索数组。`sample_plates[
 | POST | `/api/mega-automation/flow-work-orders/{order_id}/delete` | `mega.flow_work_order.edit` | 删除未发送工单 |
 | POST | `/api/mega-automation/flow-work-orders/{order_id}/cancel` | `mega.flow_work_order.edit` | 作废已发送未完成工单 |
 | POST | `/api/mega-automation/labillion/callback` | 外部令牌/IP 校验 | 接收 Labillion 状态回调 |
+| POST | `/api/mega-automation/order-sync/list` | `mega.page.flow_work_order` | 回传记录分页列表和核对结论统计 |
+| GET | `/api/mega-automation/order-sync/boards?work_order_id=` | `mega.page.flow_work_order` | 某张工单历次回传的检测板 |
+| GET | `/api/mega-automation/order-sync/{sync_id}` | `mega.page.flow_work_order` | 回传详情、检测板与存档回复 |
+| GET | `/api/mega-automation/order-sync/{sync_id}/raw` | `mega.page.flow_work_order` | 下载回传原文 JSON |
+| POST | `/api/mega-automation/order-sync/{sync_id}/reprocess` | `mega.flow_work_order.edit` | 按原文重新核对并重新导入效价 |
 
 ## 7. 定时任务
 

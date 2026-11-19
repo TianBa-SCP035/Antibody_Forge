@@ -61,8 +61,6 @@ class Settings(BaseSettings):
     drm_config_path: Path = Field(default=PROJECT_ROOT / "repository" / "cache" / "drm")
     drm_encrypt_owner_id: str = ""
     drm_encrypt_secret_level_id: int = 1
-    equip_appid: str = ""
-    equip_appsecret: str = ""
     cell_db_url: str = ""
     employee_db_url: str = ""
     one_db_url: str = ""
@@ -76,6 +74,11 @@ class Settings(BaseSettings):
     order_sync_token: str = ""
     order_sync_ips: str = ""
     order_sync_max_mb: int = 20
+    fcs_smb_host: str = ""
+    fcs_smb_port: int = 445
+    fcs_smb_share: str = ""
+    fcs_smb_user: str = ""
+    fcs_smb_password: str = ""
     supernatant_receive_token: str = ""
     supernatant_receive_ips: str = ""
     public_api_base_url: str = ""

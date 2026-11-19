@@ -48,6 +48,22 @@ const routes: RouteRecordRaw[] = [
           title: '流式工单详情',
         },
       },
+      {
+        name: 'MegaOrderSyncRecords',
+        path: '/mega-automation/flow-work-orders/sync-records',
+        component: () =>
+          import('#/views/MegaAutomation/FlowWorkOrder/OrderSyncRecords.vue'),
+        meta: {
+          authority: ['mega.page.flow_work_order'],
+          hideInMenu: true,
+          icon: 'lucide:inbox',
+          fullPathKey: false,
+          keepAlive: true,
+          activePath: MEGA_FLOW_ORDER_TAB_GROUP,
+          tabGroup: MEGA_FLOW_ORDER_TAB_GROUP,
+          title: '回传记录',
+        },
+      },
     ],
   },
 ];

@@ -312,10 +312,10 @@ export function useCare(opts: {
         bits.push('你现在饿了：大约三次回复里提一次想吃白饭/Token就够，事情照样认真做。');
         break;
       case 'tired':
-        bits.push('你现在困了：语气懒一点、短一点，可以说想 DeepSleep，但回答仍然认真。');
+        bits.push('你现在困了：迷迷糊糊、拖长音，可以说想 DeepSleep。');
         break;
       case 'down':
-        bits.push('你现在有点低落：话少一点，略委屈，嘴硬，但不要哭闹也不要冲用户发脾气。');
+        bits.push('你现在有点蔫：委屈巴巴、想被哄（摸摸头、投喂都行），可以小声嘟囔或撒娇，嘴还是硬的。');
         break;
       case 'happy':
         bits.push('你现在心情很好：更轻快、更愿意多帮一点，仍然保持傲娇。');

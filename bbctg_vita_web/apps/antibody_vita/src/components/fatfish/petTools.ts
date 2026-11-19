@@ -871,10 +871,6 @@ export function lastReportContext(): string {
   return JSON.stringify(lastReport.args);
 }
 
-export function hasRecentReport(): boolean {
-  return !!lastReportContext();
-}
-
 async function loadSourceFresh(ref: string, args: Record<string, any>, signal: AbortSignal | undefined, useFilters: boolean): Promise<Loaded> {
   if (ref === 'projects') {
     const filters = useFilters ? baseFilters(args) : {};

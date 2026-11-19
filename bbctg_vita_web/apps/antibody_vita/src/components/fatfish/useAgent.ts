@@ -9,65 +9,13 @@ import { describeSources } from './apiWatch';
 import { scanPageForm } from './formBridge';
 import { ambientHint, collectPageContext } from './pageContext';
 import { readPageTables } from './pageTable';
-import { hasRecentReport, lastReportContext, runPetTool, type Proposal, type ToolCall } from './petTools';
-import { currentUserName, menuPages } from './session';
+import { lastReportContext, runPetTool, type Proposal, type ToolCall } from './petTools';
+import { currentUserName } from './session';
 
 const MAX_STEPS = 10;
 /** 除单步限制外设置整次请求时限，避免慢模型让宠物长时间占用。 */
 const MAX_TOTAL_MS = 4 * 60_000;
 const MAX_TOOL_CHARS = 14_000;
-
-/**
- * 表示需要查询数据而非闲聊的领域词和 ID。
- * 不纳入「状态、几个、表格、检查」等日常词，避免将「你状态怎么样」误送到没有人设的代理路径。
- */
-const TASK_HINT =
-  /(项目|效价|滴度|titer|elisa|facs|进度|到哪|哪一步|下一步|采血|几免|[一二三四五]免|加强免|导出|下载|excel|拉个?表|清单|汇总|报表|分组|这页的?表|整理|工作表|sheet|求和|平均|合计|去重|占比|关联|联查|工单|表单|填|录入|补全|核对|校验|负责|靶点|小鼠|鼠型|方案|统计|结题|实验\s*id|编号|没(有)?(导出?|下载|生成)|卡片呢|文件呢|表呢)/i;
-const ID_HINT = /\b[A-Za-z]{1,6}-?\d{3,}\b/;
-/** 感谢、确认和关于宠物的问题绝不视为数据追问。 */
-const SMALL_TALK =
-  /^(谢谢|谢啦|谢了|多谢|好的?|好嘞|嗯+|哦+|噢+|ok|okay|收到|辛苦了?|厉害|真棒|棒|哈+|知道了|明白了?|行|可以|不用了?|不要了?|算了|没事了?|拜拜|再见|晚安|早安|午安)[!！。.~～啦呀哈谢\s]*$|你(今天|现在)?(心情|状态|饿|累|困|还好|怎么样|好吗|几岁|多大|喜欢|爱吃|吃了|吃饭|在干|开心|无聊)|你是谁|你叫什么|讲个?笑话|陪我聊|聊聊天/i;
-
-/** 仅在上一份报表仍有效时识别「去掉已结题的，再按月拆开」等修改指令。 */
-const REPORT_FOLLOWUP =
-  /(去掉|去除|排除|剔除|不要.{0,6}的|只要|只看|只留|加一列|再加一列|改成|换成|改为|按.{0,8}(拆|分|排)|按[日天周月季年]|倒序|降序|升序|前\s*\d+|top\s*\d+|百分比|比例)/i;
-
-const MENU_SUFFIX = /(总览|列表|管理|详情|数据|工作台|草稿|情报|库)$/;
-const QUERY_WORD = /(多少|几[个条项只家位次]|哪些|哪几|列出|列一下|查一?下|查查|帮我查|有没有|统计|最近|最新|谁(负责|的|在))/;
-
-/** 将菜单名扩展为可识别简称，如「引物库→引物」「合成与验证→合成/验证」。 */
-function moduleStems(title: string): string[] {
-  return title.split(/[与及和、]/).flatMap((part) => {
-    const p = part.trim().replace(MENU_SUFFIX, '');
-    return p.length >= 4 ? [p, p.slice(0, 2)] : p.length >= 2 ? [p] : [];
-  });
-}
-
-/**
- * 完整提及菜单模块时直接视为数据问题。
- * 简称仅在同时出现查询词时生效，避免把「我发现……」等普通表达误判为数据查询。
- */
-function mentionsModule(message: string): boolean {
-  const asking = QUERY_WORD.test(message);
-  return menuPages().some(
-    (p) =>
-      (p.title.length >= 3 && message.includes(p.title)) ||
-      (asking && moduleStems(p.title).some((s) => message.includes(s))),
-  );
-}
-
-export function looksLikeTask(message: string): boolean {
-  return (
-    TASK_HINT.test(message) ||
-    ID_HINT.test(message) ||
-    mentionsModule(message) ||
-    (hasRecentReport() && REPORT_FOLLOWUP.test(message))
-  );
-}
-
-export function looksLikeSmallTalk(message: string): boolean {
-  return SMALL_TALK.test(message.trim());
-}
 
 export type AgentResult = {
   text?: string;

@@ -158,3 +158,35 @@ test('空腹又耗尽时心情只回落到 35，不会因漂移跌入低落', ()
     restore()
   }
 })
+
+test('隔了半小时以上再聊，旧对话原文不再发给模型', async () => {
+  const { toRecentHistory } = await import('./memory.ts')
+  const now = new Date(2026, 10, 19, 15, 0).getTime()
+  const qa = (role, text, minutesAgo) => ({ id: minutesAgo, role, text, at: now - minutesAgo * 60_000 })
+  const yesterday = [qa('user', '昨天的问题', 24 * 60), qa('pet', '昨天的回答', 24 * 60 - 1)]
+  const today = [qa('user', 'BJ001 进度', 10), qa('pet', '在免疫第二针', 9), qa('user', '那下一针呢', 0)]
+  assert.deepEqual(
+    toRecentHistory([...yesterday, ...today], '那下一针呢', now).map((h) => h.content),
+    ['BJ001 进度', '在免疫第二针'],
+  )
+  assert.deepEqual(toRecentHistory([...yesterday, qa('user', '你好', 0)], '你好', now), [])
+  const chain = Array.from({ length: 12 }, (_, i) => qa(i % 2 ? 'pet' : 'user', `句${i}`, 12 - i))
+  assert.equal(toRecentHistory(chain, '新问题', now).length, 8)
+})
+
+test('离开原文窗口的对话并入摘要：对话结束就压缩，并过的不再重复', async () => {
+  const { pendingForCompress, shouldCompress } = await import('./memory.ts')
+  const now = new Date(2026, 10, 19, 15, 0).getTime()
+  const qa = (text, minutesAgo) => ({ id: minutesAgo, role: 'user', text, at: now - minutesAgo * 60_000 })
+  const short = [qa('下周三我请假', 50), qa('统计按负责人分', 45)]
+  assert.deepEqual(pendingForCompress(short, 0, now - 40 * 60_000), [])
+  const ended = pendingForCompress(short, 0, now)
+  assert.equal(ended.length, 2)
+  assert.ok(shouldCompress(ended, now))
+  assert.deepEqual(pendingForCompress(short, short[1].at, now), [])
+  const session = (n) => Array.from({ length: n }, (_, i) => qa(`句${i}`, n - i))
+  const overflow = pendingForCompress(session(12), 0, now)
+  assert.equal(overflow.length, 4)
+  assert.equal(shouldCompress(overflow, now), false)
+  assert.ok(shouldCompress(pendingForCompress(session(16), 0, now), now))
+})

@@ -21,7 +21,8 @@ export const PIN_KEY = 'fatfish-pinned';
 export const CARE_KEY = 'fatfish-care';
 export const QA_KEY = 'fatfish-qa';
 export const MEMORY_SUMMARY_KEY = 'fatfish-memory-summary';
-export const MEMORY_TURNS_SINCE_COMPRESS_KEY = 'fatfish-memory-turns-since-compress';
+/** 已并入摘要的最后一条对话的时间。 */
+export const MEMORY_MERGED_AT_KEY = 'fatfish-memory-merged-at';
 export const DAILY_REMARKS_KEY = 'fatfish-daily-remarks';
 export const LINE_POOL_KEY = 'fatfish-line-pool';
 /** 当前浏览器的节奏舞台最高分。 */
@@ -35,7 +36,9 @@ export const DATA_SOURCES_KEY = 'fatfish-data-sources';
 export const QA_KEEP = 28;
 /** 发送给模型的近期原始轮次上限；更早内容只发送摘要。 */
 export const RECENT_HISTORY_SEND = 8;
-/** 摘要更新后累积到此轮次时再次压缩。 */
-export const COMPRESS_EVERY_TURNS = 8;
-/** 与代理的 SUMMARY_MAX_CHARS 硬上限一致；压缩提示词以不超过 400 字为目标。 */
+/** 两句间隔超过此值即视为新一段对话，之前的原文不再发送，只靠摘要承接。 */
+export const SESSION_GAP_MS = 30 * 60_000;
+/** 不再原文发送、还没并入摘要的记录攒到这么多条就压缩；对话一结束也会压缩。 */
+export const COMPRESS_BATCH = 8;
+/** 与代理的 SUMMARY_MAX_CHARS 硬上限一致。 */
 export const MEMORY_SUMMARY_MAX = 800;

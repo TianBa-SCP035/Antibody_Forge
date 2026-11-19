@@ -10,13 +10,13 @@ import json
 import random
 import re
 import time
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import clock
 from agent_tools import normalize_args, phase_for, strip_invisible, tools_for_page
 from llm import DEEPSEEK, QWEN, chat_completion, first_message, message_text
 from memory_compress import SUMMARY_MAX_CHARS
-from prompts import AGENT_SYSTEM, LABELS_SYSTEM, VOICE_SYSTEM
+from prompts import AGENT_SYSTEM, CARE_MOOD_NOTE, LABELS_SYSTEM, VOICE_SYSTEM
 
 MAX_TURN_MESSAGES = 30
 HISTORY_TURNS = 8
@@ -27,15 +27,6 @@ TRUNCATED = ("输出太长被截断，参数没收到。请拆开：每次 propo
 TRACE_PATH = Path(__file__).parent / "logs" / "agent_trace.jsonl"
 
 VOICE_FALLBACK = ["哼，帮你看过了。", "翻完了，结果在这儿。", "行吧，结果在这儿。", "嗯…我翻了一下。"]
-_ANNOUNCE_ONLY = re.compile(r"(我先|我来|让我|稍等|正在)(查|找|看|翻|确认)")
-_WEEKDAYS = "一二三四五六日"
-
-
-def _today() -> tuple[str, str]:
-    now = datetime.now(timezone(timedelta(hours=8)))
-    return now.strftime("%Y-%m-%d"), "周" + _WEEKDAYS[now.weekday()]
-
-
 _FENCE = re.compile(r"【[^【】]{0,12}·?只读数据(开始|结束)】")
 
 
@@ -47,7 +38,7 @@ def _data_block(label: str, payload) -> str:
 
 
 def _system_messages(data: dict) -> list[dict]:
-    today, weekday = _today()
+    today, weekday = clock.today()
     user = str((data.get("user") or {}).get("name") or "未知").strip()[:40]
     msgs = [{"role": "system", "content": AGENT_SYSTEM.format(today=today, weekday=weekday, user=user)}]
     page = data.get("page") or {}
@@ -60,8 +51,8 @@ def _system_messages(data: dict) -> list[dict]:
                      + _data_block("数据源", sources[:3000])})
     last_report = str(data.get("lastReport") or "").strip()
     if last_report:
-        msgs.append({"role": "system", "content": "上一份报表的 build_report 参数（用户可能在追问修改它）：\n"
-                     + _data_block("上一份报表", last_report[:2000])})
+        msgs.append({"role": "system", "content": "上一份报表的 build_report 参数。用户追问修改时在这份参数上改，其余条件保留并传完整参数；"
+                     "明显是新问题就不沿用：\n" + _data_block("上一份报表", last_report[:2000])})
     memory = str(data.get("memorySummary") or "").strip()
     if memory:
         # The summary is model-written from past chats, which included tool results: treat it as data too.
@@ -201,7 +192,7 @@ _CLAIMS_DONE = re.compile(_CLAIMS_ACTION.pattern + r"|好了|搞定|弄好|完�
 def _voice(answer: str, pending: bool, care_mood: str = "", ambient: str = "") -> str:
     system = VOICE_SYSTEM
     if care_mood:
-        system += "\n你此刻的状态（只影响语气，不要提数值）：" + care_mood[:200]
+        system += "\n" + CARE_MOOD_NOTE + care_mood[:200]
     if ambient:
         system += "\n此刻的时间和天气（偶尔可以带一下，不要报具体时间）：" + ambient[:120]
     status, up = chat_completion(
@@ -219,12 +210,6 @@ def _voice(answer: str, pending: bool, care_mood: str = "", ambient: str = "") -
     return line
 
 
-_FILL_INTENT = re.compile(r"填表|填写|补全|补一下|录入|照着.{0,6}填|帮(?:我)?填|参考.{0,12}(项目|方案).{0,8}填")
-_CLAIMS_MISSING = re.compile(r"没查到|查不到|没有找到|未找到|没有记录")
-_CLAIMS_TRIED = re.compile(
-    r"(重新|又|再)(试|查|筛|翻|跑)了|我(也|又|刚|已经)?(试|查|筛|翻)了|试了(一下|一次|试|别的)|去(查|看|试|翻)了|查了一?下|翻了一?[遍圈下]|筛了一?下"
-)
-_WRITE_REFUSAL = re.compile(r"修改|删除|提交|启动|改成|改成已|删掉|去掉这条")
 _CARD_TOOLS = {"propose_form_fill", "propose_export", "build_report", "propose_open_page"}
 # Says a card or file is already there ("点卡片上的下载 Excel", "已生成 Excel"); an offer ("可以生成卡片") is not this.
 _CLAIMS_CARD = re.compile(
@@ -247,39 +232,8 @@ def _earlier_card(history: list[dict], text: str = "") -> bool:
     return last or bool(_EARLIER_CARD_REF.search(text))
 
 
-def _nudge_for(data: dict, turn: list[dict], tools: list[dict], text: str) -> str | None:
-    """One corrective retry when the model answers without doing the work it was asked for."""
-    called = _called(turn)
-    question = next((m["content"] for m in turn if m["role"] == "user"), "")
-    history = _history(data)
-    if history and history[-1]["role"] == "assistant" and re.search(r"[？?]", history[-1]["content"]):
-        question += " " + next((h["content"] for h in reversed(history) if h["role"] == "user"), "")
-    offered = {t["function"]["name"] for t in tools}
-    if _ANNOUNCE_ONLY.search(text) and len(text) < 60:
-        return "请直接调用工具获取数据，不要只描述。"
-    if not called and _CLAIMS_TRIED.search(text):
-        return ("这一轮你还没有调用任何工具，不能说试过、查过或重新查了。用户要你再试、换条件、看别的模块时，"
-                "请真的调用工具；只是解释之前的结果时，说明那是之前的结果，不要说成刚做的。")
-    # One push per turn: a second check_current_form means the model was already nudged and still sees nothing to fill.
-    checks = sum(1 for m in turn if m["role"] == "assistant" for tc in m.get("tool_calls") or []
-                 if isinstance(tc, dict) and (tc.get("function") or {}).get("name") == "check_current_form")
-    if "propose_form_fill" in offered and _FILL_INTENT.search(question) and "propose_form_fill" not in called and checks < 2:
-        if "check_current_form" not in called:
-            return "用户要填表。请先调用 check_current_form 读取当前表单，再按规则给出填写建议。"
-        return ("用户要填表。能写的字段（含常规建议）用 propose_form_fill 交卡片；不能猜的留空并在回答里说明。"
-                "只有 editable=false，或一个可填字段都没有时，才直接说明原因、不交卡片。")
-    if not called and _CLAIMS_MISSING.search(text) and not _WRITE_REFUSAL.search(question + text):
-        return ("你还没有调用任何工具，不能下“查不到”的结论。请先用工具查询。"
-                "若用户要的是修改、删除、提交这类做不到的事，直接说明做不了，不要为了这句话去查数据。")
-    # A card already offered last turn is still on screen; mentioning it again is fine.
-    if ("卡片" in text or _CLAIMS_CARD.search(text)) and not _earlier_card(history, text) and not called & _CARD_TOOLS & offered:
-        return ("你在回答里提到了卡片或下载，但这一轮还没有调用生成卡片的工具，用户看不到可点的按钮。"
-                "需要就调用对应的工具（卡片本身就是征求用户同意，不用先问）；不需要就别提卡片和下载。")
-    return None
-
-
 def _guard_card_claim(text: str, turn: list[dict], tools: list[dict], history: list[dict]) -> str:
-    """Still claiming a card after the nudge: drop those sentences, or the whole answer when no tool ran at all."""
+    """Claims a card or download no tool produced this turn: drop those sentences, or the whole answer when no tool ran."""
     called = _called(turn)
     offered = {t["function"]["name"] for t in tools}
     if called & _CARD_TOOLS & offered or _earlier_card(history, text) or not _CLAIMS_CARD.search(text):
@@ -324,21 +278,11 @@ def handle_agent(data: dict) -> dict:
                   "error": TRUNCATED, "phase": "拆分填写建议…"}]
         msg = {"role": "assistant", "content": ""}
 
-    nudge_text = _nudge_for(data, turn, tools, text) if status == 200 and not calls else None
-    if nudge_text:
-        nudge = messages + [{"role": "assistant", "content": text}, {"role": "user", "content": nudge_text}]
-        status2, up2 = chat_completion(DEEPSEEK, nudge, max_tokens=STEP_MAX_TOKENS, sampling="deepseek_agent", tools=tools)
-        if status2 == 200:
-            status, up = status2, up2
-            msg = first_message(up)
-            calls = _parse_calls(msg, _truncated(up))
-            text = message_text(up)
-
     elapsed = round(time.time() - t0, 2)
     question = next((m["content"] for m in turn if m["role"] == "user"), "")
     entry = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "rid": data.get("requestId"), "step": data.get("step"),
              "page": (data.get("page") or {}).get("path"), "q": question[:200] if data.get("step") in (0, None) else None,
-             "tools": len(tools), "nudge": nudge_text, "notes": [n["content"][:30] for n in notes] or None,
+             "tools": len(tools), "notes": [n["content"][:30] for n in notes] or None,
              "truncated": _truncated(up) or None, "tokens": (up.get("usage") or {}).get("completion_tokens"),
              "status": status, "sec": elapsed,
              "calls": [{k: c[k] for k in ("name", "args", "error")} for c in calls], "text": text[:400]}

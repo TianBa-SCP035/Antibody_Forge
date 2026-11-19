@@ -4,16 +4,16 @@ import { ref, type Ref } from 'vue';
 
 import { ambientHint, collectPageContext } from './pageContext';
 import { LINES } from './lines';
-import { QA_KEEP } from './constants';
+import { QA_KEEP, SESSION_GAP_MS } from './constants';
 import {
   loadMemorySummary,
+  loadMergedAt,
   loadQa,
-  loadTurnsSinceCompress,
-  olderTurnsForCompress,
+  pendingForCompress,
   requestCompress,
   saveMemorySummary,
+  saveMergedAt,
   saveQa,
-  saveTurnsSinceCompress,
   shouldCompress,
   toRecentHistory,
   type QaItem,
@@ -22,7 +22,7 @@ import type { FillSnapshot } from './formBridge';
 import { formLabels, sameForm } from './formBridge';
 import { openAndLearn } from './apiWatch';
 import { applyFillProposal, runExportProposal, runReportProposal, undoFillProposal, type Proposal } from './petTools';
-import { looksLikeSmallTalk, looksLikeTask, runAgent } from './useAgent';
+import { runAgent } from './useAgent';
 import type { CareEvent } from './useCare';
 
 export type BubbleKind = 'pet' | 'user' | 'sys' | 'wait' | 'card';
@@ -45,8 +45,6 @@ const FILL_PROMPT =
 
 const STOP_HINT = '（点停）';
 const SHORT_ANSWER = 70;
-/** 数据回答后的紧接回复（如「BALB/c，5只」）继续交给代理。 */
-const AGENT_FOLLOW_UP_MS = 3 * 60_000;
 /** 明确请求文件的词；单独的「表格」或「清单」不计入，因为「看看这页的表格」并非下载请求。 */
 const EXPORT_INTENT = /导出|下载|excel|xlsx|拉个?表|出个?表|导个?表|做个?表/i;
 const UNDO_WINDOW_MS = 30_000;
@@ -73,8 +71,11 @@ export function useChat(deps: {
   let chatAbort: AbortController | null = null;
   let waitBubbleId: number | undefined;
   let waitRotateTimer: number | undefined;
-  let turnsSinceCompress = loadTurnsSinceCompress();
-  let lastAgentAt = 0;
+  let mergedAt = loadMergedAt();
+  let compressing = false;
+  /** 切换账号时递增；旧账号还在路上的压缩结果不能写进新账号。 */
+  let memoryOwner = 0;
+  let sessionEndTimer: number | undefined;
   const lastUserQuestion = ref('');
   const retriedForQuestion = ref('');
   const cardProposals = new Map<number, Proposal>();
@@ -97,7 +98,7 @@ export function useChat(deps: {
   function pushQa(role: QaItem['role'], text: string) {
     const clean = String(text || '').trim();
     if (!clean) return;
-    qaHistory.value = [...qaHistory.value.slice(-(QA_KEEP - 1)), { id: qaSeq++, role, text: clean }];
+    qaHistory.value = [...qaHistory.value.slice(-(QA_KEEP - 1)), { id: qaSeq++, role, text: clean, at: Date.now() }];
     saveQaNow();
   }
 
@@ -161,17 +162,28 @@ export function useChat(deps: {
   }
 
   async function maybeRunCompress() {
-    const summary = memorySummary.value;
-    if (!shouldCompress(qaHistory.value.length, turnsSinceCompress, summary)) return;
-    const older = olderTurnsForCompress(qaHistory.value);
-    if (!older.length) return;
-    const next = await requestCompress(summary, older);
-    if (next) {
-      memorySummary.value = next;
-      saveMemorySummary(next);
-      turnsSinceCompress = 0;
-      saveTurnsSinceCompress(0);
+    const pending = pendingForCompress(qaHistory.value, mergedAt);
+    if (compressing || !shouldCompress(pending)) return;
+    compressing = true;
+    const owner = memoryOwner;
+    try {
+      const next = await requestCompress(memorySummary.value, pending);
+      if (next && owner === memoryOwner) {
+        memorySummary.value = next;
+        saveMemorySummary(next);
+        mergedAt = pending[pending.length - 1]!.at;
+        saveMergedAt(mergedAt);
+      }
+    } finally {
+      if (owner === memoryOwner) compressing = false;
     }
+  }
+
+  /** 每次对话后检查一次；这段对话结束时再检查一次，下次开口前就已并入摘要。 */
+  function compressAfterExchange() {
+    void maybeRunCompress();
+    window.clearTimeout(sessionEndTimer);
+    sessionEndTimer = window.setTimeout(() => void maybeRunCompress(), SESSION_GAP_MS + 1000);
   }
 
   function rememberReply(text: string) {
@@ -184,8 +196,6 @@ export function useChat(deps: {
     } else {
       pushQa('pet', text);
     }
-    turnsSinceCompress += 1;
-    saveTurnsSinceCompress(turnsSinceCompress);
   }
 
   function celebrate(event: 'chat' | 'task') {
@@ -304,7 +314,7 @@ export function useChat(deps: {
       cardProposals.set(id, p);
       cardPages.set(id, askedOn);
     }
-    void maybeRunCompress();
+    compressAfterExchange();
   }
 
   /** keep 为 true 时保留卡片，用备注列出仍需用户处理的内容。 */
@@ -408,9 +418,8 @@ export function useChat(deps: {
     deps.busy.value = true;
     deps.sleeping.value = false;
     void deps.playAnim(deps.pick(['think', 'mutter', 'code', 'busy'] as const), { loop: true, restart: true });
-    // 数据回答后的「谢谢」或「你累吗」仍属于闲聊，不是数据追问。
-    const followUp = Date.now() - lastAgentAt < AGENT_FOLLOW_UP_MS && !looksLikeSmallTalk(message);
-    const agentMode = forceAgent || intent === 'fill' || (intent === 'chat' && (looksLikeTask(message) || followUp));
+    // 普通提问先发给闲聊接口，由代理判断要不要查数据（要查就回 reroute）。
+    const agentMode = forceAgent || intent === 'fill';
     const fromDialog = deps.chatOpen.value && intent === 'chat';
     showWaitBubble(agentMode);
     const abort = new AbortController();
@@ -441,7 +450,6 @@ export function useChat(deps: {
           deps.say('翻了好几轮还没理清…换个说法，或者直接给我实验ID？');
           return;
         }
-        lastAgentAt = Date.now();
         for (const p of result.proposals) if (p.kind === 'open_page' && intent === 'chat') p.question = message;
         showAgentAnswer(result.text || '', result.voice, result.proposals, askedOn, EXPORT_INTENT.test(message));
       };
@@ -468,7 +476,7 @@ export function useChat(deps: {
       clearWaitBubble();
       if (abort.signal.aborted) return;
       if (data?.reroute === 'agent') {
-        // 闲聊模型若声称已填写或导出，应转给具备工具的代理实际执行。
+        // 要查数据，或闲聊模型声称已填写、导出时，交给能用工具的查询流程。
         showWaitBubble(true);
         await askAgent();
         return;
@@ -481,7 +489,7 @@ export function useChat(deps: {
       celebrate('chat');
       deps.say(String(data.reply));
       if (intent === 'chat') rememberReply(String(data.reply));
-      void maybeRunCompress();
+      compressAfterExchange();
     } catch (err) {
       clearWaitBubble();
       if ((err as { name?: string })?.name !== 'AbortError') {
@@ -536,11 +544,17 @@ export function useChat(deps: {
     qaHistory.value = loadQa();
     memorySummary.value = loadMemorySummary();
     qaSeq = Math.max(1, qaHistory.value.length + 1);
-    turnsSinceCompress = loadTurnsSinceCompress();
-    lastAgentAt = 0;
+    mergedAt = loadMergedAt();
+    memoryOwner += 1;
+    compressing = false;
+    window.clearTimeout(sessionEndTimer);
+    void maybeRunCompress();
     lastUserQuestion.value = '';
     retriedForQuestion.value = '';
   }
+
+  // 上次离开时没来得及并入摘要的对话，打开页面就补上。
+  void maybeRunCompress();
 
   return {
     qaHistory,

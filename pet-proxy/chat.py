@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 import clock
 from agent import _data_block
@@ -13,6 +14,10 @@ from prompts import CARE_MOOD_NOTE, INTENT_COMMENT, LINES_TASK, PERSONA, PERSONA
 
 RECENT_MAX = 8
 ROUTE_HISTORY = 4
+# Routing normally takes about a second; past this the agent model is queued behind other users' tasks,
+# and the persona reply (already drafted in parallel) is better than making small talk wait.
+ROUTE_TIMEOUT_S = 5
+_BACKGROUND = ThreadPoolExecutor(max_workers=8)
 # The chat model has no tools; a reply claiming it filled / exported / queried something is made up.
 # Also catch "I'm in chat mode so I can't export" — that should have gone to the agent.
 _FAKE_ACTION = re.compile(
@@ -73,20 +78,13 @@ def _needs_agent(recent: list, user_text: str) -> bool:
     history = [{"role": h["role"], "content": str(h["content"])[:500]} for h in recent[-ROUTE_HISTORY:]
                if isinstance(h, dict) and h.get("role") in ("user", "assistant") and h.get("content")]
     messages = [{"role": "system", "content": ROUTE_SYSTEM}, *history, {"role": "user", "content": user_text}]
-    status, upstream = chat_completion(DEEPSEEK, messages, max_tokens=5, sampling="deepseek_agent", timeout=15)
+    status, upstream = chat_completion(DEEPSEEK, messages, max_tokens=5, sampling="deepseek_agent", timeout=ROUTE_TIMEOUT_S)
     _log_upstream("route", status, upstream)
-    # With the agent model down the agent path fails as well; answering as chat keeps the pet usable.
+    # Down or queued, the agent path would fail or crawl as well; answering as chat keeps the pet usable.
     return status == 200 and "data" in message_text(upstream).lower()
 
 
-def handle_chat(data: dict) -> dict:
-    user_text = (data.get("message") or "").strip()
-    if not user_text:
-        return {"http": 400, "body": {"error": "empty message"}}
-    intent = data.get("intent") or "chat"
-    recent = _pick_recent(data)
-    if intent == "chat" and _needs_agent(recent, user_text):
-        return {"http": 200, "body": {"ok": True, "reroute": "agent", "reply": ""}}
+def _persona_messages(data: dict, intent: str, recent: list, user_text: str) -> list:
     page_context = _as_text(data.get("pageContext") or "")
     care_mood = (data.get("careMood") or "").strip()
     memory_summary = (data.get("memorySummary") or "").strip()
@@ -111,8 +109,22 @@ def handle_chat(data: dict) -> dict:
     # The model copies its own past replies over the persona; an old slip (a made-up name) must not stick.
     messages.append({"role": "system", "content": PERSONA_REMINDER})
     messages.append({"role": "user", "content": user_text})
+    return messages
 
-    status, upstream = chat_completion(QWEN, messages, max_tokens=160, sampling="qwen_chat")
+
+def handle_chat(data: dict) -> dict:
+    user_text = (data.get("message") or "").strip()
+    if not user_text:
+        return {"http": 400, "body": {"error": "empty message"}}
+    intent = data.get("intent") or "chat"
+    recent = _pick_recent(data)
+    # The persona reply is drafted while routing runs, so small talk waits for the slower of the two
+    # instead of both in turn; a turn that goes to the agent just drops the draft.
+    reply = _BACKGROUND.submit(chat_completion, QWEN, _persona_messages(data, intent, recent, user_text),
+                               max_tokens=160, sampling="qwen_chat")
+    if intent == "chat" and _needs_agent(recent, user_text):
+        return {"http": 200, "body": {"ok": True, "reroute": "agent", "reply": ""}}
+    status, upstream = reply.result()
     _log_upstream("chat", status, upstream)
     reply_text = message_text(upstream) if status == 200 else ""
     if intent == "chat" and _FAKE_ACTION.search(reply_text):

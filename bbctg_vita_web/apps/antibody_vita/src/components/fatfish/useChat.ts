@@ -179,8 +179,8 @@ export function useChat(deps: {
     }
   }
 
-  /** 每次对话后检查一次；这段对话结束时再检查一次，下次开口前就已并入摘要。 */
-  function compressAfterExchange() {
+  /** 现在检查一次，这段对话结束时再检查一次，下次开口前就已并入摘要。 */
+  function checkCompress() {
     void maybeRunCompress();
     window.clearTimeout(sessionEndTimer);
     sessionEndTimer = window.setTimeout(() => void maybeRunCompress(), SESSION_GAP_MS + 1000);
@@ -314,7 +314,7 @@ export function useChat(deps: {
       cardProposals.set(id, p);
       cardPages.set(id, askedOn);
     }
-    compressAfterExchange();
+    checkCompress();
   }
 
   /** keep 为 true 时保留卡片，用备注列出仍需用户处理的内容。 */
@@ -489,7 +489,7 @@ export function useChat(deps: {
       celebrate('chat');
       deps.say(String(data.reply));
       if (intent === 'chat') rememberReply(String(data.reply));
-      compressAfterExchange();
+      checkCompress();
     } catch (err) {
       clearWaitBubble();
       if ((err as { name?: string })?.name !== 'AbortError') {
@@ -547,14 +547,13 @@ export function useChat(deps: {
     mergedAt = loadMergedAt();
     memoryOwner += 1;
     compressing = false;
-    window.clearTimeout(sessionEndTimer);
-    void maybeRunCompress();
+    checkCompress();
     lastUserQuestion.value = '';
     retriedForQuestion.value = '';
   }
 
-  // 上次离开时没来得及并入摘要的对话，打开页面就补上。
-  void maybeRunCompress();
+  // 上次离开时没来得及并入摘要的对话，打开页面就补上；刷新后没再说话的这段，结束时也会并入。
+  checkCompress();
 
   return {
     qaHistory,

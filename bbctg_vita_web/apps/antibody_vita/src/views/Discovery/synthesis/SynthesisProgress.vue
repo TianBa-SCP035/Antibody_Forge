@@ -1251,6 +1251,7 @@ export default {
       if (this.canFullEdit) return !owner || owner === '无人问津'
       return (
         owner === '无人问津' ||
+        (!owner && !String(row.pm || '').trim()) ||
         (Boolean(this.currentPersonName) && owner === this.currentPersonName && this.canReturnClaim(row))
       )
     },
@@ -1275,7 +1276,11 @@ export default {
         return `该批次已由 ${owner} 负责，如需调整请直接修改负责人`
       }
       if (owner === '无人问津') return '认领该批次合成结果'
-      if (!owner) return '该批次尚未开放认领，标记为「无人问津」后才能认领'
+      if (!owner) {
+        return String(row?.pm || '').trim()
+          ? '该批次尚未开放认领，标记为「无人问津」后才能认领'
+          : '该批次没有 PM 和负责人，认领后 PM 设为本人'
+      }
       if (this.currentPersonName && owner === this.currentPersonName) {
         return this.canReturnClaim(row)
           ? '将该批次改回无人问津'
@@ -1384,7 +1389,11 @@ export default {
       if (!row.id && DRAFT_LOCKED_FIELD_KEYS.has(key)) return `工单保存后才能填写「${label}」`
       if (!this.canEdit) return '你没有编辑合成与验证的权限'
       if (ASSAY_STATUS_KEYS.has(key) && this.isCompletedRow(row)) return COMPLETED_ASSAY_MESSAGE
-      if (key === 'pm' && this.canPmEdit) return 'PM 由新建人自动填写，不能修改'
+      if (key === 'pm' && this.canPmEdit) {
+        return row.id && !String(row.pm || '').trim() && !String(row.owner || '').trim()
+          ? '没有 PM 和负责人时，点「认领」可把 PM 设为本人'
+          : 'PM 由新建人自动填写，不能修改'
+      }
       if (key === 'owner' && this.canPmEdit) {
         return row.id ? this.claimButtonTitle(row) : '负责人需在工单保存后通过认领设置'
       }
@@ -1427,12 +1436,26 @@ export default {
         ElMessage.warning(this.claimButtonTitle(row))
         return
       }
+      const claimAsPm = !this.canFullEdit && !String(row.owner || '').trim()
+      if (claimAsPm) {
+        try {
+          await ElMessageBox.confirm(
+            `认领后${this.rowConfirmSubject(row)}的 PM 设为你本人，之后不能自行取消或改给他人，确认认领吗？`,
+            '认领为 PM',
+            { type: 'warning', confirmButtonText: '确认认领', cancelButtonText: '再想想' },
+          )
+        } catch {
+          return
+        }
+      }
       if (!(await this.flushEditorForAction(row))) return
       try {
         const saved = await claimDiscoverySynthesis(row.id)
-        this.applySavedFields(saved, ['owner'])
+        this.applySavedFields(saved, ['owner', 'pm'])
         if (this.canFullEdit) {
           ElMessage.success(saved?.owner === '无人问津' ? '已标记为无人问津' : '已取消无人问津标记')
+        } else if (claimAsPm) {
+          ElMessage.success(`已设为 PM：${saved?.pm || ''}`)
         } else {
           ElMessage.success(
             saved?.owner === '无人问津' ? '已改回无人问津' : `已认领：${saved?.owner || ''}`,

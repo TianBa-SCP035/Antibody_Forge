@@ -13,7 +13,7 @@
 |---|---|---|
 | `discovery.page.synthesis_progress` | 查看与外部订单核对 | 访问页面；`/check_remote` 可能绑定 One 记录并回填本地字段；调用 `/list`、`/column_values`、`/options`、`/recorded_targets`、`/check_remote`、`/export_list`。不具 `edit` 时 `synthetic_corp`（合成公司）一律返回 `***`（列表、核对结果与候选、来源快照与差异、保存返回、导出），`options.synthetic_corps` 为空，按合成公司的筛选、表头筛选与排序被忽略，`/column_values` 取合成公司返回 403；具 `eng_edit` 时改造类工单（见下行）的合成公司保留原值，`options.synthetic_corps` 照常返回 |
 | `discovery.synthesis_progress.edit` | 全部编辑（`full`） | 新建工单、抽屉「加单」、修改全部可写字段（含 `target_color` 靶点底色标记）、调整队列排序、「认领」按钮在负责人为空与 `无人问津` 间切换（标记为 `无人问津` 即开放 PM 认领）、删除未关联 One 的任意状态工单、采用外部来源最新值（`/adopt_source`）、手动触发 One 库全量同步（`/sync_now`） |
-| `discovery.synthesis_progress.pm_edit` | PM 操作（`pm`） | 新建工单（`pm` 自动填本人，不可填 `owner`）、抽屉「加单」、认领 `无人问津` 批次（`/claim`，不限工单归属），认领后 7 天内可退回 `无人问津`，不能改给他人；修改字段、调整队列排序（`/reorder`）、删除未关联 One 的 `待下单` 工单仅限归属本人的工单：`owner` 是具体人员时只归负责人，`owner` 为空或 `无人问津` 时归 `pm`；可编辑字段（`PM_EDIT_FIELDS`）：`priority`、`sort_order`、`order_kind`、`supply_mode`、`owner`（`无人问津` → 本人，或 7 天内本人 → `无人问津`）、`project_code`、`study_type`、`target_name`、`target_codes`、`mouse_strain`、`eng_type`、`eng_method`、`eng_parent_seq`、`eng_requirement`、`remark`（不可改 `pm`、`experiment_id`、`target_type`、`status`、`eng_result`、合成订单及到货验证字段） |
+| `discovery.synthesis_progress.pm_edit` | PM 操作（`pm`） | 新建工单（`pm` 自动填本人，不可填 `owner`）、抽屉「加单」、认领 `无人问津` 批次（`/claim`，不限工单归属），认领后 7 天内可退回 `无人问津`，不能改给他人；负责人与 `pm` 都为空的批次「认领」即把 `pm` 设为本人；修改字段、调整队列排序（`/reorder`）、删除未关联 One 的 `待下单` 工单仅限归属本人的工单：`owner` 是具体人员时只归负责人，`owner` 为空或 `无人问津` 时归 `pm`；可编辑字段（`PM_EDIT_FIELDS`）：`priority`、`sort_order`、`order_kind`、`supply_mode`、`owner`（`无人问津` → 本人，或 7 天内本人 → `无人问津`）、`project_code`、`study_type`、`target_name`、`target_codes`、`mouse_strain`、`eng_type`、`eng_method`、`eng_parent_seq`、`eng_requirement`、`remark`（不可改 `pm`、`experiment_id`、`target_type`、`status`、`eng_result`、合成订单及到货验证字段） |
 | `discovery.synthesis_progress.eng_edit` | 改造实验员（`eng`） | 管全部改造类工单（不看下单人或负责人）：`order_kind == '改造'`，或 `supply_mode` 为 `内部转染` / `改亚型`。新建只能建这类工单，`order_sender` 自动填本人显示名（关联 One 后照常跟随 One），`pm` 默认本人、可改，不可填 `owner`；这类工单可修改除 `owner`、`target_color` 及亲和力 / 流式字段外的全部可写字段（`ENG_EDIT_FIELDS`，含 `status`、合成订单与到货字段、`synthetic_corp`），可调整队列排序（`/reorder`），可删除其中未关联 One 的任意状态工单；保存后不能把工单改成非改造类。不能认领，不能采用来源差异或手动同步 |
 | `discovery.synthesis_progress.affinity_edit` | 亲和力实验员（`affinity`） | 仅可修改已有工单（不可新建）；可编辑字段（`AFFINITY_EDIT_FIELDS`）：`affinity_status`、`affinity_owner`、`affinity_result`、`affinity_date`、`report_reason`；不能打回 `已完成` 工单（`检测中` 工单里单项完成仍可改回） |
 | `discovery.synthesis_progress.flow_edit` | 流式实验员（`flow`） | 仅可修改已有工单（不可新建）；可编辑字段（`FLOW_EDIT_FIELDS`）：`flow_status`、`flow_date`、`flow_note`；`已完成` 工单的限制同上。同时具备 `affinity_edit` 与 `flow_edit` 时，可在有未出原因时把亲和力标为已完成，可把 `已完成` 工单「打回待检测」（见第 3 节），可把任何未取消的工单改为 `已取消`（不能从 `已取消` 改回）；`status` 不能做其他修改 |
@@ -100,7 +100,7 @@
 | `422` | `report_reason` 非空（含当次传入或原值未清空）时手动将 `affinity_status` 设为 `亲和力检测中`，或既无 `edit`、又未同时具备 `affinity_edit` 与 `flow_edit` 时设为 `亲和力已完成` | `请先清除未出报告原因，再修改亲和力状态` |
 | `422` | 手动将 `affinity_status` 设为 `亲和力检测中` 但当前用户无法解析出姓名 | `无法识别当前亲和力人员姓名` |
 | `422` | `target_type == '分泌型'`（含当次传入或原值）时手动传入 `flow_status` | `分泌型靶点不需要流式实验` |
-| `422` | 仅具 `pm_edit` 调用 `/claim`：负责人为空 / 已被他人负责 / 本人认领超过 7 天 | `该批次尚未开放认领，标记为「无人问津」后才能认领` / `该批次已被 {cur_owner} 认领，不可重复认领` / `认领已超过 7 天，不能退回「无人问津」` |
+| `422` | 仅具 `pm_edit` 调用 `/claim`：负责人为空但已有 `pm` / 已被他人负责 / 本人认领超过 7 天 | `该批次尚未开放认领，标记为「无人问津」后才能认领` / `该批次已被 {cur_owner} 认领，不可重复认领` / `认领已超过 7 天，不能退回「无人问津」` |
 | `422` | 具 `edit` 调用 `/claim` 时负责人已是具体人员 | `该批次已由 {cur_owner} 负责，如需调整请直接修改负责人` |
 | `422` | 调用 `/reorder` 时任一记录处于终态或 `sort_order` 为空 | `终态记录不参与排序` |
 | `422` | 调用 `/adopt_source` 时记录无 `source_snapshot` 或未指定有效可采用字段 | `该记录没有可用的外部来源快照` / `未指定可采用的来源字段` |
@@ -210,7 +210,7 @@
 | `POST` | `/api/discovery/synthesis-progress/check_remote` | `discovery.page.synthesis_progress` | 按本地行 `ids` 核对 One 库快照，返回 `updated_items`、`linked`、`updated`、`duplicates`、`candidates`、`remote_available` |
 | `POST` | `/api/discovery/synthesis-progress/save` | `edit` / `pm_edit` / `eng_edit` / `affinity_edit` / `flow_edit` | 单条新增（无 `id`，需 `edit`、`pm_edit` 或 `eng_edit`，校验必填项）或按字段范围修改（有 `id`）；会使工单整单完成时需带 `confirm_complete: true`，否则返回 `needs_confirm` |
 | `POST` | `/api/discovery/synthesis-progress/save_batch` | `edit` / `pm_edit` / `eng_edit` / `affinity_edit` / `flow_edit` | Excel 视图粘贴或批量颜色标记单事务保存（`items`）；整单完成确认同 `/save`（`confirm_complete` 与 `items` 同级） |
-| `POST` | `/api/discovery/synthesis-progress/claim` | `edit` / `pm_edit` | `edit`：负责人在空与 `无人问津` 间切换；`pm_edit`：认领 `无人问津` 批次，或在认领 7 天内将本人批次退回 `无人问津` |
+| `POST` | `/api/discovery/synthesis-progress/claim` | `edit` / `pm_edit` | `edit`：负责人在空与 `无人问津` 间切换；`pm_edit`：认领 `无人问津` 批次，或在认领 7 天内将本人批次退回 `无人问津`；负责人与 `pm` 都为空时把 `pm` 设为本人 |
 | `POST` | `/api/discovery/synthesis-progress/reorder` | `edit` / `pm_edit` / `eng_edit` | 优先级队列拖拽排序（`moved_id`、`target_id`；`pm_edit` 仅可移动本人工单，`eng_edit` 仅可移动改造类工单） |
 | `POST` | `/api/discovery/synthesis-progress/delete` | `edit` / `pm_edit` / `eng_edit` | 删除工单并重编队列（已关联 One 的工单不可删除；`pm_edit` 仅可删除本人的 `待下单` 工单，`eng_edit` 可删除改造类工单） |
 | `POST` | `/api/discovery/synthesis-progress/adopt_source` | `discovery.synthesis_progress.edit` | 采用外部来源快照覆盖本地差异字段（`id`、可选 `fields`） |

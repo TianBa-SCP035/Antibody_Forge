@@ -1439,7 +1439,8 @@ def claim_order(
     *,
     scopes: frozenset[str] = frozenset({"full"}),
 ) -> dict[str, Any]:
-    """全部编辑权限在空白与「无人问津」间切换（开放/撤回认领）；PM 认领「无人问津」或在 7 天内退回本人批次。"""
+    """全部编辑权限在空白与「无人问津」间切换（开放/撤回认领）；PM 认领「无人问津」或在 7 天内退回本人批次，
+    没有负责人也没有 PM 的批次认领为 PM。"""
     row = db.get(DiscoverySynthesisOrder, int(row_id), with_for_update=True)
     if not row:
         raise NotFoundError(MISSING_ROW)
@@ -1459,7 +1460,9 @@ def claim_order(
                 raise ValueError(CLAIM_RETURN_EXPIRED_MESSAGE)
             row.owner = UNCLAIMED_OWNER
         elif not cur_owner:
-            raise ValueError("该批次尚未开放认领，标记为「无人问津」后才能认领")
+            if str(row.pm or "").strip():
+                raise ValueError("该批次尚未开放认领，标记为「无人问津」后才能认领")
+            row.pm = person
         else:
             raise ValueError(f"该批次已被 {cur_owner} 认领，不可重复认领")
     _touch_owner_claim(row, cur_owner)

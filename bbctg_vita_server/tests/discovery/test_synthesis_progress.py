@@ -441,6 +441,19 @@ class SynthesisScopePermissionTests(DbTestCase):
             with self.assertRaisesRegex(ValueError, "已由 张赞 负责"):
                 service.claim_order(self.db, rid, None)
 
+    def test_pm_claims_order_without_pm_or_owner_as_pm(self):
+        pm = frozenset({"pm"})
+        rid = service.save(self.db, {"target_name": "CD7"})["id"]
+
+        saved = service.claim_order(self.db, rid, "张赞", scopes=pm)
+        self.assertEqual(saved["pm"], "张赞")
+        self.assertFalse(saved["owner"])
+        service.save(self.db, {"id": rid, "remark": "x"}, created_by="张赞", scopes=pm)
+        with self.assertRaisesRegex(ValueError, "尚未开放认领"):
+            service.claim_order(self.db, rid, "兰维秋", scopes=pm)
+        with self.assertRaisesRegex(ForbiddenError, "不可修改该字段"):
+            service.save(self.db, {"id": rid, "pm": "兰维秋"}, created_by="张赞", scopes=pm)
+
     def test_pm_ownership_and_field_restrictions(self):
         pm = frozenset({"pm"})
         rid = service.save(self.db, {"target_name": "CD6", "pm": "兰维秋"})["id"]

@@ -43,6 +43,7 @@
     "element-plus": "catalog:",
     "fflate": "^0.8.3",
     "mammoth": "^1.13.0",
+    "modern-screenshot": "^4.7.0",
     "pinia": "catalog:",
     "sortablejs": "catalog:",
     "vue": "catalog:",

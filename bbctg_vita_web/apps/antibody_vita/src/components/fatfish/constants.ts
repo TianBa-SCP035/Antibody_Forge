@@ -15,6 +15,9 @@ export const CURSOR_BASE = `${import.meta.env.BASE_URL}fatfish/cursors/`;
 export const CURSOR_HOVER = `url(${CURSOR_BASE}cursor-hover.png) 7 3, pointer`;
 export const CURSOR_GRABBING = `url(${CURSOR_BASE}cursor-grabbing.png) 12 12, grabbing`;
 export const CURSOR_HAMMER = `url(${CURSOR_BASE}cursor-hammer.png) 9 5, pointer`;
+/** 宠物操作页面时画出来的手：和摸宠物时的指针同一套图，和用户自己的箭头区分开。 */
+export const POINTER_HAND = `${CURSOR_BASE}cursor-hover.png`;
+export const POINTER_GRAB = `${CURSOR_BASE}cursor-grabbing.png`;
 export const BALL_IMG = `${import.meta.env.BASE_URL}fatfish/ball/whale-girl.png?v=3`;
 
 export const PIN_KEY = 'fatfish-pinned';

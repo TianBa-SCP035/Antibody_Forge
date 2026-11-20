@@ -41,7 +41,7 @@ const STUBS = {
     export const WEATHER_CACHE_KEY = "weather"
   `,
   '#/router/routes': 'export const accessRoutes = globalThis.__TEST_ACCESS_ROUTES__ || []',
-  '#/utils/auth-session': 'export const isUnauthorizedError = () => false',
+  '#/utils/auth-session': 'export const isUnauthorizedError = (error) => error?.status === 401',
   '#/api/options': 'export const fetchCatalogTargetOptions = async () => []',
   '#/api/errors': 'export const notifyApiError = (error, { messages }) => globalThis.crudCalls?.push(["error", messages.default])',
   '#/utils/downloadExcel': `

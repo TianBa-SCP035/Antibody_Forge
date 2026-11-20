@@ -16,6 +16,9 @@ const DRAWER_KEEP_OPEN_SELECTOR = [
   '.el-overlay-dialog',
   '.sheet-picker-popup',
   '.line-suggest',
+  // 重新登录等 vben 弹窗及其遮罩
+  '[role="dialog"]',
+  '[data-dismissable-modal]',
 ].join(', ')
 const DRAWER_ROW_SELECTOR = '.el-table__row, .vxe-body--row, .action-cell, .sort-column-cell, .sort-cell'
 const ROW_CLICK_IGNORE_SELECTOR = [

@@ -29,5 +29,6 @@ export const SERUM_MOUSE_STRAIN_OPTIONS = [
   'RNVR',
   'RNKO',
   'RNVMKO',
+  'RNDF',
   'RABBIT',
 ] as const;

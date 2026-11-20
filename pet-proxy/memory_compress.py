@@ -21,6 +21,8 @@ def _stamp(at) -> str:
 def build_compress_messages(summary: str, older_turns: list) -> list:
     lines = []
     for h in older_turns[-40:]:
+        if not isinstance(h, dict):
+            continue
         role = h.get("role")
         content = str(h.get("content") or "").strip()
         if role not in ("user", "assistant") or not content:

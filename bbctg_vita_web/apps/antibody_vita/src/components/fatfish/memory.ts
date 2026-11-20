@@ -15,9 +15,14 @@ import {
 } from './constants';
 import { currentUserKey } from './session';
 
-/** at 为记录时间（毫秒）。 */
-export type QaItem = { id: number; role: 'user' | 'pet'; text: string; at: number };
-export type ChatHistoryItem = { role: 'user' | 'assistant'; content: string };
+/**
+ * at 为记录时间（毫秒）。did 是查询回答那一轮实际做了什么（调了哪些工具、出了哪些卡片、用户怎么处理的），
+ * 只发给查询模型：只看回答原文，它会把自己说过的「已生成」当成真的做过。
+ */
+export type QaItem = { id: number; role: 'user' | 'pet'; text: string; at: number; did?: string };
+export type ChatHistoryItem = { role: 'user' | 'assistant'; content: string; did?: string };
+
+const DID_MAX = 800;
 
 /**
  * 对话记忆归属当前登录账号，同一浏览器切换账号后使用独立记忆。
@@ -95,6 +100,7 @@ export function loadQa(): QaItem[] {
         role: x.role as 'user' | 'pet',
         text: String(x.text).slice(0, 1000),
         at: Number(x.at) || 0,
+        ...(x.did ? { did: String(x.did).slice(0, DID_MAX) } : {}),
       }));
   } catch {
     return [];
@@ -105,7 +111,9 @@ export function saveQa(history: QaItem[]) {
   try {
     writeScoped(
       QA_KEY,
-      JSON.stringify(history.slice(-QA_KEEP).map(({ role, text, at }) => ({ role, text, at }))),
+      JSON.stringify(
+        history.slice(-QA_KEEP).map(({ role, text, at, did }) => ({ role, text, at, ...(did ? { did: did.slice(0, DID_MAX) } : {}) })),
+      ),
     );
   } catch {
     /* 存储不可用时保留内存状态。 */
@@ -133,6 +141,7 @@ export function toRecentHistory(history: QaItem[], current: string, now = Date.n
   return prior.slice(windowStart(prior, now)).map((h) => ({
     role: h.role === 'pet' ? 'assistant' : 'user',
     content: h.text,
+    ...(h.did ? { did: h.did } : {}),
   }));
 }
 

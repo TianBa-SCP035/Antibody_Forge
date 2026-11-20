@@ -161,6 +161,13 @@ test('submitRowFields 失败：报错、静默重载并还原抽屉字段', asyn
   ])
 })
 
+test('submitRowFields 登录失效：不重载、不还原抽屉字段', async () => {
+  const { vm, log } = rowSaver({ save: async () => { throw Object.assign(new Error('x'), { status: 401 }) } })
+  assert.equal(await vm.submitRowFields({ id: 1, owner: '新' }, ['owner']), null)
+  assert.deepEqual(log, [])
+  assert.deepEqual(vm.editingRow, { id: 1, owner: '新', remark: '旧' })
+})
+
 test('handleListExport 用当前查询和 exportName 命名', async () => {
   const queries = []
   const vm = page({ api: { export: async (query) => queries.push(query) } })

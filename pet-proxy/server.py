@@ -9,7 +9,7 @@ HTTP surface only:
 - POST /api/pet/compress long-term memory compression (Qwen).
 - POST /api/pet/lines    a small batch of fresh reaction lines in persona (Qwen, chat.py).
 - POST /api/pet/labels   Chinese column headers for API fields no page column named (DeepSeek, agent.py).
-Same-origin only (Vite / Nginx proxy /api/pet here): no CORS headers, JSON bodies up to 512 KB.
+Same-origin only (Vite / Nginx proxy /api/pet here): no CORS headers, JSON bodies up to 8 MB.
 """
 from __future__ import annotations
 
@@ -24,13 +24,16 @@ from chat import handle_chat, handle_compress, handle_lines
 HOST = "127.0.0.1"
 # Nginx points each site at its own port (start_dev.sh: prod 18765, test 18766); Vite dev uses 18765.
 PORT = int(os.environ.get("PET_PORT", "18765"))
-# A full agent turn (10 steps of tool results) stays well under this.
-MAX_BODY = 512 * 1024
+# A full agent turn: up to 20 steps of tool results (page listings) plus a few screenshots.
+MAX_BODY = 8 * 1024 * 1024
 
 
 class Handler(BaseHTTPRequestHandler):
     """Same-origin only: the app reaches us through its own dev/Nginx proxy, so no CORS headers are sent
     and other web pages open in the browser can't call the models through localhost."""
+
+    # Socket read timeout: a client that stops sending mid-body must not hold a thread forever.
+    timeout = 30
 
     def log_message(self, fmt, *args):
         print("[pet-proxy]", fmt % args)
@@ -55,11 +58,18 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             self._json(415, {"ok": False, "error": "application/json required"})
             return
-        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            raw = self.rfile.read(length) if length else b"{}"
+        except OSError:
+            self.close_connection = True
+            return
         try:
             data = json.loads(raw.decode("utf-8"))
         except Exception:
             self._json(400, {"error": "invalid json"})
+            return
+        if not isinstance(data, dict):
+            self._json(400, {"error": "json object required"})
             return
 
         try:

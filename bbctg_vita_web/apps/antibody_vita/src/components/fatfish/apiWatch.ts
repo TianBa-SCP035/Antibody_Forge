@@ -72,6 +72,50 @@ function replayable(method: string, path: string): boolean {
   if (words.some((w) => WRITE_WORDS.has(w))) return false;
   return method === 'GET' || words.some((w) => READ_WORDS.has(w));
 }
+
+/**
+ * 只读查询：宠物自己的接口、不带用户身份的外站请求（统计、CDN），或路径语义是查询的请求。其余都可能改数据。
+ * 外站请求带着 Cookie 或 Authorization 就是以用户身份调用（接口在另一个域名的系统很常见），和同源一样判断。
+ */
+export function isQueryRequest(method: string, rawUrl: string, asUser = true): boolean {
+  let url: URL;
+  try {
+    url = new URL(rawUrl, location.href);
+  } catch {
+    return false;
+  }
+  if (url.pathname.startsWith('/api/pet/')) return true;
+  if (url.origin !== location.origin && !asUser) return true;
+  const m = method.toUpperCase();
+  return m === 'HEAD' || m === 'OPTIONS' || replayable(m, url.pathname);
+}
+
+function fetchAsUser(input: RequestInfo | URL, init?: RequestInit): boolean {
+  const req = input instanceof Request ? input : null;
+  const credentials = init?.credentials ?? req?.credentials;
+  try {
+    return credentials === 'include' || new Headers(init?.headers ?? req?.headers).has('authorization');
+  } catch {
+    return true;
+  }
+}
+
+/** onResult 由持有方挂上；放行的请求完成后带着状态码和响应开头回调。 */
+export type HeldRequest = { method: string; url: string; body: unknown; onResult?: (status: number, text: string) => void };
+type WriteHold = (req: HeldRequest) => Promise<boolean>;
+let writeHold: WriteHold | null = null;
+
+/** 设置后，页面发出的每个请求先交给它；返回 false 的请求不发出（页面收到中止）。 */
+export function setWriteHold(fn: WriteHold | null) {
+  writeHold = fn;
+}
+
+/** 页面自己发出、还没返回的请求数（不含宠物自己的 /api/pet/）；操作后据此等页面加载完。 */
+let inflight = 0;
+export function pendingRequests() {
+  return inflight;
+}
+const ownRequest = (url: string) => /\/api\/pet\//.test(url);
 const PAGE_KEYS = ['page', 'pageNum', 'pageNo', 'page_no', 'pageIndex', 'page_index', 'current'];
 const SIZE_KEYS = ['limit', 'pageSize', 'page_size', 'size', 'per_page', 'perPage'];
 const ITEM_KEYS = ['items', 'list', 'records', 'rows', 'data', 'results', 'content'];
@@ -250,7 +294,22 @@ function scheduleTableMatch() {
   }, 1200);
 }
 
-/** 仅修补一次 XHR 和 fetch 以观察响应，绝不改变请求或响应。 */
+const RESULT_HEAD = 400;
+
+function responseHead(xhr: XMLHttpRequest): string {
+  try {
+    if (xhr.responseType === '' || xhr.responseType === 'text') return xhr.responseText.slice(0, RESULT_HEAD);
+    if (xhr.responseType === 'json' && xhr.response) return JSON.stringify(xhr.response).slice(0, RESULT_HEAD);
+  } catch {
+    /* 读不到响应就只报状态码。 */
+  }
+  return '';
+}
+
+/**
+ * 仅修补一次 XHR 和 fetch 以观察响应，不改变请求或响应。
+ * 唯一的例外是 setWriteHold：宠物操作页面期间，可能改数据的请求要等用户放行才发出。
+ */
 export function installApiWatch() {
   if (installed || typeof window === 'undefined') return;
   installed = true;
@@ -260,6 +319,7 @@ export function installApiWatch() {
   const setHeader = P.setRequestHeader;
   P.open = function (this: any, method: string, url: string | URL, ...rest: any[]) {
     this.__ffReq = { method, url: String(url), headers: {} as Record<string, string> };
+    this.__ffOpen = (this.__ffOpen ?? 0) + 1;
     return (open as any).call(this, method, url, ...rest);
   } as typeof P.open;
   P.setRequestHeader = function (this: any, name: string, value: string) {
@@ -283,16 +343,71 @@ export function installApiWatch() {
         } catch {
           /* 观察逻辑不得影响页面。 */
         }
-      });
+      }, { once: true });
     }
-    return send.call(this, body);
+    const counted = !req || !ownRequest(req.url);
+    const go = () => {
+      if (counted) {
+        inflight += 1;
+        this.addEventListener('loadend', () => (inflight = Math.max(0, inflight - 1)), { once: true });
+      }
+      return send.call(this, body);
+    };
+    const hold = writeHold;
+    const asUser = !!this.withCredentials || Object.keys(req?.headers ?? {}).some((h) => /^authorization$/i.test(h));
+    if (hold && req && !isQueryRequest(req.method, req.url, asUser)) {
+      // 还没 send 时 abort() 不触发任何事件，页面会一直等，所以自己派发中止。
+      const refuse = () => {
+        this.dispatchEvent(new ProgressEvent('abort'));
+        this.dispatchEvent(new ProgressEvent('loadend'));
+      };
+      const held: HeldRequest = { method: req.method, url: req.url, body };
+      const opened = this.__ffOpen;
+      void hold(held).then((ok) => {
+        if (!ok) return refuse();
+        // 等确认期间页面可能已经 abort 并拿这个 XHR 发了别的请求，那这次就不该再发。
+        if (this.__ffOpen !== opened || this.readyState !== XMLHttpRequest.OPENED) return;
+        this.addEventListener('loadend', () => held.onResult?.(this.status, responseHead(this)), { once: true });
+        try {
+          go();
+        } catch {
+          refuse();
+        }
+      }, refuse);
+      return;
+    }
+    return go();
   };
   const origFetch = window.fetch;
   window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
-    const res = await origFetch.call(window, input, init);
+    const url = typeof input === 'string' || input instanceof URL ? String(input) : input.url;
+    const method = init?.method || (input instanceof Request ? input.method : 'GET');
+    const hold = writeHold;
+    let held: HeldRequest | null = null;
+    if (hold && !isQueryRequest(method, url, fetchAsUser(input, init))) {
+      held = { method, url, body: init?.body };
+      if (!(await hold(held).catch(() => false))) throw new DOMException('用户拦下了这次提交', 'AbortError');
+    }
+    const counted = !ownRequest(url);
+    if (counted) inflight += 1;
+    let res: Response;
     try {
-      const url = typeof input === 'string' || input instanceof URL ? String(input) : input.url;
-      const method = init?.method || (input instanceof Request ? input.method : 'GET');
+      res = await origFetch.call(window, input, init);
+    } catch (err) {
+      held?.onResult?.(0, String((err as Error)?.message || err));
+      throw err;
+    } finally {
+      if (counted) inflight = Math.max(0, inflight - 1);
+    }
+    if (held?.onResult) {
+      const report = held.onResult;
+      void res
+        .clone()
+        .text()
+        .then((t) => report(res.status, t.slice(0, RESULT_HEAD)))
+        .catch(() => report(res.status, ''));
+    }
+    try {
       if (res.ok && /json/i.test(res.headers.get('content-type') || '') && !(init as any)?.__ffReplay) {
         void res
           .clone()
@@ -304,6 +419,52 @@ export function installApiWatch() {
       /* 观察失败不得影响页面请求。 */
     }
     return res;
+  };
+  holdFormSubmits();
+}
+
+/** 原生表单提交整页跳转、不经过 XHR/fetch：页面自己没拦下（单页应用一般会拦）时同样先暂停。 */
+function holdFormSubmits() {
+  if (typeof HTMLFormElement === 'undefined') return;
+  const nativeSubmit = HTMLFormElement.prototype.submit;
+  const approved = new WeakSet<HTMLFormElement>();
+  const held = (form: HTMLFormElement, submitter?: HTMLElement | null): boolean => {
+    const hold = writeHold;
+    const method = (submitter?.getAttribute('formmethod') || form.getAttribute('method') || 'GET').toUpperCase();
+    const url = submitter?.getAttribute('formaction') || form.action;
+    if (!hold || isQueryRequest(method, url)) return false;
+    let body: URLSearchParams | undefined;
+    try {
+      body = new URLSearchParams([...new FormData(form)].map(([k, v]) => [k, typeof v === 'string' ? v : '[文件]']));
+    } catch {
+      /* 读不到内容也照样暂停。 */
+    }
+    void hold({ method, url, body }).then(
+      (ok) => {
+        if (!ok) return;
+        if (submitter && typeof form.requestSubmit === 'function') {
+          // requestSubmit 同步派发 submit；校验没过就不派发，标记不能留到下一次提交。
+          approved.add(form);
+          try {
+            form.requestSubmit(submitter);
+          } finally {
+            approved.delete(form);
+          }
+        } else {
+          nativeSubmit.call(form);
+        }
+      },
+      () => {},
+    );
+    return true;
+  };
+  window.addEventListener('submit', (e) => {
+    const form = e.target as HTMLFormElement;
+    if (approved.has(form) || e.defaultPrevented) return;
+    if (held(form, (e as SubmitEvent).submitter)) e.preventDefault();
+  });
+  HTMLFormElement.prototype.submit = function (this: HTMLFormElement) {
+    if (!held(this)) nativeSubmit.call(this);
   };
 }
 
@@ -678,6 +839,8 @@ export async function fetchSource(
   // 后端可能将每页数量限制在请求值以下，因此以第一页实际返回量为准。
   let pageSize = 0;
   let firstOfLast = '';
+  // 看到了最后一页（或无法再翻）；页数或行数到上限退出时没看到，就不能说取全了。
+  let ended = false;
   // 最多 60 页可覆盖每页 100 行时的 5000 行上限。
   for (let page = 0; rows.length < maxRows && page < 60; page += 1) {
     const p: Record<string, unknown> = { ...params };
@@ -706,18 +869,27 @@ export async function fetchSource(
       throw new Error(String(json.message || json.msg || `业务错误 ${json.code}`).slice(0, 80));
     }
     const batch = getPath(json, src.itemsPath);
-    if (!Array.isArray(batch)) break;
+    if (!Array.isArray(batch)) {
+      ended = true;
+      break;
+    }
     if (src.totalPath) {
       const t = Number(getPath(json, src.totalPath));
       if (Number.isFinite(t)) total = t;
     }
     // 后端忽略页码并重复返回第一页时停止，避免复制重复数据。
     const first = JSON.stringify(batch[0] ?? null);
-    if (page > 0 && first === firstOfLast) break;
+    if (page > 0 && first === firstOfLast) {
+      ended = true;
+      break;
+    }
     firstOfLast = first;
     rows.push(...batch);
     if (!pageSize) pageSize = batch.length;
-    if (!src.pageKey || !batch.length || (total != null ? rows.length >= total : batch.length < pageSize)) break;
+    if (!src.pageKey || !batch.length || (total != null ? rows.length >= total : batch.length < pageSize)) {
+      ended = true;
+      break;
+    }
   }
   const kept = rows.slice(0, maxRows);
   await guessHeaders(src, kept, signal);
@@ -725,7 +897,7 @@ export async function fetchSource(
     table: toTable(src, kept),
     total,
     fetched: kept.length,
-    truncated: total != null ? total > kept.length : rows.length > maxRows,
+    truncated: total != null ? total > kept.length : rows.length > maxRows || !ended,
     scope,
   };
 }

@@ -46,6 +46,7 @@ import {
   sourceForTable,
   unopenedPages,
 } from './apiWatch';
+import { chooseRef, clickRef, dragRef, hoverRef, lookAt, pointRef, pressKey, readPage, scrollPage, typeRef } from './pageAct';
 import { pickPageTable, readPageTables } from './pageTable';
 import {
   buildReport,
@@ -83,6 +84,8 @@ export type Proposal =
       /** 自动保存页面中尚未创建的记录；应用后会创建记录，撤销无法删除它。 */
       newRecord?: boolean;
       formLabels?: string[];
+      /** 读表单时所在的页面；宠物可能在这一轮里先点进别的页面才出建议，卡片只能应用到这个页面。 */
+      page: string;
     }
   | {
       kind: 'export';
@@ -111,7 +114,8 @@ export type Proposal =
       question?: string;
     };
 
-export type ToolOutcome = { content: string; proposal?: Proposal };
+/** images 是给模型看的图片（data URL），跟在这次工具结果后面发给模型。 */
+export type ToolOutcome = { content: string; proposal?: Proposal; images?: string[] };
 
 const cfg = skipGlobalErrorHandler;
 const MAX_LIST = 100;
@@ -613,7 +617,15 @@ function proposeFormFill(args: Record<string, any>): ToolOutcome {
             : '应用后也不会提交，用户自己点保存',
       ].join('；'),
     }),
-    proposal: { kind: 'fill', fills, manual, autoSave: form.autoSave, newRecord, formLabels: formLabels(form) },
+    proposal: {
+      kind: 'fill',
+      fills,
+      manual,
+      autoSave: form.autoSave,
+      newRecord,
+      formLabels: formLabels(form),
+      page: location.pathname + location.search + location.hash,
+    },
   };
 }
 
@@ -1113,8 +1125,8 @@ async function buildReportTool(args: Record<string, any>, signal?: AbortSignal, 
       ...(detail && detail.columns.length > QUERY_COLS ? { columns_total: detail.columns.length, columns_note: '只给了前 20 列，要别的列用 columns 指定' } : {}),
       ...extra,
       note:
-        '只读查询结果，没有生成文件。matched / groups 是代码算的精确值，直接引用；rows 少于 rows_total 时不要说只有这几条。' +
-        '用户要文件时再用 build_report' +
+        '只读查询结果：没有生成文件，也没有卡片，用户看不到下载按钮。matched / groups 是代码算的精确值，直接引用；rows 少于 rows_total 时不要说只有这几条。' +
+        '用户要文件就用同样的条件调用 build_report' +
         (partialWhy ? '；数据不是全量，回答里必须说明 partial_why' : ''),
     });
   }
@@ -1223,6 +1235,26 @@ export async function runPetTool(call: ToolCall, signal?: AbortSignal): Promise<
         return wrap(listDataSources());
       case 'propose_open_page':
         return proposeOpenPage(call.args);
+      case 'read_page':
+        return { content: readPage({ keyword: call.args.keyword, text: call.args.text }) };
+      case 'click':
+        return { content: await clickRef(call.args.ref, { right: call.args.button === 'right', double: call.args.double === true, times: call.args.times }) };
+      case 'type_text':
+        return { content: await typeRef(call.args.ref, String(call.args.text ?? ''), { append: call.args.append, enter: call.args.enter }) };
+      case 'choose_option':
+        return { content: await chooseRef(call.args.ref, String(call.args.option ?? '')) };
+      case 'scroll':
+        return { content: await scrollPage({ ref: call.args.ref, direction: call.args.direction }) };
+      case 'press_key':
+        return { content: await pressKey(call.args.key) };
+      case 'hover':
+        return { content: await hoverRef(call.args.ref) };
+      case 'drag':
+        return { content: await dragRef(call.args.ref, call.args.to_ref) };
+      case 'point_at':
+        return { content: await pointRef(call.args.ref, String(call.args.note ?? '')) };
+      case 'look_at':
+        return await lookAt(call.args.ref);
       default:
         return wrap({ error: `未知工具 ${call.name}` });
     }

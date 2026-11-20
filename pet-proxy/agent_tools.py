@@ -23,7 +23,7 @@ TOOLS = {
     "search_projects": _fn(
         "search_projects",
         "搜索/统计免疫项目列表。用于：找项目、某人负责的项目、某靶点有哪些项目、有几个项目在进行中。"
-        "返回 total（后端精确计数）和最多 limit 条摘要。",
+        "返回 total（后端精确计数）和最多 limit 条摘要。用户要在页面上看（只看、筛出、切到）时去操作页面的筛选，查询不会改变页面。",
         {
             "keyword": {"type": "string", "description": "项目编号/实验ID/项目名/靶点的关键词"},
             "target_name": S,
@@ -64,8 +64,8 @@ TOOLS = {
     ),
     "propose_form_fill": _fn(
         "propose_form_fill",
-        "把填写建议提交成确认卡片（用户点“应用”后才写入页面，不会替用户点提交/保存；auto_save 页面除外，见 check_current_form）。用户要填表/补全/新建/参考某项目填时必须用它，"
-        "不要只在回答里列建议值。按 parts 分批，每步只调用一次：一次填基本信息（fields），或一次填一张表（table+rows）。"
+        "把填写建议提交成确认卡片（用户点“应用”后才写入页面，不会替用户点提交/保存；auto_save 页面除外，见 check_current_form）。要你出主意填表（补全、新建、参考某项目填，值要你推断或一次填很多格）时用它，"
+        "让用户先过目，不要只在回答里列建议值；用户已经说清把哪个字段改成什么，直接用 type_text / choose_option 操作页面，不用再出卡片。按 parts 分批，每步只调用一次：一次填基本信息（fields），或一次填一张表（table+rows）。"
         "同一轮里多次调用会合并到同一张卡片，同一格后提交的覆盖先提交的。"
         "值的规则：下拉从 options 里选（allow_custom 时可自填）；多选用、分隔；日期 YYYY-MM-DD；"
         "remote_search=true 的下拉（如人员）直接写名称，一次一个值，应用时会自动搜索。"
@@ -96,7 +96,8 @@ TOOLS = {
     ),
     "propose_export": _fn(
         "propose_export",
-        "导出 Excel：用户说导出、下载、拉个表、给我个Excel/表格、出个清单时用它。直接把用户说的条件放进过滤参数，"
+        "只管免疫模块：按系统固定格式导出免疫项目列表、小鼠免疫明细或某个项目的免疫方案（和免疫页面上的导出按钮是同一个文件）。"
+        "其他模块的数据、或条件超出下面这几个参数时，导出用 build_report。直接把用户说的条件放进过滤参数，"
         "不需要先 search_projects。带筛选且结果不超过 40 条、或单个项目的方案时，结果里 auto=true 表示允许跳过确认；"
         "只有 note 写明「已开始下载」时才告诉用户已经开始，否则一律说请点「确认导出」。"
         "kind: project_list=免疫项目列表; mouse_list=小鼠免疫明细（每只鼠的分组/免疫信息）; scheme=某个项目的免疫方案。",
@@ -114,7 +115,7 @@ TOOLS = {
     "build_report": _fn(
         "build_report",
         "按用户自定义的要求整理数据并生成 Excel（确认卡片，用户点了才下载）：统计、分组计数、筛选、挑列、排序、按某列分工作表。"
-        "所有计数和合计由代码精确计算，结果里的 groups / matched 可直接引用。系统固定格式的导出用 propose_export；"
+        "所有计数和合计由代码精确计算，结果里的 groups / matched 可直接引用。免疫模块的固定格式导出用 propose_export，其他模块要文件都用本工具；"
         "用户要“按X统计/汇总”“只要某几列”“按X分sheet”“把这页的表导出/整理”时用它。\n"
         "免疫项目（免疫实验列表）的数据一律用 source=projects，不要用已认识数据源里的同一个列表。"
         "keyword / target_name / owner / status / mine 是 projects 专用的系统侧筛选；其他数据源按列筛选只能用 where。\n"
@@ -194,10 +195,89 @@ TOOLS["query_data"] = _fn(
     "只读查询，不生成文件：在对话里回答任一数据源（projects / page_table / 已认识的数据源 id）的问题，"
     "返回精确的 matched、groups 和最多 20 行明细 rows。用户问“有哪些、列几条看看、某条记录的某列是什么”，"
     "或填表要在别的模块里找参考记录时用它；参数和 build_report 相同（筛选用 where，可 join 联查）。"
-    "用户要 Excel、或要按X统计汇总时用 build_report。",
+    "用户要 Excel、或要按X统计汇总时用 build_report。"
+    "用户要在页面上看（只看、筛出、切到、翻到）时去操作页面的筛选和分页，查询不会改变页面。",
     {k: v for k, v in TOOLS["build_report"]["function"]["parameters"]["properties"].items() if k not in ("title", "split_by")},
     ["source"],
 )
+REF = {"type": "string", "description": "read_page 给的元素编号，如 e12"}
+TOOLS.update({
+    "read_page": _fn(
+        "read_page",
+        "读当前页面上用户看得到、能操作的东西：按钮、链接、页签、菜单、输入框（含当前值）、下拉框、勾选项、分页、展开的选项、弹窗、提示消息，"
+        "以及没有标记、只是鼠标移上去变手形的「可点」区域（整行、卡片等），每个都有编号（如 e12），其他页面工具用这个编号。"
+        "表格行里的元素注明第几行，表格给出行数和列名。有弹窗时只列弹窗里的。keyword 只列含这个词的元素（也会搜侧边菜单），一个都没有时返回整页清单；"
+        "text=true 附上页面正文。页面变了编号会失效，重新读即可。",
+        {"keyword": S, "text": {"type": "boolean", "description": "附上页面正文文字（最多 4000 字）"}},
+    ),
+    "click": _fn(
+        "click",
+        "像用户一样点击页面元素：按钮、链接、页签、菜单、分页、勾选项、选项等。会等页面加载完，返回点击后的变化（跳转、弹窗、提示消息）和新的元素清单。"
+        "页面因此要向系统提交数据（保存、删除、提交等）时，请求先暂停，等用户在卡片上放行或拦下（最多等 2 分钟），"
+        "结果里的 held_writes 写明用户的决定和系统的回复。"
+        "用户要你办成的事（新建、改完保存、提交）就点到最后的保存/确定，确认交给这一步的暂停卡片，不要停在最后一步让用户自己点。"
+        "删除这类不可逆的操作：要动哪些不明确时先列出对象问一句，明确了就照做；不要说做不了或让用户自己去点。",
+        {"ref": REF,
+         "button": {"type": "string", "enum": ["left", "right"],
+                    "description": "right=右键：打开右键菜单，或元素的提示里写了右键用法时。默认左键"},
+         "double": {"type": "boolean", "description": "双击（表格单元格进入编辑、打开详情等）"},
+         "times": {"type": "integer", "description": "同一个元素连续点几次（如加 5 行就对「添加」点 5 次），默认 1，最多 20；"
+                                                     "中途页面要提交数据、元素消失或变成不可用就停下，结果里写实际点了几次"}},
+        ["ref"],
+    ),
+    "type_text": _fn(
+        "type_text",
+        "在输入框里输入文字，默认替换原内容；append=true 接在原内容后面；enter=true 输入后回车（搜索框常用）。"
+        "只读的下拉框和日期框不能直接输入，用 choose_option，或点开后点选项。",
+        {"ref": REF, "text": S, "append": {"type": "boolean"}, "enter": {"type": "boolean"}},
+        ["ref", "text"],
+    ),
+    "choose_option": _fn(
+        "choose_option",
+        "打开下拉框并选中文字对得上的选项；可搜索的下拉框会先输入 option 再选。选不到时返回现有选项。",
+        {"ref": REF, "option": {"type": "string", "description": "要选的选项文字"}},
+        ["ref", "option"],
+    ),
+    "scroll": _fn(
+        "scroll",
+        "滚动页面：给 ref 就滚到那个元素；否则按 direction 滚一屏（有弹窗时滚弹窗）。",
+        {"ref": REF, "direction": {"type": "string", "enum": ["down", "up"]}},
+    ),
+    "press_key": _fn(
+        "press_key",
+        "在当前焦点上按键，交给页面自己的键盘处理：Enter（确认、提交搜索）、Escape（关弹窗、收起下拉）、Space、"
+        "方向键（在下拉和菜单里移动）；Tab 把焦点移到下一个控件。删改文字用 type_text 重新输入，翻页用 scroll。",
+        {"key": {"type": "string", "enum": [
+            "Enter", "Escape", "Tab", "Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+        ]}},
+        ["key"],
+    ),
+    "hover": _fn(
+        "hover",
+        "把鼠标移到元素上不点击：展开悬停菜单、显示提示气泡、让悬停才出现的按钮出来。返回之后的页面变化和新的元素清单。",
+        {"ref": REF},
+        ["ref"],
+    ),
+    "drag": _fn(
+        "drag",
+        "按住一个元素拖到另一个元素上松开（拖动排序、拖进某个区域）。",
+        {"ref": REF, "to_ref": {"type": "string", "description": "拖到哪个元素上，read_page 给的编号"}},
+        ["ref", "to_ref"],
+    ),
+    "point_at": _fn(
+        "point_at",
+        "把页面上的元素指给用户看：指针飞过去并高亮，不点击。用户问在哪、哪个按钮、怎么操作时用。"
+        "用户说要自己动手时只指不点，也不要为了看清里面有什么替他点开。",
+        {"ref": REF, "note": {"type": "string", "description": "显示在指针旁的一句话，可不写"}},
+        ["ref"],
+    ),
+    "look_at": _fn(
+        "look_at",
+        "截图看页面：默认截当前页面（有弹窗时截弹窗），给 ref 就只截那个元素。用来看图表、图片、颜色、布局这类读文字看不出来的内容。",
+        {"ref": REF},
+    ),
+})
+PAGE_ACT_TOOLS = ("click", "type_text", "choose_option", "scroll", "press_key", "hover", "drag")
 REPORT_TOOLS = ("build_report", "query_data")
 
 FORM_TOOLS = ("check_current_form", "propose_form_fill")
@@ -214,6 +294,16 @@ PHASE_LABELS = {
     "query_data": "翻数据中…",
     "list_data_sources": "看看认识哪些数据…",
     "propose_open_page": "找找是哪个页面…",
+    "read_page": "看看页面…",
+    "click": "点一下…",
+    "type_text": "输入中…",
+    "choose_option": "选一下…",
+    "scroll": "翻一翻页面…",
+    "press_key": "按个键…",
+    "hover": "把鼠标移过去…",
+    "drag": "拖一下…",
+    "point_at": "指给你看…",
+    "look_at": "仔细看一眼…",
 }
 
 
@@ -273,6 +363,8 @@ def _str_map(v) -> dict:
 
 
 MAX_FILLS = 80
+TEXT_MAX = 2000
+_REF = re.compile(r"e\d{1,6}")
 
 
 def _expand_fills(args: dict) -> tuple[list[dict], str | None]:
@@ -311,7 +403,9 @@ def _expand_fills(args: dict) -> tuple[list[dict], str | None]:
         fills.append(item)
     if not fills:
         return [], "没有收到任何填写内容（fields 或 table+rows）"
-    return fills[:MAX_FILLS], None
+    if len(fills) > MAX_FILLS:
+        return [], f"一次最多 {MAX_FILLS} 项，这次 {len(fills)} 项：分成几次 propose_form_fill"
+    return fills, None
 
 
 _OP_ALIASES = {
@@ -449,7 +543,7 @@ def normalize_args(name: str, args) -> tuple[dict, str | None]:
         v = args[key]
         t = schema.get("type")
         if t == "string":
-            v = strip_invisible(str(v)).strip()[:120]
+            v = strip_invisible(str(v)).strip()[:TEXT_MAX if (name, key) == ("type_text", "text") else 120]
             if not v:
                 continue
             if "enum" in schema:
@@ -457,15 +551,16 @@ def normalize_args(name: str, args) -> tuple[dict, str | None]:
                 if match is None:
                     return {}, f"{key} 只能是 {schema['enum']}"
                 v = match
+        # A filter that can't be read must not be dropped silently: the query would widen to everything.
         elif t == "boolean":
             v = _as_bool(v)
             if v is None:
-                continue
+                return {}, f"{key} 要填 true 或 false"
         elif t == "integer":
             try:
                 v = int(float(v))
             except Exception:
-                continue
+                return {}, f"{key} 要填整数"
         elif t == "array":
             if name in REPORT_TOOLS:
                 continue
@@ -482,8 +577,13 @@ def normalize_args(name: str, args) -> tuple[dict, str | None]:
         return _report_args(args, out)
     if name == "search_projects":
         out["limit"] = max(1, min(20, int(out.get("limit") or 8)))
+    if "times" in out:
+        out["times"] = max(1, min(20, out["times"]))
     if name == "propose_export" and out.get("kind") == "scheme" and not out.get("project"):
         return {}, "导出免疫方案需要 project"
+    for key in ("ref", "to_ref"):
+        if key in out and not _REF.fullmatch(out[key]):
+            return {}, f"{key} 要用 read_page 给的编号，如 e12"
     for req in params.get("required", []):
         if req not in out:
             return {}, f"缺少参数 {req}"

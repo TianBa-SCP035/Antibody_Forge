@@ -328,7 +328,7 @@ flowchart LR
 
 - **`/home`** 为系统级默认落地页（`defaultHomePath`、`build_user_info` 的 `homePath`）；**不设 `meta.authority`**，凡已登录用户可访问（含零角色账号）。
 - 用户可在首页快捷导航里把某个入口设为登录后默认页（`HOME_START_PAGE_STORAGE_KEY`）。该偏好只存浏览器 `localStorage`，不落库；未设置时用服务端 `homePath`。
-- 首页的公告、便签等为前端静态数据或 `localStorage`（`views/Home/home-data.ts`）；天气由浏览器直连 Open-Meteo / weather-api.site，不经后端。
+- 首页的公告、便签等为前端静态数据或 `localStorage`（`views/Home/home-data.ts`）；天气走 `GET /api/home/weather`（登录即可读取），由后端 `integrations/weather.py` 先查 Open-Meteo、失败再查 weather-api.site，结果全站共用 30 分钟；天气图标随前端打包（`views/Home/assets/meteocons`），浏览器不访问外网。
 
 路由与页面：`router/routes/modules/home.ts`、`views/Home/`。
 

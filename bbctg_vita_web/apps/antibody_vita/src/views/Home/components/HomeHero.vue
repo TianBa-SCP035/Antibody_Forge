@@ -43,21 +43,21 @@ const weatherSubline = computed(() => {
   return parts;
 });
 
-/** Meteocons 作为背景图渲染，避免内联图标等待 document 就绪时动画卡顿。 */
+/** Meteocons 作为背景图渲染，避免内联图标等待 document 就绪时动画卡顿；图标文件随前端打包，显示时才加载。 */
 const weatherIconStyle = ref<{ backgroundImage?: string }>({});
+const meteocons = import.meta.glob<string>('../assets/meteocons/*.svg', {
+  import: 'default',
+  query: '?raw',
+});
 
 async function syncWeatherIconBackground(icon: string) {
-  const sep = icon.indexOf(':');
-  if (sep < 1) {
+  const load = meteocons[`../assets/meteocons/${icon.slice(icon.indexOf(':') + 1)}.svg`];
+  if (!load) {
     weatherIconStyle.value = {};
     return;
   }
   try {
-    const res = await fetch(
-      `https://api.iconify.design/${icon.slice(0, sep)}/${icon.slice(sep + 1)}.svg`,
-    );
-    if (!res.ok) throw new Error('icon fetch failed');
-    const svg = (await res.text()).replace(
+    const svg = (await load()).replace(
       '</svg>',
       `<!--${Date.now()}--></svg>`,
     );

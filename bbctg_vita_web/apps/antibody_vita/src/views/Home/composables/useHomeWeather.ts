@@ -3,11 +3,10 @@ import { onMounted, reactive, ref, watch } from 'vue';
 
 import { preferences } from '@vben/preferences';
 
+import { fetchHomeWeather } from '#/api/home';
 import { WEATHER_CACHE_KEY } from '#/constants/storageKeys';
 import { $t } from '#/locales';
 
-const BEIJING_LAT = 39.9042;
-const BEIJING_LON = 116.4074;
 const WEATHER_CACHE_TTL_MS = 30 * 60 * 1000;
 
 const WMO_CODES = [
@@ -50,7 +49,7 @@ function wmoWeatherIcon(code: number): string {
   }
   if (code === 61 || code === 80) return 'meteocons:rain-fill';
   if (code === 63 || code === 81) return 'meteocons:rain-fill';
-  if (code === 65 || code === 82) return 'meteocons:rain-heavy-fill';
+  if (code === 65 || code === 82) return 'meteocons:extreme-rain-fill';
   if (code === 71 || code === 85) return 'meteocons:snow-fill';
   if (code === 73 || code === 86) return 'meteocons:snow-fill';
   if (code === 75) return 'meteocons:snow-fill';
@@ -179,133 +178,19 @@ function writeWeatherCache(snapshot: WeatherSnapshot) {
   }
 }
 
-async function fetchOpenMeteoSnapshot(): Promise<WeatherSnapshot> {
-  const forecastUrl = new URL('https://api.open-meteo.com/v1/forecast');
-  forecastUrl.searchParams.set('latitude', String(BEIJING_LAT));
-  forecastUrl.searchParams.set('longitude', String(BEIJING_LON));
-  forecastUrl.searchParams.set(
-    'current',
-    'temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code',
-  );
-  forecastUrl.searchParams.set('timezone', 'Asia/Shanghai');
-
-  const aqUrl = new URL('https://air-quality-api.open-meteo.com/v1/air-quality');
-  aqUrl.searchParams.set('latitude', String(BEIJING_LAT));
-  aqUrl.searchParams.set('longitude', String(BEIJING_LON));
-  aqUrl.searchParams.set('current', Object.keys(CN_AQI_BREAKPOINTS).join(','));
-
-  const [forecastRes, aqRes] = await Promise.all([
-    fetch(forecastUrl.toString()),
-    fetch(aqUrl.toString()).catch(() => null),
-  ]);
-
-  if (!forecastRes.ok) throw new Error('Open-Meteo forecast failed');
-
-  const forecastJson = (await forecastRes.json()) as {
-    current?: {
-      temperature_2m?: number;
-      relative_humidity_2m?: number;
-      wind_speed_10m?: number;
-      weather_code?: number;
-    };
-  };
-
-  const current = forecastJson.current;
-  if (!current) throw new Error('Open-Meteo empty');
-
-  let aqi: number | null = null;
-  if (aqRes?.ok) {
-    const aqJson = (await aqRes.json()) as { current?: PollutantReadings };
-    aqi = cnAqi(aqJson.current);
-  }
-
-  return {
-    aqi,
-    humidity:
-      current.relative_humidity_2m !== undefined
-        ? Math.round(current.relative_humidity_2m)
-        : null,
-    temp:
-      current.temperature_2m !== undefined
-        ? Math.round(current.temperature_2m)
-        : null,
-    weatherCode: current.weather_code ?? 3,
-    windSpeed:
-      current.wind_speed_10m !== undefined
-        ? Math.round(current.wind_speed_10m)
-        : null,
-  };
+function roundOrNull(value: null | number | undefined): null | number {
+  return typeof value === 'number' ? Math.round(value) : null;
 }
 
-async function fetchWeatherApiSiteSnapshot(): Promise<WeatherSnapshot> {
-  const weatherUrl = `https://weather-api.site/weather?lat=${BEIJING_LAT}&lon=${BEIJING_LON}`;
-  const aqUrl = `https://weather-api.site/air-quality?lat=${BEIJING_LAT}&lon=${BEIJING_LON}`;
-
-  const [weatherRes, aqRes] = await Promise.all([
-    fetch(weatherUrl),
-    fetch(aqUrl).catch(() => null),
-  ]);
-
-  if (!weatherRes.ok) throw new Error('weather-api.site weather failed');
-
-  const weatherJson = (await weatherRes.json()) as {
-    current?: {
-      condition_code?: number;
-      humidity?: number;
-      temperature?: number;
-      wind_speed?: number;
-    };
-  };
-
-  const current = weatherJson.current;
-  if (!current) throw new Error('weather-api.site empty');
-
-  let aqi: number | null = null;
-  if (aqRes?.ok) {
-    const aqJson = (await aqRes.json()) as { current?: PollutantReadings };
-    aqi = cnAqi(aqJson.current);
-  }
-
+async function fetchWeatherSnapshot(): Promise<WeatherSnapshot> {
+  const data = await fetchHomeWeather();
   return {
-    aqi,
-    humidity:
-      current.humidity !== undefined ? Math.round(current.humidity) : null,
-    temp:
-      current.temperature !== undefined
-        ? Math.round(current.temperature)
-        : null,
-    weatherCode: current.condition_code ?? 3,
-    windSpeed:
-      current.wind_speed !== undefined
-        ? Math.round(current.wind_speed)
-        : null,
+    aqi: cnAqi(data.air ?? undefined),
+    humidity: roundOrNull(data.humidity),
+    temp: roundOrNull(data.temp),
+    weatherCode: data.weather_code ?? 3,
+    windSpeed: roundOrNull(data.wind_speed),
   };
-}
-
-async function raceWeatherProviders(): Promise<WeatherSnapshot> {
-  const providers = [fetchOpenMeteoSnapshot(), fetchWeatherApiSiteSnapshot()];
-
-  return new Promise((resolve, reject) => {
-    let pending = providers.length;
-    let settled = false;
-    const errors: unknown[] = [];
-
-    for (const provider of providers) {
-      void provider
-        .then((snapshot) => {
-          if (settled) return;
-          settled = true;
-          resolve(snapshot);
-        })
-        .catch((error) => {
-          errors.push(error);
-          pending -= 1;
-          if (pending === 0 && !settled) {
-            reject(errors[0] ?? new Error('all weather providers failed'));
-          }
-        });
-    }
-  });
 }
 
 export function useHomeWeather() {
@@ -350,7 +235,7 @@ export function useHomeWeather() {
     }
 
     try {
-      const snapshot = await raceWeatherProviders();
+      const snapshot = await fetchWeatherSnapshot();
       applySnapshot(weather, lastWeatherCode, lastAqi, snapshot);
       writeWeatherCache(snapshot);
     } catch {

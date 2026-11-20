@@ -18,7 +18,7 @@ import WorkbenchTargetSelect from './WorkbenchTargetSelect.vue'
  * tags 多值（可自填）、textarea 多行文本、text 单行文本、dash 只显示「-」。
  * 日期、下拉、人员、多值选完即 change（multi / tags / users 手势相同：左键单选，右键追加，可搜索，选中项拼成一行显示），
  * 靶点选完 target-change；
- * 文本输入时 input、失焦时 blur。
+ * 文本输入时 input、失焦时 blur；单行文本回车、多行文本 Ctrl+回车即失焦。
  * 日期选中时先 input 写回：ElDatePicker 关面板时用传入的 modelValue 判断是否 change，不写回就永远不触发保存。
  * 字段定义可用：maxlength；textarea 的 resize、nowrap（一行一项的字段，改用 WorkbenchLineInput）；
  * sync 并排等高（单行文本也按一行高的多行框渲染）；type: 'number' 数字框。
@@ -56,6 +56,10 @@ const numberMin = computed(() => {
   if (props.field.key === 'sort_order') return 1
   return props.field.type === 'number' ? 0 : undefined
 })
+/** 输入法选词时的回车不算。 */
+function blurOnEnter(event) {
+  if (!event.isComposing) event.target.blur()
+}
 </script>
 
 <template>
@@ -162,6 +166,7 @@ const numberMin = computed(() => {
     :maxlength="field.maxlength"
     :disabled="disabled"
     @update:model-value="emit('input', $event)"
+    @keydown.ctrl.enter="blurOnEnter"
     @blur="emit('blur')"
   />
   <ElInput
@@ -174,6 +179,7 @@ const numberMin = computed(() => {
     :maxlength="field.maxlength"
     :disabled="disabled"
     @update:model-value="emit('input', $event)"
+    @keydown.ctrl.enter="blurOnEnter"
     @blur="emit('blur')"
   />
   <span v-else-if="kind === 'dash'">-</span>
@@ -185,6 +191,7 @@ const numberMin = computed(() => {
     :maxlength="field.maxlength"
     :disabled="disabled"
     @update:model-value="emit('input', $event)"
+    @keydown.enter="blurOnEnter"
     @blur="emit('blur')"
   />
 </template>

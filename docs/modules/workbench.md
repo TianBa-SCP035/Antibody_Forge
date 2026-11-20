@@ -59,7 +59,7 @@
 
 ## 抽屉保存约定
 
-全站只有一种保存方式：**字段改完就保存这一个字段**（选择类 `@change`、输入类 `@blur`），不在关闭时攒一批再提交。关闭、切行、做行操作、刷新列表、切换视图前，`flushDrawer` 兜底：先让正在输入的框失焦走自己的保存，再把副本里和基线不同的字段补存，最后等这一行的保存全部完成。
+全站只有一种保存方式：**字段改完就保存这一个字段**（选择类 `@change`、输入类 `@blur`；`WorkbenchDrawerField` 的单行文本回车、多行文本 Ctrl+回车即失焦），不在关闭时攒一批再提交。关闭、切行、做行操作、刷新列表、切换视图前，`flushDrawer` 兜底：先让正在输入的框失焦走自己的保存，再把副本里和基线不同的字段补存，最后等这一行的保存全部完成。
 
 选逐字段保存是因为：改完即入库，别人刷新就能看到；保存失败能定位到具体字段并当场退回；和 Excel 单格编辑、行内下拉走同一个入口，不会出现两条保存路径各管一部分。
 
@@ -71,7 +71,7 @@
 - 外观参数：`size` 宽度默认 `520px`、`label-width` 默认 `80px`，字段特别多的页面自行加宽（文库构建 560px / 92px）；分组小标题默认不带色条，要的页面写 `title-mark`（文库构建），单个分组在 `editorSections` 里写 `mark: true` / `mark: false` 覆盖。
 - 提供 `editorSections`（名字固定，兜底补存按它找字段；开发环境缺了会在控制台警告）、`canEditField(row, key)`。列表行原样使用接口返回值，数组、状态和优先级默认值由后端序列化和数据库默认值保证，前端不补形。
 - 实现 `saveRowField(row, field, options)`：只保存这一个字段（靶点名称和编号一起）。标准写法是 `normalizeDrawerValue` 校验，`rowFieldsUnchanged(row, keys)` 为真时直接返回，最后 `return this.submitRowFields(row, keys, options)`；页面只在中间加自己的联动字段（如审核人、质检人）。没改值或校验不过返回 `undefined`，不算失败。
-- `submitRowFields(row, fields, { save, messages, applyFields, reload })`：先把列表行的新值同步到打开着的抽屉副本，再调 `workbenchApi.save(rowSavePayload(row, fields))`；成功后 `applySavedFields(saved, applyFields)` 并返回保存结果（`applyFields` 默认就是 `fields`，传 `null` 整行回填）；失败按 `messages`（默认 `workbenchApi.errors.save`）提示，带上 `reload` 静默刷新列表，再 `revertDrawerFields` 退回这几个字段并返回 `null`，免得兜底补存再提交一次。保存前要确认的（如合成的完成确认）传 `save` 换掉保存函数。
+- `submitRowFields(row, fields, { save, messages, applyFields, reload })`：先把列表行的新值同步到打开着的抽屉副本，再调 `workbenchApi.save(rowSavePayload(row, fields))`；成功后 `applySavedFields(saved, applyFields)` 并返回保存结果（`applyFields` 默认就是 `fields`，传 `null` 整行回填）；失败按 `messages`（默认 `workbenchApi.errors.save`）提示，带上 `reload` 静默刷新列表，再 `revertDrawerFields` 退回这几个字段并返回 `null`，免得兜底补存再提交一次；登录失效时不刷新、不退回，抽屉里的值等重新登录后由兜底补存提交（重新登录弹窗在 `DRAWER_KEEP_OPEN_SELECTOR` 里，点它不关抽屉）。保存前要确认的（如合成的完成确认）传 `save` 换掉保存函数。
 - 所有保存都调 `persistRow(row, field)`，它按行排队后再调 `saveRowField`，避免后发先至。行内下拉直接改值用 `persistRowValue(row, key, value)`（写值后 `persistRow`，返回保存结果），状态、优先级都这样接。前一个保存回填时，`patchExistingListRow` 不覆盖同一行仍在排队的字段，用户刚改的值不会被旧结果冲掉。
 - `getList({ flushEditor = true, silent = false })`：`flushEditor` 时先 `await this.flushAllEdits()`，表格或抽屉有存不上的编辑（失败已在保存处提示）就不刷新、返回 `false`；拿到数据赋给 `list` 后调 `acceptListRows()`，抽屉副本里没改过的字段换成新数据，再记基线。抽屉里的已入库行不在新列表里（被删、被筛掉）时关闭抽屉；未入库草稿不受影响。
 - `type: 'target'` 的字段由 `WorkbenchDrawerField` 自动接 `onDrawerTargetChange`（`workbenchTargetMixin` 提供），编号和名称一起保存；自己写 `WorkbenchTargetSelect` 时绑 `@change="onDrawerTargetChange(editingRow, $event)"`。

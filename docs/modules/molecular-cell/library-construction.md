@@ -229,7 +229,7 @@
   - 新工单写入 `source_discovery_id = discovery_id`，并携带发现安排的 `project_code → source_project_code`、`study_type`、`target_name`、`target_codes`、`pm`、`mouse_strain`、`priority`；不复制发现台负责人和归类鼠型。
   - **首个品系推导 `sample_type`**（交接与工单编辑共用）：`mouse_strain` 按预设品系在前、自填在后以顿号拼接；未显式指定 `sample_type` 时，仅根据拼接后的**第一个**品系推导：
     - `RL`、`RLB/C`、`RLSJL`、`RLKO`、`RLCKO`、`RLDF` → `lite`（`Lite`）；
-    - `RN`、`RNKO`、`RNVR`、`RNVM`、`RNVMKO` → `nano`（`Nano`）；
+    - `RN`、`RNKO`、`RNVR`、`RNVM`、`RNVMKO`、`RNDF` → `nano`（`Nano`）；
     - 其余品系（如 `RM`、`RMB/C`、`RMSJL`、`RMKO`、`RMCKO` 及自填项）不自动推导或覆盖已有 `sample_type`。手动修改 `sample_type` 不会反向改动 `mouse_strain`。
   - **上机日期与细胞数**：`plate_single_cell`、`pooled_bcr`、`pooled_barcode`、`phage_display` 四类交接时必须先在发现台填写 `harvest_date`（剖鼠日期），交接后写入 `instrument_on`；`plasma_ngs` 有 `harvest_date` 时亦写入 `instrument_on`，无日期不阻断交接。`plate_single_cell`、`pooled_bcr`、`pooled_barcode`、`plasma_ngs`、`peripheral_blood_bcr` 自动复制 `positive_cell_count`。`plate_single_cell` 按行复制发现台 `plate_nos`（一行一个板号，行内原样），其余类型不带板号。
 - **发现状态推进与删除保护**：

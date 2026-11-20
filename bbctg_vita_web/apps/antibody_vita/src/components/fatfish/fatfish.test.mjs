@@ -78,12 +78,12 @@ test('学习数据源：页面定列名与编码，模型只补其余且只问�
   globalThis.XMLHttpRequest = class {
     open() {}
     setRequestHeader() {}
-    addEventListener(type, fn) { this.onEnd = fn }
+    addEventListener(type, fn) { (this.ends ??= []).push(fn) }
     send() {
       this.status = 200
       this.responseType = ''
       this.responseText = listJson
-      this.onEnd()
+      for (const fn of this.ends ?? []) fn()
     }
   }
   const { installApiWatch, sourceForTable, fetchSource, sourceColumns } = await import('./apiWatch.ts')

@@ -3,7 +3,7 @@
  * 大肥鱼悬浮宠物，作为 Antibody Vita 桌面伴侣。
  * WebM 来源：PC2005-cloud/dsh-pet（娱乐／内部使用），版权说明见 ATTRIBUTION.txt。
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type ComponentPublicInstance } from 'vue';
 import { useRouter } from 'vue-router';
 
 import {
@@ -13,6 +13,8 @@ import {
   CURSOR_GRABBING,
   CURSOR_HAMMER,
   CURSOR_HOVER,
+  POINTER_GRAB,
+  POINTER_HAND,
   SIDEBAR_WIDTH,
   SIZE,
   DAILY_REMARKS_KEY,
@@ -40,6 +42,8 @@ import {
 } from './useBall';
 import { CARE_STATE_LABEL, useCare, type CareState } from './useCare';
 import { useChat, type CardInput, type PetBubble } from './useChat';
+import { setPointer } from './pageAct';
+import { usePointer } from './usePointer';
 
 defineOptions({ name: 'FatFishPet' });
 setHostRouter(useRouter());
@@ -466,7 +470,7 @@ const bubbleStackStyle = computed(() => {
   const vw = window.innerWidth || 1280;
   const localBottom = headLocalBottom('bubbles');
   const box = petBox();
-  const onLeft = pos.x + box / 2 < vw * 0.5;
+  const onLeft = petOnLeftHalf();
   // 展开角色时贴齐外侧边缘；停靠球有一半悬在屏外，气泡栈需放在朝内的可见侧。
   let vx = collapsed.value
     ? (onLeft ? Math.max(inset, pos.x + box) : pos.x - w)
@@ -491,8 +495,19 @@ const bubbleStackStyle = computed(() => {
   return style;
 });
 
+/** 中线两侧各留一段缓冲：漫步经过中线时气泡、输入条不会来回换边。 */
+const SIDE_DEADBAND = 60;
+let sideLeft = true;
+const petLeft = computed(() => {
+  const c = pos.x + petBox() / 2;
+  const mid = (window.innerWidth || 1280) / 2;
+  if (sideLeft && c > mid + SIDE_DEADBAND) sideLeft = false;
+  else if (!sideLeft && c < mid - SIDE_DEADBAND) sideLeft = true;
+  return sideLeft;
+});
+
 function petOnLeftHalf() {
-  return pos.x + SIZE / 2 < (window.innerWidth || 1280) * 0.5;
+  return petLeft.value;
 }
 
 /** 宠物、系统和等待气泡属于宠物侧，用户气泡属于用户侧；左半屏宠物在左，右半屏反向。 */
@@ -524,8 +539,8 @@ const chatPillStyle = computed(() => {
     const boxW = petW();
     const vw = window.innerWidth || 1280;
     const bubbleBottom = headLocalBottom('bubbles');
-    const stackW = 220;
-    const onLeft = pos.x + boxW / 2 < vw * 0.5;
+    const stackW = hasCard.value ? 300 : 220;
+    const onLeft = petOnLeftHalf();
     let stackVx = collapsed.value
       ? (onLeft ? Math.max(inset, pos.x + boxW) : pos.x - stackW)
       : (onLeft ? pos.x : pos.x + boxW - stackW);
@@ -533,7 +548,7 @@ const chatPillStyle = computed(() => {
     stackVx = Math.max(inset, Math.min(hi, stackVx));
     const stackLeft = stackVx - pos.x;
     const roomAbove = Math.max(48, pos.y + boxH - bubbleBottom - inset);
-    const stackH = Math.min(400, Math.min(roomAbove, 28 + Math.max(1, bubbles.value.length) * 38));
+    const stackH = Math.min(400, roomAbove, stackHeight.value || 28 + Math.max(1, bubbles.value.length) * 38);
     const stackTopY = boxH - bubbleBottom - stackH;
     const stackBotY = boxH - bubbleBottom;
     const pillTopY = boxH - localBottom - pillH;
@@ -556,7 +571,24 @@ const chatPillStyle = computed(() => {
 
 const chatOpen = ref(false);
 const chatInputEl = ref<HTMLInputElement | null>(null);
-const bubblesEl = ref<HTMLElement | null>(null);
+const bubblesGroup = ref<ComponentPublicInstance | null>(null);
+const bubblesEl = computed(() => (bubblesGroup.value?.$el as HTMLElement | undefined) ?? null);
+
+/** 离场的气泡钉在原位淡出，脱离排版，其余气泡平滑挪到新位置而不是等它消失后一下跳过去。 */
+function pinLeaving(el: Element) {
+  const node = el as HTMLElement;
+  const { offsetTop, offsetLeft, offsetWidth } = node;
+  Object.assign(node.style, { position: 'absolute', top: `${offsetTop}px`, left: `${offsetLeft}px`, width: `${offsetWidth}px`, margin: '0' });
+}
+
+/** 气泡栈的实际高度：输入条按它避让，卡片高度不一，不能按条数估。 */
+const stackHeight = ref(0);
+const stackObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => (stackHeight.value = bubblesEl.value?.offsetHeight ?? 0)) : null;
+watch(bubblesEl, (el, old) => {
+  if (old) stackObserver?.unobserve(old);
+  if (el) stackObserver?.observe(el);
+});
+onBeforeUnmount(() => stackObserver?.disconnect());
 /** 仅在消息滚出可视区域的一侧淡化气泡栈边缘。 */
 const stackFade = reactive({ top: false, bottom: false });
 
@@ -574,6 +606,7 @@ let chatCloseTimer: number | undefined;
 let careDecayTimer: number | undefined;
 
 const {
+  disposeChat,
   qaHistory,
   reloadForUser,
   clearWaitBubble,
@@ -599,6 +632,14 @@ const {
   closeChatDialog,
   focusInput: () => nextTick(() => chatInputEl.value?.focus()),
   bubbles,
+  cardInUse,
+});
+const { pointerState, pointer, disposePointer } = usePointer({
+  origin: () => ({ x: pos.x + SIZE / 2, y: pos.y + SIZE / 3 }),
+  face: (x) => {
+    facing.value = x >= pos.x + SIZE / 2 ? 1 : -1;
+  },
+  look: () => void playAnim('look'),
 });
 // 宠物位于路由层之上，切换登录账号不会重新挂载。
 watch(currentUserKey, (now, was) => {
@@ -685,7 +726,7 @@ function syncBubblesFromQaHistory() {
   const waits = bubbles.value.filter((b) => b.kind === 'wait' || b.kind === 'card');
   const recent = qaHistory.value.slice(-16);
   // 保持问答 ID 稳定，避免重开聊天时所有气泡重新挂载并重播 ff-pop。
-  bubbles.value = [
+  bubbles.value = withWaitLast([
     ...recent.map((row) => ({
       id: row.id,
       text: row.text,
@@ -693,13 +734,13 @@ function syncBubblesFromQaHistory() {
       sticky: true,
     })),
     ...waits,
-  ];
+  ]);
   bubbleSeq = Math.max(bubbleSeq, ...recent.map((r) => r.id), 1) + 1;
 }
 
 function scrollBubblesToEnd() {
   nextTick(() => {
-    const el = document.querySelector('.ff-bubbles.chat-open') as HTMLElement | null;
+    const el = bubblesEl.value;
     if (el) el.scrollTop = el.scrollHeight;
   });
 }
@@ -729,16 +770,16 @@ function toggleChatDialog() {
 function closeChatDialog() {
   window.clearTimeout(chatCloseTimer);
   chatOpen.value = false;
-  // 恢复紧凑自动消失模式：保留最近两条后淡出，卡片则等待用户关闭。
+  // 恢复紧凑自动消失模式：保留最近两条后淡出，卡片则等待用户关闭；宠物还在干活时进度气泡留着。
   const lastIds = new Set(
     bubbles.value.filter((b) => b.kind !== 'wait' && b.kind !== 'card').slice(-2).map((b) => b.id),
   );
-  clearWaitBubble();
+  if (!busy.value) clearWaitBubble();
   bubbles.value = bubbles.value
-    .filter((b) => b.kind === 'card' || lastIds.has(b.id))
+    .filter((b) => b.kind === 'card' || b.kind === 'wait' || lastIds.has(b.id))
     .map((b) => (b.kind === 'card' ? b : { ...b, sticky: false }));
   for (const b of bubbles.value) {
-    if (b.kind === 'card') continue;
+    if (b.kind === 'card' || b.kind === 'wait') continue;
     const id = b.id;
     window.setTimeout(() => {
       if (chatOpen.value) return;
@@ -771,24 +812,38 @@ function say(text: string, kind: Bubble['kind'] = 'pet') {
   const prev = bubbles.value.filter((b) => b.kind !== 'card').at(-1);
   if (kind === 'pet' && !chatOpen.value && prev?.kind === 'pet' && prev.text === text) return prev.id;
   const id = bubbleSeq++;
-  let list = bubbles.value;
-  if (kind === 'wait') {
-    list = list.filter((b) => b.kind !== 'wait');
-  }
-  // 输入框打开时，问答和等待气泡不自动消失，并允许更长的气泡栈。
-  const sticky =
-    chatOpen.value && (kind === 'user' || kind === 'pet' || kind === 'sys' || kind === 'wait');
+  // 进度气泡（wait）在这一轮结束前一直留着、排在最下面贴着宠物，不占条数、不被新气泡挤掉。
+  const waits = kind === 'wait' ? [] : bubbles.value.filter((b) => b.kind === 'wait');
+  const list = bubbles.value.filter((b) => b.kind !== 'wait');
+  // 输入框打开时，问答气泡不自动消失，并允许更长的气泡栈。
+  const sticky = chatOpen.value && (kind === 'user' || kind === 'pet' || kind === 'sys' || kind === 'wait');
   const keep = chatOpen.value ? 20 : 4;
   const kept = new Set(list.filter((b) => b.kind !== 'card').slice(-(keep - 1)).map((b) => b.id));
-  bubbles.value = [...list.filter((b) => b.kind === 'card' || kept.has(b.id)), { id, text, kind, sticky }];
+  const added = { id, text, kind, sticky };
+  bubbles.value = [...list.filter((b) => b.kind === 'card' || kept.has(b.id)), ...(kind === 'wait' ? [added] : [added, ...waits])];
   if (!sticky && kind !== 'wait') {
     window.setTimeout(() => {
       if (chatOpen.value) return; // 定时器运行期间打开聊天后，不再修改历史气泡。
       bubbles.value = bubbles.value.filter((b) => b.id !== id);
-    }, 4200);
+    }, readingMs(text));
   }
   if (chatOpen.value) scrollBubblesToEnd();
   return id;
+}
+
+/** 普通气泡按字数留够读的时间：短台词约 4 秒，70 字的回答约 12 秒。 */
+function readingMs(text: string) {
+  return Math.min(12_000, Math.max(4200, 1800 + text.length * 150));
+}
+
+/** 进度气泡固定在最下面：卡片和其他气泡都插在它上方。 */
+function withWaitLast(list: Bubble[]) {
+  return [...list.filter((b) => b.kind !== 'wait'), ...list.filter((b) => b.kind === 'wait')];
+}
+
+/** 卡片正被看着（悬停、键盘焦点在里面，或输入框开着）时不收起。 */
+function cardInUse(id: number) {
+  return chatOpen.value || hoveredCard.value === id;
 }
 
 const MAX_CARDS = 3;
@@ -798,7 +853,7 @@ const hoveredCard = ref<number | null>(null);
 function expireCard(id: number, ms: number) {
   window.setTimeout(() => {
     if (!bubbles.value.some((b) => b.id === id)) return;
-    if (chatOpen.value || hoveredCard.value === id) {
+    if (cardInUse(id)) {
       expireCard(id, 8000);
       return;
     }
@@ -811,9 +866,12 @@ function addCard(card: CardInput) {
   const id = bubbleSeq++;
   const cards = bubbles.value.filter((b) => b.kind === 'card');
   const drop = new Set(
-    cards.filter((b) => !b.actions?.length).slice(0, Math.max(0, cards.length - MAX_CARDS + 1)).map((b) => b.id),
+    cards
+      .filter((b) => !b.actions?.length && b.id !== hoveredCard.value)
+      .slice(0, Math.max(0, cards.length - MAX_CARDS + 1))
+      .map((b) => b.id),
   );
-  bubbles.value = [...bubbles.value.filter((b) => !drop.has(b.id)), { id, kind: 'card', sticky: true, ...card }];
+  bubbles.value = withWaitLast([...bubbles.value.filter((b) => !drop.has(b.id)), { id, kind: 'card', sticky: true, ...card }]);
   if (!card.actions?.length) expireCard(id, Math.min(60_000, 12_000 + card.text.length * 60));
   scrollBubblesToEnd();
   return id;
@@ -2057,15 +2115,41 @@ async function menuAction(kind: string) {
 }
 
 function sendDraft() {
-  const text = draft.value.trim();
+  const images = draftImages.value;
+  const text = draft.value.trim() || (images.length ? '看看这张图' : '');
   if (!text) return;
   draft.value = '';
+  draftImages.value = [];
   noteUserQuestion(text);
-  say(text, 'user');
-  void chat(text, 'chat');
+  say(images.length ? `${text} [图片×${images.length}]` : text, 'user');
+  void chat(text, 'chat', false, images);
+}
+
+const draftImages = ref<string[]>([]);
+const PASTE_MAX_SIDE = 1600;
+const PASTE_MAX_IMAGES = 2;
+
+/** 粘贴的截图缩到长边 PASTE_MAX_SIDE 以内再发，原图动辄几 MB。 */
+async function onPaste(ev: ClipboardEvent) {
+  const files = Array.from(ev.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'));
+  if (!files.length) return;
+  ev.preventDefault();
+  for (const f of files.slice(0, PASTE_MAX_IMAGES - draftImages.value.length)) {
+    const bitmap = await createImageBitmap(f).catch(() => null);
+    if (!bitmap) continue;
+    const scale = Math.min(1, PASTE_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    draftImages.value = [...draftImages.value, canvas.toDataURL('image/jpeg', 0.82)];
+  }
 }
 
 function onKey(ev: KeyboardEvent) {
+  // 中文输入法选词时的回车和 Esc 归输入法，不发送、不关对话框。
+  if (ev.isComposing || ev.keyCode === 229) return;
   if (ev.key === 'Enter' && !ev.shiftKey) {
     ev.preventDefault();
     sendDraft();
@@ -2389,6 +2473,7 @@ function refreshFreshLines(moodChanged = false) {
 watch(careState, () => refreshFreshLines(true));
 
 onMounted(() => {
+  setPointer(pointer);
   placeDefault();
   preloadMany([
     'idle',
@@ -2434,11 +2519,13 @@ onMounted(() => {
 });
 
 function onWindowResize() {
-  pos.x = clamp(pos.x, 0, window.innerWidth - SIZE);
-  pos.y = clamp(pos.y, 0, window.innerHeight - SIZE);
+  pos.x = clamp(pos.x, 0, window.innerWidth - petW());
+  pos.y = clamp(pos.y, 0, window.innerHeight - petH());
 }
 
 onBeforeUnmount(() => {
+  setPointer(null);
+  disposePointer();
   window.clearTimeout(sleepTimer);
   window.clearTimeout(holdTimer);
   window.clearTimeout(punchTimer);
@@ -2460,6 +2547,7 @@ onBeforeUnmount(() => {
   stopFlee();
   window.clearTimeout(beatPulseClearTimer);
   abortChat();
+  disposeChat();
   cancelAnimationFrame(physicsRaf);
   cancelAnimationFrame(roamRaf);
   cancelAnimationFrame(snapRaf);
@@ -2468,7 +2556,41 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="ff-root" aria-live="polite">
+  <div class="ff-root">
+    <div class="ff-pointer-layer" aria-hidden="true">
+      <Transition name="ff-pfade">
+        <div
+          v-if="pointerState.box"
+          class="ff-pointer-box"
+          :class="pointerState.kind"
+          :style="{
+            left: `${pointerState.box.left}px`,
+            top: `${pointerState.box.top}px`,
+            width: `${pointerState.box.width}px`,
+            height: `${pointerState.box.height}px`,
+          }"
+        ></div>
+      </Transition>
+      <Transition name="ff-pfade">
+        <div
+          v-if="pointerState.box && pointerState.label"
+          class="ff-pointer-label"
+          :style="{ left: `${pointerState.labelAt.left}px`, top: `${pointerState.labelAt.top}px` }"
+        >
+          {{ pointerState.label }}
+        </div>
+      </Transition>
+      <Transition name="ff-pfade">
+        <div
+          v-if="pointerState.visible"
+          class="ff-pointer"
+          :class="{ clicking: pointerState.clicking, grab: pointerState.kind === 'drag', idle: pointerState.idle }"
+          :style="{ transform: `translate(${pointerState.x}px, ${pointerState.y}px)` }"
+        >
+          <img :src="pointerState.kind === 'drag' ? POINTER_GRAB : POINTER_HAND" width="24" height="24" alt="" draggable="false" />
+        </div>
+      </Transition>
+    </div>
     <div
       class="ff-stage"
       @pointerdown.capture="discoDown"
@@ -2484,9 +2606,13 @@ onBeforeUnmount(() => {
         height: collapsed ? `${petH()}px` : `${SIZE}px`,
       }"
     >
-      <div
-        ref="bubblesEl"
+      <TransitionGroup
+        ref="bubblesGroup"
+        tag="div"
+        name="ff-bub"
         class="ff-bubbles"
+        aria-live="polite"
+        aria-relevant="additions"
         :class="{
           'chat-open': chatOpen,
           'has-card': hasCard,
@@ -2494,6 +2620,7 @@ onBeforeUnmount(() => {
           'fade-bottom': stackFade.bottom,
         }"
         :style="bubbleStackStyle"
+        @before-leave="pinLeaving"
         @scroll.passive="updateStackFade"
         @wheel.prevent.stop="onBubblesWheel"
       >
@@ -2506,6 +2633,8 @@ onBeforeUnmount(() => {
             @pointerdown.stop
             @pointerenter="hoveredCard = b.id"
             @pointerleave="hoveredCard = null"
+            @focusin="hoveredCard = b.id"
+            @focusout="hoveredCard = null"
           >
             <div class="ff-card-head">
               <span class="ff-card-title">{{ b.title || '' }}</span>
@@ -2513,12 +2642,13 @@ onBeforeUnmount(() => {
             </div>
             <div class="ff-card-body">{{ b.text }}</div>
             <div v-if="b.note" class="ff-card-note">{{ b.note }}</div>
-            <div v-if="b.actions?.length && !b.working" class="ff-card-actions">
+            <div v-if="b.actions?.length" class="ff-card-actions">
               <button
                 v-for="a in b.actions"
                 :key="a.id"
                 type="button"
-                :class="{ primary: a.primary }"
+                :class="{ primary: a.primary, danger: a.danger }"
+                :disabled="b.working"
                 @click="onCardAction(b.id, a.id)"
               >
                 {{ a.label }}
@@ -2529,13 +2659,18 @@ onBeforeUnmount(() => {
             v-else
             class="ff-bubble"
             :class="[b.kind, bubbleAlignClass(b.kind), bubbleTailClass(b.kind)]"
+            :title="b.kind === 'wait' ? '点一下停止' : undefined"
+            :role="b.kind === 'wait' ? 'button' : undefined"
+            :tabindex="b.kind === 'wait' ? 0 : undefined"
             @click.stop="b.kind === 'wait' ? abortChat() : undefined"
+            @keydown.enter.space.prevent="b.kind === 'wait' ? abortChat() : undefined"
           >
             {{ b.text }}
           </div>
         </template>
-      </div>
+      </TransitionGroup>
 
+      <Transition name="ff-pfade">
       <div
         v-if="chatOpen"
         class="ff-pill"
@@ -2551,9 +2686,20 @@ onBeforeUnmount(() => {
           placeholder="想说点什么…"
           :disabled="busy"
           @keydown="onKey"
+          @paste="onPaste"
         />
+        <button
+          v-if="draftImages.length"
+          type="button"
+          class="ff-pill-pics"
+          title="去掉贴的图片"
+          @click="draftImages = []"
+        >
+          图×{{ draftImages.length }}
+        </button>
         <button type="button" class="ff-pill-send" :disabled="busy" @click="sendDraft">发送</button>
       </div>
+      </Transition>
 
       <ShellGame
         v-if="shellPlay"
@@ -2655,6 +2801,7 @@ onBeforeUnmount(() => {
       </div>
 </div>
     <!-- 非阻塞弹出层不使用全屏捕获层，页面保持可交互。外部点击由 document 监听器收起，菜单只接收自身命中。 -->
+    <Transition name="ff-pfade">
     <div
       v-if="menuOpen"
       ref="menuEl"
@@ -2690,6 +2837,7 @@ onBeforeUnmount(() => {
         <button type="button" @click="menuAction('ball')">收成球</button>
       </template>
     </div>
+    </Transition>
   </div>
   <Teleport to="body">
     <div v-if="(discoActive || discoPending) && !discoStageOpen" class="ff-disco-controls" role="status">
@@ -2729,6 +2877,112 @@ onBeforeUnmount(() => {
   position: absolute;
   pointer-events: none;
   overflow: visible;
+}
+.ff-pointer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 4810;
+  pointer-events: none;
+}
+.ff-pointer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* 图上的热点：手是指尖 (7, 3)，抓取是拳心 (12, 12)，和 constants.ts 里的 CSS 指针一致；不加阴影，和用户摸宠物时的指针看起来一样。 */
+  margin: -3px 0 0 -7px;
+  will-change: transform;
+  transition: opacity 0.2s ease;
+}
+.ff-pointer.idle {
+  opacity: 0.5;
+}
+.ff-pfade-enter-active,
+.ff-pfade-leave-active {
+  transition:
+    opacity 0.18s ease,
+    scale 0.18s ease;
+}
+.ff-pfade-enter-from,
+.ff-pfade-leave-to {
+  opacity: 0;
+}
+.ff-pfade-leave-active {
+  pointer-events: none;
+}
+.ff-pointer-box.ff-pfade-enter-from {
+  scale: 1.08;
+}
+.ff-pointer.grab {
+  margin: -12px 0 0 -12px;
+}
+.ff-pointer img {
+  display: block;
+  user-select: none;
+}
+.ff-pointer::after {
+  position: absolute;
+  left: -7px;
+  top: -11px;
+  width: 28px;
+  height: 28px;
+  content: '';
+  border: 2px solid #ff8a3d;
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.3);
+}
+.ff-pointer.clicking::after {
+  animation: ff-pointer-ripple 0.32s ease-out;
+}
+@keyframes ff-pointer-ripple {
+  from {
+    opacity: 1;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+.ff-pointer-box {
+  position: absolute;
+  border: 2px solid #ff8a3d;
+  border-radius: 6px;
+  box-shadow: 0 0 0 4px rgba(255, 138, 61, 0.18);
+}
+.ff-pointer-box.point {
+  animation: ff-pointer-pulse 1.2s ease-in-out infinite;
+}
+.ff-pointer-box.look {
+  border-style: dashed;
+}
+@keyframes ff-pointer-pulse {
+  50% {
+    box-shadow: 0 0 0 8px rgba(255, 138, 61, 0.28);
+  }
+}
+.ff-pointer-label {
+  position: absolute;
+  max-width: 260px;
+  padding: 3px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #fff;
+  white-space: nowrap;
+  background: rgba(15, 23, 42, 0.88);
+  border-radius: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ff-pill-pics {
+  flex: none;
+  padding: 0 6px;
+  font-size: 12px;
+  color: rgba(180, 83, 9, 1);
+  cursor: pointer;
+  background: rgba(255, 138, 61, 0.12);
+  border: 1px solid rgba(255, 138, 61, 0.45);
+  border-radius: 8px;
 }
 .ff-pet {
   position: relative;
@@ -2929,6 +3183,11 @@ button.ff-ball:active {
   background: var(--ff-plate) !important;
   background-image: var(--ff-plate) !important;
 }
+/* 上面压掉宿主按钮样式时连焦点框也去掉了；键盘操作时要看得见焦点在哪。 */
+button.ff-ball:focus-visible {
+  outline: 2px solid #f59e0b !important;
+  outline-offset: 2px;
+}
 .ff-ball.dragging {
   cursor: grabbing;
   justify-content: center;
@@ -2990,6 +3249,23 @@ button.ff-ball:active {
 }
 .ff-bubble.wait:hover {
   filter: brightness(1.05);
+}
+.ff-bubble.wait:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
+.ff-bub-move {
+  transition: transform 0.2s ease;
+}
+.ff-bub-leave-active {
+  pointer-events: none;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+.ff-bub-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
 }
 .ff-pet.beat-pulse {
   /* 此处禁止设置 transform，否则行内压缩 scale 会覆盖它。 */
@@ -3139,7 +3415,7 @@ button.ff-ball:active {
   color: #0f172a;
 }
 .ff-pill input::placeholder {
-  color: #94a3b8;
+  color: #64748b;
 }
 .ff-pill-send {
   border: none;
@@ -3164,7 +3440,8 @@ button.ff-ball:active {
   box-shadow: 0 6px 16px rgba(14, 165, 233, 0.12);
   border: 1px solid rgba(186, 230, 253, 0.8);
   animation: ff-pop 0.14s ease-out;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 .ff-bubble.tail-left {
   border-radius: 16px 16px 4px 16px;
@@ -3185,6 +3462,13 @@ button.ff-ball:active {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
+  /* 靠底对齐又能滚动：flex-end 溢出时顶部内容滚不到，改用顶部撑开的空白把内容推到底。 */
+  justify-content: flex-start;
+}
+.ff-bubbles.has-card::before {
+  content: '';
+  flex: 1 0 0;
+  margin-bottom: -5px;
 }
 .ff-bubbles {
   --ff-fade-top: 0px;
@@ -3248,6 +3532,8 @@ button.ff-ball:active {
 }
 .ff-card-body {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
   margin-top: 2px;
 }
 .ff-card-note {
@@ -3276,8 +3562,39 @@ button.ff-ball:active {
   border-color: #0ea5e9;
   color: #fff;
 }
+.ff-card-actions button.danger {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+}
 .ff-card-actions button:hover {
   filter: brightness(1.05);
+}
+.ff-card-actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+  filter: none;
+}
+.ff-pill button:focus-visible,
+.ff-card button:focus-visible,
+.ff-menu button:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ff-pointer,
+  .ff-pfade-enter-active,
+  .ff-pfade-leave-active,
+  .ff-bub-move,
+  .ff-bub-leave-active {
+    transition: none;
+  }
+  .ff-pointer-box.point,
+  .ff-pointer.clicking::after,
+  .ff-bubble,
+  .ff-menu {
+    animation: none;
+  }
 }
 .ff-menu {
   /* 仅提供独立命中区域，不使用会夺取页面输入的模态层或遮罩。 */

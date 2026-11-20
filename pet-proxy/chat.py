@@ -8,12 +8,15 @@ from concurrent.futures import ThreadPoolExecutor
 
 import clock
 from agent import _data_block
+from agent_tools import strip_invisible
 from llm import DEEPSEEK, QWEN, chat_completion, message_text
 from memory_compress import SUMMARY_MAX_CHARS, build_compress_messages, extract_summary
 from prompts import CARE_MOOD_NOTE, INTENT_COMMENT, LINES_TASK, PERSONA, PERSONA_REMINDER, ROUTE_SYSTEM, SYSTEM_PET
 
 RECENT_MAX = 8
 ROUTE_HISTORY = 4
+# The input box takes 200 characters; anything longer would be sent to two models in full.
+MESSAGE_MAX_CHARS = 1000
 # Routing normally takes about a second; past this the agent model is queued behind other users' tasks,
 # and the persona reply (already drafted in parallel) is better than making small talk wait.
 ROUTE_TIMEOUT_S = 5
@@ -75,9 +78,13 @@ def _log_upstream(kind: str, status: int, upstream: dict) -> None:
 def _needs_agent(recent: list, user_text: str) -> bool:
     """One-word routing call. The agent's first step carries every tool schema and takes seconds,
     so only turns that need the system go there; this short prompt answers in about a second."""
-    history = [{"role": h["role"], "content": str(h["content"])[:500]} for h in recent[-ROUTE_HISTORY:]
-               if isinstance(h, dict) and h.get("role") in ("user", "assistant") and h.get("content")]
-    messages = [{"role": "system", "content": ROUTE_SYSTEM}, *history, {"role": "user", "content": user_text}]
+    # Quoted as one block, not replayed as turns: given real turns the model carries on the conversation
+    # ("进行中的项目共…") instead of classifying, and every follow-up fell back to chat.
+    said = {"user": "用户", "assistant": "助手"}
+    lines = [f"{said[h['role']]}：{str(h['content'])[:500]}" for h in recent[-ROUTE_HISTORY:]
+             if isinstance(h, dict) and h.get("role") in said and h.get("content")]
+    question = (f"前面的对话：\n{chr(10).join(lines)}\n\n" if lines else "") + f"用户最后这句话：{user_text}"
+    messages = [{"role": "system", "content": ROUTE_SYSTEM}, {"role": "user", "content": question}]
     status, upstream = chat_completion(DEEPSEEK, messages, max_tokens=5, sampling="deepseek_agent", timeout=ROUTE_TIMEOUT_S)
     _log_upstream("route", status, upstream)
     # Down or queued, the agent path would fail or crawl as well; answering as chat keeps the pet usable.
@@ -113,7 +120,7 @@ def _persona_messages(data: dict, intent: str, recent: list, user_text: str) -> 
 
 
 def handle_chat(data: dict) -> dict:
-    user_text = (data.get("message") or "").strip()
+    user_text = strip_invisible(str(data.get("message") or "")).strip()[:MESSAGE_MAX_CHARS]
     if not user_text:
         return {"http": 400, "body": {"error": "empty message"}}
     intent = data.get("intent") or "chat"
@@ -123,6 +130,7 @@ def handle_chat(data: dict) -> dict:
     reply = _BACKGROUND.submit(chat_completion, QWEN, _persona_messages(data, intent, recent, user_text),
                                max_tokens=160, sampling="qwen_chat")
     if intent == "chat" and _needs_agent(recent, user_text):
+        reply.cancel()
         return {"http": 200, "body": {"ok": True, "reroute": "agent", "reply": ""}}
     status, upstream = reply.result()
     _log_upstream("chat", status, upstream)
@@ -185,7 +193,7 @@ def handle_lines(data: dict) -> dict:
 
 
 def handle_compress(data: dict) -> dict:
-    summary = (data.get("summary") or "").strip()
+    summary = str(data.get("summary") or "").strip()[:SUMMARY_MAX_CHARS]
     older = data.get("olderTurns") or []
     if not isinstance(older, list) or not older:
         return {"http": 200, "body": {"ok": True, "summary": summary}}

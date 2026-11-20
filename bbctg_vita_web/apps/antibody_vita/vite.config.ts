@@ -1,5 +1,8 @@
 import { defineConfig } from '@vben/vite-config';
 
+import { existsSync, readdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import ElementPlus from 'unplugin-element-plus/vite';
 
@@ -19,6 +22,14 @@ function stripVxeDescendantPseudo() {
       else rule.selectors = kept;
     },
   };
+}
+
+/** 与 unplugin-element-plus 注入的写法一致；optimizeDeps 的通配符匹配不到 element-plus 的 exports 映射，只能逐个列出。 */
+function elementPlusStyleEntries(): string[] {
+  const dir = join(dirname(createRequire(import.meta.url).resolve('element-plus/package.json')), 'es/components');
+  return readdirSync(dir)
+    .filter((name) => existsSync(join(dir, name, 'style/css.mjs')))
+    .map((name) => `element-plus/es/components/${name}/style/css`);
 }
 
 function defaultDevBackend(mode: string): string {
@@ -43,6 +54,11 @@ export default defineConfig(async (env) => {
         postcss: {
           plugins: [stripVxeDescendantPseudo()],
         },
+      },
+      // 组件样式由 unplugin-element-plus 按需引入，开发时第一次进某个页面才被发现，Vite 会因此整页刷新
+      // （正在进行的请求和宠物的操作都会断掉）。启动时一次性预构建全部样式入口。
+      optimizeDeps: {
+        include: elementPlusStyleEntries(),
       },
       plugins: [
         ElementPlus({

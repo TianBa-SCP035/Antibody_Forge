@@ -189,6 +189,7 @@ sudo apt install -y libreoffice
 - `config/prod/vita_server.env`：`DATABASE_URL`、`SECRET_KEY`（≥32 位随机串）已填；`DEBUG` 未开；`CORS_ORIGINS` 只含实际前端地址或留空。启动日志若提示配置问题，按提示补齐后再启动。
 - 调度：只在一个后端进程开（prod 默认开，test/local 默认关）。
 - 外部接口：镁伽回调、工单数据回传按需配置令牌或 IP 白名单；经 Nginx 转发时后端看到的来源 IP 来自 `X-Forwarded-For`（样例配置已带）。
+- 首页天气由后端出站访问 `api.open-meteo.com`、`air-quality-api.open-meteo.com`，备用 `weather-api.site`；都不通时首页显示「天气不可用」，不影响其他功能。
 - 索引命名：普通索引 `idx_<表>_<列>`，唯一键 `uk_<表>_<列>`。已有表改索引要手写 `ALTER`（`create_all` 不会给已存在的表加索引），只是改名用 `RENAME INDEX`，不要 `DROP` 后重建。
 - 上传：Nginx `client_max_body_size` 不小于 `UPLOAD_MAX_MB`。文库批量上传一次请求后端最多收 500MB、990 个文件，样例 Nginx 与线上均配 500m；调小会让大批次被 Nginx 拒掉（413）。Nginx 按整个请求体计算，含 multipart 分隔和表单头，文件合计贴近 500MB 时也可能先被拒。
 

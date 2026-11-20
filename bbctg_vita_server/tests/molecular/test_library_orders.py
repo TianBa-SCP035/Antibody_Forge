@@ -278,6 +278,7 @@ class LibraryOrderTests(DbTestCase):
             ("RN", service.SAMPLE_NANO),
             ("RL", service.SAMPLE_LITE),
             ("RNVMKO", service.SAMPLE_NANO),
+            ("RNDF", service.SAMPLE_NANO),
             ("RN、RLKO", service.SAMPLE_LITE),
             ("RMB/C", None),
         )

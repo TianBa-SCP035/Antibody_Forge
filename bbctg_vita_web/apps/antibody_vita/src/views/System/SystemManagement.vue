@@ -1151,6 +1151,11 @@ function statusTagType(status?: string) {
   return status === 'active' ? 'success' : 'info';
 }
 
+function handleLogSearch() {
+  logQuery.page = 1;
+  void loadLogs();
+}
+
 function handleLogPageChange(page: number) {
   logQuery.page = page;
   void loadLogs();
@@ -1496,12 +1501,14 @@ onMounted(loadData);
                 clearable
                 placeholder="搜索账号、用户"
                 style="--filter-size: 200px"
+                @keyup.enter="handleLogSearch"
               />
               <el-input
                 v-model="logQuery.action"
                 clearable
                 placeholder="操作"
                 style="--filter-size: 120px"
+                @keyup.enter="handleLogSearch"
               />
               <ListFilterSelect
                 v-model="logTargetType"
@@ -1522,6 +1529,7 @@ onMounted(loadData);
                 clearable
                 placeholder="目标"
                 style="--filter-size: 120px"
+                @keyup.enter="handleLogSearch"
               />
               <ListFilterSelect v-model="logQuery.source" clearable placeholder="来源" style="--filter-size: 120px">
                 <el-option label="用户" value="user" />
@@ -1534,6 +1542,7 @@ onMounted(loadData);
                 clearable
                 placeholder="变更"
                 style="--filter-size: 120px"
+                @keyup.enter="handleLogSearch"
               />
               <ListFilterSelect v-model="logQuery.result" clearable placeholder="结果" style="--filter-size: 120px">
                 <el-option label="成功" value="success" />
@@ -1544,6 +1553,7 @@ onMounted(loadData);
                 clearable
                 placeholder="失败原因"
                 style="--filter-size: 120px"
+                @keyup.enter="handleLogSearch"
               />
               <el-date-picker
                 v-model="logDateRange"
@@ -1554,7 +1564,7 @@ onMounted(loadData);
                 type="daterange"
                 value-format="YYYY-MM-DD"
               />
-              <el-button class="filter-line-keep" :loading="loading || logLoading" title="右键清空筛选" @click="loadLogs" @contextmenu.prevent="resetLogFilters">查询</el-button>
+              <el-button class="filter-line-keep" :loading="loading || logLoading" title="右键清空筛选" @click="handleLogSearch" @contextmenu.prevent="resetLogFilters">查询</el-button>
             </div>
           </div>
 

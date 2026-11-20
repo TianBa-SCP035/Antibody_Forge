@@ -1,6 +1,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { notifyApiError } from '#/api/errors'
+import { isUnauthorizedError } from '#/utils/auth-session'
 import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel'
 
 /**
@@ -96,6 +97,7 @@ export default {
     /**
      * 提交一行的这些字段。save 返回空值表示取消（如确认框点了取消），按失败处理。
      * 表格里改的正是抽屉打开的那一行时，先把值同步到抽屉副本。
+     * 登录失效时不刷新、不退回，抽屉里的值留到重新登录后由兜底补存提交。
      */
     async submitRowFields(row, fields, options = {}) {
       const api = this.$options.workbenchApi
@@ -115,6 +117,7 @@ export default {
         saved = await save(this.rowSavePayload(row, fields))
       } catch (error) {
         notifyApiError(error, { messages })
+        if (isUnauthorizedError(error)) return null
       }
       if (!saved) {
         await this.getList({ flushEditor: false, silent: true, ...reload })

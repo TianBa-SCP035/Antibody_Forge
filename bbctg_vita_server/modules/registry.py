@@ -47,6 +47,7 @@ MOUNTS: tuple[Mount, ...] = (
     Mount("modules.order_sync.record_routes:router", "/mega-automation/order-sync", "镁伽自动化-回传记录"),
     Mount("modules.supernatant_receive.routes:router", "/protein-supernatant", "上清板布局接收"),
     Mount("modules.options.routes:router", "/options", "公共选项"),
+    Mount("modules.home.routes:router", "/home", "首页"),
     Mount("modules.system.routes:router", "/system", "系统管理"),
 )
 

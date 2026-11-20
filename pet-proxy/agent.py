@@ -7,21 +7,33 @@ for the browser to execute or the final answer plus a one-line persona lead-in f
 from __future__ import annotations
 
 import json
+import os
 import random
 import re
+import threading
 import time
 from pathlib import Path
 
 import clock
-from agent_tools import normalize_args, phase_for, strip_invisible, tools_for_page
+from agent_tools import PAGE_ACT_TOOLS, normalize_args, phase_for, strip_invisible, tools_for_page
 from llm import DEEPSEEK, QWEN, chat_completion, first_message, message_text
 from memory_compress import SUMMARY_MAX_CHARS
 from prompts import AGENT_SYSTEM, CARE_MOOD_NOTE, LABELS_SYSTEM, VOICE_SYSTEM
 
-MAX_TURN_MESSAGES = 30
+# Page operation takes one click per step, each with a tool call and its result.
+MAX_TURN_MESSAGES = 60
+LISTING_MAX_CHARS = 8000
+# The browser stops at 20 model requests per turn; the proxy refuses well past that, so a client that loops can't run up cost.
+MAX_TURN_REQUESTS = 30
 HISTORY_TURNS = 8
+# Thinking pays where the plan is made: the first step and the step after an error or empty result. Thinking on every
+# step spent 1.5x the time and over-tried (rewrote the user's text to get past a validation error); never
+# thinking gave up or skipped tools (page tasks 45/48 at 32s on, 38/48 at 18s off, 48/48 at 22s adaptive).
+# PET_AGENT_THINK: "adaptive" (default), "1" every step, "0" never.
+AGENT_THINK = os.environ.get("PET_AGENT_THINK", "adaptive").strip().lower()
+THINK_TOKENS = 0 if AGENT_THINK == "0" else 2000
 # ~50 tok/s decode: one step that hits this cap takes ~40s, so big fills must be split into parts.
-STEP_MAX_TOKENS = 2000
+STEP_MAX_TOKENS = 2000 + THINK_TOKENS
 TRUNCATED = ("输出太长被截断，参数没收到。请拆开：每次 propose_form_fill 只放一个部分（基本信息，或一张表），"
              "不超过 20 项，reason 写短；多次调用会合并到同一张卡片。")
 TRACE_PATH = Path(__file__).parent / "logs" / "agent_trace.jsonl"
@@ -45,6 +57,11 @@ def _system_messages(data: dict) -> list[dict]:
     summary = str(page.get("summary") or "").strip()
     if summary:
         msgs.append({"role": "system", "content": "用户当前所在页面：\n" + _data_block("页面", summary[:3500])})
+    # The first step's element list: a page task can act on it right away instead of spending a step on read_page.
+    listing = str(page.get("listing") or "").strip()
+    if listing:
+        msgs.append({"role": "system", "content": "用户现在看到的页面元素（等同刚做过一次 read_page）：\n"
+                     + _data_block("页面清单", listing[:LISTING_MAX_CHARS])})
     sources = str(data.get("dataSources") or "").strip()
     if sources:
         msgs.append({"role": "system", "content": "已认识的数据源（用户打开过的列表页背后的数据，query_data / build_report 的 source / join.source 可用 id）：\n"
@@ -53,6 +70,12 @@ def _system_messages(data: dict) -> list[dict]:
     if last_report:
         msgs.append({"role": "system", "content": "上一份报表的 build_report 参数。用户追问修改时在这份参数上改，其余条件保留并传完整参数；"
                      "明显是新问题就不沿用：\n" + _data_block("上一份报表", last_report[:2000])})
+    did = _did_lines(data)
+    if did:
+        msgs.append({"role": "system", "content": "前几轮回答实际做过的操作（以这里为准：回答里说做了、这里没有的，就是没做）：\n"
+                     + _data_block("操作记录", "\n".join(did))})
+    cards = _open_cards(data)
+    msgs.append({"role": "system", "content": "屏幕上还等用户点的卡片：" + ("、".join(f"「{c}」" for c in cards) if cards else "没有")})
     memory = str(data.get("memorySummary") or "").strip()
     if memory:
         # The summary is model-written from past chats, which included tool results: treat it as data too.
@@ -78,6 +101,15 @@ def _drop_asides(text: str) -> str:
     return "\n".join(out).strip()
 
 
+def _did_lines(data: dict) -> list[str]:
+    out = []
+    for h in (data.get("history") or [])[-HISTORY_TURNS:]:
+        if isinstance(h, dict) and h.get("role") == "assistant" and h.get("did"):
+            said = strip_invisible(str(h.get("content") or "")).replace("\n", " ")[:40]
+            out.append(f"- 回答「{said}…」那一轮：{strip_invisible(str(h['did']))[:800]}")
+    return out
+
+
 def _history(data: dict) -> list[dict]:
     out = []
     for h in (data.get("history") or [])[-HISTORY_TURNS:]:
@@ -90,8 +122,39 @@ def _history(data: dict) -> list[dict]:
     return out
 
 
+MAX_IMAGES = 4
+MAX_IMAGE_CHARS = 1_500_000
+_DATA_IMAGE = re.compile(r"data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+")
+
+
+def _images(m: dict, budget: list[int]) -> list[dict]:
+    """Image parts for a message; only inline data URLs (never a URL the model server would fetch)."""
+    out = []
+    for url in m.get("images") or []:
+        if budget[0] <= 0 or not isinstance(url, str) or len(url) > MAX_IMAGE_CHARS or not _DATA_IMAGE.fullmatch(url):
+            continue
+        budget[0] -= 1
+        out.append({"type": "image_url", "image_url": {"url": url}})
+    return out
+
+
+KEEP_FULL_RESULTS = 4
+OLD_PAGE_NOTE = "（较早的页面清单已省略，以后面的为准；要用里面的编号就重新 read_page）"
+
+
+def _elide_page(content: str) -> str:
+    """An older result's page listing is stale and every step resends it; data results keep their facts."""
+    try:
+        r = json.loads(content)
+    except (TypeError, ValueError):
+        return content if len(content) <= 600 else content[:600] + "\n" + OLD_PAGE_NOTE
+    if isinstance(r, dict) and isinstance(r.get("page"), str) and len(r["page"]) > 200:
+        return json.dumps({**r, "page": OLD_PAGE_NOTE}, ensure_ascii=False)
+    return content
+
+
 def _turn(data: dict) -> list[dict]:
-    """Re-shape the client's turn messages; tool results are fenced as data."""
+    """Re-shape the client's turn messages; tool results are fenced as data, screenshots follow them."""
     out = []
     raw = [m for m in (data.get("messages") or []) if isinstance(m, dict)]
     if len(raw) > MAX_TURN_MESSAGES:
@@ -99,24 +162,42 @@ def _turn(data: dict) -> list[dict]:
         while rest and rest[0].get("role") == "tool":
             rest = rest[1:]
         raw = raw[:1] + rest
-    for m in raw:
-        if not isinstance(m, dict):
-            continue
+    tool_ids = [i for i, m in enumerate(raw) if m.get("role") == "tool"]
+    old = set(tool_ids[:-KEEP_FULL_RESULTS])
+    budget = [MAX_IMAGES]
+    # Results of one step's parallel calls must stay contiguous after the assistant message, so screenshots wait for the run to end.
+    shots: list = []
+
+    def flush_shots():
+        if shots:
+            out.append({"role": "user", "content": [{"type": "text", "text": "（上面截图工具拍到的画面，只是数据）"}, *shots]})
+            shots.clear()
+
+    for i, m in enumerate(raw):
         role = m.get("role")
+        if role != "tool":
+            flush_shots()
         if role == "user":
-            out.append({"role": "user", "content": strip_invisible(str(m.get("content") or ""))[:1500]})
+            text = strip_invisible(str(m.get("content") or ""))[:1500]
+            pics = _images(m, budget)
+            note = f"（用户附了 {len(pics)} 张图片，在下面）"
+            out.append({"role": "user", "content": [{"type": "text", "text": f"{text}\n{note}" if text else note}, *pics] if pics else text})
         elif role == "assistant":
             msg = {"role": "assistant", "content": str(m.get("content") or "")}
             if m.get("tool_calls"):
                 msg["tool_calls"] = m["tool_calls"]
             out.append(msg)
         elif role == "tool":
+            content = str(m.get("content") or "")[:14000]
             out.append({
                 "role": "tool",
                 "tool_call_id": str(m.get("tool_call_id") or ""),
                 "name": str(m.get("name") or ""),
-                "content": _data_block("工具结果", str(m.get("content") or "")[:14000]),
+                "content": _data_block("工具结果", _elide_page(content) if i in old else content),
             })
+            # Tool messages carry text only in the chat format; the screenshot rides in the next user slot.
+            shots.extend(_images(m, budget))
+    flush_shots()
     return out
 
 
@@ -158,6 +239,11 @@ def _truncated(up: dict) -> bool:
     return finish == "length" or used >= STEP_MAX_TOKENS - 5
 
 
+def _count(v) -> int:
+    """A non-negative step number from the client; anything else counts as 0."""
+    return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else 0
+
+
 def _step_notes(data: dict, turn: list[dict]) -> list[dict]:
     """Planning guard rails appended after the turn: stop repeating failures, wrap up near the step cap."""
     notes = []
@@ -165,7 +251,10 @@ def _step_notes(data: dict, turn: list[dict]) -> list[dict]:
     if len(results) >= 2 and results[-1]["name"] == results[-2]["name"] and '"error"' in results[-1]["content"] \
             and results[-1]["content"] == results[-2]["content"]:
         notes.append("同一个工具连续两次返回同样的错误。不要再原样重试：按错误提示改参数或拆小，或者直接告诉用户卡在哪里。")
-    step, max_steps = int(data.get("step") or 0), int(data.get("maxSteps") or 0)
+    raw = _raw_results(data)
+    if len(raw) >= 3 and all(_fruitless(m) for m in raw[-3:]):
+        notes.append("连续三次没拿到有用的结果：别再换着参数试同一条路，换个来源（比如直接看页面），或者告诉用户卡在哪、需要什么。")
+    step, max_steps = _count(data.get("step")), _count(data.get("maxSteps"))
     if max_steps and step >= max_steps - 2:
         notes.append("只剩最后一两步了：不要再查新数据。还没提交的填写建议用一次 propose_form_fill 补上，然后给出最终回答。")
     return [{"role": "system", "content": n} for n in notes]
@@ -210,14 +299,12 @@ def _voice(answer: str, pending: bool, care_mood: str = "", ambient: str = "") -
     return line
 
 
-_CARD_TOOLS = {"propose_form_fill", "propose_export", "build_report", "propose_open_page"}
 # Says a card or file is already there ("点卡片上的下载 Excel", "已生成 Excel"); an offer ("可以生成卡片") is not this.
 _CLAIMS_CARD = re.compile(
     r"点.{0,8}(卡片|下载|确认导出|应用|打开页面)|卡片上|下载\s*Excel|"
     r"已(经)?(生成|导出|整理|做)好?.{0,16}(Excel|表格|文件|清单|报表|卡片)"
 )
-# Pointing back at a card from an earlier turn ("上一张卡片还在，点确认导出").
-_EARLIER_CARD_REF = re.compile(r"(上一张|上张|刚才|之前|前面|上面|那张|原来)[^。\n]{0,8}卡片|卡片[^。\n]{0,4}(还在|没关|仍在)")
+_MADE_CARD = re.compile(r'"proposal_created"\s*:\s*true')
 CARD_MISSING = "这一轮我没有真正生成出可下载的文件。请再说一次要导出什么、要哪些列，我重新处理。"
 CARD_MISSING_NOTE = "（这一轮没有生成可下载的文件，需要的话再说一次要导出什么。）"
 
@@ -227,16 +314,28 @@ def _called(turn: list[dict]) -> set[str]:
             for tc in m.get("tool_calls") or [] if isinstance(tc, dict) and tc.get("function")}
 
 
-def _earlier_card(history: list[dict], text: str = "") -> bool:
-    last = bool(history) and history[-1]["role"] == "assistant" and "卡片" in history[-1]["content"]
-    return last or bool(_EARLIER_CARD_REF.search(text))
+def _open_cards(data: dict) -> list[str]:
+    """Titles of cards still waiting on screen, as reported by the browser that owns them."""
+    cards = data.get("openCards")
+    return [str(c).strip()[:60] for c in cards[:10] if str(c).strip()] if isinstance(cards, list) else []
 
 
-def _guard_card_claim(text: str, turn: list[dict], tools: list[dict], history: list[dict]) -> str:
-    """Claims a card or download no tool produced this turn: drop those sentences, or the whole answer when no tool ran."""
+def _guard_card_claim(text: str, turn: list[dict], open_cards: list[str]) -> str:
+    """Claims a card or download no tool produced this turn: drop those sentences, or the whole answer when no tool ran.
+
+    A card from an earlier turn counts only if it is still on screen; the history can't tell, since an
+    earlier answer may itself have been such a claim.
+    """
     called = _called(turn)
-    offered = {t["function"]["name"] for t in tools}
-    if called & _CARD_TOOLS & offered or _earlier_card(history, text) or not _CLAIMS_CARD.search(text):
+    # Calling a card tool isn't enough: it may have returned an error, and then the browser showed no card.
+    made = any(m["role"] == "tool" and _MADE_CARD.search(str(m.get("content", ""))) for m in turn)
+    if made or open_cards or not _CLAIMS_CARD.search(text):
+        return text
+    # A page action that tried to write put a confirmation card up in the browser.
+    if any(m["role"] == "tool" and '"held_writes"' in str(m.get("content", "")) for m in turn):
+        return text
+    # After operating the page, "点了下载" is about a page button it really clicked, not a card.
+    if called & set(PAGE_ACT_TOOLS) and "卡片" not in text:
         return text
     if not called:
         return CARD_MISSING
@@ -247,27 +346,50 @@ def _guard_card_claim(text: str, turn: list[dict], tools: list[dict], history: l
 TRACE_MAX_BYTES = 5 * 1024 * 1024
 
 
+_trace_lock = threading.Lock()
+
+
 def _trace(entry: dict) -> None:
     """Append one step; the file holds business data, so it is capped (one previous file kept as .1)."""
+    line = json.dumps(entry, ensure_ascii=False, default=str) + "\n"
     try:
-        TRACE_PATH.parent.mkdir(exist_ok=True)
-        if TRACE_PATH.exists() and TRACE_PATH.stat().st_size > TRACE_MAX_BYTES:
-            TRACE_PATH.replace(TRACE_PATH.with_suffix(".jsonl.1"))
-        with TRACE_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+        # Requests run on separate threads; rotating while another thread appends would lose or split lines.
+        with _trace_lock:
+            TRACE_PATH.parent.mkdir(exist_ok=True)
+            if TRACE_PATH.exists() and TRACE_PATH.stat().st_size > TRACE_MAX_BYTES:
+                TRACE_PATH.replace(TRACE_PATH.with_suffix(".jsonl.1"))
+            with TRACE_PATH.open("a", encoding="utf-8") as f:
+                f.write(line)
     except Exception:
         pass
 
 
-def handle_agent(data: dict) -> dict:
-    turn = _turn(data)
-    if not any(m["role"] == "user" for m in turn):
-        return {"http": 400, "body": {"ok": False, "error": "messages 里缺少用户问题"}}
-    tools = tools_for_page(data.get("page"))
-    notes = _step_notes(data, turn)
-    messages = _system_messages(data) + _history(data) + turn + notes
-    t0 = time.time()
-    status, up = chat_completion(DEEPSEEK, messages, max_tokens=STEP_MAX_TOKENS, sampling="deepseek_agent", tools=tools)
+def _raw_results(data: dict) -> list[dict]:
+    """The client's tool messages as sent: in the reshaped turn every result is wrapped in a data fence."""
+    return [m for m in data.get("messages") or [] if isinstance(m, dict) and m.get("role") == "tool"]
+
+
+def _fruitless(message: dict) -> bool:
+    """An error or nothing found: the plan didn't work out as expected."""
+    try:
+        r = json.loads(message.get("content") or "")
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(r, dict):
+        return False
+    return bool(r.get("error") or r.get("empty") or r.get("not_found")) or r.get("matched") == 0 or r.get("total") == 0
+
+
+def _think_now(data: dict) -> bool:
+    if AGENT_THINK in ("0", "1"):
+        return AGENT_THINK == "1"
+    results = _raw_results(data)
+    return not results or _fruitless(results[-1])
+
+
+def _ask_model(messages: list[dict], tools: list[dict], think: bool) -> tuple[int, dict, dict, list[dict], str]:
+    status, up = chat_completion(DEEPSEEK, messages, max_tokens=STEP_MAX_TOKENS, sampling="deepseek_agent",
+                                 think=think, tools=tools)
     msg = first_message(up) if status == 200 else {}
     truncated = _truncated(up)
     calls = _parse_calls(msg, truncated)
@@ -277,14 +399,35 @@ def handle_agent(data: dict) -> dict:
         calls = [{"id": f"call_{int(time.time() * 1000)}_t", "name": "propose_form_fill", "args": {},
                   "error": TRUNCATED, "phase": "拆分填写建议…"}]
         msg = {"role": "assistant", "content": ""}
+    return status, up, msg, calls, text
+
+
+def handle_agent(data: dict) -> dict:
+    turn = _turn(data)
+    if not any(m["role"] == "user" for m in turn):
+        return {"http": 400, "body": {"ok": False, "error": "messages 里缺少用户问题"}}
+    if _count(data.get("step")) >= MAX_TURN_REQUESTS:
+        return {"http": 400, "body": {"ok": False, "error": "这一轮请求次数超限"}}
+    tools = tools_for_page(data.get("page"))
+    notes = _step_notes(data, turn)
+    messages = _system_messages(data) + _history(data) + turn + notes
+    open_cards = _open_cards(data)
+    t0 = time.time()
+    think = _think_now(data)
+    status, up, msg, calls, text = _ask_model(messages, tools, think)
+    rethink = status == 200 and not calls and not think and _guard_card_claim(text, turn, open_cards) != text
+    if rethink:
+        # Answered as if a card existed without making it: the step skipped the tool, so plan it again with thinking.
+        status, up, msg, calls, text = _ask_model(messages, tools, True)
 
     elapsed = round(time.time() - t0, 2)
-    question = next((m["content"] for m in turn if m["role"] == "user"), "")
+    first = next((m["content"] for m in turn if m["role"] == "user"), "")
+    question = first if isinstance(first, str) else " ".join(p.get("text", "[图片]") for p in first)
     entry = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "rid": data.get("requestId"), "step": data.get("step"),
              "page": (data.get("page") or {}).get("path"), "q": question[:200] if data.get("step") in (0, None) else None,
              "tools": len(tools), "notes": [n["content"][:30] for n in notes] or None,
              "truncated": _truncated(up) or None, "tokens": (up.get("usage") or {}).get("completion_tokens"),
-             "status": status, "sec": elapsed,
+             "status": status, "sec": elapsed, "rethink": rethink or None,
              "calls": [{k: c[k] for k in ("name", "args", "error")} for c in calls], "text": text[:400]}
     if status != 200:
         # An error body may echo the request (tool results); keep only the message.
@@ -301,7 +444,7 @@ def handle_agent(data: dict) -> dict:
         return {"http": 200, "body": {"ok": True, "type": "tool_calls", "calls": calls, "assistant": assistant}}
 
     text = _drop_asides(text) or text
-    text = _guard_card_claim(text, turn, tools, _history(data))
+    text = _guard_card_claim(text, turn, open_cards)
     pending = any(m["role"] == "tool" and '"proposal_created"' in m["content"] for m in turn)
     care_mood = str(data.get("careMood") or "").strip()
     ambient = str(data.get("ambient") or "").strip()

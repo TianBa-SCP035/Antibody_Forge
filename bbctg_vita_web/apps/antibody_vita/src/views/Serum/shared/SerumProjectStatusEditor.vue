@@ -1,0 +1,177 @@
+<template>
+  <el-popover
+    v-if="activated"
+    v-model:visible="visible"
+    placement="right"
+    trigger="click"
+    transition="el-zoom-in-left"
+    :width="110"
+    :disabled="!editable"
+    :teleported="true"
+    popper-class="serum-status-popper"
+    @hide="scheduleDeactivate"
+  >
+    <div class="serum-status-option-list">
+      <button
+        v-for="item in options"
+        :key="item"
+        type="button"
+        class="serum-status-option"
+        :class="{ 'is-current': item === value }"
+        @click.stop="choose(item)"
+      >
+        {{ item }}
+      </button>
+    </div>
+    <template #reference>
+      <el-tag
+        class="list-status-tag serum-project-status-tag"
+        :class="[{ 'is-editable': editable }, tagClass]"
+        :type="tagType"
+        effect="plain"
+        disable-transitions
+        @click.stop
+      >
+        {{ displayValue }}
+      </el-tag>
+    </template>
+  </el-popover>
+  <el-tag
+    v-else
+    class="list-status-tag serum-project-status-tag"
+    :class="[{ 'is-editable': editable }, tagClass]"
+    :type="tagType"
+    effect="plain"
+    disable-transitions
+    @click.stop="activateAndOpen"
+  >
+    {{ displayValue }}
+  </el-tag>
+</template>
+
+<script>
+import { ElMessage, ElPopover, ElTag } from 'element-plus'
+
+import { notifyApiError } from '#/api/errors'
+import { updateSerumStatus } from '#/api/serum'
+import { getSerumProjectStatusTagType, SERUM_PROJECT_STATUS_OPTIONS } from '#/utils/serumProjectStatus'
+
+import { SERUM_ERRORS } from './errors'
+
+export default {
+  name: 'SerumProjectStatusEditor',
+  components: { ElPopover, ElTag },
+  props: {
+    projectId: { type: [Number, String], default: null },
+    value: { type: String, default: '' },
+    options: { type: Array, default: () => [...SERUM_PROJECT_STATUS_OPTIONS] },
+    editable: { type: Boolean, default: false },
+    tagClass: { type: String, default: '' },
+  },
+  emits: ['change'],
+  data() {
+    return { activated: false, visible: false, deactivateTimer: 0 }
+  },
+  computed: {
+    displayValue() {
+      return String(this.value ?? '').trim() || '-'
+    },
+    tagType() {
+      return getSerumProjectStatusTagType(this.value)
+    },
+  },
+  watch: {
+    editable(value) {
+      if (!value) this.visible = false
+    },
+    visible(value) {
+      if (!value) this.scheduleDeactivate()
+    },
+  },
+  beforeUnmount() {
+    if (this.deactivateTimer) clearTimeout(this.deactivateTimer)
+  },
+  methods: {
+    activateAndOpen() {
+      if (!this.editable) return
+      if (this.deactivateTimer) {
+        clearTimeout(this.deactivateTimer)
+        this.deactivateTimer = 0
+      }
+      this.activated = true
+      this.$nextTick(() => {
+        this.visible = true
+      })
+    },
+    scheduleDeactivate() {
+      if (this.deactivateTimer) clearTimeout(this.deactivateTimer)
+      this.deactivateTimer = window.setTimeout(() => {
+        this.deactivateTimer = 0
+        if (!this.visible) this.activated = false
+      }, 220)
+    },
+    choose(newStatus) {
+      this.visible = false
+      if (newStatus === this.value) {
+        return
+      }
+      if (!this.editable) {
+        ElMessage.warning('您没有权限编辑此项目')
+        return
+      }
+      if (!this.projectId) {
+        ElMessage.error('项目信息不完整，无法更新状态')
+        return
+      }
+      updateSerumStatus({ id: this.projectId, project_status: newStatus }).then(() => {
+        ElMessage.success('状态修改成功')
+        this.$emit('change', newStatus)
+      }).catch((error) => {
+        notifyApiError(error, { messages: SERUM_ERRORS.list.updateStatus })
+      })
+    },
+  },
+}
+</script>
+
+<style>
+.serum-project-status-tag.is-editable {
+  cursor: pointer;
+}
+
+.serum-status-option-list {
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.serum-status-option {
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--list-inner-radius);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .16s ease, color .16s ease;
+}
+
+.serum-status-option:hover,
+.serum-status-option.is-current {
+  background-color: var(--el-fill-color-light);
+  color: var(--el-color-primary);
+}
+
+.serum-status-option.is-current {
+  font-weight: 600;
+}
+
+.serum-status-popper {
+  z-index: 3000 !important;
+  border-radius: var(--list-mid-radius);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+}
+</style>

@@ -1,0 +1,926 @@
+import { nextTick } from 'vue'
+
+/** 每页达到 50 条后，表格卡片占满一屏并固定表头；低于 50 条时整页滚动。 */
+export const LIST_TABLE_LOCK_MIN = 50
+
+export function shouldLockListTable(limit) {
+  return Number(limit) >= LIST_TABLE_LOCK_MIN
+}
+
+function collectElTableVmsFromVNode(rootVNode, bodyEl, out = new Set()) {
+  if (!rootVNode || typeof rootVNode !== 'object') return out
+  const comp = rootVNode.component
+  if (comp) {
+    const compEl = comp.vnode?.el
+    const isTable = Boolean(comp.state?.doLayout && comp.layout)
+    if (isTable && (!bodyEl || (compEl instanceof Node && bodyEl.contains(compEl)))) {
+      out.add(comp)
+    }
+    // 不进入表格内部：500 行时表格子树有 10 万个 VNode
+    if (comp.subTree && !isTable) {
+      collectElTableVmsFromVNode(comp.subTree, bodyEl, out)
+    }
+  }
+  const children = rootVNode.children
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      collectElTableVmsFromVNode(child, bodyEl, out)
+    }
+  }
+  return out
+}
+
+function createLock(getPage, getBody, setHeight, onBodyResumed, getHostInternalInstance) {
+  let observer = null
+  let bodyChildObserver = null
+  let lockGen = 0
+  let deferGen = 0
+  let rafId = 0
+  let deferRaf1 = 0
+  let deferRaf2 = 0
+  let deferRaf3 = 0
+  let deferTransitionTarget = null
+  let deferTransitionHandler = null
+  let deferOverlayEl = null
+  let deferFadeTimer = 0
+  let scrollEl = null
+  let savedScrollTop = 0
+  let savedScrollLeft = 0
+  let knownHeight = 0
+
+  function onScroll() {
+    if (!scrollEl) return
+    savedScrollTop = scrollEl.scrollTop
+    savedScrollLeft = scrollEl.scrollLeft
+  }
+
+  function unbindScrollMemory() {
+    if (scrollEl) {
+      scrollEl.removeEventListener('scroll', onScroll)
+      scrollEl = null
+    }
+  }
+
+  function showDeferOverlay(body) {
+    if (!(body instanceof HTMLElement)) return
+    if (deferFadeTimer) {
+      clearTimeout(deferFadeTimer)
+      deferFadeTimer = 0
+    }
+    if (!deferOverlayEl) {
+      const overlay = document.createElement('div')
+      overlay.className = 'vita-iso-load is-on'
+      overlay.setAttribute('aria-hidden', 'true')
+      const box = document.createElement('div')
+      box.className = 'vita-iso-load__box'
+      box.innerHTML = '<div class="vita-iso-load__spin"></div>'
+      overlay.append(box)
+      deferOverlayEl = overlay
+    }
+    deferOverlayEl.classList.add('is-on')
+    if (deferOverlayEl.parentElement !== body) {
+      body.append(deferOverlayEl)
+    }
+  }
+
+  function hideDeferOverlay(immediate = false) {
+    if (deferFadeTimer) {
+      clearTimeout(deferFadeTimer)
+      deferFadeTimer = 0
+    }
+    if (!deferOverlayEl) return
+    if (immediate) {
+      deferOverlayEl.remove()
+      deferOverlayEl = null
+      return
+    }
+    deferOverlayEl.classList.remove('is-on')
+    const el = deferOverlayEl
+    deferFadeTimer = window.setTimeout(() => {
+      deferFadeTimer = 0
+      if (!el.classList.contains('is-on')) {
+        el.remove()
+        if (deferOverlayEl === el) deferOverlayEl = null
+      }
+    }, 240)
+  }
+
+  function cancelDefer() {
+    if (deferRaf1) {
+      cancelAnimationFrame(deferRaf1)
+      deferRaf1 = 0
+    }
+    if (deferRaf2) {
+      cancelAnimationFrame(deferRaf2)
+      deferRaf2 = 0
+    }
+    if (deferRaf3) {
+      cancelAnimationFrame(deferRaf3)
+      deferRaf3 = 0
+    }
+    if (deferTransitionTarget && deferTransitionHandler) {
+      deferTransitionTarget.removeEventListener('transitionend', deferTransitionHandler)
+      deferTransitionTarget = null
+      deferTransitionHandler = null
+    }
+  }
+
+  function findScrollWrap(body) {
+    if (!(body instanceof HTMLElement)) return null
+    return (
+      body.querySelector('.vxe-table--body-wrapper.body--wrapper')
+      || body.querySelector('.el-table__body-wrapper .el-scrollbar__wrap')
+      || body.querySelector('.el-table__body-wrapper')
+    )
+  }
+
+  function bindScrollMemory(body) {
+    const nextScrollEl = findScrollWrap(body)
+    if (nextScrollEl !== scrollEl) {
+      scrollEl?.removeEventListener('scroll', onScroll)
+      scrollEl = nextScrollEl
+      scrollEl?.addEventListener('scroll', onScroll, { passive: true })
+    }
+    if (scrollEl && (savedScrollTop > 0 || savedScrollLeft > 0)) {
+      if (scrollEl.scrollTop !== savedScrollTop) scrollEl.scrollTop = savedScrollTop
+      if (scrollEl.scrollLeft !== savedScrollLeft) scrollEl.scrollLeft = savedScrollLeft
+    }
+  }
+
+  function cancelPendingRaf() {
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+  }
+
+  function measure() {
+    const body = getBody()
+    const height = body instanceof HTMLElement ? Math.floor(body.clientHeight) : 0
+    if (height > 0) knownHeight = height
+    setHeight(height > 0 ? height : undefined)
+  }
+
+  function optimizeTableScroll(body) {
+    if (!(body instanceof HTMLElement) || body.classList.contains('is-list-table-defer-body')) return
+    const vms = getElTableVms(body)
+    for (const vm of vms) {
+      // Element Plus 2.13 的固定列使用 sticky 且与普通列共用 tr；需禁用 setHoverRow，
+      // 由 CSS :hover 高亮，避免滚动时 watch(hoverRow) 扫描所有行。
+      if (vm.store?.states?.isComplex) {
+        vm.store.states.isComplex.value = false
+      }
+      if (vm.store?.states?.hoverRow && vm.store.states.hoverRow.value !== null) {
+        vm.store.states.hoverRow.value = null
+      }
+      if (vm.store?.mutations && !vm.store._vbenHoverPatched) {
+        vm.store._vbenHoverPatched = true
+        vm.store.mutations.setHoverRow = () => {}
+        if (typeof vm.store.updateColumns === 'function') {
+          const rawUpdateColumns = vm.store.updateColumns
+          vm.store.updateColumns = function (...args) {
+            const res = rawUpdateColumns.apply(this, args)
+            if (this.states?.isComplex) {
+              this.states.isComplex.value = false
+            }
+            const wrap = vm.refs?.tableWrapper
+            if (wrap) {
+              requestAnimationFrame(() => {
+                wrap._vbenSyncShadowGeometry?.()
+                wrap._vbenRebuildHeaderSync?.()
+              })
+            }
+            return res
+          }
+        }
+      }
+
+      // 根容器必须保持 is-scrolling-none，避免横滑时切换 class 触发全表重排。
+      // 横滑提示由 .el-table__inner-wrapper 上的左右两个合成层阴影承担，仅在显隐变化时更新 opacity。
+      const tableWrapper = vm.refs?.tableWrapper
+      if (tableWrapper && !tableWrapper._vbenScrollClassPatched) {
+        tableWrapper._vbenScrollClassPatched = true
+        const innerWrapper = tableWrapper.querySelector('.el-table__inner-wrapper')
+        let leftShadow = null
+        let rightShadow = null
+        let lastShowLeft = null
+        let lastShowRight = null
+        if (innerWrapper instanceof HTMLElement) {
+          leftShadow = document.createElement('div')
+          leftShadow.className = 'vben-table-scroll-shadow-left'
+          leftShadow.style.cssText =
+            'position:absolute;top:0;bottom:0;width:10px;pointer-events:none;z-index:3;opacity:0;transform:translateZ(0);transition:opacity 0.15s ease;background:linear-gradient(to right, rgba(0,0,0,0.08), transparent);'
+          rightShadow = document.createElement('div')
+          rightShadow.className = 'vben-table-scroll-shadow-right'
+          rightShadow.style.cssText =
+            'position:absolute;top:0;bottom:0;width:10px;pointer-events:none;z-index:3;opacity:0;transform:translateZ(0);transition:opacity 0.15s ease;background:linear-gradient(to left, rgba(0,0,0,0.08), transparent);'
+          innerWrapper.append(leftShadow, rightShadow)
+        }
+
+        const scrollWrap =
+          vm.refs?.scrollBarRef?.wrapRef
+          || tableWrapper.querySelector('.el-table__body-wrapper .el-scrollbar__wrap')
+        const scrollbarEl =
+          vm.refs?.scrollBarRef?.$el
+          || tableWrapper.querySelector('.el-table__body-wrapper .el-scrollbar')
+
+        // 阴影、表头时间轴和滑块拖拽共用的几何仅在尺寸变化或拖拽开始时刷新。
+        let cachedCW = 0
+        let cachedCH = 0
+        let cachedSW = 0
+        let cachedSH = 0
+
+        const refreshScrollBoxCache = () => {
+          if (!(scrollWrap instanceof HTMLElement)) return
+          cachedCW = scrollWrap.clientWidth
+          cachedCH = scrollWrap.clientHeight
+          cachedSW = scrollWrap.scrollWidth
+          cachedSH = scrollWrap.scrollHeight
+        }
+        refreshScrollBoxCache()
+
+        const applyShadowPair = (showLeft, showRight) => {
+          if (leftShadow && showLeft !== lastShowLeft) {
+            lastShowLeft = showLeft
+            leftShadow.style.opacity = showLeft ? '1' : '0'
+          }
+          if (rightShadow && showRight !== lastShowRight) {
+            lastShowRight = showRight
+            rightShadow.style.opacity = showRight ? '1' : '0'
+          }
+        }
+
+        const syncShadowFromScroll = () => {
+          if (!(scrollWrap instanceof HTMLElement)) return
+          const max = cachedSW - cachedCW
+          if (max <= 1) {
+            applyShadowPair(false, false)
+            return
+          }
+          const sl = scrollWrap.scrollLeft
+          applyShadowPair(sl > 1, sl < max - 1)
+        }
+
+        const syncShadowGeometry = () => {
+          refreshScrollBoxCache()
+          if (!leftShadow || !rightShadow) return
+          const firstRow =
+            tableWrapper.querySelector('.el-table__header-wrapper tr')
+            || tableWrapper.querySelector('.el-table__body-wrapper tbody tr')
+          const leftFixed = firstRow?.querySelector('.el-table-fixed-column--left.is-last-column')
+          const rightFixed = firstRow?.querySelector('.el-table-fixed-column--right.is-first-column')
+          if (leftFixed instanceof HTMLElement && leftFixed.offsetWidth > 0) {
+            leftShadow.style.display = ''
+            leftShadow.style.left = `${leftFixed.offsetLeft + leftFixed.offsetWidth}px`
+          } else {
+            leftShadow.style.display = 'none'
+          }
+          if (rightFixed instanceof HTMLElement && rightFixed.offsetWidth > 0) {
+            rightShadow.style.display = ''
+            rightShadow.style.right = `${rightFixed.offsetWidth}px`
+          } else {
+            rightShadow.style.display = 'none'
+          }
+          syncShadowFromScroll()
+        }
+        syncShadowGeometry()
+        tableWrapper._vbenSyncShadowGeometry = syncShadowGeometry
+
+        const updateShadowVisibility = (cls) => {
+          if (typeof cls !== 'string') return
+          const showLeft = cls.includes('is-scrolling-middle') || cls.includes('is-scrolling-right')
+          const showRight = cls.includes('is-scrolling-middle') || cls.includes('is-scrolling-left')
+          applyShadowPair(showLeft, showRight)
+        }
+
+        const rawClassList = tableWrapper.classList
+        const cleanClassName = Array.from(rawClassList)
+          .filter((c) => !c.startsWith('is-scrolling-'))
+          .concat('is-scrolling-none')
+          .join(' ')
+        rawClassList.value = cleanClassName
+        let lockedClassName = cleanClassName
+
+        Object.defineProperty(tableWrapper, 'className', {
+          configurable: true,
+          get() {
+            return lockedClassName
+          },
+          set(val) {
+            if (typeof val === 'string') {
+              const hasScrollToken = /is-scrolling-(?:left|middle|right|none)/.test(val)
+              if (hasScrollToken) {
+                updateShadowVisibility(val)
+              }
+              const next = hasScrollToken
+                ? val.replace(/is-scrolling-(left|middle|right)/g, 'is-scrolling-none')
+                : `${val} is-scrolling-none`.trim()
+              if (next === lockedClassName) return
+              lockedClassName = next
+              rawClassList.value = next
+            }
+          },
+        })
+
+        // 表体保留原生合成器滚动，非固定表头用 ScrollTimeline 与表体同步位移。
+        // 滚动后 120ms 内拦截 mouseenter/mouseover，避免静止指针触发逐格溢出测量；
+        // mouseleave 和按住鼠标时必须放行，否则提示框和拖选终点无法更新。
+        // 滚动条拖拽仅在按下时测量几何，并用透明护盾隔离表格 hover；mousemove 通过 rAF 合并。
+        const headerWrapper =
+          vm.refs?.headerWrapper
+          || tableWrapper.querySelector('.el-table__header-wrapper')
+        const footerWrapper =
+          vm.refs?.footerWrapper
+          || tableWrapper.querySelector('.el-table__footer-wrapper')
+        if (scrollWrap instanceof HTMLElement && !scrollWrap._vbenSyncPatched) {
+          scrollWrap._vbenSyncPatched = true
+          let scrollingUntil = 0
+          let isThumbDragging = false
+          const isHotScrolling = () => isThumbDragging || performance.now() < scrollingUntil
+          const markScrolling = () => {
+            scrollingUntil = performance.now() + 120
+          }
+
+          scrollWrap.addEventListener('scroll', markScrolling, { passive: true })
+          scrollWrap.addEventListener('wheel', markScrolling, { passive: true })
+          for (const evtName of ['mouseenter', 'mouseover']) {
+            scrollWrap.addEventListener(
+              evtName,
+              (e) => {
+                if (isHotScrolling() && e.buttons === 0) {
+                  e.stopPropagation()
+                }
+              },
+              true,
+            )
+          }
+
+          let dragShield = null
+          let cleanupThumbDrag = null
+          let activeDragAbort = null
+          if (scrollbarEl instanceof HTMLElement) {
+            dragShield = document.createElement('div')
+            dragShield.className = 'vben-scrollbar-drag-shield'
+            dragShield.style.cssText =
+              'position:fixed;inset:0;z-index:9999;display:none;cursor:pointer;user-select:none;'
+            scrollbarEl.append(dragShield)
+
+            const onThumbMouseDown = (e) => {
+              const thumbEl =
+                e.target instanceof Element ? e.target.closest('.el-scrollbar__thumb') : null
+              if (!thumbEl || e.ctrlKey || e.button !== 0) return
+              const barEl = thumbEl.closest('.el-scrollbar__bar')
+              if (!(barEl instanceof HTMLElement)) return
+
+              activeDragAbort?.()
+              refreshScrollBoxCache()
+              const isVertical = barEl.classList.contains('is-vertical')
+              const barRect = barEl.getBoundingClientRect()
+              const thumbRect = thumbEl.getBoundingClientRect()
+              const trackAvail = isVertical
+                ? Math.max(1, barRect.height - thumbRect.height)
+                : Math.max(1, barRect.width - thumbRect.width)
+              const maxScroll = isVertical
+                ? Math.max(0, cachedSH - cachedCH)
+                : Math.max(0, cachedSW - cachedCW)
+              const clickOffset = isVertical
+                ? e.clientY - thumbRect.top
+                : e.clientX - thumbRect.left
+
+              e.stopImmediatePropagation()
+              e.preventDefault()
+              window.getSelection()?.removeAllRanges()
+              isThumbDragging = true
+              scrollingUntil = Infinity
+              if (dragShield) dragShield.style.display = 'block'
+
+              let dragRafId = 0
+              let pendingScroll = null
+              const flushDragScroll = () => {
+                dragRafId = 0
+                if (pendingScroll === null) return
+                const targetVal = pendingScroll
+                pendingScroll = null
+                if (isVertical) {
+                  scrollWrap.scrollTop = targetVal
+                } else {
+                  scrollWrap.scrollLeft = targetVal
+                }
+              }
+
+              const onMove = (moveEvent) => {
+                if (!isThumbDragging) return
+                const pos = isVertical
+                  ? moveEvent.clientY - barRect.top - clickOffset
+                  : moveEvent.clientX - barRect.left - clickOffset
+                const ratio = Math.max(0, Math.min(1, pos / trackAvail))
+                pendingScroll = ratio * maxScroll
+                if (!dragRafId) {
+                  dragRafId = requestAnimationFrame(flushDragScroll)
+                }
+              }
+
+              const onUp = (upEvent) => {
+                if (dragRafId) {
+                  cancelAnimationFrame(dragRafId)
+                  flushDragScroll()
+                }
+                activeDragAbort = null
+                isThumbDragging = false
+                scrollingUntil = performance.now() + 120
+                if (dragShield) dragShield.style.display = 'none'
+                document.removeEventListener('mousemove', onMove)
+                document.removeEventListener('mouseup', onUp)
+                window.removeEventListener('blur', onUp)
+                if (upEvent instanceof MouseEvent && scrollbarEl.isConnected) {
+                  const sbRect = scrollbarEl.getBoundingClientRect()
+                  if (
+                    upEvent.clientX < sbRect.left
+                    || upEvent.clientX > sbRect.right
+                    || upEvent.clientY < sbRect.top
+                    || upEvent.clientY > sbRect.bottom
+                  ) {
+                    scrollbarEl.dispatchEvent(new MouseEvent('mouseleave'))
+                  }
+                }
+              }
+
+              activeDragAbort = () => onUp()
+              document.addEventListener('mousemove', onMove, { passive: true })
+              document.addEventListener('mouseup', onUp, { passive: true })
+              window.addEventListener('blur', onUp, { passive: true })
+            }
+
+            scrollbarEl.addEventListener('mousedown', onThumbMouseDown, true)
+            cleanupThumbDrag = () => {
+              activeDragAbort?.()
+              scrollbarEl.removeEventListener('mousedown', onThumbMouseDown, true)
+              dragShield?.remove()
+            }
+          }
+
+          const scrollLeftDesc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollLeft')
+          const lockScrollLeft = (el) => {
+            if (!(el instanceof HTMLElement) || el._vbenScrollLocked || !scrollLeftDesc?.get || !scrollLeftDesc?.set) return
+            if (scrollLeftDesc.get.call(el) !== 0) {
+              scrollLeftDesc.set.call(el, 0)
+            }
+            Object.defineProperty(el, 'scrollLeft', {
+              configurable: true,
+              get() {
+                return scrollLeftDesc.get.call(this)
+              },
+              set() {},
+            })
+            el._vbenScrollLocked = true
+          }
+
+          let headerAnims = []
+          let lastMax = -1
+          const rebuildHeaderSync = () => {
+            if (body.classList.contains('is-list-table-defer-body')) return
+            const header = headerWrapper?.isConnected
+              ? headerWrapper
+              : tableWrapper.querySelector('.el-table__header-wrapper')
+            const footer = footerWrapper?.isConnected
+              ? footerWrapper
+              : tableWrapper.querySelector('.el-table__footer-wrapper')
+            lockScrollLeft(header)
+            lockScrollLeft(footer)
+            const max = cachedSW - cachedCW
+            const cells = []
+            for (const wrap of [header, footer]) {
+              if (!(wrap instanceof HTMLElement)) continue
+              wrap.querySelectorAll(
+                'table.el-table__header > thead > tr > th, table.el-table__header > thead > tr > td, table.el-table__footer > tbody > tr > td',
+              ).forEach((cell) => {
+                if (
+                  cell.classList.contains('gutter')
+                  || cell.classList.contains('el-table-fixed-column--left')
+                  || cell.classList.contains('el-table-fixed-column--right')
+                ) return
+                cells.push(cell)
+              })
+            }
+            const sameTargets =
+              headerAnims.length === cells.length
+              && cells.every((cell, idx) => headerAnims[idx]?.effect?.target === cell)
+            if (sameTargets && Math.abs(max - lastMax) < 0.5) return
+            lastMax = max
+            for (const anim of headerAnims) anim.cancel()
+            headerAnims = []
+            const ScrollTimelineCtor = globalThis.ScrollTimeline
+            if (max <= 1 || typeof ScrollTimelineCtor !== 'function' || cells.length === 0) return
+            let timeline
+            try {
+              timeline = new ScrollTimelineCtor({ source: scrollWrap, axis: 'x' })
+            } catch {
+              return
+            }
+            const opts = { timeline, fill: 'both' }
+            for (const cell of cells) {
+              headerAnims.push(cell.animate(
+                [
+                  { transform: 'translate3d(0,0,0)' },
+                  { transform: `translate3d(${-max}px,0,0)` },
+                ],
+                opts,
+              ))
+            }
+          }
+
+          if (typeof globalThis.ScrollTimeline === 'function') {
+            rebuildHeaderSync()
+            tableWrapper._vbenRebuildHeaderSync = rebuildHeaderSync
+          } else {
+            const desc =
+              Object.getOwnPropertyDescriptor(Object.getPrototypeOf(scrollWrap), 'scrollLeft')
+              || scrollLeftDesc
+            if (desc?.get && desc?.set) {
+              Object.defineProperty(scrollWrap, 'scrollLeft', {
+                configurable: true,
+                get() {
+                  return desc.get.call(this)
+                },
+                set(val) {
+                  desc.set.call(this, val)
+                  const next = desc.get.call(this)
+                  if (headerWrapper instanceof HTMLElement) headerWrapper.scrollLeft = next
+                  if (footerWrapper instanceof HTMLElement) footerWrapper.scrollLeft = next
+                },
+              })
+            }
+            scrollWrap.addEventListener(
+              'wheel',
+              (e) => {
+                const dx = e.deltaX || (e.shiftKey ? e.deltaY : 0)
+                if (dx !== 0 && e.cancelable) {
+                  e.preventDefault()
+                  scrollWrap.scrollLeft += dx
+                }
+              },
+              { passive: false },
+            )
+          }
+
+          const onHeaderOrScrollResize = () => {
+            syncShadowGeometry()
+            tableWrapper._vbenRebuildHeaderSync?.()
+          }
+          const ro =
+            typeof ResizeObserver === 'function'
+              ? new ResizeObserver(onHeaderOrScrollResize)
+              : null
+          if (ro) {
+            ro.observe(scrollWrap)
+            const view = scrollWrap.firstElementChild
+            if (view instanceof Element) ro.observe(view)
+          }
+          const mo =
+            typeof MutationObserver === 'function' && headerWrapper instanceof HTMLElement
+              ? new MutationObserver(onHeaderOrScrollResize)
+              : null
+          if (mo && headerWrapper instanceof HTMLElement) {
+            const thead = headerWrapper.querySelector('thead') || headerWrapper
+            mo.observe(thead, { childList: true, subtree: true })
+          }
+          scrollWrap._vbenHeaderSyncCleanup = () => {
+            ro?.disconnect()
+            mo?.disconnect()
+            cleanupThumbDrag?.()
+            for (const anim of headerAnims) anim.cancel()
+            headerAnims = []
+          }
+        }
+      } else if (tableWrapper) {
+        tableWrapper._vbenSyncShadowGeometry?.()
+        tableWrapper._vbenRebuildHeaderSync?.()
+      }
+    }
+  }
+
+  function observeBodyTableSwitch(body) {
+    if (!(body instanceof HTMLElement) || typeof MutationObserver !== 'function') return
+    if (!bodyChildObserver) {
+      bodyChildObserver = new MutationObserver((mutations) => {
+        const hasTableChange = mutations.some((m) =>
+          [...m.addedNodes, ...m.removedNodes].some(
+            (n) => n instanceof HTMLElement && !n.classList.contains('vita-iso-load'),
+          ),
+        )
+        if (!hasTableChange || !body.isConnected) return
+        bindScrollMemory(body)
+        optimizeTableScroll(body)
+        requestAnimationFrame(() => {
+          if (body.isConnected) {
+            bindScrollMemory(body)
+            optimizeTableScroll(body)
+          }
+        })
+      })
+    }
+    bodyChildObserver.disconnect()
+    bodyChildObserver.observe(body, { childList: true })
+  }
+
+  function bindAndMeasure(body) {
+    if (!observer) observer = new ResizeObserver(measure)
+    observer.disconnect()
+    observer.observe(body)
+    observeBodyTableSwitch(body)
+    measure()
+    bindScrollMemory(body)
+    optimizeTableScroll(body)
+    // ElTable 在 onMounted 后的 nextTick 才执行 updateColumns 并设置 isComplex，
+    // 因此下一帧需再次优化，确保固定列阴影几何和 hover 处理生效。
+    requestAnimationFrame(() => {
+      if (body.isConnected) optimizeTableScroll(body)
+    })
+  }
+
+  function watchBody(currentGen) {
+    const immediateBody = getBody()
+    if (immediateBody instanceof HTMLElement && immediateBody.clientHeight > 0) {
+      bindAndMeasure(immediateBody)
+      return
+    }
+    nextTick(() => {
+      if (currentGen !== lockGen) return
+      cancelPendingRaf()
+      rafId = requestAnimationFrame(() => {
+        rafId = 0
+        if (currentGen !== lockGen) return
+        const rafBody = getBody()
+        if (!(rafBody instanceof HTMLElement)) return
+        bindAndMeasure(rafBody)
+      })
+    })
+  }
+
+  function getElTableVms(body) {
+    if (!(body instanceof HTMLElement)) return []
+    const hostVm = getHostInternalInstance?.()
+    const vms = hostVm?.subTree ? collectElTableVmsFromVNode(hostVm.subTree, body) : new Set()
+    const tables = body.querySelectorAll('.el-table')
+    for (const tableEl of tables) {
+      const vm = tableEl.__vueParentComponent
+      if (vm?.state?.doLayout) vms.add(vm)
+    }
+    return [...vms]
+  }
+
+  function pauseElTables(body) {
+    const vms = getElTableVms(body)
+    for (const vm of vms) {
+      if (vm && vm.$ready) {
+        vm.$ready = false
+        vm._vbenPausedReady = true
+      }
+    }
+  }
+
+  function resumeElTables(body) {
+    if (!(body instanceof HTMLElement)) return
+    const vms = getElTableVms(body)
+    for (const vm of vms) {
+      if (vm && vm._vbenPausedReady) {
+        const tableEl = vm.vnode?.el
+        const rs = vm.state?.resizeState?.value
+        const w = tableEl instanceof HTMLElement ? tableEl.offsetWidth : 0
+        const h = tableEl instanceof HTMLElement ? tableEl.offsetHeight : 0
+        const headerEl = tableEl instanceof HTMLElement ? tableEl.querySelector('.el-table__header-wrapper') : null
+        const hh = headerEl ? headerEl.offsetHeight : (rs?.headerHeight ?? 0)
+        const widthChanged = w > 0 && rs && rs.width !== w
+        if (rs && w > 0) {
+          rs.width = w
+          rs.height = h
+          rs.headerHeight = hh
+        }
+        vm.$ready = true
+        vm._vbenPausedReady = false
+        if (widthChanged) {
+          vm.state?.doLayout?.()
+        }
+      }
+    }
+  }
+
+  function apply(locked, retried = false, retryGen = 0) {
+    const currentGen = retried ? retryGen : ++lockGen
+    if (currentGen !== lockGen) return
+    cancelPendingRaf()
+    const page = getPage()
+    if (!(page instanceof HTMLElement)) return
+    if (!locked) {
+      observer?.disconnect()
+      bodyChildObserver?.disconnect()
+      unbindScrollMemory()
+      cancelDefer()
+      const body = getBody()
+      if (body instanceof HTMLElement) {
+        body.classList.remove('is-list-table-defer-body')
+        resumeElTables(body)
+        optimizeTableScroll(body)
+        requestAnimationFrame(() => {
+          if (body.isConnected) optimizeTableScroll(body)
+        })
+      } else {
+        nextTick(() => {
+          if (currentGen !== lockGen) return
+          const nextBody = getBody()
+          if (nextBody instanceof HTMLElement) {
+            optimizeTableScroll(nextBody)
+            requestAnimationFrame(() => {
+              if (nextBody.isConnected) optimizeTableScroll(nextBody)
+            })
+          }
+        })
+      }
+      hideDeferOverlay(true)
+      knownHeight = 0
+      setHeight(undefined)
+      return
+    }
+    const body = getBody()
+    // KeepAlive 页面重新激活且表体延迟显现时，复用已知锁定高度，
+    // 避免点击帧读取 offsetParent/clientHeight，待进场动画结束后再绑定 ResizeObserver。
+    if (knownHeight > 0 && body instanceof HTMLElement && body.classList.contains('is-list-table-defer-body')) {
+      setHeight(knownHeight)
+      if (savedScrollLeft > 0) {
+        const wrap = findScrollWrap(body)
+        if (wrap && wrap.scrollLeft !== savedScrollLeft) {
+          wrap.scrollLeft = savedScrollLeft
+        }
+      }
+      return
+    }
+    if (page.offsetParent === null) {
+      if (!retried) {
+        nextTick(() => {
+          if (currentGen !== lockGen) return
+          apply(true, true, currentGen)
+        })
+      }
+      return
+    }
+    watchBody(currentGen)
+  }
+
+  /**
+   * 必须按退场、进场、表格显现的顺序执行：
+   * 1. 离开锁高大表时冻结 el-table $ready（避免离屏 0x0 触发 ResizeObserver -> doLayout 重算 500 行），
+   *    并通过纯 DOM class（is-list-table-defer-body）隐藏 tbody 并挂上局部转圈，绝不销毁/重建 Vue VNode；
+   * 2. 切回该标签页时，整页固定骨架与表格转圈先以满帧 60fps 完成 320ms 进场滑入动画；
+   * 3. 仅在页面进场动画彻底结束后（transitionend + 1帧），才原位显现 tbody、恢复 $ready 与滚动位置并淡出转圈。
+   */
+  function resumeRows(locked) {
+    cancelDefer()
+    const currentDeferGen = ++deferGen
+    const body = getBody()
+    if (!locked || !(body instanceof HTMLElement) || !body.classList.contains('is-list-table-defer-body')) {
+      if (body instanceof HTMLElement) {
+        body.classList.remove('is-list-table-defer-body')
+        resumeElTables(body)
+      }
+      hideDeferOverlay(true)
+      return
+    }
+    showDeferOverlay(body)
+    const page = getPage()
+    let done = false
+
+    const finishResume = () => {
+      if (done || currentDeferGen !== deferGen) return
+      done = true
+      cancelDefer()
+      // Vue Transition 移除 enter-active 后的下一帧才显示 tbody，避免整页再次播放进场动画。
+      deferRaf2 = requestAnimationFrame(() => {
+        deferRaf2 = 0
+        if (currentDeferGen !== deferGen) return
+        const curBody = getBody()
+        if (curBody instanceof HTMLElement) {
+          curBody.classList.remove('is-list-table-defer-body')
+          bindAndMeasure(curBody)
+        }
+        hideDeferOverlay(false)
+        onBodyResumed?.()
+        // tbody 显现并完成当帧 ResizeObserver 后，下一帧再恢复 $ready，避免多余的 doLayout。
+        deferRaf3 = requestAnimationFrame(() => {
+          deferRaf3 = 0
+          if (currentDeferGen !== deferGen) return
+          const b = getBody()
+          if (b instanceof HTMLElement) resumeElTables(b)
+        })
+      })
+    }
+
+    if (page instanceof HTMLElement) {
+      const onTransitionEnd = (event) => {
+        if (event.target !== page) return
+        finishResume()
+      }
+      deferTransitionTarget = page
+      deferTransitionHandler = onTransitionEnd
+      page.addEventListener('transitionend', onTransitionEnd)
+    }
+
+    // 以 content.vue 摘掉 *-enter-active 为准（transitionend 或它从起播算的兜底定时器），不自己按固定时长兜底：
+    // 慢机上切页帧可能就要几百毫秒，固定时长会在动画结束前显现 tbody。关闭了页面过渡时首帧就没有这个 class，直接显现。
+    const isEntering = () =>
+      page instanceof HTMLElement
+      && Array.from(page.classList).some((cls) => cls.endsWith('-enter-active'))
+    const waitEnterEnd = () => {
+      deferRaf1 = requestAnimationFrame(() => {
+        deferRaf1 = 0
+        if (done || currentDeferGen !== deferGen) return
+        if (isEntering()) {
+          waitEnterEnd()
+        } else {
+          finishResume()
+        }
+      })
+    }
+    waitEnterEnd()
+  }
+
+  function pause(locked) {
+    lockGen += 1
+    deferGen += 1
+    cancelPendingRaf()
+    cancelDefer()
+    observer?.disconnect()
+    bodyChildObserver?.disconnect()
+    unbindScrollMemory()
+    const body = getBody()
+    pauseElTables(body)
+    if (!locked) return
+    if (body instanceof HTMLElement && body.querySelector('.el-table__body-wrapper')) {
+      body.classList.add('is-list-table-defer-body')
+      showDeferOverlay(body)
+    }
+  }
+
+  function destroy() {
+    lockGen += 1
+    deferGen += 1
+    cancelPendingRaf()
+    cancelDefer()
+    observer?.disconnect()
+    bodyChildObserver?.disconnect()
+    const body = getBody()
+    if (body instanceof HTMLElement) {
+      body.querySelectorAll('.el-scrollbar__wrap').forEach((wrap) => {
+        wrap._vbenHeaderSyncCleanup?.()
+      })
+    }
+    unbindScrollMemory()
+    hideDeferOverlay(true)
+    setHeight(undefined)
+  }
+
+  return { apply, destroy, pause, resumeRows }
+}
+
+export const listTableLockMixin = {
+  data() {
+    return {
+      listTableHeight: undefined,
+    }
+  },
+  computed: {
+    listTableLocked() {
+      return shouldLockListTable(this.listQuery?.limit ?? this.query?.limit)
+    },
+  },
+  watch: {
+    listTableLocked(locked) {
+      this._listTableLock?.apply(locked)
+    },
+  },
+  created() {
+    this._listTableLock = createLock(
+      () => (this.$el instanceof HTMLElement ? this.$el : null),
+      () => this.$refs.listTableBody,
+      (height) => {
+        if (height !== this.listTableHeight) this.listTableHeight = height
+      },
+      () => {
+        this.onListTableBodyResumed?.()
+      },
+      () => this.$,
+    )
+  },
+  mounted() {
+    this._listTableLock.apply(this.listTableLocked)
+  },
+  activated() {
+    this._listTableLock?.apply(this.listTableLocked)
+    this._listTableLock?.resumeRows(this.listTableLocked)
+  },
+  deactivated() {
+    this._listTableLock?.pause(this.listTableLocked)
+  },
+  beforeUnmount() {
+    this._listTableLock?.destroy()
+  },
+}

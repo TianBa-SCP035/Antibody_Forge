@@ -1,0 +1,1836 @@
+import json
+import random
+import re
+import shutil
+from datetime import datetime, time, timedelta
+from io import BytesIO
+from pathlib import Path
+from typing import Any
+
+from fastapi import UploadFile
+from PIL import Image
+from sqlalchemy import (
+    JSON,
+    Integer,
+    String,
+    and_,
+    bindparam,
+    case,
+    cast,
+    func,
+    or_,
+    select,
+    text,
+)
+from sqlalchemy.orm import Session
+
+from core.config import get_settings
+from core.errors import NotFoundError
+from integrations import drm_service
+from models.immunology import (
+    SOURCE_MANUAL,
+    SOURCE_MEGA,
+    SerumElisaPlate,
+    SerumFacsPlate,
+    SerumFile,
+    SerumImmMouse,
+    SerumImmProject,
+    SerumImmStep,
+    SerumTiterOrder,
+    SerumTiterPc,
+    SerumTiterTarget,
+)
+from models.mega_automation import MegaFlowWorkOrder
+from modules.immunology.project_lock import lock_experiment_owner
+from modules.mega_automation.service import ORDER_STATUS_LABELS
+from utils.clock import now_local
+from utils.filter_values import (
+    DEFAULT_RECORDED_TARGET_LIMIT,
+    clean_field_text,
+    like_literal,
+    recorded_target_clause,
+    recorded_target_search,
+    restrict,
+)
+from utils.header_filters import (
+    HeaderColumn,
+    header_column_values,
+    header_filter_clauses,
+    header_sort_clauses,
+    json_array_column,
+    target_column,
+    without_header_fields,
+)
+from utils.normalize import normalize_date
+from utils.pagination import MAX_PAGE_LIMIT, parse_page_limit
+from utils.uploads import contained_path, read_limited, safe_path_part, upload_filename
+from utils.workbench_queue import DEFAULT_PRIORITY, PRIORITY_ORDER
+
+
+MEGA_UPLOAD_USER = "镁伽回传"
+
+
+def _upload_root() -> Path:
+    root = Path(get_settings().repository_root) / "uploads" / "titer_files"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def get_full_path(relative_path: str) -> Path:
+    return contained_path(Path(get_settings().repository_root) / "uploads", relative_path)
+
+
+def get_file_list(db: Session, experiment_id: str) -> list[dict]:
+    if not experiment_id:
+        return []
+    return [item.to_dict() for item in db.scalars(select(SerumFile).where(SerumFile.experiment_id == experiment_id)).all()]
+
+
+def _save_upload_content(db: Session, file_obj: UploadFile, file_path: Path) -> None:
+    content = read_limited(file_obj)
+    with file_path.open("wb") as target:
+        target.write(content)
+    drm_service.decrypt_upload_file_if_available(db, file_path)
+
+
+def _upload_save_name(filename: str | None) -> str:
+    return f"{now_local().strftime('%Y%m%d%H%M%S')}_{upload_filename(filename)}"
+
+
+def save_file(db: Session, file_obj: UploadFile, experiment_id: str, user_name: str = "unknown") -> dict:
+    if not file_obj.filename or not experiment_id:
+        raise ValueError("缺少文件或实验 ID")
+    experiment_id = safe_path_part(experiment_id, "实验 ID")
+
+    exp_dir = contained_path(_upload_root(), experiment_id)
+    exp_dir.mkdir(parents=True, exist_ok=True)
+    save_name = _upload_save_name(file_obj.filename)
+    file_path = exp_dir / save_name
+
+    _save_upload_content(db, file_obj, file_path)
+
+    record = SerumFile(
+        experiment_id=experiment_id,
+        upload_user=user_name,
+        file_name=file_obj.filename,
+        file_path=f"/titer_files/{experiment_id}/{save_name}",
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record.to_dict()
+
+
+def delete_file(db: Session, file_id: int) -> None:
+    record = db.get(SerumFile, file_id)
+    if not record:
+        raise NotFoundError("文件不存在")
+    full_path = get_full_path(record.file_path)
+    if full_path.exists():
+        full_path.unlink()
+    db.delete(record)
+    db.commit()
+
+
+def rename_file(db: Session, file_id: int, new_name: str) -> None:
+    record = db.get(SerumFile, file_id)
+    if not record:
+        raise NotFoundError("文件不存在")
+    record.file_name = new_name
+    record.source = SOURCE_MANUAL
+    db.commit()
+
+
+def replace_file(db: Session, file_id: int, file_obj: UploadFile, user_name: str = "unknown") -> dict:
+    record = db.get(SerumFile, file_id)
+    if not record:
+        raise NotFoundError("文件不存在")
+
+    old_path = get_full_path(record.file_path)
+    exp_dir = old_path.parent
+    exp_dir.mkdir(parents=True, exist_ok=True)
+    save_name = _upload_save_name(file_obj.filename)
+    new_path = exp_dir / save_name
+
+    _save_upload_content(db, file_obj, new_path)
+    if old_path != new_path and old_path.exists():
+        old_path.unlink()
+
+    record.file_name = file_obj.filename or save_name
+    record.file_path = f"/titer_files/{record.experiment_id}/{save_name}"
+    record.upload_user = user_name
+    record.source = SOURCE_MANUAL
+    db.commit()
+    db.refresh(record)
+    return record.to_dict()
+
+
+def write_mega_file(
+    db: Session,
+    experiment_id: str,
+    file_name: str,
+    content_path: Path,
+    record: SerumFile | None = None,
+) -> tuple[SerumFile, Path, Path | None]:
+    """把镁伽回传的文件放进效价文件区，不提交事务。
+
+    record 为空时新建记录，否则原地替换内容（记录 ID 不变，板卡引用不断）。
+    返回记录、新写入的文件、被替换的旧文件；旧文件要等事务提交后再删，回滚时删新文件。
+    """
+    experiment_id = safe_path_part(experiment_id, "实验 ID")
+    file_name = upload_filename(file_name)
+    exp_dir = contained_path(_upload_root(), experiment_id)
+    exp_dir.mkdir(parents=True, exist_ok=True)
+    target = exp_dir / _upload_save_name(file_name)
+    stem, extension = target.stem, target.suffix
+    counter = 1
+    while target.exists():
+        target = exp_dir / f"{stem}_{counter}{extension}"
+        counter += 1
+    shutil.copyfile(content_path, target)
+
+    old_path: Path | None = None
+    if record is None:
+        record = SerumFile(experiment_id=experiment_id, source=SOURCE_MEGA)
+        db.add(record)
+    else:
+        old_path = get_full_path(record.file_path)
+    record.upload_user = MEGA_UPLOAD_USER
+    record.file_name = file_name
+    record.file_path = f"/titer_files/{experiment_id}/{target.name}"
+    return record, target, old_path
+
+
+def get_download_record(db: Session, file_id: int) -> tuple[SerumFile, Path]:
+    record = db.get(SerumFile, file_id)
+    if not record:
+        raise NotFoundError("文件不存在")
+    full_path = get_full_path(record.file_path)
+    if not full_path.exists():
+        raise NotFoundError("磁盘上找不到文件")
+    return record, full_path
+
+
+def create_thumbnail(file_path: Path, width: int, height: int) -> tuple[BytesIO, str] | None:
+    suffix = file_path.suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}:
+        return None
+    image = Image.open(file_path)
+    image.thumbnail((width, height), Image.Resampling.LANCZOS)
+    output = BytesIO()
+    image_format = image.format or "JPEG"
+    image.save(output, format=image_format, quality=85)
+    output.seek(0)
+    return output, f"image/{image_format.lower()}"
+
+
+def _normalize_owner_names(value: Any) -> list[str]:
+    if not value:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item or "").strip()]
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return []
+
+
+ASSAY_FILTER_FACS = "__facs__"
+ASSAY_FILTER_ELISA = "__elisa__"
+ASSAY_FILTER_FACS_ELISA = "__facs_elisa__"
+MOUSE_COUNT_PATTERN = "^[0-9]+$"
+
+
+def _assay_method_expr():
+    return func.coalesce(SerumTiterOrder.assay_method, SerumImmProject.assay_method)
+
+
+def _assay_plate_expr(method: str):
+    order_col = SerumTiterOrder.facs_plate_count if method == "FACS" else SerumTiterOrder.elisa_plate_count
+    project_col = SerumImmProject.facs_plate_count if method == "FACS" else SerumImmProject.elisa_plate_count
+    return func.coalesce(order_col, project_col)
+
+
+def _scheme_mouse_count_expr():
+    """与 _sum_mouse_count 同一口径，筛选、排序才和列表显示的只数一致。"""
+    count = func.trim(SerumImmMouse.mouse_count)
+    return (
+        select(cast(func.sum(cast(count, Integer)), Integer))
+        .where(SerumImmMouse.experiment_id == SerumTiterOrder.experiment_id, count.regexp_match(MOUSE_COUNT_PATTERN))
+        .correlate(SerumTiterOrder)
+        .scalar_subquery()
+    )
+
+
+def _assay_method_clause(assay_method: str):
+    """普通值按整段匹配；FACS/ELISA 快捷条件按文案包含关系匹配，联合条件要求两者都存在；多个筛选值取任一。"""
+    expr = _assay_method_expr()
+    if assay_method == ASSAY_FILTER_FACS:
+        return expr.like("%FACS%")
+    if assay_method == ASSAY_FILTER_ELISA:
+        return expr.like("%ELISA%")
+    if assay_method == ASSAY_FILTER_FACS_ELISA:
+        return and_(expr.like("%FACS%"), expr.like("%ELISA%"))
+    return expr == assay_method
+
+
+def _apply_assay_method_filter(stmt, assay_method: Any):
+    return restrict(stmt, assay_method, _assay_method_clause)
+
+
+def _normalize_test_dates(value: Any) -> list[str]:
+    if not value:
+        return []
+    items = value if isinstance(value, list) else str(value).replace("、", ",").split(",")
+    dates: list[str] = []
+    for item in items:
+        text_value = str(item or "").strip()[:10]
+        if len(text_value) == 10:
+            dates.append(text_value)
+    return sorted(set(dates))
+
+
+def _test_dates_in_range_clause(range_start: str, range_end: str):
+    """工单 test_dates（JSON 日期数组）中任意一天落在 [range_start, range_end] 内即命中。"""
+    start_d = datetime.strptime(range_start, "%Y-%m-%d").date()
+    end_d = datetime.strptime(range_end, "%Y-%m-%d").date()
+    if start_d > end_d:
+        start_d, end_d = end_d, start_d
+    span = (end_d - start_d).days + 1
+
+    if span <= 400:
+        range_dates = [(start_d + timedelta(days=i)).isoformat() for i in range(span)]
+        range_json = json.dumps(range_dates)
+        return func.json_overlaps(
+            func.coalesce(SerumTiterOrder.test_dates, text("JSON_ARRAY()")),
+            cast(bindparam("test_dates_range_json", value=range_json), JSON),
+        )
+
+    parts = []
+    if range_start != "0000-01-01":
+        parts.append("LEFT(td.d, 10) >= :test_dates_range_start")
+    if range_end != "9999-12-31":
+        parts.append("LEFT(td.d, 10) <= :test_dates_range_end")
+    where_clause = " AND ".join(parts) if parts else "1=1"
+    return text(
+        "EXISTS (SELECT 1 FROM JSON_TABLE("
+        "COALESCE(CAST(serum_titer_order.test_dates AS JSON), JSON_ARRAY()), '$[*]' "
+        "COLUMNS (d VARCHAR(32) PATH '$')) td "
+        f"WHERE {where_clause})"
+    ).bindparams(
+        test_dates_range_start=range_start,
+        test_dates_range_end=range_end,
+    )
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    raw = str(value).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    raise ValueError("检测日期格式不正确")
+
+
+def _filter_date_bounds(data: dict[str, Any], start_key: str, end_key: str) -> tuple[str | None, str | None]:
+    """筛选日期格式不对直接报错，不当成没筛选、把全部数据返回去。"""
+
+    def day(key: str) -> str | None:
+        if not data.get(key):
+            return None
+        try:
+            return _parse_datetime(data[key]).date().isoformat()
+        except ValueError:
+            raise ValueError("日期筛选格式不正确，应为 YYYY-MM-DD") from None
+
+    return day(start_key), day(end_key)
+
+
+def _project_code_part(project_code: str | None, experiment_id: str) -> str:
+    value = (project_code or experiment_id or "NO_PROJECT").strip()
+    return value.replace(" ", "")
+
+
+def generate_titer_order_id(db: Session, project_code: str | None, experiment_id: str) -> str:
+    prefix = now_local().strftime("%Y%m%d%H%M%S")
+    project_part = _project_code_part(project_code, experiment_id)
+    for _ in range(20):
+        candidate = f"{prefix}-{project_part}-{random.randint(0, 9999):04d}"
+        exists = db.scalar(select(SerumTiterOrder.id).where(SerumTiterOrder.titer_order_id == candidate))
+        if not exists:
+            return candidate
+    raise ValueError("效价工单 ID 生成失败")
+
+
+def _sum_mouse_count(mice: list[SerumImmMouse]) -> int | None:
+    """方案的免疫数量是自由文本（如「/」「10+2」），只累加去掉首尾空白后为纯数字的值。"""
+    counts = [
+        int(text)
+        for mouse in mice
+        if re.match(MOUSE_COUNT_PATTERN, text := str(mouse.mouse_count or "").strip())
+    ]
+    return sum(counts) if counts else None
+
+
+def _unique_cages(mice: list[SerumImmMouse]) -> list[str]:
+    cages = {str(mouse.cage_position or "").strip() for mouse in mice}
+    return sorted(cage for cage in cages if cage)
+
+
+def _groups_for_blood_date(steps: list[SerumImmStep], blood_date: str) -> set[str]:
+    date = _normalize_blood_collection_date(blood_date) or ""
+    if not date:
+        return set()
+    groups: set[str] = set()
+    for step in steps:
+        if str(step.stage_name or "").strip() != BLOOD_COLLECTION_STAGE_NAME:
+            continue
+        if (_normalize_blood_collection_date(step.date_actual) or "") != date:
+            continue
+        group_id = str(step.group_id or "").strip()
+        if group_id:
+            groups.add(group_id)
+    return groups
+
+
+def _derived_cage_position(
+    mice: list[SerumImmMouse],
+    steps: list[SerumImmStep],
+    blood_date: str,
+) -> str:
+    """能对上采血日则只用当天组；对不上则用全项目。笼位去重去空后拼接。"""
+    groups = _groups_for_blood_date(steps, blood_date)
+    if groups:
+        mice = [mouse for mouse in mice if str(mouse.group_id or "").strip() in groups]
+    return "、".join(_unique_cages(mice))
+
+
+BLOOD_COLLECTION_STAGE_NAME = "采血"
+PENDING_BLOOD_COLLECTION_STATUS = "待采血"
+PENDING_BLOOD_COLLECTION_BOOST_STATUS = "待采血-加免"
+TITER_ORDER_PRIORITY_DEFAULT = DEFAULT_PRIORITY
+# 检测单列表按优先级升序时「正常」在前，因此顺序与队列相反。
+TITER_ORDER_PRIORITIES = tuple(reversed(PRIORITY_ORDER))
+TITER_SERUM_STATUS_ORDER = ("待采血", "待采血-加免", "已采血", "已检测", "已交接", "已销毁")
+TITER_SERUM_STATUS_POST_TEST = ("已检测", "已交接", "已销毁")
+TITER_FLOW_ORDER_TYPE = "TITER"
+MAX_LIST_LIMIT = MAX_PAGE_LIMIT
+
+# 这些字段为 NULL 时跟随免疫方案；非 NULL 时分别使用用户覆盖值。
+FOLLOWABLE_BATCH_KEYS = (
+    "cage_position",
+    "blood_collection_date",
+    "mouse_count",
+    "assay_method",
+    "facs_plate_count",
+    "elisa_plate_count",
+)
+
+
+def _normalize_blood_collection_date(raw: Any) -> str | None:
+    """读侧比对用：格式不对按没有采血日处理，写入校验走 normalize_date。"""
+    try:
+        return normalize_date(raw)
+    except ValueError:
+        return None
+
+
+def _all_blood_collection_dates(steps: list[SerumImmStep]) -> list[str]:
+    dates: list[str] = []
+    seen: set[str] = set()
+    for step in steps:
+        if str(step.stage_name or "").strip() != BLOOD_COLLECTION_STAGE_NAME:
+            continue
+        blood_date = _normalize_blood_collection_date(step.date_actual)
+        if not blood_date or blood_date in seen:
+            continue
+        seen.add(blood_date)
+        dates.append(blood_date)
+    return sorted(dates)
+
+
+def _blood_collection_seq_for_date(blood_dates: list[str], blood_date: str) -> int | None:
+    try:
+        return blood_dates.index(blood_date) + 1
+    except ValueError:
+        return None
+
+
+def _scheme_date_for_seq(blood_dates: list[str], seq: int | None) -> str | None:
+    if not blood_dates or not isinstance(seq, int) or seq < 1:
+        return None
+    idx = seq - 1
+    return blood_dates[idx] if idx < len(blood_dates) else blood_dates[-1]
+
+
+def _known_blood_collection_seqs(db: Session, experiment_id: str) -> set[int]:
+    rows = db.scalars(
+        select(SerumTiterOrder.blood_collection_seq).where(
+            SerumTiterOrder.experiment_id == experiment_id,
+            SerumTiterOrder.blood_collection_seq.is_not(None),
+        )
+    ).all()
+    return {int(seq) for seq in rows if seq is not None}
+
+
+def _default_blood_collection_seq(
+    db: Session,
+    experiment_id: str,
+    steps: list[SerumImmStep],
+) -> int | None:
+    """新建默认：最小未占用的采血次数。"""
+    blood_dates = _all_blood_collection_dates(steps)
+    if not blood_dates:
+        return None
+    known_seqs = _known_blood_collection_seqs(db, experiment_id)
+    for seq in range(1, len(blood_dates) + 1):
+        if seq not in known_seqs:
+            return seq
+    return None
+
+
+def _immune_batch_fields(
+    project: SerumImmProject,
+    mice: list[SerumImmMouse],
+    steps: list[SerumImmStep] | None = None,
+    blood_date: str | None = None,
+) -> dict[str, Any]:
+    """方案侧可跟随字段（采血日由 seq 推导，不在此返回）。"""
+    return {
+        "cage_position": _derived_cage_position(mice, steps or [], blood_date or "") or None,
+        "mouse_count": _sum_mouse_count(mice),
+        "assay_method": project.assay_method,
+        "facs_plate_count": project.facs_plate_count,
+        "elisa_plate_count": project.elisa_plate_count,
+    }
+
+
+def _immune_batch_for_experiment(
+    db: Session,
+    experiment_id: str,
+    *,
+    project: SerumImmProject | None = None,
+) -> tuple[SerumImmProject, dict[str, Any], list[SerumImmStep]]:
+    if project is None:
+        experiment_id = str(experiment_id or "").strip()
+        if not experiment_id:
+            raise ValueError("请选择免疫实验")
+        project = db.scalar(select(SerumImmProject).where(SerumImmProject.experiment_id == experiment_id))
+        if not project:
+            raise ValueError("免疫实验不存在")
+    else:
+        experiment_id = project.experiment_id
+        if not experiment_id:
+            raise ValueError("免疫实验不存在")
+    mice = list(db.scalars(select(SerumImmMouse).where(SerumImmMouse.experiment_id == experiment_id)).all())
+    steps = list(db.scalars(select(SerumImmStep).where(SerumImmStep.experiment_id == experiment_id)).all())
+    return project, _immune_batch_fields(project, mice, steps), steps
+
+
+def _apply_batch_fields_to_order(order: SerumTiterOrder, batch: dict[str, Any]) -> None:
+    order.cage_position = batch.get("cage_position")
+    order.blood_collection_date = batch.get("blood_collection_date")
+    order.mouse_count = batch.get("mouse_count")
+    order.assay_method = batch.get("assay_method")
+    order.facs_plate_count = batch.get("facs_plate_count")
+    order.elisa_plate_count = batch.get("elisa_plate_count")
+
+
+def _batch_fields_to_preview(batch: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "cage_position": batch.get("cage_position") or "",
+        "mouse_count": batch.get("mouse_count"),
+        "assay_method": batch.get("assay_method") or "",
+        "facs_plate_count": batch.get("facs_plate_count"),
+        "elisa_plate_count": batch.get("elisa_plate_count"),
+    }
+
+
+def _coalesce_follow_str(stored: str | None, derived: str | None) -> str:
+    if stored is not None:
+        return stored or ""
+    return derived or ""
+
+
+def _coalesce_follow_int(stored: int | None, derived: int | None) -> int | None:
+    if stored is not None:
+        return stored
+    return derived
+
+
+def _effective_blood_collection_date(order: SerumTiterOrder, blood_dates: list[str]) -> str:
+    if order.blood_collection_date is not None:
+        return _normalize_blood_collection_date(order.blood_collection_date) or ""
+    return _scheme_date_for_seq(blood_dates, order.blood_collection_seq) or ""
+
+
+def _build_derive_contexts(db: Session, experiment_ids: list[str]) -> dict[str, dict[str, Any]]:
+    ids = list(dict.fromkeys(str(eid).strip() for eid in experiment_ids if str(eid or "").strip()))
+    if not ids:
+        return {}
+
+    mice_by_exp: dict[str, list[ Any ]] = {eid: [] for eid in ids}
+    mouse_rows = db.execute(
+        select(
+            SerumImmMouse.experiment_id,
+            SerumImmMouse.group_id,
+            SerumImmMouse.mouse_count,
+            SerumImmMouse.cage_position,
+        ).where(SerumImmMouse.experiment_id.in_(ids))
+    ).all()
+    for mouse in mouse_rows:
+        mice_by_exp.setdefault(mouse.experiment_id, []).append(mouse)
+
+    steps_by_exp: dict[str, list[ Any ]] = {eid: [] for eid in ids}
+    step_rows = db.execute(
+        select(
+            SerumImmStep.experiment_id,
+            SerumImmStep.group_id,
+            SerumImmStep.stage_name,
+            SerumImmStep.date_actual,
+        ).where(SerumImmStep.experiment_id.in_(ids))
+    ).all()
+    for step in step_rows:
+        steps_by_exp.setdefault(step.experiment_id, []).append(step)
+
+    return {
+        eid: {
+            "mice": mice_by_exp.get(eid, []),
+            "steps": steps_by_exp.get(eid, []),
+            "blood_dates": _all_blood_collection_dates(steps_by_exp.get(eid, [])),
+        }
+        for eid in ids
+    }
+
+
+def _build_blood_dates_by_experiment(db: Session, experiment_ids: list[str]) -> dict[str, list[str]]:
+    ids = list(dict.fromkeys(str(eid).strip() for eid in experiment_ids if str(eid or "").strip()))
+    if not ids:
+        return {}
+    steps_by_exp: dict[str, list[Any]] = {eid: [] for eid in ids}
+    step_rows = db.execute(
+        select(
+            SerumImmStep.experiment_id,
+            SerumImmStep.stage_name,
+            SerumImmStep.date_actual,
+        ).where(
+            SerumImmStep.experiment_id.in_(ids),
+            SerumImmStep.stage_name == BLOOD_COLLECTION_STAGE_NAME,
+        )
+    ).all()
+    for step in step_rows:
+        steps_by_exp.setdefault(step.experiment_id, []).append(step)
+    return {eid: _all_blood_collection_dates(steps) for eid, steps in steps_by_exp.items()}
+
+
+def _resolve_followable_fields(
+    order: SerumTiterOrder,
+    project: SerumImmProject,
+    ctx: dict[str, Any] | None,
+) -> dict[str, Any]:
+    mice = list(ctx.get("mice") or []) if ctx else []
+    steps = list(ctx.get("steps") or []) if ctx else []
+    blood_dates = list(ctx.get("blood_dates") or []) if ctx else []
+    blood_date = _effective_blood_collection_date(order, blood_dates)
+    scheme = _immune_batch_fields(project, mice, steps, blood_date)
+    return {
+        "cage_position": _coalesce_follow_str(order.cage_position, scheme.get("cage_position")),
+        "blood_collection_date": blood_date,
+        "blood_collection_seq": order.blood_collection_seq,
+        "mouse_count": _coalesce_follow_int(order.mouse_count, scheme.get("mouse_count")),
+        "assay_method": _coalesce_follow_str(order.assay_method, scheme.get("assay_method")),
+        "facs_plate_count": _coalesce_follow_int(order.facs_plate_count, scheme.get("facs_plate_count")),
+        "elisa_plate_count": _coalesce_follow_int(order.elisa_plate_count, scheme.get("elisa_plate_count")),
+    }
+
+
+def _normalize_batch_fields_payload(data: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    if "cage_position" in data:
+        result["cage_position"] = str(data.get("cage_position") or "").strip() or None
+    if "blood_collection_date" in data:
+        result["blood_collection_date"] = normalize_date(data.get("blood_collection_date"))
+    if "mouse_count" in data:
+        raw = data.get("mouse_count")
+        if raw is None or raw == "":
+            result["mouse_count"] = None
+        else:
+            try:
+                result["mouse_count"] = int(raw)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("只数须为整数") from exc
+    if "assay_method" in data:
+        value = str(data.get("assay_method") or "").strip()
+        result["assay_method"] = value or None
+    if "facs_plate_count" in data:
+        result["facs_plate_count"] = _normalize_plate_count(data.get("facs_plate_count"))
+    if "elisa_plate_count" in data:
+        result["elisa_plate_count"] = _normalize_plate_count(data.get("elisa_plate_count"))
+    return result
+
+
+def _normalize_plate_count(raw: Any) -> int | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("板数须为整数") from exc
+    if value < 0:
+        raise ValueError("板数须为非负整数")
+    return value
+
+
+def _apply_batch_overrides(order: SerumTiterOrder, overrides: dict[str, Any]) -> None:
+    for key in FOLLOWABLE_BATCH_KEYS:
+        if key in overrides:
+            setattr(order, key, overrides[key])
+
+
+def _blood_collections_payload(blood_dates: list[str]) -> list[dict[str, Any]]:
+    return [{"seq": idx + 1, "date": blood_date} for idx, blood_date in enumerate(blood_dates)]
+
+
+def _scheme_follow_baseline(
+    order: SerumTiterOrder,
+    project: SerumImmProject,
+    ctx: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """编辑保存时对比用：方案推导值（采血日按当前 seq）。"""
+    mice = list(ctx.get("mice") or []) if ctx else []
+    steps = list(ctx.get("steps") or []) if ctx else []
+    blood_dates = list(ctx.get("blood_dates") or []) if ctx else []
+    blood_date = _scheme_date_for_seq(blood_dates, order.blood_collection_seq)
+    scheme = _immune_batch_fields(project, mice, steps, blood_date)
+    return {
+        **scheme,
+        "blood_collection_date": blood_date,
+    }
+
+
+def _follow_values_equal(key: str, submitted: Any, baseline: Any) -> bool:
+    if key in ("mouse_count", "facs_plate_count", "elisa_plate_count"):
+        return submitted == baseline
+    if key == "blood_collection_date":
+        return (_normalize_blood_collection_date(submitted) or "") == (
+            _normalize_blood_collection_date(baseline) or ""
+        )
+    return (str(submitted or "").strip()) == (str(baseline or "").strip())
+
+
+def _apply_batch_overrides_on_edit(
+    order: SerumTiterOrder,
+    overrides: dict[str, Any],
+    baseline: dict[str, Any],
+) -> None:
+    """表内已是 NULL 且提交值仍等于方案推导 → 保持跟随，避免误写成覆盖。"""
+    for key, value in overrides.items():
+        if key not in FOLLOWABLE_BATCH_KEYS:
+            continue
+        if getattr(order, key) is None and _follow_values_equal(key, value, baseline.get(key)):
+            continue
+        setattr(order, key, value)
+
+
+def _parse_blood_collection_seq(raw: Any) -> int | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        seq = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("采血次数须为整数") from exc
+    if seq < 1:
+        raise ValueError("采血次数须为正整数")
+    return seq
+
+
+def _normalize_titer_order_priority(raw: Any) -> str:
+    value = str(raw or "").strip() or TITER_ORDER_PRIORITY_DEFAULT
+    if value not in TITER_ORDER_PRIORITIES:
+        raise ValueError(f"检测优先级须为：{'、'.join(TITER_ORDER_PRIORITIES)}")
+    return value
+
+
+def get_titer_order_batch_preview(db: Session, experiment_id: str) -> dict[str, Any]:
+    project, batch, steps = _immune_batch_for_experiment(db, experiment_id)
+    blood_dates = _all_blood_collection_dates(steps)
+    preview = _batch_fields_to_preview(batch)
+    # 采血日默认留空并按次数跟随方案，仅用户填写自定义日期时写入。
+    preview["blood_collection_date"] = ""
+    preview["blood_collection_seq"] = _default_blood_collection_seq(db, project.experiment_id, steps)
+    return {
+        "experiment_id": project.experiment_id,
+        "project_code": project.project_code or "",
+        "target_name": project.target_name or "",
+        "blood_collections": _blood_collections_payload(blood_dates),
+        **preview,
+    }
+
+
+def _order_to_list_item(
+    order: SerumTiterOrder,
+    project: SerumImmProject,
+    ctx: dict[str, Any] | None = None,
+) -> dict:
+    item = order.to_dict()
+    item.update(_resolve_followable_fields(order, project, ctx))
+    blood_dates = list(ctx.get("blood_dates") or []) if ctx else []
+    item.update(
+        {
+            "project_id": project.id,
+            "project_code": project.project_code or "",
+            "target_name": project.target_name or "",
+            "target_codes": project.target_codes if isinstance(project.target_codes, list) else [],
+            "immune_owner": project.owner or "",
+            "reviewer": project.reviewer or "",
+            "immune_status": project.project_status or "",
+            "blood_collections": _blood_collections_payload(blood_dates),
+            "following": {
+                "cage_position": order.cage_position is None,
+                "blood_collection_date": order.blood_collection_date is None,
+                "mouse_count": order.mouse_count is None,
+                "assay_method": order.assay_method is None,
+                "facs_plate_count": order.facs_plate_count is None,
+                "elisa_plate_count": order.elisa_plate_count is None,
+            },
+        }
+    )
+    return item
+
+
+def _latest_titer_flow_id_subquery(*, source_ids: list[str] | None = None):
+    stmt = (
+        select(
+            MegaFlowWorkOrder.source_id.label("source_id"),
+            func.max(MegaFlowWorkOrder.id).label("max_id"),
+        )
+        .where(
+            MegaFlowWorkOrder.orderType == TITER_FLOW_ORDER_TYPE,
+            MegaFlowWorkOrder.source_id.is_not(None),
+            MegaFlowWorkOrder.source_id != "",
+        )
+        .group_by(MegaFlowWorkOrder.source_id)
+    )
+    if source_ids is not None:
+        stmt = stmt.where(MegaFlowWorkOrder.source_id.in_(source_ids))
+    return stmt.subquery()
+
+
+def _latest_titer_flow_status_subquery():
+    latest_id = _latest_titer_flow_id_subquery()
+    return (
+        select(
+            MegaFlowWorkOrder.source_id.label("source_id"),
+            MegaFlowWorkOrder.status.label("status"),
+        )
+        .join(latest_id, MegaFlowWorkOrder.id == latest_id.c.max_id)
+        .subquery()
+    )
+
+
+def _latest_flow_status_by_titer_ids(db: Session, titer_order_ids: list[str]) -> dict[str, str]:
+    ids = [str(value).strip() for value in titer_order_ids if str(value or "").strip()]
+    if not ids:
+        return {}
+    latest_id = _latest_titer_flow_id_subquery(source_ids=ids)
+    rows = db.execute(
+        select(MegaFlowWorkOrder.source_id, MegaFlowWorkOrder.status).join(
+            latest_id, MegaFlowWorkOrder.id == latest_id.c.max_id
+        )
+    ).all()
+    return {str(source_id): str(status or "") for source_id, status in rows if source_id}
+
+
+def _apply_flow_status_to_items(db: Session, items: list[dict]) -> list[dict]:
+    status_map = _latest_flow_status_by_titer_ids(db, [item.get("titer_order_id") or "" for item in items])
+    for item in items:
+        status = status_map.get(str(item.get("titer_order_id") or "").strip(), "")
+        item["order_status"] = status
+        item["order_status_label"] = ORDER_STATUS_LABELS.get(status, status) if status else ""
+    return items
+
+
+def _enrich_order_rows(
+    db: Session,
+    rows: list[tuple[SerumTiterOrder, SerumImmProject]],
+) -> list[dict]:
+    exp_ids = [project.experiment_id for _order, project in rows if project.experiment_id]
+    contexts = _build_derive_contexts(db, exp_ids)
+    items = [
+        _order_to_list_item(order, project, contexts.get(order.experiment_id))
+        for order, project in rows
+    ]
+    return _apply_flow_status_to_items(db, items)
+
+
+def _blood_date_in_range(value: str, start: str | None, end: str | None) -> bool:
+    date_value = _normalize_blood_collection_date(value) or ""
+    if not date_value:
+        return False
+    if start and date_value < start:
+        return False
+    if end and date_value > end:
+        return False
+    return True
+
+
+def _titer_order_query():
+    return (
+        select(SerumTiterOrder, SerumImmProject)
+        .join(SerumImmProject, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
+        .where(or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"))
+    )
+
+
+def _latest_order_status_expr():
+    return (
+        select(MegaFlowWorkOrder.status)
+        .where(
+            MegaFlowWorkOrder.orderType == TITER_FLOW_ORDER_TYPE,
+            MegaFlowWorkOrder.source_id == SerumTiterOrder.titer_order_id,
+        )
+        .order_by(MegaFlowWorkOrder.id.desc())
+        .limit(1)
+        .correlate(SerumTiterOrder)
+        .scalar_subquery()
+    )
+
+
+# 笼位和采血日期主要由免疫步骤推导，无法可靠映射为 SQL 表头筛选；采血日期的筛选与排序均在内存中完成。
+HEADER_COLUMNS: dict[str, HeaderColumn] = {
+    "project_code": HeaderColumn(SerumImmProject.project_code),
+    "target_name": target_column(SerumImmProject.target_name, SerumImmProject.target_codes),
+    "mouse_count": HeaderColumn(func.coalesce(SerumTiterOrder.mouse_count, _scheme_mouse_count_expr(), 0), "number"),
+    "assay_method": HeaderColumn(_assay_method_expr(), "enum"),
+    "facs_plate_count": HeaderColumn(func.coalesce(_assay_plate_expr("FACS"), 0), "number"),
+    "elisa_plate_count": HeaderColumn(func.coalesce(_assay_plate_expr("ELISA"), 0), "number"),
+    "immune_owner": HeaderColumn(SerumImmProject.owner, "enum"),
+    "reviewer": HeaderColumn(SerumImmProject.reviewer, "enum"),
+    "lab_notebook": HeaderColumn(SerumTiterOrder.lab_notebook),
+    "titer_owners": json_array_column(SerumTiterOrder.titer_owners),
+    "test_dates": json_array_column(SerumTiterOrder.test_dates),
+    "serum_status": HeaderColumn(SerumTiterOrder.serum_status, "enum", order=TITER_SERUM_STATUS_ORDER),
+    "priority": HeaderColumn(SerumTiterOrder.priority, "enum", order=TITER_ORDER_PRIORITIES),
+    "remark": HeaderColumn(SerumTiterOrder.remark),
+    "summary": HeaderColumn(SerumTiterOrder.summary),
+    "order_status": HeaderColumn(_latest_order_status_expr(), "enum"),
+    "immune_status": HeaderColumn(SerumImmProject.project_status, "enum"),
+}
+
+
+def _titer_order_sql_order_by(data: dict[str, Any]) -> list:
+    spec = HEADER_COLUMNS.get(str(data.get("sort_field") or ""))
+    if spec is None:
+        return [SerumTiterOrder.id.desc()]
+    return list(header_sort_clauses(spec, str(data.get("sort_dir") or ""), SerumTiterOrder.id))
+
+
+def _sorts_by_blood_date(data: dict[str, Any]) -> bool:
+    return str(data.get("sort_field") or "") == "blood_collection_date"
+
+
+def _sort_by_blood_date(items: list, data: dict[str, Any], blood_date, row_id) -> None:
+    """采血日期按免疫步骤推算，只能在内存里排序；空的总在最后。"""
+    items.sort(key=row_id, reverse=True)
+    items.sort(key=blood_date, reverse=str(data.get("sort_dir") or "") == "desc")
+    items.sort(key=lambda item: not blood_date(item))
+
+
+def _empty_titer_owners_condition():
+    return or_(
+        SerumTiterOrder.titer_owners.is_(None),
+        cast(SerumTiterOrder.titer_owners, String).in_(("[]", "null")),
+    )
+
+
+def _empty_test_dates_condition():
+    return func.json_length(func.coalesce(SerumTiterOrder.test_dates, text("JSON_ARRAY()"))) == 0
+
+
+def _serum_status_pre_tested_condition():
+    return or_(
+        SerumTiterOrder.serum_status.is_(None),
+        SerumTiterOrder.serum_status == "",
+        SerumTiterOrder.serum_status.notin_(TITER_SERUM_STATUS_POST_TEST),
+    )
+
+
+def _titer_order_status_clause(order_status: str):
+    latest_flow = _latest_titer_flow_status_subquery()
+    return SerumTiterOrder.titer_order_id.in_(
+        select(latest_flow.c.source_id).where(latest_flow.c.status == order_status)
+    )
+
+
+def _titer_target_pairs():
+    return (
+        select(SerumImmProject.target_name, SerumImmProject.target_codes)
+        .join(SerumTiterOrder, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
+        .where(or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"))
+    )
+
+
+def _apply_titer_order_list_filters(
+    stmt,
+    data: dict[str, Any],
+    *,
+    db: Session | None = None,
+    header_except: str | None = None,
+):
+    titer_order_id = str(data.get("titer_order_id") or "").strip()
+    if titer_order_id:
+        stmt = stmt.where(SerumTiterOrder.titer_order_id == titer_order_id)
+    project_code = str(data.get("project_code") or "").strip()
+    project_codes = data.get("project_codes")
+    if project_codes:
+        codes = [str(code).strip() for code in project_codes if str(code or "").strip()]
+        if codes:
+            stmt = stmt.where(
+                or_(
+                    SerumImmProject.project_code.in_(codes),
+                    SerumImmProject.experiment_id.in_(codes),
+                    SerumTiterOrder.experiment_id.in_(codes),
+                )
+            )
+    elif project_code:
+        pattern = f"%{like_literal(project_code)}%"
+        stmt = stmt.where(
+            or_(
+                SerumImmProject.project_code.like(pattern, escape="\\"),
+                SerumImmProject.experiment_id.like(pattern, escape="\\"),
+                SerumTiterOrder.experiment_id.like(pattern, escape="\\"),
+            )
+        )
+    target_clause = recorded_target_clause(
+        db,
+        SerumImmProject.target_name,
+        SerumImmProject.target_codes,
+        data.get("target_name"),
+        _titer_target_pairs(),
+    )
+    if target_clause is not None:
+        stmt = stmt.where(target_clause)
+    if data.get("titer_owner_unassigned"):
+        stmt = stmt.where(_empty_titer_owners_condition())
+    else:
+        stmt = restrict(
+            stmt,
+            data.get("titer_owner"),
+            lambda owner: func.json_overlaps(SerumTiterOrder.titer_owners, json.dumps([owner])),
+        )
+    stmt = restrict(stmt, data.get("immune_owner"), lambda value: SerumImmProject.owner == value)
+    stmt = restrict(stmt, data.get("reviewer"), lambda value: SerumImmProject.reviewer == value)
+    stmt = restrict(
+        stmt,
+        data.get("immune_status"),
+        lambda value: SerumImmProject.project_status == value,
+    )
+    stmt = restrict(stmt, data.get("serum_status"), lambda value: SerumTiterOrder.serum_status == value)
+    stmt = restrict(stmt, data.get("priority"), lambda value: SerumTiterOrder.priority == value)
+    stmt = restrict(stmt, data.get("order_status"), _titer_order_status_clause)
+    stmt = _apply_assay_method_filter(stmt, data.get("assay_method"))
+    stmt = stmt.where(*header_filter_clauses(db, HEADER_COLUMNS, data.get("field_filters"), except_field=header_except))
+    summary_empty = bool(data.get("summary_empty"))
+    summary_filled = bool(data.get("summary_filled"))
+    if summary_empty and not summary_filled:
+        stmt = stmt.where(or_(SerumTiterOrder.summary.is_(None), SerumTiterOrder.summary == ""))
+    elif summary_filled and not summary_empty:
+        stmt = stmt.where(SerumTiterOrder.summary.is_not(None), SerumTiterOrder.summary != "")
+    if data.get("test_dates_empty"):
+        stmt = stmt.where(_empty_test_dates_condition())
+    elif data.get("tested_unsubmitted"):
+        stmt = stmt.where(~_empty_test_dates_condition(), _serum_status_pre_tested_condition())
+    else:
+        test_start, test_end = _filter_date_bounds(data, "test_dates_start", "test_dates_end")
+        if test_start or test_end:
+            stmt = stmt.where(
+                _test_dates_in_range_clause(
+                    test_start or "0000-01-01",
+                    test_end or "9999-12-31",
+                )
+            )
+    return stmt
+
+
+def _titer_order_list_items(db: Session, data: dict[str, Any]) -> list[dict]:
+    stmt = _apply_titer_order_list_filters(_titer_order_query(), data, db=db)
+    blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
+    rows = db.execute(stmt.order_by(*_titer_order_sql_order_by(data))).all()
+    if blood_start or blood_end:
+        rows = [(order, project) for order, project, _ in _with_blood_dates(db, rows, blood_start, blood_end, True)]
+    items = _enrich_order_rows(db, rows)
+    if _sorts_by_blood_date(data):
+        _sort_by_blood_date(items, data, lambda item: item.get("blood_collection_date") or "", lambda item: int(item.get("id") or 0))
+    return items
+
+
+def _with_blood_dates(
+    db: Session,
+    rows: list,
+    blood_start: str | None,
+    blood_end: str | None,
+    need_blood_date: bool,
+) -> list[tuple[SerumTiterOrder, SerumImmProject, str]]:
+    """补上实际采血日期（单上没有就按免疫步骤推），并按采血日期区间过滤；该条件无法在 SQL 里表达。"""
+    blood_dates_map = (
+        _build_blood_dates_by_experiment(
+            db,
+            [project.experiment_id for order, project in rows if order.blood_collection_date is None and project.experiment_id],
+        )
+        if need_blood_date
+        else {}
+    )
+    candidates: list[tuple[SerumTiterOrder, SerumImmProject, str]] = []
+    for order, project in rows:
+        blood_date = (
+            _effective_blood_collection_date(order, blood_dates_map.get(order.experiment_id, []))
+            if need_blood_date
+            else ""
+        )
+        if (blood_start or blood_end) and not _blood_date_in_range(blood_date, blood_start, blood_end):
+            continue
+        candidates.append((order, project, blood_date))
+    return candidates
+
+
+def _blood_range_clause(db: Session, data: dict[str, Any], *, header_except: str | None = None):
+    """采血日期区间只能在内存里判断，先算出命中的工单，再作为条件交给 SQL 统计。"""
+    blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
+    if not (blood_start or blood_end):
+        return None
+    rows = db.execute(
+        _apply_titer_order_list_filters(_titer_order_query(), data, db=db, header_except=header_except)
+    ).all()
+    return SerumTiterOrder.id.in_([order.id for order, _, _ in _with_blood_dates(db, rows, blood_start, blood_end, True)])
+
+
+def get_titer_order_column_values(db: Session, data: dict[str, Any] | None) -> dict[str, Any]:
+    payload = data or {}
+    blood_clause = _blood_range_clause(db, payload, header_except=str(payload.get("field") or "").strip())
+
+    def apply_filters(stmt, scope: dict[str, Any], field: str):
+        stmt = (
+            stmt.select_from(SerumTiterOrder)
+            .join(SerumImmProject, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
+            .where(or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"))
+        )
+        if blood_clause is not None:
+            stmt = stmt.where(blood_clause)
+        return _apply_titer_order_list_filters(stmt, scope, db=db, header_except=field)
+
+    return header_column_values(
+        db,
+        HEADER_COLUMNS,
+        payload,
+        apply_filters,
+        id_column=SerumTiterOrder.id,
+        labels={"order_status": ORDER_STATUS_LABELS},
+    )
+
+
+def get_titer_order_list(db: Session, data: dict[str, Any]) -> dict:
+    page, limit = parse_page_limit(data, max_limit=MAX_LIST_LIMIT)
+    stmt = _apply_titer_order_list_filters(_titer_order_query(), data, db=db)
+
+    blood_start, blood_end = _filter_date_bounds(data, "blood_collection_start", "blood_collection_end")
+
+    if blood_start or blood_end or _sorts_by_blood_date(data):
+        rows = db.execute(stmt.order_by(*_titer_order_sql_order_by(data))).all()
+        candidates = _with_blood_dates(db, rows, blood_start, blood_end, True)
+        if _sorts_by_blood_date(data):
+            _sort_by_blood_date(candidates, data, lambda item: item[2], lambda item: int(item[0].id or 0))
+        total = len(candidates)
+        start = max(page - 1, 0) * limit
+        page_rows = [(order, project) for order, project, _ in candidates[start : start + limit]]
+        return {"items": _enrich_order_rows(db, page_rows), "total": total}
+
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.execute(
+        stmt.order_by(*_titer_order_sql_order_by(data)).offset((page - 1) * limit).limit(limit)
+    ).all()
+    return {"items": _enrich_order_rows(db, rows), "total": total}
+
+
+def create_titer_order_for_blood_collection_if_absent(
+    db: Session,
+    project: SerumImmProject,
+    blood_collection_date: str,
+) -> bool:
+    """
+    仅为当前采血创建一张空单：写入 blood_collection_seq，批次字段保持 NULL。
+    已有相同 seq 时跳过，不补齐更早次数，也不提交事务。
+    """
+    experiment_id = str(project.experiment_id or "").strip()
+    blood_date = _normalize_blood_collection_date(blood_collection_date)
+    if not experiment_id or not blood_date:
+        return False
+
+    steps = list(db.scalars(select(SerumImmStep).where(SerumImmStep.experiment_id == experiment_id)).all())
+    blood_dates = _all_blood_collection_dates(steps)
+    seq = _blood_collection_seq_for_date(blood_dates, blood_date)
+    if not seq:
+        return False
+
+    exists = db.scalar(
+        select(SerumTiterOrder.id).where(
+            SerumTiterOrder.experiment_id == experiment_id,
+            SerumTiterOrder.blood_collection_seq == seq,
+        ).limit(1)
+    )
+    if exists:
+        return False
+
+    db.add(
+        SerumTiterOrder(
+            experiment_id=experiment_id,
+            titer_order_id=generate_titer_order_id(db, project.project_code, experiment_id),
+            titer_owners=[],
+            test_dates=[],
+            serum_status=(
+                PENDING_BLOOD_COLLECTION_STATUS
+                if seq < 2
+                else PENDING_BLOOD_COLLECTION_BOOST_STATUS
+            ),
+            priority=TITER_ORDER_PRIORITY_DEFAULT,
+            blood_collection_seq=seq,
+            cage_position=None,
+            blood_collection_date=None,
+            mouse_count=None,
+            assay_method=None,
+            facs_plate_count=None,
+            elisa_plate_count=None,
+        )
+    )
+    return True
+
+
+def _sync_blood_collection_seq(db: Session, order: SerumTiterOrder) -> None:
+    """按工单采血日回填第 N 次；无日期或方案对不上则保持现有 seq。"""
+    blood_date = _normalize_blood_collection_date(order.blood_collection_date)
+    if not blood_date or not order.experiment_id:
+        return
+    steps = list(
+        db.scalars(select(SerumImmStep).where(SerumImmStep.experiment_id == order.experiment_id)).all()
+    )
+    seq = _blood_collection_seq_for_date(_all_blood_collection_dates(steps), blood_date)
+    if seq:
+        order.blood_collection_seq = seq
+
+
+def save_titer_order(db: Session, data: dict[str, Any]) -> dict:
+    order_id = data.get("id")
+    project: SerumImmProject | None = None
+    is_create = not order_id
+    if order_id:
+        order = db.get(SerumTiterOrder, int(order_id), with_for_update=True)
+        if not order:
+            raise NotFoundError("效价工单不存在")
+        project = db.scalar(
+            select(SerumImmProject).where(SerumImmProject.experiment_id == order.experiment_id)
+        )
+    else:
+        experiment_id = str(data.get("experiment_id") or "").strip()
+        if not experiment_id:
+            raise ValueError("请选择免疫实验")
+        project, immune_batch, steps = _immune_batch_for_experiment(db, experiment_id)
+        # 手工创建时预填方法和笼位等字段；采血日保持 NULL，由 seq 跟随方案。
+        immune_batch = dict(immune_batch)
+        immune_batch["blood_collection_date"] = None
+        order = SerumTiterOrder(
+            experiment_id=experiment_id,
+            titer_order_id=generate_titer_order_id(db, project.project_code, experiment_id),
+            titer_owners=[],
+            test_dates=[],
+            priority=TITER_ORDER_PRIORITY_DEFAULT,
+            blood_collection_seq=_default_blood_collection_seq(db, experiment_id, steps),
+        )
+        _apply_batch_fields_to_order(order, immune_batch)
+        db.add(order)
+
+    if "blood_collection_seq" in data:
+        order.blood_collection_seq = _parse_blood_collection_seq(data.get("blood_collection_seq"))
+
+    overrides = _normalize_batch_fields_payload(data)
+    if overrides:
+        if is_create:
+            _apply_batch_overrides(order, overrides)
+        else:
+            contexts = _build_derive_contexts(db, [order.experiment_id])
+            baseline = _scheme_follow_baseline(
+                order, project, contexts.get(order.experiment_id)
+            ) if project else {}
+            _apply_batch_overrides_on_edit(order, overrides, baseline)
+
+    if "titer_owners" in data:
+        order.titer_owners = _normalize_owner_names(data.get("titer_owners"))
+    if "test_dates" in data:
+        order.test_dates = _normalize_test_dates(data.get("test_dates"))
+    if "serum_status" in data:
+        order.serum_status = str(data.get("serum_status") or "").strip() or None
+    if "summary" in data:
+        summary = clean_field_text(data.get("summary"), keep_breaks=True)
+        if len(summary) > 500:
+            raise ValueError("效价小结不能超过 500 字")
+        order.summary = summary or None
+    if "remark" in data:
+        order.remark = clean_field_text(data.get("remark"), keep_breaks=True) or None
+    if "lab_notebook" in data:
+        lab_notebook = str(data.get("lab_notebook") or "").strip()
+        if len(lab_notebook) > 64:
+            raise ValueError("实验记录本号过长")
+        order.lab_notebook = lab_notebook or None
+    if "priority" in data:
+        order.priority = _normalize_titer_order_priority(data.get("priority"))
+
+    _sync_blood_collection_seq(db, order)
+
+    db.commit()
+    db.refresh(order)
+    if project is None:
+        return order.to_dict()
+    contexts = _build_derive_contexts(db, [order.experiment_id])
+    item = _order_to_list_item(order, project, contexts.get(order.experiment_id))
+    return _apply_flow_status_to_items(db, [item])[0]
+
+
+def delete_titer_order(db: Session, order_id: int) -> None:
+    order = db.get(SerumTiterOrder, int(order_id))
+    if not order:
+        raise NotFoundError("效价工单不存在")
+    db.delete(order)
+    db.commit()
+
+
+def _current_week_range() -> tuple[datetime, datetime]:
+    now = now_local()
+    start = datetime.combine((now - timedelta(days=now.weekday())).date(), time.min)
+    end = datetime.combine((start + timedelta(days=6)).date(), time.max)
+    return start, end
+
+
+def _collect_titer_owner_names(db: Session) -> list[str]:
+    rows = db.scalars(
+        select(SerumTiterOrder.titer_owners).where(SerumTiterOrder.titer_owners.is_not(None))
+    ).all()
+    seen: set[str] = set()
+    for owners in rows:
+        if not isinstance(owners, list):
+            continue
+        for owner in owners:
+            name = str(owner or "").strip()
+            if name:
+                seen.add(name)
+    return sorted(seen)
+
+
+def _collect_titer_assay_method_names(db: Session) -> list[str]:
+    method_expr = func.coalesce(SerumTiterOrder.assay_method, SerumImmProject.assay_method)
+    rows = db.execute(
+        select(method_expr)
+        .join(SerumImmProject, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
+        .where(
+            or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"),
+            method_expr.is_not(None),
+            method_expr != "",
+        )
+        .distinct()
+        .order_by(method_expr)
+    ).all()
+    return [row[0] for row in rows if row[0]]
+
+
+def _collect_titer_project_names(db: Session, column) -> list[str]:
+    rows = db.execute(
+        select(column)
+        .join(SerumTiterOrder, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
+        .where(
+            or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"),
+            column.is_not(None),
+            column != "",
+        )
+        .distinct()
+        .order_by(column)
+    ).all()
+    return [row[0] for row in rows if row[0]]
+
+
+def _collect_titer_immune_status_names(db: Session) -> list[str]:
+    rows = db.execute(
+        select(SerumImmProject.project_status)
+        .join(SerumTiterOrder, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
+        .where(
+            or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"),
+            SerumImmProject.project_status.is_not(None),
+            SerumImmProject.project_status != "",
+        )
+        .distinct()
+        .order_by(SerumImmProject.project_status)
+    ).all()
+    return [row[0] for row in rows if row[0]]
+
+
+def _collect_titer_serum_status_names(db: Session) -> list[str]:
+    rows = db.execute(
+        select(SerumTiterOrder.serum_status)
+        .join(SerumImmProject, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
+        .where(
+            or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"),
+            SerumTiterOrder.serum_status.is_not(None),
+            SerumTiterOrder.serum_status != "",
+        )
+        .distinct()
+        .order_by(SerumTiterOrder.serum_status)
+    ).all()
+    return [row[0] for row in rows if row[0]]
+
+
+def search_titer_order_targets(db: Session, keyword: str = "", limit: int = DEFAULT_RECORDED_TARGET_LIMIT) -> list[dict]:
+    return recorded_target_search(db, _titer_target_pairs(), keyword, limit)
+
+
+def get_titer_order_page_meta(db: Session) -> dict:
+    return {
+        "owners": _collect_titer_owner_names(db),
+        "assay_methods": _collect_titer_assay_method_names(db),
+        "immune_owners": _collect_titer_project_names(db, SerumImmProject.owner),
+        "reviewers": _collect_titer_project_names(db, SerumImmProject.reviewer),
+        "immune_statuses": _collect_titer_immune_status_names(db),
+        "serum_statuses": _collect_titer_serum_status_names(db),
+    }
+
+
+# 统计块自行切换的负责人、血清状态、小结和检测日期不参与统计范围。
+_TITER_STAT_OWN_KEYS = frozenset({
+    "titer_order_id",
+    "titer_owner",
+    "titer_owner_unassigned",
+    "serum_status",
+    "summary_empty",
+    "summary_filled",
+    "test_dates_empty",
+    "tested_unsubmitted",
+    "test_dates_start",
+    "test_dates_end",
+})
+_TITER_STAT_OWN_HEADER_FIELDS = frozenset({"titer_owners", "serum_status", "summary", "test_dates"})
+
+
+def get_titer_order_stats(db: Session, data: dict[str, Any] | None = None) -> dict[str, int]:
+    scope = without_header_fields(
+        {key: value for key, value in (data or {}).items() if key not in _TITER_STAT_OWN_KEYS},
+        _TITER_STAT_OWN_HEADER_FIELDS,
+    )
+    join_on = SerumImmProject.experiment_id == SerumTiterOrder.experiment_id
+    deleted_filter = or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted")
+    pending_cond = and_(
+        SerumTiterOrder.serum_status == "已采血",
+        _empty_test_dates_condition(),
+    )
+    to_report_cond = and_(
+        SerumTiterOrder.serum_status == "已检测",
+        or_(SerumTiterOrder.summary.is_(None), SerumTiterOrder.summary == ""),
+    )
+    week_start, week_end = _current_week_range()
+    this_week_cond = _test_dates_in_range_clause(
+        week_start.date().isoformat(),
+        week_end.date().isoformat(),
+    )
+    facs_expr = func.coalesce(SerumTiterOrder.facs_plate_count, SerumImmProject.facs_plate_count, 0)
+    elisa_expr = func.coalesce(SerumTiterOrder.elisa_plate_count, SerumImmProject.elisa_plate_count, 0)
+
+    stmt = (
+        select(
+            func.coalesce(func.sum(case((_empty_titer_owners_condition(), 1), else_=0)), 0),
+            func.coalesce(func.sum(case((pending_cond, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((to_report_cond, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((this_week_cond, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((pending_cond, facs_expr), else_=0)), 0),
+            func.coalesce(func.sum(case((pending_cond, elisa_expr), else_=0)), 0),
+        )
+        .select_from(SerumTiterOrder)
+        .join(SerumImmProject, join_on)
+        .where(deleted_filter)
+    )
+    blood_clause = _blood_range_clause(db, scope)
+    if blood_clause is not None:
+        stmt = stmt.where(blood_clause)
+    row = db.execute(_apply_titer_order_list_filters(stmt, scope, db=db)).one()
+
+    return {
+        "unassigned": int(row[0] or 0),
+        "pending": int(row[1] or 0),
+        "pendingFacsPlates": int(row[4] or 0),
+        "pendingElisaPlates": int(row[5] or 0),
+        "thisWeek": int(row[3] or 0),
+        "toReport": int(row[2] or 0),
+    }
+
+
+_COMPLETED_SERUM_STATUSES = frozenset({"已检测", "已交接", "已销毁"})
+
+
+def _month_bounds(month_key: str) -> tuple[str, str]:
+    year, month = int(month_key[:4]), int(month_key[5:7])
+    start = datetime(year, month, 1).date()
+    if month == 12:
+        end = datetime(year, 12, 31).date()
+    else:
+        end = datetime(year, month + 1, 1).date() - timedelta(days=1)
+    return start.isoformat(), end.isoformat()
+
+
+def _test_dates_overlap_range(test_dates: Any, range_start: str, range_end: str) -> bool:
+    for item in _normalize_test_dates(test_dates):
+        if range_start <= item <= range_end:
+            return True
+    return False
+
+
+def get_titer_owner_workload_stats(
+    db: Session,
+    month_start: str | None = None,
+    month_end: str | None = None,
+) -> dict[str, Any]:
+    period_start = period_end = None
+    start_key = str(month_start or "").strip()
+    if len(start_key) == 7 and start_key[4] == "-":
+        period_start, _ = _month_bounds(start_key)
+        end_key = str(month_end or start_key).strip()
+        if len(end_key) != 7:
+            end_key = start_key
+        _, period_end = _month_bounds(end_key)
+        if period_start > period_end:
+            period_start, period_end = period_end, period_start
+
+    def _slot() -> dict[str, dict[str, float]]:
+        zero = {"orders": 0.0, "facs": 0.0, "elisa": 0.0}
+        return {"total": zero.copy(), "completed": zero.copy(), "remaining": zero.copy(), "period": zero.copy()}
+
+    def _add(target: dict[str, float], unit: dict[str, float]) -> None:
+        for key in ("orders", "facs", "elisa"):
+            target[key] = round(target[key] + unit[key], 1)
+
+    buckets: dict[str, dict[str, dict[str, float]]] = {}
+    summary = _slot()
+    for order, project in db.execute(_titer_order_query()).all():
+        owners = _normalize_owner_names(order.titer_owners)
+        if not owners:
+            continue
+        count = len(owners)
+        facs_plates = _coalesce_follow_int(order.facs_plate_count, project.facs_plate_count) or 0
+        elisa_plates = _coalesce_follow_int(order.elisa_plate_count, project.elisa_plate_count) or 0
+        unit = {
+            "orders": 1,
+            "facs": round(facs_plates / count, 1),
+            "elisa": round(elisa_plates / count, 1),
+        }
+        raw_unit = {
+            "orders": 1,
+            "facs": float(facs_plates),
+            "elisa": float(elisa_plates),
+        }
+        done = str(order.serum_status or "").strip() in _COMPLETED_SERUM_STATUSES
+        in_period = bool(
+            period_start
+            and period_end
+            and _test_dates_overlap_range(order.test_dates, period_start, period_end)
+        )
+
+        for owner in owners:
+            bucket = buckets.setdefault(owner, _slot())
+            _add(bucket["total"], unit)
+            _add(bucket["completed" if done else "remaining"], unit)
+            if in_period:
+                _add(bucket["period"], unit)
+
+        _add(summary["total"], raw_unit)
+        _add(summary["completed" if done else "remaining"], raw_unit)
+        if in_period:
+            _add(summary["period"], raw_unit)
+
+    items = [{"owner": owner, **metrics} for owner, metrics in buckets.items()]
+    return {"items": items, "summary": summary}
+
+
+def get_project_options(db: Session, keyword: str = "", limit: int = 20) -> list[dict]:
+    keyword = (keyword or "").strip()
+    limit = min(max(int(limit or 20), 1), 50)
+    stmt = (
+        select(SerumImmProject)
+        .where(
+            SerumImmProject.experiment_id.is_not(None),
+            SerumImmProject.experiment_id != "",
+            or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"),
+        )
+        .order_by(SerumImmProject.id.desc())
+    )
+    if keyword:
+        pattern = f"%{like_literal(keyword)}%"
+        stmt = stmt.where(
+            or_(
+                SerumImmProject.project_code.like(pattern, escape="\\"),
+                SerumImmProject.experiment_id.like(pattern, escape="\\"),
+                SerumImmProject.target_name.like(pattern, escape="\\"),
+            )
+        )
+    projects = db.scalars(stmt.limit(limit)).all()
+    return [
+        {
+            "id": project.id,
+            "experiment_id": project.experiment_id,
+            "project_code": project.project_code,
+            "project_name": project.project_name,
+            "target_name": project.target_name,
+            "owner": project.owner,
+            "project_status": project.project_status,
+        }
+        for project in projects
+    ]
+
+
+def _replace_children(db: Session, model_class, experiment_id: str, items: list[dict], id_field: str = "id") -> list[dict]:
+    if not lock_experiment_owner(db, experiment_id):
+        raise ValueError("项目不存在或实验 ID 已变更")
+    if not isinstance(items, list):
+        raise ValueError("子表数据格式不正确")
+    if any(not isinstance(item, dict) for item in items):
+        raise ValueError("子表数据格式不正确")
+    valid_fields = set(model_class.__table__.columns.keys())
+    existing = list(
+        db.scalars(
+            select(model_class).where(model_class.experiment_id == experiment_id)
+        ).all()
+    )
+    existing_by_id = {
+        int(getattr(item, id_field)): item
+        for item in existing
+    }
+    supplied_ids: list[int] = []
+    for item in items:
+        raw_id = item.get(id_field)
+        if raw_id in (None, ""):
+            continue
+        try:
+            item_id = int(raw_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("子表记录 ID 不正确") from exc
+        if item_id <= 0:
+            raise ValueError("子表记录 ID 不正确")
+        supplied_ids.append(item_id)
+    if len(supplied_ids) != len(set(supplied_ids)):
+        raise ValueError("子表记录 ID 重复")
+    if any(item_id not in existing_by_id for item_id in supplied_ids):
+        raise ValueError("子表记录不属于当前项目")
+
+    submitted_ids: set[int] = set()
+    created_objs = []
+    for item in items:
+        data = {
+            key: value
+            for key, value in item.items()
+            if key in valid_fields and key not in {id_field, "experiment_id"}
+        }
+        raw_id = item.get(id_field)
+        if raw_id not in (None, ""):
+            item_id = int(raw_id)
+            obj = existing_by_id[item_id]
+            for key, value in data.items():
+                setattr(obj, key, value)
+            submitted_ids.add(item_id)
+            continue
+        data["experiment_id"] = experiment_id
+        obj = model_class(**data)
+        db.add(obj)
+        created_objs.append(obj)
+
+    db.flush()
+    keep_ids = submitted_ids | {getattr(obj, id_field) for obj in created_objs if getattr(obj, id_field, None)}
+    for obj in existing:
+        if getattr(obj, id_field) not in keep_ids:
+            db.delete(obj)
+    db.commit()
+    return [item.to_dict() for item in db.scalars(select(model_class).where(model_class.experiment_id == experiment_id)).all()]
+
+
+def save_targets(db: Session, experiment_id: str, targets: list[dict]) -> list[dict]:
+    return _replace_children(db, SerumTiterTarget, experiment_id, targets)
+
+
+def save_pcs(db: Session, experiment_id: str, pcs: list[dict]) -> list[dict]:
+    return _replace_children(db, SerumTiterPc, experiment_id, pcs)
+
+
+def get_facs_plates(db: Session, experiment_id: str) -> list[dict]:
+    return [item.to_dict() for item in db.scalars(select(SerumFacsPlate).where(SerumFacsPlate.experiment_id == experiment_id)).all()]
+
+
+PLATE_FIELDS = [
+    "qr_code",
+    "image_file_id",
+    "excel_file_id",
+    "immune_stage",
+    "x_axis",
+    "y_axis",
+    "cell_target_id",
+    "pc_upper_id",
+    "pc_lower_id",
+    "upper_group",
+    "lower_group",
+    "upper_mouse_list",
+    "lower_mouse_list",
+    "upper_slot_groups",
+    "lower_slot_groups",
+    "positive_well_list",
+    "instrument_type",
+]
+
+
+def save_facs_plate(db: Session, plate_data: dict[str, Any]) -> dict:
+    experiment_id = plate_data.get("experiment_id")
+    if not experiment_id:
+        raise ValueError("缺少实验 ID")
+
+    plate_id = plate_data.get("id")
+    if plate_id:
+        plate = db.get(SerumFacsPlate, int(plate_id))
+        if not plate:
+            raise NotFoundError("板数据不存在")
+        if plate.experiment_id != experiment_id:
+            raise ValueError("板数据不属于当前实验")
+    else:
+        plate = SerumFacsPlate(experiment_id=experiment_id)
+        db.add(plate)
+
+    for field in PLATE_FIELDS:
+        setattr(plate, field, plate_data.get(field))
+    plate.source = SOURCE_MANUAL
+    db.commit()
+    db.refresh(plate)
+    return plate.to_dict()
+
+
+def delete_facs_plate(db: Session, plate_id: int) -> None:
+    plate = db.get(SerumFacsPlate, plate_id)
+    if not plate:
+        raise NotFoundError("板数据不存在")
+    db.delete(plate)
+    db.commit()
+
+
+def get_elisa_plates(db: Session, experiment_id: str) -> list[dict]:
+    return [item.to_dict() for item in db.scalars(select(SerumElisaPlate).where(SerumElisaPlate.experiment_id == experiment_id)).all()]
+
+
+ELISA_PLATE_FIELDS = [
+    "qr_code",
+    "excel_file_id",
+    "immune_stage",
+    "protein_target_id",
+    "pc_id",
+    "mouse_group",
+    "antigen_type",
+    "slot_groups",
+    "upper_slot_list",
+    "lower_slot_list",
+    "positive_well_list",
+    "absorbance_1",
+]
+
+
+def save_elisa_plate(db: Session, plate_data: dict[str, Any]) -> dict:
+    experiment_id = plate_data.get("experiment_id")
+    if not experiment_id:
+        raise ValueError("缺少实验 ID")
+
+    plate_id = plate_data.get("id")
+    if plate_id:
+        plate = db.get(SerumElisaPlate, int(plate_id))
+        if not plate:
+            raise NotFoundError("板数据不存在")
+        if plate.experiment_id != experiment_id:
+            raise ValueError("板数据不属于当前实验")
+    else:
+        plate = SerumElisaPlate(experiment_id=experiment_id, immune_stage="")
+        db.add(plate)
+
+    for field in ELISA_PLATE_FIELDS:
+        setattr(plate, field, plate_data.get(field))
+    if not plate.immune_stage:
+        plate.immune_stage = ""
+    db.commit()
+    db.refresh(plate)
+    return plate.to_dict()
+
+
+def delete_elisa_plate(db: Session, plate_id: int) -> None:
+    plate = db.get(SerumElisaPlate, plate_id)
+    if not plate:
+        raise NotFoundError("板数据不存在")
+    db.delete(plate)
+    db.commit()
+
+
+def export_titer_order_list_workbook(db: Session, data: dict[str, Any]) -> tuple[BytesIO, str]:
+    from utils.excel import build_list_workbook, cell_text
+
+    items = _titer_order_list_items(db, data or {})
+    headers = [
+        "项目编号",
+        "实验ID",
+        "效价工单号",
+        "靶点",
+        "笼位",
+        "采血日期",
+        "采血次数",
+        "只数",
+        "检测方法",
+        "FACS",
+        "ELISA",
+        "免疫负责人",
+        "效价负责人",
+        "检测日期",
+        "血清状态",
+        "优先级",
+        "备注",
+        "效价小结",
+        "工单状态",
+        "免疫状态",
+        "审核人",
+        "实验记录本",
+    ]
+    rows = []
+    for item in items:
+        rows.append([
+            item.get("project_code"),
+            item.get("experiment_id"),
+            item.get("titer_order_id"),
+            item.get("target_name"),
+            item.get("cage_position"),
+            item.get("blood_collection_date"),
+            item.get("blood_collection_seq"),
+            item.get("mouse_count"),
+            item.get("assay_method"),
+            item.get("facs_plate_count"),
+            item.get("elisa_plate_count"),
+            item.get("immune_owner"),
+            cell_text(item.get("titer_owners")),
+            item.get("test_dates_display") or cell_text(item.get("test_dates")),
+            item.get("serum_status"),
+            item.get("priority"),
+            item.get("remark"),
+            item.get("summary"),
+            item.get("order_status_label") or item.get("order_status"),
+            item.get("immune_status"),
+            item.get("reviewer"),
+            item.get("lab_notebook"),
+        ])
+    return build_list_workbook(
+        sheet_title="效价实验列表",
+        filename_prefix="效价实验列表",
+        headers=headers,
+        rows=rows,
+    )

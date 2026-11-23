@@ -1,0 +1,17 @@
+﻿FatFish desktop pet assets for Antibody Vita (internal, non-commercial use).
+Secondary development / integration: TianBa — pet behaviour, AI agent, Antibody Vita integration,
+  and the cursors below; the third-party assets keep their original authors and licenses.
+
+webm/ — transparent WebM character animations from https://github.com/PC2005-cloud/dsh-pet
+  (MIT plugin code; character art is community / non-commercial).
+  Chinese filenames; deploy hosts need UTF-8.
+Character lineage: community OC 鲸鱼娘 / 大肥鱼 (original OC「溟月」by 上善无形; DeepSeek-element design ZipZipPipe),
+  CC BY-NC-SA style restrictions — entertainment / internal use only.
+  Do not ship commercially without replacing these skins.
+
+ball/whale-girl.png — avatar; see ball/ATTRIBUTION.txt.
+
+cursors/ — original soft cartoon drawings for this pet, only used on the pet hit target:
+- cursor-hover.png — hover glove
+- cursor-grabbing.png — dragging glove
+- cursor-hammer.png — post-reply “揍” window

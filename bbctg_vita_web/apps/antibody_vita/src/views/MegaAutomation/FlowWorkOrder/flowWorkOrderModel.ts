@@ -1,0 +1,515 @@
+import type {
+  FlowWorkOrder,
+  FlowWorkOrderCellColumn,
+  FlowWorkOrderCellPlate,
+  FlowWorkOrderPcInfo,
+  FlowWorkOrderSamplePlate,
+  FlowWorkOrderSavePayload,
+  FlowWorkOrderWell,
+} from '#/api/megaAutomation';
+
+export const PLATE_ROWS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+export const SECONDARY_ANTIBODY_OPTIONS = ['人', '猴', '鼠', '狗'];
+export const SPECIES_OPTIONS = ['人', '猴', '鼠', '狗', '猫', '空白'];
+export const CELL_TYPE_OPTIONS = ['正常', '肿瘤'];
+export const WELL_TYPE_CYCLE = ['SAMPLE', 'PC', 'NC', 'ISO', 'TAG', 'BLANK'];
+export const PC_INFO_TYPE_OPTIONS = ['SERUM', 'ISO', 'TAG'];
+export const EDITABLE_STATUSES = ['draft', 'validated', 'failed'];
+
+const WELL_PC_REF_TYPES = ['PC', 'ISO', 'TAG'];
+const WELL_TYPE_LABELS: Record<string, string> = {
+  BLANK: '空孔',
+  ISO: 'ISO',
+  NC: 'NC',
+  PC: 'PC',
+  SAMPLE: '样本',
+  TAG: 'TAG',
+};
+const EMPTY_COLUMN = {
+  batch: '',
+  catalog_no: '',
+  cell_count: '',
+  cell_name: '',
+  cell_type: '',
+  generation: '',
+  source: '',
+  species: '',
+};
+
+export interface FlowWorkOrderDefaults {
+  cellColumns?: FlowWorkOrderCellColumn[];
+  orderType?: string;
+  sampleWells?: FlowWorkOrderWell[];
+}
+
+const CELL_CONTENT_FIELDS = [
+  'batch',
+  'catalog_no',
+  'cell_count',
+  'cell_name',
+  'cell_type',
+  'generation',
+  'source',
+  'species',
+] as const;
+
+export function defaultSecondaryAntibody(orderType: unknown) {
+  return String(orderType || 'TITER').toUpperCase() === 'TITER' ? '鼠' : '人';
+}
+
+type LooseRecord = Record<string, any>;
+
+let samplePlateRowSeed = 0;
+let localPcIdSeed = 0;
+
+function record(value: unknown): LooseRecord {
+  return value && typeof value === 'object' ? value as LooseRecord : {};
+}
+
+function records(value: unknown): LooseRecord[] {
+  return Array.isArray(value) ? value.map(record) : [];
+}
+
+function createSamplePlateRowKey() {
+  return `sp-${++samplePlateRowSeed}`;
+}
+
+export function createLocalPcId() {
+  return `tmp-${++localPcIdSeed}`;
+}
+
+function wellNo(row: string, column: number) {
+  return `${row}${String(column).padStart(2, '0')}`;
+}
+
+function parseWellNo(value: unknown) {
+  const match = String(value || '').match(/^([A-H])(\d{1,2})$/i);
+  if (!match?.[1] || !match[2]) return null;
+  const rowIndex = PLATE_ROWS.indexOf(match[1].toUpperCase());
+  const column = Number.parseInt(match[2], 10);
+  return rowIndex >= 0 && column >= 1 && column <= 12 ? { column, rowIndex } : null;
+}
+
+export function wellsInRect(startNo: string, endNo: string) {
+  const start = parseWellNo(startNo);
+  const end = parseWellNo(endNo);
+  if (!start || !end) return [];
+  const result: string[] = [];
+  for (
+    let rowIndex = Math.min(start.rowIndex, end.rowIndex);
+    rowIndex <= Math.max(start.rowIndex, end.rowIndex);
+    rowIndex += 1
+  ) {
+    for (
+      let column = Math.min(start.column, end.column);
+      column <= Math.max(start.column, end.column);
+      column += 1
+    ) {
+      result.push(wellNo(PLATE_ROWS[rowIndex] || '', column));
+    }
+  }
+  return result;
+}
+
+export function formatWellSelectionLabel(nos: string[]) {
+  if (nos.length < 2) return nos[0] || '';
+  const positions = nos
+    .map(parseWellNo)
+    .filter((position): position is { column: number; rowIndex: number } => position !== null);
+  if (positions.length !== nos.length) return `已选 ${nos.length} 孔`;
+  positions.sort((a, b) => a.rowIndex - b.rowIndex || a.column - b.column);
+  const first = positions[0];
+  const last = positions[positions.length - 1];
+  if (!first || !last) return `已选 ${nos.length} 孔`;
+  const expected =
+    (Math.abs(last.rowIndex - first.rowIndex) + 1) *
+    (Math.abs(last.column - first.column) + 1);
+  return expected === nos.length
+    ? `${wellNo(PLATE_ROWS[first.rowIndex] || '', first.column)}–${wellNo(
+        PLATE_ROWS[last.rowIndex] || '',
+        last.column,
+      )}`
+    : `已选 ${nos.length} 孔`;
+}
+
+export function wellPcInfoType(value: unknown) {
+  const type = String(value || '').toUpperCase();
+  return type === 'PC' ? 'SERUM' : ['ISO', 'TAG'].includes(type) ? type : '';
+}
+
+export function normalizedWells(plate?: Partial<FlowWorkOrderSamplePlate> | null) {
+  return Array.isArray(plate?.wells) ? plate.wells : [];
+}
+
+export function rowWells(
+  plate: Partial<FlowWorkOrderSamplePlate> | null | undefined,
+  rowLabel: string,
+) {
+  return normalizedWells(plate).filter((well) => well.well_no.startsWith(rowLabel));
+}
+
+/** 仅作 Vue map / :key 用，不落库。 */
+export function cellKey(barcode: unknown, columnNo: unknown) {
+  return `${barcode || ''}|${columnNo || ''}`;
+}
+
+export function cellPlateBarcode(plate: Partial<FlowWorkOrderCellPlate>, index: number) {
+  return plate.barcode || `细胞板${index + 1}`;
+}
+
+/** 细胞板各列按 cellKey(条码, 列号) 索引。 */
+export function cellColumnsByKey(cellPlates: Partial<FlowWorkOrderCellPlate>[] | null | undefined) {
+  const map: Record<string, FlowWorkOrderCellColumn> = {};
+  (cellPlates || []).forEach((plate, plateIndex) => {
+    const barcode = cellPlateBarcode(plate, plateIndex);
+    (plate.columns || []).forEach((column) => {
+      map[cellKey(barcode, column.column_no)] = column;
+    });
+  });
+  return map;
+}
+
+/** 去掉样本板里指向「无细胞名称」列的引用。 */
+export function pruneEmptyCellRefs(order: Pick<FlowWorkOrder, 'cell_plates' | 'sample_plates'>) {
+  const named = new Set(
+    Object.entries(cellColumnsByKey(order.cell_plates))
+      .filter(([, column]) => String(column?.cell_name || '').trim())
+      .map(([key]) => key),
+  );
+  order.sample_plates.forEach((plate) => {
+    const keys = Array.isArray(plate.cell_keys) ? plate.cell_keys : [];
+    plate.cell_keys = keys.filter((key) => named.has(cellKey(key.barcode, key.column_no)));
+  });
+}
+
+export function isCellSelected(
+  plate: Partial<FlowWorkOrderSamplePlate>,
+  barcode: string,
+  columnNo: number,
+) {
+  return Array.isArray(plate.cell_keys)
+    && plate.cell_keys.some((item) => item.barcode === barcode && item.column_no === columnNo);
+}
+
+export function selectedCountInPlate(
+  plate: Partial<FlowWorkOrderSamplePlate>,
+  option: { children?: Array<{ barcode: string; columnNo: number }> },
+) {
+  return (option.children || []).filter((cell) =>
+    isCellSelected(plate, cell.barcode, cell.columnNo),
+  ).length;
+}
+
+export function isPcRefType(value: unknown) {
+  return WELL_PC_REF_TYPES.includes(String(value || '').toUpperCase());
+}
+
+export function isSampleType(value: unknown) {
+  return String(value || '').toUpperCase() === 'SAMPLE';
+}
+
+export function wellTypeLabel(value: unknown) {
+  return WELL_TYPE_LABELS[String(value || 'SAMPLE').toUpperCase()] || '样本';
+}
+
+export function createDefaultFlowWorkOrder(): FlowWorkOrder {
+  return {
+    base_info: { orderName: '', pc_infos: [], remark: '' },
+    cell_plates: [],
+    content_hash: '',
+    orderType: 'TITER',
+    dispatches: [],
+    id: null,
+    orderName: '',
+    orderNum: '',
+    priority: 'normal',
+    sample_plates: [],
+    source_id: undefined,
+    status: 'draft',
+  };
+}
+
+function normalizePcInfos(value: unknown): FlowWorkOrderPcInfo[] {
+  return records(value).map((pc) => ({
+    catalog_batch: pc.catalog_batch || '',
+    concentration: pc.concentration || '',
+    pc_id: String(pc.pc_id || createLocalPcId()),
+    pc_name: pc.pc_name || '',
+    pc_type: String(pc.pc_type || 'SERUM').toUpperCase(),
+    source: pc.source || '',
+  }));
+}
+
+function normalizeWell(value: unknown): FlowWorkOrderWell {
+  const well = record(value);
+  const contentType = String(well.content_type || 'SAMPLE').toUpperCase();
+  const pcId = well.pc_id == null || well.pc_id === '' ? null : String(well.pc_id);
+  return {
+    content_type: contentType,
+    pc_id: WELL_PC_REF_TYPES.includes(contentType) ? pcId : null,
+    sample_code: well.sample_code || '',
+    well_no: String(well.well_no || ''),
+  };
+}
+
+function buildFullWells(value: unknown): FlowWorkOrderWell[] {
+  const byNo = new Map(records(value).map((well) => [String(well.well_no || ''), well]));
+  return PLATE_ROWS.flatMap((row) =>
+    Array.from({ length: 12 }, (_, index) => {
+      const no = wellNo(row, index + 1);
+      return normalizeWell(byNo.get(no) || { content_type: 'BLANK', well_no: no });
+    }),
+  );
+}
+
+function createDefaultWells(defaults: FlowWorkOrderDefaults) {
+  if (defaults.sampleWells?.length) {
+    return buildFullWells(defaults.sampleWells.map((well) => ({ ...well })));
+  }
+  return PLATE_ROWS.flatMap((row) =>
+    Array.from({ length: 12 }, (_, index) => {
+      const no = wellNo(row, index + 1);
+      return normalizeWell({
+        content_type: index === 11 ? 'PC' : 'SAMPLE',
+        sample_code: index === 11 ? '' : no,
+        well_no: no,
+      });
+    }),
+  );
+}
+
+function normalizeColumns(value: unknown): FlowWorkOrderCellColumn[] {
+  const byNo = new Map(
+    records(value).map((column, index) => [Number(column.column_no) || index + 1, column]),
+  );
+  return Array.from({ length: 12 }, (_, index) => {
+    const columnNo = index + 1;
+    const merged = { ...EMPTY_COLUMN, ...byNo.get(columnNo), column_no: columnNo };
+    const cellName = String(merged.cell_name || '').trim();
+    if (!cellName) {
+      merged.cell_name = '';
+      merged.cell_type = '';
+    } else if (!String(merged.cell_type || '').trim()) {
+      merged.cell_type = '正常';
+    }
+    return merged;
+  });
+}
+
+export function createDefaultColumns(defaults: FlowWorkOrderDefaults = {}) {
+  return normalizeColumns(defaults.cellColumns);
+}
+
+export function createDefaultSamplePlate(
+  defaults: FlowWorkOrderDefaults = {},
+): FlowWorkOrderSamplePlate {
+  return {
+    _rowKey: createSamplePlateRowKey(),
+    barcode: '',
+    cell_keys: [],
+    project_no: '',
+    secondary_antibody: defaultSecondaryAntibody(defaults.orderType),
+    target: '',
+    target_codes: [] as string[],
+    wells: createDefaultWells(defaults),
+  };
+}
+
+function targetCodes(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value : String(value || '').split(/[,，]/);
+  const seen = new Set<string>();
+  const codes: string[] = [];
+  for (const item of raw) {
+    const text = String(item || '').trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    codes.push(text);
+  }
+  return codes;
+}
+
+function normalizeSamplePlate(
+  value: unknown,
+  defaults: FlowWorkOrderDefaults,
+): FlowWorkOrderSamplePlate {
+  const plate = record(value);
+  return {
+    ...plate,
+    _rowKey: plate._rowKey || createSamplePlateRowKey(),
+    barcode: plate.barcode || '',
+    cell_keys: records(plate.cell_keys)
+      .map((item) => ({
+        barcode: String(item.barcode || '').trim(),
+        column_no: Number(item.column_no),
+      }))
+      .filter((item) => item.barcode && Number.isInteger(item.column_no) && item.column_no > 0),
+    project_no: plate.project_no || '',
+    secondary_antibody: plate.secondary_antibody || defaultSecondaryAntibody(defaults.orderType),
+    target: plate.target || '',
+    target_codes: targetCodes(plate.target_codes),
+    wells: plate.wells?.length ? buildFullWells(plate.wells) : createDefaultWells(defaults),
+  };
+}
+
+export function normalizeFlowWorkOrder(
+  value: unknown,
+  defaults: FlowWorkOrderDefaults = {},
+): FlowWorkOrder {
+  const source = record(value);
+  const baseInfo = record(source.base_info);
+  const plateDefaults = { ...defaults, orderType: source.orderType || defaults.orderType || 'TITER' };
+  const samplePlates = records(source.sample_plates).map((plate) =>
+    normalizeSamplePlate(plate, plateDefaults),
+  );
+  const cellPlates = records(source.cell_plates).map((plate) => ({
+    ...plate,
+    barcode: plate.barcode || '',
+    columns: normalizeColumns(plate.columns?.length ? plate.columns : defaults.cellColumns),
+  }));
+  return {
+    ...createDefaultFlowWorkOrder(),
+    ...source,
+    base_info: {
+      orderName: source.orderName || baseInfo.orderName || '',
+      pc_infos: normalizePcInfos(baseInfo.pc_infos),
+      remark: source.remark ?? baseInfo.remark ?? '',
+    },
+    cell_plates: cellPlates.length
+      ? cellPlates
+      : [{ barcode: '', columns: createDefaultColumns(defaults) }],
+    dispatches: Array.isArray(source.dispatches) ? source.dispatches : [],
+    orderName: source.orderName || baseInfo.orderName || '',
+    sample_plates: samplePlates.length ? samplePlates : [createDefaultSamplePlate(plateDefaults)],
+  };
+}
+
+/** 细胞板条码变更时必须清空列内容，避免旧细胞覆盖新条码引用。 */
+export function clearCellPlateColumns(plate: { columns?: LooseRecord[] } | null | undefined) {
+  records(plate?.columns).forEach((column) => {
+    CELL_CONTENT_FIELDS.forEach((field) => {
+      column[field] = '';
+    });
+    clearCellColumnUsage(column);
+  });
+}
+
+export function clearCellColumnUsage(column: LooseRecord) {
+  delete column._locked;
+  delete column._conflict;
+  delete column._sourceOrderNum;
+  delete column._usedByLabel;
+}
+
+function usedByLabel(remote: LooseRecord) {
+  const numbers = records(remote.used_by)
+    .map((item) => String(item.orderNum || '').trim())
+    .filter(Boolean);
+  return numbers.join('、') || String(remote.source_order_num || '').trim() || '其他订单';
+}
+
+function copyCellContent(target: LooseRecord, source: LooseRecord) {
+  CELL_CONTENT_FIELDS.forEach((field) => {
+    target[field] = source[field] || '';
+  });
+}
+
+/** 把其他订单的细胞列套到当前板。已占用列覆盖为只读；未占用列只填空格子。replace 时按新条码整列替换。 */
+export function applyCellPlateUsage(
+  plate: { columns?: LooseRecord[] },
+  usage: { columns?: LooseRecord[] } | null | undefined,
+  options: { fillEmpty?: boolean; replace?: boolean } = {},
+) {
+  const fillEmpty = options.fillEmpty !== false;
+  const replace = options.replace === true;
+  const byNo = new Map(
+    records(usage?.columns).map((column) => [Number(column.column_no), column]),
+  );
+  const summary = {
+    conflicts: [] as number[],
+    filled: [] as number[],
+    locked: [] as number[],
+    replaced: [] as number[],
+  };
+  records(plate?.columns).forEach((column) => {
+    clearCellColumnUsage(column);
+    const remote = byNo.get(Number(column.column_no));
+    if (!remote) {
+      if (replace) {
+        CELL_CONTENT_FIELDS.forEach((field) => {
+          column[field] = '';
+        });
+      }
+      return;
+    }
+    if (remote.locked) {
+      const changed = CELL_CONTENT_FIELDS.some(
+        (field) => String(column[field] || '').trim() !== String(remote[field] || '').trim(),
+      );
+      copyCellContent(column, remote);
+      column._locked = true;
+      column._usedByLabel = usedByLabel(remote);
+      column._sourceOrderNum = String(remote.source_order_num || '').trim();
+      if (remote.conflict) {
+        column._conflict = true;
+        summary.conflicts.push(Number(column.column_no));
+      }
+      summary.locked.push(Number(column.column_no));
+      if (changed) summary.replaced.push(Number(column.column_no));
+      return;
+    }
+    if (remote.conflict) {
+      column._conflict = true;
+      summary.conflicts.push(Number(column.column_no));
+    }
+    const currentName = String(column.cell_name || '').trim();
+    const remoteName = String(remote.cell_name || '').trim();
+    if (replace && !remoteName) {
+      CELL_CONTENT_FIELDS.forEach((field) => {
+        column[field] = '';
+      });
+      return;
+    }
+    if ((replace || (fillEmpty && !currentName)) && remoteName) {
+      copyCellContent(column, remote);
+      column._sourceOrderNum = String(remote.source_order_num || '').trim();
+      summary.filled.push(Number(column.column_no));
+    }
+  });
+  return summary;
+}
+
+export function removeLockedCellKeys(
+  samplePlates: Array<{ cell_keys?: Array<{ barcode?: string; column_no?: number }> }>,
+  barcode: string,
+  lockedColumnNos: number[],
+) {
+  const locked = new Set(lockedColumnNos.map((columnNo) => Number(columnNo)));
+  let removed = 0;
+  samplePlates.forEach((plate) => {
+    const keys = Array.isArray(plate.cell_keys) ? plate.cell_keys : [];
+    plate.cell_keys = keys.filter((key) => {
+      const drop = key.barcode === barcode && locked.has(Number(key.column_no));
+      if (drop) removed += 1;
+      return !drop;
+    });
+  });
+  return removed;
+}
+
+export function buildFlowWorkOrderSavePayload(
+  order: FlowWorkOrder,
+): FlowWorkOrderSavePayload {
+  return {
+    base_info: order.base_info,
+    cell_plates: order.cell_plates,
+    orderType: order.orderType,
+    expected_content_hash: order.content_hash || '',
+    id: order.id,
+    orderName: order.base_info.orderName,
+    orderNum: order.orderNum || '',
+    priority: order.priority,
+    remark: order.base_info.remark,
+    sample_plates: order.sample_plates,
+    source_id: order.source_id || undefined,
+  };
+}

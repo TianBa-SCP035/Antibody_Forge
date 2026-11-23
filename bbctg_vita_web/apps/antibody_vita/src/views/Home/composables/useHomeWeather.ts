@@ -1,0 +1,269 @@
+import type { Ref } from 'vue';
+import { onMounted, reactive, ref, watch } from 'vue';
+
+import { preferences } from '@vben/preferences';
+
+import { fetchHomeWeather } from '#/api/home';
+import { WEATHER_CACHE_KEY } from '#/constants/storageKeys';
+import { $t } from '#/locales';
+
+const WEATHER_CACHE_TTL_MS = 30 * 60 * 1000;
+
+const WMO_CODES = [
+  0, 1, 2, 3, 45, 48, 51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77,
+  80, 81, 82, 85, 86, 95, 96, 99,
+] as const;
+
+interface WeatherSnapshot {
+  aqi: number | null;
+  humidity: number | null;
+  temp: number | null;
+  weatherCode: number;
+  windSpeed: number | null;
+}
+
+interface WeatherCachePayload extends WeatherSnapshot {
+  savedAt: number;
+}
+
+function isNightHour() {
+  const h = new Date().getHours();
+  return h < 6 || h >= 19;
+}
+
+function wmoWeatherIcon(code: number): string {
+  const night = isNightHour();
+
+  if (code === 0) return night ? 'meteocons:clear-night-fill' : 'meteocons:clear-day-fill';
+  if (code === 1) {
+    return night ? 'meteocons:partly-cloudy-night-fill' : 'meteocons:partly-cloudy-day-fill';
+  }
+  if (code === 2) {
+    return night ? 'meteocons:partly-cloudy-night-fill' : 'meteocons:partly-cloudy-day-fill';
+  }
+  if (code === 3) return 'meteocons:overcast-fill';
+  if (code === 45 || code === 48) return 'meteocons:fog-fill';
+  if (code >= 51 && code <= 55) return 'meteocons:drizzle-fill';
+  if (code === 56 || code === 57 || code === 66 || code === 67) {
+    return 'meteocons:sleet-fill';
+  }
+  if (code === 61 || code === 80) return 'meteocons:rain-fill';
+  if (code === 63 || code === 81) return 'meteocons:rain-fill';
+  if (code === 65 || code === 82) return 'meteocons:extreme-rain-fill';
+  if (code === 71 || code === 85) return 'meteocons:snow-fill';
+  if (code === 73 || code === 86) return 'meteocons:snow-fill';
+  if (code === 75) return 'meteocons:snow-fill';
+  if (code === 77) return 'meteocons:hail-fill';
+  if (code === 95) return 'meteocons:thunderstorms-fill';
+  if (code === 96 || code === 99) return 'meteocons:thunderstorms-extreme-fill';
+  return night ? 'meteocons:partly-cloudy-night-fill' : 'meteocons:partly-cloudy-day-fill';
+}
+
+function wmoLabel(code: number): string {
+  if (WMO_CODES.includes(code as (typeof WMO_CODES)[number])) {
+    return $t(`page.home.weatherWmo.${code}`);
+  }
+  return $t('page.home.weatherUnknown');
+}
+
+/** 国标 HJ 633 实时 AQI：PM2.5、PM10 按 24 小时分段，其余按 1 小时分段；浓度均为 μg/m³。 */
+const AQI_LEVELS = [0, 50, 100, 150, 200, 300, 400, 500];
+const CN_AQI_BREAKPOINTS = {
+  pm2_5: [0, 35, 75, 115, 150, 250, 350, 500],
+  pm10: [0, 50, 150, 250, 350, 420, 500, 600],
+  sulphur_dioxide: [0, 150, 500, 650, 800],
+  nitrogen_dioxide: [0, 100, 200, 700, 1200, 2340, 3090, 3840],
+  ozone: [0, 160, 200, 300, 400, 800, 1000, 1200],
+  carbon_monoxide: [0, 5000, 10_000, 35_000, 60_000, 90_000, 120_000, 150_000],
+} as const;
+
+type PollutantReadings = Partial<Record<keyof typeof CN_AQI_BREAKPOINTS, number>>;
+
+function cnAqi(readings: PollutantReadings | undefined): number | null {
+  let aqi: number | null = null;
+  for (const [key, bps] of Object.entries(CN_AQI_BREAKPOINTS)) {
+    const c = readings?.[key as keyof typeof CN_AQI_BREAKPOINTS];
+    if (typeof c !== 'number' || Number.isNaN(c) || c < 0) continue;
+    const i = bps.findIndex((bp, idx) => idx > 0 && c <= bp);
+    const iaqi =
+      i === -1
+        ? (AQI_LEVELS[bps.length - 1] ?? 500)
+        : Math.ceil(
+            (((AQI_LEVELS[i] ?? 0) - (AQI_LEVELS[i - 1] ?? 0)) / ((bps[i] ?? 0) - (bps[i - 1] ?? 0))) *
+              (c - (bps[i - 1] ?? 0)) +
+              (AQI_LEVELS[i - 1] ?? 0),
+          );
+    aqi = Math.max(aqi ?? 0, iaqi);
+  }
+  return aqi;
+}
+
+/** 国标分级：0–50 优，51–100 良，101–150 轻度，151–200 中度，201–300 重度，>300 严重污染 */
+function aqiLevel(aqi: number | null): string | null {
+  if (aqi === null || Number.isNaN(aqi)) return null;
+  if (aqi <= 50) return $t('page.home.aqiExcellent');
+  if (aqi <= 100) return $t('page.home.aqiGood');
+  if (aqi <= 150) return $t('page.home.aqiLight');
+  if (aqi <= 200) return $t('page.home.aqiModerate');
+  if (aqi <= 300) return $t('page.home.aqiHeavy');
+  return $t('page.home.aqiSevere');
+}
+
+export interface HomeWeatherState {
+  aqi: number | null;
+  aqiLevel: string | null;
+  humidity: number | null;
+  icon: string;
+  label: string;
+  loading: boolean;
+  temp: number | null;
+  windSpeed: number | null;
+}
+
+function applySnapshot(
+  weather: HomeWeatherState,
+  lastWeatherCode: Ref<number | null>,
+  lastAqi: Ref<number | null>,
+  snapshot: WeatherSnapshot,
+) {
+  lastWeatherCode.value = snapshot.weatherCode;
+  lastAqi.value = snapshot.aqi;
+  weather.temp = snapshot.temp;
+  weather.humidity = snapshot.humidity;
+  weather.windSpeed = snapshot.windSpeed;
+  weather.icon = wmoWeatherIcon(snapshot.weatherCode);
+  weather.aqi = snapshot.aqi;
+  weather.label = wmoLabel(snapshot.weatherCode);
+  weather.aqiLevel = aqiLevel(snapshot.aqi);
+}
+
+function unavailableState(): Partial<HomeWeatherState> {
+  return {
+    label: $t('page.home.weatherUnavailable'),
+    icon: 'meteocons:cloudy-fill',
+    temp: null,
+    humidity: null,
+    windSpeed: null,
+    aqi: null,
+    aqiLevel: null,
+  };
+}
+
+function readWeatherCache(): WeatherCachePayload | null {
+  try {
+    const raw = localStorage.getItem(WEATHER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as WeatherCachePayload;
+    if (
+      typeof parsed.savedAt !== 'number' ||
+      typeof parsed.weatherCode !== 'number' ||
+      Date.now() - parsed.savedAt > WEATHER_CACHE_TTL_MS
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeWeatherCache(snapshot: WeatherSnapshot) {
+  try {
+    localStorage.setItem(
+      WEATHER_CACHE_KEY,
+      JSON.stringify({ ...snapshot, savedAt: Date.now() } satisfies WeatherCachePayload),
+    );
+  } catch {
+    /* 隐私模式等场景可能无法写入。 */
+  }
+}
+
+function roundOrNull(value: null | number | undefined): null | number {
+  return typeof value === 'number' ? Math.round(value) : null;
+}
+
+async function fetchWeatherSnapshot(): Promise<WeatherSnapshot> {
+  const data = await fetchHomeWeather();
+  return {
+    aqi: cnAqi(data.air ?? undefined),
+    humidity: roundOrNull(data.humidity),
+    temp: roundOrNull(data.temp),
+    weatherCode: data.weather_code ?? 3,
+    windSpeed: roundOrNull(data.wind_speed),
+  };
+}
+
+export function useHomeWeather() {
+  const lastWeatherCode = ref<number | null>(null);
+  const lastAqi = ref<number | null>(null);
+
+  const weather = reactive<HomeWeatherState>({
+    aqi: null,
+    aqiLevel: null,
+    humidity: null,
+    icon: 'meteocons:cloudy-fill',
+    label: $t('page.home.weatherLoading'),
+    loading: true,
+    temp: null,
+    windSpeed: null,
+  });
+
+  function applyLocalizedLabels() {
+    if (weather.loading) {
+      weather.label = $t('page.home.weatherLoading');
+      return;
+    }
+    if (lastWeatherCode.value === null) {
+      weather.label = $t('page.home.weatherUnavailable');
+      return;
+    }
+    weather.label = wmoLabel(lastWeatherCode.value);
+    weather.aqiLevel = aqiLevel(lastAqi.value);
+  }
+
+  async function loadWeather() {
+    const cached = readWeatherCache();
+    const hasCache = cached !== null;
+
+    if (hasCache) {
+      applySnapshot(weather, lastWeatherCode, lastAqi, cached);
+      weather.loading = false;
+      applyLocalizedLabels();
+    } else {
+      weather.loading = true;
+      weather.label = $t('page.home.weatherLoading');
+    }
+
+    try {
+      const snapshot = await fetchWeatherSnapshot();
+      applySnapshot(weather, lastWeatherCode, lastAqi, snapshot);
+      writeWeatherCache(snapshot);
+    } catch {
+      if (!hasCache) {
+        lastWeatherCode.value = null;
+        lastAqi.value = null;
+        Object.assign(weather, unavailableState());
+      }
+    } finally {
+      weather.loading = false;
+      if (lastWeatherCode.value !== null) {
+        applyLocalizedLabels();
+      }
+    }
+  }
+
+  watch(
+    () => preferences.app.locale,
+    () => {
+      if (!weather.loading) {
+        applyLocalizedLabels();
+      }
+    },
+  );
+
+  onMounted(() => {
+    void loadWeather();
+  });
+
+  return { weather };
+}

@@ -1,0 +1,414 @@
+import re
+from io import BytesIO
+from typing import Any
+
+from sqlalchemy import case, func, or_, select
+from sqlalchemy.orm import Session
+
+from core.errors import NotFoundError
+from models.molecular_cell import (
+    LIBRARY_PRIMER_ID_FIELDS,
+    MolecularLibraryOrder,
+)
+from models.molecular_cell import (
+    MolecularPrimerIndexCatalog as Primer,
+)
+from utils.filter_values import filter_terms, like_contains, match_any
+from utils.header_filters import (
+    HeaderColumn,
+    header_column_values,
+    header_columns,
+    header_filter_clauses,
+    header_sort_clauses,
+)
+from utils.model_fields import clean_text, model_fields
+from utils.pagination import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, paginate_select
+
+MISSING_PRIMER = "引物不存在"
+NAME_TAKEN = "引物名称已存在"
+PRIMER_IN_USE = "这条引物已被文库工单使用，可以停用，不能删除"
+MAX_OPTIONS = 2000
+MAX_BATCH_ITEMS = 1000
+MAX_BATCH_IDS = 5000
+
+FIELDS = model_fields(Primer, readonly=("active", "source_file", "source_row"))
+EXPORT_HEADERS = ("名称", "系列", "方向", "显示序列", "核对序列", "备注", "状态")
+DNA_PATTERN = re.compile(r"^[ACGTN]+$")
+COMPLEMENT = str.maketrans("ACGTN", "TGCAN")
+PRESET_LIBRARIES = ("达普Barcode", "UDP")
+DIRECTION_LABELS = {"F": "正向", "R": "反向"}
+DIRECTION_VALUES = {"F": "F", "R": "R", "正向": "F", "反向": "R"}
+
+
+def _text(value: Any, field: str, required: bool = False) -> str | None:
+    text = clean_text(FIELDS[field], value, keep_breaks=field == "note")
+    if required and not text:
+        raise ValueError(f"{FIELDS[field].label}不能为空")
+    return text
+
+
+def _sequence(value: Any, field: str, required: bool = False) -> str | None:
+    text = clean_text(FIELDS[field], re.sub(r"\s+", "", str(value or "")).upper())
+    if required and not text:
+        raise ValueError(f"{FIELDS[field].label}不能为空")
+    if text and not DNA_PATTERN.fullmatch(text):
+        raise ValueError(f"{FIELDS[field].label}只能包含 A、C、G、T、N")
+    return text
+
+
+def check_sequence(value: str) -> str:
+    """核对序列是显示序列的反向互补序列。"""
+    return value.translate(COMPLEMENT)[::-1]
+
+
+def normalize(data: dict[str, Any]) -> dict[str, Any]:
+    family = _text(data.get("family"), "family", True)
+    raw_direction = str(data.get("direction") or "").strip()
+    direction = DIRECTION_VALUES.get(raw_direction) or DIRECTION_VALUES.get(raw_direction.upper())
+    if not direction:
+        raise ValueError("方向只能是正向或反向")
+    active = data.get("active") if "active" in data else None
+    if active is not None and not isinstance(active, bool):
+        raise ValueError("启用状态不正确")
+    clean = {
+        "name": _text(data.get("name"), "name", True),
+        "family": family,
+        "direction": direction,
+        "short_sequence": _sequence(data.get("short_sequence"), "short_sequence", True),
+        "note": _text(data.get("note"), "note"),
+        "active": active,
+    }
+    # 版本和同源臂仅在提交非空值时写入，避免清空库中的旧值。
+    version = _text(data.get("version"), "version") if "version" in data else None
+    if version:
+        clean["version"] = version
+    for field in ("homology_arm_1", "homology_arm_2"):
+        if field not in data:
+            continue
+        arm = _sequence(data.get(field), field)
+        if arm:
+            clean[field] = arm
+    return clean
+
+
+def _apply(row: Primer, data: dict[str, Any]) -> None:
+    for field in FIELDS:
+        if field not in data:
+            continue
+        setattr(row, field, data[field])
+    if data["active"] is not None:
+        row.active = data["active"]
+
+
+def _new(data: dict[str, Any]) -> Primer:
+    row = Primer(
+        name=data["name"],
+        family=data["family"],
+        short_sequence=data["short_sequence"],
+        active=True if data["active"] is None else data["active"],
+    )
+    _apply(row, data)
+    return row
+
+
+# 核对序列由显示序列计算，库中没有该列，只能使用顶部筛选。
+HEADER_COLUMNS = header_columns(
+    FIELDS,
+    family=HeaderColumn(Primer.family, order=PRESET_LIBRARIES),
+    direction=HeaderColumn(Primer.direction, order=tuple(DIRECTION_LABELS)),
+    active=HeaderColumn(case((Primer.active.is_(True), "active"), else_="inactive"), order=("active", "inactive")),
+)
+_VALUE_LABELS = {
+    "direction": DIRECTION_LABELS,
+    "active": {"active": "启用", "inactive": "停用"},
+}
+DEFAULT_ORDER = (Primer.family, Primer.direction, Primer.name)
+
+
+def _list_order(data: dict[str, Any]):
+    spec = HEADER_COLUMNS.get(str(data.get("sort_field") or "").strip())
+    direction = str(data.get("sort_dir") or "").strip()
+    if spec is not None and direction in {"asc", "desc"}:
+        return header_sort_clauses(spec, direction, Primer.id)
+    return DEFAULT_ORDER
+
+
+def _filters(data: dict[str, Any], *, include_family: bool = True, header_except: str | None = None) -> list:
+    filters = []
+    name = str(data.get("name") or "").strip()
+    if name:
+        filters.append(like_contains(Primer.name, name))
+    sequence = re.sub(r"\s+", "", str(data.get("sequence") or "")).upper()
+    if sequence:
+        filters.append(like_contains(Primer.short_sequence, sequence))
+    note = str(data.get("note") or "").strip()
+    if note:
+        filters.append(like_contains(Primer.note, note))
+    check_keyword = re.sub(r"\s+", "", str(data.get("check_keyword") or "")).upper()
+    if check_keyword:
+        if DNA_PATTERN.fullmatch(check_keyword):
+            filters.append(like_contains(Primer.short_sequence, check_sequence(check_keyword)))
+        else:
+            filters.append(Primer.id < 0)
+    if include_family:
+        family = match_any(Primer.family, data.get("family"))
+        if family is not None:
+            filters.append(family)
+    directions = [term.upper() for term in filter_terms(data.get("direction"))]
+    direction = match_any(Primer.direction, directions)
+    if direction is not None:
+        filters.append(direction)
+    if isinstance(data.get("active"), bool):
+        filters.append(Primer.active == data["active"])
+    filters.extend(header_filter_clauses(None, HEADER_COLUMNS, data.get("field_filters"), except_field=header_except))
+    return filters
+
+
+def _stats(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    """系列统计不随当前选中的系列（顶部和表头）收缩。两个预置系列始终占位，自建系列有数据才出现。"""
+    grouped = {
+        name: int(count or 0)
+        for name, count in db.execute(
+            select(Primer.family, func.count())
+            .where(*_filters(data, include_family=False, header_except="family"))
+            .group_by(Primer.family)
+        ).all()
+    }
+    names = list(PRESET_LIBRARIES)
+    names.extend(sorted(name for name in grouped if name not in names))
+    for selected in filter_terms(data.get("family")):
+        if selected not in names:
+            names.append(selected)
+    return {
+        "total": sum(grouped.values()),
+        "families": [{"name": name, "count": grouped.get(name, 0)} for name in names],
+    }
+
+
+def list_catalog(db: Session, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = data or {}
+    filters = _filters(payload)
+    return paginate_select(
+        db,
+        select(Primer).where(*filters),
+        select(func.count()).select_from(Primer).where(*filters),
+        payload,
+        order_by=_list_order(payload),
+        stats=_stats(db, payload),
+        default_limit=DEFAULT_PAGE_LIMIT,
+        max_limit=MAX_PAGE_LIMIT,
+    )
+
+
+def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    return header_column_values(
+        db,
+        HEADER_COLUMNS,
+        data,
+        lambda stmt, payload, field: stmt.where(*_filters(payload, header_except=field)),
+        id_column=Primer.id,
+        labels=_VALUE_LABELS,
+    )
+
+
+def list_options(
+    db: Session,
+    query: str | None = None,
+    family: str | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    stmt = select(Primer).where(Primer.active.is_(True))
+    keyword = str(query or "").strip()
+    if keyword:
+        sequence = re.sub(r"\s+", "", keyword).upper()
+        clauses = [like_contains(Primer.name, keyword)]
+        if DNA_PATTERN.fullmatch(sequence):
+            clauses.append(like_contains(Primer.short_sequence, sequence))
+            flipped = check_sequence(sequence)
+            if flipped != sequence:
+                clauses.append(like_contains(Primer.short_sequence, flipped))
+        else:
+            clauses.append(like_contains(Primer.short_sequence, keyword.upper()))
+        stmt = stmt.where(or_(*clauses))
+    if family:
+        stmt = stmt.where(Primer.family == family.strip())
+    rows = db.scalars(
+        stmt.order_by(Primer.family, Primer.direction, Primer.name).limit(min(max(limit, 1), MAX_OPTIONS))
+    ).all()
+    return {"items": [row.to_dict() for row in rows]}
+
+
+def save(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    row_id = data.get("id")
+    row = db.get(Primer, int(row_id)) if row_id else None
+    if row_id and row is None:
+        raise NotFoundError(MISSING_PRIMER)
+    clean = normalize(data)
+    duplicate = db.scalar(
+        select(Primer.id).where(
+            Primer.name == clean["name"],
+            Primer.id != (row.id if row else 0),
+        )
+    )
+    if duplicate:
+        raise ValueError(NAME_TAKEN)
+    if row is None:
+        row = _new(clean)
+        db.add(row)
+    else:
+        _apply(row, clean)
+    db.commit()
+    db.refresh(row)
+    return row.to_dict()
+
+
+def list_ids(db: Session, data: dict[str, Any] | None = None) -> list[int]:
+    payload = data or {}
+    rows = db.scalars(select(Primer.id).where(*_filters(payload)).order_by(*_list_order(payload))).all()
+    return [int(row_id) for row_id in rows]
+
+
+def _id_list(ids: list[int]) -> list[int]:
+    clean: list[int] = []
+    seen: set[int] = set()
+    for raw in ids:
+        value = int(raw)
+        if value <= 0 or value in seen:
+            continue
+        seen.add(value)
+        clean.append(value)
+    if not clean:
+        raise ValueError("请先勾选引物")
+    if len(clean) > MAX_BATCH_IDS:
+        raise ValueError(f"单次最多处理 {MAX_BATCH_IDS} 条引物")
+    return clean
+
+
+def batch_update(
+    db: Session,
+    ids: list[int],
+    *,
+    active: bool | None = None,
+    family: str | None = None,
+    direction: str | None = None,
+) -> dict[str, int]:
+    if active is None and family is None and direction is None:
+        raise ValueError("请选择停用、启用、新系列或方向")
+    if active is not None and not isinstance(active, bool):
+        raise ValueError("启用状态不正确")
+    next_family = _text(family, "family", True) if family is not None else None
+    next_direction = None
+    if direction is not None:
+        raw_direction = str(direction).strip()
+        next_direction = DIRECTION_VALUES.get(raw_direction) or DIRECTION_VALUES.get(raw_direction.upper())
+        if not next_direction:
+            raise ValueError("方向只能是正向或反向")
+    id_list = _id_list(ids)
+    rows = db.scalars(select(Primer).where(Primer.id.in_(id_list))).all()
+    if len(rows) != len(id_list):
+        raise ValueError("有引物已不存在，请刷新后再试")
+    for row in rows:
+        if next_family is not None:
+            row.family = next_family
+        if next_direction is not None:
+            row.direction = next_direction
+        if active is not None:
+            row.active = active
+    db.commit()
+    return {"total": len(rows)}
+
+
+def batch_delete(db: Session, ids: list[int]) -> dict[str, Any]:
+    id_list = _id_list(ids)
+    rows = db.scalars(select(Primer).where(Primer.id.in_(id_list))).all()
+    if len(rows) != len(id_list):
+        raise ValueError("有引物已不存在，请刷新后再试")
+    used_ids: set[int] = set()
+    for field in LIBRARY_PRIMER_ID_FIELDS:
+        column = getattr(MolecularLibraryOrder, field)
+        found = db.scalars(select(column).where(column.in_(id_list))).all()
+        used_ids.update(int(value) for value in found if value)
+    skipped: list[str] = []
+    deleted = 0
+    for row in rows:
+        if int(row.id) in used_ids:
+            skipped.append(row.name)
+            continue
+        db.delete(row)
+        deleted += 1
+    db.commit()
+    return {"deleted": deleted, "skipped": skipped}
+
+
+def delete_primer(db: Session, row_id: int) -> dict[str, int]:
+    row = db.get(Primer, int(row_id))
+    if row is None:
+        raise NotFoundError(MISSING_PRIMER)
+    used = db.scalar(
+        select(MolecularLibraryOrder.id).where(
+            or_(*(getattr(MolecularLibraryOrder, field) == row.id for field in LIBRARY_PRIMER_ID_FIELDS))
+        )
+    )
+    if used:
+        raise ValueError(PRIMER_IN_USE)
+    deleted_id = int(row.id)
+    db.delete(row)
+    db.commit()
+    return {"id": deleted_id}
+
+
+def batch_save(db: Session, items: list[dict[str, Any]]) -> dict[str, int]:
+    if not items:
+        raise ValueError("没有可导入的引物")
+    if len(items) > MAX_BATCH_ITEMS:
+        raise ValueError(f"单次最多导入 {MAX_BATCH_ITEMS} 条引物")
+
+    normalized = []
+    names = set()
+    for index, item in enumerate(items, start=1):
+        try:
+            clean = normalize(item)
+        except ValueError as exc:
+            raise ValueError(f"第 {index} 行：{exc}") from exc
+        if clean["name"] in names:
+            raise ValueError(f"导入数据中名称重复：{clean['name']}")
+        names.add(clean["name"])
+        normalized.append(clean)
+
+    existing = db.scalars(select(Primer).where(Primer.name.in_(names))).all()
+    by_name = {row.name: row for row in existing}
+    created = 0
+    for clean in normalized:
+        row = by_name.get(clean["name"])
+        if row is None:
+            row = _new(clean)
+            db.add(row)
+            created += 1
+        else:
+            _apply(row, clean)
+    db.commit()
+    return {"total": len(items), "created": created, "updated": len(items) - created}
+
+
+def export_workbook(db: Session, data: dict[str, Any] | None = None) -> tuple[BytesIO, str]:
+    from utils.excel import build_list_workbook
+
+    payload = data or {}
+    rows = db.scalars(select(Primer).where(*_filters(payload)).order_by(*_list_order(payload))).all()
+    return build_list_workbook(
+        sheet_title="引物库",
+        filename_prefix="引物库",
+        headers=list(EXPORT_HEADERS),
+        rows=[
+            [
+                row.name,
+                row.family,
+                DIRECTION_LABELS.get(row.direction or "", row.direction),
+                row.short_sequence,
+                check_sequence(row.short_sequence),
+                row.note,
+                "启用" if row.active else "停用",
+            ]
+            for row in rows
+        ],
+    )

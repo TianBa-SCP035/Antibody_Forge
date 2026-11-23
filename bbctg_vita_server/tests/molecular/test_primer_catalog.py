@@ -1,0 +1,304 @@
+"""引物库：保存规范化、序列核对检索、批量编辑删除、建库引用保护、批量导入导出与表头筛选。"""
+
+from openpyxl import load_workbook
+
+from models.molecular_cell import MolecularLibraryOrder, MolecularPrimerIndexCatalog
+from modules.molecular_cell.primer_catalog import service
+from support import DbTestCase
+
+
+class PrimerCatalogServiceTests(DbTestCase):
+    tables = (MolecularPrimerIndexCatalog, MolecularLibraryOrder)
+
+    def test_save_normalizes_and_hides_inactive_from_options(self):
+        saved = service.save(
+            self.db,
+            {
+                "name": " UDP-1-F ",
+                "family": "UDP",
+                "direction": "f",
+                "version": "V1",
+                "short_sequence": "ac gtn",
+                "homology_arm_1": "aa",
+                "homology_arm_2": "tt",
+                "note": "新引物",
+            },
+        )
+        self.assertEqual(saved["name"], "UDP-1-F")
+        self.assertEqual(saved["direction"], "F")
+        self.assertEqual(saved["short_sequence"], "ACGTN")
+        self.assertTrue(saved["active"])
+        self.assertEqual(service.list_options(self.db, query="UDP-1")["items"][0]["name"], "UDP-1-F")
+        self.assertEqual(service.list_options(self.db, query="nacgt")["items"][0]["name"], "UDP-1-F")
+        self.assertEqual(service.list_options(self.db, query="AC GT")["items"][0]["name"], "UDP-1-F")
+
+        hidden = service.save(
+            self.db,
+            {
+                "id": saved["id"],
+                "active": False,
+                "name": saved["name"],
+                "family": saved["family"],
+                "direction": saved["direction"],
+                "short_sequence": saved["short_sequence"],
+            },
+        )
+        self.assertFalse(hidden["active"])
+        self.assertEqual(hidden["version"], "V1")
+        self.assertEqual(hidden["homology_arm_1"], "AA")
+        self.assertEqual(hidden["homology_arm_2"], "TT")
+        self.assertEqual(service.list_options(self.db, query="UDP-1")["items"], [])
+
+    def test_list_filters_and_families(self):
+        service.save(
+            self.db,
+            {"name": "UDP-1-F", "family": "UDP", "direction": "F", "short_sequence": "AAAA", "active": False},
+        )
+        service.save(
+            self.db,
+            {"name": "UDP-2-R", "family": "UDP", "direction": "R", "short_sequence": "TTTT", "note": "第二条"},
+        )
+        service.save(
+            self.db,
+            {"name": "IDX-7", "family": "达普Barcode", "direction": "F", "short_sequence": "GGGG"},
+        )
+
+        listed = service.list_catalog(self.db, {"name": "UDP", "page": 1, "limit": 1})
+        self.assertEqual(listed["total"], 2)
+        self.assertEqual(len(listed["items"]), 1)
+        self.assertEqual([item["name"] for item in listed["stats"]["families"]], ["达普Barcode", "UDP"])
+        self.assertEqual(service.check_sequence("AGGTGCGT"), "ACGCACCT")
+
+        self.assertEqual(service.list_catalog(self.db, {"direction": "R"})["total"], 1)
+        self.assertEqual(service.list_catalog(self.db, {"active": False})["total"], 1)
+        stats = service.list_catalog(self.db, {"family": "达普Barcode"})["stats"]
+        by_name = {item["name"]: item["count"] for item in stats["families"]}
+        self.assertEqual(stats["total"], 3)
+        self.assertEqual(by_name["达普Barcode"], 1)
+        self.assertEqual(by_name["UDP"], 2)
+        narrowed = service.list_catalog(self.db, {"direction": "R"})["stats"]
+        narrowed_names = {item["name"]: item["count"] for item in narrowed["families"]}
+        self.assertEqual(narrowed["total"], 1)
+        self.assertEqual(narrowed_names["UDP"], 1)
+
+        custom = service.save(
+            self.db,
+            {"name": "CUSTOM-1", "family": "自建库", "direction": "F", "short_sequence": "ACGT"},
+        )
+        self.assertEqual(custom["family"], "自建库")
+        custom_names = [item["name"] for item in service.list_catalog(self.db)["stats"]["families"]]
+        self.assertEqual(custom_names[:2], ["达普Barcode", "UDP"])
+        self.assertIn("自建库", custom_names)
+
+    def test_save_rejects_duplicates_bad_sequences_and_bad_flags(self):
+        saved = service.save(
+            self.db,
+            {"name": "UDP-1-F", "family": "UDP", "direction": "F", "short_sequence": "ACGT"},
+        )
+        with self.assertRaisesRegex(ValueError, service.NAME_TAKEN):
+            service.save(
+                self.db,
+                {"name": "UDP-1-F", "family": "UDP", "direction": "F", "short_sequence": "AAAA"},
+            )
+        with self.assertRaisesRegex(ValueError, "A、C、G、T、N"):
+            service.save(
+                self.db,
+                {"name": "坏序列", "family": "UDP", "direction": "F", "short_sequence": "ACGX"},
+            )
+        with self.assertRaisesRegex(ValueError, "正向或反向"):
+            service.save(
+                self.db,
+                {"name": "坏方向", "family": "UDP", "direction": "X", "short_sequence": "ACGT"},
+            )
+        with self.assertRaisesRegex(ValueError, "启用状态"):
+            service.save(
+                self.db,
+                {
+                    "id": saved["id"],
+                    "name": saved["name"],
+                    "family": saved["family"],
+                    "direction": saved["direction"],
+                    "short_sequence": saved["short_sequence"],
+                    "active": "false",
+                },
+            )
+        with self.assertRaisesRegex(ValueError, service.MISSING_PRIMER):
+            service.save(
+                self.db,
+                {"id": 999, "name": "X", "family": "UDP", "direction": "F", "short_sequence": "ACGT"},
+            )
+
+    def _batch_pair(self):
+        first = service.save(
+            self.db,
+            {"name": "BATCH-F", "family": "UDP", "direction": "F", "short_sequence": "AAAA"},
+        )
+        second = service.save(
+            self.db,
+            {"name": "BATCH-R", "family": "UDP", "direction": "R", "short_sequence": "CCCC"},
+        )
+        self.db.add(
+            MolecularLibraryOrder(
+                library_order_id="WO-BATCH",
+                build_type="phage_ngs",
+                status="待处理",
+                priority="普通",
+                i7_catalog_id=second["id"],
+            )
+        )
+        self.db.commit()
+        return first, second
+
+    def test_check_keyword_matches_reverse_complement(self):
+        first, _ = self._batch_pair()
+        matched = service.list_catalog(self.db, {"check_keyword": "tt"})
+        self.assertEqual([item["name"] for item in matched["items"]], ["BATCH-F"])
+        self.assertEqual(service.list_ids(self.db, {"check_keyword": "TTTT"}), [first["id"]])
+        self.assertEqual(service.list_catalog(self.db, {"check_keyword": "AX"})["total"], 0)
+
+    def test_batch_edit_and_delete_skip_referenced_primers(self):
+        first, second = self._batch_pair()
+        self.assertEqual(
+            service.batch_update(self.db, [first["id"], second["id"]], family="自建系列", active=False)["total"],
+            2,
+        )
+        refreshed = self.db.get(MolecularPrimerIndexCatalog, first["id"])
+        self.assertEqual(refreshed.family, "自建系列")
+        self.assertFalse(refreshed.active)
+
+        self.assertEqual(service.batch_update(self.db, [first["id"]], direction="反向")["total"], 1)
+        refreshed = self.db.get(MolecularPrimerIndexCatalog, first["id"])
+        self.assertEqual(refreshed.direction, "R")
+        self.assertEqual(refreshed.short_sequence, "AAAA")
+        with self.assertRaisesRegex(ValueError, "方向只能是正向或反向"):
+            service.batch_update(self.db, [first["id"]], direction="X")
+
+        result = service.batch_delete(self.db, [first["id"], second["id"]])
+        self.assertEqual(result["deleted"], 1)
+        self.assertEqual(result["skipped"], ["BATCH-R"])
+        self.assertIsNone(self.db.get(MolecularPrimerIndexCatalog, first["id"]))
+        self.assertIsNotNone(self.db.get(MolecularPrimerIndexCatalog, second["id"]))
+
+    def test_delete_unused_primer_and_reject_referenced_one(self):
+        unused = service.save(
+            self.db,
+            {"name": "UNUSED-F", "family": "UDP", "direction": "F", "short_sequence": "AAAA"},
+        )
+        used = service.save(
+            self.db,
+            {"name": "USED-R", "family": "UDP", "direction": "R", "short_sequence": "TTTT"},
+        )
+        self.db.add(
+            MolecularLibraryOrder(
+                library_order_id="WO-1",
+                build_type="phage_ngs",
+                status="待处理",
+                priority="普通",
+                h_forward_primer_id=used["id"],
+            )
+        )
+        self.db.commit()
+
+        self.assertEqual(service.delete_primer(self.db, unused["id"])["id"], unused["id"])
+        self.assertIsNone(self.db.get(MolecularPrimerIndexCatalog, unused["id"]))
+        with self.assertRaisesRegex(ValueError, service.PRIMER_IN_USE):
+            service.delete_primer(self.db, used["id"])
+        with self.assertRaisesRegex(ValueError, service.MISSING_PRIMER):
+            service.delete_primer(self.db, unused["id"])
+
+    def test_batch_upserts_by_name_and_exports(self):
+        existing = service.save(
+            self.db,
+            {
+                "name": "UDP-1-F",
+                "family": "UDP",
+                "direction": "F",
+                "short_sequence": "AAAA",
+                "version": "V1",
+                "homology_arm_1": "AA",
+                "homology_arm_2": "TT",
+                "active": False,
+            },
+        )
+        result = service.batch_save(
+            self.db,
+            [
+                {"name": "UDP-1-F", "family": "UDP", "direction": "F", "short_sequence": "CCCC"},
+                {
+                    "name": "UDP-2-R",
+                    "family": "UDP",
+                    "direction": "R",
+                    "short_sequence": "GGGG",
+                    "active": True,
+                },
+            ],
+        )
+        self.assertEqual(result, {"total": 2, "created": 1, "updated": 1})
+        updated = self.db.get(MolecularPrimerIndexCatalog, existing["id"])
+        self.assertEqual(updated.short_sequence, "CCCC")
+        self.assertFalse(updated.active)
+        self.assertEqual(updated.version, "V1")
+        self.assertEqual(updated.homology_arm_1, "AA")
+        self.assertEqual(updated.homology_arm_2, "TT")
+
+        output, _filename = service.export_workbook(self.db, {"direction": "R"})
+        workbook = load_workbook(output, read_only=True)
+        try:
+            rows = list(workbook.active.iter_rows(values_only=True))
+        finally:
+            workbook.close()
+        self.assertEqual(rows[0], service.EXPORT_HEADERS)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1][0], "UDP-2-R")
+        self.assertEqual(rows[1][2], "反向")
+        self.assertEqual(rows[1][4], "CCCC")
+
+    def test_batch_rolls_back_as_one_transaction(self):
+        existing = service.save(
+            self.db,
+            {"name": "UDP-1-F", "family": "UDP", "direction": "F", "short_sequence": "AAAA"},
+        )
+        with self.assertRaisesRegex(ValueError, "第 2 行"):
+            service.batch_save(
+                self.db,
+                [
+                    {"name": "OK", "family": "UDP", "direction": "F", "short_sequence": "CCCC"},
+                    {"name": "BAD", "family": "UDP", "direction": "F", "short_sequence": "CCCX"},
+                ],
+            )
+        unchanged = self.db.get(MolecularPrimerIndexCatalog, existing["id"])
+        self.assertEqual(unchanged.short_sequence, "AAAA")
+        with self.assertRaisesRegex(ValueError, "名称重复"):
+            service.batch_save(
+                self.db,
+                [
+                    {"name": "DUP", "family": "UDP", "direction": "F", "short_sequence": "CCCC"},
+                    {"name": "DUP", "family": "UDP", "direction": "F", "short_sequence": "GGGG"},
+                ],
+            )
+
+    def test_header_filters_follow_list_ids_and_stats(self):
+        for name, family, direction, active in (
+            ("UDP-1-F", "UDP", "F", False),
+            ("UDP-2-R", "UDP", "R", True),
+            ("IDX-7", "达普Barcode", "F", True),
+        ):
+            service.save(
+                self.db,
+                {"name": name, "family": family, "direction": direction, "short_sequence": "ACGT", "active": active},
+            )
+        only_udp = {"field_filters": [{"field": "family", "values": ["UDP"]}]}
+        listed = service.list_catalog(self.db, only_udp)
+        self.assertEqual([item["name"] for item in listed["items"]], ["UDP-1-F", "UDP-2-R"])
+        self.assertEqual(listed["stats"]["total"], 3)
+        self.assertEqual(len(service.list_ids(self.db, only_udp)), 2)
+
+        inactive = {"field_filters": [{"field": "active", "values": ["inactive"]}]}
+        self.assertEqual([item["name"] for item in service.list_catalog(self.db, inactive)["items"]], ["UDP-1-F"])
+        by_name = service.list_catalog(self.db, {"sort_field": "name", "sort_dir": "desc"})
+        self.assertEqual([item["name"] for item in by_name["items"]], ["UDP-2-R", "UDP-1-F", "IDX-7"])
+
+        directions = service.get_column_values(self.db, {"field": "direction", **only_udp})["items"]
+        self.assertEqual(directions, [{"value": "F", "count": 1, "label": "正向"}, {"value": "R", "count": 1, "label": "反向"}])
+        statuses = service.get_column_values(self.db, {"field": "active", **only_udp})["items"]
+        self.assertEqual([(item["value"], item["count"], item["label"]) for item in statuses], [("active", 1, "启用"), ("inactive", 1, "停用")])

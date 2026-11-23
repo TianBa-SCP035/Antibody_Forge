@@ -1,0 +1,60 @@
+.vita-iso-host {
+  position: relative !important;
+}
+
+.vita-iso-busy {
+  user-select: none !important;
+}
+
+.vita-iso-load {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  box-sizing: border-box;
+  overflow: hidden;
+  pointer-events: none;
+  background: hsl(var(--background));
+  opacity: 0;
+  transition: opacity 0.24s ease;
+}
+
+.vita-iso-load.is-on {
+  opacity: 1;
+}
+
+.vita-iso-load.is-leaving {
+  pointer-events: none;
+}
+
+.vita-iso-load__box {
+  position: absolute;
+  top: var(--vita-spin-y, 50%);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+}
+
+.vita-iso-load__spin {
+  width: 42px;
+  height: 42px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 50 50'%3E%3Ccircle cx='25' cy='25' r='20' fill='none' stroke='%23409EFF' stroke-width='2' stroke-linecap='round' stroke-dasharray='90 150'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  will-change: transform;
+  animation: vita-iso-spin 0.8s linear infinite;
+}
+
+.vita-iso-load__text {
+  margin: 8px 0 0;
+  color: var(--el-color-primary);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+@keyframes vita-iso-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -1,0 +1,553 @@
+from sqlalchemy import BigInteger, DateTime, Index, Integer, JSON, String, UniqueConstraint, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+from db.session import Base
+from models.types import DateString
+
+# 效价文件、FACS 板卡的来源：镁伽回传只能覆盖自己写入且没被人改过的记录。
+SOURCE_MANUAL = "manual"
+SOURCE_MEGA = "mega"
+
+
+class SerumImmProject(Base):
+    __tablename__ = "serum_imm_project"
+    __log_label__ = "免疫项目"
+    __audit_label__ = ("experiment_id", "project_code", "project_name")
+    __table_args__ = (UniqueConstraint("experiment_id", name="uk_serum_imm_project_experiment_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str | None] = mapped_column(String(64))
+    project_code: Mapped[str | None] = mapped_column(String(64))
+    project_name: Mapped[str | None] = mapped_column(String(255))
+    lab_notebook: Mapped[str | None] = mapped_column(String(64))
+    reviewer: Mapped[str | None] = mapped_column(String(64))
+    project_purpose: Mapped[str | None] = mapped_column(String(255))
+    start_date: Mapped[str | None] = mapped_column(DateString)
+    immunization_interval: Mapped[str | None] = mapped_column(String(32))
+    target_codes: Mapped[list[str] | None] = mapped_column(JSON)
+    target_name: Mapped[str | None] = mapped_column(String(128))
+    target_type: Mapped[str | None] = mapped_column(String(64))
+    target_size: Mapped[str | None] = mapped_column(String(64))
+    owner: Mapped[str | None] = mapped_column(String(64))
+    pm: Mapped[str | None] = mapped_column(String(64))
+    study_type: Mapped[str | None] = mapped_column(String(64))
+    assay_method: Mapped[str | None] = mapped_column(String(128))
+    facs_plate_count: Mapped[int | None] = mapped_column(Integer)
+    elisa_plate_count: Mapped[int | None] = mapped_column(Integer)
+    project_status: Mapped[str | None] = mapped_column(String(64))
+    remark: Mapped[str | None] = mapped_column(String(255))
+    mouse_strain: Mapped[str | None] = mapped_column(String(128))
+    mouse_strain_category: Mapped[str | None] = mapped_column(String(128))
+    prep_status: Mapped[str | None] = mapped_column(String(16))
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "project_code": self.project_code,
+            "project_name": self.project_name,
+            "lab_notebook": self.lab_notebook,
+            "reviewer": self.reviewer,
+            "project_purpose": self.project_purpose,
+            "start_date": self.start_date,
+            "immunization_interval": self.immunization_interval,
+            "target_codes": self.target_codes if isinstance(self.target_codes, list) else [],
+            "target_name": self.target_name,
+            "target_type": self.target_type,
+            "target_size": self.target_size,
+            "owner": self.owner,
+            "pm": self.pm,
+            "study_type": self.study_type,
+            "assay_method": self.assay_method,
+            "facs_plate_count": self.facs_plate_count,
+            "elisa_plate_count": self.elisa_plate_count,
+            "project_status": self.project_status,
+            "remark": self.remark,
+            "mouse_strain": self.mouse_strain,
+            "mouse_strain_category": self.mouse_strain_category,
+            "prep_status": self.prep_status,
+        }
+
+
+class SerumImmMouse(Base):
+    __tablename__ = "serum_imm_mouse"
+    __log_label__ = "小鼠数据"
+    __audit_label__ = ("experiment_id",)
+    __table_args__ = (Index("idx_serum_imm_mouse_experiment_id", "experiment_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str | None] = mapped_column(String(64))
+    group_id: Mapped[str | None] = mapped_column(String(32))
+    mouse_strain: Mapped[str | None] = mapped_column(String(128))
+    mouse_strain_category: Mapped[str | None] = mapped_column(String(128))
+    mouse_count: Mapped[str | None] = mapped_column(String(32))
+    age_weeks: Mapped[str | None] = mapped_column(String(32))
+    sex: Mapped[str | None] = mapped_column(String(32))
+    vendor: Mapped[str | None] = mapped_column(String(128))
+    mouse_no_list: Mapped[str | None] = mapped_column(String(512))
+    mouse_registry: Mapped[object | None] = mapped_column(JSON)
+    cage_position: Mapped[str | None] = mapped_column(String(64))
+    remark: Mapped[str | None] = mapped_column(String(255))
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "group_id": self.group_id,
+            "mouse_strain": self.mouse_strain,
+            "mouse_strain_category": self.mouse_strain_category,
+            "mouse_count": self.mouse_count,
+            "age_weeks": self.age_weeks,
+            "sex": self.sex,
+            "vendor": self.vendor,
+            "mouse_no_list": self.mouse_no_list,
+            "mouse_registry": self.mouse_registry,
+            "cage_position": self.cage_position,
+            "remark": self.remark,
+        }
+
+
+class SerumFile(Base):
+    __tablename__ = "serum_file"
+    __log_label__ = "文件"
+    __audit_label__ = ("experiment_id",)
+    __table_args__ = (Index("idx_serum_file_experiment_id", "experiment_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    upload_user: Mapped[str | None] = mapped_column(String(64))
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default=SOURCE_MANUAL, server_default=SOURCE_MANUAL)
+    created_time: Mapped[object] = mapped_column(
+        DateTime,
+        nullable=False,
+        server_default=func.current_timestamp(),
+    )
+    updated_time: Mapped[object] = mapped_column(
+        DateTime,
+        nullable=False,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+    )
+
+    def to_dict(self) -> dict:
+        def format_time(dt):
+            if dt is None:
+                return None
+            return dt.strftime("%Y-%m-%d")
+
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "upload_user": self.upload_user,
+            "file_name": self.file_name,
+            "file_path": self.file_path,
+            "source": self.source or SOURCE_MANUAL,
+            "created_time": format_time(self.created_time),
+            "updated_time": format_time(self.updated_time),
+            "thumb_url": f"/serum/titer/file/download?id={self.id}&preview=true&thumb=1&w=400",
+        }
+
+
+class SerumImmAntigen(Base):
+    __tablename__ = "serum_imm_antigen"
+    __log_label__ = "免疫项目"
+    __audit_label__ = ("experiment_id",)
+    __table_args__ = (UniqueConstraint("experiment_id", "antigen_id", name="uq_experiment_antigen"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str | None] = mapped_column(String(64))
+    antigen_id: Mapped[str | None] = mapped_column(String(32))
+    species: Mapped[str | None] = mapped_column(String(32))
+    antigen_type: Mapped[str | None] = mapped_column(String(64))
+    antigen_name: Mapped[str | None] = mapped_column(String(255))
+    catalog_no: Mapped[str | None] = mapped_column(String(64))
+    lot_no: Mapped[str | None] = mapped_column(String(64))
+    stock_conc: Mapped[str | None] = mapped_column(String(64))
+    vendor: Mapped[str | None] = mapped_column(String(128))
+    adjuvant_type: Mapped[str | None] = mapped_column(String(64))
+    adjuvant_source: Mapped[str | None] = mapped_column(String(128))
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "antigen_id": self.antigen_id,
+            "species": self.species,
+            "antigen_type": self.antigen_type,
+            "antigen_name": self.antigen_name,
+            "catalog_no": self.catalog_no,
+            "lot_no": self.lot_no,
+            "stock_conc": self.stock_conc,
+            "vendor": self.vendor,
+            "adjuvant_type": self.adjuvant_type,
+            "adjuvant_source": self.adjuvant_source,
+        }
+
+
+class SerumImmStep(Base):
+    __tablename__ = "serum_imm_step"
+    __log_label__ = "免疫项目"
+    __audit_label__ = ("experiment_id",)
+    __table_args__ = (Index("idx_serum_imm_step_experiment_id", "experiment_id"),)
+
+    step_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str | None] = mapped_column(String(64))
+    group_id: Mapped[str | None] = mapped_column(String(32))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    stage_name: Mapped[str | None] = mapped_column(String(64))
+    antigen_id: Mapped[str | None] = mapped_column(String(32))
+    antigen_dose: Mapped[str | None] = mapped_column(String(64))
+    adjuvant_name: Mapped[str | None] = mapped_column(String(64))
+    cpg_dose: Mapped[str | None] = mapped_column(String(64))
+    injection_volume: Mapped[str | None] = mapped_column(String(64))
+    route: Mapped[str | None] = mapped_column(String(32))
+    injection_site: Mapped[str | None] = mapped_column(String(64))
+    day_relative: Mapped[str | None] = mapped_column(String(16))
+    date_actual: Mapped[str | None] = mapped_column(DateString)
+    remark: Mapped[str | None] = mapped_column(String(255))
+
+    def to_dict(self) -> dict:
+        return {
+            "step_id": self.step_id,
+            "experiment_id": self.experiment_id,
+            "group_id": self.group_id,
+            "sort_order": self.sort_order if self.sort_order is not None else 0,
+            "stage_name": self.stage_name,
+            "antigen_id": self.antigen_id,
+            "antigen_dose": self.antigen_dose,
+            "adjuvant_name": self.adjuvant_name,
+            "cpg_dose": self.cpg_dose,
+            "injection_volume": self.injection_volume,
+            "route": self.route,
+            "injection_site": self.injection_site,
+            "day_relative": self.day_relative,
+            "date_actual": self.date_actual,
+            "remark": self.remark,
+        }
+
+
+class SerumTiterPc(Base):
+    __tablename__ = "serum_titer_pc"
+    __log_label__ = "效价"
+    __audit_label__ = ("experiment_id",)
+    __table_args__ = (Index("idx_serum_titer_pc_experiment_id", "experiment_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str | None] = mapped_column(String(64))
+    pc_name: Mapped[str | None] = mapped_column(String(255))
+    catalog_batch: Mapped[str | None] = mapped_column(String(128))
+    source: Mapped[str | None] = mapped_column(String(128))
+    concentration: Mapped[str | None] = mapped_column(String(64))
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "pc_name": self.pc_name,
+            "concentration": self.concentration,
+            "catalog_batch": self.catalog_batch,
+            "source": self.source,
+        }
+
+
+class SerumTiterTarget(Base):
+    __tablename__ = "serum_titer_target"
+    __log_label__ = "效价"
+    __audit_label__ = ("name", "experiment_id")
+    __table_args__ = (Index("idx_serum_titer_target_experiment_id", "experiment_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str | None] = mapped_column(String(64))
+    type: Mapped[str | None] = mapped_column(String(32))
+    species: Mapped[str | None] = mapped_column(String(32))
+    name: Mapped[str | None] = mapped_column(String(255))
+    batch_no: Mapped[str | None] = mapped_column(String(64))
+    passage: Mapped[str | None] = mapped_column(String(64))
+    cell_count: Mapped[str | None] = mapped_column(String(64))
+    catalog_no: Mapped[str | None] = mapped_column(String(64))
+    source: Mapped[str | None] = mapped_column(String(128))
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "type": self.type,
+            "species": self.species,
+            "name": self.name,
+            "cell_count": self.cell_count,
+            "batch_no": self.batch_no,
+            "passage": self.passage,
+            "catalog_no": self.catalog_no,
+            "source": self.source,
+        }
+
+
+class SerumElisaPlate(Base):
+    __tablename__ = "serum_elisa_plate"
+    __log_label__ = "效价"
+    __audit_label__ = ("experiment_id",)
+    __table_args__ = (Index("idx_serum_elisa_plate_experiment_id", "experiment_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    qr_code: Mapped[str | None] = mapped_column(String(128))
+    excel_file_id: Mapped[int | None] = mapped_column(BigInteger)
+    immune_stage: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    protein_target_id: Mapped[int | None] = mapped_column(BigInteger)
+    pc_id: Mapped[int | None] = mapped_column(BigInteger)
+    mouse_group: Mapped[str | None] = mapped_column(String(64))
+    antigen_type: Mapped[str | None] = mapped_column(String(64))
+    slot_groups: Mapped[object | None] = mapped_column(JSON)
+    upper_slot_list: Mapped[object | None] = mapped_column(JSON)
+    lower_slot_list: Mapped[object | None] = mapped_column(JSON)
+    positive_well_list: Mapped[object | None] = mapped_column(JSON)
+    absorbance_1: Mapped[object | None] = mapped_column(JSON)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "qr_code": self.qr_code,
+            "excel_file_id": self.excel_file_id,
+            "immune_stage": self.immune_stage,
+            "protein_target_id": self.protein_target_id,
+            "pc_id": self.pc_id,
+            "mouse_group": self.mouse_group,
+            "antigen_type": self.antigen_type,
+            "slot_groups": self.slot_groups,
+            "upper_slot_list": self.upper_slot_list,
+            "lower_slot_list": self.lower_slot_list,
+            "positive_well_list": self.positive_well_list,
+            "absorbance_1": self.absorbance_1,
+            "plate_type": "elisa",
+        }
+
+
+class SerumFacsPlate(Base):
+    __tablename__ = "serum_facs_plate"
+    __log_label__ = "效价"
+    __audit_label__ = ("experiment_id",)
+    __table_args__ = (Index("idx_serum_facs_plate_experiment_id", "experiment_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    qr_code: Mapped[str | None] = mapped_column(String(128))
+    image_file_id: Mapped[int | None] = mapped_column(BigInteger)
+    excel_file_id: Mapped[int | None] = mapped_column(BigInteger)
+    immune_stage: Mapped[str] = mapped_column(String(64), nullable=False)
+    x_axis: Mapped[str | None] = mapped_column(String(64))
+    y_axis: Mapped[str | None] = mapped_column(String(64))
+    cell_target_id: Mapped[int | None] = mapped_column(BigInteger)
+    pc_upper_id: Mapped[int | None] = mapped_column(BigInteger)
+    pc_lower_id: Mapped[int | None] = mapped_column(BigInteger)
+    upper_group: Mapped[str | None] = mapped_column(String(32))
+    lower_group: Mapped[str | None] = mapped_column(String(32))
+    upper_mouse_list: Mapped[object | None] = mapped_column(JSON)
+    lower_mouse_list: Mapped[object | None] = mapped_column(JSON)
+    upper_slot_groups: Mapped[object | None] = mapped_column(JSON)
+    lower_slot_groups: Mapped[object | None] = mapped_column(JSON)
+    positive_well_list: Mapped[object | None] = mapped_column(JSON)
+    instrument_type: Mapped[str | None] = mapped_column(String(64))
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default=SOURCE_MANUAL, server_default=SOURCE_MANUAL)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "qr_code": self.qr_code,
+            "image_file_id": self.image_file_id,
+            "excel_file_id": self.excel_file_id,
+            "immune_stage": self.immune_stage,
+            "x_axis": self.x_axis,
+            "y_axis": self.y_axis,
+            "cell_target_id": self.cell_target_id,
+            "pc_upper_id": self.pc_upper_id,
+            "pc_lower_id": self.pc_lower_id,
+            "upper_group": self.upper_group,
+            "lower_group": self.lower_group,
+            "upper_mouse_list": self.upper_mouse_list,
+            "lower_mouse_list": self.lower_mouse_list,
+            "upper_slot_groups": self.upper_slot_groups,
+            "lower_slot_groups": self.lower_slot_groups,
+            "positive_well_list": self.positive_well_list,
+            "instrument_type": self.instrument_type,
+            "source": self.source or SOURCE_MANUAL,
+            "plate_type": "facs",
+        }
+
+
+class SerumTiterOrder(Base):
+    __tablename__ = "serum_titer_order"
+    __log_label__ = "效价工单"
+    __audit_label__ = ("experiment_id",)
+    __table_args__ = (
+        UniqueConstraint("titer_order_id", name="uk_serum_titer_order_id"),
+        Index("idx_serum_titer_order_experiment_id", "experiment_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    titer_order_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    lab_notebook: Mapped[str | None] = mapped_column(String(64))
+    cage_position: Mapped[str | None] = mapped_column(String(64))
+    blood_collection_date: Mapped[str | None] = mapped_column(DateString)
+    blood_collection_seq: Mapped[int | None] = mapped_column(Integer)
+    mouse_count: Mapped[int | None] = mapped_column(Integer)
+    assay_method: Mapped[str | None] = mapped_column(String(128))
+    facs_plate_count: Mapped[int | None] = mapped_column(Integer)
+    elisa_plate_count: Mapped[int | None] = mapped_column(Integer)
+    titer_owners: Mapped[object | None] = mapped_column(JSON)
+    test_dates: Mapped[object | None] = mapped_column(JSON)
+    serum_status: Mapped[str | None] = mapped_column(String(64))
+    summary: Mapped[str | None] = mapped_column(String(500))
+    remark: Mapped[str | None] = mapped_column(String(500))
+    priority: Mapped[str] = mapped_column(String(64), nullable=False, default="正常")
+
+    def to_dict(self) -> dict:
+        raw_dates = self.test_dates if isinstance(self.test_dates, list) else []
+        dates = sorted({str(item).strip()[:10] for item in raw_dates if str(item or "").strip()})
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "titer_order_id": self.titer_order_id,
+            "lab_notebook": self.lab_notebook or "",
+            "cage_position": self.cage_position or "",
+            "blood_collection_date": self.blood_collection_date or "",
+            "blood_collection_seq": self.blood_collection_seq,
+            "mouse_count": self.mouse_count,
+            "assay_method": self.assay_method or "",
+            "facs_plate_count": self.facs_plate_count,
+            "elisa_plate_count": self.elisa_plate_count,
+            "titer_owners": self.titer_owners or [],
+            "test_dates": dates,
+            "test_dates_display": "、".join(dates),
+            "serum_status": self.serum_status,
+            "summary": self.summary,
+            "remark": self.remark,
+            "priority": self.priority,
+        }
+
+
+class SerumImmWorkbench(Base):
+    __tablename__ = "serum_imm_workbench"
+    __log_label__ = "免疫工作台"
+    __audit_label__ = ("experiment_id", "project_code", "project_name")
+    __table_args__ = (
+        UniqueConstraint("experiment_id", name="uk_serum_imm_workbench_experiment_id"),
+        {"comment": "免疫项目工作台"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    experiment_id: Mapped[str | None] = mapped_column(String(64), comment="实验号")
+    project_code: Mapped[str | None] = mapped_column(String(64), comment="项目管理编号")
+    project_name: Mapped[str | None] = mapped_column(String(255), comment="项目名称")
+    project_purpose: Mapped[str | None] = mapped_column(String(255), comment="项目目的")
+    start_date: Mapped[str | None] = mapped_column(DateString, comment="项目开始日期")
+    immunization_interval: Mapped[str | None] = mapped_column(String(32), comment="免疫间隔")
+    target_codes: Mapped[list[str] | None] = mapped_column(JSON, comment="靶点编号列表")
+    target_name: Mapped[str | None] = mapped_column(String(128), comment="靶点名称")
+    target_type: Mapped[str | None] = mapped_column(String(64), comment="靶点类型")
+    target_size: Mapped[str | None] = mapped_column(String(64), comment="靶点大小")
+    owner: Mapped[str | None] = mapped_column(String(64), comment="开展人")
+    pm: Mapped[str | None] = mapped_column(String(64), comment="PM")
+    study_type: Mapped[str | None] = mapped_column(String(64), comment="课题类型")
+    assay_method: Mapped[str | None] = mapped_column(String(128), comment="检测方法")
+    facs_plate_count: Mapped[int | None] = mapped_column(Integer, comment="FACS板数")
+    elisa_plate_count: Mapped[int | None] = mapped_column(Integer, comment="ELISA板数")
+    remark: Mapped[str | None] = mapped_column(String(255), comment="备注")
+    mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="确切鼠型")
+    mouse_strain_category: Mapped[str | None] = mapped_column(String(128), comment="归类鼠型")
+    sort_order: Mapped[int | None] = mapped_column(Integer, comment="排序值")
+    priority: Mapped[str] = mapped_column(String(32), nullable=False, default="正常", comment="优先级")
+    plan_status: Mapped[str] = mapped_column(String(32), nullable=False, default="草稿", comment="工作台状态")
+    project_set_code: Mapped[str | None] = mapped_column(String(64), comment="项目集编号")
+    species_cross: Mapped[str | None] = mapped_column(String(64), comment="种属交叉")
+    immuno_method: Mapped[str | None] = mapped_column(String(64), comment="免疫方式")
+    reviewer: Mapped[str | None] = mapped_column(String(64), comment="审核人")
+    review_status: Mapped[str] = mapped_column(String(32), nullable=False, default="未审", comment="审核结果")
+    mouse_scheme_no: Mapped[str | None] = mapped_column(String(64), comment="小鼠方案号")
+    mouse_count: Mapped[str | None] = mapped_column(String(32), comment="小鼠数量")
+    mouse_zygosity: Mapped[str | None] = mapped_column(String(32), comment="小鼠合子状态")
+    mouse_birth_date: Mapped[str | None] = mapped_column(DateString, comment="出生日期")
+    mouse_age_weeks: Mapped[str | None] = mapped_column(String(32), comment="周龄")
+    mouse_expand_requested: Mapped[str | None] = mapped_column(String(16), comment="是否代下扩繁")
+    mouse_region: Mapped[str | None] = mapped_column(String(64), comment="提供地区")
+    mouse_room: Mapped[str | None] = mapped_column(String(64), comment="房间号")
+    mouse_status: Mapped[str] = mapped_column(String(32), nullable=False, default="未定", comment="运输状态")
+    mouse_arrive_date: Mapped[str | None] = mapped_column(DateString, comment="到鼠时间")
+    mouse_remark: Mapped[str | None] = mapped_column(String(255), comment="小鼠备注")
+    antigen_source: Mapped[str | None] = mapped_column(String(128), comment="抗原来源")
+    antigen_ready: Mapped[str] = mapped_column(String(16), nullable=False, default="否", comment="抗原到货情况")
+    antigen_eta: Mapped[str | None] = mapped_column(String(32), comment="抗原预计日")
+    lnp_ordered: Mapped[str | None] = mapped_column(String(16), comment="LNP是否下单")
+    cell_prep_status: Mapped[str | None] = mapped_column(String(64), comment="冲击细胞准备")
+    antigen_remark: Mapped[str | None] = mapped_column(String(255), comment="抗原备注")
+    can_start: Mapped[str] = mapped_column(String(16), nullable=False, default="否", comment="是否可开展")
+    created_by: Mapped[str | None] = mapped_column(String(64), comment="创建人")
+    created_at: Mapped[object | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")
+    updated_at: Mapped[object | None] = mapped_column(
+        DateTime,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+        comment="更新时间",
+    )
+
+    def to_dict(self) -> dict:
+        def format_time(dt):
+            if dt is None:
+                return None
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        return {
+            "id": self.id,
+            "experiment_id": self.experiment_id,
+            "project_code": self.project_code,
+            "project_name": self.project_name,
+            "project_purpose": self.project_purpose,
+            "start_date": self.start_date,
+            "immunization_interval": self.immunization_interval,
+            "target_codes": self.target_codes if isinstance(self.target_codes, list) else [],
+            "target_name": self.target_name,
+            "target_type": self.target_type,
+            "target_size": self.target_size,
+            "owner": self.owner,
+            "pm": self.pm,
+            "study_type": self.study_type,
+            "assay_method": self.assay_method,
+            "facs_plate_count": self.facs_plate_count,
+            "elisa_plate_count": self.elisa_plate_count,
+            "remark": self.remark,
+            "mouse_strain": self.mouse_strain,
+            "mouse_strain_category": self.mouse_strain_category,
+            "sort_order": self.sort_order,
+            "priority": self.priority,
+            "plan_status": self.plan_status,
+            "project_set_code": self.project_set_code,
+            "species_cross": [part for part in (self.species_cross or "").split(",") if part],
+            "immuno_method": [part for part in (self.immuno_method or "").split(",") if part],
+            "reviewer": self.reviewer,
+            "review_status": self.review_status,
+            "mouse_scheme_no": self.mouse_scheme_no,
+            "mouse_count": self.mouse_count,
+            "mouse_zygosity": self.mouse_zygosity,
+            "mouse_birth_date": self.mouse_birth_date,
+            "mouse_age_weeks": self.mouse_age_weeks,
+            "mouse_expand_requested": self.mouse_expand_requested,
+            "mouse_region": self.mouse_region,
+            "mouse_room": self.mouse_room,
+            "mouse_status": self.mouse_status,
+            "mouse_arrive_date": self.mouse_arrive_date,
+            "mouse_remark": self.mouse_remark,
+            "antigen_source": self.antigen_source,
+            "antigen_ready": self.antigen_ready,
+            "antigen_eta": self.antigen_eta,
+            "lnp_ordered": self.lnp_ordered,
+            "cell_prep_status": self.cell_prep_status,
+            "antigen_remark": self.antigen_remark,
+            "can_start": self.can_start,
+            "created_by": self.created_by,
+            "created_at": format_time(self.created_at),
+            "updated_at": format_time(self.updated_at),
+        }

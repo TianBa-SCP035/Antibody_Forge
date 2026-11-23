@@ -1,0 +1,53 @@
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from api import API_PREFIX, api_router, api_routes
+from core.config import get_settings
+from core.errors import setup_exception_handlers
+from core.logging import setup_logging
+from db.session import engine
+from jobs.registry import start_scheduler
+from modules.system.audit import setup_audit_middleware
+from modules.system.audit_config import load_database_field_labels
+from modules.system.audit_coverage import warn_unclassified_write_routes
+from modules.system.audit_middleware import bind_route_audit
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+    problems = settings.runtime_problems()
+    if problems:
+        raise RuntimeError("生产配置不完整：" + "；".join(problems))
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        load_database_field_labels(engine)
+        warn_unclassified_write_routes(api_routes())
+        if settings.should_start_scheduler:
+            start_scheduler()
+        yield
+
+    app = FastAPI(
+        title=settings.app_name,
+        debug=settings.debug,
+        lifespan=lifespan,
+        dependencies=[Depends(bind_route_audit)],
+    )
+
+    if settings.cors_origin_list:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origin_list,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    setup_exception_handlers(app)
+    setup_logging(app)
+    setup_audit_middleware(app)
+    app.include_router(api_router, prefix=API_PREFIX)
+
+    return app

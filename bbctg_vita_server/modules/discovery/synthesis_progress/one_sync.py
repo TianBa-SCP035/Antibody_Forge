@@ -1,0 +1,1047 @@
+from __future__ import annotations
+
+import logging
+import re
+from datetime import date
+from typing import Any
+
+from sqlalchemy import bindparam, or_, select, text
+from sqlalchemy.orm import Session
+
+from db.external import open_one_db
+from models.discovery import DiscoverySynthesisOrder
+from modules.discovery.synthesis_progress.constants import (
+    AFFINITY_STATUS_ASSAYING,
+    AFFINITY_STATUS_COMPLETED,
+    AFFINITY_STATUS_OPTIONS,
+    AFFINITY_STATUS_WAIT,
+    DRIFT_COMPARE_FIELDS,
+    DRIFT_FIELD_LABELS,
+    FLOW_STATUS_COMPLETED,
+    FLOW_STATUS_NOT_REQUIRED,
+    FLOW_STATUS_OPTIONS,
+    FLOW_STATUS_WAIT,
+    INTERNAL_CORP,
+    RECHOOSE_TOKEN,
+    SELECTION_METHOD_OPTIONS,
+    STATUS_ASSAYING,
+    STATUS_CANCELLED,
+    STATUS_COMPLETED,
+    STATUS_SYNTHESIZING,
+    STATUS_WAIT_ASSAY,
+    STATUS_WAIT_ORDER,
+    SUPPLY_MODE_ARRIVAL,
+    SYNTHETIC_CORP_OPTIONS,
+)
+from utils.filter_values import clean_field_text
+from utils.normalize import join_tokens, split_tokens
+
+logger = logging.getLogger(__name__)
+
+_DATE_FULL_RE = re.compile(r"(20\d{2})[./年-](\d{1,2})[./月-](\d{1,2})[日号]?")
+_DATE_COMPACT8_RE = re.compile(r"(20\d{2})(\d{2})(\d{2})")
+_VALID_ORDER_NO_RE = re.compile(
+    r"((?:CN|GS[A-Z]{2,3}|BAO|QK|ORD)\d+(?:-\d+)?)",
+    re.IGNORECASE,
+)
+
+SNAPSHOT_STORED_FIELDS = (*DRIFT_COMPARE_FIELDS, "synthesis_code", "batch_label")
+_CLONES_PREFIX_RE = re.compile(r"^(.*?)_\d+clones", re.IGNORECASE)
+_MANUAL_BATCH_SEGMENT_RE = re.compile(r"M\d+", re.IGNORECASE)
+_TARGET_CODE_RE = re.compile(r"\d{2}R\d{3}", re.IGNORECASE)
+ASSAY_DATA_FIELDS = frozenset({"arrival_date", "affinity_owner", "affinity_date", "report_reason", "flow_date"})
+
+
+def _clean_str(value: Any, max_len: int | None = None) -> str | None:
+    if value is None:
+        return None
+    text_val = clean_field_text(value)
+    if not text_val or text_val.lower() in {"none", "null", "nan", "/", "//", "--", "---", "#n/a"}:
+        return None
+    if max_len is not None:
+        return text_val[:max_len]
+    return text_val
+
+
+def _clean_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    text_val = _clean_str(value)
+    if not text_val:
+        return None
+    try:
+        num = int(float(text_val))
+        return num if num > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _clean_order_no(value: Any) -> str | None:
+    raw = _clean_str(value, 128)
+    if not raw:
+        return None
+    m = _VALID_ORDER_NO_RE.search(raw)
+    return m.group(1).upper()[:64] if m else None
+
+
+def normalize_date_text(value: Any) -> str | None:
+    raw = _clean_str(value, 64)
+    if not raw:
+        return None
+    for regex in (_DATE_FULL_RE, _DATE_COMPACT8_RE):
+        m = regex.search(raw)
+        if m:
+            try:
+                return date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
+            except ValueError:
+                continue
+    return None
+
+
+def normalize_synthetic_corp(raw_corp: Any, refstr: Any = None, order_no: Any = None) -> str | None:
+    corp = _clean_str(raw_corp, 64)
+    if corp in SYNTHETIC_CORP_OPTIONS:
+        return corp
+    for text_cand in (raw_corp, refstr):
+        s = _clean_str(text_cand) or ""
+        if "君跻" in s:
+            return "君跻"
+        if "擎科" in s:
+            return "擎科"
+        if "金斯瑞" in s:
+            return "金斯瑞"
+    ord_str = (_clean_str(order_no) or "").upper()
+    if ord_str.startswith("CN") or ord_str.startswith("GS"):
+        return "君跻"
+    if ord_str.startswith("BAO"):
+        return "擎科"
+    return None
+
+
+def _default_affinity_status(row: DiscoverySynthesisOrder) -> str:
+    if row.affinity_date:
+        return AFFINITY_STATUS_COMPLETED
+    if str(row.affinity_owner or "").strip():
+        return AFFINITY_STATUS_ASSAYING
+    return AFFINITY_STATUS_WAIT
+
+
+def sync_derived_statuses(
+    row: DiscoverySynthesisOrder, *, changed_fields: Any = (), reason_added: bool = False
+) -> str:
+    """Derive the two assay states and the aggregate workflow state; cancelled rows keep their status."""
+    changed = set(changed_fields)
+    current_status = row.status
+    if current_status == STATUS_COMPLETED and "target_type" not in changed:
+        # 已完成只在要不要做流式变了（是否分泌型）时重算，其余重新检测要先打回待检测
+        return current_status
+    has_reason = bool(str(row.report_reason or "").strip())
+    has_assay_data = bool(
+        row.arrival_date or row.affinity_owner or row.affinity_date or has_reason or row.flow_date
+    )
+    explicit_status = bool({"affinity_status", "flow_status"} & changed)
+    owner_cleared = "affinity_owner" in changed and not str(row.affinity_owner or "").strip()
+    # 检测中 / 已完成若不是这次清掉的人员、日期带出来的，就是手动标的，要保留
+    manual_assay = (
+        (row.affinity_status == AFFINITY_STATUS_ASSAYING and not owner_cleared)
+        or (row.affinity_status == AFFINITY_STATUS_COMPLETED and not ("affinity_date" in changed and not row.affinity_date))
+        or (row.flow_status == FLOW_STATUS_COMPLETED and not ("flow_date" in changed and not row.flow_date))
+    )
+    external = row.supply_mode == SUPPLY_MODE_ARRIVAL
+    # 外送合成还没到货时，误填的检测数据删干净就退回合成阶段；内部转染 / 改亚型手动推进的阶段不动
+    if (
+        ("arrival_date" in changed or (external and not explicit_status and ASSAY_DATA_FIELDS & changed))
+        and not has_assay_data
+        and not manual_assay
+    ):
+        row.affinity_status = None
+        row.flow_status = None
+
+    if has_assay_data or row.affinity_status or row.flow_status:
+        if row.affinity_status == AFFINITY_STATUS_COMPLETED:
+            # 带未出原因的已完成是结案（先填原因再标完成），改原因文字不影响；
+            # 新填原因表示报告卡住，回到待检测；清掉日期且没有原因时按其余数据回退
+            if "affinity_status" not in changed:
+                if reason_added and current_status != STATUS_COMPLETED:
+                    row.affinity_status = AFFINITY_STATUS_WAIT
+                elif "affinity_date" in changed and not row.affinity_date and not has_reason:
+                    row.affinity_status = _default_affinity_status(row)
+        elif has_reason:
+            row.affinity_status = AFFINITY_STATUS_WAIT
+        elif row.affinity_status not in AFFINITY_STATUS_OPTIONS or (
+            "affinity_status" not in changed
+            and (
+                {"affinity_date", "report_reason"} & changed
+                or (owner_cleared and row.affinity_status == AFFINITY_STATUS_ASSAYING)
+            )
+        ):
+            row.affinity_status = _default_affinity_status(row)
+
+        if str(row.target_type or "").strip() == "分泌型":
+            row.flow_status = FLOW_STATUS_NOT_REQUIRED
+        elif row.flow_status not in FLOW_STATUS_OPTIONS or (
+            "flow_status" not in changed
+            and ("flow_date" in changed or ("target_type" in changed and row.flow_status == FLOW_STATUS_NOT_REQUIRED))
+        ):
+            row.flow_status = FLOW_STATUS_COMPLETED if row.flow_date else FLOW_STATUS_WAIT
+
+        if row.affinity_status == AFFINITY_STATUS_COMPLETED and row.flow_status in {
+            FLOW_STATUS_COMPLETED,
+            FLOW_STATUS_NOT_REQUIRED,
+        }:
+            # 外送合成没录到货时，填日期不自动完成：多半是到货前误填，完成后实验员自己打不回；
+            # 补上到货日期即完成，手动标子状态照常完成
+            awaiting = external and not row.arrival_date and not explicit_status and current_status != STATUS_COMPLETED
+            derived = STATUS_ASSAYING if awaiting else STATUS_COMPLETED
+        elif (
+            row.affinity_status in {AFFINITY_STATUS_ASSAYING, AFFINITY_STATUS_COMPLETED}
+            or row.flow_status == FLOW_STATUS_COMPLETED
+        ):
+            derived = STATUS_ASSAYING
+        else:
+            derived = STATUS_WAIT_ASSAY
+    else:
+        row.affinity_status = None
+        row.flow_status = None
+        if row.order_no or (row.supply_mode and row.supply_mode != SUPPLY_MODE_ARRIVAL):
+            derived = STATUS_SYNTHESIZING
+        else:
+            derived = STATUS_WAIT_ORDER
+
+    if current_status != STATUS_CANCELLED:
+        row.status = derived
+    return row.status
+
+
+def build_remote_snapshot(
+    source_type: str,
+    row_map: dict[str, Any],
+    orderhis_map: dict[str, tuple[str, str]] | None = None,
+) -> dict[str, Any]:
+    synthesis_code = _clean_str(row_map.get("synthesiscode"), 64)
+    refstr = _clean_str(row_map.get("refstr"), 255)
+    order_no = _clean_order_no(row_map.get("orderno"))
+    if not order_no and refstr and orderhis_map:
+        stem = re.sub(r"\.(xlsx|xls|csv|tsv)$", "", refstr, flags=re.IGNORECASE)
+        if stem in orderhis_map:
+            order_no = _clean_order_no(orderhis_map[stem][0])
+
+    synthetic_corp = normalize_synthetic_corp(row_map.get("syntheticcorp"), refstr, order_no)
+    synthetic_count = _clean_int(row_map.get("syntheticcount"))
+    synthetic_date = normalize_date_text(row_map.get("syntheticdate"))
+
+    arrival_date = normalize_date_text(row_map.get("deliverydate"))
+    sup_count = _clean_int(row_map.get("supernatantcounts"))
+    arrival_count = sup_count if sup_count is not None else _clean_int(row_map.get("plasmidcounts"))
+    method_tokens = split_tokens(_clean_str(row_map.get("selectmethod"), 128))
+    rechoose_flag = str(row_map.get("isrechooseorder") or "").strip().lower()
+    if rechoose_flag == "true" or RECHOOSE_TOKEN in method_tokens:
+        is_rechoose = "是"
+    else:
+        is_rechoose = "否" if rechoose_flag == "false" else None
+    task_projectid = _clean_str(row_map.get("task_projectid"), 128)
+    task_batchname = _clean_str(row_map.get("task_batchname"), 128)
+
+    return {
+        "source_one_type": source_type.lower(),
+        "source_one_id": int(row_map["id"]),
+        "synthesis_code": synthesis_code,
+        "batch_label": task_projectid or task_batchname,
+        "order_no": order_no,
+        "synthetic_corp": synthetic_corp,
+        "synthetic_count": synthetic_count,
+        "synthetic_date": synthetic_date,
+        "arrival_count": arrival_count,
+        "arrival_date": arrival_date,
+        "selection_method": join_tokens([t for t in method_tokens if t != RECHOOSE_TOKEN], SELECTION_METHOD_OPTIONS),
+        "is_rechoose": is_rechoose,
+        "order_sender": _clean_str(row_map.get("uploader"), 128),
+        "order_state": _clean_str(row_map.get("orderstate"), 64),
+        "refstr": refstr,
+        "task_projectid": task_projectid,
+        "task_projectcode": _clean_str(row_map.get("task_projectcode"), 128),
+        "task_batchname": task_batchname,
+        "task_target": _clean_str(row_map.get("task_target"), 255),
+    }
+
+
+def is_manual_batch(refstr: Any, projectcode: Any = None) -> bool:
+    """改造、改亚型、转染等先在本系统建空单：工单批次（文件名前缀）第 5 段为 M1、M2… 时不自动建单。"""
+    match = _CLONES_PREFIX_RE.match(str(refstr or ""))
+    prefix = match.group(1) if match else str(projectcode or "")
+    parts = prefix.split("_")
+    return len(parts) > 4 and bool(_MANUAL_BATCH_SEGMENT_RE.fullmatch(parts[4].strip()))
+
+
+def parse_one_target(raw: Any, *code_sources: Any) -> tuple[list[str], str | None]:
+    """One 靶点写作 `[20R147]MCSP`；没有方括号编号时取工单批次/送测转码开头的靶点编号。"""
+    text_value = str(raw or "")
+    codes = [code.upper() for code in re.findall(r"\[(\d{2}R\d{3})\]", text_value, re.IGNORECASE)]
+    name = re.sub(r"\[[^\]]*\]", "", text_value).strip() or None
+    if not codes:
+        for source in code_sources:
+            head = str(source or "").split("_")[0]
+            if _TARGET_CODE_RE.fullmatch(head):
+                codes = [head.upper()]
+                break
+    return codes, name
+
+
+def compute_drift_fields(row: DiscoverySynthesisOrder) -> list[dict[str, str]]:
+    snapshot = row.source_snapshot if isinstance(row.source_snapshot, dict) else {}
+    if not snapshot:
+        return []
+    drifts: list[dict[str, str]] = []
+    for field in DRIFT_COMPARE_FIELDS:
+        remote_raw = snapshot.get(field)
+        if remote_raw in (None, ""):
+            continue
+        local_raw = getattr(row, field, None)
+        if local_raw in (None, ""):
+            continue
+        remote_str = str(remote_raw).strip()
+        local_str = str(local_raw).strip()
+        if field == "order_no" and local_str.upper().startswith("CN") and remote_str.upper().startswith("GS"):
+            continue
+        if local_str != remote_str:
+            drifts.append(
+                {
+                    "field": field,
+                    "label": DRIFT_FIELD_LABELS.get(field, field),
+                    "current": local_str,
+                    "remote": remote_str,
+                }
+            )
+    return drifts
+
+
+def apply_remote_snapshot_to_row(
+    row: DiscoverySynthesisOrder,
+    snapshot: dict[str, Any],
+    *,
+    replace_from_snapshot: dict[str, Any] | None = None,
+) -> bool:
+    """Backfills empty execution fields (or replaces fields auto-filled by a previous snapshot) without overwriting user edits."""
+    changed = False
+    status_input_changed = False
+    old_snapshot = row.source_snapshot if isinstance(row.source_snapshot, dict) else {}
+    new_stored = {f: snapshot.get(f) for f in SNAPSHOT_STORED_FIELDS}
+    old_stored = {f: old_snapshot.get(f) for f in SNAPSHOT_STORED_FIELDS}
+    if old_stored != new_stored:
+        row.source_snapshot = new_stored
+        changed = True
+
+    for field in SNAPSHOT_STORED_FIELDS:
+        remote_val = snapshot.get(field)
+        if remote_val in (None, ""):
+            continue
+        current_val = getattr(row, field, None)
+        # 「内部」只是改造类新建时的默认值，关联到 One 订单后按 One 的合成公司走
+        should_fill = current_val in (None, "") or (field == "synthetic_corp" and current_val == INTERNAL_CORP) or (
+            replace_from_snapshot is not None
+            and replace_from_snapshot.get(field) not in (None, "")
+            and current_val == replace_from_snapshot.get(field)
+        )
+        if should_fill and current_val != remote_val:
+            setattr(row, field, remote_val)
+            changed = True
+            if field in {"order_no", "arrival_date"}:
+                status_input_changed = True
+
+    # 下单人系统内不可编辑，始终跟随 One 的值（含清空）。
+    order_sender = snapshot.get("order_sender")
+    if row.order_sender != order_sender:
+        row.order_sender = order_sender
+        changed = True
+
+    if status_input_changed:
+        old_states = (row.status, row.affinity_status, row.flow_status)
+        sync_derived_statuses(row)
+        if old_states != (row.status, row.affinity_status, row.flow_status):
+            changed = True
+
+    return changed
+
+
+_NGS_QUERY_BASE = """
+    SELECT
+        a.id AS id,
+        a.refstr AS refstr,
+        a.orderno AS orderno,
+        a.orderstate AS orderstate,
+        a.syntheticcount AS syntheticcount,
+        a.syntheticcorp AS syntheticcorp,
+        a.syntheticdate AS syntheticdate,
+        a.plasmidcounts AS plasmidcounts,
+        a.supernatantcounts AS supernatantcounts,
+        a.deliverydate AS deliverydate,
+        a.selectmethod AS selectmethod,
+        a.isrechooseorder AS isrechooseorder,
+        t.synthesiscode AS synthesiscode,
+        t.projectid AS task_projectid,
+        t.projectcode AS task_projectcode,
+        t.batchname AS task_batchname,
+        t.target AS task_target,
+        f.uploaded_by AS uploader
+    FROM one_task_ngs_data_analyze a
+    LEFT JOIN one_task_ngs_task t ON a.ngstaskid = t.id
+    LEFT JOIN beacon_upload_file f ON f.file_name = a.refstr
+    WHERE (a.isdelete IS NULL OR a.isdelete = '0')
+      AND NOT (
+        COALESCE(a.orderno, '') = ''
+        AND COALESCE(a.refstr, '') = ''
+        AND COALESCE(a.syntheticcount, '') = ''
+        AND COALESCE(a.syntheticdate, '') = ''
+      )
+"""
+
+_BEACON_QUERY_BASE = """
+    SELECT
+        a.id AS id,
+        a.refstr AS refstr,
+        a.orderno AS orderno,
+        a.orderstate AS orderstate,
+        a.syntheticcount AS syntheticcount,
+        a.syntheticcorp AS syntheticcorp,
+        a.syntheticdate AS syntheticdate,
+        a.plasmidcounts AS plasmidcounts,
+        a.supernatantcounts AS supernatantcounts,
+        a.deliverydate AS deliverydate,
+        a.selectmethod AS selectmethod,
+        a.isrechooseorder AS isrechooseorder,
+        t.synthesiscode AS synthesiscode,
+        t.projectid AS task_projectid,
+        t.projectcode AS task_projectcode,
+        t.batchname AS task_batchname,
+        t.target AS task_target,
+        f.uploaded_by AS uploader
+    FROM one_task_beacon_data_analyze a
+    LEFT JOIN one_task_beacon_task t ON a.ngstaskid = t.id
+    LEFT JOIN beacon_upload_file f ON f.file_name = a.refstr
+    WHERE (a.isdelete IS NULL OR a.isdelete = '0')
+      AND NOT (
+        COALESCE(a.orderno, '') = ''
+        AND COALESCE(a.refstr, '') = ''
+        AND COALESCE(a.syntheticcount, '') = ''
+        AND COALESCE(a.syntheticdate, '') = ''
+      )
+"""
+
+
+def _load_orderhis_map(
+    one_db: Session,
+    filenames: list[str],
+) -> dict[str, tuple[str, str]]:
+    if not filenames:
+        return {}
+    result: dict[str, tuple[str, str]] = {}
+    try:
+        stmt = text(
+            "SELECT filename, orderNo, sendcorpname FROM orderhis "
+            "WHERE orderNo IS NOT NULL AND orderNo != '' AND filename IN :fns"
+        ).bindparams(bindparam("fns", expanding=True))
+        rows = one_db.execute(stmt, {"fns": list(set(filenames))}).all()
+        for fn, ord_no, corp in rows:
+            if fn and ord_no:
+                stem = re.sub(r"\.(xlsx|xls|csv|tsv)$", "", str(fn).strip(), flags=re.IGNORECASE)
+                result[stem] = (str(ord_no).strip().upper(), str(corp or "").strip())
+    except Exception:
+        logger.debug("orderhis lookup skipped", exc_info=True)
+    return result
+
+
+def fetch_remote_snapshots_by_ids(
+    one_db: Session,
+    ngs_ids: list[int],
+    beacon_ids: list[int],
+) -> dict[tuple[str, int], dict[str, Any]]:
+    raw_rows: list[tuple[str, dict[str, Any]]] = []
+    if ngs_ids:
+        stmt = text(_NGS_QUERY_BASE + " AND a.id IN :ids").bindparams(
+            bindparam("ids", expanding=True)
+        )
+        for row in one_db.execute(stmt, {"ids": list(set(ngs_ids))}).mappings().all():
+            raw_rows.append(("ngs", dict(row)))
+    if beacon_ids:
+        stmt = text(_BEACON_QUERY_BASE + " AND a.id IN :ids").bindparams(
+            bindparam("ids", expanding=True)
+        )
+        for row in one_db.execute(stmt, {"ids": list(set(beacon_ids))}).mappings().all():
+            raw_rows.append(("beacon", dict(row)))
+
+    missing_ord_fns = [
+        str(rm["refstr"]).strip()
+        for _, rm in raw_rows
+        if not _clean_order_no(rm.get("orderno")) and _clean_str(rm.get("refstr"))
+    ]
+    orderhis_map = _load_orderhis_map(one_db, missing_ord_fns) if missing_ord_fns else None
+
+    result: dict[tuple[str, int], dict[str, Any]] = {}
+    for stype, rm in raw_rows:
+        rid = int(rm["id"])
+        if (stype, rid) not in result:
+            result[(stype, rid)] = build_remote_snapshot(stype, rm, orderhis_map)
+    return result
+
+
+def _is_compatible_candidate(row: DiscoverySynthesisOrder, snap: dict[str, Any]) -> bool:
+    """Prevents linking rows that have different non-empty order numbers unless GS/CN alias."""
+    ord_l = (row.order_no or "").strip().upper()
+    ord_r = (snap.get("order_no") or "").strip().upper()
+    if not ord_l or not ord_r or ord_l == ord_r:
+        return True
+    if (ord_l.startswith("CN") and ord_r.startswith("GS")) or (
+        ord_l.startswith("GS") and ord_r.startswith("CN")
+    ):
+        if row.synthetic_count is None or snap.get("synthetic_count") == row.synthetic_count:
+            return True
+    return False
+
+
+def _batch_lookup_keys(batch_label: str | None) -> tuple[str, ...]:
+    stem = ((batch_label or "").split("|")[0]).strip()
+    if not stem:
+        return ()
+    base = re.sub(r"_\d+$|_C\d+$", "", stem, flags=re.IGNORECASE)
+    return (stem, base) if base and base != stem else (stem,)
+
+
+def _query_candidates_for_rows(
+    one_db: Session,
+    target_rows: list[DiscoverySynthesisOrder],
+    orderhis_map: dict[str, tuple[str, str]] | None = None,
+) -> list[dict[str, Any]]:
+    ord_vals: set[str] = set()
+    bat_vals: set[str] = set()
+    syn_vals: set[str] = set()
+    for urow in target_rows:
+        ord_u = (urow.order_no or "").strip()
+        if ord_u:
+            ord_vals.add(ord_u)
+        syn_u = (urow.synthesis_code or "").strip()
+        if syn_u:
+            syn_vals.add(syn_u)
+        bat_vals.update(_batch_lookup_keys(urow.batch_label))
+
+    clauses: list[str] = []
+    params: dict[str, Any] = {}
+    expanding_binds = []
+    if ord_vals:
+        clauses.append("a.orderno IN :ord_vals")
+        params["ord_vals"] = list(ord_vals)
+        expanding_binds.append(bindparam("ord_vals", expanding=True))
+    if bat_vals:
+        clauses.append("(t.projectid IN :bat_vals OR t.projectcode IN :bat_vals OR t.batchname IN :bat_vals)")
+        params["bat_vals"] = list(bat_vals)
+        expanding_binds.append(bindparam("bat_vals", expanding=True))
+    if syn_vals:
+        clauses.append("(t.synthesiscode IN :syn_vals OR t.projectcode IN :syn_vals)")
+        params["syn_vals"] = list(syn_vals)
+        expanding_binds.append(bindparam("syn_vals", expanding=True))
+    if not clauses:
+        return []
+    condition = f"AND ({' OR '.join(clauses)}) ORDER BY a.id DESC"
+    return _fetch_snapshots(one_db, condition, params, expanding_binds, orderhis_map)
+
+
+def _fetch_snapshots(
+    one_db: Session,
+    condition: str,
+    params: dict[str, Any],
+    binds: list[Any] | tuple[Any, ...] = (),
+    orderhis_map: dict[str, tuple[str, str]] | None = None,
+) -> list[dict[str, Any]]:
+    raw_rows: list[tuple[str, dict[str, Any]]] = []
+    for stype, qbase in (("ngs", _NGS_QUERY_BASE), ("beacon", _BEACON_QUERY_BASE)):
+        stmt = text(f"{qbase} {condition}").bindparams(*binds)
+        raw_rows.extend((stype, dict(rm)) for rm in one_db.execute(stmt, params).mappings().all())
+    if orderhis_map is None:
+        missing_fns = [
+            str(rm["refstr"]).strip()
+            for _, rm in raw_rows
+            if not _clean_order_no(rm.get("orderno")) and _clean_str(rm.get("refstr"))
+        ]
+        orderhis_map = _load_orderhis_map(one_db, missing_fns) if missing_fns else None
+    return [build_remote_snapshot(stype, rm, orderhis_map) for stype, rm in raw_rows]
+
+
+def _source_key(snap: dict[str, Any]) -> tuple[str, int]:
+    return str(snap["source_one_type"]).lower(), int(snap["source_one_id"])
+
+
+def collect_new_remote_orders(
+    db: Session,
+    since: str,
+) -> tuple[list[dict[str, Any]], list[tuple[DiscoverySynthesisOrder, dict[str, Any]]]] | None:
+    """One 自 since 起新建、本地还没有的订单；One 不可用时返回 None。
+
+    返回 (要新建的快照, 要改绑的本地行与快照)。同一订单号只建一条；没有订单号的按文件去重，
+    同文件已下单或已在本地时不建。同文件先建了无订单号的待下单行、后来另一条才下单时，改绑那一行而不是再建。
+    """
+    try:
+        with open_one_db(connect_timeout=3, read_timeout=15) as one_db:
+            if one_db is None:
+                return None
+            fresh_snaps = _fetch_snapshots(one_db, "AND a.created >= :since", {"since": since})
+            refs = sorted({snap["refstr"] for snap in fresh_snaps if snap.get("refstr")})
+            file_snaps = (
+                _fetch_snapshots(
+                    one_db, "AND a.refstr IN :refs", {"refs": refs}, [bindparam("refs", expanding=True)]
+                )
+                if refs
+                else []
+            )
+    except Exception:
+        logger.warning("collect_new_remote_orders failed or timed out", exc_info=True)
+        return None
+
+    linked = {
+        (str(stype).lower(), int(sid)): int(rid)
+        for rid, stype, sid in db.execute(
+            select(
+                DiscoverySynthesisOrder.id,
+                DiscoverySynthesisOrder.source_one_type,
+                DiscoverySynthesisOrder.source_one_id,
+            ).where(DiscoverySynthesisOrder.source_one_id.is_not(None))
+        ).all()
+        if stype
+    }
+    local_orders = {
+        str(order_no).strip().upper()
+        for order_no in db.scalars(
+            select(DiscoverySynthesisOrder.order_no).where(DiscoverySynthesisOrder.order_no.is_not(None))
+        ).all()
+    }
+    fresh = [
+        snap
+        for snap in fresh_snaps
+        if _source_key(snap) not in linked
+        and not is_manual_batch(snap.get("refstr"), snap.get("task_projectcode"))
+    ]
+    same_file: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for snap in file_snaps:
+        same_file.setdefault((snap["source_one_type"], snap.get("refstr") or ""), []).append(snap)
+
+    creates: list[dict[str, Any]] = []
+    relinks: list[tuple[DiscoverySynthesisOrder, dict[str, Any]]] = []
+    seen: set[Any] = set()
+    for snap in sorted(fresh, key=_source_key):
+        file_key = (snap["source_one_type"], snap.get("refstr") or "")
+        group = same_file.get(file_key, []) if snap.get("refstr") else []
+        order_no = (snap.get("order_no") or "").upper()
+        if order_no:
+            if order_no in local_orders or order_no in seen:
+                continue
+            seen.add(order_no)
+            pending = (
+                db.get(DiscoverySynthesisOrder, linked[_source_key(other)])
+                for other in group
+                if _source_key(other) in linked and not other.get("order_no")
+            )
+            row = next((item for item in pending if item is not None and not item.order_no), None)
+            if row is not None:
+                relinks.append((row, snap))
+            else:
+                creates.append(snap)
+        elif group and file_key not in seen:
+            if any(other.get("order_no") or _source_key(other) in linked for other in group):
+                continue
+            seen.add(file_key)
+            creates.append(snap)
+    return creates, relinks
+
+
+def _taken_sources_for_snaps(
+    local_db: Session | None,
+    snaps: list[dict[str, Any]],
+    exclude_row_ids: list[int] | None = None,
+) -> set[tuple[str, int]]:
+    if local_db is None or not snaps:
+        return set()
+    cand_ids = list({int(s["source_one_id"]) for s in snaps})
+    stmt = select(
+        DiscoverySynthesisOrder.source_one_type,
+        DiscoverySynthesisOrder.source_one_id,
+    ).where(DiscoverySynthesisOrder.source_one_id.in_(cand_ids))
+    if exclude_row_ids:
+        stmt = stmt.where(DiscoverySynthesisOrder.id.notin_(exclude_row_ids))
+    return {
+        (str(st).lower(), int(sid))
+        for st, sid in local_db.execute(stmt).all()
+        if st and sid is not None
+    }
+
+
+def _match_unlinked_rows_batch(
+    one_db: Session,
+    unlinked_rows: list[DiscoverySynthesisOrder],
+    orderhis_map: dict[str, tuple[str, str]] | None = None,
+    taken_sources: set[tuple[str, int]] | None = None,
+    local_db: Session | None = None,
+    preloaded_snaps: list[dict[str, Any]] | None = None,
+) -> dict[int, dict[str, Any]]:
+    if not unlinked_rows:
+        return {}
+
+    snaps = (
+        preloaded_snaps
+        if preloaded_snaps is not None
+        else _query_candidates_for_rows(one_db, unlinked_rows, orderhis_map)
+    )
+    if not snaps:
+        return {}
+
+    exclude_ids = [int(r.id) for r in unlinked_rows if r.id]
+    taken = set(taken_sources or set()) | _taken_sources_for_snaps(local_db, snaps, exclude_ids)
+
+    by_order: dict[str, list[dict[str, Any]]] = {}
+    by_batch: dict[str, list[dict[str, Any]]] = {}
+    by_syn: dict[str, list[dict[str, Any]]] = {}
+
+    for snap in snaps:
+        ono = (snap.get("order_no") or "").upper()
+        if ono:
+            by_order.setdefault(ono, []).append(snap)
+        sc = (snap.get("synthesis_code") or "").upper()
+        if sc:
+            by_syn.setdefault(sc, []).append(snap)
+        for b_field in ("task_projectid", "task_projectcode", "task_batchname"):
+            bv = (snap.get(b_field) or "").upper()
+            if bv:
+                by_batch.setdefault(bv, []).append(snap)
+
+    matched: dict[int, dict[str, Any]] = {}
+
+    def _pick(urow: DiscoverySynthesisOrder, cands: list[dict[str, Any]]) -> dict[str, Any] | None:
+        avail = [
+            c
+            for c in cands
+            if (str(c["source_one_type"]).lower(), int(c["source_one_id"])) not in taken
+            and _is_compatible_candidate(urow, c)
+        ]
+        if not avail:
+            return None
+        if urow.synthetic_count is not None:
+            for c in avail:
+                if c.get("synthetic_count") == urow.synthetic_count:
+                    return c
+        return avail[0]
+
+    # Pass 1: Exact order_no match
+    for urow in unlinked_rows:
+        ord_u = (urow.order_no or "").strip().upper()
+        if not ord_u or ord_u not in by_order:
+            continue
+        chosen = _pick(urow, by_order[ord_u])
+        if chosen:
+            matched[urow.id] = chosen
+            taken.add((str(chosen["source_one_type"]).lower(), int(chosen["source_one_id"])))
+
+    # Pass 2: Batch label match
+    for urow in unlinked_rows:
+        if urow.id in matched:
+            continue
+        bat_keys = _batch_lookup_keys(urow.batch_label)
+        if not bat_keys:
+            continue
+        cands: list[dict[str, Any]] = []
+        for bk in bat_keys:
+            cands.extend(by_batch.get(bk.upper(), []))
+        chosen = _pick(urow, cands)
+        if chosen:
+            matched[urow.id] = chosen
+            taken.add((str(chosen["source_one_type"]).lower(), int(chosen["source_one_id"])))
+
+    # Pass 3: Synthesis code match；改亚型/内部转染与原合成共用转码，只能按订单号或批次关联
+    for urow in unlinked_rows:
+        if urow.id in matched or urow.supply_mode != SUPPLY_MODE_ARRIVAL:
+            continue
+        syn_u = (urow.synthesis_code or "").strip().upper()
+        if not syn_u or syn_u not in by_syn:
+            continue
+        chosen = _pick(urow, by_syn[syn_u])
+        if chosen:
+            matched[urow.id] = chosen
+            taken.add((str(chosen["source_one_type"]).lower(), int(chosen["source_one_id"])))
+
+    return matched
+
+
+def _collect_local_duplicates(
+    db: Session,
+    rows: list[DiscoverySynthesisOrder],
+) -> dict[str, dict[str, list[str]]]:
+    if not rows or len(rows) > 50:
+        return {}
+    row_ids = {int(r.id) for r in rows if r.id}
+    ords = {r.order_no.strip() for r in rows if r.order_no and r.order_no.strip()}
+    bats = {r.batch_label.strip() for r in rows if r.batch_label and r.batch_label.strip()}
+    syns = {r.synthesis_code.strip() for r in rows if r.synthesis_code and r.synthesis_code.strip()}
+    clauses = []
+    if ords:
+        clauses.append(DiscoverySynthesisOrder.order_no.in_(list(ords)))
+    if bats:
+        clauses.append(DiscoverySynthesisOrder.batch_label.in_(list(bats)))
+    if syns:
+        clauses.append(DiscoverySynthesisOrder.synthesis_code.in_(list(syns)))
+    if not clauses:
+        return {}
+
+    others = db.scalars(
+        select(DiscoverySynthesisOrder).where(
+            DiscoverySynthesisOrder.id.notin_(list(row_ids)),
+            or_(*clauses),
+        )
+    ).all()
+    if not others:
+        return {}
+
+    result: dict[str, dict[str, list[str]]] = {}
+    for r in rows:
+        r_dups: dict[str, list[str]] = {}
+        ord_u = (r.order_no or "").strip().upper()
+        bat_u = (r.batch_label or "").strip().upper()
+        syn_u = (r.synthesis_code or "").strip().upper()
+        for o in others:
+            if ord_u and (o.order_no or "").strip().upper() == ord_u:
+                code_part = o.batch_label or o.synthesis_code or o.synthesis_order_id
+                if code_part and code_part not in r_dups.setdefault("order_no", []):
+                    r_dups["order_no"].append(code_part)
+            if bat_u and (o.batch_label or "").strip().upper() == bat_u:
+                code_part = o.order_no or o.synthesis_code or o.synthesis_order_id
+                if code_part and code_part not in r_dups.setdefault("batch_label", []):
+                    r_dups["batch_label"].append(code_part)
+            if syn_u and (o.synthesis_code or "").strip().upper() == syn_u:
+                code_part = o.order_no or o.batch_label or o.synthesis_order_id
+                if code_part and code_part not in r_dups.setdefault("synthesis_code", []):
+                    r_dups["synthesis_code"].append(code_part)
+        if r_dups:
+            result[str(r.id)] = r_dups
+    return result
+
+
+def _collect_single_row_candidates(
+    db: Session,
+    row: DiscoverySynthesisOrder,
+    snaps: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not snaps:
+        return []
+    taken_by_others = _taken_sources_for_snaps(db, snaps, [int(row.id)] if row.id else None)
+
+    syn_u = (row.synthesis_code or "").strip().upper()
+    bat_keys_u = tuple(k.upper() for k in _batch_lookup_keys(row.batch_label))
+
+    seen_keys: set[tuple[str, int]] = set()
+    items: list[dict[str, Any]] = []
+    for s in snaps:
+        key = (str(s["source_one_type"]).lower(), int(s["source_one_id"]))
+        if key in seen_keys or key in taken_by_others:
+            continue
+        if (
+            row.source_one_id == key[1]
+            and (row.source_one_type or "").lower() == key[0]
+        ):
+            continue
+        if not s.get("order_no") and not s.get("batch_label"):
+            continue
+        s_syn = (s.get("synthesis_code") or "").upper()
+        s_batches = {
+            (s.get(k) or "").upper()
+            for k in ("task_projectid", "task_projectcode", "task_batchname")
+            if s.get(k)
+        }
+        matches_syn = bool(syn_u and s_syn == syn_u)
+        matches_bat = bool(bat_keys_u and any(bk in s_batches for bk in bat_keys_u))
+        if not (matches_syn or matches_bat):
+            continue
+        seen_keys.add(key)
+        items.append(
+            {
+                "source_one_type": key[0],
+                "source_one_id": key[1],
+                "order_no": s.get("order_no"),
+                "batch_label": s.get("batch_label"),
+                "synthesis_code": s.get("synthesis_code"),
+                "synthetic_corp": s.get("synthetic_corp"),
+                "synthetic_count": s.get("synthetic_count"),
+                "synthetic_date": s.get("synthetic_date"),
+                "arrival_count": s.get("arrival_count"),
+                "arrival_date": s.get("arrival_date"),
+            }
+        )
+        if len(items) >= 20:
+            break
+    return items
+
+
+def check_remote_for_local_rows(
+    db: Session,
+    local_ids: list[int] | None = None,
+    *,
+    rows: list[DiscoverySynthesisOrder] | None = None,
+    connect_timeout: int = 1,
+    read_timeout: int = 1,
+    max_rows: int = 500,
+    serialize_changed: bool = True,
+) -> dict[str, Any]:
+    if rows is None:
+        clean_ids = sorted({int(i) for i in (local_ids or []) if i and int(i) > 0})[:max_rows]
+        if not clean_ids:
+            return {"updated_items": [], "linked": 0, "updated": 0, "remote_available": True}
+        rows = list(
+            db.scalars(
+                select(DiscoverySynthesisOrder).where(
+                    DiscoverySynthesisOrder.id.in_(clean_ids),
+                )
+            ).all()
+        )
+    if not rows:
+        return {"updated_items": [], "linked": 0, "updated": 0, "remote_available": True}
+
+    ngs_ids = [
+        int(r.source_one_id)
+        for r in rows
+        if (r.source_one_type or "").lower() == "ngs" and r.source_one_id
+    ]
+    beacon_ids = [
+        int(r.source_one_id)
+        for r in rows
+        if (r.source_one_type or "").lower() == "beacon" and r.source_one_id
+    ]
+    unlinked_rows = [
+        r
+        for r in rows
+        if not r.source_one_id and any((r.order_no, r.synthesis_code, r.batch_label))
+    ]
+    is_single_row = serialize_changed and len(rows) == 1 and any(
+        (rows[0].order_no, rows[0].synthesis_code, rows[0].batch_label)
+    )
+    if not ngs_ids and not beacon_ids and not unlinked_rows and not is_single_row:
+        return {"updated_items": [], "linked": 0, "updated": 0, "remote_available": True}
+
+    taken_sources: set[tuple[str, int]] = {
+        (str(r.source_one_type).lower(), int(r.source_one_id))
+        for r in rows
+        if r.source_one_type and r.source_one_id is not None
+    }
+
+    unlinked_matches: dict[int, dict[str, Any]] = {}
+    single_row_snaps: list[dict[str, Any]] = []
+    try:
+        with open_one_db(connect_timeout=connect_timeout, read_timeout=read_timeout) as one_db:
+            if one_db is None:
+                return {
+                    "updated_items": [],
+                    "linked": 0,
+                    "updated": 0,
+                    "duplicates": _collect_local_duplicates(db, rows) if serialize_changed else {},
+                    "candidates": {},
+                    "remote_available": False,
+                }
+            remote_map = fetch_remote_snapshots_by_ids(one_db, ngs_ids, beacon_ids)
+            if is_single_row:
+                try:
+                    single_row_snaps = _query_candidates_for_rows(one_db, rows)
+                except Exception:
+                    single_row_snaps = []
+            if unlinked_rows:
+                unlinked_matches = _match_unlinked_rows_batch(
+                    one_db,
+                    unlinked_rows,
+                    None,
+                    taken_sources,
+                    local_db=db,
+                    preloaded_snaps=single_row_snaps if is_single_row else None,
+                )
+    except Exception:
+        logger.warning("check_remote_for_local_rows failed or timed out", exc_info=True)
+        return {
+            "updated_items": [],
+            "linked": 0,
+            "updated": 0,
+            "duplicates": _collect_local_duplicates(db, rows) if serialize_changed else {},
+            "candidates": {},
+            "remote_available": False,
+        }
+
+    changed_rows: list[DiscoverySynthesisOrder] = []
+    linked_count = 0
+    updated_count = 0
+    db_dirty = False
+    status_changed = False
+    for row in rows:
+        newly_linked = False
+        replace_snap: dict[str, Any] | None = None
+        if row.source_one_id:
+            key = (str(row.source_one_type or "").lower(), int(row.source_one_id))
+            snap = remote_map.get(key)
+        else:
+            snap = unlinked_matches.get(row.id)
+            if snap:
+                if isinstance(row.source_snapshot, dict) and row.source_snapshot:
+                    replace_snap = dict(row.source_snapshot)
+                row.source_one_type = str(snap["source_one_type"]).lower()
+                row.source_one_id = int(snap["source_one_id"])
+                newly_linked = True
+                linked_count += 1
+                db_dirty = True
+            elif row.source_snapshot:
+                row.source_snapshot = None
+                db_dirty = True
+                changed_rows.append(row)
+        if not snap:
+            continue
+        prev_drifts = compute_drift_fields(row)
+        before_vals = (
+            row.status,
+            row.synthesis_code,
+            row.batch_label,
+            row.order_sender,
+            *(getattr(row, f, None) for f in DRIFT_COMPARE_FIELDS),
+        )
+        row_changed = apply_remote_snapshot_to_row(
+            row, snap, replace_from_snapshot=replace_snap
+        )
+        after_vals = (
+            row.status,
+            row.synthesis_code,
+            row.batch_label,
+            row.order_sender,
+            *(getattr(row, f, None) for f in DRIFT_COMPARE_FIELDS),
+        )
+        drifts = compute_drift_fields(row)
+        if row_changed:
+            db_dirty = True
+        if before_vals[0] != after_vals[0]:
+            status_changed = True
+        if before_vals != after_vals or drifts != prev_drifts or newly_linked:
+            if before_vals != after_vals and not newly_linked:
+                updated_count += 1
+            changed_rows.append(row)
+
+    from modules.discovery.synthesis_progress.service import serialize_order, settle_queue_after_sync
+
+    if db_dirty:
+        # 只有状态变了才可能有行进出终态，才需要锁队列重编
+        if status_changed:
+            settle_queue_after_sync(db)
+        db.commit()
+    updated_items = [serialize_order(row) for row in changed_rows] if serialize_changed else []
+
+    candidates_map: dict[str, list[dict[str, Any]]] = {}
+    if is_single_row and single_row_snaps:
+        c_list = _collect_single_row_candidates(db, rows[0], single_row_snaps)
+        if c_list:
+            candidates_map[str(rows[0].id)] = c_list
+
+    return {
+        "updated_items": updated_items,
+        "linked": linked_count,
+        "updated": updated_count,
+        "duplicates": _collect_local_duplicates(db, rows) if serialize_changed else {},
+        "candidates": candidates_map,
+        "remote_available": True,
+    }

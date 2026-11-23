@@ -1,0 +1,290 @@
+/**
+ * 列表页共享表面。全站引入，必须显式挂 class 才生效，勿写裸 .el-button 等。
+ *
+ * .list-filter-controls          筛选条容器（输入、下拉、查询/重置）
+ * .list-filter-actions           查询/重置那一组的布局
+ * .list-filter-action-button     查询/重置最小宽度
+ * .list-advanced-trigger         筛选条圆形扳手
+ * .list-table-card               表格外层 el-card
+ * .list-data-table               数据表 el-table，配 size="large"
+ * .list-table-action-btn         表格操作列按钮，不要写 size
+ * .list-status-tag               状态/优先级胶囊（el-tag）
+ * .list-code-text                项目号/订单号
+ * .list-pagination               底部分页
+ * .is-list-table-locked          每页 50 条及以上：表格卡片占满顶栏以下一屏
+ * .list-table-body               锁高时表格占满卡片里分页以上的高度
+ */
+
+:root {
+  --list-page-bg: var(--el-fill-color-light);
+  --list-page-padding: 16px;
+  --list-page-gap: 12px;
+
+  /* 标题 20/600，副标题 13/400 */
+  --list-page-title-size: 20px;
+  --list-page-title-weight: 600;
+  --list-page-subtitle-size: 13px;
+  --list-page-subtitle-weight: 400;
+  --list-page-subtitle-color: var(--el-text-color-secondary);
+
+  /* 筛选条尺寸变量（只声明数字，套到控件上见下方 .list-filter-controls） */
+  /* 输入框 / 下拉：字 14px、高 32px（与 EP 默认、日期选择一致） */
+  --list-filter-font-size: 14px;
+  --list-filter-control-height: 32px;
+  /* 筛选条「查询」「重置」：字 13px、高同上 32px */
+  --list-filter-button-font-size: 13px;
+  --list-filter-button-padding-x: 13px;
+  --list-filter-button-icon-gap: 4px;
+  --list-filter-action-min-width: 70px;
+  --list-filter-action-gap: 12px;
+  --list-advanced-trigger-size: 28px;
+
+  /* 表头；正文 14px 随 EP large，勿再叠单元格 padding */
+  --list-table-header-bg: var(--el-fill-color-light);
+  --list-table-header-color: var(--el-text-color-regular);
+  --list-table-header-weight: bold;
+
+  /* 白底面板 */
+  --list-surface-bg: var(--el-bg-color);
+  --list-surface-border-color: var(--el-border-color-light);
+  --list-surface-border: 1px solid var(--list-surface-border-color);
+  --list-surface-radius: 8px;
+  --list-surface-shadow: 0 1px 3px rgb(15 23 42 / 4%);
+  --list-surface-padding-y: 12px;
+  --list-surface-padding-x: 16px;
+
+  /* 中层块 */
+  --list-mid-bg: var(--el-fill-color-extra-light);
+  --list-mid-border: 1px solid var(--el-border-color-light);
+  --list-mid-radius: 6px;
+
+  --list-inner-radius: 4px;
+  --list-chip-radius: 6px;
+}
+
+html.dark {
+  --list-page-bg: var(--el-bg-color-page);
+  --list-surface-shadow: none;
+}
+
+.el-table.list-data-table {
+  --el-table-header-bg-color: var(--list-table-header-bg);
+  --el-table-header-text-color: var(--list-table-header-color);
+}
+
+.el-table.list-data-table thead th {
+  font-weight: var(--list-table-header-weight);
+}
+
+/* 右侧固定列交界使用 1px 线；表格级单层阴影条承担横滑提示，避免 1000 个单元格伪元素。 */
+.el-table.list-data-table.el-table--border
+  .el-table-fixed-column--right.is-first-column.el-table__cell {
+  box-shadow: -1px 0 0 0 var(--el-table-border-color);
+}
+
+.el-table.list-data-table .el-table-fixed-column--left.is-last-column.el-table__cell::before,
+.el-table.list-data-table .el-table-fixed-column--right.is-first-column.el-table__cell::before {
+  display: none !important;
+  box-shadow: none !important;
+}
+
+/* 大表与列表通用滚动提速：
+   1. 将表体滚动容器提升为独立 GPU 滚动合成层，使纵向与横向滚动均走 GPU 合成器快车道；
+   2. 横向滚动时间轴会给普通表头单元格加 transform，固定列表头抬高一层避免被滑过来的普通表头盖住；
+   3. 用纯 CSS :hover 替代 Element Plus 在有固定列（isComplex）时每 30ms 执行的全表行扫描 + rAF hover-row 类切换。 */
+.el-table.list-data-table .el-table__body-wrapper .el-scrollbar__wrap {
+  will-change: scroll-position;
+}
+
+.el-table.list-data-table .el-table__header-wrapper .el-table-fixed-column--left,
+.el-table.list-data-table .el-table__header-wrapper .el-table-fixed-column--right,
+.el-table.list-data-table .el-table__footer-wrapper .el-table-fixed-column--left,
+.el-table.list-data-table .el-table__footer-wrapper .el-table-fixed-column--right {
+  z-index: calc(var(--el-table-index) + 2);
+}
+
+.el-table.list-data-table
+  .el-table__body
+  tr:hover
+  > td.el-table__cell {
+  background-color: var(--el-table-row-hover-bg-color);
+}
+
+.el-card.list-table-card {
+  --el-card-border-color: var(--list-surface-border-color);
+  --el-card-border-radius: var(--list-surface-radius);
+  --el-card-padding: 16px;
+  --el-card-bg-color: var(--list-surface-bg);
+
+  box-shadow: var(--list-surface-shadow);
+}
+
+.list-pagination {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 16px;
+}
+
+/* 每页 50 条及以上。窗口减去顶栏，再让出与筛选条相同的间距。 */
+html body .is-list-table-locked.is-list-table-locked {
+  padding-bottom: 0;
+}
+
+.is-list-table-locked > .el-card {
+  box-sizing: border-box;
+  height: calc(100vh - var(--vben-header-height, 90px) - var(--list-page-gap));
+  overflow: hidden;
+}
+
+.is-list-table-locked > .el-card > .el-card__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.is-list-table-locked > .el-card > .el-card__body > :not(.list-table-body) {
+  flex: none;
+}
+
+.is-list-table-locked .list-table-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 切页进场动画期间：隐藏缓存大表 tbody（跳过 5 万节点排版），待整页滑入动画完成后再原位显现 */
+.is-list-table-locked
+  .list-table-body.is-list-table-defer-body
+  .el-table__body-wrapper
+  tbody {
+  display: none;
+}
+
+.is-list-table-locked
+  .list-table-body.is-list-table-defer-body
+  .plate-select-overlay,
+.is-list-table-locked
+  .list-table-body.is-list-table-defer-body
+  .plate-select-bubble {
+  opacity: 0 !important;
+}
+
+/* 操作列按钮：高度/字号与筛选条按钮同一套 token；左右 padding 更紧 */
+
+.el-button.list-table-action-btn {
+  height: var(--list-filter-control-height);
+  min-width: 60px;
+  padding: 0 10px;
+  font-size: var(--list-filter-button-font-size);
+}
+
+/* 把上面的筛选变量套到 EP 控件上。必须包在 .list-filter-controls 里；写了 size 的走 EP 自己的尺寸 */
+
+.list-filter-controls .el-input:not(.el-input--small):not(.el-input--large) {
+  --el-input-height: var(--list-filter-control-height);
+  font-size: var(--list-filter-font-size);
+}
+
+.list-filter-controls
+  .el-select:not(.el-select--small):not(.el-select--large)
+  .el-select__wrapper {
+  min-height: var(--list-filter-control-height);
+  font-size: var(--list-filter-font-size);
+}
+
+/* 筛选条「查询」「重置」：未写 size 的普通按钮才用 13px / 32px（不含文字链） */
+.list-filter-controls
+  .el-button:not(.el-button--small):not(.el-button--large):not(.el-button--text):not(.is-text):not(.is-link) {
+  height: var(--list-filter-control-height);
+  padding: 0 var(--list-filter-button-padding-x);
+  font-size: var(--list-filter-button-font-size);
+}
+
+.list-filter-controls .el-button .el-icon + span {
+  margin-left: var(--list-filter-button-icon-gap);
+}
+
+.list-filter-actions {
+  display: flex;
+  gap: var(--list-filter-action-gap);
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.list-filter-actions .el-button + .el-button {
+  margin-left: 0;
+}
+
+.list-filter-action-button {
+  min-width: var(--list-filter-action-min-width);
+}
+
+/* 筛选条圆形扳手，不是操作列按钮 */
+.list-advanced-trigger {
+  display: inline-flex;
+  flex: 0 0 var(--list-advanced-trigger-size);
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--list-advanced-trigger-size);
+  height: var(--list-advanced-trigger-size);
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  line-height: 1;
+  color: var(--el-text-color-regular);
+  vertical-align: middle;
+  cursor: pointer;
+  background: var(--el-fill-color-light);
+  border: 0;
+  border-radius: 50%;
+  transition: color 0.16s ease, background-color 0.16s ease;
+  appearance: none;
+}
+
+.list-advanced-trigger:hover,
+.list-advanced-trigger.is-active {
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+.list-advanced-trigger:focus-visible {
+  outline: 2px solid var(--el-color-primary-light-5);
+  outline-offset: 2px;
+}
+
+.list-advanced-trigger .el-icon {
+  width: 15px;
+  height: 15px;
+  font-size: 15px;
+}
+
+.list-code-text {
+  font-family: Consolas, monospace;
+  font-weight: 600;
+  color: var(--el-color-primary);
+}
+
+.list-code-text.is-clickable {
+  cursor: pointer;
+}
+
+.list-code-text.is-clickable:hover {
+  text-decoration: underline;
+}
+
+/* 表格里的状态/优先级胶囊，不是操作列按钮 */
+.el-tag.list-status-tag {
+  height: 25px;
+  padding: 0 8px;
+  font-size: 13px;
+  border-radius: var(--list-chip-radius);
+}
+
+/* 无权限时仍画出按钮，只把鼠标改成禁止；点下去拦不拦由各页的 canXxx() 决定 */
+.no-permission-btn {
+  cursor: not-allowed;
+}

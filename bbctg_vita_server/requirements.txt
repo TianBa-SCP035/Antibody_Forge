@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pymysql
+pydantic-settings
+python-dotenv
+python-multipart
+openpyxl
+apscheduler
+requests
+smbprotocol
+pillow
+biopython
+pytest
+httpx2

@@ -1,0 +1,354 @@
+import { requestClient } from '#/api/request';
+
+type RequestConfig = Parameters<typeof requestClient.get>[1];
+
+export interface SystemUser {
+  id?: number;
+  username: string;
+  display_name?: string;
+  openid?: string;
+  job_no?: string;
+  department?: string;
+  group_name?: string;
+  position_title?: string;
+  gender?: string;
+  profile_signature?: string;
+  employment_status?: string;
+  email?: string;
+  mobile?: string;
+  status?: string;
+  is_superuser?: boolean;
+  role_ids?: number[];
+}
+
+export interface SystemRole {
+  id?: number;
+  code: string;
+  name: string;
+  description?: string;
+  status?: string;
+  sort_order?: number;
+  bundle_codes?: string[];
+  permission_codes?: string[];
+}
+
+export interface SystemPermission {
+  code: string;
+  name: string;
+  type: string;
+  action: string;
+  module: string;
+  parent_code: null | string;
+  resource: string;
+  route_path: null | string;
+  sort_order: number;
+  ui_key: null | string;
+}
+
+export interface SystemPermissionBundle {
+  id?: number;
+  code: string;
+  name: string;
+  module: string;
+  description?: string;
+  status?: string;
+  sort_order?: number;
+  permission_codes: string[];
+}
+
+export interface SystemPermissionOverride {
+  id?: number;
+  user_id: number;
+  permission_code: string;
+  effect: 'allow' | 'deny';
+  reason?: string;
+}
+
+export interface SystemUserPermissionOverrides {
+  user: SystemUser;
+  role_permissions: string[];
+  effective_permissions: string[];
+  overrides: SystemPermissionOverride[];
+}
+
+export interface SystemOperationLogQuery {
+  action?: string;
+  change?: string;
+  date_end?: string;
+  date_start?: string;
+  error_message?: string;
+  operation_type?: string | string[];
+  operator?: string;
+  page?: number;
+  page_size?: number;
+  request_id?: string;
+  result?: string | string[];
+  source?: string | string[];
+  target?: string;
+  target_type?: string | string[];
+}
+
+export interface SystemOperationLogChange {
+  after?: any;
+  before?: any;
+  change_kind?: 'add' | 'remove' | 'update';
+  label: string;
+  path: string;
+}
+
+export interface SystemOperationLogItem {
+  change_count: number;
+  change_type: string;
+  changes: SystemOperationLogChange[];
+  entity_id?: string;
+  entity_label?: string;
+  entity_type: string;
+  entity_type_label?: string;
+  id: number;
+  table_name: string;
+}
+
+export interface SystemOperationLog {
+  action: string;
+  action_label?: string;
+  affected_count?: number;
+  created_at?: string;
+  detail?: Record<string, any>;
+  error_message?: string;
+  id: number;
+  ip_address?: string;
+  items?: SystemOperationLogItem[];
+  operation_name?: string;
+  operation_type?: string;
+  operator_name?: string;
+  request_id?: string;
+  result: string;
+  source?: string;
+  target_id?: string;
+  target_label?: string;
+  target_type?: string;
+  target_type_label?: string;
+  user_id?: number;
+  username?: string;
+}
+
+export interface SystemAuditTargetSnapshot {
+  code?: string;
+  display_name?: string;
+  name?: string;
+  target_label?: string;
+  username?: string;
+}
+
+export interface SystemFeatureFlag {
+  category: 'feature' | 'job' | 'menu' | string;
+  code: string;
+  config: Record<string, any>;
+  description: string;
+  enabled: boolean;
+  name: string;
+  sort_order: number;
+  visible: boolean;
+}
+
+export interface SystemJobRunLog {
+  detail?: Record<string, any>;
+  duration_ms?: number;
+  error_message?: string;
+  finished_at?: string;
+  id: number;
+  job_code: string;
+  job_name: string;
+  result: string;
+  started_at?: string;
+  summary?: string;
+}
+
+export interface SystemUserQuery {
+  department?: string | string[];
+  employment_status?: string | string[];
+  gender?: string | string[];
+  group_name?: string | string[];
+  has_admin_role?: string | string[];
+  has_permission_override?: string | string[];
+  keyword?: string;
+  page?: number;
+  page_size?: number;
+  role_id?: Array<number | string> | number | string;
+  status?: string | string[];
+}
+
+export function getSystemUsersApi(
+  params: string | SystemUserQuery = '',
+  config?: RequestConfig,
+) {
+  const query = typeof params === 'string' ? { keyword: params } : params;
+  return requestClient.get<{
+    active_total?: number;
+    items: SystemUser[];
+    page?: number;
+    page_size?: number;
+    total?: number;
+  }>('/system/users', {
+    ...config,
+    params: query,
+    paramsSerializer: 'repeat',
+  });
+}
+
+export function getSystemUserSuggestionsApi(params: {
+  field: 'department' | 'group_name' | 'keyword';
+  keyword?: string;
+  limit?: number;
+}) {
+  return requestClient.get<{ items: string[] }>('/system/users/suggestions', {
+    params,
+  });
+}
+
+export function saveSystemUserApi(data: SystemUser & { password?: string }) {
+  return requestClient.post('/system/users/save', data);
+}
+
+export function getSystemFeaturesApi(config?: RequestConfig) {
+  return requestClient.get<{ items: SystemFeatureFlag[] }>('/system/features', config);
+}
+
+export function getSystemEffectiveFeaturesApi() {
+  return requestClient.get<{
+    items: Array<Pick<SystemFeatureFlag, 'category' | 'code' | 'enabled' | 'sort_order' | 'visible'>>;
+  }>('/system/features/effective');
+}
+
+export function getSystemJobRunLogsApi(
+  params: {
+    end_date?: string;
+    job_code?: string;
+    limit?: number;
+    result?: string;
+    start_date?: string;
+  } = {},
+) {
+  return requestClient.get<{ items: SystemJobRunLog[] }>('/system/features/job_logs', {
+    params,
+  });
+}
+
+export function getSystemFeatureStatusApi() {
+  return requestClient.get<{
+    app_env?: string;
+    scheduler_running?: boolean;
+    server_time: string;
+    timezone: string;
+    user_id?: number;
+  }>('/system/features/system_status');
+}
+
+export function saveSystemFeatureApi(
+  data: SystemFeatureFlag,
+  config?: Parameters<typeof requestClient.post>[2],
+) {
+  return requestClient.post<SystemFeatureFlag>('/system/features/save', data, config);
+}
+
+export function runSystemJobApi(jobCode: string, config?: RequestConfig) {
+  return requestClient.post<{ job_code: string; started: boolean }>(
+    '/system/features/jobs/run',
+    { job_code: jobCode },
+    config,
+  );
+}
+
+export function deleteSystemUserApi(id: number, snapshot: SystemAuditTargetSnapshot = {}) {
+  return requestClient.post('/system/users/delete', { id, ...snapshot });
+}
+
+export function resetSystemUserPasswordApi(
+  id: number,
+  password: string,
+  snapshot: SystemAuditTargetSnapshot = {},
+) {
+  return requestClient.post('/system/users/reset_password', { id, password, ...snapshot });
+}
+
+export function batchUpdateSystemUserRolesApi(data: {
+  mode: 'append' | 'replace';
+  role_ids: number[];
+  target_id?: string;
+  target_label?: string;
+  user_ids: number[];
+}) {
+  return requestClient.post('/system/users/batch_roles', data);
+}
+
+export function getSystemUserPermissionOverridesApi(id: number, config?: RequestConfig) {
+  return requestClient.get<SystemUserPermissionOverrides>(
+    `/system/users/${id}/permission_overrides`,
+    config,
+  );
+}
+
+export function saveSystemUserPermissionOverridesApi(
+  id: number,
+  data: { allow_codes: string[]; deny_codes: string[]; reason?: string; target_label?: string },
+) {
+  return requestClient.post(`/system/users/${id}/permission_overrides`, data);
+}
+
+export function getSystemRolesApi(config?: RequestConfig) {
+  return requestClient.get<{ items: SystemRole[] }>('/system/roles', config);
+}
+
+export function saveSystemRoleApi(data: SystemRole) {
+  return requestClient.post('/system/roles/save', data);
+}
+
+export function deleteSystemRoleApi(id: number, snapshot: SystemAuditTargetSnapshot = {}) {
+  return requestClient.post('/system/roles/delete', { id, ...snapshot });
+}
+
+export function getSystemPermissionsApi(config?: RequestConfig) {
+  return requestClient.get<{ items: SystemPermission[] }>('/system/permissions', config);
+}
+
+export function getSystemPermissionBundlesApi(config?: RequestConfig) {
+  return requestClient.get<{ items: SystemPermissionBundle[] }>(
+    '/system/permission_bundles',
+    config,
+  );
+}
+
+export function saveSystemPermissionBundleApi(data: SystemPermissionBundle) {
+  return requestClient.post('/system/permission_bundles/save', data);
+}
+
+export function deleteSystemPermissionBundleApi(
+  id: number,
+  snapshot: SystemAuditTargetSnapshot = {},
+) {
+  return requestClient.post('/system/permission_bundles/delete', { id, ...snapshot });
+}
+
+export function getSystemOperationLogsByQueryApi(
+  params: SystemOperationLogQuery,
+  config?: RequestConfig,
+) {
+  return requestClient.get<{
+    items: SystemOperationLog[];
+    page: number;
+    page_size: number;
+    target_type_options?: string[];
+    total: number;
+  }>(
+    '/system/operation_logs',
+    {
+      ...config,
+      params,
+      paramsSerializer: 'repeat',
+    },
+  );
+}
+
+export function getSystemOperationLogDetailApi(id: number, config?: RequestConfig) {
+  return requestClient.get<SystemOperationLog>(`/system/operation_logs/${id}`, config);
+}

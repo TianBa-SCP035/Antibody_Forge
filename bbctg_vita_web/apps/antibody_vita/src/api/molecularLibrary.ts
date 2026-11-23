@@ -1,0 +1,170 @@
+import { requestClient, skipGlobalErrorHandler } from '#/api/request';
+import { DISCOVERY_WORKBENCH_EDIT } from '#/api/discoveryWorkbench';
+import { fetchRecordedTargets } from '#/api/options';
+
+export const LIBRARY_PAGE = 'molecular.page.library';
+export const LIBRARY_PAGE_DETAIL = 'molecular.page.library_detail';
+export const LIBRARY_EDIT = 'molecular.library.edit';
+export const LIBRARY_FILE_MANAGE = 'molecular.library.file.manage';
+/** 从发现工作台交接建库：有任一权限即可 */
+export const LIBRARY_HANDOFF = [DISCOVERY_WORKBENCH_EDIT, LIBRARY_EDIT];
+/** 交接建库后跳到文库构建定位新工单（sessionStorage），键值已发布不要改 */
+export const LIBRARY_CREATED_KEY = 'molecular.library.created';
+
+const SAVE_TIMEOUT = 5000;
+const DOWNLOAD_TIMEOUT = 360_000;
+const LONG_TIMEOUT = 120_000;
+const UPLOAD_TIMEOUT = 600_000;
+
+type PostConfig = Parameters<typeof requestClient.post>[2];
+const downloadConfig = {
+  skipErrorHandler: true,
+} as Parameters<typeof requestClient.download>[1];
+
+export function fetchLibraryRecordedTargets(keyword = '') {
+  return fetchRecordedTargets('/molecular-cell/library-orders/recorded_targets', keyword);
+}
+
+export function fetchLibraryOrderList(data: any, config?: PostConfig) {
+  return requestClient.post('/molecular-cell/library-orders/list', data, {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
+export function fetchLibraryOrderColumnValues(data: any, config?: PostConfig) {
+  return requestClient.post('/molecular-cell/library-orders/column_values', data, {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
+export function fetchLibraryOrderOptions(config?: Parameters<typeof requestClient.get>[1]) {
+  return requestClient.get('/molecular-cell/library-orders/options', {
+    ...skipGlobalErrorHandler,
+    ...config,
+  });
+}
+
+export function fetchPrimerIndexOptions(params: {
+  query?: string;
+  family?: string;
+  limit?: number;
+} = {}) {
+  return requestClient.get('/molecular-cell/library-orders/catalog/options', {
+    params,
+  });
+}
+
+export function fetchLibraryOrdersByDiscovery(params: {
+  discovery_workbench_id?: number | string;
+  discovery_id?: string;
+}) {
+  return requestClient.get('/molecular-cell/library-orders/by-discovery', {
+    params,
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function exportLibraryOrderList(data: any) {
+  return requestClient.download('/molecular-cell/library-orders/export_list', {
+    data,
+    method: 'POST',
+    timeout: DOWNLOAD_TIMEOUT,
+    ...downloadConfig,
+  });
+}
+
+export function saveLibraryOrder(data: any) {
+  return requestClient.post('/molecular-cell/library-orders/save', data, {
+    timeout: SAVE_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function batchSaveLibraryOrders(data: any) {
+  return requestClient.post('/molecular-cell/library-orders/batch_save', data, {
+    timeout: LONG_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function handoffLibraryOrders(data: any) {
+  return requestClient.post('/molecular-cell/library-orders/handoff', data, {
+    timeout: SAVE_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function deleteLibraryOrder(id: number | string) {
+  return requestClient.post(
+    '/molecular-cell/library-orders/delete',
+    { id },
+    skipGlobalErrorHandler,
+  );
+}
+
+export function fetchLibraryFiles(orderId: number | string) {
+  return requestClient.post(
+    '/molecular-cell/library-orders/files/list',
+    { order_id: orderId },
+    skipGlobalErrorHandler,
+  );
+}
+
+export function uploadLibraryFileBatch(data: FormData) {
+  return requestClient.post('/molecular-cell/library-orders/files/upload_batch', data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: UPLOAD_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function preflightLibraryFileBatch(paths: string[]) {
+  return requestClient.post(
+    '/molecular-cell/library-orders/files/preflight',
+    { paths },
+    skipGlobalErrorHandler,
+  );
+}
+
+export function deleteLibraryResult(data: {
+  link_id?: number;
+  file_id?: number;
+  order_id?: number | string;
+  package_id?: number;
+}) {
+  return requestClient.post(
+    '/molecular-cell/library-orders/files/delete',
+    data,
+    skipGlobalErrorHandler,
+  );
+}
+
+export function updateLibraryFile(data: {
+  link_id: number;
+  order_id: number | string;
+  original_name?: string;
+  is_final_qc?: boolean;
+  qc_regions?: null | Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    label?: string;
+  }>;
+}) {
+  return requestClient.post(
+    '/molecular-cell/library-orders/files/update',
+    data,
+    skipGlobalErrorHandler,
+  );
+}
+
+export function libraryFileDownloadUrl(id: number, extra = '') {
+  return `/api/molecular-cell/library-orders/files/download?id=${id}${extra}`;
+}
+
+export function libraryStoredFileDownloadUrl(fileId: number, extra = '') {
+  return `/api/molecular-cell/library-orders/files/download?file_id=${fileId}${extra}`;
+}

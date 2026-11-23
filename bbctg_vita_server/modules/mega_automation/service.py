@@ -1,0 +1,1055 @@
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from sqlalchemy import case, func, or_, select
+from sqlalchemy.orm import Session, defer
+
+from core.errors import ConflictError, NotFoundError
+from integrations.labillion import (
+    LabillionError,
+    delete_orders,
+    push_flow_work_order,
+)
+from models.immunology import SerumImmProject, SerumTiterOrder
+from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
+from modules.mega_automation.content import (
+    build_content_body,
+    build_content_hash,
+    clean_text,
+    collect_validation_issues,
+    compute_hash_from_payload,
+    default_cell_columns,
+    default_sample_wells,
+    extract_search_arrays,
+    get_order_content,
+    hash_dict,
+    resolve_cell_plate_usage,
+    safe_dict,
+    safe_list,
+    validate_cell_column_occupancy,
+)
+from modules.mega_automation.dispatch import (
+    PAUSE_STATE_WITHDRAWN,
+    TERMINAL_DISPATCH_STATUSES,
+    acknowledge_pause_current_dispatch,
+    acknowledge_resume_current_dispatch,
+    batch_current_dispatches,
+    complete_current_dispatch,
+    confirm_current_dispatch,
+    create_dispatch_record,
+    get_current_dispatch,
+    has_dispatches,
+    is_pause_ready_for_edit,
+    lock_current_dispatch,
+    normalize_pause_state,
+    request_pause_current_dispatch,
+    request_resume_current_dispatch,
+    void_open_dispatches,
+)
+from modules.mega_automation.payload import build_dispatch_payload
+from utils.clock import now_local
+from utils.filter_values import (
+    combine_any,
+    filter_terms,
+    like_literal,
+    match_any,
+    split_code_tokens,
+)
+from utils.header_filters import (
+    HeaderColumn,
+    header_column_values,
+    header_filter_clauses,
+    header_sort_clauses,
+    json_array_column,
+)
+
+WORK_ORDER_STATUSES = [
+    {"value": "draft", "label": "草稿"},
+    {"value": "validated", "label": "已校验"},
+    {"value": "sent", "label": "已发送"},
+    {"value": "running", "label": "执行中"},
+    {"value": "paused", "label": "已暂停"},
+    # 筛选和统计中的 execution_failed 汇总三种执行异常，单条工单仍显示具体状态。
+    {"value": "execution_failed", "label": "执行异常"},
+    {"value": "completed", "label": "已完成"},
+    {"value": "failed", "label": "校验失败"},
+    {"value": "cancelled", "label": "已作废"},
+]
+ORDER_STATUS_LABELS = {item["value"]: item["label"] for item in WORK_ORDER_STATUSES}
+ORDER_STATUS_LABELS["execution_failed"] = "执行中止"
+ORDER_STATUS_LABELS["execution_error"] = "执行错误"
+ORDER_STATUS_LABELS["manual_failed"] = "手动失败"
+EXECUTION_ISSUE_STATUSES = frozenset({"execution_failed", "execution_error", "manual_failed"})
+ORDER_TYPES = [
+    {"value": "TITER", "label": "效价"},
+    {"value": "PLAS", "label": "质粒"},
+    {"value": "PCR", "label": "PCR"},
+]
+ORDER_TYPE_VALUES = {item["value"] for item in ORDER_TYPES}
+PRIORITIES = [
+    {"value": "high", "label": "高"},
+    {"value": "normal", "label": "普通"},
+    {"value": "low", "label": "低"},
+]
+ORDER_TYPE_LABELS = {item["value"]: item["label"] for item in ORDER_TYPES}
+PRIORITY_LABELS = {item["value"]: item["label"] for item in PRIORITIES}
+PRIORITY_VALUES = {item["value"] for item in PRIORITIES}
+
+EDITABLE_STATUSES = frozenset({"draft", "validated", "failed"})
+ACTIVE_EXECUTION_STATUSES = frozenset({"sent", "running"})
+PAUSED_CHANGE_CONFIRM_MESSAGE = (
+    "工单内容已变更。确认后将使此前有效的下发记录失效，且无法再通过「继续」恢复为原发送状态。"
+)
+
+def _get_order_or_raise(
+    db: Session,
+    order_id: int,
+    *,
+    for_update: bool = False,
+) -> MegaFlowWorkOrder:
+    stmt = select(MegaFlowWorkOrder).where(MegaFlowWorkOrder.id == int(order_id))
+    if for_update:
+        stmt = stmt.with_for_update()
+    order = db.scalar(stmt)
+    if not order:
+        raise NotFoundError("流式工单不存在")
+    return order
+
+
+def _ensure_not_cancelled(order: MegaFlowWorkOrder) -> None:
+    if order.status == "cancelled":
+        raise ValueError("工单已作废，不可操作")
+    if order.status == "completed":
+        raise ValueError("工单已完成，不可再操作")
+
+
+def _get_pause_ready_dispatch(
+    db: Session,
+    order: MegaFlowWorkOrder,
+    *,
+    error_message: str,
+    missing_message: str | None = None,
+) -> MegaFlowWorkOrderDispatch:
+    current = get_current_dispatch(db, order.id)
+    if not current:
+        raise ValueError(missing_message or error_message)
+    if not is_pause_ready_for_edit(current.pause_state):
+        raise ValueError(error_message)
+    return current
+
+
+def _mark_withdrawn(order: MegaFlowWorkOrder, current: MegaFlowWorkOrderDispatch) -> None:
+    current.pause_state = PAUSE_STATE_WITHDRAWN
+    order.status = "paused"
+    order.error_message = None
+
+
+def _restore_sent_after_failed_withdraw(db: Session, order_id: int, dispatch_id: str) -> None:
+    current = lock_current_dispatch(db, order_id)
+    order = _get_order_or_raise(db, order_id, for_update=True)
+    still_withdrawn = (
+        current is not None
+        and current.dispatchId == dispatch_id
+        and current.status == "pending"
+        and normalize_pause_state(current.pause_state) == PAUSE_STATE_WITHDRAWN
+        and order.status == "paused"
+    )
+    if not still_withdrawn:
+        db.rollback()
+        return
+    current.pause_state = None
+    order.status = "sent"
+    order.error_message = None
+    db.commit()
+
+
+def _labillion_withdraw_pause(
+    db: Session,
+    order: MegaFlowWorkOrder,
+    current: MegaFlowWorkOrderDispatch,
+    *,
+    simulate: bool = False,
+) -> None:
+    if current.status != "pending":
+        raise ValueError("设备已开始执行，无法撤回")
+    if normalize_pause_state(current.pause_state) == PAUSE_STATE_WITHDRAWN:
+        db.commit()
+        return
+
+    dispatch_id = current.dispatchId
+    order_id = int(order.id)
+    _mark_withdrawn(order, current)
+    # 删除接口会同步回调 deleted；先提交已撤回并释放行锁，回调才能立即返回并结束本次 HTTP 请求。
+    db.commit()
+    if simulate:
+        return
+    try:
+        delete_orders([dispatch_id])
+    except LabillionError as exc:
+        _restore_sent_after_failed_withdraw(db, order_id, dispatch_id)
+        raise ValueError(f"Labillion 订单删除失败：{exc}") from exc
+
+
+def _labillion_withdraw_resume(db: Session, order: MegaFlowWorkOrder) -> None:
+    current = get_current_dispatch(db, order.id, include_payload=True)
+    if not current:
+        raise ValueError("没有可继续的下发记录")
+    if normalize_pause_state(current.pause_state) != PAUSE_STATE_WITHDRAWN:
+        raise ValueError("仅已撤回的工单可以继续发送")
+
+    payload = build_dispatch_payload(order, current.dispatchId)
+    current.payload = payload
+    current.payload_hash = hash_dict(payload)
+    current.content_hash_at_send = order.content_hash or ""
+    try:
+        push_flow_work_order(payload)
+    except LabillionError as exc:
+        db.rollback()
+        raise ValueError(f"Labillion 订单导入失败：{exc}") from exc
+
+    current.pause_state = None
+    order.status = "sent"
+    order.error_message = None
+
+
+def _ensure_editable(order: MegaFlowWorkOrder) -> None:
+    _ensure_not_cancelled(order)
+    if order.status in ACTIVE_EXECUTION_STATUSES:
+        raise ValueError("已发送工单请先停止后再修改")
+    if order.status == "paused":
+        raise ValueError("已暂停工单请使用校验确认修改，不能直接保存")
+    if order.status not in EDITABLE_STATUSES:
+        raise ValueError(f"当前状态（{order.status}）不可编辑")
+
+
+def _apply_order_columns(order: MegaFlowWorkOrder, data: dict[str, Any]) -> None:
+    base_info = safe_dict(data.get("base_info"))
+    order.orderName = clean_text(data.get("orderName") or base_info.get("orderName"))
+    order.orderNum = clean_text(data.get("orderNum"))
+    if not order.orderNum:
+        raise ValueError("订单编号不能为空")
+    order.remark = clean_text(data.get("remark") or base_info.get("remark"))
+    orderType = clean_text(data.get("orderType") or order.orderType or "TITER")
+    if orderType not in ORDER_TYPE_VALUES:
+        raise ValueError(f"不支持的检测类型：{orderType}")
+    order.orderType = orderType
+    priority = clean_text(data.get("priority") or order.priority or "normal")
+    if priority not in PRIORITY_VALUES:
+        raise ValueError(f"不支持的优先级：{priority}")
+    order.priority = priority
+    if "source_id" in data:
+        incoming = clean_text(data.get("source_id"))
+        if not order.source_id:
+            order.source_id = incoming or None
+        elif incoming and incoming != (order.source_id or ""):
+            raise ValueError("来源业务单不可修改")
+
+
+def _check_expected_content_hash(order: MegaFlowWorkOrder, data: dict[str, Any]) -> None:
+    if "expected_content_hash" not in data:
+        raise ValueError("缺少 expected_content_hash，无法确认编辑版本")
+    if clean_text(data.get("expected_content_hash")) != (order.content_hash or ""):
+        raise ConflictError("工单内容已被其他用户修改，请刷新后重试")
+
+
+def list_cell_plate_peers(
+    db: Session,
+    barcode: str,
+    exclude_order_id: int | None = None,
+) -> list[dict[str, Any]]:
+    barcode_text = clean_text(barcode)
+    if not barcode_text:
+        return []
+    stmt = select(MegaFlowWorkOrder).where(
+        MegaFlowWorkOrder.status != "cancelled",
+        _json_overlaps(MegaFlowWorkOrder.cell_plate_barcodes, barcode_text),
+    )
+    if exclude_order_id:
+        stmt = stmt.where(MegaFlowWorkOrder.id != int(exclude_order_id))
+    rows = db.scalars(stmt.order_by(MegaFlowWorkOrder.id.asc())).all()
+    peers: list[dict[str, Any]] = []
+    for row in rows:
+        peers.append(
+            {
+                "id": row.id,
+                "orderNum": row.orderNum or "",
+                "status": row.status or "",
+                "updated_at": row.updated_at.strftime("%Y-%m-%d %H:%M:%S") if row.updated_at else "",
+                "content": get_order_content(row),
+            }
+        )
+    return peers
+
+
+def cell_plate_usage_map(
+    db: Session,
+    content: dict[str, Any],
+    exclude_order_id: int | None = None,
+) -> dict[str, dict[str, Any]]:
+    barcodes: list[str] = []
+    for plate in safe_list(content.get("cell_plates")):
+        if not isinstance(plate, dict):
+            continue
+        barcode = clean_text(plate.get("barcode"))
+        if barcode and barcode not in barcodes:
+            barcodes.append(barcode)
+    usage: dict[str, dict[str, Any]] = {}
+    for barcode in barcodes:
+        resolved = resolve_cell_plate_usage(barcode, list_cell_plate_peers(db, barcode, exclude_order_id))
+        if resolved.get("columns"):
+            usage[barcode] = resolved
+    return usage
+
+
+def get_cell_plate_usage(
+    db: Session,
+    barcode: str,
+    exclude_order_id: int | None = None,
+) -> dict[str, Any]:
+    barcode_text = clean_text(barcode)
+    if not barcode_text:
+        raise ValueError("细胞板条码不能为空")
+    return resolve_cell_plate_usage(
+        barcode_text,
+        list_cell_plate_peers(db, barcode_text, exclude_order_id),
+    )
+
+
+def _ensure_cell_columns_free(
+    db: Session,
+    content: dict[str, Any],
+    exclude_order_id: int | None,
+) -> None:
+    issues = validate_cell_column_occupancy(
+        safe_list(content.get("sample_plates")),
+        safe_list(content.get("cell_plates")),
+        cell_plate_usage_map(db, content, exclude_order_id),
+    )
+    if issues:
+        raise ValueError("；".join(item["message"] for item in issues))
+
+
+def _apply_content(order: MegaFlowWorkOrder, data: dict[str, Any]) -> str:
+    content = build_content_body(data)
+    order.content = content
+    search_arrays = extract_search_arrays(content)
+    order.project_nos = search_arrays["project_nos"]
+    order.targets = search_arrays["targets"]
+    order.sample_plate_barcodes = search_arrays["sample_plate_barcodes"]
+    order.cell_plate_barcodes = search_arrays["cell_plate_barcodes"]
+    new_hash = build_content_hash(order, content)
+    order.content_hash = new_hash
+    return new_hash
+
+
+def _apply_order_data(order: MegaFlowWorkOrder, data: dict[str, Any]) -> str:
+    _apply_order_columns(order, data)
+    return _apply_content(order, data)
+
+
+def _resolve_order_display(status: str, pause_state: str | None) -> dict[str, str]:
+    pause = normalize_pause_state(pause_state)
+    if status == "paused":
+        if pause == "pausing":
+            return {"display_status": "pausing", "display_status_label": "暂停中"}
+        if pause == "resuming":
+            return {"display_status": "resuming", "display_status_label": "恢复中"}
+        if pause == PAUSE_STATE_WITHDRAWN:
+            return {"display_status": "withdrawn", "display_status_label": "已撤回"}
+        return {"display_status": "paused", "display_status_label": "已暂停"}
+    label = ORDER_STATUS_LABELS.get(status, status or "-")
+    return {"display_status": status, "display_status_label": label}
+
+
+def _apply_order_display(
+    item: dict[str, Any],
+    *,
+    status: str,
+    pause_state: str | None = None,
+) -> dict[str, Any]:
+    normalized = normalize_pause_state(pause_state)
+    item["pause_state"] = normalized
+    item.update(_resolve_order_display(status, normalized))
+    return item
+
+
+def _enrich_detail(data: dict[str, Any], order: MegaFlowWorkOrder) -> dict[str, Any]:
+    dispatches = data.get("dispatches") or []
+    data["has_dispatches"] = bool(dispatches)
+    # dispatches 已按 id 降序排列，首个未终止项与 get_current_dispatch 的结果相同，无需再次查询数据库。
+    current = next(
+        (item for item in dispatches if item.get("status") not in TERMINAL_DISPATCH_STATUSES),
+        None,
+    )
+    return _apply_order_display(
+        data,
+        status=order.status,
+        pause_state=current.get("pause_state") if current else None,
+    )
+
+
+def get_meta() -> dict[str, Any]:
+    return {
+        "statuses": WORK_ORDER_STATUSES,
+        "orderTypes": ORDER_TYPES,
+        "priorities": PRIORITIES,
+        "default_sample_wells": default_sample_wells(),
+        "default_cell_columns": default_cell_columns(),
+    }
+
+
+def save_work_order(db: Session, data: dict[str, Any], created_by: str) -> dict[str, Any]:
+    order_id = data.get("id")
+    if order_id:
+        order = _get_order_or_raise(db, int(order_id), for_update=True)
+        _check_expected_content_hash(order, data)
+        _ensure_editable(order)
+
+        preview_hash = compute_hash_from_payload(data, order)
+        if preview_hash == (order.content_hash or ""):
+            detail = get_work_order_detail(db, order.id)
+            detail["unchanged"] = True
+            return detail
+
+        previous_hash = order.content_hash
+        _ensure_cell_columns_free(db, build_content_body(data), order.id)
+        _apply_order_data(order, data)
+
+        if order.status == "validated" and previous_hash != order.content_hash:
+            order.status = "draft"
+
+        order.error_message = None
+        db.commit()
+        return get_work_order_detail(db, order.id)
+
+    order = MegaFlowWorkOrder(status="draft", created_by=created_by)
+    _ensure_cell_columns_free(db, build_content_body(data), None)
+    _apply_order_data(order, data)
+    db.add(order)
+    order.error_message = None
+    db.commit()
+    return get_work_order_detail(db, order.id)
+
+
+def _load_dispatches(db: Session, order_id: int) -> list[dict[str, Any]]:
+    rows = db.scalars(
+        select(MegaFlowWorkOrderDispatch)
+        .options(defer(MegaFlowWorkOrderDispatch.payload))
+        .where(MegaFlowWorkOrderDispatch.work_order_id == order_id)
+        .order_by(MegaFlowWorkOrderDispatch.id.desc())
+    ).all()
+    return [row.to_dict(include_payload=False) for row in rows]
+
+
+def get_work_order_detail(db: Session, order_id: int) -> dict[str, Any]:
+    order = _get_order_or_raise(db, order_id)
+    data = order.to_dict(include_detail=True)
+    data["dispatches"] = _load_dispatches(db, order.id)
+    return _enrich_detail(data, order)
+
+
+def get_active_dispatch_payload(db: Session, order_id: int) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id))
+    current = get_current_dispatch(db, order.id, include_payload=True)
+    if not current:
+        return {"dispatch": None, "payload": None}
+    return {
+        "dispatch": current.to_dict(include_payload=False),
+        "payload": current.payload,
+    }
+
+
+def _json_overlaps(column, values: str | list[str]):
+    items = [values] if isinstance(values, str) else list(values)
+    return func.json_overlaps(column, json.dumps(items))
+
+
+def _list_status_clause(status: str):
+    text = clean_text(status)
+    if text == "execution_failed":
+        return MegaFlowWorkOrder.status.in_(tuple(EXECUTION_ISSUE_STATUSES))
+    return MegaFlowWorkOrder.status == text
+
+
+_W = MegaFlowWorkOrder
+# 状态筛选与统计使用同一口径，将三种执行异常合并为 execution_failed。
+_STATUS_GROUP = case((_W.status.in_(sorted(EXECUTION_ISSUE_STATUSES)), "execution_failed"), else_=_W.status)
+HEADER_COLUMNS: dict[str, HeaderColumn] = {
+    "orderNum": HeaderColumn(_W.orderNum),
+    "orderName": HeaderColumn(_W.orderName),
+    "orderType": HeaderColumn(_W.orderType, "enum", order=tuple(ORDER_TYPE_LABELS)),
+    "priority": HeaderColumn(_W.priority, "enum", order=tuple(PRIORITY_LABELS)),
+    "project_nos": json_array_column(_W.project_nos),
+    "targets": json_array_column(_W.targets),
+    "sample_plate_barcodes": json_array_column(_W.sample_plate_barcodes),
+    "cell_plate_barcodes": json_array_column(_W.cell_plate_barcodes),
+    "remark": HeaderColumn(_W.remark),
+    "status": HeaderColumn(_STATUS_GROUP, "enum", order=tuple(item["value"] for item in WORK_ORDER_STATUSES)),
+    "created_by": HeaderColumn(_W.created_by, "enum"),
+    "sent_at": HeaderColumn(func.date(_W.sent_at), "date"),
+    "updated_at": HeaderColumn(func.date(_W.updated_at), "date"),
+}
+# 时间列按日期筛选，但仍按完整时间排序。
+_SORT_COLUMNS = {
+    "sent_at": HeaderColumn(_W.sent_at, "date"),
+    "updated_at": HeaderColumn(_W.updated_at, "date"),
+}
+_VALUE_LABELS = {
+    "orderType": ORDER_TYPE_LABELS,
+    "priority": PRIORITY_LABELS,
+    "status": {item["value"]: item["label"] for item in WORK_ORDER_STATUSES},
+}
+
+
+def _list_order(data: dict[str, Any]):
+    field = str(data.get("sort_field") or "").strip()
+    spec = _SORT_COLUMNS.get(field) or HEADER_COLUMNS.get(field)
+    direction = str(data.get("sort_dir") or "").strip()
+    if spec is not None and direction in {"asc", "desc"}:
+        return header_sort_clauses(spec, direction, _W.id)
+    return (_W.updated_at.desc(), _W.id.desc())
+
+
+def _work_order_list_stmt(data: dict[str, Any], *, db: Session | None = None, header_except: str | None = None):
+    return _apply_list_filters(select(MegaFlowWorkOrder), data, db=db, header_except=header_except)
+
+
+def _apply_list_filters(stmt, data: dict[str, Any], *, db: Session | None = None, header_except: str | None = None):
+    kw_tokens = split_code_tokens(data.get("keyword"))
+    if len(kw_tokens) == 1:
+        pattern = f"%{like_literal(kw_tokens[0])}%"
+        stmt = stmt.where(
+            or_(
+                MegaFlowWorkOrder.orderNum.like(pattern, escape="\\"),
+                MegaFlowWorkOrder.orderName.like(pattern, escape="\\"),
+            )
+        )
+    elif len(kw_tokens) > 1:
+        stmt = stmt.where(
+            or_(
+                MegaFlowWorkOrder.orderNum.in_(kw_tokens),
+                MegaFlowWorkOrder.orderName.in_(kw_tokens),
+            )
+        )
+    status = combine_any(data.get("status"), _list_status_clause)
+    if status is not None:
+        stmt = stmt.where(status)
+    order_type = match_any(
+        MegaFlowWorkOrder.orderType,
+        [clean_text(item) for item in filter_terms(data.get("orderType"))],
+    )
+    if order_type is not None:
+        stmt = stmt.where(order_type)
+    project_tokens = split_code_tokens(data.get("project_no"))
+    if project_tokens:
+        stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.project_nos, project_tokens))
+    target = clean_text(data.get("target"))
+    if target:
+        stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.targets, target))
+    sample_tokens = split_code_tokens(data.get("sample_plate_barcode"))
+    if sample_tokens:
+        stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.sample_plate_barcodes, sample_tokens))
+    cell_tokens = split_code_tokens(data.get("cell_plate_barcode"))
+    if cell_tokens:
+        stmt = stmt.where(_json_overlaps(MegaFlowWorkOrder.cell_plate_barcodes, cell_tokens))
+    header = header_filter_clauses(db, HEADER_COLUMNS, data.get("field_filters"), except_field=header_except)
+    return stmt.where(*header) if header else stmt
+
+
+def get_work_order_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    page = max(int(data.get("page", 1) or 1), 1)
+    limit = min(max(int(data.get("limit", 20) or 20), 1), 500)
+    stmt = _work_order_list_stmt(data, db=db)
+
+    total = db.scalar(
+        stmt.with_only_columns(func.count(), maintain_column_froms=True).order_by(None)
+    ) or 0
+    rows = db.scalars(
+        stmt.options(defer(MegaFlowWorkOrder.content))
+        .order_by(*_list_order(data))
+        .offset((page - 1) * limit)
+        .limit(limit)
+    ).all()
+    current_dispatches = batch_current_dispatches(db, [row.id for row in rows])
+    items = []
+    for row in rows:
+        item = row.to_dict(include_detail=False)
+        current = current_dispatches.get(row.id)
+        _apply_order_display(
+            item,
+            status=row.status,
+            pause_state=current.pause_state if current else None,
+        )
+        items.append(item)
+    _attach_serum_project_ids(db, items)
+    return {
+        "items": items,
+        "total": total,
+        "stats": get_work_order_stats(db, data),
+    }
+
+
+def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    return header_column_values(
+        db,
+        HEADER_COLUMNS,
+        data,
+        lambda stmt, payload, field: _apply_list_filters(stmt, payload, db=db, header_except=field),
+        id_column=MegaFlowWorkOrder.id,
+        labels=_VALUE_LABELS,
+    )
+
+
+def _attach_serum_project_ids(db: Session, items: list[dict[str, Any]]) -> None:
+    source_ids = [
+        item.get("source_id")
+        for item in items
+        if item.get("orderType") == "TITER" and item.get("source_id")
+    ]
+    if not source_ids:
+        return
+    rows = db.execute(
+        select(SerumTiterOrder.titer_order_id, SerumImmProject.id)
+        .join(SerumImmProject, SerumImmProject.experiment_id == SerumTiterOrder.experiment_id)
+        .where(
+            SerumTiterOrder.titer_order_id.in_(source_ids),
+            or_(SerumImmProject.project_status.is_(None), SerumImmProject.project_status != "deleted"),
+        )
+    ).all()
+    project_ids = {titer_order_id: int(project_id) for titer_order_id, project_id in rows}
+    for item in items:
+        project_id = project_ids.get(item.get("source_id") or "")
+        if project_id:
+            item["serum_project_id"] = project_id
+
+
+def export_work_order_list_workbook(db: Session, data: dict[str, Any]):
+    from utils.excel import build_list_workbook, cell_text
+
+    data = data or {}
+    stmt = _work_order_list_stmt(data, db=db)
+    rows = db.scalars(stmt.options(defer(MegaFlowWorkOrder.content)).order_by(*_list_order(data))).all()
+    current_dispatches = batch_current_dispatches(db, [row.id for row in rows])
+    headers = [
+        "订单编号",
+        "订单名称",
+        "检测类型",
+        "优先级",
+        "项目号",
+        "靶点",
+        "样本板",
+        "细胞板",
+        "备注",
+        "状态",
+        "来源工单号",
+        "创建人",
+        "发送时间",
+        "创建时间",
+        "更新时间",
+        "失败信息",
+    ]
+    excel_rows = []
+    for row in rows:
+        item = row.to_dict(include_detail=False)
+        current = current_dispatches.get(row.id)
+        _apply_order_display(
+            item,
+            status=row.status,
+            pause_state=current.pause_state if current else None,
+        )
+        excel_rows.append([
+            item.get("orderNum"),
+            item.get("orderName"),
+            ORDER_TYPE_LABELS.get(item.get("orderType"), item.get("orderType") or ""),
+            PRIORITY_LABELS.get(item.get("priority"), item.get("priority") or "普通"),
+            cell_text(item.get("project_nos"), joiner=", "),
+            cell_text(item.get("targets"), joiner=", "),
+            cell_text(item.get("sample_plate_barcodes"), joiner=", "),
+            cell_text(item.get("cell_plate_barcodes"), joiner=", "),
+            item.get("remark"),
+            item.get("display_status_label") or ORDER_STATUS_LABELS.get(item.get("status"), item.get("status") or ""),
+            item.get("source_id"),
+            item.get("created_by"),
+            item.get("sent_at"),
+            item.get("created_at"),
+            item.get("updated_at"),
+            item.get("error_message"),
+        ])
+    return build_list_workbook(
+        sheet_title="流式工单总览",
+        filename_prefix="流式工单总览",
+        headers=headers,
+        rows=excel_rows,
+    )
+
+
+def get_work_orders_by_source(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+    orderType = clean_text(data.get("orderType"))
+    source_id = clean_text(data.get("source_id"))
+    if not orderType or not source_id:
+        raise ValueError("orderType 与 source_id 不能为空")
+    if orderType not in ORDER_TYPE_VALUES:
+        raise ValueError(f"不支持的检测类型：{orderType}")
+
+    stmt = select(MegaFlowWorkOrder).where(
+        MegaFlowWorkOrder.orderType == orderType,
+        MegaFlowWorkOrder.source_id == source_id,
+    )
+    if data.get("exclude_cancelled"):
+        stmt = stmt.where(MegaFlowWorkOrder.status != "cancelled")
+
+    rows = db.scalars(
+        stmt.options(defer(MegaFlowWorkOrder.content)).order_by(MegaFlowWorkOrder.id.desc())
+    ).all()
+    current_dispatches = batch_current_dispatches(db, [row.id for row in rows])
+    items = []
+    for row in rows:
+        item = row.to_dict(include_detail=False)
+        current = current_dispatches.get(row.id)
+        _apply_order_display(
+            item,
+            status=row.status,
+            pause_state=current.pause_state if current else None,
+        )
+        items.append(item)
+    return {"items": items}
+
+
+def get_work_order_stats(db: Session, data: dict[str, Any] | None = None) -> dict[str, int]:
+    """状态页签计数跟随其余筛选，不受当前选中的状态（顶部和表头）影响。"""
+    scoped = _work_order_list_stmt({**(data or {}), "status": None}, db=db, header_except="status").subquery()
+    rows = db.execute(select(scoped.c.status, func.count()).group_by(scoped.c.status)).all()
+    stats = {status["value"]: 0 for status in WORK_ORDER_STATUSES}
+    for status, count in rows:
+        key = str(status or "draft")
+        if key in {"execution_error", "manual_failed"}:
+            key = "execution_failed"
+        stats[key] = stats.get(key, 0) + int(count or 0)
+    stats["total"] = sum(value for key, value in stats.items() if key != "total")
+    return stats
+
+
+def _validate_from_db(db: Session, order: MegaFlowWorkOrder) -> dict[str, Any]:
+    content = get_order_content(order)
+    issues = collect_validation_issues(
+        order=order,
+        content=content,
+        column_usage=cell_plate_usage_map(db, content, order.id),
+    )
+    errors = [item["message"] for item in issues]
+
+    if errors:
+        order.status = "failed"
+        order.error_message = "；".join(errors)
+    else:
+        order.status = "validated"
+        order.error_message = None
+
+    return {"valid": not errors, "errors": errors, "issues": issues}
+
+
+def _paused_validation_result(
+    *,
+    valid: bool,
+    errors: list[str] | None = None,
+    issues: list[dict[str, str]] | None = None,
+    needs_confirm: bool = False,
+    content_changed: bool = False,
+    can_resume: bool = False,
+    saved: bool = False,
+    message: str = "",
+    item: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "valid": valid,
+        "errors": errors or [],
+        "issues": issues or [],
+        "needs_confirm": needs_confirm,
+        "content_changed": content_changed,
+        "can_resume": can_resume,
+        "saved": saved,
+        "message": message,
+    }
+    if item is not None:
+        result["item"] = item
+    return result
+
+
+def _validate_paused(
+    db: Session,
+    order: MegaFlowWorkOrder,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    current = _get_pause_ready_dispatch(
+        db,
+        order,
+        error_message="仅已撤回的工单可以编辑或校验",
+    )
+    payload = safe_dict(data.get("payload"))
+    if not payload:
+        raise ValueError("暂停校验需要提交当前编辑内容")
+
+    confirm_revoke = bool(data.get("confirm_revoke"))
+    _check_expected_content_hash(order, data)
+    preview = build_content_body(payload)
+    issues = collect_validation_issues(
+        payload,
+        order,
+        content=preview,
+        column_usage=cell_plate_usage_map(db, preview, order.id),
+    )
+    errors = [item["message"] for item in issues]
+    if errors:
+        return _paused_validation_result(valid=False, errors=errors, issues=issues)
+
+    local_hash = compute_hash_from_payload(payload, order)
+    baseline_hash = current.content_hash_at_send
+
+    if local_hash == baseline_hash:
+        return _paused_validation_result(
+            valid=True,
+            can_resume=True,
+            item=get_work_order_detail(db, order.id),
+        )
+
+    if not confirm_revoke:
+        return _paused_validation_result(
+            valid=True,
+            needs_confirm=True,
+            content_changed=True,
+            message=PAUSED_CHANGE_CONFIRM_MESSAGE,
+        )
+
+    _apply_order_data(order, payload)
+    void_open_dispatches(db, order.id)
+    order.status = "validated"
+    order.error_message = None
+    db.commit()
+    return _paused_validation_result(
+        valid=True,
+        content_changed=True,
+        saved=True,
+        item=get_work_order_detail(db, order.id),
+    )
+
+
+def validate_work_order(db: Session, order_id: int, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    data = data or {}
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    _ensure_not_cancelled(order)
+
+    if order.status == "paused":
+        return _validate_paused(db, order, data)
+
+    _check_expected_content_hash(order, data)
+    if order.status in ACTIVE_EXECUTION_STATUSES:
+        raise ValueError("已发送工单请先停止后再校验")
+    if order.status not in EDITABLE_STATUSES:
+        raise ValueError(f"当前状态（{order.status}）不可校验")
+
+    result = _validate_from_db(db, order)
+    db.commit()
+    result["needs_confirm"] = False
+    result["content_changed"] = False
+    result["can_resume"] = False
+    result["saved"] = False
+    result["message"] = ""
+    result["item"] = get_work_order_detail(db, order.id)
+    return result
+
+
+def dispatch_work_order(
+    db: Session,
+    order_id: int,
+    operator_name: str,
+    *,
+    simulate: bool = False,
+) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    _ensure_not_cancelled(order)
+    if order.status != "validated":
+        raise ValueError("请先校验通过后再发送")
+
+    _ensure_cell_columns_free(db, get_order_content(order), order.id)
+    dispatch = create_dispatch_record(db, order, operator_name=operator_name)
+    if not simulate:
+        try:
+            push_flow_work_order(dispatch.payload if isinstance(dispatch.payload, dict) else {})
+        except LabillionError as exc:
+            db.rollback()
+            raise ValueError(f"Labillion 订单导入失败：{exc}") from exc
+
+    order.status = "sent"
+    order.sent_at = now_local()
+    order.error_message = None
+    db.commit()
+    return get_work_order_detail(db, order.id)
+
+
+def pause_work_order(db: Session, order_id: int, *, simulate: bool = False) -> dict[str, Any]:
+    # 先锁下发再锁工单，保持与回调一致的加锁顺序。
+    current = lock_current_dispatch(db, int(order_id))
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    _ensure_not_cancelled(order)
+    if order.status not in ACTIVE_EXECUTION_STATUSES:
+        raise ValueError("仅已发送或执行中的工单可以停止")
+
+    if order.status == "sent" and current and current.status == "pending":
+        _labillion_withdraw_pause(db, order, current, simulate=simulate)
+        return get_work_order_detail(db, int(order_id))
+    if simulate:
+        raise ValueError("仅待确认的已发送工单可以模拟撤回")
+
+    request_pause_current_dispatch(db, order.id)
+    order.status = "paused"
+    order.error_message = None
+    db.commit()
+    return get_work_order_detail(db, order.id)
+
+
+def acknowledge_pause_work_order(db: Session, order_id: int) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    _ensure_not_cancelled(order)
+    if order.status != "paused":
+        raise ValueError("仅已暂停工单可以确认设备暂停")
+    acknowledge_pause_current_dispatch(db, order.id)
+    db.commit()
+    return get_work_order_detail(db, order.id)
+
+
+def resume_work_order(db: Session, order_id: int) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    _ensure_not_cancelled(order)
+    if order.status != "paused":
+        raise ValueError("仅已撤回或已暂停的工单可以继续")
+    current = get_current_dispatch(db, order.id, include_payload=True)
+    if not current:
+        raise ValueError("没有可继续的下发记录")
+    pause = normalize_pause_state(current.pause_state)
+    if pause == PAUSE_STATE_WITHDRAWN:
+        _labillion_withdraw_resume(db, order)
+        db.commit()
+        return get_work_order_detail(db, order.id)
+    if pause == "paused":
+        request_resume_current_dispatch(db, order.id)
+        db.commit()
+        return get_work_order_detail(db, order.id)
+    raise ValueError("当前暂停状态不能继续")
+
+
+def acknowledge_resume_work_order(db: Session, order_id: int) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    _ensure_not_cancelled(order)
+    if order.status != "paused":
+        raise ValueError("仅已暂停工单可以确认设备恢复")
+    dispatch = acknowledge_resume_current_dispatch(db, order.id)
+    order.status = "running" if dispatch.status == "running" else "sent"
+    order.error_message = None
+    db.commit()
+    return get_work_order_detail(db, order.id)
+
+
+def confirm_dispatch_execution(db: Session, order_id: int) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    _ensure_not_cancelled(order)
+    if order.status != "sent":
+        raise ValueError("仅已发送工单可以确认执行")
+    confirm_current_dispatch(db, order.id)
+    order.status = "running"
+    order.error_message = None
+    db.commit()
+    return get_work_order_detail(db, order.id)
+
+
+def complete_work_order(db: Session, order_id: int) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    _ensure_not_cancelled(order)
+    if order.status != "running":
+        raise ValueError("仅执行中的工单可以完成")
+    complete_current_dispatch(db, order.id)
+    order.status = "completed"
+    order.error_message = None
+    db.commit()
+    return get_work_order_detail(db, order.id)
+
+
+def fail_work_order(
+    db: Session,
+    order_id: int,
+    error_message: str = "",
+) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    _ensure_not_cancelled(order)
+    if order.status not in {"sent", "running", "paused"}:
+        raise ValueError("仅已发送、执行中或已暂停的工单可以标记手动失败")
+    current = get_current_dispatch(db, order.id)
+    if not current:
+        raise ValueError("没有可标记的下发记录")
+    if current.status not in {"pending", "running"}:
+        raise ValueError("当前下发记录不可标记手动失败")
+    if normalize_pause_state(current.pause_state) == PAUSE_STATE_WITHDRAWN:
+        raise ValueError("已撤回的工单请继续发送或作废")
+    error = clean_text(error_message)
+    if current.status == "pending":
+        current.status = "running"
+    current.pause_state = None
+    order.status = "manual_failed"
+    order.error_message = error or "手动标记失败"
+    db.commit()
+    return get_work_order_detail(db, order.id)
+
+
+def continue_execution_work_order(db: Session, order_id: int) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    _ensure_not_cancelled(order)
+    if order.status not in EXECUTION_ISSUE_STATUSES:
+        raise ValueError("仅执行中止、执行错误或手动失败的工单可以继续执行")
+    current = get_current_dispatch(db, order.id)
+    if not current or current.status not in {"pending", "running"}:
+        raise ValueError("没有可继续的下发记录")
+    if current.status == "pending":
+        current.status = "running"
+    current.pause_state = None
+    order.status = "running"
+    order.error_message = None
+    db.commit()
+    return get_work_order_detail(db, order.id)
+
+
+def delete_work_order(db: Session, order_id: int) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    if order.status == "cancelled":
+        raise ValueError("工单已作废")
+    if has_dispatches(db, order.id):
+        raise ValueError("已发送过的工单不能删除，请使用作废")
+
+    deleted_id = order.id
+    db.delete(order)
+    db.commit()
+    return {"deleted": True, "id": deleted_id}
+
+
+def cancel_work_order(db: Session, order_id: int) -> dict[str, Any]:
+    order = _get_order_or_raise(db, int(order_id), for_update=True)
+    if order.status == "cancelled":
+        raise ValueError("工单已作废")
+    if order.status == "completed":
+        raise ValueError("已完成工单不可作废")
+    if not has_dispatches(db, order.id):
+        raise ValueError("未发送的工单请使用删除")
+
+    void_open_dispatches(db, order.id)
+    order.status = "cancelled"
+    order.error_message = None
+    db.commit()
+    return get_work_order_detail(db, order.id)
+
+
+def sync_work_order_labillion_status(db: Session, order_id: int) -> dict[str, Any]:
+    from modules.mega_automation.labillion_sync import (
+        sync_work_order_labillion_status as sync_status,
+    )
+
+    return sync_status(db, order_id)

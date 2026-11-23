@@ -1,0 +1,62 @@
+{
+  "name": "@bbctg/antibody-vita",
+  "version": "5.7.5",
+  "repository": {
+    "type": "git",
+    "directory": "apps/antibody_vita"
+  },
+  "author": {
+    "name": "Tian Ba (Biocytogen)",
+    "url": "https://www.biocytogen.com.cn"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "pnpm vite build --mode production",
+    "dev": "pnpm vite --mode development",
+    "dev:test": "pnpm vite --mode test",
+    "lint:components": "eslint \"src/**/*.vue\"",
+    "preview": "vite preview",
+    "test": "node --import ./src/test-support/register.mjs --test \"src/**/*.test.mjs\"",
+    "typecheck": "vue-tsc --noEmit --skipLibCheck"
+  },
+  "imports": {
+    "#/*": "./src/*"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "@vben/access": "workspace:*",
+    "@vben/common-ui": "workspace:*",
+    "@vben/constants": "workspace:*",
+    "@vben/hooks": "workspace:*",
+    "@vben/icons": "workspace:*",
+    "@vben/layouts": "workspace:*",
+    "@vben/locales": "workspace:*",
+    "@vben/plugins": "workspace:*",
+    "@vben/preferences": "workspace:*",
+    "@vben/request": "workspace:*",
+    "@vben/stores": "workspace:*",
+    "@vben/styles": "workspace:*",
+    "@vben/types": "workspace:*",
+    "@vben/utils": "workspace:*",
+    "@vueuse/core": "catalog:",
+    "dayjs": "catalog:",
+    "element-plus": "catalog:",
+    "fflate": "^0.8.3",
+    "mammoth": "^1.13.0",
+    "modern-screenshot": "^4.7.0",
+    "pinia": "catalog:",
+    "sortablejs": "catalog:",
+    "vue": "catalog:",
+    "vue-router": "catalog:",
+    "vxe-pc-ui": "catalog:",
+    "vxe-table": "catalog:",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@typescript-eslint/parser": "catalog:",
+    "eslint": "catalog:",
+    "eslint-plugin-vue": "catalog:",
+    "unplugin-element-plus": "catalog:",
+    "vue-eslint-parser": "catalog:"
+  }
+}

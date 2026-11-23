@@ -1,0 +1,3406 @@
+<template>
+  <div class="titer-order-page" :class="{ 'is-list-table-locked': listTableLocked }">
+    <AdvancedOpsBar v-model="showAdvancedOps">
+      <ListFilterSelect
+        v-model="listQuery.order_status"
+        clearable
+        v-bind="headerTop('order_status', '工单状态')"
+        @change="handleFilter"
+      >
+        <el-option
+          v-for="item in flowOrderStatusOptions"
+          :key="item.value"
+          :label="item.label"
+          :value="item.value"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.reviewer"
+        clearable
+        filterable
+        popper-class="titer-select-dropdown"
+        :filter-method="filterMethodFor('reviewerFilterQuery')"
+        v-bind="headerTop('reviewer', '审核人')"
+        @clear="clearFilterQuery('reviewerFilterQuery')"
+        @change="handleFilter"
+      >
+        <el-option
+          v-for="name in filterOptions(allReviewerOptions, reviewerFilterQuery)"
+          :key="name"
+          :label="name"
+          :value="name"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.immune_owner"
+        clearable
+        filterable
+        popper-class="titer-select-dropdown"
+        :filter-method="filterMethodFor('immuneOwnerFilterQuery')"
+        v-bind="headerTop('immune_owner', '免疫负责人')"
+        @clear="clearFilterQuery('immuneOwnerFilterQuery')"
+        @change="handleFilter"
+      >
+        <el-option
+          v-for="name in filterOptions(allImmuneOwnerOptions, immuneOwnerFilterQuery)"
+          :key="name"
+          :label="name"
+          :value="name"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.immune_status"
+        clearable
+        filterable
+        popper-class="titer-select-dropdown"
+        :filter-method="filterMethodFor('immuneStatusFilterQuery')"
+        v-bind="headerTop('immune_status', '免疫状态')"
+        @clear="clearFilterQuery('immuneStatusFilterQuery')"
+        @change="handleFilter"
+      >
+        <el-option
+          v-for="item in filterOptions(allImmuneStatusOptions, immuneStatusFilterQuery)"
+          :key="item"
+          :label="item"
+          :value="item"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.priority"
+        clearable
+        v-bind="headerTop('priority', '检测优先级')"
+        @change="handleFilter"
+      >
+        <el-option
+          v-for="item in titerPriorityOptions"
+          :key="item"
+          :label="item"
+          :value="item"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.summary_status"
+        clearable
+        placeholder="小结状态"
+        @change="handleSummaryStatusFilterChange"
+      >
+        <el-option label="未填写小结" value="empty" />
+        <el-option label="已填写小结" value="filled" />
+      </ListFilterSelect>
+      <el-date-picker
+        v-model="testDatesRange"
+        type="daterange"
+        range-separator="至"
+        start-placeholder="检测起始"
+        end-placeholder="检测截止"
+        value-format="YYYY-MM-DD"
+        @change="handleTestDatesFilterChange"
+      />
+      <template #actions>
+        <el-button type="warning" :icon="Download" @click="handleListExport">
+          列表导出
+        </el-button>
+      </template>
+    </AdvancedOpsBar>
+
+    <div class="page-header-band">
+      <div class="title-group">
+        <h1 class="page-title">效价实验列表</h1>
+        <p class="page-subtitle">按效价工单安排负责人与检测日期，在列表中维护血清状态和效价小结。</p>
+      </div>
+      <div class="header-actions">
+        <span class="total-count text-secondary">共 {{ total }} 条工单</span>
+        <el-button
+          type="primary"
+          :icon="Plus"
+          :class="{ 'no-permission-btn': !canEditTiterOrder() }"
+          :title="!canEditTiterOrder() ? '您没有权限编辑效价工单' : ''"
+          @click="openCreateDialog"
+        >
+          新增
+        </el-button>
+      </div>
+    </div>
+
+    <section class="workbench-panel">
+      <div class="stats-strip">
+        <div
+          class="stat-tile stat-blue stat-tile-interactive"
+          :class="{ 'stat-tile-active': statFilterActive.unassigned }"
+          @click="handleStatFilter('unassigned')"
+        >
+          <span class="stat-copy">
+            <span class="stat-label">待安排</span>
+            <small class="text-hint">未指定负责人</small>
+          </span>
+          <strong class="stat-value">{{ stats.unassigned }}</strong>
+        </div>
+        <div
+          class="stat-tile stat-purple stat-tile-interactive"
+          :class="{ 'stat-tile-active': statFilterActive.pending }"
+          title="左键：已采血且未填检测日期；右键：未填检测日期"
+          @click="handlePendingStatFilter('blooded')"
+          @contextmenu.prevent="handlePendingStatFilter('empty')"
+        >
+          <span class="stat-copy">
+            <span class="stat-label">待检测</span>
+            <small class="text-hint">FACS {{ stats.pendingFacsPlates }} 板 · ELISA {{ stats.pendingElisaPlates }} 板</small>
+          </span>
+          <strong class="stat-value">{{ stats.pending }}</strong>
+        </div>
+        <div
+          class="stat-tile stat-orange stat-tile-interactive"
+          :class="{ 'stat-tile-active': statFilterActive.thisWeek }"
+          title="左键：检测日期在本周；右键：已填检测日期但尚未改为已检测"
+          @click="handleThisWeekStatFilter('week')"
+          @contextmenu.prevent="handleThisWeekStatFilter('unsubmitted')"
+        >
+          <span class="stat-copy">
+            <span class="stat-label">本周检测</span>
+            <small class="text-hint">检测日期在本周</small>
+          </span>
+          <strong class="stat-value">{{ stats.thisWeek }}</strong>
+        </div>
+        <div
+          class="stat-tile stat-red stat-tile-interactive"
+          :class="{ 'stat-tile-active': statFilterActive.toReport }"
+          @click="handleStatFilter('toReport')"
+        >
+          <span class="stat-copy">
+            <span class="stat-label">待汇报</span>
+            <small class="text-hint">已检测未写小结</small>
+          </span>
+          <strong class="stat-value">{{ stats.toReport }}</strong>
+        </div>
+        <div
+          class="stat-tile stat-slate stat-tile-interactive"
+          :class="{ 'stat-tile-active': statFilterActive.owners }"
+          @click="handleStatFilter('owners')"
+          @contextmenu.prevent="openOwnerStatsDialog"
+        >
+          <span class="stat-copy">
+            <span class="stat-label">负责人</span>
+            <small class="text-hint">效价人员与统计</small>
+          </span>
+          <strong class="stat-value">{{ allOwnerOptions.length }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <div class="filter-strip list-filter-controls">
+      <el-input
+        v-model="listQuery.project_code"
+        class="filter-item"
+        clearable
+        v-bind="headerTop('project_code', '项目编号')"
+        :prefix-icon="Search"
+        @keyup.enter="handleFilter"
+      />
+      <WorkbenchTargetFilter
+        v-model="listQuery.target_name"
+        class="filter-item"
+        popper-class="titer-select-dropdown"
+        v-bind="headerTop('target_name', '靶点')"
+        :search="fetchTiterOrderRecordedTargets"
+        @change="handleFilter"
+      />
+      <ListFilterSelect
+        v-model="listQuery.assay_method"
+        class="filter-item"
+        clearable
+        filterable
+        popper-class="titer-select-dropdown"
+        :filter-method="filterMethodFor('assayMethodFilterQuery')"
+        v-bind="headerTop('assay_method', '检测方法')"
+        @clear="clearFilterQuery('assayMethodFilterQuery')"
+        @change="handleFilter"
+      >
+        <el-option label="FACS" :value="ASSAY_FILTER_FACS" />
+        <el-option label="ELISA" :value="ASSAY_FILTER_ELISA" />
+        <el-option label="FACS+ELISA" :value="ASSAY_FILTER_FACS_ELISA" />
+        <el-option
+          v-for="item in filterOptions(allAssayMethodOptions, assayMethodFilterQuery)"
+          :key="item"
+          :label="item"
+          :value="item"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.titer_owner"
+        class="filter-item"
+        clearable
+        filterable
+        popper-class="titer-select-dropdown"
+        :filter-method="filterMethodFor('ownerFilterQuery')"
+        placeholder="效价负责人"
+        @clear="clearFilterQuery('ownerFilterQuery')"
+        @change="handleTiterOwnerFilterChange"
+      >
+        <el-option
+          v-for="name in filterOptions(allOwnerOptions, ownerFilterQuery)"
+          :key="name"
+          :label="name"
+          :value="name"
+        />
+      </ListFilterSelect>
+      <ListFilterSelect
+        v-model="listQuery.serum_status"
+        class="filter-item"
+        clearable
+        placeholder="血清状态"
+        @change="handleSerumStatusFilterChange"
+      >
+        <el-option
+          v-for="item in allSerumStatusOptions"
+          :key="item"
+          :label="item"
+          :value="item"
+        />
+      </ListFilterSelect>
+      <el-date-picker
+        v-model="bloodCollectionRange"
+        class="filter-item"
+        type="daterange"
+        range-separator="至"
+        start-placeholder="采血起始"
+        end-placeholder="采血截止"
+        value-format="YYYY-MM-DD"
+        @change="handleFilter"
+      />
+      <div class="filter-actions list-filter-actions">
+        <WorkbenchHeaderFilterChip v-bind="headerChipBind" />
+        <button
+          type="button"
+          class="list-advanced-trigger"
+          :class="{ 'is-active': showAdvancedOps }"
+          title="高级操作"
+          @click="showAdvancedOps = !showAdvancedOps"
+        >
+          <el-icon><Tools /></el-icon>
+        </button>
+        <el-button class="list-filter-action-button" type="primary" :icon="Search" title="右键清空筛选" @click="handleFilter" @contextmenu.prevent="resetFilter()">查询</el-button>
+        <el-button class="list-filter-action-button" :icon="Refresh" @click="resetFilter">重置</el-button>
+      </div>
+    </div>
+
+    <el-card shadow="never" class="table-card list-table-card">
+      <div ref="listTableBody" class="list-table-body">
+      <div
+        ref="tablePlateWrap"
+        class="table-plate-wrap"
+        @click.capture="onTableWrapClickCapture"
+      >
+        <el-table
+          ref="orderTable"
+          :height="listTableHeight"
+          v-loading="listLoading"
+          :data="list"
+          row-key="id"
+          border
+          stripe
+          fit
+          highlight-current-row
+          size="large"
+          class="list-data-table"
+          style="width: 100%"
+          :header-cell-class-name="headerCellClassName"
+          @header-click="onTableHeaderClick"
+          @header-dragend="onTableHeaderDragEnd"
+        >
+        <el-table-column column-key="project_code" prop="project_code" align="left" fixed min-width="120" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="项目编号" v-bind="headerMenuStates.project_code" /></template>
+          <template #default="{ row }">
+            <span
+              class="list-code-text is-clickable"
+              @click="goDetail(row)"
+              @contextmenu.prevent="openOrderDialog(row)"
+            >{{ row.project_code || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column column-key="target_name" prop="target_name" align="center" min-width="100" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="靶点" v-bind="headerMenuStates.target_name" /></template>
+        </el-table-column>
+        <el-table-column label="笼位" prop="cage_position" align="center" min-width="110" show-overflow-tooltip />
+        <el-table-column column-key="blood_collection_date" prop="blood_collection_date" align="center" min-width="115">
+          <template #header><WorkbenchHeaderLabel label="采血日期" v-bind="headerMenuStates.blood_collection_date" /></template>
+        </el-table-column>
+        <el-table-column column-key="mouse_count" prop="mouse_count" align="center" min-width="80" class-name="plate-col-mouse">
+          <template #header><WorkbenchHeaderLabel label="只数" v-bind="headerMenuStates.mouse_count" /></template>
+          <template #default="{ row, $index }">
+            <div
+              class="plate-select-cell"
+              @mousedown="onPlateCellMouseDown('mouse', $index, $event)"
+              @mouseenter="onPlateCellMouseEnter('mouse', $index)"
+              @contextmenu.prevent="onPlateCellContextMenu('mouse')"
+            >
+              {{ row.mouse_count ?? 0 }}
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column column-key="assay_method" prop="assay_method" align="center" min-width="130" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="检测方法" v-bind="headerMenuStates.assay_method" /></template>
+        </el-table-column>
+        <el-table-column column-key="facs_plate_count" prop="facs_plate_count" align="center" min-width="80" class-name="plate-col-facs">
+          <template #header><WorkbenchHeaderLabel label="FACS" v-bind="headerMenuStates.facs_plate_count" /></template>
+          <template #default="{ row, $index }">
+            <div
+              class="plate-select-cell"
+              @mousedown="onPlateCellMouseDown('facs', $index, $event)"
+              @mouseenter="onPlateCellMouseEnter('facs', $index)"
+              @contextmenu.prevent="onPlateCellContextMenu('facs')"
+            >
+              {{ row.facs_plate_count ?? 0 }}
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column column-key="elisa_plate_count" prop="elisa_plate_count" align="center" min-width="80" class-name="plate-col-elisa">
+          <template #header><WorkbenchHeaderLabel label="ELISA" v-bind="headerMenuStates.elisa_plate_count" /></template>
+          <template #default="{ row, $index }">
+            <div
+              class="plate-select-cell"
+              @mousedown="onPlateCellMouseDown('elisa', $index, $event)"
+              @mouseenter="onPlateCellMouseEnter('elisa', $index)"
+              @contextmenu.prevent="onPlateCellContextMenu('elisa')"
+            >
+              {{ row.elisa_plate_count ?? 0 }}
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column column-key="immune_owner" prop="immune_owner" align="center" min-width="105" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="免疫负责人" v-bind="headerMenuStates.immune_owner" /></template>
+        </el-table-column>
+        <el-table-column column-key="titer_owners" align="center" min-width="175" class-name="plate-col-owner">
+          <template #header><WorkbenchHeaderLabel label="效价负责人" v-bind="headerMenuStates.titer_owners" /></template>
+          <template #default="{ row, $index }">
+            <div
+              class="plate-select-cell plate-select-cell--field"
+              @mousedown="onFieldCellMouseDown('owner', $index, $event)"
+              @mouseenter="onPlateCellMouseEnter('owner', $index)"
+              @contextmenu.prevent="onPlateCellContextMenu('owner')"
+            >
+              <div
+                class="el-select el-select--small owner-select inline-cell-control inline-cell-preview"
+                :class="{ 'is-disabled': !canEditTiterOrderOwner() }"
+                role="button"
+                :tabindex="canEditTiterOrderOwner() ? 0 : -1"
+                @click="activateInlineControl($event, row, 'owner')"
+                @keydown="onInlinePreviewKeydown($event, row, 'owner')"
+              >
+                <div class="el-select__wrapper" :class="{ 'is-disabled': !canEditTiterOrderOwner() }">
+                  <div class="el-select__selection">
+                    <template v-if="row.titer_owners && row.titer_owners.length">
+                      <div
+                        v-for="item in row.titer_owners"
+                        :key="ownerTagName(item)"
+                        class="el-select__selected-item"
+                      >
+                        <span class="el-tag el-tag--small owner-tag" :style="ownerTagStyle(item)">
+                          <span class="el-tag__content">{{ ownerTagName(item) }}</span>
+                          <i
+                            v-if="canEditTiterOrderOwner()"
+                            class="el-icon el-tag__close"
+                            @click.stop="removeOwnerTag(row, item)"
+                          >×</i>
+                        </span>
+                      </div>
+                    </template>
+                    <div v-else class="el-select__selected-item el-select__placeholder is-transparent">
+                      <span>选择负责人</span>
+                    </div>
+                  </div>
+                  <div class="el-select__suffix">
+                    <i class="el-icon el-select__caret el-select__icon"><svg viewBox="0 0 1024 1024"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z" /></svg></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column
+          column-key="test_dates"
+          prop="test_dates_display"
+          align="center"
+          min-width="160"
+          class-name="plate-col-test-dates"
+        >
+          <template #header><WorkbenchHeaderLabel label="检测日期" v-bind="headerMenuStates.test_dates" /></template>
+          <template #default="{ row, $index }">
+            <div
+              class="plate-select-cell plate-select-cell--field"
+              @mousedown="onFieldCellMouseDown('test_dates', $index, $event)"
+              @mouseenter="onPlateCellMouseEnter('test_dates', $index)"
+              @contextmenu.prevent="onPlateCellContextMenu('test_dates')"
+            >
+              <div
+                class="cell-tooltip-target"
+                @mouseenter="handleOverflowMouseEnter($event, row.id, 'test_dates', row.test_dates_display)"
+                @mouseleave="handleOverflowMouseLeave(row.id, 'test_dates')"
+              >
+                <div
+                  class="el-date-editor el-date-editor--dates el-input el-input--small el-input--prefix el-input--suffix test-dates-picker inline-cell-control inline-cell-preview"
+                  :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }"
+                  role="button"
+                  :tabindex="canEditTiterOrderRecord(row) ? 0 : -1"
+                  @click="activateInlineControl($event, row, 'test_dates')"
+                  @keydown="onInlinePreviewKeydown($event, row, 'test_dates')"
+                >
+                  <div class="el-input__wrapper" :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }">
+                    <span class="el-input__prefix">
+                      <span class="el-input__prefix-inner">
+                        <i class="el-icon el-input__icon"><svg viewBox="0 0 1024 1024"><path fill="currentColor" d="M128 384v512h768V192H768v32a32 32 0 1 1-64 0v-32H320v32a32 32 0 0 1-64 0v-32H128v128h768v64H128zm192-256h384V96a32 32 0 1 1 64 0v32h160a32 32 0 0 1 32 32v768a32 32 0 0 1-32 32H96a32 32 0 0 1-32-32V160a32 32 0 0 1 32-32h160V96a32 32 0 0 1 64 0v32zm-32 384h64a32 32 0 0 1 0 64h-64a32 32 0 0 1 0-64zm0 192h64a32 32 0 1 1 0 64h-64a32 32 0 1 1 0-64zm192-192h64a32 32 0 0 1 0 64h-64a32 32 0 0 1 0-64zm0 192h64a32 32 0 1 1 0 64h-64a32 32 0 1 1 0-64zm192-192h64a32 32 0 0 1 0 64h-64a32 32 0 0 1 0-64zm0 192h64a32 32 0 1 1 0 64h-64a32 32 0 1 1 0-64z" /></svg></i>
+                      </span>
+                    </span>
+                    <span
+                      class="el-input__inner"
+                      :class="{ 'is-placeholder': !row.test_dates_display }"
+                    >{{ row.test_dates_display || '选择检测日' }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column
+          column-key="serum_status"
+          prop="serum_status"
+          align="center"
+          min-width="140"
+          class-name="status-column-cell plate-col-serum-status"
+        >
+          <template #header><WorkbenchHeaderLabel label="血清状态" v-bind="headerMenuStates.serum_status" /></template>
+          <template #default="{ row, $index }">
+            <div
+              class="plate-select-cell plate-select-cell--field"
+              @mousedown="onFieldCellMouseDown('serum_status', $index, $event)"
+              @mouseenter="onPlateCellMouseEnter('serum_status', $index)"
+              @contextmenu.prevent="onPlateCellContextMenu('serum_status')"
+            >
+              <div
+                class="el-select el-select--small inline-cell-control serum-status-select inline-cell-preview"
+                :class="[
+                  row.serum_status ? 'status-tone-' + getSerumTiterStatusTagType(row.serum_status) : '',
+                  { 'is-disabled': !canEditTiterOrderRecordOpen() },
+                ]"
+                role="button"
+                :tabindex="canEditTiterOrderRecordOpen() ? 0 : -1"
+                @click="activateInlineControl($event, row, 'serum_status')"
+                @keydown="onInlinePreviewKeydown($event, row, 'serum_status')"
+              >
+                <div class="el-select__wrapper" :class="{ 'is-disabled': !canEditTiterOrderRecordOpen() }">
+                  <div class="el-select__selection">
+                    <div
+                      class="el-select__selected-item el-select__placeholder"
+                      :class="{ 'is-transparent': !row.serum_status }"
+                    >
+                      <span>{{ row.serum_status || '选择状态' }}</span>
+                    </div>
+                  </div>
+                  <div class="el-select__suffix">
+                    <i class="el-icon el-select__caret el-select__icon"><svg viewBox="0 0 1024 1024"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z" /></svg></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column column-key="priority" prop="priority" align="center" min-width="110" class-name="status-column-cell plate-col-priority">
+          <template #header><WorkbenchHeaderLabel label="优先级" v-bind="headerMenuStates.priority" /></template>
+          <template #default="{ row, $index }">
+            <div
+              class="plate-select-cell plate-select-cell--field"
+              @mousedown="onFieldCellMouseDown('priority', $index, $event)"
+              @mouseenter="onPlateCellMouseEnter('priority', $index)"
+              @contextmenu.prevent="onPlateCellContextMenu('priority')"
+            >
+              <div
+                class="el-select el-select--small inline-cell-control priority-select inline-cell-preview"
+                :class="[
+                  'status-tone-' + getTiterPriorityTone(row.priority),
+                  { 'is-disabled': !canEditTiterOrderRecordOpen() },
+                ]"
+                role="button"
+                :tabindex="canEditTiterOrderRecordOpen() ? 0 : -1"
+                @click="activateInlineControl($event, row, 'priority')"
+                @keydown="onInlinePreviewKeydown($event, row, 'priority')"
+              >
+                <div class="el-select__wrapper" :class="{ 'is-disabled': !canEditTiterOrderRecordOpen() }">
+                  <div class="el-select__selection">
+                    <div class="el-select__selected-item el-select__placeholder">
+                      <span>{{ row.priority }}</span>
+                    </div>
+                  </div>
+                  <div class="el-select__suffix">
+                    <i class="el-icon el-select__caret el-select__icon"><svg viewBox="0 0 1024 1024"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z" /></svg></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column column-key="remark" align="center" min-width="180">
+          <template #header><WorkbenchHeaderLabel label="备注" v-bind="headerMenuStates.remark" /></template>
+          <template #default="{ row }">
+            <div
+              class="cell-tooltip-target"
+              @mouseenter="handleOverflowMouseEnter($event, row.id, 'remark', row.remark)"
+              @mouseleave="handleOverflowMouseLeave(row.id, 'remark')"
+            >
+              <div
+                class="el-input el-input--small inline-cell-control inline-cell-preview"
+                :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }"
+                role="textbox"
+                :tabindex="canEditTiterOrderRecord(row) ? 0 : -1"
+                @click="activateInlineControl($event, row, 'remark')"
+                @keydown="onInlinePreviewKeydown($event, row, 'remark')"
+              >
+                <div class="el-input__wrapper" :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }">
+                  <span
+                    class="el-input__inner"
+                    :class="{ 'is-placeholder': !row.remark }"
+                  >{{ row.remark || '备注' }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column column-key="summary" align="center" min-width="180">
+          <template #header><WorkbenchHeaderLabel label="效价小结" v-bind="headerMenuStates.summary" /></template>
+          <template #default="{ row }">
+            <div
+              class="cell-tooltip-target"
+              @mouseenter="handleOverflowMouseEnter($event, row.id, 'summary', row.summary)"
+              @mouseleave="handleOverflowMouseLeave(row.id, 'summary')"
+            >
+              <div
+                class="el-input el-input--small inline-cell-control inline-cell-preview"
+                :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }"
+                role="textbox"
+                :tabindex="canEditTiterOrderRecord(row) ? 0 : -1"
+                @click="activateInlineControl($event, row, 'summary')"
+                @keydown="onInlinePreviewKeydown($event, row, 'summary')"
+              >
+                <div class="el-input__wrapper" :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }">
+                  <span
+                    class="el-input__inner"
+                    :class="{ 'is-placeholder': !row.summary }"
+                  >{{ row.summary || '填写小结' }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column column-key="order_status" prop="order_status" align="center" min-width="100" class-name="status-column-cell">
+          <template #header><WorkbenchHeaderLabel label="工单状态" v-bind="headerMenuStates.order_status" /></template>
+          <template #default="{ row }">
+            <el-tag
+              v-if="row.order_status"
+              class="list-status-tag"
+              :type="orderStatusTagType(row.order_status)"
+              effect="plain"
+            >
+              {{ row.order_status_label }}
+            </el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column column-key="immune_status" prop="immune_status" align="center" min-width="100" class-name="status-column-cell">
+          <template #header><WorkbenchHeaderLabel label="免疫状态" v-bind="headerMenuStates.immune_status" /></template>
+          <template #default="{ row }">
+            <SerumProjectStatusEditor
+              :project-id="row.project_id"
+              :value="row.immune_status"
+              :editable="canUpdateImmuneStatus(row)"
+              @change="status => onImmuneStatusChange(row, status)"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column column-key="reviewer" prop="reviewer" align="center" min-width="90" show-overflow-tooltip>
+          <template #header><WorkbenchHeaderLabel label="审核人" v-bind="headerMenuStates.reviewer" /></template>
+        </el-table-column>
+        <el-table-column column-key="lab_notebook" align="center" min-width="120">
+          <template #header><WorkbenchHeaderLabel label="实验记录本" v-bind="headerMenuStates.lab_notebook" /></template>
+          <template #default="{ row }">
+            <div
+              class="cell-tooltip-target"
+              @mouseenter="handleOverflowMouseEnter($event, row.id, 'lab_notebook', row.lab_notebook)"
+              @mouseleave="handleOverflowMouseLeave(row.id, 'lab_notebook')"
+            >
+              <div
+                class="el-input el-input--small inline-cell-control inline-cell-preview"
+                :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }"
+                role="textbox"
+                :tabindex="canEditTiterOrderRecord(row) ? 0 : -1"
+                @click="activateInlineControl($event, row, 'lab_notebook')"
+                @keydown="onInlinePreviewKeydown($event, row, 'lab_notebook')"
+              >
+                <div class="el-input__wrapper" :class="{ 'is-disabled': !canEditTiterOrderRecord(row) }">
+                  <span
+                    class="el-input__inner"
+                    :class="{ 'is-placeholder': !row.lab_notebook }"
+                  >{{ row.lab_notebook || '实验记录本' }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" fixed="right" width="240" align="center">
+          <template #default="{ row }">
+            <el-button-group>
+              <el-button
+                class="list-table-action-btn"
+                type="primary"
+                plain
+                :icon="Document"
+                @click="goInstrumentOrder(row)"
+                @contextmenu.prevent="openInstrumentFlowList(row)"
+              >
+                工单
+              </el-button>
+              <el-button class="list-table-action-btn" type="warning" plain :icon="DataAnalysis" @click="goSequencing(row)">
+                测序
+              </el-button>
+              <el-button
+                class="list-table-action-btn"
+                type="success"
+                plain
+                :icon="TrendCharts"
+                :class="{ 'no-permission-btn': !canEditTiter(row) }"
+                :title="!canEditTiter(row) ? '您没有权限编辑此项目' : ''"
+                @click="goTiterAudit(row)"
+              >
+                数据
+              </el-button>
+            </el-button-group>
+          </template>
+        </el-table-column>
+        </el-table>
+
+        <div ref="plateOverlayEl" class="plate-select-overlay" aria-hidden="true" />
+        <div ref="plateBubbleEl" class="plate-select-bubble" aria-hidden="true" />
+
+        <TiterTableFloatingLayer
+          ref="floatingLayerRef"
+          :all-owner-options="allOwnerOptions"
+          :titer-serum-status-options="titerSerumStatusOptions"
+          :titer-priority-options="titerPriorityOptions"
+          :owner-tag-name="ownerTagName"
+          :owner-tag-style="ownerTagStyle"
+          :get-serum-titer-status-tag-type="getSerumTiterStatusTagType"
+          :get-titer-priority-tone="getTiterPriorityTone"
+          @owner-change="onTiterOwnerChange"
+          @test-dates-change="onTestDatesChange"
+          @serum-status-change="onSerumStatusChange"
+          @priority-change="onPriorityChange"
+          @remark-change="row => saveRow(row, '备注')"
+          @summary-change="row => saveRow(row, '效价小结')"
+          @lab-notebook-change="row => saveRow(row, '实验记录本')"
+        />
+      </div>
+      </div>
+
+      <el-pagination
+        v-show="total > 0"
+        v-model:current-page="listQuery.page"
+        v-model:page-size="listQuery.limit"
+        :total="total"
+        :page-sizes="[20, 50, 100, 200, 500]"
+        layout="total, sizes, prev, pager, next, jumper"
+        class="list-pagination"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
+    </el-card>
+
+    <TiterOrderCreateDialog
+      v-model="createDialogVisible"
+      :edit-order="dialogEditOrder"
+      :can-save-batch="canEditTiterOrder()"
+      :can-delete="canDeleteTiterOrder()"
+      @changed="onTiterOrderChanged"
+      @closed="dialogEditOrder = null"
+    />
+
+    <TiterInstrumentOrderDialogs ref="instrumentOrderDialogsRef" />
+
+    <WorkbenchHeaderMenu v-bind="headerMenuBind" />
+
+    <TiterMouseSelectWizard
+      v-model="discoveryWizardVisible"
+      :titer-order="sequencingOrder"
+      title="抗体发现工单"
+      subtitle="勾选本批要剖的鼠，确认后写入一条发现安排"
+      footer-hint="至少选择一只小鼠"
+      :require-selection="true"
+      :confirming="discoverySubmitting"
+      show-conclusion
+      @confirm="onDiscoveryWizardConfirm"
+    />
+
+    <el-dialog
+      v-model="ownerStatsVisible"
+      title="效价实验统计Ciallo～(∠・ω< )⌒★"
+      width="960px"
+      append-to-body
+      class="owner-stats-dialog"
+      @opened="loadOwnerStats"
+    >
+      <div class="owner-stats-toolbar">
+        <div class="owner-stats-filter">
+          <span class="owner-stats-filter-label">检测月份</span>
+          <el-date-picker
+            v-model="ownerStatsMonthRange"
+            class="owner-stats-month-picker"
+            type="monthrange"
+            range-separator="至"
+            start-placeholder="起始月"
+            end-placeholder="截止月"
+            value-format="YYYY-MM"
+            clearable
+            @change="loadOwnerStats"
+          />
+          <el-button size="small" :icon="Download" @click="exportOwnerStatsExcel">导出 Excel</el-button>
+        </div>
+        <span class="owner-stats-note text-hint">实验按人头计，板数多人共担按人均分 · 已完成为「已检测 / 已交接」</span>
+      </div>
+      <el-table
+        v-loading="ownerStatsLoading"
+        :data="ownerStatsTableRows"
+        border
+        highlight-current-row
+        max-height="440"
+        class="owner-stats-table"
+        :row-class-name="ownerStatsRowClassName"
+        :header-cell-style="ownerStatsHeaderStyle"
+        :cell-style="ownerStatsCellStyle"
+        empty-text="暂无负责人数据"
+      >
+        <el-table-column label="负责人" fixed min-width="88" align="center">
+          <template #default="{ row }">
+            <span :class="{ 'owner-stats-total-name': row.isTotal }">{{ row.owner }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="总计" align="center">
+          <el-table-column prop="total_orders" label="实验" min-width="60" align="center" :formatter="workloadOrderFormatter" />
+          <el-table-column prop="total_facs" label="FACS" min-width="60" align="center" :formatter="workloadPlateFormatter" />
+          <el-table-column prop="total_elisa" label="ELISA" min-width="60" align="center" :formatter="workloadPlateFormatter" />
+        </el-table-column>
+        <el-table-column label="已完成" align="center">
+          <el-table-column prop="completed_orders" label="实验" min-width="60" align="center" :formatter="workloadOrderFormatter" />
+          <el-table-column prop="completed_facs" label="FACS" min-width="60" align="center" :formatter="workloadPlateFormatter" />
+          <el-table-column prop="completed_elisa" label="ELISA" min-width="60" align="center" :formatter="workloadPlateFormatter" />
+        </el-table-column>
+        <el-table-column label="未完成" align="center">
+          <el-table-column prop="remaining_orders" label="实验" min-width="60" align="center" :formatter="workloadOrderFormatter" />
+          <el-table-column prop="remaining_facs" label="FACS" min-width="60" align="center" :formatter="workloadPlateFormatter" />
+          <el-table-column prop="remaining_elisa" label="ELISA" min-width="60" align="center" :formatter="workloadPlateFormatter" />
+        </el-table-column>
+        <el-table-column v-if="ownerStatsHasPeriod" :label="ownerStatsPeriodLabel" align="center">
+          <el-table-column prop="period_orders" label="实验" min-width="60" align="center" :formatter="workloadOrderFormatter" />
+          <el-table-column prop="period_facs" label="FACS" min-width="60" align="center" :formatter="workloadPlateFormatter" />
+          <el-table-column prop="period_elisa" label="ELISA" min-width="60" align="center" :formatter="workloadPlateFormatter" />
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+  </div>
+</template>
+
+<script>
+import { DataAnalysis, Document, Download, Plus, Refresh, Search, Tools, TrendCharts } from '@element-plus/icons-vue';
+import { defineComponent, h, markRaw } from 'vue';
+import * as XLSX from 'xlsx';
+import {
+  ElButton,
+  ElButtonGroup,
+  ElCard,
+  ElDatePicker,
+  ElDialog,
+  ElIcon,
+  ElInput,
+  ElMessage,
+  ElOption,
+  ElPagination,
+  ElSelect,
+  ElTable,
+  ElTableColumn,
+  ElTag,
+  ElTooltip,
+} from 'element-plus';
+
+import { notifyApiError } from '#/api/errors';
+import { skipGlobalErrorHandler } from '#/api/request';
+import {
+  fetchTiterOrderColumnValues,
+  fetchTiterOrderList,
+  fetchTiterOrderMeta,
+  fetchTiterOrderOwnerStats,
+  fetchTiterOrderStats,
+  exportTiterOrderList,
+  saveTiterOrder,
+  fetchTiterOrderRecordedTargets,
+  TITER_ORDER_DELETE,
+  TITER_ORDER_EDIT,
+  TITER_ORDER_OWNER_EDIT,
+  TITER_ORDER_RECORD_EDIT,
+} from '#/api/serum';
+import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue';
+import ListFilterSelect from '#/components/ListFilterSelect.vue';
+import {
+  WorkbenchHeaderFilterChip,
+  WorkbenchHeaderLabel,
+  WorkbenchHeaderMenu,
+  workbenchHeaderMenuMixin,
+} from '#/components/workbench';
+import { downloadListExcel, excelTimestamp } from '#/utils/downloadExcel';
+import { listPageMixin } from '#/utils/listPage';
+import { listTableLockMixin } from '#/utils/listTableLock';
+import { getSerumTiterStatusTagType, getTiterPriorityTone, mergeTiterSerumStatusOptions, TITER_PRIORITY_OPTIONS, TITER_SERUM_STATUS_OPTIONS } from '#/utils/serumProjectStatus';
+import { FLOW_WORK_ORDER_STATUS_OPTIONS, orderStatusTagType } from '#/utils/megaFlowWorkOrderStatus';
+import { hasAccessCode } from '#/utils/accessCode';
+import {
+  canEditSerumTiter,
+  canEditTiterOrderRecord,
+  canUpdateSerumStatus,
+  getSerumUserName,
+} from '#/utils/serumPermission';
+import { useUserStore } from '@vben/stores';
+
+import WorkbenchTargetFilter from '#/components/workbench/WorkbenchTargetFilter.vue';
+import { DISCOVERY_WORKBENCH_CREATED_KEY, DISCOVERY_WORKBENCH_EDIT } from '#/api/discoveryWorkbench';
+import { handoffTiterToDiscovery } from '#/utils/titerDiscoveryHandoff';
+import TiterInstrumentOrderDialogs from './TiterInstrumentOrderDialogs.vue';
+import TiterMouseSelectWizard from './TiterMouseSelectWizard.vue';
+import TiterOrderCreateDialog from './TiterOrderCreateDialog.vue';
+import SerumProjectStatusEditor from '../shared/SerumProjectStatusEditor.vue';
+
+let pendingTiterOrderId = '';
+
+export function rememberTiterOrderFocus(titerOrderId) {
+  pendingTiterOrderId = String(titerOrderId || '').trim();
+}
+
+const DEFAULT_STATS = {
+  pending: 0,
+  pendingElisaPlates: 0,
+  pendingFacsPlates: 0,
+  thisWeek: 0,
+  toReport: 0,
+  unassigned: 0,
+};
+
+const STATS_AFFECTING_LABELS = new Set(['效价负责人', '检测日期', '血清状态', '效价小结']);
+
+/** 这些列支持划选后同步修改；值仅用于选区计数，不表示板数。 */
+const FIELD_SELECT_COLUMNS = new Set(['owner', 'test_dates', 'serum_status', 'priority']);
+
+const ASSAY_FILTER_FACS = '__facs__';
+const ASSAY_FILTER_ELISA = '__elisa__';
+const ASSAY_FILTER_FACS_ELISA = '__facs_elisa__';
+
+// 效价负责人、检测日期、血清状态和小结由统计块控制；表头条件独立生效，不写回顶部筛选。
+const TITER_HEADER_COLUMNS = Object.freeze({
+  project_code: { type: 'text', label: '项目编号', values: 'recent', top: { query: 'project_code', kind: 'codes' } },
+  target_name: { type: 'text', label: '靶点', values: 'all', search: 'target', top: { query: 'target_name' } },
+  blood_collection_date: { type: 'date', label: '采血日期', sortOnly: true },
+  mouse_count: { type: 'number', label: '只数', values: 'all' },
+  assay_method: {
+    type: 'enum',
+    label: '检测方法',
+    values: 'all',
+    top: { query: 'assay_method', topOnly: [ASSAY_FILTER_FACS, ASSAY_FILTER_ELISA, ASSAY_FILTER_FACS_ELISA] },
+  },
+  facs_plate_count: { type: 'number', label: 'FACS', values: 'all' },
+  elisa_plate_count: { type: 'number', label: 'ELISA', values: 'all' },
+  immune_owner: { type: 'enum', label: '免疫负责人', values: 'all', top: { query: 'immune_owner' } },
+  titer_owners: { type: 'csv', label: '效价负责人', values: 'all' },
+  test_dates: { type: 'csv', label: '检测日期', values: 'all' },
+  serum_status: { type: 'enum', label: '血清状态', values: 'all' },
+  priority: { type: 'enum', label: '优先级', values: 'all', top: { query: 'priority' } },
+  remark: { type: 'text', label: '备注', values: 'search' },
+  summary: { type: 'text', label: '效价小结', values: 'search' },
+  order_status: { type: 'enum', label: '工单状态', values: 'all', top: { query: 'order_status' } },
+  immune_status: { type: 'enum', label: '免疫状态', values: 'all', top: { query: 'immune_status' } },
+  reviewer: { type: 'enum', label: '审核人', values: 'all', top: { query: 'reviewer' } },
+  lab_notebook: { type: 'text', label: '实验记录本', values: 'recent' },
+});
+
+const SERUM_STATUS_PENDING_TEST = '已采血';
+
+/** 「待汇报」指已检测且效价小结为空。 */
+const SERUM_STATUS_TESTED = '已检测';
+
+function summaryTerms(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  return value ? [value] : [];
+}
+
+function formatLocalDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** 周范围与后端 _current_week_range 一致，均为周一至周日。 */
+function getCurrentWeekRange() {
+  const now = new Date();
+  const weekday = now.getDay();
+  const diffToMonday = weekday === 0 ? -6 : 1 - weekday;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return [formatLocalDate(monday), formatLocalDate(sunday)];
+}
+
+function isSameDateRange(left, right) {
+  return Array.isArray(left)
+    && Array.isArray(right)
+    && left.length === 2
+    && right.length === 2
+    && left[0] === right[0]
+    && left[1] === right[1];
+}
+
+function createDefaultStatFilterActive() {
+  return {
+    unassigned: false,
+    pending: false,
+    thisWeek: false,
+    toReport: false,
+    owners: false,
+  };
+}
+
+function flattenOwnerStatsItem(item) {
+  const pick = (src, prefix) => ({
+    [`${prefix}_orders`]: Number(src?.orders) || 0,
+    [`${prefix}_facs`]: Number(src?.facs) || 0,
+    [`${prefix}_elisa`]: Number(src?.elisa) || 0,
+  });
+  return {
+    owner: item.owner,
+    ...pick(item.total, 'total'),
+    ...pick(item.completed, 'completed'),
+    ...pick(item.remaining, 'remaining'),
+    ...pick(item.period, 'period'),
+  };
+}
+
+function formatWorkloadOrder(value) {
+  return String(Math.round(Number(value) || 0));
+}
+
+function formatWorkloadPlate(value) {
+  return (Number(value) || 0).toFixed(1);
+}
+
+function currentMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatMonthLabel(monthKey) {
+  const [year, month] = String(monthKey || '').split('-');
+  if (!year || !month) {
+    return monthKey || '';
+  }
+  return `${year}年${Number(month)}月`;
+}
+
+function formatMonthRangeLabel(startMonth, endMonth) {
+  if (!endMonth || startMonth === endMonth) {
+    return formatMonthLabel(startMonth);
+  }
+  return `${formatMonthLabel(startMonth)} - ${formatMonthLabel(endMonth)}`;
+}
+
+/** 效价负责人标签使用 17 个易区分的浅色配色。 */
+const OWNER_TAG_COLORS = [
+  { bg: '#eef4fc', color: '#70b0e8' }, // 天蓝
+  { bg: '#ffe6e4', color: '#e06058' }, // 珊瑚
+  { bg: '#e6f8ec', color: '#38b068' }, // 翠绿
+  { bg: '#f6eaf6', color: '#b068b0' }, // 丁香
+  { bg: '#fff8dc', color: '#d8b820' }, // 柠檬
+  { bg: '#e8ecfc', color: '#5c78d0' }, // 矢车菊
+  { bg: '#fff0e6', color: '#e07850' }, // 蜜桃
+  { bg: '#eee6f8', color: '#7860b8' }, // 靛紫
+  { bg: '#daf0f0', color: '#28a0a0' }, // 青碧
+  { bg: '#ffe8f0', color: '#d85890' }, // 浅樱
+  { bg: '#e8ecf6', color: '#5c6cc4' }, // 蓝莓
+  { bg: '#fff8e0', color: '#c8a828' }, // 香草
+  { bg: '#f0e6f6', color: '#9a60c0' }, // 薰衣草
+  { bg: '#e6faf4', color: '#34b898' }, // 薄荷
+  { bg: '#ffeff4', color: '#e888a8' }, // 玫瑰
+  { bg: '#e8f6fc', color: '#50a8d8' }, // 冰蓝
+  { bg: '#f4eef6', color: '#a878a0' }, // 香芋
+];
+
+const TEXT_EDITOR_FIELDS = Object.freeze({
+  remark: { placeholder: '备注', maxlength: 500, event: 'remark-change' },
+  summary: { placeholder: '填写小结', maxlength: 500, event: 'summary-change' },
+  lab_notebook: { placeholder: '实验记录本', maxlength: 64, event: 'lab-notebook-change' },
+});
+
+const TiterTableFloatingLayer = defineComponent({
+  name: 'TiterTableFloatingLayer',
+  props: {
+    allOwnerOptions: { type: Array, default: () => [] },
+    titerSerumStatusOptions: { type: Array, default: () => [] },
+    titerPriorityOptions: { type: Array, default: () => [] },
+    ownerTagName: { type: Function, required: true },
+    ownerTagStyle: { type: Function, required: true },
+    getSerumTiterStatusTagType: { type: Function, required: true },
+    getTiterPriorityTone: { type: Function, required: true },
+  },
+  emits: ['owner-change', 'test-dates-change', 'serum-status-change', 'priority-change', 'remark-change', 'summary-change', 'lab-notebook-change'],
+  data() {
+    return {
+      editor: null,
+      tipVisible: false,
+      tipRef: null,
+      tipText: '',
+      tipKey: '',
+    };
+  },
+  methods: {
+    openEditor(targetEl, wrapEl, row, field) {
+      if (!targetEl || !wrapEl || !row) return;
+      if (this.editor && (this.editor.row !== row || this.editor.field !== field)) {
+        this.closeEditor();
+      }
+      const cellRect = targetEl.getBoundingClientRect();
+      const wrapRect = wrapEl.getBoundingClientRect();
+      this.tipVisible = false;
+      this.editor = {
+        targetEl,
+        wrapEl,
+        row,
+        field,
+        initialValue: row[field] ?? '',
+        saved: false,
+        style: {
+          top: `${cellRect.top - wrapRect.top}px`,
+          left: `${cellRect.left - wrapRect.left}px`,
+          width: `${cellRect.width}px`,
+          height: `${cellRect.height}px`,
+        },
+      };
+      this.$nextTick(() => {
+        const ins = this.$refs.controlRef;
+        if (!ins) return;
+        if (TEXT_EDITOR_FIELDS[field]) {
+          ins.focus?.();
+        } else if (field === 'test_dates') {
+          ins.handleOpen?.();
+          ins.focus?.();
+        } else {
+          ins.expanded = true;
+          ins.focus?.();
+        }
+      });
+    },
+    syncPosition() {
+      const ed = this.editor;
+      if (!ed) return;
+      if (!ed.targetEl?.isConnected || !ed.wrapEl?.isConnected) {
+        this.editor = null;
+        return;
+      }
+      const cellRect = ed.targetEl.getBoundingClientRect();
+      const wrapRect = ed.wrapEl.getBoundingClientRect();
+      ed.style = {
+        top: `${cellRect.top - wrapRect.top}px`,
+        left: `${cellRect.left - wrapRect.left}px`,
+        width: `${cellRect.width}px`,
+        height: `${cellRect.height}px`,
+      };
+    },
+    closeEditor() {
+      const ed = this.editor;
+      if (!ed) return;
+      if (
+        TEXT_EDITOR_FIELDS[ed.field]
+        && !ed.saved
+        && String(ed.row?.[ed.field] ?? '') !== String(ed.initialValue ?? '')
+      ) {
+        ed.saved = true;
+        this.$emit(TEXT_EDITOR_FIELDS[ed.field].event, ed.row);
+      }
+      this.editor = null;
+    },
+    onVisibleChange(visible) {
+      if (!visible) {
+        this.editor = null;
+      }
+    },
+    showTip(targetEl, key, text) {
+      if (this.editor) return;
+      this.tipRef = targetEl;
+      this.tipText = String(text || '');
+      this.tipKey = key;
+      this.tipVisible = true;
+    },
+    hideTip(key) {
+      if (!key || this.tipKey === key) {
+        if (this.tipVisible) this.tipVisible = false;
+        this.tipKey = '';
+      }
+    },
+  },
+  render() {
+    const children = [];
+    const ed = this.editor;
+    if (ed && ed.row) {
+      const { row, field, style } = ed;
+      let control = null;
+      if (field === 'owner') {
+        control = h(
+          ElSelect,
+          {
+            ref: 'controlRef',
+            modelValue: row.titer_owners,
+            'onUpdate:modelValue': (val) => {
+              row.titer_owners = val;
+            },
+            class: 'owner-select inline-cell-control',
+            size: 'small',
+            multiple: true,
+            allowCreate: true,
+            filterable: true,
+            reserveKeyword: false,
+            popperClass: 'titer-select-dropdown',
+            placeholder: '选择负责人',
+            onChange: () => {
+              this.$emit('owner-change', row);
+              this.$nextTick(() => {
+                this.$refs.controlRef?.blur?.();
+                this.syncPosition();
+              });
+            },
+            onVisibleChange: this.onVisibleChange,
+          },
+          {
+            tag: ({ data, deleteTag, selectDisabled }) =>
+              (data || []).map((item) =>
+                h(
+                  'div',
+                  { key: this.ownerTagName(item), class: 'el-select__selected-item' },
+                  [
+                    h(
+                      ElTag,
+                      {
+                        class: 'owner-tag',
+                        style: this.ownerTagStyle(item),
+                        closable: !selectDisabled,
+                        disableTransitions: true,
+                        onClose: (event) => deleteTag(event, item),
+                      },
+                      () => this.ownerTagName(item),
+                    ),
+                  ],
+                ),
+              ),
+            default: () =>
+              this.allOwnerOptions.map((name) =>
+                h(ElOption, { key: name, label: name, value: name }),
+              ),
+          },
+        );
+      } else if (field === 'test_dates') {
+        control = h(ElDatePicker, {
+          ref: 'controlRef',
+          modelValue: row.test_dates,
+          'onUpdate:modelValue': (val) => {
+            row.test_dates = val;
+          },
+          class: 'test-dates-picker inline-cell-control',
+          size: 'small',
+          type: 'dates',
+          valueFormat: 'YYYY-MM-DD',
+          placeholder: '选择检测日',
+          onChange: () => this.$emit('test-dates-change', row),
+          onVisibleChange: this.onVisibleChange,
+        });
+      } else if (field === 'serum_status') {
+        control = h(
+          ElSelect,
+          {
+            ref: 'controlRef',
+            modelValue: row.serum_status,
+            'onUpdate:modelValue': (val) => {
+              row.serum_status = val;
+            },
+            class: [
+              'inline-cell-control',
+              'serum-status-select',
+              row.serum_status ? `status-tone-${this.getSerumTiterStatusTagType(row.serum_status)}` : '',
+            ],
+            size: 'small',
+            clearable: true,
+            placeholder: '选择状态',
+            onChange: () => this.$emit('serum-status-change', row),
+            onVisibleChange: this.onVisibleChange,
+          },
+          () =>
+            this.titerSerumStatusOptions.map((item) =>
+              h(ElOption, { key: item, label: item, value: item }),
+            ),
+        );
+      } else if (field === 'priority') {
+        control = h(
+          ElSelect,
+          {
+            ref: 'controlRef',
+            modelValue: row.priority,
+            'onUpdate:modelValue': (val) => {
+              row.priority = val;
+            },
+            class: [
+              'inline-cell-control',
+              'priority-select',
+              `status-tone-${this.getTiterPriorityTone(row.priority)}`,
+            ],
+            size: 'small',
+            onChange: () => this.$emit('priority-change', row),
+            onVisibleChange: this.onVisibleChange,
+          },
+          () =>
+            this.titerPriorityOptions.map((item) =>
+              h(ElOption, { key: item, label: item, value: item }),
+            ),
+        );
+      } else if (TEXT_EDITOR_FIELDS[field]) {
+        const spec = TEXT_EDITOR_FIELDS[field];
+        control = h(
+          'div',
+          { class: 'el-input el-input--small inline-cell-control is-focus' },
+          [
+            h('div', { class: 'el-input__wrapper is-focus' }, [
+              h('input', {
+                ref: 'controlRef',
+                value: row[field] ?? '',
+                class: 'el-input__inner',
+                maxlength: spec.maxlength,
+                placeholder: spec.placeholder,
+                onInput: (e) => {
+                  row[field] = e.target.value;
+                },
+                onChange: () => {
+                  ed.saved = true;
+                  this.$emit(spec.event, row);
+                },
+                onBlur: () => {
+                  this.closeEditor();
+                },
+                onKeydown: (e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.target.blur();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    row[field] = ed.initialValue;
+                    ed.saved = true;
+                    e.target.blur();
+                  }
+                },
+              }),
+            ]),
+          ],
+        );
+      }
+      if (control) {
+        children.push(
+          h(
+            'div',
+            {
+              key: `${row.id}:${field}`,
+              class: 'plate-floating-editor',
+              style,
+              onMousedown: (e) => e.stopPropagation(),
+            },
+            [control],
+          ),
+        );
+      }
+    }
+    children.push(
+      h(ElTooltip, {
+        visible: this.tipVisible,
+        virtualRef: this.tipRef,
+        content: this.tipText,
+        virtualTriggering: true,
+        placement: 'top',
+      }),
+    );
+    return h('div', { class: 'plate-floating-layer' }, children);
+  },
+});
+
+export default {
+  name: 'SerumTiterOrderList',
+  mixins: [listTableLockMixin, listPageMixin, workbenchHeaderMenuMixin],
+  listFilterKey: 'titerOrderList',
+  components: {
+    WorkbenchTargetFilter,
+    ElButton,
+    ElButtonGroup,
+    ElCard,
+    ElDatePicker,
+    ElDialog,
+    ElIcon,
+    ElInput,
+    ElOption,
+    ElPagination,
+    ElTable,
+    ElTableColumn,
+    ElTag,
+    AdvancedOpsBar,
+    ListFilterSelect,
+    SerumProjectStatusEditor,
+    TiterTableFloatingLayer,
+    Tools,
+    TiterInstrumentOrderDialogs,
+    TiterMouseSelectWizard,
+    TiterOrderCreateDialog,
+    WorkbenchHeaderFilterChip,
+    WorkbenchHeaderLabel,
+    WorkbenchHeaderMenu,
+  },
+  setup() {
+    const userStore = useUserStore();
+    return { fetchTiterOrderRecordedTargets, userStore };
+  },
+  computed: {
+    headerMenuColumns() {
+      return TITER_HEADER_COLUMNS;
+    },
+    currentUserInfo() {
+      return this.userStore.userInfo || {};
+    },
+    currentUserName() {
+      return getSerumUserName(this.currentUserInfo);
+    },
+    currentOwnerName() {
+      return this.currentUserName.split(' ')[0] || '';
+    },
+    ownerStatsHasPeriod() {
+      const range = this.ownerStatsMonthRange;
+      return Array.isArray(range) && Boolean(range[0]);
+    },
+    ownerStatsPeriodLabel() {
+      const [startMonth, endMonth] = this.ownerStatsMonthRange;
+      return formatMonthRangeLabel(startMonth, endMonth || startMonth);
+    },
+    ownerStatsTableRows() {
+      const rows = this.ownerStatsItems.map((item) => flattenOwnerStatsItem(item));
+      if (!rows.length) {
+        return rows;
+      }
+      const sortKey = this.ownerStatsHasPeriod ? 'period_orders' : 'total_orders';
+      rows.sort((left, right) => {
+        const diff = (right[sortKey] || 0) - (left[sortKey] || 0);
+        return diff || String(left.owner).localeCompare(String(right.owner), 'zh-CN');
+      });
+      const totalRow = {
+        ...flattenOwnerStatsItem({ owner: '合计', ...this.ownerStatsSummary }),
+        owner: '合计',
+        isTotal: true,
+      };
+      return [...rows, totalRow];
+    },
+    displayRowIndexMap() {
+      const map = new Map();
+      const rows = this.list || [];
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i];
+        if (row?.id != null) map.set(String(row.id), i);
+      }
+      return map;
+    },
+  },
+  data() {
+    return {
+      ASSAY_FILTER_FACS,
+      ASSAY_FILTER_ELISA,
+      ASSAY_FILTER_FACS_ELISA,
+      DataAnalysis: markRaw(DataAnalysis),
+      Document: markRaw(Document),
+      Download: markRaw(Download),
+      Plus: markRaw(Plus),
+      Refresh: markRaw(Refresh),
+      Search: markRaw(Search),
+      TrendCharts: markRaw(TrendCharts),
+      filterMethodCache: Object.create(null),
+      createDialogVisible: false,
+      discoveryWizardVisible: false,
+      discoverySubmitting: false,
+      sequencingOrder: null,
+      showAdvancedOps: false,
+      dialogEditOrder: null,
+      list: [],
+      listLoading: true,
+      listQuery: {
+        limit: 20,
+        page: 1,
+        project_code: '',
+        assay_method: '',
+        immune_owner: '',
+        reviewer: '',
+        immune_status: '',
+        serum_status: '',
+        summary_status: '',
+        priority: '',
+        test_dates_empty: false,
+        tested_unsubmitted: false,
+        order_status: '',
+        target_name: '',
+        titer_owner: '',
+        sort_field: '',
+        sort_dir: '',
+      },
+      allOwnerOptions: [],
+      allAssayMethodOptions: [],
+      allImmuneOwnerOptions: [],
+      allReviewerOptions: [],
+      allImmuneStatusOptions: [],
+      allSerumStatusOptions: mergeTiterSerumStatusOptions(),
+      titerSerumStatusOptions: [...TITER_SERUM_STATUS_OPTIONS],
+      titerPriorityOptions: [...TITER_PRIORITY_OPTIONS],
+      flowOrderStatusOptions: FLOW_WORK_ORDER_STATUS_OPTIONS,
+      ownerFilterQuery: '',
+      assayMethodFilterQuery: '',
+      immuneOwnerFilterQuery: '',
+      reviewerFilterQuery: '',
+      immuneStatusFilterQuery: '',
+      stats: { ...DEFAULT_STATS },
+      bloodCollectionRange: [],
+      testDatesRange: [],
+      statFilterActive: createDefaultStatFilterActive(),
+      testDateStatScope: '',
+      pendingStatScope: '',
+      applyingStatDateRange: false,
+      ownerStatsVisible: false,
+      ownerStatsLoading: false,
+      ownerStatsItems: [],
+      ownerStatsSummary: { total: {}, completed: {}, remaining: {}, period: {} },
+      ownerStatsMonthRange: [],
+      total: 0,
+    };
+  },
+  watch: {
+    listTableHeight() {
+      this.invalidatePlateGeometryCache();
+      this.updatePlateSelectionUi();
+    },
+  },
+  created() {
+    this.skipActivatedLoad = true;
+    this.plateSelectColumn = null;
+    this.plateSelectedCounts = {};
+    this.plateDragging = false;
+    this.plateDragPending = null;
+    this.plateDragStartIndex = -1;
+    this.plateDragEndIndex = -1;
+    this.plateBubblePos = null;
+    this.plateBubbleHeight = 28;
+    this.plateBubbleHalfWidth = 60;
+    this.plateRenderedSegmentCount = 0;
+    this.plateSuppressInlineClick = false;
+    this.plateBaseSegments = null;
+    this.plateClipBox = null;
+    this.plateLastClipPath = '';
+    this.plateScrollingUntil = 0;
+    this.statsRequestToken = 0;
+    this.statsKey = '';
+    this.activeFocusId = '';
+  },
+  mounted() {
+    this.loadPageMeta();
+    this.loadForRoute();
+    this.onPlateDragMouseUp = () => this.finishPlateDrag();
+    this.onPlateTableScroll = () => {
+      this.plateScrollingUntil = performance.now() + 120;
+      const floatingLayer = this.$refs.floatingLayerRef;
+      floatingLayer?.hideTip?.();
+      floatingLayer?.syncPosition?.();
+      if (this.plateSelectColumn || this.plateDragging) {
+        this.updatePlateSelectionUi(false, true);
+      }
+    };
+    this.onPlateWindowResize = () => {
+      this.invalidatePlateGeometryCache();
+      this.$refs.floatingLayerRef?.syncPosition?.();
+      this.updatePlateSelectionUi();
+    };
+    document.addEventListener('mouseup', this.onPlateDragMouseUp);
+    window.addEventListener('resize', this.onPlateWindowResize, { passive: true });
+    this.$nextTick(() => this.bindPlateTableScroll());
+  },
+  activated() {
+    if (this.skipActivatedLoad) {
+      this.skipActivatedLoad = false;
+      return;
+    }
+    this.invalidatePlateGeometryCache();
+    if (pendingTiterOrderId) {
+      this.loadForRoute();
+      return;
+    }
+    if (this.isListDataStale()) {
+      this.refreshTabData();
+    }
+  },
+  beforeUnmount() {
+    if (this._plateUiRafId) {
+      cancelAnimationFrame(this._plateUiRafId);
+      this._plateUiRafId = 0;
+    }
+    document.removeEventListener('mouseup', this.onPlateDragMouseUp);
+    window.removeEventListener('resize', this.onPlateWindowResize);
+    this.unbindPlateTableScroll();
+  },
+  methods: {
+    listFilterExtras() {
+      return {
+        bloodCollectionRange: this.bloodCollectionRange,
+        testDatesRange: this.testDatesRange,
+        statFilterActive: this.statFilterActive,
+        testDateStatScope: this.testDateStatScope,
+        pendingStatScope: this.pendingStatScope,
+      };
+    },
+    restoreListFilterExtras(state) {
+      if (state.bloodCollectionRange) {
+        this.bloodCollectionRange = state.bloodCollectionRange;
+      }
+      if (state.testDatesRange) {
+        this.testDatesRange = state.testDatesRange;
+      }
+      if (state.statFilterActive) {
+        this.statFilterActive = state.statFilterActive;
+      }
+      if (state.testDateStatScope !== undefined) {
+        this.testDateStatScope = state.testDateStatScope;
+      }
+      if (state.pendingStatScope !== undefined) {
+        this.pendingStatScope = state.pendingStatScope;
+      }
+      this.listQuery.test_dates_empty = Boolean(this.listQuery.test_dates_empty);
+      this.listQuery.tested_unsubmitted = Boolean(this.listQuery.tested_unsubmitted);
+    },
+    getSerumTiterStatusTagType,
+    getTiterPriorityTone,
+    orderStatusTagType,
+    bindPlateTableScroll() {
+      this.unbindPlateTableScroll();
+      const tableEl = this.$refs.orderTable?.$el;
+      const scrollEl = tableEl?.querySelector('.el-table__body-wrapper .el-scrollbar__wrap')
+        || tableEl?.querySelector('.el-table__body-wrapper');
+      if (scrollEl) {
+        scrollEl.addEventListener('scroll', this.onPlateTableScroll, { passive: true });
+        this.plateTableBodyEl = scrollEl;
+      }
+    },
+    unbindPlateTableScroll() {
+      if (this.plateTableBodyEl) {
+        this.plateTableBodyEl.removeEventListener('scroll', this.onPlateTableScroll);
+        this.plateTableBodyEl = null;
+      }
+    },
+    getTableDisplayRows() {
+      const data = this.$refs.orderTable?.store?.states?.data;
+      if (Array.isArray(data)) {
+        return data;
+      }
+      if (Array.isArray(data?.value)) {
+        return data.value;
+      }
+      return this.list;
+    },
+    getPlateSelectValue(row, column) {
+      if (FIELD_SELECT_COLUMNS.has(column)) {
+        return 1;
+      }
+      if (column === 'mouse') {
+        return Number(row.mouse_count) || 0;
+      }
+      const value = column === 'facs' ? row.facs_plate_count : row.elisa_plate_count;
+      return Number(value) || 0;
+    },
+    getPlateColClass(column) {
+      const map = {
+        facs: 'plate-col-facs',
+        elisa: 'plate-col-elisa',
+        mouse: 'plate-col-mouse',
+        owner: 'plate-col-owner',
+        test_dates: 'plate-col-test-dates',
+        serum_status: 'plate-col-serum-status',
+        priority: 'plate-col-priority',
+      };
+      return map[column] || '';
+    },
+    /** 在下拉框或日期控件上按下时暂缓选区，拖到其他行后再显示，避免单击闪框。 */
+    onFieldCellMouseDown(column, index, event) {
+      if (event.button !== 0) {
+        return;
+      }
+      if (event.target.closest?.('.inline-cell-preview, .el-select, .el-date-editor, .el-input, .el-tag')) {
+        this.plateDragPending = { column, index };
+        return;
+      }
+      this.plateDragPending = null;
+      this.onPlateCellMouseDown(column, index, event);
+    },
+    onTableWrapClickCapture(event) {
+      if (!this.plateSuppressInlineClick) return;
+      this.plateSuppressInlineClick = false;
+      if (event.target?.closest?.('.inline-cell-control')) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+    },
+    activateInlineControl(event, row, field) {
+      if (this.plateDragging || this.plateSuppressInlineClick) return;
+      if (field === 'owner' && !this.canEditTiterOrderOwner()) return;
+      if ((field === 'test_dates' || TEXT_EDITOR_FIELDS[field]) && !this.canEditTiterOrderRecord(row)) return;
+      if ((field === 'serum_status' || field === 'priority') && !this.canEditTiterOrderRecordOpen()) return;
+      const targetEl = event?.currentTarget;
+      const wrapEl = this.$refs.tablePlateWrap;
+      this.$refs.floatingLayerRef?.openEditor?.(targetEl, wrapEl, row, field);
+    },
+    onInlinePreviewKeydown(event, row, field) {
+      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.activateInlineControl(event, row, field);
+    },
+    removeOwnerTag(row, item) {
+      if (!this.canEditTiterOrderOwner()) return;
+      const targetName = this.ownerTagName(item);
+      row.titer_owners = (row.titer_owners || []).filter(
+        (name) => this.ownerTagName(name) !== targetName,
+      );
+      this.onTiterOwnerChange(row);
+    },
+    canEditFieldForRow(row, label) {
+      if (label === '效价负责人') {
+        return this.canEditTiterOrderOwner();
+      }
+      if (label === '检测日期' || label === '备注' || label === '效价小结' || label === '实验记录本') {
+        return this.canEditTiterOrderRecord(row);
+      }
+      if (label === '血清状态' || label === '优先级') {
+        return this.canEditTiterOrderRecordOpen();
+      }
+      return false;
+    },
+    async syncSelectedField(sourceRow, column, label, assignFn) {
+      const keys = this.plateSelectColumn === column
+        ? Object.keys(this.plateSelectedCounts)
+        : [];
+      const keySet = new Set(keys.map(String));
+      const inSelection = keySet.has(String(sourceRow.id));
+      const selected = inSelection && keySet.size > 1
+        ? this.getTableDisplayRows().filter((row) => keySet.has(String(row.id)))
+        : [sourceRow];
+      // 无权限行既不赋值，也不更新界面。
+      const targets = selected.filter((row) => this.canEditFieldForRow(row, label));
+      const skipped = selected.length - targets.length;
+      if (!targets.length) {
+        ElMessage.warning(`您没有权限编辑${label}`);
+        return;
+      }
+      if (targets.length === 1) {
+        await this.saveRow(targets[0], label);
+        if (skipped > 0) {
+          ElMessage.warning(`${label}：已跳过 ${skipped} 条无权限`);
+        }
+        return;
+      }
+      for (const target of targets) {
+        if (String(target.id) !== String(sourceRow.id)) {
+          assignFn(target, sourceRow);
+        }
+      }
+      const results = await Promise.all(
+        targets.map((target) => this.saveRow(target, label, { silent: true })),
+      );
+      const ok = results.filter(Boolean).length;
+      if (ok > 0) {
+        ElMessage.success(`${label}已保存 ${ok} 条`);
+        if (STATS_AFFECTING_LABELS.has(label)) {
+          this.refreshStats();
+        }
+      }
+      if (skipped > 0) {
+        ElMessage.warning(`${label}：已跳过 ${skipped} 条无权限`);
+      }
+    },
+    getPlateSelectSegments(column) {
+      // 空选区连续拖选时直接返回 [min, max]，避免每帧为 500 行创建 Set 并排序。
+      if (
+        this.plateDragging
+        && column === this.plateSelectColumn
+        && this.plateDragStartIndex !== this.plateDragEndIndex
+        && this.plateDragStartIndex >= 0
+        && this.plateDragEndIndex >= 0
+        && Object.keys(this.plateSelectedCounts).length === 0
+      ) {
+        return [[
+          Math.min(this.plateDragStartIndex, this.plateDragEndIndex),
+          Math.max(this.plateDragStartIndex, this.plateDragEndIndex),
+        ]];
+      }
+      const sorted = this.getPlateSelectRowIndices(column);
+      if (!sorted.length) {
+        return [];
+      }
+      const segments = [];
+      let start = sorted[0];
+      let prev = sorted[0];
+      for (let index = 1; index < sorted.length; index += 1) {
+        if (sorted[index] === prev + 1) {
+          prev = sorted[index];
+          continue;
+        }
+        segments.push([start, prev]);
+        start = sorted[index];
+        prev = sorted[index];
+      }
+      segments.push([start, prev]);
+      return segments;
+    },
+    getPlateSelectRowIndices(column) {
+      const indices = new Set();
+      const rows = this.getTableDisplayRows();
+      const useCachedMap = rows === this.list;
+      const rowIndexMap = this.displayRowIndexMap;
+      if (column === this.plateSelectColumn) {
+        for (const rowId of Object.keys(this.plateSelectedCounts)) {
+          const index = useCachedMap
+            ? (rowIndexMap.get(String(rowId)) ?? -1)
+            : rows.findIndex((row) => String(row.id) === String(rowId));
+          if (index >= 0) {
+            indices.add(index);
+          }
+        }
+      }
+      if (this.plateDragging && column === this.plateSelectColumn) {
+        const min = Math.min(this.plateDragStartIndex, this.plateDragEndIndex);
+        const max = Math.max(this.plateDragStartIndex, this.plateDragEndIndex);
+        if (min === max) {
+          const row = rows[min];
+          if (row?.id != null && Object.prototype.hasOwnProperty.call(this.plateSelectedCounts, row.id)) {
+            indices.delete(min);
+          } else if (min >= 0) {
+            indices.add(min);
+          }
+        } else {
+          for (let index = min; index <= max; index += 1) {
+            indices.add(index);
+          }
+        }
+      }
+      return [...indices].sort((left, right) => left - right);
+    },
+    formatPlateBubbleText() {
+      const column = this.plateSelectColumn;
+      if (!column) return '';
+      const { sum, count } = this.getPlateSelectionSummary(column, this.plateDragging);
+      if (FIELD_SELECT_COLUMNS.has(column)) {
+        return count > 0 ? `已选 ${count} 条 · 改一处同步` : '划选多行后改一处同步';
+      }
+      if (column === 'mouse') {
+        return `鼠鼠共计 ${sum} 只`;
+      }
+      const label = column === 'facs' ? 'FACS' : 'ELISA';
+      return `${label} ${sum} 板 · ${count} 条`;
+    },
+    invalidatePlateGeometryCache() {
+      this.plateBaseSegments = null;
+      this.plateClipBox = null;
+    },
+    onListTableBodyResumed() {
+      this.invalidatePlateGeometryCache();
+      this.$refs.floatingLayerRef?.syncPosition?.();
+      this.updatePlateSelectionUi(true);
+    },
+    onTableHeaderDragEnd() {
+      this.invalidatePlateGeometryCache();
+      this.$refs.floatingLayerRef?.syncPosition?.();
+      this.updatePlateSelectionUi();
+    },
+    setPlateDraggingState(dragging) {
+      this.plateDragging = Boolean(dragging);
+    },
+    updatePlateSelectionUi(immediate = false, fromScroll = false) {
+      if (fromScroll) {
+        this._plateUiFromScroll = true;
+      }
+      if (immediate) {
+        if (this._plateUiRafId) {
+          cancelAnimationFrame(this._plateUiRafId);
+          this._plateUiRafId = 0;
+        }
+        const scrollFlag = Boolean(this._plateUiFromScroll);
+        this._plateUiFromScroll = false;
+        this.syncPlateSelectionUi(scrollFlag);
+        return;
+      }
+      if (this._plateUiRafId) return;
+      this._plateUiRafId = requestAnimationFrame(() => {
+        this._plateUiRafId = 0;
+        const scrollFlag = Boolean(this._plateUiFromScroll);
+        this._plateUiFromScroll = false;
+        this.syncPlateSelectionUi(scrollFlag);
+      });
+    },
+    syncPlateSelectionUi(fromScroll = false) {
+      const wrapEl = this.$refs.tablePlateWrap;
+      const overlayEl = this.$refs.plateOverlayEl;
+      const bubbleEl = this.$refs.plateBubbleEl;
+      const tableEl = this.$refs.orderTable?.$el;
+      const column = this.plateSelectColumn;
+      if (!wrapEl || !overlayEl || !bubbleEl || !tableEl || !column) {
+        if (overlayEl) overlayEl.innerHTML = '';
+        this.plateRenderedSegmentCount = 0;
+        this.plateBaseSegments = null;
+        bubbleEl?.classList.remove('is-visible');
+        return;
+      }
+
+      const scrollEl = this.plateTableBodyEl;
+      const curScrollTop = scrollEl ? scrollEl.scrollTop || 0 : 0;
+      const curScrollLeft = scrollEl ? scrollEl.scrollLeft || 0 : 0;
+      let clipTop = 0;
+      let clipBottom = 0;
+      let clipLeft = 0;
+      let clipRight = 0;
+      let minVisibleTop = 0;
+      let maxVisibleBottom = 0;
+      let wrapWidth = 0;
+      let nextClipPath = this.plateLastClipPath || '';
+      let baseSegments = null;
+
+      // 纯滚动且已有基准几何时，使用滚动差值计算，避免 getBoundingClientRect 和强制布局。
+      if (
+        fromScroll
+        && !this.plateDragging
+        && scrollEl
+        && this.plateBaseSegments?.length
+        && this.plateClipBox
+      ) {
+        const box = this.plateClipBox;
+        clipTop = box.clipTop;
+        clipBottom = box.clipBottom;
+        clipLeft = box.clipLeft;
+        clipRight = box.clipRight;
+        minVisibleTop = box.minVisibleTop;
+        maxVisibleBottom = box.maxVisibleBottom;
+        wrapWidth = box.wrapWidth;
+        const dy = curScrollTop - (this.plateAnchorScrollTop || 0);
+        const dx = curScrollLeft - (this.plateAnchorScrollLeft || 0);
+        baseSegments = this.plateBaseSegments.map((seg) => ({
+          rawTop: seg.rawTop0 - dy,
+          rawBottom: seg.rawBottom0 - dy,
+          left: seg.rawLeft0 - dx,
+          width: seg.width,
+        }));
+      } else {
+        const colClass = this.getPlateColClass(column);
+        const bodyWrapper = tableEl.querySelector('.el-table__body-wrapper');
+        const bodyRows = bodyWrapper?.querySelector('tbody')?.rows;
+        if (!bodyRows?.length) {
+          overlayEl.innerHTML = '';
+          this.plateRenderedSegmentCount = 0;
+          this.plateBaseSegments = null;
+          bubbleEl.classList.remove('is-visible');
+          return;
+        }
+
+        // 先读取全部几何信息，再统一写入 DOM，避免布局抖动。
+        const wrapRect = wrapEl.getBoundingClientRect();
+        const bodyRect = bodyWrapper.getBoundingClientRect();
+        wrapWidth = wrapRect.width;
+        clipTop = bodyRect.top - wrapRect.top;
+        clipBottom = bodyRect.bottom - wrapRect.top;
+        const firstRow = bodyRows[0];
+        const leftFixedEl = firstRow?.querySelector('td.el-table-fixed-column--left');
+        const rightFixedEl = firstRow?.querySelector('td.el-table-fixed-column--right');
+        clipLeft = leftFixedEl
+          ? Math.max(0, leftFixedEl.getBoundingClientRect().right - wrapRect.left)
+          : 0;
+        clipRight = rightFixedEl
+          ? Math.max(0, wrapRect.right - rightFixedEl.getBoundingClientRect().left)
+          : 0;
+        minVisibleTop = Math.max(bodyRect.top, 90) - wrapRect.top;
+        maxVisibleBottom = Math.min(bodyRect.bottom, window.innerHeight - 6) - wrapRect.top;
+        nextClipPath = (clipLeft > 0 || clipRight > 0)
+          ? `inset(${Math.max(0, clipTop)}px ${clipRight}px 0px ${clipLeft}px)`
+          : '';
+
+        this.plateClipBox = {
+          clipTop,
+          clipBottom,
+          clipLeft,
+          clipRight,
+          minVisibleTop,
+          maxVisibleBottom,
+          wrapWidth,
+        };
+        this.plateAnchorScrollTop = curScrollTop;
+        this.plateAnchorScrollLeft = curScrollLeft;
+
+        const segments = this.getPlateSelectSegments(column);
+        const measured = [];
+        let colCellIndex = -1;
+
+        for (const [start, end] of segments) {
+          const topRow = bodyRows[start];
+          const bottomRow = bodyRows[end];
+          if (!topRow || !bottomRow) {
+            continue;
+          }
+          if (colCellIndex < 0) {
+            const found = topRow.querySelector(`td.${colClass}`);
+            colCellIndex = found ? found.cellIndex : -1;
+          }
+          const topCell = colCellIndex >= 0 ? topRow.cells[colCellIndex] : topRow.querySelector(`td.${colClass}`);
+          const bottomCell = colCellIndex >= 0 ? bottomRow.cells[colCellIndex] : bottomRow.querySelector(`td.${colClass}`);
+          if (!topCell || !bottomCell) {
+            continue;
+          }
+          const topRect = topCell.getBoundingClientRect();
+          const bottomRect = topCell === bottomCell ? topRect : bottomCell.getBoundingClientRect();
+          const rawTop = topRect.top - wrapRect.top;
+          const rawBottom = bottomRect.bottom - wrapRect.top;
+          const left = topRect.left - wrapRect.left;
+          const width = topRect.width;
+          measured.push({
+            rawTop0: rawTop,
+            rawBottom0: rawBottom,
+            rawLeft0: left,
+            rawTop,
+            rawBottom,
+            left,
+            width,
+          });
+        }
+        this.plateBaseSegments = measured;
+        baseSegments = measured;
+      }
+
+      // 几何读取完成后再进入 DOM 写入阶段。
+      if (this.plateLastClipPath !== nextClipPath) {
+        this.plateLastClipPath = nextClipPath;
+        overlayEl.style.clipPath = nextClipPath;
+      }
+
+      const rects = [];
+      for (const seg of baseSegments) {
+        const clampedTop = Math.max(seg.rawTop, clipTop);
+        const clampedBottom = Math.min(seg.rawBottom, clipBottom);
+        if (clampedBottom <= clampedTop) continue;
+        rects.push({
+          top: clampedTop,
+          left: seg.left,
+          width: seg.width,
+          height: clampedBottom - clampedTop,
+        });
+      }
+
+      const prevSegCount = this.plateRenderedSegmentCount || 0;
+      // 拖选拉伸保留 0.12 秒纵向过渡；滚动跟随或选区拆分、合并时立即切换。
+      const enableStretchTransition =
+        !fromScroll
+        && prevSegCount > 0
+        && rects.length === prevSegCount;
+      this.plateRenderedSegmentCount = rects.length;
+
+      while (overlayEl.children.length > rects.length) {
+        overlayEl.lastElementChild?.remove();
+      }
+      for (let i = 0; i < rects.length; i += 1) {
+        let regionEl = overlayEl.children[i];
+        const isNewRegion = !regionEl;
+        if (isNewRegion) {
+          regionEl = document.createElement('div');
+          regionEl.className = 'plate-select-region';
+          overlayEl.appendChild(regionEl);
+        }
+        const r = rects[i];
+        const shouldAnimate = !isNewRegion && enableStretchTransition;
+        if (!shouldAnimate) {
+          regionEl.style.transition = 'none';
+        }
+        regionEl.style.top = `${r.top}px`;
+        regionEl.style.left = `${r.left}px`;
+        regionEl.style.width = `${r.width}px`;
+        regionEl.style.height = `${r.height}px`;
+        if (!shouldAnimate) {
+          void regionEl.offsetHeight;
+          regionEl.style.transition = '';
+        }
+      }
+
+      if (!rects.length) {
+        bubbleEl.classList.remove('is-visible');
+        this.plateBubblePos = null;
+        return;
+      }
+
+      if (!fromScroll) {
+        const bubbleText = this.formatPlateBubbleText();
+        if (bubbleEl.textContent !== bubbleText) {
+          bubbleEl.textContent = bubbleText;
+          this.plateBubbleHeight = bubbleEl.offsetHeight || 28;
+          this.plateBubbleHalfWidth = (bubbleEl.offsetWidth || 120) / 2;
+        }
+      }
+      const last = rects[rects.length - 1];
+      const bubbleH = this.plateBubbleHeight || 28;
+      const bubbleHalfW = this.plateBubbleHalfWidth || 60;
+      const minX = Math.max(clipLeft + bubbleHalfW + 6, bubbleHalfW + 6);
+      const maxX = Math.max(minX, wrapWidth - clipRight - bubbleHalfW - 6);
+      const x = Math.min(Math.max(minX, last.left + last.width / 2), maxX);
+      let y = last.top + last.height + 6;
+      // 底部空间不足时优先显示在选区上方；上下均不足时内嵌到选区底部。
+      if (y + bubbleH > maxVisibleBottom) {
+        if (last.top - bubbleH - 6 >= minVisibleTop) {
+          y = last.top - bubbleH - 6;
+        } else {
+          y = Math.max(minVisibleTop + 4, maxVisibleBottom - bubbleH - 6);
+        }
+      }
+      const wasVisible = bubbleEl.classList.contains('is-visible');
+      const prev = this.plateBubblePos;
+      let duration = 0;
+      if (!fromScroll && wasVisible && prev) {
+        const dist = Math.hypot(x - prev.x, y - prev.y);
+        duration = dist > 4 ? Math.min(0.2, Math.max(0.08, dist / 900)) : 0;
+      }
+      this.plateBubblePos = { x, y };
+      bubbleEl.style.transitionDuration = `${duration.toFixed(3)}s, 0.14s`;
+      bubbleEl.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0) translateX(-50%)`;
+      if (!wasVisible) {
+        bubbleEl.classList.add('is-visible');
+      }
+    },
+    getPlateSelectionSummary(column, includeDragPreview = false) {
+      const selected = column === this.plateSelectColumn ? this.plateSelectedCounts : {};
+      let sum = 0;
+      let count = 0;
+      const seen = new Set();
+      const rows = includeDragPreview ? this.getTableDisplayRows() : null;
+      const isSingleClickToggle =
+        includeDragPreview
+        && this.plateDragging
+        && column === this.plateSelectColumn
+        && this.plateDragStartIndex === this.plateDragEndIndex;
+      const singleToggleRow = isSingleClickToggle && rows ? rows[this.plateDragStartIndex] : null;
+      const singleToggleId =
+        singleToggleRow?.id != null
+        && Object.prototype.hasOwnProperty.call(selected, singleToggleRow.id)
+          ? String(singleToggleRow.id)
+          : null;
+
+      for (const [rowId, plates] of Object.entries(selected)) {
+        if (singleToggleId && String(rowId) === singleToggleId) continue;
+        seen.add(String(rowId));
+        sum += plates;
+        count += 1;
+      }
+      if (includeDragPreview && this.plateDragging && column === this.plateSelectColumn && !singleToggleId) {
+        const min = Math.min(this.plateDragStartIndex, this.plateDragEndIndex);
+        const max = Math.max(this.plateDragStartIndex, this.plateDragEndIndex);
+        for (let index = min; index <= max; index += 1) {
+          const row = rows[index];
+          if (row?.id == null) {
+            continue;
+          }
+          const rowId = String(row.id);
+          if (seen.has(rowId)) {
+            continue;
+          }
+          seen.add(rowId);
+          sum += this.getPlateSelectValue(row, column);
+          count += 1;
+        }
+      }
+      return { sum, count };
+    },
+    onPlateCellMouseDown(column, index, event) {
+      if (event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
+      this.plateDragPending = null;
+      this.$refs.floatingLayerRef?.closeEditor?.();
+      this.invalidatePlateGeometryCache();
+      // 换列时立即清除选区，避免淡出动画与横向滚动叠加。
+      if (this.plateSelectColumn && this.plateSelectColumn !== column) {
+        this.plateSelectedCounts = {};
+        this.plateDragStartIndex = -1;
+        this.plateDragEndIndex = -1;
+        this.plateBubblePos = null;
+        this.plateRenderedSegmentCount = 0;
+        if (this.$refs.plateOverlayEl) this.$refs.plateOverlayEl.innerHTML = '';
+      }
+      this.plateSelectColumn = column;
+      this.setPlateDraggingState(true);
+      this.plateDragStartIndex = index;
+      this.plateDragEndIndex = index;
+      this.updatePlateSelectionUi(true);
+    },
+    onPlateCellMouseEnter(column, index) {
+      const pending = this.plateDragPending;
+      if (pending) {
+        if (pending.column !== column || pending.index === index) {
+          return;
+        }
+        this.plateDragPending = null;
+        this.$refs.floatingLayerRef?.closeEditor?.();
+        this.invalidatePlateGeometryCache();
+        if (this.plateSelectColumn && this.plateSelectColumn !== column) {
+          this.plateSelectedCounts = {};
+          this.plateBubblePos = null;
+          this.plateRenderedSegmentCount = 0;
+          if (this.$refs.plateOverlayEl) this.$refs.plateOverlayEl.innerHTML = '';
+        }
+        this.plateSelectColumn = column;
+        this.setPlateDraggingState(true);
+        this.plateDragStartIndex = pending.index;
+        this.plateDragEndIndex = index;
+        document.activeElement?.blur?.();
+        this.updatePlateSelectionUi();
+        return;
+      }
+      if (!this.plateDragging || column !== this.plateSelectColumn) {
+        return;
+      }
+      if (this.plateDragEndIndex === index) {
+        return;
+      }
+      this.plateDragEndIndex = index;
+      this.updatePlateSelectionUi();
+    },
+    finishPlateDrag() {
+      if (this.plateDragPending) {
+        this.plateDragPending = null;
+        return;
+      }
+      if (!this.plateDragging) {
+        return;
+      }
+      const column = this.plateSelectColumn;
+      const rows = this.getTableDisplayRows();
+      const min = Math.min(this.plateDragStartIndex, this.plateDragEndIndex);
+      const max = Math.max(this.plateDragStartIndex, this.plateDragEndIndex);
+      const isClick = min === max;
+      const nextCounts = { ...this.plateSelectedCounts };
+
+      if (isClick) {
+        const row = rows[min];
+        if (row?.id != null) {
+          if (Object.prototype.hasOwnProperty.call(nextCounts, row.id)) {
+            delete nextCounts[row.id];
+          } else {
+            nextCounts[row.id] = this.getPlateSelectValue(row, column);
+          }
+        }
+      } else {
+        this.plateSuppressInlineClick = true;
+        setTimeout(() => {
+          this.plateSuppressInlineClick = false;
+        }, 0);
+        for (let index = min; index <= max; index += 1) {
+          const row = rows[index];
+          if (row?.id != null) {
+            nextCounts[row.id] = this.getPlateSelectValue(row, column);
+          }
+        }
+      }
+
+      this.setPlateDraggingState(false);
+      this.plateDragStartIndex = -1;
+      this.plateDragEndIndex = -1;
+
+      if (!Object.keys(nextCounts).length) {
+        this.clearPlateSelection();
+        return;
+      }
+
+      this.plateSelectColumn = column;
+      this.plateSelectedCounts = nextCounts;
+      this.updatePlateSelectionUi(true);
+    },
+    onPlateCellContextMenu(column) {
+      if (this.plateSelectColumn !== column && !this.plateDragging) {
+        return;
+      }
+      this.clearPlateSelection();
+    },
+    clearPlateSelection() {
+      this.plateSelectColumn = null;
+      this.plateSelectedCounts = {};
+      this.setPlateDraggingState(false);
+      this.plateDragPending = null;
+      this.plateDragStartIndex = -1;
+      this.plateDragEndIndex = -1;
+      this.plateBubblePos = null;
+      this.plateRenderedSegmentCount = 0;
+      this.invalidatePlateGeometryCache();
+      if (this.$refs.plateOverlayEl) this.$refs.plateOverlayEl.innerHTML = '';
+      this.$refs.plateBubbleEl?.classList.remove('is-visible');
+    },
+    buildQuery() {
+      const { summary_status, project_code, test_dates_empty, tested_unsubmitted, ...rest } = this.listQuery;
+      const payload = {
+        ...rest,
+        ...this.buildProjectCodeFilter(project_code),
+        summary_empty: summaryTerms(summary_status).includes('empty'),
+        summary_filled: summaryTerms(summary_status).includes('filled'),
+      };
+      this.appendDateRange(payload, this.bloodCollectionRange, 'blood_collection_start', 'blood_collection_end');
+      if (test_dates_empty) {
+        payload.test_dates_empty = true;
+      } else if (tested_unsubmitted) {
+        payload.tested_unsubmitted = true;
+      } else {
+        this.appendDateRange(payload, this.testDatesRange, 'test_dates_start', 'test_dates_end');
+      }
+      if (this.statFilterActive.unassigned) {
+        payload.titer_owner_unassigned = true;
+      }
+      payload.field_filters = this.headerFilterPayload();
+      return payload;
+    },
+    fetchHeaderValues(query) {
+      if (query.field === 'project_code') delete query.project_codes;
+      return fetchTiterOrderColumnValues(query);
+    },
+    appendDateRange(payload, range, startKey, endKey) {
+      if (Array.isArray(range) && range.length === 2 && range[0] && range[1]) {
+        payload[startKey] = range[0];
+        payload[endKey] = range[1];
+      }
+    },
+    buildProjectCodeFilter(projectCode) {
+      const value = String(projectCode || '').trim();
+      if (!value) {
+        return {};
+      }
+      const separators = [',', '\t', '\n', '\r', '，', '、', ' '];
+      if (separators.some((sep) => value.includes(sep))) {
+        const project_codes = value.split(/[,\t\n\r，、 ]+/).map((code) => code.trim()).filter(Boolean);
+        return project_codes.length ? { project_codes } : {};
+      }
+      return { project_code: value };
+    },
+    filterMethodFor(queryKey) {
+      if (!this.filterMethodCache[queryKey]) {
+        this.filterMethodCache[queryKey] = (query) => {
+          this[queryKey] = query;
+        };
+      }
+      return this.filterMethodCache[queryKey];
+    },
+    clearFilterQuery(queryKey) {
+      this[queryKey] = '';
+    },
+    filterOptions(dataArray, query) {
+      const queryLower = (query || '').toLowerCase();
+      if (!queryLower) {
+        return dataArray;
+      }
+      return dataArray
+        .filter((item) => item.toLowerCase().includes(queryLower))
+        .sort((a, b) => {
+          const aStarts = a.toLowerCase().startsWith(queryLower);
+          const bStarts = b.toLowerCase().startsWith(queryLower);
+          return aStarts === bStarts ? a.localeCompare(b, 'zh-CN') : (aStarts ? -1 : 1);
+        });
+    },
+    cellOverflowKey(rowId, field) {
+      return `${rowId}-${field}`;
+    },
+    getOverflowElement(root) {
+      return (
+        root.querySelector('.el-input__inner')
+        || root.querySelector('input')
+        || root.querySelector('.el-input__wrapper')
+        || root.querySelector('.el-date-editor .el-input__wrapper')
+        || root
+      );
+    },
+    isElementOverflow(element) {
+      if (!element) {
+        return false;
+      }
+      return element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight;
+    },
+    handleOverflowMouseEnter(event, rowId, field, content) {
+      if (this.plateDragging || this.plateDragPending || performance.now() < this.plateScrollingUntil) {
+        return;
+      }
+      const key = this.cellOverflowKey(rowId, field);
+      if (!content) {
+        this.$refs.floatingLayerRef?.hideTip?.(key);
+        return;
+      }
+      const target = this.getOverflowElement(event.currentTarget);
+      if (this.isElementOverflow(target)) {
+        this.$refs.floatingLayerRef?.showTip?.(event.currentTarget, key, content);
+      } else {
+        this.$refs.floatingLayerRef?.hideTip?.(key);
+      }
+    },
+    handleOverflowMouseLeave(rowId, field) {
+      if (this.plateDragging || this.plateDragPending) {
+        return;
+      }
+      const key = this.cellOverflowKey(rowId, field);
+      this.$refs.floatingLayerRef?.hideTip?.(key);
+    },
+    async loadPageMeta() {
+      try {
+        const meta = await fetchTiterOrderMeta(skipGlobalErrorHandler);
+        this.allOwnerOptions = meta.owners || [];
+        this.allAssayMethodOptions = meta.assay_methods || [];
+        this.allImmuneOwnerOptions = meta.immune_owners || [];
+        this.allReviewerOptions = meta.reviewers || [];
+        this.allImmuneStatusOptions = meta.immune_statuses || [];
+        this.allSerumStatusOptions = mergeTiterSerumStatusOptions(meta.serum_statuses);
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '加载效价列表信息失败' } });
+      }
+    },
+    /** 统计请求跟随列表筛选，但不传由统计块自身控制的负责人、血清状态、小结和检测日期。 */
+    statsPayload() {
+      const {
+        page, limit, sort_field, sort_dir, titer_order_id,
+        titer_owner, titer_owner_unassigned, serum_status, summary_empty, summary_filled,
+        test_dates_empty, tested_unsubmitted, test_dates_start, test_dates_end,
+        ...scope
+      } = this.buildQuery();
+      return scope;
+    },
+    async refreshStats() {
+      const payload = this.statsPayload();
+      this.statsKey = JSON.stringify(payload);
+      const statsToken = ++this.statsRequestToken;
+      try {
+        const stats = await fetchTiterOrderStats(payload, skipGlobalErrorHandler);
+        if (statsToken !== this.statsRequestToken) return;
+        this.stats = { ...DEFAULT_STATS, ...stats };
+      } catch (error) {
+        if (statsToken !== this.statsRequestToken) return;
+        notifyApiError(error, { messages: { default: '刷新统计失败' } });
+      }
+    },
+    mergeOwnerOptions(names) {
+      let changed = false;
+      for (const name of names || []) {
+        const trimmed = String(name || '').trim();
+        if (trimmed && !this.allOwnerOptions.includes(trimmed)) {
+          this.allOwnerOptions.push(trimmed);
+          changed = true;
+        }
+      }
+      if (changed) {
+        this.allOwnerOptions.sort((a, b) => a.localeCompare(b, 'zh-CN'));
+      }
+    },
+    onTiterOrderChanged() {
+      this.getList();
+      this.refreshStats();
+    },
+    refreshTabData() {
+      this.getList();
+      this.refreshStats();
+    },
+    loadForRoute() {
+      if (pendingTiterOrderId) this.resetFilter({ reload: false });
+      this.getList();
+    },
+    revealFocusedRow(titerOrderId) {
+      const row = this.list.find((item) => item.titer_order_id === titerOrderId);
+      if (!row) {
+        ElMessage.warning('未找到对应的效价实验');
+        return;
+      }
+      this.$nextTick(() => {
+        const table = this.$refs.orderTable;
+        table?.setCurrentRow?.(row);
+        table?.$el?.querySelector('.current-row')?.scrollIntoView({ block: 'nearest' });
+      });
+    },
+    getList() {
+      const isLatest = this.beginListRequest();
+      this.listLoading = true;
+      if (pendingTiterOrderId) {
+        this.activeFocusId = pendingTiterOrderId;
+        pendingTiterOrderId = '';
+      }
+      const focusId = this.activeFocusId;
+      const payload = this.buildQuery();
+      if (focusId) payload.titer_order_id = focusId;
+      if (JSON.stringify(this.statsPayload()) !== this.statsKey) this.refreshStats();
+      fetchTiterOrderList(payload, skipGlobalErrorHandler)
+        .then((response) => {
+          if (!isLatest()) return;
+          this.activeFocusId = '';
+          this.list = Array.isArray(response.items)
+            ? response.items.map((item) => ({
+                ...item,
+                titer_owners: Array.isArray(item.titer_owners) ? item.titer_owners : [],
+                test_dates: Array.isArray(item.test_dates) ? item.test_dates : [],
+                test_dates_display: item.test_dates_display || '',
+              }))
+            : [];
+          this.total = Number(response.total) || 0;
+          if (focusId) this.revealFocusedRow(focusId);
+        })
+        .catch((error) => {
+          if (!isLatest()) return;
+          this.activeFocusId = '';
+          this.list = [];
+          this.total = 0;
+          notifyApiError(error, { messages: { default: '加载效价工单失败' } });
+        })
+        .finally(() => {
+          if (!isLatest()) return;
+          this.listLoading = false;
+          this.markListFetched();
+          this.$nextTick(() => {
+            this.invalidatePlateGeometryCache();
+            this.bindPlateTableScroll();
+            this.updatePlateSelectionUi();
+          });
+        });
+    },
+    goDetail(row) {
+      this.$router.push({ path: '/serum/detail', query: { id: row.project_id } });
+    },
+    openOrderDialog(row) {
+      if (!row?.id) {
+        return;
+      }
+      if (!this.canEditTiterOrder()) {
+        ElMessage.warning('您没有权限编辑此工单');
+        return;
+      }
+      this.dialogEditOrder = row;
+      this.createDialogVisible = true;
+    },
+    goInstrumentOrder(row) {
+      this.$refs.instrumentOrderDialogsRef?.handleLeftClick(row, {
+        canEdit: this.canEditTiterOrderRecord(row),
+      });
+    },
+    openInstrumentFlowList(row) {
+      this.$refs.instrumentOrderDialogsRef?.handleRightClick(row, {
+        canEdit: this.canEditTiterOrderRecord(row),
+      });
+    },
+    goSequencing(row) {
+      if (!hasAccessCode(this.currentUserInfo, DISCOVERY_WORKBENCH_EDIT)) {
+        ElMessage.warning('您没有权限编辑抗体发现工作台');
+        return;
+      }
+      if (!row?.experiment_id) {
+        ElMessage.warning('缺少实验号');
+        return;
+      }
+      this.sequencingOrder = row;
+      this.discoveryWizardVisible = true;
+    },
+    async onDiscoveryWizardConfirm(selection) {
+      if (this.discoverySubmitting) return;
+      this.discoverySubmitting = true;
+      try {
+        const saved = await handoffTiterToDiscovery(selection);
+        if (!saved?.id) {
+          throw new Error('下发失败');
+        }
+        try {
+          sessionStorage.setItem(DISCOVERY_WORKBENCH_CREATED_KEY, JSON.stringify(saved));
+        } catch {
+          /* 暂存失败时仍可按 id 打开发现工作台。 */
+        }
+        this.discoveryWizardVisible = false;
+        await this.$router.push({
+          path: '/discovery/workbench',
+          query: { created: String(saved.id) },
+        });
+      } catch (error) {
+        notifyApiError(error, { messages: { default: error?.message || '下发发现工作台失败' } });
+      } finally {
+        this.discoverySubmitting = false;
+      }
+    },
+    goTiterAudit(row) {
+      if (!this.canEditTiter(row)) {
+        ElMessage.warning('您没有权限编辑此项目');
+        return;
+      }
+      this.$router.push({ path: '/serum/titer', query: { id: row.project_id } });
+    },
+    handleFilter() {
+      this.clearPlateSelection();
+      this.listQuery.page = 1;
+      this.getList();
+    },
+    async handleListExport() {
+      try {
+        await downloadListExcel(
+          () => exportTiterOrderList(this.buildQuery()),
+          `效价实验列表_${excelTimestamp()}.xlsx`,
+        );
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '列表导出失败，请重试' } });
+      }
+    },
+    openOwnerStatsDialog() {
+      const month = currentMonthKey();
+      this.ownerStatsMonthRange = [month, month];
+      this.ownerStatsVisible = true;
+    },
+    loadOwnerStats() {
+      this.ownerStatsLoading = true;
+      const [monthStart, monthEnd] = this.ownerStatsMonthRange;
+      fetchTiterOrderOwnerStats(monthStart ? { monthStart, monthEnd: monthEnd || monthStart } : {})
+        .then((data) => {
+          this.ownerStatsItems = data.items;
+          this.ownerStatsSummary = data.summary;
+        })
+        .catch((error) => notifyApiError(error, { messages: { default: '加载负责人统计失败' } }))
+        .finally(() => {
+          this.ownerStatsLoading = false;
+        });
+    },
+    exportOwnerStatsExcel() {
+      const rows = this.ownerStatsTableRows;
+      if (!rows.length) {
+        ElMessage.warning('暂无数据可导出');
+        return;
+      }
+      const subCols = ['实验', 'FACS', 'ELISA'];
+      const groups = ['总计', '已完成', '未完成'];
+      if (this.ownerStatsHasPeriod) {
+        groups.push(this.ownerStatsPeriodLabel);
+      }
+      const headerRow1 = ['负责人'];
+      groups.forEach((label) => {
+        headerRow1.push(label, '', '');
+      });
+      const headerRow2 = ['', ...groups.flatMap(() => subCols)];
+      const body = rows.map((row) => {
+        const line = [
+          row.owner,
+          formatWorkloadOrder(row.total_orders), formatWorkloadPlate(row.total_facs), formatWorkloadPlate(row.total_elisa),
+          formatWorkloadOrder(row.completed_orders), formatWorkloadPlate(row.completed_facs), formatWorkloadPlate(row.completed_elisa),
+          formatWorkloadOrder(row.remaining_orders), formatWorkloadPlate(row.remaining_facs), formatWorkloadPlate(row.remaining_elisa),
+        ];
+        if (this.ownerStatsHasPeriod) {
+          line.push(
+            formatWorkloadOrder(row.period_orders),
+            formatWorkloadPlate(row.period_facs),
+            formatWorkloadPlate(row.period_elisa),
+          );
+        }
+        return line;
+      });
+      const sheet = XLSX.utils.aoa_to_sheet([headerRow1, headerRow2, ...body]);
+      const merges = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }];
+      groups.forEach((_label, index) => {
+        const startCol = 1 + index * 3;
+        merges.push({ s: { r: 0, c: startCol }, e: { r: 0, c: startCol + 2 } });
+      });
+      sheet['!merges'] = merges;
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, '效价实验统计');
+      const range = this.ownerStatsMonthRange;
+      const monthTag = Array.isArray(range) && range[0]
+        ? `_${range[0]}${range[1] && range[1] !== range[0] ? `-${range[1]}` : ''}`
+        : '';
+      XLSX.writeFile(workbook, `效价实验统计${monthTag}.xlsx`);
+    },
+    workloadOrderFormatter(_row, _column, value) {
+      return formatWorkloadOrder(value);
+    },
+    workloadPlateFormatter(_row, _column, value) {
+      return formatWorkloadPlate(value);
+    },
+    ownerStatsZone(prop = '') {
+      const zone = (tone, color) => ({
+        bg: `color-mix(in srgb, var(--el-color-${tone}-light-9) 50%, var(--el-bg-color))`,
+        headerBg: `var(--el-color-${tone}-light-9)`,
+        color,
+      });
+      if (prop.startsWith('total_')) return zone('danger', 'var(--el-text-color-regular)');
+      if (prop.startsWith('completed_')) return zone('success', '#389e6b');
+      if (prop.startsWith('remaining_')) return zone('warning', '#d48806');
+      if (prop.startsWith('period_')) return zone('primary', '#337ecc');
+      return null;
+    },
+    ownerStatsRowClassName({ row }) {
+      return row.isTotal ? 'owner-stats-summary-row' : '';
+    },
+    ownerStatsHeaderStyle({ column }) {
+      const zone = this.ownerStatsZone(column?.property || '');
+      return {
+        background: zone?.headerBg || 'var(--el-fill-color-light)',
+        color: zone?.color || 'var(--el-text-color-regular)',
+        fontWeight: 'bold',
+      };
+    },
+    ownerStatsCellStyle({ row, column }) {
+      const zone = this.ownerStatsZone(column?.property || '');
+      if (row.isTotal) {
+        return {
+          fontWeight: 700,
+          background: 'var(--el-color-primary-light-9)',
+          color: zone?.color || 'var(--el-text-color-primary)',
+        };
+      }
+      if (!zone) {
+        return {};
+      }
+      return {
+        background: zone.bg,
+        color: zone.color,
+        fontWeight: 600,
+      };
+    },
+    handleStatFilter(key) {
+      const turningOff = this.statFilterActive[key];
+      this.statFilterActive[key] = !turningOff;
+      if (key === 'unassigned') {
+        if (!turningOff) {
+          this.listQuery.titer_owner = '';
+          this.ownerFilterQuery = '';
+          this.statFilterActive.owners = false;
+        }
+      } else if (key === 'toReport') {
+        if (turningOff) {
+          if (this.listQuery.serum_status === SERUM_STATUS_TESTED) {
+            this.listQuery.serum_status = '';
+          }
+          if (this.listQuery.summary_status === 'empty') {
+            this.listQuery.summary_status = '';
+          }
+        } else {
+          this.clearPendingStatFilter();
+          this.clearThisWeekStatFilter();
+          this.listQuery.serum_status = SERUM_STATUS_TESTED;
+          this.listQuery.summary_status = 'empty';
+        }
+      } else if (key === 'owners') {
+        if (turningOff) {
+          if (this.listQuery.titer_owner === this.currentOwnerName) {
+            this.listQuery.titer_owner = '';
+            this.ownerFilterQuery = '';
+          }
+        } else if (this.currentOwnerName) {
+          this.statFilterActive.unassigned = false;
+          this.listQuery.titer_owner = this.currentOwnerName;
+        } else {
+          this.statFilterActive.owners = false;
+          ElMessage.warning('无法识别当前用户姓名');
+        }
+      }
+      this.handleFilter();
+    },
+    handlePendingStatFilter(scope) {
+      const turningOff = this.statFilterActive.pending && this.pendingStatScope === scope;
+      if (turningOff) {
+        this.clearPendingStatFilter();
+      } else {
+        this.statFilterActive.pending = true;
+        this.pendingStatScope = scope;
+        this.statFilterActive.toReport = false;
+        this.clearThisWeekStatFilter();
+        this.listQuery.test_dates_empty = true;
+        this.listQuery.serum_status = scope === 'blooded' ? SERUM_STATUS_PENDING_TEST : '';
+        if (this.listQuery.summary_status === 'empty') {
+          this.listQuery.summary_status = '';
+        }
+      }
+      this.handleFilter();
+    },
+    clearPendingStatFilter(options = {}) {
+      const clearSerum = options.clearSerum !== false
+        && this.statFilterActive.pending
+        && this.pendingStatScope === 'blooded';
+      this.statFilterActive.pending = false;
+      this.pendingStatScope = '';
+      this.listQuery.test_dates_empty = false;
+      if (clearSerum && this.listQuery.serum_status === SERUM_STATUS_PENDING_TEST) {
+        this.listQuery.serum_status = '';
+      }
+    },
+    handleThisWeekStatFilter(scope) {
+      const turningOff = this.statFilterActive.thisWeek && this.testDateStatScope === scope;
+      if (turningOff) {
+        this.clearThisWeekStatFilter();
+      } else {
+        this.statFilterActive.thisWeek = true;
+        this.testDateStatScope = scope;
+        this.clearPendingStatFilter({ clearSerum: false });
+        this.statFilterActive.toReport = false;
+        if (this.listQuery.summary_status === 'empty') {
+          this.listQuery.summary_status = '';
+        }
+        if (scope === 'unsubmitted') {
+          this.testDatesRange = [];
+          this.listQuery.tested_unsubmitted = true;
+          this.listQuery.serum_status = '';
+        } else {
+          this.listQuery.tested_unsubmitted = false;
+          this.applyingStatDateRange = true;
+          this.testDatesRange = getCurrentWeekRange();
+          this.$nextTick(() => {
+            this.applyingStatDateRange = false;
+          });
+        }
+      }
+      this.handleFilter();
+    },
+    clearThisWeekStatFilter() {
+      this.statFilterActive.thisWeek = false;
+      this.testDateStatScope = '';
+      this.testDatesRange = [];
+      this.listQuery.tested_unsubmitted = false;
+    },
+    handleTiterOwnerFilterChange() {
+      if (this.listQuery.titer_owner) {
+        this.statFilterActive.unassigned = false;
+      }
+      if (this.listQuery.titer_owner !== this.currentOwnerName) {
+        this.statFilterActive.owners = false;
+      }
+      this.handleFilter();
+    },
+    handleSerumStatusFilterChange() {
+      if (this.statFilterActive.pending && this.pendingStatScope === 'blooded'
+        && this.listQuery.serum_status !== SERUM_STATUS_PENDING_TEST) {
+        this.clearPendingStatFilter({ clearSerum: false });
+      }
+      if (this.listQuery.serum_status !== SERUM_STATUS_TESTED) {
+        this.statFilterActive.toReport = false;
+      }
+      this.handleFilter();
+    },
+    handleSummaryStatusFilterChange() {
+      if (this.listQuery.summary_status !== 'empty') {
+        this.statFilterActive.toReport = false;
+      }
+      this.handleFilter();
+    },
+    handleTestDatesFilterChange() {
+      if (Array.isArray(this.testDatesRange) && this.testDatesRange.length === 2 && this.testDatesRange[0]) {
+        this.clearPendingStatFilter({ clearSerum: false });
+        this.listQuery.tested_unsubmitted = false;
+        if (this.testDateStatScope === 'unsubmitted') {
+          this.statFilterActive.thisWeek = false;
+          this.testDateStatScope = '';
+        }
+      }
+      if (this.applyingStatDateRange) {
+        this.handleFilter();
+        return;
+      }
+      const weekRange = getCurrentWeekRange();
+      if (isSameDateRange(this.testDatesRange, weekRange)) {
+        this.statFilterActive.thisWeek = true;
+        this.testDateStatScope = 'week';
+      } else if (this.testDateStatScope !== 'unsubmitted') {
+        this.statFilterActive.thisWeek = false;
+        this.testDateStatScope = '';
+      }
+      this.handleFilter();
+    },
+    resetFilter(options = {}) {
+      this.clearPlateSelection();
+      this.listQuery = {
+        limit: this.listQuery.limit,
+        page: 1,
+        project_code: '',
+        assay_method: '',
+        immune_owner: '',
+        reviewer: '',
+        immune_status: '',
+        serum_status: '',
+        summary_status: '',
+        priority: '',
+        test_dates_empty: false,
+        tested_unsubmitted: false,
+        order_status: '',
+        target_name: '',
+        titer_owner: '',
+        sort_field: '',
+        sort_dir: '',
+      };
+      this.clearHeaderFilters();
+      this.testDatesRange = [];
+      this.bloodCollectionRange = [];
+      this.ownerFilterQuery = '';
+      this.assayMethodFilterQuery = '';
+      this.immuneOwnerFilterQuery = '';
+      this.reviewerFilterQuery = '';
+      this.immuneStatusFilterQuery = '';
+      this.statFilterActive = createDefaultStatFilterActive();
+      this.testDateStatScope = '';
+      this.pendingStatScope = '';
+      this.applyingStatDateRange = false;
+      this.persistListFilters();
+      if (options.reload !== false) this.getList();
+    },
+    openCreateDialog() {
+      if (!this.canEditTiterOrder()) {
+        ElMessage.warning('您没有权限编辑效价工单');
+        return;
+      }
+      this.dialogEditOrder = null;
+      this.createDialogVisible = true;
+    },
+    canEditTiterOrder() {
+      return hasAccessCode(this.currentUserInfo, TITER_ORDER_EDIT);
+    },
+    canDeleteTiterOrder() {
+      return hasAccessCode(this.currentUserInfo, TITER_ORDER_DELETE);
+    },
+    canEditTiterOrderOwner() {
+      return hasAccessCode(this.currentUserInfo, TITER_ORDER_OWNER_EDIT);
+    },
+    canEditTiterOrderRecord(row) {
+      return canEditTiterOrderRecord(this.currentUserInfo, row);
+    },
+    canEditTiterOrderRecordOpen() {
+      return hasAccessCode(this.currentUserInfo, TITER_ORDER_RECORD_EDIT);
+    },
+    canEditTiter(row) {
+      return canEditSerumTiter(this.currentUserInfo, {
+        owner: row.immune_owner,
+        reviewer: row.reviewer,
+        titer_owners: row.titer_owners,
+      });
+    },
+    canUpdateImmuneStatus(row) {
+      if (!row?.project_id) {
+        return false;
+      }
+      return canUpdateSerumStatus(this.currentUserInfo, { owner: row.immune_owner, reviewer: row.reviewer });
+    },
+    onImmuneStatusChange(row, newStatus) {
+      this.list.forEach((item) => {
+        if (item.project_id === row.project_id) {
+          item.immune_status = newStatus;
+        }
+      });
+    },
+    ownerTagName(data) {
+      if (data == null) {
+        return '';
+      }
+      if (typeof data === 'string' || typeof data === 'number') {
+        return String(data).trim();
+      }
+      return String(data.currentLabel ?? data.label ?? data.value ?? '').trim();
+    },
+    ownerTagStyle(data) {
+      const name = this.ownerTagName(data);
+      let hash = 0;
+      for (let i = 0; i < name.length; i++) {
+        hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+      }
+      const palette = OWNER_TAG_COLORS[name ? hash % OWNER_TAG_COLORS.length : 0];
+      return {
+        backgroundColor: palette.bg,
+        color: palette.color,
+      };
+    },
+    onTestDatesChange(row) {
+      row.test_dates_display = (row.test_dates || []).join('、');
+      this.syncSelectedField(row, 'test_dates', '检测日期', (target, source) => {
+        target.test_dates = [...(source.test_dates || [])];
+        target.test_dates_display = source.test_dates_display;
+      });
+    },
+    onTiterOwnerChange(row) {
+      this.syncSelectedField(row, 'owner', '效价负责人', (target, source) => {
+        target.titer_owners = [...(source.titer_owners || [])];
+      });
+    },
+    onSerumStatusChange(row) {
+      this.syncSelectedField(row, 'serum_status', '血清状态', (target, source) => {
+        target.serum_status = source.serum_status;
+      });
+    },
+    onPriorityChange(row) {
+      this.syncSelectedField(row, 'priority', '优先级', (target, source) => {
+        target.priority = source.priority;
+      });
+    },
+    saveRow(row, label, options = {}) {
+      const silent = Boolean(options.silent);
+      const payload = { id: row.id };
+      if (label === '效价负责人') {
+        if (!this.canEditTiterOrderOwner()) {
+          ElMessage.warning('您没有权限编辑效价负责人');
+          return Promise.resolve(false);
+        }
+        payload.titer_owners = row.titer_owners;
+      } else if (label === '检测日期') {
+        if (!this.canEditTiterOrderRecord(row)) {
+          ElMessage.warning('您没有权限编辑检测日期');
+          return Promise.resolve(false);
+        }
+        payload.test_dates = row.test_dates;
+      } else if (label === '血清状态') {
+        if (!this.canEditTiterOrderRecordOpen()) {
+          ElMessage.warning('您没有权限编辑血清状态');
+          return Promise.resolve(false);
+        }
+        payload.serum_status = row.serum_status ?? null;
+      } else if (label === '备注') {
+        if (!this.canEditTiterOrderRecord(row)) {
+          ElMessage.warning('您没有权限编辑备注');
+          return Promise.resolve(false);
+        }
+        payload.remark = row.remark;
+      } else if (label === '效价小结') {
+        if (!this.canEditTiterOrderRecord(row)) {
+          ElMessage.warning('您没有权限编辑效价小结');
+          return Promise.resolve(false);
+        }
+        payload.summary = row.summary;
+      } else if (label === '实验记录本') {
+        if (!this.canEditTiterOrderRecord(row)) {
+          ElMessage.warning('您没有权限编辑实验记录本');
+          return Promise.resolve(false);
+        }
+        payload.lab_notebook = row.lab_notebook;
+      } else if (label === '优先级') {
+        if (!this.canEditTiterOrderRecordOpen()) {
+          ElMessage.warning('您没有权限编辑优先级');
+          return Promise.resolve(false);
+        }
+        payload.priority = row.priority;
+      } else {
+        return Promise.resolve(false);
+      }
+      return saveTiterOrder(payload)
+        .then(() => {
+          if (!silent) {
+            ElMessage.success(`${label}已保存`);
+          }
+          if (label === '效价负责人') {
+            this.mergeOwnerOptions(row.titer_owners);
+          }
+          if (!silent && STATS_AFFECTING_LABELS.has(label)) {
+            this.refreshStats();
+          }
+          return true;
+        })
+        .catch((error) => {
+          notifyApiError(error, { messages: { default: `${label}保存失败` } });
+          return false;
+        });
+    },
+  },
+};
+</script>
+
+<style scoped src="#/components/workbench/workbenchPanel.css"></style>
+<style scoped>
+/*
+ * 尺寸维护约定（L1 页面壳子 / L2 数据区）：
+ * 1. 表格卡片 → 使用 list-data-table / list-table-card 共享类
+ * 2. 说明文字 → --list-page-subtitle-* / .text-secondary / .text-hint
+ * 3. 统计数字 → .stat-value
+ * 4. 表格正文文字沿用组件默认值；列筛选弹层可局部设置
+ * 5. 表格密度 → 使用 el-table 的 size，勿额外叠加单元格垂直内边距
+ * 6. 负责人标签色 → 只改 OWNER_TAG_COLORS
+ * 7. 表面圆角/边框/阴影 → 用 --list-* token（见 list-page-surface.css）
+ */
+
+.titer-order-page {
+  position: relative;
+  min-height: 100%;
+  padding: var(--list-page-padding);
+  background: var(--list-page-bg);
+}
+
+.stats-strip {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.filter-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.6fr) auto;
+  gap: 8px var(--list-filter-action-gap);
+}
+
+.filter-strip .filter-item {
+  width: 100%;
+  min-width: 0;
+}
+
+.filter-strip :deep(.el-date-editor),
+.filter-strip :deep(.el-select),
+.filter-strip :deep(.el-input) {
+  width: 100%;
+  min-width: 0;
+}
+
+.table-plate-wrap {
+  position: relative;
+}
+
+.table-card :deep(td.plate-col-facs),
+.table-card :deep(td.plate-col-elisa),
+.table-card :deep(td.plate-col-mouse),
+.table-card :deep(td.plate-col-owner),
+.table-card :deep(td.plate-col-test-dates),
+.table-card :deep(td.plate-col-serum-status),
+.table-card :deep(td.plate-col-priority) {
+  height: 1px;
+  padding: 0;
+}
+
+.table-card :deep(td.plate-col-facs .cell),
+.table-card :deep(td.plate-col-elisa .cell),
+.table-card :deep(td.plate-col-mouse .cell),
+.table-card :deep(td.plate-col-owner .cell),
+.table-card :deep(td.plate-col-test-dates .cell),
+.table-card :deep(td.plate-col-serum-status .cell),
+.table-card :deep(td.plate-col-priority .cell) {
+  position: relative;
+  height: 100%;
+  padding: 0;
+}
+
+.plate-select-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.plate-select-cell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  cursor: cell;
+  user-select: none;
+}
+
+.plate-select-cell--field {
+  justify-content: stretch;
+  padding: 6px 8px;
+}
+
+.plate-select-cell--field .inline-cell-control,
+.plate-select-cell--field .cell-tooltip-target {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+.plate-select-overlay :deep(.plate-select-region) {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--el-color-primary) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--el-color-primary) 45%, transparent);
+  transition:
+    top 0.12s ease,
+    height 0.12s ease;
+}
+
+.plate-floating-layer :deep(.plate-floating-editor) {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+}
+
+.plate-floating-layer :deep(.plate-floating-editor > *) {
+  width: 100%;
+}
+
+.inline-cell-preview {
+  cursor: pointer;
+}
+
+.inline-cell-preview.is-disabled {
+  cursor: not-allowed;
+}
+
+.inline-cell-preview .el-input__inner {
+  display: inline-block;
+  width: 100%;
+  text-align: left;
+}
+
+.inline-cell-preview .el-input__inner.is-placeholder {
+  color: var(--el-text-color-placeholder);
+}
+
+.plate-select-bubble {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #1d5fbf;
+  white-space: nowrap;
+  pointer-events: none;
+  background: rgba(236, 245, 255, 0.94);
+  border: 1px solid #b3d8ff;
+  border-radius: var(--list-mid-radius);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--el-color-primary) 18%, transparent);
+  opacity: 0;
+  visibility: hidden;
+  will-change: transform, opacity;
+  transition:
+    transform 0.12s ease,
+    opacity 0.14s ease;
+}
+
+.plate-select-bubble.is-visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.table-card :deep(.el-table__header .cell) {
+  white-space: nowrap;
+}
+
+.table-card :deep(.el-button-group) {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  vertical-align: middle;
+}
+
+/* 血清状态沿用 el-tag 色系，仅为选中项添加轻量底色。 */
+.table-card :deep(.serum-status-select.status-tone-info .el-select__wrapper) {
+  background-color: var(--el-color-info-light-9);
+}
+
+.table-card :deep(.serum-status-select.status-tone-info .el-select__selected-item) {
+  color: var(--el-color-info);
+}
+
+.table-card :deep(.serum-status-select.status-tone-primary .el-select__wrapper) {
+  background-color: var(--el-color-primary-light-9);
+}
+
+.table-card :deep(.serum-status-select.status-tone-primary .el-select__selected-item) {
+  color: var(--el-color-primary);
+}
+
+.table-card :deep(.serum-status-select.status-tone-warning .el-select__wrapper) {
+  background-color: var(--el-color-warning-light-9);
+}
+
+.table-card :deep(.serum-status-select.status-tone-warning .el-select__selected-item) {
+  color: var(--el-color-warning);
+}
+
+.table-card :deep(.serum-status-select.status-tone-success .el-select__wrapper) {
+  background-color: var(--el-color-success-light-9);
+}
+
+.table-card :deep(.serum-status-select.status-tone-success .el-select__selected-item) {
+  color: var(--el-color-success);
+}
+
+.table-card :deep(.serum-status-select.status-tone-danger .el-select__wrapper) {
+  background-color: var(--el-color-danger-light-9);
+}
+
+.table-card :deep(.serum-status-select.status-tone-danger .el-select__selected-item) {
+  color: var(--el-color-danger);
+}
+
+.table-card :deep(.priority-select.status-tone-info .el-select__wrapper) {
+  background-color: var(--el-color-info-light-9);
+}
+
+.table-card :deep(.priority-select.status-tone-info .el-select__selected-item) {
+  color: var(--el-color-info);
+}
+
+.table-card :deep(.priority-select.status-tone-warning .el-select__wrapper) {
+  background-color: var(--el-color-warning-light-9);
+}
+
+.table-card :deep(.priority-select.status-tone-warning .el-select__selected-item) {
+  color: var(--el-color-warning);
+}
+
+.table-card :deep(.priority-select.status-tone-danger .el-select__wrapper) {
+  background-color: var(--el-color-danger-light-9);
+}
+
+.table-card :deep(.priority-select.status-tone-danger .el-select__selected-item) {
+  color: var(--el-color-danger);
+}
+
+.table-card :deep(.priority-select.status-tone-king .el-select__wrapper) {
+  background-color: var(--vita-king-bg);
+}
+
+.table-card :deep(.priority-select.status-tone-king .el-select__selected-item) {
+  color: var(--vita-king-text);
+}
+
+.table-card :deep(.status-column-cell .cell) {
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+.owner-select {
+  width: 100%;
+}
+
+/* 行内控件需保留统一的空态高度。 */
+.table-card :deep(.inline-cell-control .el-select__wrapper),
+.table-card :deep(.inline-cell-control .el-input__wrapper) {
+  min-height: 24px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.table-card :deep(.inline-cell-control.el-date-editor),
+.table-card :deep(.test-dates-picker) {
+  width: 100%;
+}
+
+.cell-tooltip-target {
+  width: 100%;
+  min-width: 0;
+}
+
+.table-card :deep(.cell-tooltip-target .test-dates-picker .el-input__wrapper),
+.table-card :deep(.cell-tooltip-target .inline-cell-control .el-input__wrapper) {
+  overflow: hidden;
+}
+
+.table-card :deep(.cell-tooltip-target .test-dates-picker .el-input__inner),
+.table-card :deep(.cell-tooltip-target .inline-cell-control .el-input__inner) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-card :deep(.owner-select .owner-tag) {
+  height: auto;
+  min-height: 22px;
+  padding: 0 3px 0 6px;
+  border: none;
+  font-size: 12px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.table-card :deep(.owner-select .owner-tag .el-tag__close) {
+  margin-left: 1px;
+  margin-right: 0;
+  color: inherit;
+}
+
+.table-card :deep(.owner-select .owner-tag .el-tag__close:hover) {
+  background-color: rgba(0, 0, 0, 0.06);
+  color: inherit;
+}
+
+.owner-stats-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--list-mid-bg);
+  border: var(--list-mid-border);
+  border-radius: var(--list-mid-radius);
+}
+
+.owner-stats-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.owner-stats-filter-label {
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.owner-stats-month-picker {
+  width: 260px;
+}
+
+.owner-stats-note {
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+:global(.owner-stats-dialog .owner-stats-total-name) {
+  color: var(--el-color-primary);
+  font-weight: 700;
+}
+
+:global(.owner-stats-dialog .owner-stats-summary-row > td.el-table__cell) {
+  border-top: 2px solid var(--el-color-primary-light-3) !important;
+}
+
+:global(.owner-stats-dialog .owner-stats-table .el-table__body tr:not(.owner-stats-summary-row):hover > td.el-table__cell) {
+  box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--el-color-primary) 6%, transparent);
+}
+
+:global(.owner-stats-dialog .owner-stats-table .el-table__body tr.current-row:not(.owner-stats-summary-row) > td.el-table__cell) {
+  box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--el-color-primary) 12%, transparent);
+}
+
+:global(.titer-select-dropdown .el-select-dropdown__wrap) {
+  max-height: 240px;
+}
+
+@media (max-width: 1280px) {
+  .stats-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .stats-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+html.dark .plate-select-bubble {
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-7);
+}
+</style>

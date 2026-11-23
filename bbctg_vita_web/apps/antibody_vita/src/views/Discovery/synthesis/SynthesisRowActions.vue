@@ -88,9 +88,4 @@ export default {
   justify-content: center;
   width: 100%;
 }
-.action-cell :deep(.el-button-group) {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-}
 </style>

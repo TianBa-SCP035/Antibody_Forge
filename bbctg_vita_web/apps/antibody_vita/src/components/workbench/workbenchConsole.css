@@ -198,7 +198,7 @@
   background: var(--el-color-primary-light-9) !important;
 }
 .table-card :deep(tr.is-date-break > td) {
-  border-top: 3px solid #2563eb !important;
+  border-top: 1px solid var(--el-text-color-placeholder);
 }
 .table-card :deep(.status-column-cell .cell),
 .table-card :deep(.action-column-cell .cell),

@@ -1320,7 +1320,7 @@ export default {
 <style src="#/components/workbench/workbenchDrawer.css"></style>
 <style scoped>
 .table-card :deep(tr.is-date-break > td) {
-  border-top: 3px solid #2563eb !important;
+  border-top: 1px solid var(--el-text-color-placeholder);
 }
 .library-code-fill-handle {
   position: absolute;

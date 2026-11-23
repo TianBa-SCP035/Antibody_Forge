@@ -557,7 +557,7 @@
           </template>
         </WorkbenchDataTable>
 
-        <WorkbenchSheet v-else :actions-width="460">
+        <WorkbenchSheet v-else>
           <template #cell-target_name="{ row }">
             <WorkbenchColorMark
               :value="row.target_color"
@@ -1074,9 +1074,7 @@ export default {
       assayBreakdownCounts: null,
       assayBreakdownLoading: false,
       assayBreakdownSlow: false,
-      workbenchColumns: WORKBENCH_COLUMNS.map((column) => (
-        column.key === 'actions' ? { ...column, width: 460 } : column
-      )),
+      workbenchColumns: WORKBENCH_COLUMNS,
       pairingVisible: false,
       pairingRow: null,
       headerMenuColumns: HEADER_MENU_COLUMNS,

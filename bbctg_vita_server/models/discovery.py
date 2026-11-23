@@ -243,6 +243,8 @@ class DiscoveryCellBank(Base):
     box_location: Mapped[str | None] = mapped_column(String(128), comment="冻存位置")
     frozen_on: Mapped[str | None] = mapped_column(DateString, comment="冻存日期")
     operator: Mapped[str | None] = mapped_column(String(64), comment="操作人")
+    checked_out_on: Mapped[str | None] = mapped_column(DateString, comment="出库日期")
+    checked_out_by: Mapped[str | None] = mapped_column(String(64), comment="出库人")
     remark: Mapped[str | None] = mapped_column(String(500), comment="备注")
     created_by: Mapped[str | None] = mapped_column(String(64), comment="创建人")
     created_at: Mapped[object | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")
@@ -261,6 +263,8 @@ class DiscoveryCellBank(Base):
             "box_location": self.box_location,
             "frozen_on": self.frozen_on,
             "operator": self.operator,
+            "checked_out_on": self.checked_out_on,
+            "checked_out_by": self.checked_out_by,
             "remark": self.remark,
             "created_by": self.created_by,
             "created_at": created,

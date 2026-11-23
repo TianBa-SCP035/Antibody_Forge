@@ -53,6 +53,11 @@ class WorkbenchReorderRequest(BaseModel):
     target_id: int = Field(gt=0)
 
 
+class CellBankCheckoutRequest(BaseModel):
+    id: int = Field(gt=0)
+    checked_out_by: str = ""
+
+
 class CellBankSaveRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -163,6 +168,14 @@ def save_cell_bank(
     current_user: SysUser = Depends(get_current_user),
 ) -> dict:
     return success(cell_bank.save_record(db, data.model_dump(), created_by=actor_name(current_user)))
+
+
+@router.post("/cell_bank/checkout", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="发现留存细胞出库")])
+def checkout_cell_bank(
+    data: CellBankCheckoutRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    return success(cell_bank.checkout_record(db, data.id, data.checked_out_by))
 
 
 @router.post("/cell_bank/delete", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="删除发现留存细胞冻存")])

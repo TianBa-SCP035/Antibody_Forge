@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="modelValue"
     title="留存细胞冻存入库"
-    width="860px"
+    width="960px"
     append-to-body
     destroy-on-close
     @update:model-value="$emit('update:modelValue', $event)"
@@ -67,13 +67,15 @@
     <el-table v-loading="loading" :data="items" size="small" max-height="280" empty-text="还没有冻存记录">
       <el-table-column prop="frozen_on" label="冻存日期" width="110" />
       <el-table-column prop="cell_kind" label="细胞类型" width="100" />
-      <el-table-column prop="mouse_nos" label="鼠号" min-width="140" show-overflow-tooltip />
+      <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
       <el-table-column prop="tube_count" label="管数" width="70" align="center" />
       <el-table-column prop="cell_count" label="细胞量" width="90" />
       <el-table-column prop="box_location" label="位置" min-width="100" show-overflow-tooltip />
       <el-table-column prop="operator" label="操作人" width="90" />
-      <el-table-column v-if="canEdit" label="操作" width="70" align="center">
+      <el-table-column prop="checked_out_by" label="出库人" width="90" show-overflow-tooltip />
+      <el-table-column v-if="canEdit" label="操作" width="110" align="center">
         <template #default="{ row: record }">
+          <el-button link type="primary" @click="checkout(record)">出库</el-button>
           <el-button link type="danger" @click="remove(record)">删除</el-button>
         </template>
       </el-table-column>
@@ -101,6 +103,7 @@ import {
 
 import { notifyApiError } from '#/api/errors'
 import {
+  checkoutDiscoveryCellBank,
   deleteDiscoveryCellBank,
   fetchDiscoveryCellBank,
   saveDiscoveryCellBank,
@@ -215,6 +218,31 @@ export default {
         notifyApiError(error, { messages: { default: '冻存入库失败' } })
       } finally {
         this.saving = false
+      }
+    },
+    async checkout(record) {
+      if (!this.canEdit || !record?.id) return
+      let name = ''
+      try {
+        const result = await ElMessageBox.prompt('填写出库人', '出库', {
+          inputValue: record.checked_out_by || '',
+          inputPlaceholder: '出库人',
+          confirmButtonText: '出库',
+        })
+        name = String(result.value || '').trim()
+      } catch {
+        return
+      }
+      if (!name) {
+        ElMessage.warning('请填写出库人')
+        return
+      }
+      try {
+        await checkoutDiscoveryCellBank(record.id, name)
+        ElMessage.success('已出库')
+        await this.load()
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '出库失败' } })
       }
     },
     async remove(record) {

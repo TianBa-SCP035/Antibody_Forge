@@ -28,6 +28,12 @@ class CellBankTests(DbTestCase):
         listed = cell_bank.list_records(self.db, saved["id"])
         self.assertEqual([item["id"] for item in listed["items"]], [record["id"]])
 
+        checked = cell_bank.checkout_record(self.db, record["id"], " 苏正凤 ")
+        self.assertEqual(checked["checked_out_by"], "苏正凤")
+        self.assertEqual(len(checked["checked_out_on"]), 10)
+        with self.assertRaisesRegex(ValueError, "请填写出库人"):
+            cell_bank.checkout_record(self.db, record["id"], " ")
+
         cell_bank.delete_record(self.db, record["id"])
         self.assertEqual(cell_bank.list_records(self.db, saved["id"])["items"], [])
 

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from core.errors import NotFoundError
 from models.discovery import DiscoveryCellBank, DiscoveryWorkbench
+from utils.clock import today_local
 from utils.normalize import normalize_date
 
 _TEXT_LIMITS = {
@@ -18,6 +19,7 @@ _TEXT_LIMITS = {
     "volume": 64,
     "box_location": 128,
     "operator": 64,
+    "checked_out_by": 64,
     "remark": 500,
 }
 
@@ -83,6 +85,20 @@ def save_record(db: Session, data: dict[str, Any], created_by: str | None = None
     row.frozen_on = normalize_date(data.get("frozen_on"))
     row.operator = _text(data.get("operator"), "operator")
     row.remark = _text(data.get("remark"), "remark")
+    db.commit()
+    db.refresh(row)
+    return row.to_dict()
+
+
+def checkout_record(db: Session, record_id: int, checked_out_by: Any) -> dict[str, Any]:
+    row = db.get(DiscoveryCellBank, record_id)
+    if not row:
+        raise NotFoundError("冻存记录不存在")
+    name = _text(checked_out_by, "checked_out_by")
+    if not name:
+        raise ValueError("请填写出库人")
+    row.checked_out_by = name
+    row.checked_out_on = today_local().isoformat()
     db.commit()
     db.refresh(row)
     return row.to_dict()

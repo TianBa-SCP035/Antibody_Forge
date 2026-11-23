@@ -628,6 +628,8 @@ CREATE TABLE IF NOT EXISTS discovery_cell_bank (
   box_location VARCHAR(128) NULL COMMENT '冻存位置',
   frozen_on DATE NULL COMMENT '冻存日期',
   operator VARCHAR(64) NULL COMMENT '操作人',
+  checked_out_on DATE NULL COMMENT '出库日期',
+  checked_out_by VARCHAR(64) NULL COMMENT '出库人',
   remark VARCHAR(500) NULL COMMENT '备注',
   created_by VARCHAR(64) NULL COMMENT '创建人',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',

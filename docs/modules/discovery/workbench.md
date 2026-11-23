@@ -85,12 +85,13 @@
 
 ### 留存细胞冻存
 
-剖鼠后留下的细胞在本页入库，不走外部细胞库存。一条发现安排可以有多条冻存记录，字段为细胞类型（预设脾细胞、淋巴结、骨髓、PBMC、血浆细胞、全细胞、浆细胞、其他，也可自填）、鼠号、管数、细胞量、体积、冻存位置、冻存日期、操作人和备注。查看用 `discovery.page.workbench`，新增和删除用 `discovery.workbench.edit`。
+剖鼠后留下的细胞在本页入库，不走外部细胞库存。一条发现安排可以有多条冻存记录，字段为细胞类型（预设脾细胞、淋巴结、骨髓、PBMC、血浆细胞、全细胞、浆细胞、其他，也可自填）、鼠号、管数、细胞量、体积、冻存位置、冻存日期、操作人和备注。列表不展示鼠号，展示备注，用来写不同鼠型的细胞。每条记录可以出库一次，记下出库人和当天日期。查看用 `discovery.page.workbench`，入库、出库和删除用 `discovery.workbench.edit`。
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | GET | `/api/discovery/workbench/cell_bank?workbench_id=` | 该安排的冻存记录，新的在前 |
 | POST | `/api/discovery/workbench/cell_bank/save` | 新增一条 |
+| POST | `/api/discovery/workbench/cell_bank/checkout` | 按 `id` 写出库人和出库日期 |
 | POST | `/api/discovery/workbench/cell_bank/delete` | 按 `id` 删除 |
 
 ## 5. 跨模块联动

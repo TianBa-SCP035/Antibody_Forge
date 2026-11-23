@@ -80,6 +80,14 @@ export function saveDiscoveryCellBank(data: any) {
   });
 }
 
+export function checkoutDiscoveryCellBank(id: number | string, checkedOutBy: string) {
+  return requestClient.post(
+    '/discovery/workbench/cell_bank/checkout',
+    { id, checked_out_by: checkedOutBy },
+    skipGlobalErrorHandler,
+  );
+}
+
 export function deleteDiscoveryCellBank(id: number | string) {
   return requestClient.post('/discovery/workbench/cell_bank/delete', { id }, skipGlobalErrorHandler);
 }

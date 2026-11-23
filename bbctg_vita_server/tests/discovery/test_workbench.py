@@ -118,10 +118,21 @@ class DiscoveryWorkbenchScheduleAndCleanTests(DbTestCase):
             untouched = service.save(self.db, {"id": saved["id"], "harvest_date": harvest.isoformat()})
             self.assertEqual(untouched["boost_date"], (harvest - timedelta(days=1)).isoformat())
 
-            with self.assertRaisesRegex(ValueError, "剖鼠日期已填写，不能再改"):
-                service.save(self.db, {"id": saved["id"], "harvest_date": ""})
+            moved = (harvest + timedelta(days=2)).isoformat()
+            shifted = service.save(self.db, {"id": saved["id"], "harvest_date": moved})
+            self.assertEqual(shifted["harvest_date"], moved)
+            self.assertEqual(shifted["boost_date"], (harvest + timedelta(days=2) - timedelta(days=5)).isoformat())
+
+            today_row = service.save(self.db, {"id": saved["id"], "harvest_date": FIXED_TODAY.isoformat()})
+            self.assertEqual(today_row["harvest_date"], FIXED_TODAY.isoformat())
+
+            yesterday = (FIXED_TODAY - timedelta(days=1)).isoformat()
+            locked = service.save(self.db, {"id": saved["id"], "harvest_date": yesterday})
+            self.assertEqual(locked["harvest_date"], yesterday)
+            with self.assertRaisesRegex(ValueError, "剖鼠日期已过，不能再改"):
+                service.save(self.db, {"id": saved["id"], "harvest_date": FIXED_TODAY.isoformat()})
             self.db.rollback()
-            self.assertEqual(self.db.get(DiscoveryWorkbench, saved["id"]).harvest_date, harvest.isoformat())
+            self.assertEqual(self.db.get(DiscoveryWorkbench, saved["id"]).harvest_date, yesterday)
 
             wrapped = service.save(self.db, {"harvest_date": "2026-03-01", "status": "规划中"})
             self.assertEqual(wrapped["boost_date"], "2026-02-24")

@@ -191,8 +191,8 @@ def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> bool:
             value = clean_field(spec, value)
             stored = str(previous_harvest or "").strip()[:10]
             incoming = str(value or "").strip()[:10]
-            if stored and incoming != stored:
-                raise ValueError("剖鼠日期已填写，不能再改")
+            if stored and stored < _today_text() and incoming != stored:
+                raise ValueError("剖鼠日期已过，不能再改")
             harvest_changed = bool(incoming) and incoming != stored
         else:
             value = clean_field(spec, value, keep_breaks=field in BREAK_FIELDS)

@@ -28,7 +28,6 @@ const routes: RouteRecordRaw[] = [
           keepAlive: true,
           order: 5,
           tabGroup: DISCOVERY_WORKBENCH_TAB_GROUP,
-          menuTitle: '项目工作台',
           title: '发现工作台',
         },
       },

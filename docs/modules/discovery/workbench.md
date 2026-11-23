@@ -27,7 +27,7 @@
 | `mouse_count` | 小鼠只数 | 可空非负整数，`0` 合法 |
 | `mouse_nos` / `serum_titer` | 鼠号 / 血清效价 | 保留换行 |
 | `screening_methods` | 筛选方式 | `达普`、`噬菌体`、`Beacon`、`NGS` 多选，英文逗号存储 |
-| `harvest_date` | 剖鼠日期 | `YYYY-MM-DD`；文库交接时作为上机日期。一旦填写就不能再改，避免误触改掉杀鼠日期 |
+| `harvest_date` | 剖鼠日期 | `YYYY-MM-DD`；文库交接时作为上机日期。早于今天的日期不能再改；今天和之后的日期可以改，方便换项目后重调 |
 | `boost_date` | 冲击日期 | 修改剖鼠日期时自动设为剖鼠日期前 5 天；之后可单独修改 |
 | `positive_cell_count` | 阳性细胞数 | 保留换行，最长 255 字符 |
 | `immune_antigen` / `screening_antigen` / `boost_antigen` / `boost_cells` | 抗原与冲击免细胞 | 保留换行 |
@@ -85,7 +85,7 @@
 
 ### 留存细胞冻存
 
-剖鼠后留下的细胞在本页入库，不走外部细胞库存。一条发现安排可以有多条冻存记录，字段为细胞类型（预设脾细胞、淋巴结、骨髓、PBMC、血浆细胞、其他，也可自填）、鼠号、管数、细胞量、体积、冻存位置、冻存日期、操作人和备注。查看用 `discovery.page.workbench`，新增和删除用 `discovery.workbench.edit`。
+剖鼠后留下的细胞在本页入库，不走外部细胞库存。一条发现安排可以有多条冻存记录，字段为细胞类型（预设脾细胞、淋巴结、骨髓、PBMC、血浆细胞、全细胞、浆细胞、其他，也可自填）、鼠号、管数、细胞量、体积、冻存位置、冻存日期、操作人和备注。查看用 `discovery.page.workbench`，新增和删除用 `discovery.workbench.edit`。
 
 | 方法 | 路径 | 用途 |
 |---|---|---|

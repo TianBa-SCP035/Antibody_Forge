@@ -3,11 +3,11 @@ from core.module_spec import ModuleAccess, action, job, menu, page
 ACCESS = ModuleAccess(
     module="serum",
     permissions=(
-        page("serum.page.workbench", "项目工作台", resource="serum_workbench", route_path="/serum/workbench",
-             sort_order=95, message="没有权限访问项目工作台"),
-        action("serum.workbench.edit", "编辑项目工作台", resource="serum_workbench", action="edit",
+        page("serum.page.workbench", "免疫工作台", resource="serum_workbench", route_path="/serum/workbench",
+             sort_order=95, message="没有权限访问免疫工作台"),
+        action("serum.workbench.edit", "编辑免疫工作台", resource="serum_workbench", action="edit",
                ui_key="serum.workbench.edit_button", parent_code="serum.page.workbench", sort_order=96,
-               message="没有权限编辑项目工作台"),
+               message="没有权限编辑免疫工作台"),
         action("serum.workbench.draft_edit", "编辑工作台草稿", resource="serum_workbench", action="draft_edit",
                parent_code="serum.page.workbench", sort_order=97, message="没有权限编辑工作台草稿"),
         action("serum.workbench.support_edit", "编辑实验保障信息", resource="serum_workbench", action="support_edit",
@@ -93,7 +93,7 @@ ACCESS = ModuleAccess(
     features=(
         menu("menu.serum", "小鼠免疫菜单", "控制小鼠免疫模块菜单显示", sort_order=10, path="/serum",
              icon="lucide:test-tube"),
-        menu("menu.serum.workbench", "项目工作台", "控制项目工作台菜单显示", sort_order=5, path="/serum/workbench",
+        menu("menu.serum.workbench", "免疫工作台", "控制免疫工作台菜单显示", sort_order=5, path="/serum/workbench",
              icon="lucide:layout-dashboard", parent_code="menu.serum"),
         menu("menu.serum.list", "免疫实验列表", "控制免疫实验列表菜单显示", sort_order=10, path="/serum/list",
              icon="lucide:list", parent_code="menu.serum"),

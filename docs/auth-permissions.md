@@ -65,8 +65,8 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 
 | 权限码 | 类型 | 说明 |
 |--------|------|------|
-| `serum.page.workbench` | page | 项目工作台（查看） |
-| `serum.workbench.edit` | action | 项目工作台全部编辑，供管理员使用 |
+| `serum.page.workbench` | page | 免疫工作台（查看） |
+| `serum.workbench.edit` | action | 免疫工作台全部编辑，供管理员使用 |
 | `serum.workbench.draft_edit` | action | 新建、复制及维护草稿；只能编辑/删除“草稿”，不能改状态、审核结果、是否可开展、审核人，不能开展或下架 |
 | `serum.workbench.support_edit` | action | 只编辑“小鼠后勤”和“抗原”字段，不能新增、复制、删除、开展、下架或修改其他分区 |
 | `serum.page.list` | page | 免疫实验列表 |
@@ -122,7 +122,7 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 
 | 权限码 | 类型 | 说明 |
 |--------|------|------|
-| `discovery.page.workbench` | page | 抗体发现项目工作台列表 |
+| `discovery.page.workbench` | page | 发现工作台列表 |
 | `discovery.workbench.edit` | action | 新增、保存、删除、排序安排 |
 | `discovery.page.synthesis_progress` | page | 合成与验证列表与外部订单比对 |
 | `discovery.synthesis_progress.edit` | action | 合成与验证全部编辑：新增、保存、批量粘贴、把负责人标记为「无人问津」（或取消标记）、删除、采用来源变更及手动同步合成订单；只有此权限能看到全部合成公司（其他人看到 `***`，改造实验员只能看到改造类工单的） |
@@ -241,8 +241,8 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 
 | 场景 | 规则 |
 |------|------|
-| 项目工作台查看 | `serum.page.workbench` |
-| 项目工作台全部编辑 | `serum.workbench.edit`（无项目负责人二次校验） |
+| 免疫工作台查看 | `serum.page.workbench` |
+| 免疫工作台全部编辑 | `serum.workbench.edit`（无项目负责人二次校验） |
 | 工作台草稿维护 | `serum.workbench.draft_edit`；按草稿状态和字段白名单校验，可保存草稿方案 |
 | 工作台实验保障 | `serum.workbench.support_edit`；按“小鼠后勤”和“抗原”字段白名单校验，不限制项目状态 |
 | 工作台开展 | `serum.workbench.edit`，外加 `serum.project.edit` 或 `serum.project.edit_all`（此时尚无正式项目，不校验负责人） |

@@ -23,8 +23,8 @@
 |------|------|
 | 工作台类页面共用约定（表头筛选、视图与列、队列排序、保存并发） | [modules/workbench.md](./modules/workbench.md) |
 | 千鼠万抗 · 靶点库 | [modules/atlas/target-library.md](./modules/atlas/target-library.md) |
-| 小鼠免疫 · 项目工作台 | [modules/immunology/workbench.md](./modules/immunology/workbench.md) |
-| 抗体发现 · 项目工作台 | [modules/discovery/workbench.md](./modules/discovery/workbench.md) |
+| 小鼠免疫 · 免疫工作台 | [modules/immunology/workbench.md](./modules/immunology/workbench.md) |
+| 抗体发现 · 发现工作台 | [modules/discovery/workbench.md](./modules/discovery/workbench.md) |
 | 抗体发现 · 合成与验证 | [modules/discovery/synthesis-progress.md](./modules/discovery/synthesis-progress.md) |
 | 分子与细胞 · 文库构建 | [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md) |
 | 分子与细胞 · 引物库 | [modules/molecular-cell/primer-library.md](./modules/molecular-cell/primer-library.md) |

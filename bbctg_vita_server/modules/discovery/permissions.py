@@ -34,7 +34,7 @@ ACCESS = ModuleAccess(
     features=(
         menu("menu.discovery", "抗体发现", "控制抗体发现模块菜单显示", sort_order=15, path="/discovery",
              icon="lucide:microscope"),
-        menu("menu.discovery.workbench", "项目工作台", "控制抗体发现项目工作台菜单显示", sort_order=5,
+        menu("menu.discovery.workbench", "发现工作台", "控制发现工作台菜单显示", sort_order=5,
              path="/discovery/workbench", icon="lucide:layout-dashboard", parent_code="menu.discovery"),
         menu("menu.discovery.synthesis_progress", "合成与验证", "控制抗体发现合成与验证菜单显示", sort_order=10,
              path="/discovery/synthesis-progress", icon="lucide:list-checks", parent_code="menu.discovery"),

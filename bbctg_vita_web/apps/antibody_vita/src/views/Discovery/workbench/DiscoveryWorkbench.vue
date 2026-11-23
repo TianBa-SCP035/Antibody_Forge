@@ -356,8 +356,8 @@
             v-model="row.harvest_date"
             class="inline-date"
             placeholder="剖鼠/上机"
-            :title="row.harvest_date ? '剖鼠日期已填写，不能再改' : ''"
-            :disabled="!canEdit || !!row.harvest_date"
+            :title="harvestDateLocked(row) ? '剖鼠日期已过，不能再改' : ''"
+            :disabled="!canEdit || harvestDateLocked(row)"
             @change="persistRow(row, 'harvest_date')"
           />
         </template>
@@ -842,7 +842,11 @@ export default {
   },
   methods: {
     harvestDateLocked(row) {
-      return Boolean(row?.harvest_date)
+      const text = String(row?.harvest_date || '').trim().slice(0, 10)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false
+      const now = new Date()
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      return text < today
     },
     isDrawerFieldDisabled(field, row) {
       if (field?.key === 'harvest_date' && this.harvestDateLocked(row)) return true
@@ -851,7 +855,7 @@ export default {
     drawerFieldBind(field) {
       const bind = workbenchDrawerMixin.methods.drawerFieldBind.call(this, field)
       if (field?.key === 'harvest_date' && this.harvestDateLocked(this.editingRow)) {
-        bind.title = '剖鼠日期已填写，不能再改'
+        bind.title = '剖鼠日期已过，不能再改'
       }
       return bind
     },
@@ -859,7 +863,7 @@ export default {
       const fixed = this.sheetSortLockReason?.(row, key) || this.sheetReadonlyLockReason(key)
       if (fixed) return fixed
       if (!this.canEdit) return '你没有编辑权限'
-      if (key === 'harvest_date' && this.harvestDateLocked(row)) return '剖鼠日期已填写，不能再改'
+      if (key === 'harvest_date' && this.harvestDateLocked(row)) return '剖鼠日期已过，不能再改'
       return ''
     },
     workbenchRowClassName({ row, rowIndex }) {

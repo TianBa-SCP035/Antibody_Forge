@@ -31,10 +31,10 @@ ACCESS: tuple[ModuleAccess, ...] = (
 MOUNTS: tuple[Mount, ...] = (
     Mount("modules.auth.routes:router", "/auth", "认证"),
     Mount("modules.atlas.routes:router", "/atlas", "千鼠万抗"),
-    Mount("modules.discovery.workbench.routes:router", "/discovery/workbench", "抗体发现-项目工作台"),
+    Mount("modules.discovery.workbench.routes:router", "/discovery/workbench", "抗体发现-发现工作台"),
     Mount("modules.discovery.synthesis_progress.routes:router", "/discovery/synthesis-progress", "抗体发现-合成进度"),
     Mount("modules.immunology.serum.routes:router", "/serum", "免疫部-血清"),
-    Mount("modules.immunology.workbench.routes:router", "/serum/workbench", "免疫部-项目工作台"),
+    Mount("modules.immunology.workbench.routes:router", "/serum/workbench", "免疫部-免疫工作台"),
     Mount("modules.immunology.titer.routes:router", "/serum/titer", "免疫部-效价"),
     Mount("modules.immunology.cell.routes:router", "/serum/cell_inventory", "免疫部-细胞"),
     Mount("modules.mega_automation.routes:router", "/mega-automation", "镁伽自动化"),

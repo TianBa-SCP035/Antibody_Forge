@@ -30,6 +30,7 @@ const props = defineProps({
   kind: { type: String, default: 'text' },
   value: { type: null, default: null },
   disabled: { type: Boolean, default: false },
+  title: { type: String, default: '' },
   options: { type: Array, default: () => [] },
   selectClass: { type: [String, Array, Object], default: '' },
   clearable: { type: Boolean, default: true },
@@ -72,6 +73,7 @@ function blurOnEnter(event) {
     placeholder="选择日期"
     style="width: 100%;"
     :disabled="disabled"
+    :title="title || undefined"
     @update:model-value="emit('input', $event)"
     @change="emit('change', $event)"
   />

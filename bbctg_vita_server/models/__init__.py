@@ -1,7 +1,7 @@
 from models.order_sync import OrderSync, OrderSyncBoard
 from models.supernatant import SynthesisSupernatantWell
 from models.target import Target
-from models.discovery import DiscoverySynthesisOrder, DiscoveryWorkbench
+from models.discovery import DiscoveryCellBank, DiscoverySynthesisOrder, DiscoveryWorkbench
 from models.molecular_cell import (
     MolecularLibraryOrder,
     MolecularLibraryResultFile,
@@ -45,6 +45,7 @@ __all__ = [
     "OrderSyncBoard",
     "SynthesisSupernatantWell",
     "Target",
+    "DiscoveryCellBank",
     "DiscoveryWorkbench",
     "DiscoverySynthesisOrder",
     "MolecularLibraryOrder",

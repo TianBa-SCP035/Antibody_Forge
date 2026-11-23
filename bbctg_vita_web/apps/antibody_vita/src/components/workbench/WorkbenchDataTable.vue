@@ -203,6 +203,7 @@ export const WorkbenchInlineDatePicker = defineComponent({
     modelValue: { type: [String, Object], default: '' },
     placeholder: { type: String, default: '' },
     disabled: { type: Boolean, default: false },
+    title: { type: String, default: '' },
     valueFormat: { type: String, default: 'YYYY-MM-DD' },
   },
   emits: ['update:modelValue', 'change'],
@@ -247,6 +248,7 @@ export const WorkbenchInlineDatePicker = defineComponent({
         valueFormat: this.valueFormat,
         placeholder: this.placeholder,
         disabled: this.disabled,
+        title: this.title || undefined,
         onClick: (e) => e.stopPropagation(),
         onChange: (val) => {
           this.$emit('change', val)
@@ -266,6 +268,7 @@ export const WorkbenchInlineDatePicker = defineComponent({
         style: { cursor: this.disabled ? 'not-allowed' : 'pointer' },
         role: this.disabled ? undefined : 'button',
         tabindex: this.disabled ? -1 : 0,
+        title: this.title || undefined,
         onClick: this.open,
         onKeydown: this.onKeydown,
       },

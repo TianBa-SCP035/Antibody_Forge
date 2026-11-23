@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Linux deployment helper: ./start_dev.sh [restart|stop|status|ensure|cron]; no argument means restart.
+# Linux deployment helper: ./start_dev.sh [restart|stop|status|ensure|cron|deploy]; no argument means restart.
 # Parent directory "prod" uses backend 8848 / pet-proxy 18765; all other Linux paths use 9527 / 18766.
-# restart also keeps the cron entries (watchdog every minute, backup.sh at 03:30) in place.
+# restart also keeps the cron entries (watchdog and deploy every minute, backup.sh at 03:30) in place.
 
 set -e
 export PATH="/usr/bin:/bin:${HOME}/.local/bin:/usr/local/bin:${PATH}"
@@ -31,9 +31,9 @@ CRON_TAG="# antibody-forge:${ROOT}"
 ACTION="${1:-restart}"
 case "$ACTION" in
   start) ACTION=restart ;;
-  restart|stop|status|ensure|cron) ;;
+  restart|stop|status|ensure|cron|deploy) ;;
   *)
-    echo "Usage: $0 [restart|stop|status|ensure|cron]" >&2
+    echo "Usage: $0 [restart|stop|status|ensure|cron|deploy]" >&2
     exit 2
     ;;
 esac
@@ -187,10 +187,47 @@ install_cron() {
   local current wanted
   current="$(crontab -l 2>/dev/null || true)"
   wanted="* * * * * bash \"$ROOT/start_dev.sh\" ensure >/dev/null 2>&1 $CRON_TAG
+* * * * * bash \"$ROOT/start_dev.sh\" deploy >>\"$ROOT/repository/logs/deploy.log\" 2>&1 $CRON_TAG
 30 3 * * * bash \"$ROOT/backup.sh\" >>\"$ROOT/repository/logs/backup.log\" 2>&1 $CRON_TAG"
   [ "$(grep -F "$CRON_TAG" <<<"$current" || true)" = "$wanted" ] && return 0
   { grep -vF "$CRON_TAG" <<<"$current" || true; echo "$wanted"; } | grep -v '^$' | crontab -
-  echo "Cron installed: watchdog every minute, backup daily at 03:30."
+  echo "Cron installed: watchdog and deploy every minute, backup daily at 03:30."
+}
+
+deploy_note() {
+  local stamp="$RUN_DIR/deploy.note"
+  [ "$(cat "$stamp" 2>/dev/null || true)" = "$1" ] && return 0
+  printf '%s\n' "$1" >"$stamp"
+  echo "[$(date '+%F %T')] $1"
+}
+
+pull_upstream() {
+  export GIT_TERMINAL_PROMPT=0
+  if ! git -C "$ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+    deploy_note "当前分支没有跟踪远程，跳过自动部署"
+    return 1
+  fi
+  if [ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]; then
+    deploy_note "仓库有未提交改动，跳过自动部署"
+    return 1
+  fi
+  if ! git -C "$ROOT" fetch --quiet origin; then
+    deploy_note "git fetch 失败。这个用户要能免密访问 origin"
+    return 1
+  fi
+  local local_sha remote_sha base_sha
+  local_sha="$(git -C "$ROOT" rev-parse HEAD)"
+  remote_sha="$(git -C "$ROOT" rev-parse '@{u}')"
+  [ "$local_sha" = "$remote_sha" ] && return 1
+  base_sha="$(git -C "$ROOT" merge-base HEAD '@{u}')"
+  if [ "$local_sha" != "$base_sha" ]; then
+    deploy_note "本地分支和远程分叉了，跳过自动部署"
+    return 1
+  fi
+  git -C "$ROOT" merge --ff-only '@{u}'
+  rm -f "$RUN_DIR/deploy.note"
+  echo "[$(date '+%F %T')] 已更新到 $(git -C "$ROOT" rev-parse --short HEAD)，开始重启"
+  return 0
 }
 
 case "$ACTION" in
@@ -236,6 +273,11 @@ case "$ACTION" in
     install_cron
     crontab -l | grep -F "$CRON_TAG"
     exit 0
+    ;;
+  deploy)
+    [ -f "$STOP_MARK" ] && exit 0
+    pull_upstream || exit 0
+    exec bash "$ROOT/start_dev.sh" restart
     ;;
 esac
 

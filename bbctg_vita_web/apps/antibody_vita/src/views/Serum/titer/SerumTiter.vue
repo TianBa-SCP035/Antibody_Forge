@@ -45,8 +45,9 @@
         <el-col :md="16" :lg="16" :sm="24" class="info-col">
           <el-card shadow="never" class="info-card">
             <template #header>
-              <div class="card-header">
+              <div class="card-header space-between">
                 <span><el-icon><Document /></el-icon> 项目信息 (Project Info)</span>
+                <el-button v-if="project" link type="primary" @click="schemeVisible = true">免疫方式</el-button>
               </div>
             </template>
             <div v-if="project" class="project-info-content">
@@ -65,6 +66,7 @@
                   />
                 </el-descriptions-item>
                 <el-descriptions-item label="归类鼠型">{{ project.mouse_strain || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="免疫方式">{{ immunoMethodText }}</el-descriptions-item>
                 <el-descriptions-item label="负责人">{{ project.owner }}</el-descriptions-item>
                 
                 <el-descriptions-item label="靶点类型">{{ project.target_type || '-' }}</el-descriptions-item>
@@ -349,6 +351,26 @@
         </el-card>
       </div>
     </div>
+
+    <el-dialog v-model="schemeVisible" title="免疫方式" width="860px">
+      <p class="scheme-lead">{{ immunoMethodText === '-' ? '工作台还没填免疫方式。下面是免疫实验里的步骤，不用离开这个页面。' : `工作台免疫方式：${immunoMethodText}` }}</p>
+      <el-table :data="project?.mouse_groups || []" size="small" border empty-text="暂无分组" max-height="220">
+        <el-table-column prop="group_id" label="组别" width="80" />
+        <el-table-column prop="mouse_strain_category" label="归类鼠型" min-width="110" />
+        <el-table-column prop="mouse_strain" label="品系" min-width="110" />
+        <el-table-column prop="mouse_no_list" label="鼠号" min-width="160" show-overflow-tooltip />
+      </el-table>
+      <el-table :data="schemeSteps" size="small" border empty-text="暂无免疫步骤" max-height="320" style="margin-top: 12px">
+        <el-table-column prop="group_id" label="组别" width="80" />
+        <el-table-column prop="stage_name" label="阶段" min-width="100" />
+        <el-table-column prop="route" label="途径" width="90" />
+        <el-table-column label="抗原" min-width="140">
+          <template #default="{ row }">{{ antigenLabel(row.antigen_id) }}</template>
+        </el-table-column>
+        <el-table-column prop="antigen_dose" label="剂量" width="90" />
+        <el-table-column prop="date_actual" label="日期" width="110" />
+      </el-table>
+    </el-dialog>
 
     <el-dialog
       v-model="plateCopyDialogVisible"
@@ -674,6 +696,7 @@ export default {
       platesLoading: false,
       activePlateName: '',
       plateCopyDialogVisible: false,
+      schemeVisible: false,
       copySourcePlateKey: '',
       copyTargetPlateKeys: [],
       plateTimers: {},
@@ -695,6 +718,19 @@ export default {
     },
     currentUserName() {
       return getSerumUserName(this.currentUserInfo) || 'unknown'
+    },
+    immunoMethodText() {
+      const methods = this.project?.immuno_method
+      if (Array.isArray(methods) && methods.length) return methods.join('、')
+      const routes = [...new Set((this.project?.steps || []).map((step) => String(step.route || '').trim()).filter(Boolean))]
+      return routes.join('、') || '-'
+    },
+    schemeSteps() {
+      return [...(this.project?.steps || [])].sort((a, b) => {
+        const group = String(a.group_id || '').localeCompare(String(b.group_id || ''), 'zh-CN')
+        if (group) return group
+        return (a.sort_order || 0) - (b.sort_order || 0)
+      })
     },
     immuneStageOptions() {
       if (!this.project || !this.project.steps) return []
@@ -819,6 +855,11 @@ export default {
     next()
   },
   methods: {
+    antigenLabel(id) {
+      const key = String(id || '').trim()
+      const found = (this.project?.antigens || []).find((item) => String(item.antigen_id || '').trim() === key)
+      return found?.antigen_name || key || '-'
+    },
     scheduleFacsConclusionRefresh(immediate = false) {
       if (this.conclusionRefreshTimer) {
         clearTimeout(this.conclusionRefreshTimer)
@@ -1898,6 +1939,12 @@ export default {
      flex-direction: column;
      padding: 14px;
   }
+}
+
+.scheme-lead {
+  margin: 0 0 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
 }
 
 .card-header {

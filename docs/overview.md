@@ -29,6 +29,8 @@ Antibody_Forge/
 
 Windows 在仓库根运行 `start_dev.bat`；Linux test/prod 运行 `./start_dev.sh`。首次运行需先准备环境配置和数据库，完整步骤见 [deploy.md](./deploy.md)。
 
+改功能时直接做完。表结构由 Agent 当轮打进主库，代码推到服务器正在跟踪的分支后自动部署。约定见 [README.md](./README.md#开发约定)。
+
 ## 模块路由
 
 下表只列当前存在的真实路径；字段、状态和接口细节见 [模块文档索引](./README.md#模块文档)。

@@ -6,6 +6,8 @@
  */
 import type { FlowWorkOrder, FlowWorkOrderSamplePlate, FlowWorkOrderWell } from '#/api/megaAutomation';
 
+import { mouseSampleCode } from '#/views/Serum/titer/titerMouseSelect';
+
 import { createDefaultFlowWorkOrder, createDefaultSamplePlate, PLATE_ROWS } from './flowWorkOrderModel';
 
 export const TITER_UPSTREAM_PREFILL_QUERY = 'titer-wizard';
@@ -15,6 +17,7 @@ export const TITER_INSTRUMENT_WIZARD_DRAFT_KEY = 'titer-instrument-wizard-draft'
 export interface TiterInstrumentWizardDraft {
   experiment_id: string;
   groups: Array<{ group_id: string; selected_mouse_nos: string[] }>;
+  mouseGroups?: Array<{ group_id?: string; mouse_strain_category?: string }>;
   project_code?: string;
   target_codes?: string[];
   target_name?: string;
@@ -59,12 +62,18 @@ function buildTiterUpstreamPlateWells(mouseNos: string[]): FlowWorkOrderWell[] {
   );
 }
 
-/** 组序 × 组内原序；不去重、不重排（同鼠号可重复出现） */
+function categoryOf(draft: TiterInstrumentWizardDraft, groupId: string) {
+  const group = (draft.mouseGroups || []).find((item) => String(item?.group_id || '').trim() === groupId);
+  return String(group?.mouse_strain_category || '').trim();
+}
+
+/** 组序 × 组内原序；不去重、不重排（同鼠号可重复出现）。样本号带上该组归类鼠型。 */
 function flattenSelectedMouseNos(draft: TiterInstrumentWizardDraft): string[] {
   const nos: string[] = [];
   for (const group of draft.groups || []) {
+    const category = categoryOf(draft, String(group.group_id || '').trim());
     for (const no of group.selected_mouse_nos || []) {
-      const text = String(no || '').trim();
+      const text = mouseSampleCode(category, String(no || ''));
       if (text) nos.push(text);
     }
   }

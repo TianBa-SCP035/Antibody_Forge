@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, DateTime, Integer, JSON, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, DateTime, Index, Integer, JSON, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
@@ -220,5 +220,49 @@ class DiscoverySynthesisOrder(Base):
             "created_by": self.created_by,
             "created_at": format_time(self.created_at),
             "updated_at": format_time(self.updated_at),
+        }
+
+
+class DiscoveryCellBank(Base):
+    __tablename__ = "discovery_cell_bank"
+    __log_label__ = "发现留存细胞"
+    __audit_label__ = ("discovery_id", "cell_kind")
+    __table_args__ = (
+        Index("idx_discovery_cell_bank_workbench_id", "workbench_id"),
+        {"comment": "抗体发现留存细胞冻存"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    workbench_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="发现安排ID")
+    discovery_id: Mapped[str | None] = mapped_column(String(32), comment="发现安排号")
+    cell_kind: Mapped[str] = mapped_column(String(32), nullable=False, comment="细胞类型")
+    mouse_nos: Mapped[str | None] = mapped_column(String(1000), comment="鼠号")
+    tube_count: Mapped[int | None] = mapped_column(Integer, comment="管数")
+    cell_count: Mapped[str | None] = mapped_column(String(64), comment="细胞量")
+    volume: Mapped[str | None] = mapped_column(String(64), comment="体积")
+    box_location: Mapped[str | None] = mapped_column(String(128), comment="冻存位置")
+    frozen_on: Mapped[str | None] = mapped_column(DateString, comment="冻存日期")
+    operator: Mapped[str | None] = mapped_column(String(64), comment="操作人")
+    remark: Mapped[str | None] = mapped_column(String(500), comment="备注")
+    created_by: Mapped[str | None] = mapped_column(String(64), comment="创建人")
+    created_at: Mapped[object | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")
+
+    def to_dict(self) -> dict:
+        created = self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None
+        return {
+            "id": self.id,
+            "workbench_id": self.workbench_id,
+            "discovery_id": self.discovery_id,
+            "cell_kind": self.cell_kind,
+            "mouse_nos": self.mouse_nos,
+            "tube_count": self.tube_count,
+            "cell_count": self.cell_count,
+            "volume": self.volume,
+            "box_location": self.box_location,
+            "frozen_on": self.frozen_on,
+            "operator": self.operator,
+            "remark": self.remark,
+            "created_by": self.created_by,
+            "created_at": created,
         }
 

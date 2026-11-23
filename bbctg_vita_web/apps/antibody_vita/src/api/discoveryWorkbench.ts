@@ -66,6 +66,24 @@ export function deleteDiscoveryWorkbench(id: number | string) {
   return requestClient.post('/discovery/workbench/delete', { id }, skipGlobalErrorHandler);
 }
 
+export function fetchDiscoveryCellBank(workbenchId: number | string) {
+  return requestClient.get('/discovery/workbench/cell_bank', {
+    params: { workbench_id: workbenchId },
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function saveDiscoveryCellBank(data: any) {
+  return requestClient.post('/discovery/workbench/cell_bank/save', data, {
+    timeout: SAVE_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function deleteDiscoveryCellBank(id: number | string) {
+  return requestClient.post('/discovery/workbench/cell_bank/delete', { id }, skipGlobalErrorHandler);
+}
+
 export function reorderDiscoveryWorkbench(movedId: number | string, targetId: number | string) {
   return requestClient.post(
     '/discovery/workbench/reorder',

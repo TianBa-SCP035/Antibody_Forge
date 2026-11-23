@@ -552,11 +552,13 @@
               @detail="openSerumProject"
               @claim="handleClaim"
               @delete="handleDelete"
+              @pairing="openPairing"
+              @plate="downloadPlateLayout"
             />
           </template>
         </WorkbenchDataTable>
 
-        <WorkbenchSheet v-else>
+        <WorkbenchSheet v-else :actions-width="460">
           <template #cell-target_name="{ row }">
             <WorkbenchColorMark
               :value="row.target_color"
@@ -576,6 +578,8 @@
               @detail="openSerumProject"
               @claim="handleClaim"
               @delete="handleDelete"
+              @pairing="openPairing"
+              @plate="downloadPlateLayout"
             />
           </template>
         </WorkbenchSheet>
@@ -644,6 +648,8 @@
           @detail="openSerumProject"
           @claim="handleClaim"
           @delete="handleDelete"
+          @pairing="openPairing"
+          @plate="downloadPlateLayout"
         />
         <el-button
           v-if="canCreate"
@@ -738,6 +744,7 @@
         </div>
       </template>
     </WorkbenchDrawer>
+    <SynthesisPairingDialog v-model="pairingVisible" :row="pairingRow" />
   </div>
 </template>
 
@@ -799,6 +806,7 @@ import {
   claimDiscoverySynthesis,
   deleteDiscoverySynthesis,
   exportDiscoverySynthesisList,
+  exportSynthesisPlateLayout,
   fetchDiscoverySynthesisColumnValues,
   fetchDiscoverySynthesisList,
   fetchDiscoverySynthesisOptions,
@@ -814,6 +822,7 @@ import {
   SYNTHESIS_PM_EDIT,
 } from '#/api/discoverySynthesis'
 import { notifyApiError } from '#/api/errors'
+import { downloadListExcel } from '#/utils/downloadExcel'
 import { skipGlobalErrorHandler } from '#/api/request'
 import { SERUM_PAGE_DETAIL } from '#/api/serum'
 import { hasAccessCode } from '#/utils/accessCode'
@@ -825,6 +834,7 @@ import { applyOptionLists } from '#/utils/optionLists'
 import { uniqueNames } from '#/utils/userOptions'
 import UserSelect from '#/components/UserSelect.vue'
 import SynthesisAssayStatusEditor from './SynthesisAssayStatusEditor.vue'
+import SynthesisPairingDialog from './SynthesisPairingDialog.vue'
 import SynthesisRowActions from './SynthesisRowActions.vue'
 import { openSerumProject } from '../openSerumProject'
 import {
@@ -994,6 +1004,7 @@ export default {
     Search,
     UserSelect,
     SynthesisAssayStatusEditor,
+    SynthesisPairingDialog,
     SynthesisRowActions,
     Tools,
     WorkbenchColorMark,
@@ -1055,7 +1066,11 @@ export default {
       assayBreakdownCounts: null,
       assayBreakdownLoading: false,
       assayBreakdownSlow: false,
-      workbenchColumns: WORKBENCH_COLUMNS,
+      workbenchColumns: WORKBENCH_COLUMNS.map((column) => (
+        column.key === 'actions' ? { ...column, width: 460 } : column
+      )),
+      pairingVisible: false,
+      pairingRow: null,
       headerMenuColumns: HEADER_MENU_COLUMNS,
       cellColorOptions: CELL_COLOR_OPTIONS,
       remoteDuplicatesById: {},
@@ -1429,6 +1444,23 @@ export default {
     },
     openSerumProject(row) {
       return openSerumProject(this, row, String(row?.experiment_id || row?.project_code || '').trim(), '请先填写项目编号')
+    },
+    openPairing(row) {
+      if (!row?.id) return
+      this.pairingRow = row
+      this.pairingVisible = true
+    },
+    async downloadPlateLayout(row) {
+      if (!row?.id) return
+      if (!String(row.order_no || '').trim()) {
+        ElMessage.warning('请先填写订单号')
+        return
+      }
+      try {
+        await downloadListExcel(() => exportSynthesisPlateLayout(row.id), `版布局_${row.order_no}.xlsx`)
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '版布局下载失败' } })
+      }
     },
     async handleClaim(row) {
       if (!row?.id) return

@@ -127,6 +127,21 @@ export function syncDiscoverySynthesisOrdersNow() {
   );
 }
 
+export function fetchSynthesisTransfectionPairs(id: number | string) {
+  return requestClient.get('/discovery/synthesis-progress/transfection_pairs', {
+    params: { id },
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function exportSynthesisPlateLayout(id: number | string) {
+  return requestClient.download('/discovery/synthesis-progress/plate_layout', {
+    params: { id },
+    timeout: DOWNLOAD_TIMEOUT,
+    ...downloadConfig,
+  });
+}
+
 export function exportDiscoverySynthesisList(data: any) {
   return requestClient.download('/discovery/synthesis-progress/export_list', {
     data,

@@ -269,12 +269,12 @@ Excel 操作范围是当前分页。单值粘贴到多格选区会填满选区�
 
 ## 新模块全栈接入清单
 
-以下按「数据库与后端 → 权限与审计 → 前端基础层 → 前端页面与文档」顺序列出新工作台或业务模块的接入位置；能够由模块声明推导的内容无需手工登记。
+以下是新工作台要接到的位置。照发现工作台抄最近的一份即可，不先讨论结构。能由模块声明推导的内容不用再登记。
 
 > 参照模块是发现工作台：前端 `src/views/Discovery/workbench/`，后端 `modules/discovery/workbench/` 与 `modules/discovery/permissions.py`。权限、审计、功能开关和存储键均按模块声明；`sys_permission`、`sys_permission_api` 不是登记入口，已录入靶点接口由各模块自己提供，视图偏好键写在对应 columns 文件里，没有中心清单。
 
 1. **后端 ORM 模型（有新表时必选）**：在 `bbctg_vita_server/models/<module>.py` 新增模型（`__audit_label__` / `__log_label__` 按需），列补齐中文 `comment`；日期字符串优先用 `models/types.py` 的 `DateString`。`models/__init__.py` 当前无运行时引用，不是必需登记点。
-2. **数据库 DDL（有新表时必选）**：在 `docs/vita-database.sql` 维护当前态 DDL。现网升级 SQL 单独交付，不放仓库。
+2. **数据库 DDL（有新表时必选）**：在 `docs/vita-database.sql` 维护当前态 DDL。已有库的差额按 `.cursor/rules/database-schema.mdc` 当轮执行，不另存升级脚本。
 3. **模块权限、功能开关与挂载（必选）**：在 `bbctg_vita_server/modules/<module>/permissions.py` 用 `page()` / `action()` / `data()` / `menu()` / `feature()` / `job()` 声明；在 `modules/registry.py` 的 `ACCESS` / `MOUNTS` 各加一项。`api.py` 按登记表挂载，不必再改中心权限/功能/审计文件。
 4. **路由与服务（必选）**：`routes.py` 用 `require(..., audit=)`，不写 try/except；可写字段用 `utils/model_fields.model_fields`，表头用 `header_columns`；业务错误抛 `BusinessError` / `ForbiddenError` / `NotFoundError` / `ConflictError`。
 5. **公共下拉选项授权**：`GET /api/options/targets` 与 `/users` 对任一业务页面权限放行（`BUSINESS_PAGE_CODES`），新页面用 `page()` 声明后自动包含。

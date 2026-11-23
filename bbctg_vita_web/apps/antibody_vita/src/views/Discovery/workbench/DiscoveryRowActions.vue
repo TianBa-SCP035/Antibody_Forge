@@ -23,6 +23,16 @@
       </el-button>
       <el-button
         class="list-table-action-btn"
+        type="primary"
+        plain
+        :icon="Box"
+        title="留存细胞冻存入库"
+        @click="$emit('freeze', row)"
+      >
+        冻存
+      </el-button>
+      <el-button
+        class="list-table-action-btn"
         type="warning"
         plain
         :icon="Delete"
@@ -37,7 +47,7 @@
 </template>
 
 <script>
-import { CopyDocument, Delete, Document } from '@element-plus/icons-vue'
+import { Box, CopyDocument, Delete, Document } from '@element-plus/icons-vue'
 import { ElButton, ElButtonGroup } from 'element-plus'
 
 export default {
@@ -48,9 +58,9 @@ export default {
     canEdit: { type: Boolean, default: false },
     canHandoff: { type: Boolean, default: false },
   },
-  emits: ['detail', 'handoff', 'delete'],
+  emits: ['detail', 'handoff', 'delete', 'freeze'],
   setup() {
-    return { CopyDocument, Delete, Document }
+    return { Box, CopyDocument, Delete, Document }
   },
 }
 </script>

@@ -356,7 +356,8 @@
             v-model="row.harvest_date"
             class="inline-date"
             placeholder="剖鼠/上机"
-            :disabled="!canEdit"
+            :title="row.harvest_date ? '剖鼠日期已填写，不能再改' : ''"
+            :disabled="!canEdit || !!row.harvest_date"
             @change="persistRow(row, 'harvest_date')"
           />
         </template>
@@ -377,11 +378,12 @@
             @detail="openSerumProject"
             @handoff="handleHandoff"
             @delete="handleDelete"
+            @freeze="openCellBank"
           />
         </template>
       </WorkbenchDataTable>
 
-      <WorkbenchSheet v-else>
+      <WorkbenchSheet v-else :row-class-name="workbenchRowClassName" actions-width="320">
         <template #actions="{ row }">
           <DiscoveryRowActions
             :row="row"
@@ -390,6 +392,7 @@
             @detail="openSerumProject"
             @handoff="handleHandoff"
             @delete="handleDelete"
+            @freeze="openCellBank"
           />
         </template>
       </WorkbenchSheet>
@@ -427,6 +430,7 @@
           @detail="openSerumProject"
           @handoff="handleHandoff"
           @delete="handleDelete"
+          @freeze="openCellBank"
         />
       </template>
       <template #field="{ field }">
@@ -476,6 +480,11 @@
       v-model="handoffVisible"
       :discovery-row="handoffRow"
       @created="onLibraryHandoffCreated"
+    />
+    <DiscoveryCellBankDialog
+      v-model="cellBankVisible"
+      :row="cellBankRow"
+      :can-edit="canEdit"
     />
   </div>
 </template>
@@ -550,6 +559,8 @@ import { applyOptionLists } from '#/utils/optionLists'
 import { uniqueNames } from '#/utils/userOptions'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import UserSelect from '#/components/UserSelect.vue'
+import { dateBreakRowClass } from '#/components/workbench/dateBreakRowClass'
+import DiscoveryCellBankDialog from './DiscoveryCellBankDialog.vue'
 import DiscoveryRowActions from './DiscoveryRowActions.vue'
 import { hasDiscoveryFocus, takeDiscoveryFocus } from './discoveryFocus'
 import { openSerumProject } from '../openSerumProject'
@@ -649,6 +660,7 @@ export default {
   workbenchSheet: { columns: SHEET_COLUMNS, order: SHEET_COLUMN_ORDER, aliases: SHEET_HEADER_ALIASES },
   components: {
     AdvancedOpsBar,
+    DiscoveryCellBankDialog,
     DiscoveryRowActions,
     LibraryHandoffDialog,
     ElButton,
@@ -707,7 +719,11 @@ export default {
       lineSuggestStyle: {},
       editorSections: EDITOR_SECTIONS,
       statusViews: STATUS_VIEWS,
-      workbenchColumns: WORKBENCH_COLUMNS,
+      workbenchColumns: WORKBENCH_COLUMNS.map((column) => (
+        column.key === 'actions' ? { ...column, width: 320 } : column
+      )),
+      cellBankVisible: false,
+      cellBankRow: null,
       headerMenuColumns: HEADER_MENU_COLUMNS,
       listLoaded: false,
       consumingCreated: false,
@@ -825,6 +841,41 @@ export default {
     },
   },
   methods: {
+    harvestDateLocked(row) {
+      return Boolean(row?.harvest_date)
+    },
+    isDrawerFieldDisabled(field, row) {
+      if (field?.key === 'harvest_date' && this.harvestDateLocked(row)) return true
+      return !this.canEdit
+    },
+    drawerFieldBind(field) {
+      const bind = workbenchDrawerMixin.methods.drawerFieldBind.call(this, field)
+      if (field?.key === 'harvest_date' && this.harvestDateLocked(this.editingRow)) {
+        bind.title = '剖鼠日期已填写，不能再改'
+      }
+      return bind
+    },
+    sheetCellLockReason(row, key) {
+      const fixed = this.sheetSortLockReason?.(row, key) || this.sheetReadonlyLockReason(key)
+      if (fixed) return fixed
+      if (!this.canEdit) return '你没有编辑权限'
+      if (key === 'harvest_date' && this.harvestDateLocked(row)) return '剖鼠日期已填写，不能再改'
+      return ''
+    },
+    workbenchRowClassName({ row, rowIndex }) {
+      return dateBreakRowClass({
+        list: this.list,
+        row,
+        rowIndex,
+        field: 'harvest_date',
+        editingId: this.editingId,
+      })
+    },
+    openCellBank(row) {
+      if (!row?.id) return
+      this.cellBankRow = row
+      this.cellBankVisible = true
+    },
     savedFieldKeys(fields) {
       const keys = new Set(fields)
       if (keys.has('target_codes') || keys.has('target_name')) {

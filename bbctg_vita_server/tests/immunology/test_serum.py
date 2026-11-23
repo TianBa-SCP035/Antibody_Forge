@@ -124,6 +124,13 @@ class SerumSaveConflictTests(DbTestCase):
         self.db.commit()
         return project
 
+    def test_detail_includes_workbench_immuno_method(self):
+        project = self._add_project()
+        self.db.add(SerumImmWorkbench(experiment_id="P101", immuno_method="蛋白, LNP, 蛋白"))
+        self.db.commit()
+        detail = serum.get_detail(self.db, project_id=project.id)
+        self.assertEqual(detail["immuno_method"], ["蛋白", "LNP"])
+
     def test_stale_project_revision_raises_conflict(self):
         project = self._add_project()
         detail = serum.get_detail(self.db, project_id=project.id)

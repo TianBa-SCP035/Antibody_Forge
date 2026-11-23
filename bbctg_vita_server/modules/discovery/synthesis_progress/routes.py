@@ -10,7 +10,7 @@ from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import actor_name, get_current_user
 from modules.auth.permissions import UserContext, get_user_context, require
-from modules.discovery.synthesis_progress import service
+from modules.discovery.synthesis_progress import order_files, service
 from modules.system.audit_routes import audit_quiet
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
 from utils.model_fields import fields_request_model
@@ -272,4 +272,23 @@ def export_synthesis_order_list(
         hide_corp=hide_corp,
         keep_engineering_rows="eng" in scopes,
     )
+    return xlsx_response(output, filename)
+
+
+@router.get("/transfection_pairs", dependencies=[require(SYNTHESIS_VIEW_PERMISSION)])
+def synthesis_transfection_pairs(
+    id: int = Query(gt=0),
+    db: Session = Depends(get_db),
+) -> dict:
+    return success(order_files.transfection_pairs(db, id))
+
+
+@router.get("/plate_layout", dependencies=[require(SYNTHESIS_VIEW_PERMISSION)])
+def synthesis_plate_layout(
+    id: int = Query(gt=0),
+    db: Session = Depends(get_db),
+) -> Response:
+    from utils.excel import xlsx_response
+
+    output, filename = order_files.export_plate_layout(db, id)
     return xlsx_response(output, filename)

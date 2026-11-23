@@ -66,10 +66,11 @@ Windows： 无需路径约定，固定环境为 local。
 | 命令 | 作用 |
 |------|------|
 | 不带参数 / `restart` / `start` | 补依赖 → 停掉旧进程 → 启动。Linux 先构建前端再停后端，构建期间旧后端照常服务，并顺带补齐 crontab 条目（同 `cron`）；`backend.nohup.log` 超过 50MB 时改名为 `.1` |
+| `deploy`（仅 Linux，crontab 每分钟） | 跟踪分支有新提交就快进拉取，再走一遍 `restart`。手动 `stop` 之后不拉。本地有未提交改动、和远程分叉、或拉不下来时跳过，原因记在 `repository/logs/deploy.log` |
 | `stop` | 只停止。Windows 关掉各窗口及其进程；Linux 先正常结束后端，10 秒未退出再强杀，同时停桌宠代理，并暂停看门狗 |
 | `status` | 查看端口是否在监听；Linux 同时请求 `GET /api/health` |
 | `ensure`（仅 Linux） | 看门狗：后端或桌宠代理没在监听就只启动它（不构建、不补依赖），各自 5 分钟内最多拉起一次；`stop` 后不拉起 |
-| `cron`（仅 Linux） | 写入当前用户 crontab：每分钟 `ensure`、每天 03:30 `backup.sh`，并列出条目；只改本仓库的条目，已存在则不动 |
+| `cron`（仅 Linux） | 写入当前用户 crontab：每分钟 `ensure`、每分钟 `deploy`、每天 03:30 `backup.sh`，并列出条目；只改本仓库的条目，已存在则不动 |
 
 补依赖（`ensure_deps.py`）：Python 只检查 `requirements.txt` 里的包是否已安装，不比对版本；`pnpm-lock.yaml` 内容变化时重新 `pnpm install --frozen-lockfile`。
 
@@ -81,9 +82,9 @@ Windows： 无需路径约定，固定环境为 local。
 
 1. 按「环境与端口」放置仓库；维护 `config/test|prod/vita_server.env`（`PORT`：9527 / 8848）。
 2. 首次：本机已有 conda 环境和 `pnpm`。
-3. 日常：仓库根 `./start_dev.sh`；停止 `./start_dev.sh stop`；查看 `./start_dev.sh status`。
+3. 日常不用登录服务器。仓库跟踪哪个远程分支，就把代码推到那个分支；服务器每分钟拉取，有新提交就构建前端并重启。第一次仍要在服务器执行一次 `./start_dev.sh`（或 `./start_dev.sh cron`），把这条定时任务写进 crontab，并且这个用户要能免密 `git fetch`。停止 `./start_dev.sh stop`；查看 `./start_dev.sh status`。
 4. 启动后脚本最多等 30 秒探活；启动失败（如 prod 配置检查不通过）会打印 `repository/logs/backend.nohup.log` 最后 30 行并以非零退出。桌宠代理起不来只打印 `repository/logs/pet-proxy.nohup.log` 末尾，不影响后端和退出码。
-5. 托管与备份无需单独操作：`restart` 会写好 crontab，之后后端崩溃或服务器重启 1 分钟内自动拉起，每天自动备份（见「备份与恢复」）。`crontab -l` 可查看；不想要时 `crontab -e` 删掉带 `# antibody-forge:` 的行（下次 `restart` 会重新写入）。
+5. 托管、自动部署与备份无需再操作：`restart` 会写好 crontab。之后后端崩溃或服务器重启 1 分钟内自动拉起，远程有新提交 1 分钟内开始部署，每天自动备份（见「备份与恢复」）。`crontab -l` 可查看；不想要时 `crontab -e` 删掉带 `# antibody-forge:` 的行（下次 `restart` 会重新写入）。
 6. 配置 Nginx 代理，对外 test `:9958`、prod `:1314`。
 
 ## 备份与恢复

@@ -47,6 +47,7 @@
             empty-text="暂无小鼠分组"
           >
             <el-table-column label="组别" prop="group_id" width="70" show-overflow-tooltip />
+            <el-table-column label="归类鼠型" prop="mouse_strain_category" min-width="100" show-overflow-tooltip />
             <el-table-column label="品系" prop="mouse_strain" min-width="110" show-overflow-tooltip />
             <el-table-column label="性别" prop="sex" width="56" align="center" />
             <el-table-column label="数量" prop="mouse_count" width="56" align="center" />
@@ -122,7 +123,8 @@
           <div class="tio-board-bar">
             <div class="tio-board-who">
               <span class="tio-board-gid">{{ group.groupId }}</span>
-              <span v-if="group.strain" class="tio-board-strain">{{ group.strain }}</span>
+              <span v-if="group.strainCategory" class="tio-board-strain">{{ group.strainCategory }}</span>
+              <span v-if="group.strain && group.strain !== group.strainCategory" class="tio-board-strain">{{ group.strain }}</span>
             </div>
             <span class="tio-board-ratio">
               {{ group.selectedCount }}
@@ -153,11 +155,11 @@
                     :key="cell.key"
                     class="tio-well"
                     :class="wellCellClass(group.groupId, cell)"
-                    :title="cellTitle(cell)"
+                    :title="cellTitle(group, cell)"
                     @mousedown.prevent="onCellMouseDown(group.groupId, cell, $event)"
                     @mouseenter="onCellMouseEnter(group.groupId, cell)"
                   >
-                    <span v-if="cell.no" class="tio-well-text">{{ cell.no }}</span>
+                    <span v-if="cell.no" class="tio-well-text">{{ sampleLabel(group, cell) }}</span>
                   </td>
                 </tr>
               </tbody>
@@ -222,6 +224,7 @@ import {
   PLATE_COLUMN_LIST,
   buildPlateGroup,
   miceInGroup,
+  mouseSampleCode,
   mouseSlotsInRect,
   selectionKey,
   titerOrderIdentityFields,
@@ -409,9 +412,13 @@ export default {
         'is-drag-remove': preview && !this.cellDragSelectMode,
       };
     },
-    cellTitle(cell) {
-      if (!cell.no) return '';
-      return cell.alive ? cell.no : `${cell.no}（死亡）`;
+    sampleLabel(group, cell) {
+      return mouseSampleCode(group?.strainCategory, cell?.no);
+    },
+    cellTitle(group, cell) {
+      const label = this.sampleLabel(group, cell);
+      if (!label) return '';
+      return cell.alive ? label : `${label}（死亡）`;
     },
     findCellBySlot(groupId, slotNo) {
       const group = this.plateGroups.find((item) => item.groupId === groupId);

@@ -216,6 +216,10 @@
 | `POST` | `/api/discovery/synthesis-progress/adopt_source` | `discovery.synthesis_progress.edit` | 采用外部来源快照覆盖本地差异字段（`id`、可选 `fields`） |
 | `POST` | `/api/discovery/synthesis-progress/sync_now` | `discovery.synthesis_progress.edit` | 手动立即执行一次定时同步（批量匹配与进度回填，再自动建单），返回 `linked`、`created`、`updated`、`unchanged`、`total` |
 | `POST` | `/api/discovery/synthesis-progress/export_list` | `discovery.page.synthesis_progress` | 按当前筛选与排序导出 Excel（`.xlsx`） |
+| `GET` | `/api/discovery/synthesis-progress/transfection_pairs?id=` | `discovery.page.synthesis_progress` | 订单号为 `TRF-` 转染工单号时，返回该单蛋白的重链、轻链配对；否则 `items` 为空 |
+| `GET` | `/api/discovery/synthesis-progress/plate_layout?id=` | `discovery.page.synthesis_progress` | 按订单号下载合成公司推送的上清板布局 Excel；还没收到时 404 |
+
+行操作在「删除 / 取消」前提供「配对」（仅转染交接单）和「版布局」。配对弹窗列出蛋白、重链、轻链，并可跳到转染表；版布局按订单号（不区分大小写）导出已接收的孔位。
 
 ## 7. 定时任务
 

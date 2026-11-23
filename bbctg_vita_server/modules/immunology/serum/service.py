@@ -618,7 +618,24 @@ def get_detail(
     data = _project_snapshot(db, project)
     data["project_revision"] = _project_revision(data)
     data["titer_owners"] = _collect_titer_owners_by_experiment(db, [exp_id]).get(exp_id, [])
+    data["immuno_method"] = _immuno_method_for_experiment(db, exp_id)
     return data
+
+
+def _immuno_method_for_experiment(db: Session, experiment_id: str | None) -> list[str]:
+    eid = str(experiment_id or "").strip()
+    if not eid:
+        return []
+    values = db.scalars(
+        select(SerumImmWorkbench.immuno_method).where(SerumImmWorkbench.experiment_id == eid)
+    ).all()
+    found: list[str] = []
+    for raw in values:
+        for part in str(raw or "").split(","):
+            text = part.strip()
+            if text and text not in found:
+                found.append(text)
+    return found
 
 
 def get_mouse_groups(db: Session, experiment_id: str) -> list[dict]:

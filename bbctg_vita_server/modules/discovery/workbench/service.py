@@ -166,6 +166,7 @@ def _split_filter_tokens(value: Any) -> list[str]:
 
 def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> bool:
     previous_harvest = row.harvest_date or None
+    harvest_changed = False
     for field, spec in FIELDS.items():
         if field not in data:
             continue
@@ -186,10 +187,16 @@ def _apply_fields(row: DiscoveryWorkbench, data: dict[str, Any]) -> bool:
             value = _normalize_status(value)
         elif field == "priority":
             value = normalize_priority(value)
+        elif field == "harvest_date":
+            value = clean_field(spec, value)
+            stored = str(previous_harvest or "").strip()[:10]
+            incoming = str(value or "").strip()[:10]
+            if stored and incoming != stored:
+                raise ValueError("剖鼠日期已填写，不能再改")
+            harvest_changed = bool(incoming) and incoming != stored
         else:
             value = clean_field(spec, value, keep_breaks=field in BREAK_FIELDS)
         setattr(row, field, value)
-    harvest_changed = "harvest_date" in data and (row.harvest_date or None) != previous_harvest
     if harvest_changed:
         row.boost_date = _shift_date(row.harvest_date, -5)
     return harvest_changed

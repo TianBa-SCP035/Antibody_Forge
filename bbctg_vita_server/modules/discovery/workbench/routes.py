@@ -10,7 +10,7 @@ from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import actor_name, get_current_user
 from modules.auth.permissions import require
-from modules.discovery.workbench import service
+from modules.discovery.workbench import cell_bank, service
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
 from utils.model_fields import fields_request_model
 
@@ -51,6 +51,22 @@ class WorkbenchIdRequest(BaseModel):
 class WorkbenchReorderRequest(BaseModel):
     moved_id: int = Field(gt=0)
     target_id: int = Field(gt=0)
+
+
+class CellBankSaveRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: int | None = Field(default=None, gt=0)
+    workbench_id: int = Field(gt=0)
+    cell_kind: str = ""
+    mouse_nos: str | None = None
+    tube_count: int | None = None
+    cell_count: str | None = None
+    volume: str | None = None
+    box_location: str | None = None
+    frozen_on: str | None = None
+    operator: str | None = None
+    remark: str | None = None
 
 
 @router.post("/list", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
@@ -130,3 +146,29 @@ def reorder_workbench(
     db: Session = Depends(get_db),
 ) -> dict:
     return success(service.reorder(db, data.moved_id, data.target_id))
+
+
+@router.get("/cell_bank", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
+def list_cell_bank(
+    workbench_id: int = Query(gt=0),
+    db: Session = Depends(get_db),
+) -> dict:
+    return success(cell_bank.list_records(db, workbench_id))
+
+
+@router.post("/cell_bank/save", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="保存发现留存细胞冻存")])
+def save_cell_bank(
+    data: CellBankSaveRequest,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    return success(cell_bank.save_record(db, data.model_dump(), created_by=actor_name(current_user)))
+
+
+@router.post("/cell_bank/delete", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="删除发现留存细胞冻存")])
+def delete_cell_bank(
+    data: WorkbenchIdRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    cell_bank.delete_record(db, data.id)
+    return success({"message": "删除成功"})

@@ -1,4 +1,17 @@
+const SAMPLE_CODE_RE = /^[A-Za-z0-9()_\-]+$/;
 const PLATE_COLUMNS = 10;
+
+/** 排机样本号带上归类鼠型，避免上机时再手敲一遍。已带前缀或含非法字符时保持原鼠号。 */
+export function mouseSampleCode(category, mouseNo) {
+  const cat = String(category || '').trim();
+  const no = String(mouseNo || '').trim();
+  if (!no) return '';
+  if (!cat || !SAMPLE_CODE_RE.test(cat)) return no;
+  const prefix = `${cat}-`;
+  if (no.toUpperCase() === cat.toUpperCase() || no.toUpperCase().startsWith(prefix.toUpperCase())) return no;
+  const combined = `${prefix}${no}`;
+  return SAMPLE_CODE_RE.test(combined) ? combined : no;
+}
 export const PLATE_COLUMN_LIST = Array.from({ length: PLATE_COLUMNS }, (_, i) => i + 1);
 const ROW_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -137,6 +150,7 @@ export function buildPlateGroup(group, selectedKeys) {
   return {
     groupId,
     strain: (group.mouse_strain || '').trim(),
+    strainCategory: (group.mouse_strain_category || '').trim(),
     plateRows,
     cellBySlot,
     aliveCount,

@@ -25,6 +25,29 @@
         认领
       </el-button>
       <el-button
+        v-if="showPairing"
+        class="list-table-action-btn"
+        type="primary"
+        plain
+        :icon="Connection"
+        :disabled="disabled"
+        :title="disabled ? disabledTitle : '查看转染表里的重链、轻链配对'"
+        @click="$emit('pairing', row)"
+      >
+        配对
+      </el-button>
+      <el-button
+        class="list-table-action-btn"
+        type="primary"
+        plain
+        :icon="Download"
+        :disabled="disabled || !hasOrderNo"
+        :title="plateTitle"
+        @click="$emit('plate', row)"
+      >
+        版布局
+      </el-button>
+      <el-button
         class="list-table-action-btn"
         type="warning"
         plain
@@ -41,7 +64,7 @@
 </template>
 
 <script>
-import { CircleClose, Delete, Document, User } from '@element-plus/icons-vue'
+import { CircleClose, Connection, Delete, Document, Download, User } from '@element-plus/icons-vue'
 import { ElButton, ElButtonGroup } from 'element-plus'
 
 export default {
@@ -57,9 +80,21 @@ export default {
     disabled: { type: Boolean, default: false },
     disabledTitle: { type: String, default: '' },
   },
-  emits: ['detail', 'claim', 'delete'],
+  emits: ['detail', 'claim', 'delete', 'pairing', 'plate'],
   setup() {
-    return { CircleClose, Delete, Document, User }
+    return { CircleClose, Connection, Delete, Document, Download, User }
+  },
+  computed: {
+    hasOrderNo() {
+      return Boolean(String(this.row?.order_no || '').trim())
+    },
+    showPairing() {
+      return String(this.row?.order_no || '').trim().toUpperCase().startsWith('TRF-')
+    },
+    plateTitle() {
+      if (this.disabled) return this.disabledTitle
+      return this.hasOrderNo ? '下载合成公司发来的版布局' : '请先填写订单号'
+    },
   },
 }
 </script>
@@ -70,5 +105,10 @@ export default {
   align-items: center;
   justify-content: center;
   width: 100%;
+}
+.action-cell :deep(.el-button-group) {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 </style>

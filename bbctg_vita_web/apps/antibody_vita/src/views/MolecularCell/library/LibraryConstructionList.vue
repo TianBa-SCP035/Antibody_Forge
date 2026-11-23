@@ -256,7 +256,7 @@
         </template>
       </WorkbenchDataTable>
 
-      <WorkbenchSheet v-else>
+      <WorkbenchSheet v-else :row-class-name="workbenchRowClassName">
         <template #column="{ column }">
           <VxeColumn
             :field="column.key"
@@ -519,6 +519,7 @@ import {
   TRANSFECTION_PAGE,
 } from '#/api/molecularTransfection'
 import { notifyApiError } from '#/api/errors'
+import { dateBreakRowClass } from '#/components/workbench/dateBreakRowClass'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
 import {
@@ -873,6 +874,15 @@ export default {
     },
   },
   methods: {
+    workbenchRowClassName({ row, rowIndex }) {
+      return dateBreakRowClass({
+        list: this.list,
+        row,
+        rowIndex,
+        field: 'instrument_on',
+        editingId: this.editingId,
+      })
+    },
     statusTone,
     async filterCatalog(query = '') {
       this.catalogQuery = String(query || '')
@@ -1309,6 +1319,9 @@ export default {
 <style scoped src="#/components/workbench/workbenchPanel.css"></style>
 <style src="#/components/workbench/workbenchDrawer.css"></style>
 <style scoped>
+.table-card :deep(tr.is-date-break > td) {
+  border-top: 3px solid #2563eb !important;
+}
 .library-code-fill-handle {
   position: absolute;
   right: -5px;

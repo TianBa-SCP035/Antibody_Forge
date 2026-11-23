@@ -616,6 +616,25 @@ CREATE TABLE IF NOT EXISTS discovery_workbench (
   UNIQUE KEY uk_discovery_workbench_discovery_id (discovery_id)
 ) COMMENT='抗体发现项目工作台';
 
+CREATE TABLE IF NOT EXISTS discovery_cell_bank (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  workbench_id BIGINT NOT NULL COMMENT '发现安排ID',
+  discovery_id VARCHAR(32) NULL COMMENT '发现安排号',
+  cell_kind VARCHAR(32) NOT NULL COMMENT '细胞类型',
+  mouse_nos VARCHAR(1000) NULL COMMENT '鼠号',
+  tube_count INT NULL COMMENT '管数',
+  cell_count VARCHAR(64) NULL COMMENT '细胞量',
+  volume VARCHAR(64) NULL COMMENT '体积',
+  box_location VARCHAR(128) NULL COMMENT '冻存位置',
+  frozen_on DATE NULL COMMENT '冻存日期',
+  operator VARCHAR(64) NULL COMMENT '操作人',
+  remark VARCHAR(500) NULL COMMENT '备注',
+  created_by VARCHAR(64) NULL COMMENT '创建人',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_discovery_cell_bank_workbench_id (workbench_id)
+) COMMENT='抗体发现留存细胞冻存';
+
 CREATE TABLE IF NOT EXISTS discovery_synthesis_order (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   synthesis_order_id VARCHAR(32) NOT NULL COMMENT '系统单号',

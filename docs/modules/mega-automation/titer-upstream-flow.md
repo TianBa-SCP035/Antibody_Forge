@@ -76,7 +76,7 @@
 | `experiment_id` | `sample_plates[].project_no` | 每块样本板相同 |
 | `target_name` | `sample_plates[].target` | 每块样本板相同 |
 | `target_codes` | `sample_plates[].target_codes` | 去空值后写入每块样本板 |
-| 选中鼠号 | `sample_plates[].wells[].sample_code` | 按组序、组内序连续装板 |
+| 选中鼠号 | `sample_plates[].wells[].sample_code` | 按组序、组内序连续装板；样本号写成「归类鼠型-鼠号」（如 `RM-12`）。鼠号已经带这个前缀，或归类鼠型含样本号不允许的字符时，仍只用鼠号 |
 | `titer_order_id` | `source_id` | 指向来源效价工单 |
 | 固定值 | `orderType` | `TITER` |
 | `titer_order_id` + 4 位大写 base36 随机后缀 | `orderNum` | 订单编号允许重复 |

@@ -118,10 +118,10 @@ class DiscoveryWorkbenchScheduleAndCleanTests(DbTestCase):
             untouched = service.save(self.db, {"id": saved["id"], "harvest_date": harvest.isoformat()})
             self.assertEqual(untouched["boost_date"], (harvest - timedelta(days=1)).isoformat())
 
-            cleared = service.save(self.db, {"id": saved["id"], "harvest_date": ""})
-            self.assertIsNone(cleared["harvest_date"])
-            self.assertIsNone(cleared["boost_date"])
-            self.assertEqual(cleared["status"], "规划中")
+            with self.assertRaisesRegex(ValueError, "剖鼠日期已填写，不能再改"):
+                service.save(self.db, {"id": saved["id"], "harvest_date": ""})
+            self.db.rollback()
+            self.assertEqual(self.db.get(DiscoveryWorkbench, saved["id"]).harvest_date, harvest.isoformat())
 
             wrapped = service.save(self.db, {"harvest_date": "2026-03-01", "status": "规划中"})
             self.assertEqual(wrapped["boost_date"], "2026-02-24")

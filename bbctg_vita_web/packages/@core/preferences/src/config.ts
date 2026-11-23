@@ -42,7 +42,7 @@ const defaultPreferences: Preferences = {
     styleType: 'normal',
   },
   copyright: {
-    companyName: 'Biocytogen · Tian Ba',
+    companyName: 'Biocytogen',
     companySiteLink: 'https://www.biocytogen.com.cn',
     date: '2026',
     enable: true,

@@ -21,7 +21,7 @@ defineOptions({
 
 withDefaults(defineProps<Props>(), {
   description:
-    '由 Biocytogen · Tian Ba 构建的抗体发现与实验研发数字化平台，覆盖靶点情报、小鼠免疫、效价检测、抗体发现、分子与细胞文库构建及镁伽自动化全流程管理。',
+    '由百奥赛图（Biocytogen）构建的抗体发现与实验研发数字化平台，覆盖靶点情报、小鼠免疫、效价检测、抗体发现、分子与细胞文库构建及镁伽自动化全流程管理。',
   name: 'Antibody Vita',
   title: '关于项目',
 });

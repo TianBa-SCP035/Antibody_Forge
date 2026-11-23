@@ -1,0 +1,11 @@
+---
+description: 只在 shift-f 分支上改代码，不要动 main
+alwaysApply: true
+---
+
+# 只操作 shift-f
+
+当前工作分支是 `shift-f`。修改、提交、推送都只针对这个分支。
+
+- 不要 checkout、合并、变基、推送或改 `main`。
+- 改文件前先确认当前分支是 `shift-f`。不是就停下来说明，不要自己切到别的分支。

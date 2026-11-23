@@ -18,8 +18,7 @@ Antibody_Forge/
 ├── pet-proxy/             # 桌宠「大肥鱼」的本机代理，见 fatfish.md
 ├── repository/            # 上传、回传、日志等运行时文件（gitignore）
 ├── docs/                  # 文档
-├── website/               # 对外展示站，GitHub Pages 发布
-├── .github/workflows/     # CI：quality.yml 测试与构建；pages.yml 发布 website/
+├── .github/workflows/     # CI：quality.yml 测试与构建
 ├── start_dev.bat / .sh    # 启停脚本（restart / stop / status；Linux 另有看门狗与 cron 安装），见 deploy.md
 ├── backup.sh              # Linux：数据库与附件备份，见 deploy.md「备份与恢复」
 └── ensure_deps.py         # 启动脚本调用：补齐缺失的 Python / 前端依赖

@@ -37,7 +37,7 @@ const userDisplayName = computed(() => {
   return (
     userStore.userInfo?.realName ||
     userStore.userInfo?.username ||
-    'Tian Ba'
+    ''
   );
 });
 
@@ -51,7 +51,7 @@ const userDescription = computed(() => {
   return (
     info?.profileSignature ||
     info?.email ||
-    'Biocytogen · Tian Ba'
+    'Biocytogen'
   );
 });
 
@@ -69,7 +69,7 @@ watch(
       await updateWatermark({
         content:
           content ||
-          `${userStore.userInfo?.username || 'Tian Ba'} - ${userStore.userInfo?.realName || 'Biocytogen'}`,
+          [userStore.userInfo?.username, userStore.userInfo?.realName].filter(Boolean).join(' - ') || 'Biocytogen',
       });
     } else {
       destroyWatermark();

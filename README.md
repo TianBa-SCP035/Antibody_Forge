@@ -22,11 +22,9 @@
   <img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
   <img src="https://img.shields.io/badge/Vue%203-42B883?style=flat-square&logo=vuedotjs&logoColor=white" alt="Vue 3" />
   <img src="https://img.shields.io/badge/MySQL-4479A1?style=flat-square&logo=mysql&logoColor=white" alt="MySQL" />
-  <img src="https://visitor-badge.laobi.icu/badge?page_id=TianBa-SCP035.Antibody_Forge&left_color=gray&right_color=0d9488" alt="visitors" />
 </p>
 
 <p align="center">
-  <a href="https://tianba-scp035.github.io/Antibody_Forge/">项目官网</a> ·
   <a href="./docs/README.md">文档</a> ·
   <a href="./docs/overview.md">仓库地图</a> ·
   <a href="./docs/deploy.md">部署</a>

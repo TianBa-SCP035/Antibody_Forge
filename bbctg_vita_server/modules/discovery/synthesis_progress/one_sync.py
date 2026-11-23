@@ -384,10 +384,10 @@ _NGS_QUERY_BASE = """
         t.projectcode AS task_projectcode,
         t.batchname AS task_batchname,
         t.target AS task_target,
-        f.uploader AS uploader
+        f.uploaded_by AS uploader
     FROM one_task_ngs_data_analyze a
     LEFT JOIN one_task_ngs_task t ON a.ngstaskid = t.id
-    LEFT JOIN fileinfoSelected f ON f.filename = a.refstr
+    LEFT JOIN beacon_upload_file f ON f.file_name = a.refstr
     WHERE (a.isdelete IS NULL OR a.isdelete = '0')
       AND NOT (
         COALESCE(a.orderno, '') = ''

@@ -168,7 +168,7 @@
 
 ## 5. 跨模块联动 / 外部集成
 
-工单在本系统创建，或由定时同步把 One 库新出现的订单自动建成新行（见第 6 项）。外部数据源为 One 库 `one_task_ngs_data_analyze`（关联 `one_task_ngs_task`）、`one_task_beacon_data_analyze`（关联 `one_task_beacon_task`）及 `orderhis`（当 `orderno` 为空但有 `refstr` 文件名时反查订单号与合成公司）；下单人按 `refstr` 文件名取订单文件上传人（ngs 为 `fileinfoSelected.uploader`，beacon 为 `beacon_upload_file.uploaded_by`）。
+工单在本系统创建，或由定时同步把 One 库新出现的订单自动建成新行（见第 6 项）。外部数据源为 One 库 `one_task_ngs_data_analyze`（关联 `one_task_ngs_task`）、`one_task_beacon_data_analyze`（关联 `one_task_beacon_task`）及 `orderhis`（当 `orderno` 为空但有 `refstr` 文件名时反查订单号与合成公司）；下单人按 `refstr` 文件名取订单文件上传人 `beacon_upload_file.uploaded_by`（ngs、beacon 的选中文件都记在这张表，One 已停用原 ngs 上传表 `fileinfoSelected`）。
 
 1. **两段式加载与即时核对（`POST /check_remote`）**：
    - 首屏先由 `POST /list` 查本地主库立即渲染；随后前端异步调用 `POST /check_remote`（连接/读取超时各 1 秒，最多 500 行），或在单行修改 `order_no`、`synthesis_code`、`batch_label` 及打开抽屉时点查。One 库不可用时返回 `remote_available: false`，页面提示「外部订单库暂时连不上，当前数据未核对外部订单」。

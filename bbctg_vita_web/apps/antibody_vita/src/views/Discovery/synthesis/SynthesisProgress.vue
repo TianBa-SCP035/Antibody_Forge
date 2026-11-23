@@ -553,7 +553,6 @@
               @claim="handleClaim"
               @delete="handleDelete"
               @pairing="openPairing"
-              @plate="downloadPlateLayout"
             />
           </template>
         </WorkbenchDataTable>
@@ -579,7 +578,6 @@
               @claim="handleClaim"
               @delete="handleDelete"
               @pairing="openPairing"
-              @plate="downloadPlateLayout"
             />
           </template>
         </WorkbenchSheet>
@@ -649,8 +647,18 @@
           @claim="handleClaim"
           @delete="handleDelete"
           @pairing="openPairing"
-          @plate="downloadPlateLayout"
         />
+        <el-button
+          v-if="String(editingRow.order_no || '').trim()"
+          class="list-table-action-btn"
+          type="primary"
+          plain
+          :icon="Download"
+          title="下载合成公司发来的版布局"
+          @click="downloadPlateLayout(editingRow)"
+        >
+          版布局
+        </el-button>
         <el-button
           v-if="canCreate"
           class="list-table-action-btn"

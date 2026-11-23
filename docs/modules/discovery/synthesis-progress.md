@@ -219,7 +219,7 @@
 | `GET` | `/api/discovery/synthesis-progress/transfection_pairs?id=` | `discovery.page.synthesis_progress` | 订单号为 `TRF-` 转染工单号时，返回该单蛋白的重链、轻链配对；否则 `items` 为空 |
 | `GET` | `/api/discovery/synthesis-progress/plate_layout?id=` | `discovery.page.synthesis_progress` | 按订单号下载合成公司推送的上清板布局 Excel；还没收到时 404 |
 
-行操作在「删除 / 取消」前提供「配对」（仅转染交接单）和「版布局」。配对弹窗列出蛋白、重链、轻链，并可跳到转染表；版布局按订单号（不区分大小写）导出已接收的孔位。
+行操作在「删除 / 取消」前提供「配对」（仅转染交接单）。配对弹窗列出蛋白、重链、轻链，并可跳到转染表。打开抽屉后，订单号有值时可以下载版布局，按订单号（不区分大小写）导出已接收的孔位。
 
 ## 7. 定时任务
 

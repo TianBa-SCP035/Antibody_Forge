@@ -226,7 +226,7 @@ class DiscoverySynthesisOrder(Base):
 class DiscoveryCellBank(Base):
     __tablename__ = "discovery_cell_bank"
     __log_label__ = "发现留存细胞"
-    __audit_label__ = ("discovery_id", "cell_kind")
+    __audit_label__ = ("cell_kind",)
     __table_args__ = (
         Index("idx_discovery_cell_bank_workbench_id", "workbench_id"),
         {"comment": "抗体发现留存细胞冻存"},

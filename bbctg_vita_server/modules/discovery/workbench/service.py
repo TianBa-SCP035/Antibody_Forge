@@ -80,7 +80,7 @@ DISCOVERY_ID_PREFIX = "DSC"
 DISCOVERY_ID_RANDOM_LEN = 6
 DISCOVERY_ID_MAX_ATTEMPTS = 20
 DISCOVERY_ID_ALPHABET = string.ascii_uppercase + string.digits
-FIELDS = model_fields(DiscoveryWorkbench, readonly=("discovery_id",))
+FIELDS = model_fields(DiscoveryWorkbench, readonly=("discovery_id", "prior_screening_images"))
 BREAK_FIELDS = frozenset({
     "mouse_nos",
     "plate_nos",
@@ -88,6 +88,7 @@ BREAK_FIELDS = frozenset({
     "positive_cell_count",
     "immune_antigen",
     "screening_antigen",
+    "prior_screening",
     "boost_antigen",
     "boost_cells",
     "remark",
@@ -720,6 +721,7 @@ EXPORT_COLUMNS = (
     ("免疫用抗原", "immune_antigen"),
     ("筛选方式", "screening_methods"),
     ("筛选抗原", "screening_antigen"),
+    ("既往筛选", "prior_screening"),
     ("阳性细胞数", "positive_cell_count"),
     ("板号", "plate_nos"),
     ("剖鼠日期", "harvest_date"),

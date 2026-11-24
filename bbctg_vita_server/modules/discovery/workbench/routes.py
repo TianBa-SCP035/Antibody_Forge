@@ -1,7 +1,7 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -10,7 +10,7 @@ from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import actor_name, get_current_user
 from modules.auth.permissions import require
-from modules.discovery.workbench import cell_bank, service
+from modules.discovery.workbench import cell_bank, prior_screening, service
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
 from utils.model_fields import fields_request_model
 
@@ -51,6 +51,11 @@ class WorkbenchIdRequest(BaseModel):
 class WorkbenchReorderRequest(BaseModel):
     moved_id: int = Field(gt=0)
     target_id: int = Field(gt=0)
+
+
+class PriorScreeningRemoveRequest(BaseModel):
+    id: int = Field(gt=0)
+    file: str = ""
 
 
 class CellBankCheckoutRequest(BaseModel):
@@ -151,6 +156,33 @@ def reorder_workbench(
     db: Session = Depends(get_db),
 ) -> dict:
     return success(service.reorder(db, data.moved_id, data.target_id))
+
+
+@router.post("/prior_screening/upload", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="上传发现既往筛选图片")])
+def upload_prior_screening(
+    workbench_id: int = Form(gt=0),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict:
+    return success({"items": prior_screening.add_image(db, workbench_id, file)})
+
+
+@router.post("/prior_screening/remove", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="删除发现既往筛选图片")])
+def remove_prior_screening(
+    data: PriorScreeningRemoveRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    return success({"items": prior_screening.remove_image(db, data.id, data.file)})
+
+
+@router.get("/prior_screening/file", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
+def prior_screening_file(
+    id: int = Query(gt=0),
+    file: str = Query(min_length=1, max_length=64),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    path, name = prior_screening.image_file(db, id, file)
+    return FileResponse(path, filename=name)
 
 
 @router.get("/cell_bank", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])

@@ -373,6 +373,14 @@ export default {
   created() {
     this.reloadColumns()
   },
+  watch: {
+    storageKey() {
+      this.reloadColumns()
+    },
+    columns() {
+      this.reloadColumns()
+    },
+  },
   beforeUnmount() {
     this.unbindDrag()
   },

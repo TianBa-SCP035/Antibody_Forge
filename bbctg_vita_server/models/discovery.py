@@ -31,6 +31,8 @@ class DiscoveryWorkbench(Base):
     immune_antigen: Mapped[str | None] = mapped_column(String(1000), comment="免疫用抗原")
     screening_methods: Mapped[str | None] = mapped_column(String(64), comment="筛选方式")
     screening_antigen: Mapped[str | None] = mapped_column(String(1000), comment="筛选抗原")
+    prior_screening: Mapped[str | None] = mapped_column(String(2000), comment="既往筛选")
+    prior_screening_images: Mapped[list | None] = mapped_column(JSON, comment="既往筛选图片")
     positive_cell_count: Mapped[str | None] = mapped_column(String(255), comment="阳性细胞数")
     plate_nos: Mapped[str | None] = mapped_column(String(1000), comment="板号")
     harvest_date: Mapped[str | None] = mapped_column(DateString, comment="剖鼠取细胞日")
@@ -78,6 +80,8 @@ class DiscoveryWorkbench(Base):
             "immune_antigen": self.immune_antigen,
             "screening_methods": [part for part in (self.screening_methods or "").split(",") if part],
             "screening_antigen": self.screening_antigen,
+            "prior_screening": self.prior_screening,
+            "prior_screening_images": self.prior_screening_images or [],
             "positive_cell_count": self.positive_cell_count,
             "plate_nos": self.plate_nos,
             "harvest_date": self.harvest_date,

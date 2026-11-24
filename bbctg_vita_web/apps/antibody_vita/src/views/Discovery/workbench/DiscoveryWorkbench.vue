@@ -361,6 +361,14 @@
             @change="persistRow(row, 'harvest_date')"
           />
         </template>
+        <template #prior_screening="{ row }">
+          <DiscoveryPriorScreeningCell
+            :row="row"
+            :can-edit="canEdit"
+            @commit="persistRow(row, 'prior_screening')"
+            @images="(items) => syncPriorImages(row, items)"
+          />
+        </template>
         <template #boost_date="{ row }">
           <WorkbenchInlineDatePicker
             v-model="row.boost_date"
@@ -384,6 +392,14 @@
       </WorkbenchDataTable>
 
       <WorkbenchSheet v-else :row-class-name="workbenchRowClassName" actions-width="320">
+        <template #cell-prior_screening="{ row }">
+          <DiscoveryPriorScreeningCell
+            :row="row"
+            :can-edit="canEdit"
+            @commit="persistRow(row, 'prior_screening')"
+            @images="(items) => syncPriorImages(row, items)"
+          />
+        </template>
         <template #actions="{ row }">
           <DiscoveryRowActions
             :row="row"
@@ -434,8 +450,15 @@
         />
       </template>
       <template #field="{ field }">
+        <DiscoveryPriorScreeningCell
+          v-if="field.key === 'prior_screening'"
+          :row="editingRow"
+          :can-edit="canEdit"
+          @commit="persistRow(editingRow, 'prior_screening')"
+          @images="(items) => syncPriorImages(editingRow, items)"
+        />
         <WorkbenchMultiTagEditor
-          v-if="field.type === 'multi'"
+          v-else-if="field.type === 'multi'"
           :key="`screening-${editingRow.id}`"
           v-model="editingRow.screening_methods"
           :options="optionLists.screening_methods"
@@ -509,6 +532,7 @@ import { useUserStore } from '@vben/stores'
 
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
 import LibraryHandoffDialog from '#/views/MolecularCell/library/LibraryHandoffDialog.vue'
+import DiscoveryPriorScreeningCell from './DiscoveryPriorScreeningCell.vue'
 import {
   fieldOptionLists,
   uniqueTargetCodes,
@@ -662,6 +686,7 @@ export default {
     AdvancedOpsBar,
     DiscoveryCellBankDialog,
     DiscoveryRowActions,
+    DiscoveryPriorScreeningCell,
     LibraryHandoffDialog,
     ElButton,
     ElCard,
@@ -841,6 +866,13 @@ export default {
     },
   },
   methods: {
+    syncPriorImages(row, items) {
+      const images = Array.isArray(items) ? items : []
+      if (row) row.prior_screening_images = images
+      const listed = (this.list || []).find((item) => item.id === row?.id)
+      if (listed && listed !== row) listed.prior_screening_images = images
+      if (this.editingRow?.id === row?.id && this.editingRow !== row) this.editingRow.prior_screening_images = images
+    },
     harvestDateLocked(row) {
       const text = String(row?.harvest_date || '').trim().slice(0, 10)
       if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false

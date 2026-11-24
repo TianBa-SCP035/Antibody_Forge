@@ -596,6 +596,8 @@ CREATE TABLE IF NOT EXISTS discovery_workbench (
   immune_antigen VARCHAR(1000) NULL COMMENT '免疫用抗原',
   screening_methods VARCHAR(64) NULL COMMENT '筛选方式',
   screening_antigen VARCHAR(1000) NULL COMMENT '筛选抗原',
+  prior_screening VARCHAR(2000) NULL COMMENT '既往筛选',
+  prior_screening_images JSON NULL COMMENT '既往筛选图片',
   positive_cell_count VARCHAR(255) NULL COMMENT '阳性细胞数',
   plate_nos VARCHAR(1000) NULL COMMENT '板号',
   harvest_date DATE NULL COMMENT '剖鼠取细胞日',

@@ -88,6 +88,22 @@ export function checkoutDiscoveryCellBank(id: number | string, checkedOutBy: str
   );
 }
 
+export function uploadDiscoveryPriorImage(data: FormData) {
+  return requestClient.post('/discovery/workbench/prior_screening/upload', data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: DOWNLOAD_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function removeDiscoveryPriorImage(id: number | string, file: string) {
+  return requestClient.post(
+    '/discovery/workbench/prior_screening/remove',
+    { id, file },
+    skipGlobalErrorHandler,
+  );
+}
+
 export function deleteDiscoveryCellBank(id: number | string) {
   return requestClient.post('/discovery/workbench/cell_bank/delete', { id }, skipGlobalErrorHandler);
 }

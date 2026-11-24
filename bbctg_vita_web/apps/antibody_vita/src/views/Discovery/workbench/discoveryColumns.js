@@ -89,6 +89,15 @@ export const FIELDS = defineFields({
     sheet: { minWidth: 140 },
     drawer: { wide: true, nowrap: true },
   },
+  prior_screening: {
+    label: '既往筛选',
+    type: 'textarea',
+    max: 2000,
+    header: { type: 'text', values: 'search', top: { query: 'prior_screening', kind: 'contains' } },
+    list: { show: true, minWidth: 160, tooltip: false },
+    sheet: { minWidth: 160, readonly: true },
+    drawer: { wide: true },
+  },
   boost_antigen: {
     label: '冲击免抗原',
     type: 'textarea',
@@ -243,7 +252,7 @@ export const FIELDS = defineFields({
 
 export const WORKBENCH_COLUMNS = workbenchColumns(FIELDS, [
   'sort_order', 'priority', 'status', 'pm', 'project_code', 'target_name', 'mouse_strain', 'mouse_count',
-  'screening_methods', 'screening_antigen', 'boost_antigen', 'harvest_date', 'boost_date', 'remark', 'owner',
+  'screening_methods', 'screening_antigen', 'prior_screening', 'boost_antigen', 'harvest_date', 'boost_date', 'remark', 'owner',
   'immune_owner', 'cell_collector', 'experiment_id', 'target_codes', 'study_type', 'mouse_strain_category',
   'cage_position', 'mouse_nos', 'serum_titer', 'immune_antigen', 'boost_cells', 'positive_cell_count', 'plate_nos',
 ])
@@ -251,7 +260,7 @@ export const WORKBENCH_COLUMNS = workbenchColumns(FIELDS, [
 export const SHEET_COLUMNS = sheetColumns(FIELDS, [
   'sort_order', 'priority', 'target_codes', 'project_code', 'target_name', 'pm', 'study_type', 'mouse_strain',
   'screening_methods', 'harvest_date', 'mouse_count', 'mouse_nos', 'serum_titer', 'immune_antigen', 'boost_date',
-  'boost_antigen', 'boost_cells', 'screening_antigen', 'positive_cell_count', 'plate_nos', 'owner', 'immune_owner',
+  'boost_antigen', 'boost_cells', 'screening_antigen', 'prior_screening', 'positive_cell_count', 'plate_nos', 'owner', 'immune_owner',
   'cell_collector', 'mouse_strain_category', 'cage_position', 'remark', 'experiment_id', 'status',
 ])
 
@@ -261,7 +270,7 @@ export const EDITOR_SECTIONS = editorSections(FIELDS, [
   { title: '小鼠', fields: ['mouse_strain_category', 'mouse_strain', 'cage_position', 'mouse_count', 'mouse_nos'] },
   {
     title: '筛选',
-    fields: ['screening_methods', 'immune_antigen', 'screening_antigen', 'serum_titer', 'positive_cell_count', 'plate_nos'],
+    fields: ['screening_methods', 'immune_antigen', 'screening_antigen', 'prior_screening', 'serum_titer', 'positive_cell_count', 'plate_nos'],
   },
   {
     title: '日程',

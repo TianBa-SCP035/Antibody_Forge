@@ -751,6 +751,26 @@ export function sheetColumnsForBuild(buildType) {
   return SHEET_COLUMNS.filter((column) => isSheetFieldApplicable(buildType, column.key))
 }
 
+/** 工作台列同样只留该类型有的字段；未选类型时是全部列。操作列始终保留。 */
+export function workbenchColumnsForBuild(buildType) {
+  if (!buildType) return WORKBENCH_COLUMNS
+  return WORKBENCH_COLUMNS.filter((column) => column.key === 'actions' || isSheetFieldApplicable(buildType, column.key))
+}
+
+const SHEET_COLUMN_ORDERS = new Map()
+
+/** 每种建库类型单独记 Excel 列序和列宽，不写回其他类型。未选类型用原来的总列序。 */
+export function sheetColumnOrderForBuild(buildType) {
+  if (!buildType) return SHEET_COLUMN_ORDER
+  if (!SHEET_COLUMN_ORDERS.has(buildType)) {
+    SHEET_COLUMN_ORDERS.set(
+      buildType,
+      createColumnOrder(`libraryConstructionSheetColumnOrder.v6.${buildType}`, sheetColumnsForBuild(buildType)),
+    )
+  }
+  return SHEET_COLUMN_ORDERS.get(buildType)
+}
+
 export const WORKBENCH_COLUMNS = workbenchColumns(FIELDS, [
   'source_project_code',
   'target_name',

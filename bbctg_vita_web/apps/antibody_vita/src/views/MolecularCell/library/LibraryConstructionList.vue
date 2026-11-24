@@ -574,12 +574,13 @@ import {
   SAMPLE_SOURCE_OPTIONS,
   SHEET_COLUMN_ORDER,
   SHEET_COLUMNS,
+  sheetColumnOrderForBuild,
   sheetColumnsForBuild,
+  workbenchColumnsForBuild,
   STAT_TILES,
   stampQcFields,
   statusTone,
   typeGroup,
-  WORKBENCH_COLUMNS,
 } from './libraryColumns'
 import { filterPrimerCatalog, loadPrimerCatalog } from './primerCatalogOptions'
 
@@ -717,7 +718,6 @@ export default {
   },
   data() {
     return {
-      viewPrefsStorageKey: LIBRARY_VIEW_PREFS_KEY,
       optionLists: { ...fieldOptionLists(FIELDS), pm: [], owner: [], qc_owner: [] },
       buildTypeScope: null,
       excelRowSelectKey: 'id',
@@ -773,6 +773,10 @@ export default {
     activeType() {
       return this.listQuery.build_type || ''
     },
+    viewPrefsStorageKey() {
+      const type = this.activeType
+      return type ? `${LIBRARY_VIEW_PREFS_KEY}.${type}` : LIBRARY_VIEW_PREFS_KEY
+    },
     activeStatKey() {
       const type = this.activeType
       if (type === BUILD_PLASMA_NGS && ['nano', 'lite'].includes(this.listQuery.sample_type)) {
@@ -817,7 +821,7 @@ export default {
       })
     },
     workbenchColumns() {
-      return WORKBENCH_COLUMNS
+      return workbenchColumnsForBuild(this.activeType)
     },
     createRows() {
       return handoffRowsInScope(this.buildTypeScope)
@@ -846,6 +850,8 @@ export default {
   },
   created() {
     this.rebuildSheetColumns()
+    this.sheetColumnWidths = this.sheetColumnStore()?.loadWidths() || {}
+    this.loadSheetColumnColors()
     this.loadOptionLists()
     this.getList({ flushEditor: false }).finally(() => {
       this.listLoaded = true
@@ -871,6 +877,9 @@ export default {
     'listQuery.build_type'() {
       this.clearSheetRange()
       this.rebuildSheetColumns()
+      this.sheetColumnWidths = this.sheetColumnStore()?.loadWidths() || {}
+      this.loadSheetColumnColors()
+      this.sheetLayoutVersion += 1
     },
   },
   methods: {
@@ -1100,6 +1109,9 @@ export default {
       } catch (error) {
         notifyApiError(error, { messages: { default: '加载文库选项失败，暂用本地默认选项' } })
       }
+    },
+    sheetColumnStore() {
+      return sheetColumnOrderForBuild(this.activeType)
     },
     availableSheetColumns() {
       return sheetColumnsForBuild(this.activeType)

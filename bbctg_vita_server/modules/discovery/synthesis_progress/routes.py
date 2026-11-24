@@ -108,7 +108,11 @@ def list_synthesis_orders(
 ) -> dict:
     scopes = _user_scopes(context)
     payload = data.model_dump() if data else {}
-    result = service.get_list(db, payload if "full" in scopes else service.without_corp_query(payload))
+    result = service.get_list(
+        db,
+        payload if "full" in scopes else service.without_corp_query(payload),
+        include_cancelled=service.sees_cancelled(scopes),
+    )
     return success(_visible(result, scopes))
 
 
@@ -118,12 +122,13 @@ def synthesis_column_values(
     db: Session = Depends(get_db),
     context: UserContext = Depends(get_user_context),
 ) -> dict:
+    scopes = _user_scopes(context)
     payload = data.model_dump()
-    if "full" not in _user_scopes(context):
+    if "full" not in scopes:
         if payload["field"] == "synthetic_corp":
             raise HTTPException(status_code=403, detail="没有权限查看合成公司")
         payload = service.without_corp_query(payload)
-    return success(service.get_column_values(db, payload))
+    return success(service.get_column_values(db, payload, include_cancelled=service.sees_cancelled(scopes)))
 
 
 @router.get("/options", dependencies=[require(SYNTHESIS_VIEW_PERMISSION)])
@@ -271,6 +276,7 @@ def export_synthesis_order_list(
         service.without_corp_query(payload) if hide_corp else payload,
         hide_corp=hide_corp,
         keep_engineering_rows="eng" in scopes,
+        include_cancelled=service.sees_cancelled(scopes),
     )
     return xlsx_response(output, filename)
 

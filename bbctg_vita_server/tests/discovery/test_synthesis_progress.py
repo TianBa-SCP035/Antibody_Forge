@@ -1030,3 +1030,29 @@ class SynthesisQueueTests(DbTestCase):
             {"items": [{"id": item["id"], "remark": "批量", "_expected": dict(item)} for item in items]},
         )
         self.assertEqual([row["remark"] for row in saved["items"]], ["批量", "批量"])
+
+
+class CancelledVisibilityTests(DbTestCase):
+    tables = TABLES
+
+    def test_cancelled_orders_stay_hidden_without_full_or_both_assay_scopes(self):
+        open_row = service.save(self.db, {"target_name": "OPEN"}, created_by="测试员")
+        cancelled = service.save(self.db, {"target_name": "GONE"}, created_by="测试员")
+        service.save(self.db, {"id": cancelled["id"], "status": "已取消"})
+
+        hidden = service.get_list(self.db, {}, include_cancelled=False)
+        self.assertEqual([item["target_name"] for item in hidden["items"]], ["OPEN"])
+        self.assertEqual(hidden["stats"]["all"], 1)
+        self.assertEqual(hidden["stats"]["cancelled"], 0)
+        self.assertEqual(hidden["total"], 1)
+
+        shown = service.get_list(self.db, {})
+        self.assertCountEqual([item["target_name"] for item in shown["items"]], ["OPEN", "GONE"])
+        self.assertEqual(shown["stats"]["cancelled"], 1)
+
+        self.assertTrue(service.sees_cancelled(frozenset({"full"})))
+        self.assertTrue(service.sees_cancelled(frozenset({"affinity", "flow"})))
+        self.assertFalse(service.sees_cancelled(frozenset({"affinity"})))
+        self.assertFalse(service.sees_cancelled(frozenset({"flow", "pm"})))
+        self.assertFalse(service.sees_cancelled(frozenset()))
+        self.assertEqual(open_row["target_name"], "OPEN")

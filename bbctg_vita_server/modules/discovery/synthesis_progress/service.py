@@ -677,6 +677,11 @@ VALUE_COLUMNS: dict[str, HeaderColumn] = {
 }
 
 
+def sees_cancelled(scopes: frozenset[str] | set[str]) -> bool:
+    """已取消工单只给全部编辑，或同时具备亲和力和流式权限的人看。"""
+    return "full" in scopes or {"affinity", "flow"} <= set(scopes)
+
+
 def _apply_list_filters(
     stmt,
     data: dict[str, Any],
@@ -685,8 +690,11 @@ def _apply_list_filters(
     apply_quick: bool = True,
     db: Session | None = None,
     header_except: str | None = None,
+    include_cancelled: bool = True,
 ):
     filters = []
+    if not include_cancelled:
+        filters.append(DiscoverySynthesisOrder.status != STATUS_CANCELLED)
     keyword = str(data.get("keyword") or "").strip()
     if keyword:
         like = f"%{keyword}%"
@@ -931,7 +939,7 @@ def settle_queue_after_sync(db: Session) -> None:
     repack_queue(db, QUEUE_SPEC)
 
 
-def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
+def _list_stats(db: Session, payload: dict[str, Any], *, include_cancelled: bool = True) -> dict[str, int]:
     stmt = _apply_list_filters(
         select(
             func.count(),
@@ -989,6 +997,7 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
         apply_view=False,
         apply_quick=False,
         db=db,
+        include_cancelled=include_cancelled,
     )
     row = db.execute(stmt).one()
     return {
@@ -1004,10 +1013,15 @@ def _list_stats(db: Session, payload: dict[str, Any]) -> dict[str, int]:
     }
 
 
-def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+def get_list(db: Session, data: dict[str, Any], *, include_cancelled: bool = True) -> dict[str, Any]:
     payload = data or {}
-    stmt = _apply_list_filters(select(DiscoverySynthesisOrder), payload, db=db)
-    count_stmt = _apply_list_filters(select(func.count()).select_from(DiscoverySynthesisOrder), payload, db=db)
+    stmt = _apply_list_filters(select(DiscoverySynthesisOrder), payload, db=db, include_cancelled=include_cancelled)
+    count_stmt = _apply_list_filters(
+        select(func.count()).select_from(DiscoverySynthesisOrder),
+        payload,
+        db=db,
+        include_cancelled=include_cancelled,
+    )
     return paginate_select(
         db,
         stmt,
@@ -1015,17 +1029,21 @@ def get_list(db: Session, data: dict[str, Any]) -> dict[str, Any]:
         payload,
         order_by=_list_order(payload),
         serialize_rows=lambda rows: [serialize_order(row) for row in rows],
-        stats=_list_stats(db, payload),
+        stats=_list_stats(db, payload, include_cancelled=include_cancelled),
     )
 
 
-def get_column_values(db: Session, data: dict[str, Any]) -> dict[str, Any]:
+def get_column_values(db: Session, data: dict[str, Any], *, include_cancelled: bool = True) -> dict[str, Any]:
     return header_column_values(
         db,
         VALUE_COLUMNS,
         data,
         lambda stmt, payload, field: _apply_list_filters(
-            stmt, payload, db=db, header_except="status" if field == STATUS_BREAKDOWN_FIELD else field
+            stmt,
+            payload,
+            db=db,
+            header_except="status" if field == STATUS_BREAKDOWN_FIELD else field,
+            include_cancelled=include_cancelled,
         ),
         id_column=DiscoverySynthesisOrder.id,
     )
@@ -1773,9 +1791,10 @@ def export_list_workbook(
     *,
     hide_corp: bool = False,
     keep_engineering_rows: bool = False,
+    include_cancelled: bool = True,
 ) -> tuple[BytesIO, str]:
     payload = data or {}
-    stmt = _apply_list_filters(select(DiscoverySynthesisOrder), payload, db=db)
+    stmt = _apply_list_filters(select(DiscoverySynthesisOrder), payload, db=db, include_cancelled=include_cancelled)
     rows = db.scalars(stmt.order_by(*_list_order(payload))).all()
     headers = [header for header, _ in EXPORT_COLUMNS]
 

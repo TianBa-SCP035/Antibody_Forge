@@ -1066,7 +1066,6 @@ export default {
         order_sender: [],
         affinity_owner: [],
       },
-      statusFilterGroups: STATUS_FILTER_GROUPS,
       statusViews: STATUS_VIEWS,
       assayCardEl: null,
       assayBreakdownVisible: false,
@@ -1103,6 +1102,16 @@ export default {
     },
     canAssayMainEdit() {
       return this.canAffinityEdit && this.canFlowEdit
+    },
+    canSeeCancelled() {
+      return this.canFullEdit || this.canAssayMainEdit
+    },
+    statusFilterGroups() {
+      if (this.canSeeCancelled) return STATUS_FILTER_GROUPS
+      return STATUS_FILTER_GROUPS.map((group) => ({
+        ...group,
+        options: group.options.filter((item) => item !== '已取消'),
+      }))
     },
     canEdit() {
       return this.canFullEdit || this.canPmEdit || this.canEngEdit || this.canAffinityEdit || this.canFlowEdit
@@ -1222,6 +1231,16 @@ export default {
       this.headerMenuColumns = Object.freeze(
         Object.fromEntries(Object.entries(HEADER_MENU_COLUMNS).filter(([key]) => key !== 'synthetic_corp')),
       )
+    }
+    if (!this.canSeeCancelled) {
+      const status = this.listQuery.status
+      if (Array.isArray(status)) {
+        const next = status.filter((item) => item !== '已取消')
+        this.listQuery.status = next.length ? next : ''
+      } else if (status === '已取消') {
+        this.listQuery.status = ''
+      }
+      if (this.listQuery.view_group === 'cancelled') this.listQuery.view_group = ''
     }
     this.loading = true
     this.loadOptions()

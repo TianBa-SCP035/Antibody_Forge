@@ -7,7 +7,7 @@
 - **前端路由**：`/discovery/synthesis-progress`（组件 `src/views/Discovery/synthesis/SynthesisProgress.vue`；启用 `keepAlive`，切走超过 10 分钟再次进入时静默刷新）。
 - **菜单功能开关**：`menu.discovery`（抗体发现）、`menu.discovery.synthesis_progress`（合成与验证）。
 - **接口前缀**：`/api/discovery/synthesis-progress`。
-- **权限控制**：多项编辑权限同时具备时取并集；超级管理员（`is_superuser`）具备全部权限。
+- **权限控制**：多项编辑权限同时具备时取并集；超级管理员（`is_superuser`）具备全部权限。`已取消` 工单只出现在全部编辑（`edit`）或同时具备亲和力与流式权限的人的列表、统计、表头取值和导出里，其他人看不到。
 
 | 权限代码 | 作用域 | 允许的操作与字段范围 |
 |---|---|---|
@@ -121,7 +121,7 @@
 
 | 阶段编号 | 视图名称 | `view_group` 参数 | 统计键 `stats` | 筛选口径 |
 |---|---|---|---|---|
-| `00` | 全部批次 | `""`（不传） | `all` | 全部记录（含已完成、已取消） |
+| `00` | 全部批次 | `""`（不传） | `all` | 全部可见记录（含已完成；已取消仅全部编辑或同时具备亲和力与流式权限的人可见） |
 | `01` | 合成中 | `synthesizing` | `synthesizing` | `status == '合成中'` |
 | `02` | 待测 / 检测中 | `assay` | `assay` | `status IN ('待检测', '检测中')` |
 | `03` | 已完成 | `completed` | `completed` | `status == '已完成'` |

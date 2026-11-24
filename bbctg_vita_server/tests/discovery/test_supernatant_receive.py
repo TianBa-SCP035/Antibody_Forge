@@ -103,6 +103,24 @@ class SupernatantReceiveTest(DbTestCase):
         self.assertIn("data[5]：specs「1e12」超出范围", msg)
         self.assertEqual(self.wells(), {})
 
+    def test_slash_means_potency_and_specs_do_not_apply(self):
+        resp = self.client.post(URL, json=_payload(
+            _well("P1", "A1", "S1", potency="/", specs="／"),
+            _well("P1", "A2", "S2", potency="0", specs="0"),
+        ))
+        self.assertEqual(resp.json()["code"], 1)
+        wells = self.wells()
+        blank = wells[("BAO0000900", "P1", "A01")]
+        self.assertIsNone(blank.potency)
+        self.assertIsNone(blank.specs)
+        self.assertEqual(blank.volume, Decimal("20"))
+        zero = wells[("BAO0000900", "P1", "A02")]
+        self.assertEqual((zero.potency, zero.specs), (Decimal("0"), Decimal("0")))
+
+        rejected = self.client.post(URL, json=_payload(_well("P1", "B1", "S3", volume="/")))
+        self.assertEqual(rejected.json()["code"], 0)
+        self.assertIn("volume「/」不是数字", rejected.json()["msg"])
+
     def test_bad_body_and_missing_order(self):
         cases = (
             (b"{bad", "JSON 格式错误"),

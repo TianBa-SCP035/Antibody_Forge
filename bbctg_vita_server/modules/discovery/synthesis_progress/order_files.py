@@ -61,8 +61,8 @@ def export_plate_layout(db: Session, row_id: int):
             well.plate_no,
             well.well_no,
             well.sample_name,
-            float(well.potency),
-            float(well.specs),
+            None if well.potency is None else float(well.potency),
+            None if well.specs is None else float(well.specs),
             float(well.volume),
             float(well.sample_enter_vol),
         ]

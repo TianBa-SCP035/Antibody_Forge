@@ -23,7 +23,8 @@ X-Callback-Token: {token}
 | `data[]` | `plateno` | 是 | 板号，最长 64 |
 | `data[]` | `wellno` | 是 | 96 孔板 `A1`-`H12`，`A01` 写法与小写也接受，统一存为 `A01` |
 | `data[]` | `sampleName` | 是 | 蛋白名称，最长 128 |
-| `data[]` | `potency`、`specs`、`volume`、`sampleEnterVol` | 是 | 浓度 ug/mL、规格 mL/支、体积 mL、质粒量 ug；字符串或数字，非负且小于 10^12，四舍五入保留 4 位小数 |
+| `data[]` | `potency`、`specs` | 是 | 浓度 ug/mL、规格 mL/支。数字规则同下；蛋白推送里不适用时传 `/`（全角 `／` 同样），存为空。不要用 `0` 占位 |
+| `data[]` | `volume`、`sampleEnterVol` | 是 | 体积 mL、质粒量 ug；字符串或数字，非负且小于 10^12，四舍五入保留 4 位小数。`/` 不接受 |
 
 示例：
 

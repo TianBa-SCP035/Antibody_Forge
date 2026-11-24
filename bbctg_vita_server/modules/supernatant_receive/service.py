@@ -19,13 +19,14 @@ MAX_ERRORS = 10
 _SCALE = Decimal("0.0001")
 _NUMBER_LIMIT = Decimal(10) ** 12
 _WELL = re.compile(r"([A-H])0?([1-9]|1[0-2])")
-# (小写键, 存储键, 报错时的字段名)
+# (小写键, 存储键, 报错时的字段名, 是否允许 '/' 表示不适用)
 _NUMBER_FIELDS = (
-    ("potency", "potency", "potency"),
-    ("specs", "specs", "specs"),
-    ("volume", "volume", "volume"),
-    ("sampleentervol", "sample_enter_vol", "sampleEnterVol"),
+    ("potency", "potency", "potency", True),
+    ("specs", "specs", "specs", True),
+    ("volume", "volume", "volume", False),
+    ("sampleentervol", "sample_enter_vol", "sampleEnterVol", False),
 )
+_NOT_APPLICABLE = {"/", "／"}
 
 
 class SupernatantReceiveError(Exception):
@@ -43,10 +44,12 @@ def _text(value: Any) -> str:
     return "" if value is None else str(value).strip()
 
 
-def _number(value: Any, label: str) -> tuple[Decimal | None, str | None]:
+def _number(value: Any, label: str, *, optional: bool = False) -> tuple[Decimal | None, str | None]:
     if isinstance(value, bool):
         return None, f"{label} 必须是数字"
     text = _text(value)
+    if optional and text in _NOT_APPLICABLE:
+        return None, None
     if not text:
         return None, f"{label} 不能为空"
     try:
@@ -110,8 +113,8 @@ def parse_payload(raw: bytes) -> tuple[str, str, dict[str, dict[str, dict[str, A
             row_errors.append(f"wellno「{well_text}」不是 96 孔板孔号（A1-H12）")
         sample_name = _required_text(item.get("samplename"), "sampleName", MAX_SAMPLE_NAME, row_errors)
         numbers: dict[str, Decimal | None] = {}
-        for source_key, stored_key, label in _NUMBER_FIELDS:
-            value, problem = _number(item.get(source_key), label)
+        for source_key, stored_key, label, optional in _NUMBER_FIELDS:
+            value, problem = _number(item.get(source_key), label, optional=optional)
             if problem:
                 row_errors.append(problem)
             numbers[stored_key] = value

@@ -81,6 +81,17 @@ class OrderFileTests(DbTestCase):
             volume=Decimal("20"),
             sample_enter_vol=Decimal("1.2500"),
         ))
+        self.db.add(SynthesisSupernatantWell(
+            order_no="BAO9",
+            corp_name="擎科",
+            plate_no="P1",
+            well_no="A02",
+            sample_name="Ab2",
+            potency=None,
+            specs=None,
+            volume=Decimal("1"),
+            sample_enter_vol=Decimal("1"),
+        ))
         self.db.commit()
         output, filename = order_files.export_plate_layout(self.db, synthesis.id)
         self.assertTrue(filename.startswith("版布局_bao9_"))
@@ -88,6 +99,8 @@ class OrderFileTests(DbTestCase):
         self.assertEqual(sheet["A2"].value, "BAO9")
         self.assertEqual(sheet["E2"].value, "Ab1")
         self.assertEqual(sheet["F2"].value, 100.5)
+        self.assertIsNone(sheet["F3"].value)
+        self.assertIsNone(sheet["G3"].value)
 
         empty = self._synthesis(synthesis_order_id="SYN-261123-EMPTY01", order_no="NONE")
         with self.assertRaises(NotFoundError):

@@ -156,6 +156,46 @@ class SynthesisStatusMachineTests(DbTestCase):
         with self.assertRaisesRegex(ValueError, "分泌型靶点不需要流式实验"):
             service.save(self.db, {"id": row["id"], "target_type": "分泌型", "flow_status": "流式待检测"})
 
+    def test_multipass_skips_affinity_and_completes_when_flow_finishes(self):
+        row = service.save(
+            self.db,
+            {
+                "target_name": "CD20",
+                "target_type": "多次穿膜",
+                "order_no": "CN20",
+                "arrival_date": "2026-03-17",
+            },
+        )
+        self.assertEqual((row["affinity_status"], row["flow_status"], row["status"]), ("亲和力不适用", "流式待检测", "待检测"))
+        with self.assertRaisesRegex(ValueError, "多次穿膜靶点不需要亲和力实验"):
+            service.save(self.db, {"id": row["id"], "affinity_status": "亲和力待检测"})
+        with self.assertRaisesRegex(ValueError, "亲和力不适用只用于多次穿膜靶点"):
+            service.save(self.db, {"id": row["id"], "target_type": "I型跨膜", "affinity_status": "亲和力不适用"})
+
+        # 还没到货时只填流式日期，停在检测中
+        early = service.save(self.db, {"target_name": "CD22", "target_type": "多次穿膜", "order_no": "CN22"})
+        early = service.save(self.db, {"id": early["id"], "flow_date": "2026-11-01"})
+        self.assertEqual((early["status"], early["flow_status"], early["affinity_status"]), ("检测中", "流式已完成", "亲和力不适用"))
+        early = service.save(self.db, {"id": early["id"], "arrival_date": "2026-10-30"})
+        self.assertEqual(early["status"], "已完成")
+
+        row = service.save(self.db, {"id": row["id"], "flow_status": "流式已完成"})
+        self.assertEqual((row["flow_status"], row["affinity_status"], row["status"]), ("流式已完成", "亲和力不适用", "已完成"))
+
+        # 改去其他类型要补亲和力；改回多次穿膜后流式已完成，整单再完成
+        row = service.save(self.db, {"id": row["id"], "target_type": "I型跨膜"})
+        self.assertEqual((row["affinity_status"], row["flow_status"], row["status"]), ("亲和力待检测", "流式已完成", "检测中"))
+        row = service.save(self.db, {"id": row["id"], "target_type": "多次穿膜"})
+        self.assertEqual((row["affinity_status"], row["status"]), ("亲和力不适用", "已完成"))
+
+        row = service.save(self.db, {"id": row["id"], "status": "待检测"})
+        self.assertEqual((row["affinity_status"], row["flow_status"], row["status"]), ("亲和力不适用", "流式待检测", "待检测"))
+
+        # 已完成的分泌型改成多次穿膜后要做流式
+        secreted = self._completed_secreted_order()
+        secreted = service.save(self.db, {"id": secreted["id"], "target_type": "多次穿膜"})
+        self.assertEqual((secreted["affinity_status"], secreted["flow_status"], secreted["status"]), ("亲和力不适用", "流式待检测", "待检测"))
+
     def test_manual_flow_skip_survives_cellular_type_change(self):
         rid = service.save(
             self.db,

@@ -13,6 +13,7 @@ from models.discovery import DiscoverySynthesisOrder
 from modules.discovery.synthesis_progress.constants import (
     AFFINITY_STATUS_ASSAYING,
     AFFINITY_STATUS_COMPLETED,
+    AFFINITY_STATUS_NOT_REQUIRED,
     AFFINITY_STATUS_OPTIONS,
     AFFINITY_STATUS_WAIT,
     DRIFT_COMPARE_FIELDS,
@@ -120,6 +121,16 @@ def normalize_synthetic_corp(raw_corp: Any, refstr: Any = None, order_no: Any = 
     return None
 
 
+def assay_shape(target_type: Any) -> str:
+    """分泌型只做亲和力，多次穿膜只做流式，其余两项都做。"""
+    text = str(target_type or "").strip()
+    if text == "分泌型":
+        return "secreted"
+    if text == "多次穿膜":
+        return "multipass"
+    return "both"
+
+
 def _default_affinity_status(row: DiscoverySynthesisOrder) -> str:
     if row.affinity_date:
         return AFFINITY_STATUS_COMPLETED
@@ -135,7 +146,7 @@ def sync_derived_statuses(
     changed = set(changed_fields)
     current_status = row.status
     if current_status == STATUS_COMPLETED and "target_type" not in changed:
-        # 已完成只在要不要做流式变了（是否分泌型）时重算，其余重新检测要先打回待检测
+        # 已完成只在要不要做的实验变了（分泌型不做流式、多次穿膜不做亲和力）时重算
         return current_status
     has_reason = bool(str(row.report_reason or "").strip())
     has_assay_data = bool(
@@ -160,7 +171,12 @@ def sync_derived_statuses(
         row.flow_status = None
 
     if has_assay_data or row.affinity_status or row.flow_status:
-        if row.affinity_status == AFFINITY_STATUS_COMPLETED:
+        shape = assay_shape(row.target_type)
+        if shape == "multipass":
+            row.affinity_status = AFFINITY_STATUS_NOT_REQUIRED
+        elif row.affinity_status == AFFINITY_STATUS_NOT_REQUIRED and "affinity_status" not in changed:
+            row.affinity_status = AFFINITY_STATUS_WAIT if has_reason else _default_affinity_status(row)
+        elif row.affinity_status == AFFINITY_STATUS_COMPLETED:
             # 带未出原因的已完成是结案（先填原因再标完成），改原因文字不影响；
             # 新填原因表示报告卡住，回到待检测；清掉日期且没有原因时按其余数据回退
             if "affinity_status" not in changed:
@@ -179,7 +195,7 @@ def sync_derived_statuses(
         ):
             row.affinity_status = _default_affinity_status(row)
 
-        if str(row.target_type or "").strip() == "分泌型":
+        if shape == "secreted":
             row.flow_status = FLOW_STATUS_NOT_REQUIRED
         elif row.flow_status not in FLOW_STATUS_OPTIONS or (
             "flow_status" not in changed
@@ -187,7 +203,7 @@ def sync_derived_statuses(
         ):
             row.flow_status = FLOW_STATUS_COMPLETED if row.flow_date else FLOW_STATUS_WAIT
 
-        if row.affinity_status == AFFINITY_STATUS_COMPLETED and row.flow_status in {
+        if row.affinity_status in {AFFINITY_STATUS_COMPLETED, AFFINITY_STATUS_NOT_REQUIRED} and row.flow_status in {
             FLOW_STATUS_COMPLETED,
             FLOW_STATUS_NOT_REQUIRED,
         }:

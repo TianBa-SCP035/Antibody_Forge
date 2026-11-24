@@ -22,6 +22,7 @@ from modules.discovery.synthesis_progress.constants import (
     AFFINITY_RESULT_OPTIONS,
     AFFINITY_STATUS_ASSAYING,
     AFFINITY_STATUS_COMPLETED,
+    AFFINITY_STATUS_NOT_REQUIRED,
     AFFINITY_STATUS_OPTIONS,
     AFFINITY_STATUS_WAIT,
     CLAIM_RETURN_DAYS,
@@ -63,6 +64,7 @@ from modules.discovery.synthesis_progress.one_sync import (
     apply_remote_snapshot_to_row,
     check_remote_for_local_rows,
     collect_new_remote_orders,
+    assay_shape,
     compute_drift_fields,
     parse_one_target,
     sync_derived_statuses,
@@ -439,13 +441,17 @@ def _validate_assay_status_edits(
     target_type = payload["target_type"] if "target_type" in payload else row.target_type
     if "affinity_status" in payload:
         next_status = _normalize_affinity_status(payload["affinity_status"])
+        if assay_shape(target_type) == "multipass":
+            raise ValueError("多次穿膜靶点不需要亲和力实验")
+        if next_status == AFFINITY_STATUS_NOT_REQUIRED:
+            raise ValueError("亲和力不适用只用于多次穿膜靶点")
         closing = can_close_with_reason and next_status == AFFINITY_STATUS_COMPLETED
         if next_status != AFFINITY_STATUS_WAIT and str(reason or "").strip() and not closing:
             raise ValueError("请先清除未出报告原因，再修改亲和力状态")
 
     if "flow_status" in payload:
         _normalize_flow_status(payload["flow_status"])
-        if str(target_type or "").strip() == "分泌型":
+        if assay_shape(target_type) == "secreted":
             raise ValueError("分泌型靶点不需要流式实验")
 
 
@@ -1326,19 +1332,23 @@ def save(
         row.affinity_owner = actor_person
     if "target_codes" in payload and "target_type" not in payload:
         row.target_type = _infer_target_type(db, row.target_codes)
-    secreted = (row.target_type or "").strip() == "分泌型"
+    shape = assay_shape(row.target_type)
     if "status" in payload and row.status in {STATUS_WAIT_ASSAY, STATUS_ASSAYING}:
         # 手动进入检测阶段时两项实验从待测开始，之后改订单号、One 回填等不会退回合成阶段；
-        # 从已完成打回即重做，两项一并回到待测（流式不做的保留），日期和人员留作记录
+        # 从已完成打回即重做，两项一并回到待测（不做的那项保留），日期和人员留作记录
         reopen = previous_status == STATUS_COMPLETED
-        if reopen or not row.affinity_status:
+        if shape == "multipass":
+            row.affinity_status = AFFINITY_STATUS_NOT_REQUIRED
+        elif reopen or not row.affinity_status or row.affinity_status == AFFINITY_STATUS_NOT_REQUIRED:
             row.affinity_status = AFFINITY_STATUS_WAIT
-        if not row.flow_status or (reopen and row.flow_status != FLOW_STATUS_NOT_REQUIRED):
-            row.flow_status = FLOW_STATUS_NOT_REQUIRED if secreted else FLOW_STATUS_WAIT
+        if shape == "secreted":
+            row.flow_status = FLOW_STATUS_NOT_REQUIRED
+        elif not row.flow_status or (reopen and row.flow_status != FLOW_STATUS_NOT_REQUIRED):
+            row.flow_status = FLOW_STATUS_WAIT
     if "status" not in payload and (is_new or AUTO_STATUS_FIELDS.intersection(payload)):
         changed = set(payload) - {"target_type"}
-        if secreted != (previous_target_type == "分泌型"):
-            # 只有要不要做流式变了才算靶点类型变化
+        if shape != assay_shape(previous_target_type):
+            # 只有要不要做亲和力或流式变了才算靶点类型变化
             changed.add("target_type")
         reason_added = not had_reason and bool(str(row.report_reason or "").strip())
         sync_derived_statuses(row, changed_fields=changed, reason_added=reason_added)

@@ -27,6 +27,7 @@ export const AFFINITY_STATUS_OPTIONS = [
   '亲和力待检测',
   '亲和力检测中',
   '亲和力已完成',
+  '亲和力不适用',
 ];
 export const FLOW_STATUS_OPTIONS = [
   '流式待检测',

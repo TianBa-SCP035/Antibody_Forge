@@ -879,6 +879,7 @@ const BADGE_TEXT = Object.freeze({
   亲和力待检测: '待测',
   亲和力检测中: '测中',
   亲和力已完成: '完成',
+  亲和力不适用: '不做',
   流式待检测: '待测',
   流式已完成: '完成',
   流式不适用: '不做',
@@ -906,7 +907,7 @@ const ASSAY_STATUS_KEYS = new Set(['affinity_status', 'flow_status'])
 const DRAFT_ACTION_TITLE = '工单保存后才能操作'
 const UNCLAIMED_OWNER = '无人问津'
 function badgeTone(status) {
-  if (status?.endsWith('已完成') || status === '流式不适用') return 'done'
+  if (status?.endsWith('已完成') || status === '流式不适用' || status === '亲和力不适用') return 'done'
   if (status?.endsWith('检测中')) return 'run'
   return 'wait'
 }
@@ -923,6 +924,7 @@ const ASSAY_BREAKDOWN = Object.freeze({
   affinities: [
     breakdownItem('亲和力待检测', '亲·待检'),
     breakdownItem('亲和力检测中', '亲·测中'),
+    breakdownItem('亲和力不适用', '亲·不做', 'skip'),
     breakdownItem('亲和力已完成', '亲·完成'),
   ].map((row) => ({
     ...row,
@@ -1568,21 +1570,26 @@ export default {
     },
     assayStatusBadges(row) {
       if (!row || !['待检测', '检测中'].includes(String(row.status || '').trim())) return []
-      const flowSkip = String(row.target_type || '').trim() === '分泌型'
-      const affPrefix = flowSkip ? '亲和力·' : '亲·'
+      const targetType = String(row.target_type || '').trim()
+      const flowSkip = targetType === '分泌型'
+      const affinitySkip = targetType === '多次穿膜'
+      const solo = flowSkip || affinitySkip
       const badges = []
-      const affLabel = BADGE_TEXT[row.affinity_status]
+      const affLabel = !affinitySkip && BADGE_TEXT[row.affinity_status]
       if (affLabel) {
         const lockReason = this.assayLockReason(row, 'affinity_status')
         const hasReason = Boolean(String(row.report_reason || '').trim())
+        const options = (
+          hasReason
+            ? AFFINITY_BADGE_OPTIONS.filter((option) => option.value !== '亲和力检测中')
+            : AFFINITY_BADGE_OPTIONS
+        ).filter((option) => option.value !== '亲和力不适用')
         badges.push({
           key: 'affinity',
           kind: '亲和力',
           full: row.affinity_status,
-          text: `${affPrefix}${affLabel}`,
-          options: hasReason
-            ? AFFINITY_BADGE_OPTIONS.filter((option) => option.value !== '亲和力检测中')
-            : AFFINITY_BADGE_OPTIONS,
+          text: `${solo ? '亲和力·' : '亲·'}${affLabel}`,
+          options,
           tone: badgeTone(row.affinity_status),
           editable: !lockReason,
           lockReason,
@@ -1595,7 +1602,7 @@ export default {
           key: 'flow',
           kind: '流式',
           full: row.flow_status,
-          text: `流·${flowLabel}`,
+          text: `${solo ? '流式·' : '流·'}${flowLabel}`,
           options: FLOW_BADGE_OPTIONS,
           tone: badgeTone(row.flow_status),
           editable: !lockReason,

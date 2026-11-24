@@ -135,7 +135,7 @@ class DiscoverySynthesisOrder(Base):
     synthetic_date: Mapped[str | None] = mapped_column(DateString, comment="合成日期")
     order_sender: Mapped[str | None] = mapped_column(String(128), comment="下单人")
     arrival_count: Mapped[int | None] = mapped_column(Integer, comment="到货个数")
-    arrival_date: Mapped[str | None] = mapped_column(DateString, comment="到货日期")
+    arrival_date: Mapped[str | None] = mapped_column(DateString, comment="发货日期")
     affinity_status: Mapped[str | None] = mapped_column(String(32), comment="亲和力检测状态")
     affinity_owner: Mapped[str | None] = mapped_column(String(64), comment="亲和力人员")
     flow_date: Mapped[str | None] = mapped_column(DateString, comment="流式日期")

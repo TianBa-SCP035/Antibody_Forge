@@ -1768,7 +1768,7 @@ EXPORT_COLUMNS = (
     ("合成个数", "synthetic_count"),
     ("合成日期", "synthetic_date"),
     ("到货个数", "arrival_count"),
-    ("到货日期", "arrival_date"),
+    ("发货日期", "arrival_date"),
     ("检测备注", "remark"),
     ("亲和力状态", "affinity_status"),
     ("亲和力人员", "affinity_owner"),

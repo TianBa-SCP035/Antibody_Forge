@@ -161,7 +161,7 @@ def sync_derived_statuses(
         or (row.flow_status == FLOW_STATUS_COMPLETED and not ("flow_date" in changed and not row.flow_date))
     )
     external = row.supply_mode == SUPPLY_MODE_ARRIVAL
-    # 外送合成还没到货时，误填的检测数据删干净就退回合成阶段；内部转染 / 改亚型手动推进的阶段不动
+    # 外送合成还没发货时，误填的检测数据删干净就退回合成阶段；内部转染 / 改亚型手动推进的阶段不动
     if (
         ("arrival_date" in changed or (external and not explicit_status and ASSAY_DATA_FIELDS & changed))
         and not has_assay_data
@@ -207,8 +207,8 @@ def sync_derived_statuses(
             FLOW_STATUS_COMPLETED,
             FLOW_STATUS_NOT_REQUIRED,
         }:
-            # 外送合成没录到货时，填日期不自动完成：多半是到货前误填，完成后实验员自己打不回；
-            # 补上到货日期即完成，手动标子状态照常完成
+            # 外送合成没录发货日期时，填实验日期不自动完成：多半是发货前误填，完成后实验员自己打不回；
+            # 补上发货日期即完成，手动标子状态照常完成
             awaiting = external and not row.arrival_date and not explicit_status and current_status != STATUS_COMPLETED
             derived = STATUS_ASSAYING if awaiting else STATUS_COMPLETED
         elif (

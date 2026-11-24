@@ -51,7 +51,7 @@
         v-model="arrivalDateRange"
         type="daterange"
         range-separator="至"
-        v-bind="headerTop('arrival_date', '到货起始', 'startPlaceholder')"
+        v-bind="headerTop('arrival_date', '发货起始', 'startPlaceholder')"
         end-placeholder="到货截止"
         value-format="YYYY-MM-DD"
         @change="handleFilter"

@@ -865,7 +865,11 @@ import {
 import { useUserStore } from '@vben/stores';
 
 import WorkbenchTargetFilter from '#/components/workbench/WorkbenchTargetFilter.vue';
-import { DISCOVERY_WORKBENCH_CREATED_KEY, DISCOVERY_WORKBENCH_EDIT } from '#/api/discoveryWorkbench';
+import {
+  DISCOVERY_WORKBENCH_CREATED_KEY,
+  DISCOVERY_WORKBENCH_EDIT,
+  DISCOVERY_WORKBENCH_IMMUNE_EDIT,
+} from '#/api/discoveryWorkbench';
 import { handoffTiterToDiscovery } from '#/utils/titerDiscoveryHandoff';
 import TiterInstrumentOrderDialogs from './TiterInstrumentOrderDialogs.vue';
 import TiterMouseSelectWizard from './TiterMouseSelectWizard.vue';
@@ -2504,7 +2508,7 @@ export default {
       });
     },
     goSequencing(row) {
-      if (!hasAccessCode(this.currentUserInfo, DISCOVERY_WORKBENCH_EDIT)) {
+      if (!hasAccessCode(this.currentUserInfo, DISCOVERY_WORKBENCH_EDIT, DISCOVERY_WORKBENCH_IMMUNE_EDIT)) {
         ElMessage.warning('您没有权限编辑抗体发现工作台');
         return;
       }

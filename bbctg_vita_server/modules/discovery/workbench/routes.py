@@ -9,7 +9,7 @@ from core.response import success
 from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import actor_name, get_current_user
-from modules.auth.permissions import require
+from modules.auth.permissions import UserContext, get_user_context, require
 from modules.discovery.workbench import cell_bank, prior_screening, service
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
 from utils.model_fields import fields_request_model
@@ -17,6 +17,8 @@ from utils.model_fields import fields_request_model
 router = APIRouter()
 WORKBENCH_VIEW_PERMISSION = "discovery.page.workbench"
 WORKBENCH_EDIT_PERMISSION = "discovery.workbench.edit"
+WORKBENCH_IMMUNE_EDIT_PERMISSION = "discovery.workbench.immune_edit"
+WORKBENCH_WRITE_PERMISSIONS = (WORKBENCH_EDIT_PERMISSION, WORKBENCH_IMMUNE_EDIT_PERMISSION)
 
 
 WorkbenchFields = fields_request_model("DiscoveryWorkbenchFields", service.FIELDS)
@@ -111,13 +113,19 @@ def workbench_recorded_targets(
     return success({"items": service.search_recorded_targets(db, keyword, limit)})
 
 
-@router.post("/save", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="保存抗体发现工作台")])
+@router.post("/save", dependencies=[require(*WORKBENCH_WRITE_PERMISSIONS, audit="保存抗体发现工作台")])
 def save_workbench(
     data: WorkbenchSaveRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
-    return success(service.save(db, data.model_dump(exclude_unset=True), created_by=actor_name(current_user)))
+    return success(service.save(
+        db,
+        data.model_dump(exclude_unset=True),
+        created_by=actor_name(current_user),
+        full_edit=context.allows(WORKBENCH_EDIT_PERMISSION),
+    ))
 
 
 @router.post("/export_list", dependencies=[require(WORKBENCH_VIEW_PERMISSION)])
@@ -131,17 +139,23 @@ def export_workbench_list(
     return xlsx_response(output, filename)
 
 
-@router.post("/save_batch", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="批量保存抗体发现工作台")])
+@router.post("/save_batch", dependencies=[require(*WORKBENCH_WRITE_PERMISSIONS, audit="批量保存抗体发现工作台")])
 def save_workbench_batch(
     data: WorkbenchBatchSaveRequest,
     db: Session = Depends(get_db),
     current_user: SysUser = Depends(get_current_user),
+    context: UserContext = Depends(get_user_context),
 ) -> dict:
     items = [item.model_dump(exclude_unset=True) for item in data.items]
-    return success(service.save_batch(db, {"items": items}, created_by=actor_name(current_user)))
+    return success(service.save_batch(
+        db,
+        {"items": items},
+        created_by=actor_name(current_user),
+        full_edit=context.allows(WORKBENCH_EDIT_PERMISSION),
+    ))
 
 
-@router.post("/delete", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="删除抗体发现工作台")])
+@router.post("/delete", dependencies=[require(*WORKBENCH_WRITE_PERMISSIONS, audit="删除抗体发现工作台")])
 def delete_workbench(
     data: WorkbenchIdRequest,
     db: Session = Depends(get_db),
@@ -158,7 +172,7 @@ def reorder_workbench(
     return success(service.reorder(db, data.moved_id, data.target_id))
 
 
-@router.post("/prior_screening/upload", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="上传发现既往筛选图片")])
+@router.post("/prior_screening/upload", dependencies=[require(*WORKBENCH_WRITE_PERMISSIONS, audit="上传发现既往筛选图片")])
 def upload_prior_screening(
     workbench_id: int = Form(gt=0),
     file: UploadFile = File(...),
@@ -167,7 +181,7 @@ def upload_prior_screening(
     return success({"items": prior_screening.add_image(db, workbench_id, file)})
 
 
-@router.post("/prior_screening/remove", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="删除发现既往筛选图片")])
+@router.post("/prior_screening/remove", dependencies=[require(*WORKBENCH_WRITE_PERMISSIONS, audit="删除发现既往筛选图片")])
 def remove_prior_screening(
     data: PriorScreeningRemoveRequest,
     db: Session = Depends(get_db),
@@ -193,7 +207,7 @@ def list_cell_bank(
     return success(cell_bank.list_records(db, workbench_id))
 
 
-@router.post("/cell_bank/save", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="保存发现留存细胞冻存")])
+@router.post("/cell_bank/save", dependencies=[require(*WORKBENCH_WRITE_PERMISSIONS, audit="保存发现留存细胞冻存")])
 def save_cell_bank(
     data: CellBankSaveRequest,
     db: Session = Depends(get_db),
@@ -202,7 +216,7 @@ def save_cell_bank(
     return success(cell_bank.save_record(db, data.model_dump(), created_by=actor_name(current_user)))
 
 
-@router.post("/cell_bank/checkout", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="发现留存细胞出库")])
+@router.post("/cell_bank/checkout", dependencies=[require(*WORKBENCH_WRITE_PERMISSIONS, audit="发现留存细胞出库")])
 def checkout_cell_bank(
     data: CellBankCheckoutRequest,
     db: Session = Depends(get_db),
@@ -210,7 +224,7 @@ def checkout_cell_bank(
     return success(cell_bank.checkout_record(db, data.id, data.checked_out_by))
 
 
-@router.post("/cell_bank/delete", dependencies=[require(WORKBENCH_EDIT_PERMISSION, audit="删除发现留存细胞冻存")])
+@router.post("/cell_bank/delete", dependencies=[require(*WORKBENCH_WRITE_PERMISSIONS, audit="删除发现留存细胞冻存")])
 def delete_cell_bank(
     data: WorkbenchIdRequest,
     db: Session = Depends(get_db),

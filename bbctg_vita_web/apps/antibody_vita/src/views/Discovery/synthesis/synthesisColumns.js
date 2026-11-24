@@ -310,7 +310,7 @@ export const FIELDS = defineFields({
     sheet: { width: 92 },
   },
   arrival_date: {
-    label: '到货日期',
+    label: '发货日期',
     type: 'date',
     header: { type: 'date', values: 'all', top: { range: 'arrivalDateRange' } },
     list: { show: true, minWidth: 110 },
@@ -596,6 +596,8 @@ export const SHEET_HEADER_ALIASES = Object.freeze({
   上清交付数: 'arrival_count',
   上清交付数目: 'arrival_count',
   上清到货日期: 'arrival_date',
+  上清发货日期: 'arrival_date',
+  发货日期: 'arrival_date',
   亲和力是否全阴: 'affinity_result',
   项目负责人: 'owner',
   流式检测说明: 'flow_note',

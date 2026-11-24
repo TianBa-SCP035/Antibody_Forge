@@ -329,7 +329,8 @@
           <WorkbenchPriorityCell
             :value="row.priority"
             :options="optionLists.priority"
-            :editable="canEdit"
+            :editable="canEditField(row, 'priority')"
+            :lock-reason="canEditField(row, 'priority') ? '' : fieldLockReason('priority')"
             @change="(value) => persistRowValue(row, 'priority', value)"
           />
         </template>
@@ -338,8 +339,9 @@
             :value="row.status"
             :options="optionLists.status"
             :type="planStatusTone(row.status)"
-            :editable="canEdit"
+            :editable="canEditField(row, 'status')"
             @change="(value) => persistRowValue(row, 'status', value)"
+            @locked="notifyFieldLocked('status')"
           />
         </template>
         <template #screening_methods="{ row }">
@@ -574,6 +576,7 @@ import {
   saveDiscoveryWorkbenchBatch,
   DISCOVERY_WORKBENCH_CREATED_KEY,
   DISCOVERY_WORKBENCH_EDIT,
+  DISCOVERY_WORKBENCH_IMMUNE_EDIT,
   fetchDiscoveryWorkbenchRecordedTargets,
 } from '#/api/discoveryWorkbench'
 import { SERUM_PAGE_DETAIL } from '#/api/serum'
@@ -602,6 +605,16 @@ import {
 
 const QUEUE_TERMINAL_STATUSES = ['已完成', '已取消']
 const QUEUE_KEYS = ['status', 'priority', 'sort_order']
+const IMMUNE_LOCKED_FIELDS = new Set([
+  'status',
+  'priority',
+  'owner',
+  'sort_order',
+  'screening_antigen',
+  'serum_titer',
+  'positive_cell_count',
+  'plate_nos',
+])
 /** 选项接口名单字段与 optionLists 字段键的映射。 */
 const NAME_OPTION_SOURCES = {
   pms: 'pm',
@@ -757,8 +770,11 @@ export default {
     }
   },
   computed: {
-    canEdit() {
+    canFullEdit() {
       return hasAccessCode(this.userStore.userInfo, DISCOVERY_WORKBENCH_EDIT)
+    },
+    canEdit() {
+      return this.canFullEdit || hasAccessCode(this.userStore.userInfo, DISCOVERY_WORKBENCH_IMMUNE_EDIT)
     },
     canHandoff() {
       return hasAccessCode(this.userStore.userInfo, ...LIBRARY_HANDOFF)
@@ -880,14 +896,29 @@ export default {
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
       return text < today
     },
+    canEditField(_row, key) {
+      if (!this.canEdit) return false
+      if (this.canFullEdit) return true
+      return !IMMUNE_LOCKED_FIELDS.has(key)
+    },
+    fieldLockReason(rowOrKey, maybeKey) {
+      const key = maybeKey || rowOrKey
+      const label = FIELDS[key]?.label || '这项'
+      return `当前权限不能修改${label}`
+    },
+    notifyFieldLocked(key) {
+      ElMessage.info({ message: this.fieldLockReason(key), grouping: true })
+    },
     isDrawerFieldDisabled(field, row) {
       if (field?.key === 'harvest_date' && this.harvestDateLocked(row)) return true
-      return !this.canEdit
+      return !this.canEditField(row, field?.key)
     },
     drawerFieldBind(field) {
       const bind = workbenchDrawerMixin.methods.drawerFieldBind.call(this, field)
       if (field?.key === 'harvest_date' && this.harvestDateLocked(this.editingRow)) {
         bind.title = '剖鼠日期已过，不能再改'
+      } else if (field?.key && !this.canEditField(this.editingRow, field.key)) {
+        bind.title = this.fieldLockReason(field.key)
       }
       return bind
     },
@@ -895,6 +926,7 @@ export default {
       const fixed = this.sheetSortLockReason?.(row, key) || this.sheetReadonlyLockReason(key)
       if (fixed) return fixed
       if (!this.canEdit) return '你没有编辑权限'
+      if (!this.canEditField(row, key)) return this.fieldLockReason(key)
       if (key === 'harvest_date' && this.harvestDateLocked(row)) return '剖鼠日期已过，不能再改'
       return ''
     },
@@ -924,7 +956,7 @@ export default {
       return keys
     },
     async saveRowField(row, field) {
-      if (!this.canEdit || !row?.id) return
+      if (!this.canEditField(row, field) || !row?.id) return
       if (!this.normalizeDrawerValue(row, field)) return
       if (this.rowFieldsUnchanged(row, [field])) return
       return this.submitRowFields(row, [field])

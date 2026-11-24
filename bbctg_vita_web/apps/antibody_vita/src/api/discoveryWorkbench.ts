@@ -2,6 +2,7 @@ import { requestClient, skipGlobalErrorHandler } from '#/api/request';
 import { fetchRecordedTargets } from '#/api/options';
 
 export const DISCOVERY_WORKBENCH_EDIT = 'discovery.workbench.edit';
+export const DISCOVERY_WORKBENCH_IMMUNE_EDIT = 'discovery.workbench.immune_edit';
 /** 别的页面新建发现行后跳过来定位（sessionStorage），键值已发布不要改 */
 export const DISCOVERY_WORKBENCH_CREATED_KEY = 'discovery.workbench.created';
 

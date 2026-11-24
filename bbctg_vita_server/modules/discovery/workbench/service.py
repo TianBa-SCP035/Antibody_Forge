@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from core.errors import NotFoundError
+from core.errors import ForbiddenError, NotFoundError
 from models.discovery import DiscoveryWorkbench
 from models.types import date_blank, date_present
 from modules.discovery.workbench.constants import (
@@ -81,6 +81,18 @@ DISCOVERY_ID_RANDOM_LEN = 6
 DISCOVERY_ID_MAX_ATTEMPTS = 20
 DISCOVERY_ID_ALPHABET = string.ascii_uppercase + string.digits
 FIELDS = model_fields(DiscoveryWorkbench, readonly=("discovery_id", "prior_screening_images"))
+# 免疫编辑不能改队列，也不能改发现组维护的筛选结果。
+IMMUNE_LOCKED_FIELDS = frozenset({
+    "status",
+    "priority",
+    "owner",
+    "sort_order",
+    "screening_antigen",
+    "serum_titer",
+    "positive_cell_count",
+    "plate_nos",
+})
+IMMUNE_LOCKED_MESSAGE = "当前权限不能修改状态、优先级、负责人、排序、筛选抗原、血清效价、阳性细胞数和板号"
 BREAK_FIELDS = frozenset({
     "mouse_nos",
     "plate_nos",
@@ -563,6 +575,31 @@ def get_options(db: Session) -> dict[str, Any]:
     }
 
 
+def _same_locked_value(row: DiscoveryWorkbench, field: str, incoming: Any) -> bool:
+    current = getattr(row, field)
+    if field == "sort_order":
+        if incoming in (None, "", "-"):
+            return True
+        try:
+            return int(incoming) == int(current)
+        except (TypeError, ValueError):
+            return False
+    left = "" if incoming is None else str(incoming).strip()
+    right = "" if current is None else str(current).strip()
+    return left == right
+
+
+def _guard_immune_fields(row: DiscoveryWorkbench, payload: dict[str, Any]) -> None:
+    """已有行上，免疫编辑不能改锁定字段；原样回写的字段从本次保存里拿掉。"""
+    for field in IMMUNE_LOCKED_FIELDS:
+        if field not in payload:
+            continue
+        if _same_locked_value(row, field, payload[field]):
+            payload.pop(field)
+            continue
+        raise ForbiddenError(IMMUNE_LOCKED_MESSAGE)
+
+
 def save(
     db: Session,
     data: dict[str, Any],
@@ -570,6 +607,7 @@ def save(
     *,
     commit: bool = True,
     acquire_queue_lock: bool = True,
+    full_edit: bool = True,
 ) -> dict[str, Any]:
     payload = dict(data or {})
     payload.pop("discovery_id", None)
@@ -613,6 +651,8 @@ def save(
         is_new = False
         previous_sort = queued_sort(row.sort_order)
         previous_priority = row.priority
+        if not full_edit:
+            _guard_immune_fields(row, payload)
     harvest_changed = _apply_fields(row, payload)
     _apply_status_from_dates(row, payload, harvest_changed)
     apply_queue(
@@ -636,6 +676,8 @@ def save_batch(
     db: Session,
     data: dict[str, Any],
     created_by: str | None = None,
+    *,
+    full_edit: bool = True,
 ) -> dict[str, Any]:
     items, row_ids = parse_batch_items(
         data.get("items") or [],
@@ -667,7 +709,7 @@ def save_batch(
                 fields=FIELDS,
             )
     saved_ids = [
-        int(save(db, item, created_by, commit=False, acquire_queue_lock=False)["id"])
+        int(save(db, item, created_by, commit=False, acquire_queue_lock=False, full_edit=full_edit)["id"])
         for item in items
     ]
     db.commit()

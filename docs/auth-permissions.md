@@ -123,7 +123,8 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 | 权限码 | 类型 | 说明 |
 |--------|------|------|
 | `discovery.page.workbench` | page | 发现工作台列表 |
-| `discovery.workbench.edit` | action | 新增、保存、删除、排序安排 |
+| `discovery.workbench.edit` | action | 发现工作台全部编辑：新增、保存、删除、排序安排，可交接文库 |
+| `discovery.workbench.immune_edit` | action | 发现工作台免疫编辑：可新增、保存其他字段、删除、冻存和既往筛选，可从效价下发。不能改状态、优先级、负责人、排序、筛选抗原、血清效价、阳性细胞数、板号，不能排序，不能交接文库 |
 | `discovery.page.synthesis_progress` | page | 合成与验证列表与外部订单比对 |
 | `discovery.synthesis_progress.edit` | action | 合成与验证全部编辑：新增、保存、批量粘贴、把负责人标记为「无人问津」（或取消标记）、删除、采用来源变更及手动同步合成订单；只有此权限能看到全部合成公司（其他人看到 `***`，改造实验员只能看到改造类工单的） |
 | `discovery.synthesis_progress.pm_edit` | action | PM操作合成与验证：新建工单（PM 自动填本人且不可改，负责人不可填）、认领「无人问津」合成结果（不限工单归属），认领 7 天内可改回「无人问津」，不能改给他人；仅限归属本人的工单（有负责人时只归负责人，负责人为空或「无人问津」时归 PM）可编辑项目与改造需求字段（项目编号、课题类型、靶点、小鼠品系、优先级、排序、订单性质、供应方式、改造类型/方式/母本/要求、备注）、调整排序及删除待下单工单；不能改 PM、实验号、靶点类型 |

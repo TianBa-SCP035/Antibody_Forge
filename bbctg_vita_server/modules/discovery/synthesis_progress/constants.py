@@ -176,7 +176,7 @@ DRIFT_FIELD_LABELS = {
     "synthetic_count": "合成个数",
     "synthetic_date": "合成日期",
     "arrival_count": "到货个数",
-    "arrival_date": "到货日期",
+    "arrival_date": "发货日期",
     "selection_method": "挑选方式",
     "is_rechoose": "是否补挑",
 }

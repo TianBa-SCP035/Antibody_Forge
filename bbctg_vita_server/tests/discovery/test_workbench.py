@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 import re
 from unittest.mock import patch
 
-from core.errors import ConflictError
+from core.errors import ConflictError, ForbiddenError
 from models.discovery import DiscoveryWorkbench
 from models.molecular_cell import MolecularLibraryOrder
 from models.target import Target
@@ -42,6 +42,31 @@ class DiscoveryWorkbenchIdTests(DbTestCase):
         )
         self.assertEqual(updated["discovery_id"], saved["discovery_id"])
         self.assertEqual(updated["project_code"], "P2")
+
+    def test_immune_edit_cannot_change_locked_fields(self):
+        saved = service.save(
+            self.db,
+            {
+                "project_code": "P1",
+                "serum_titer": "ELISA人:2500",
+                "screening_antigen": "抗原A",
+                "plate_nos": "P-1",
+            },
+            full_edit=False,
+        )
+        self.assertEqual(saved["serum_titer"], "ELISA人:2500")
+        self.assertEqual(saved["status"], "规划中")
+        kept = service.save(
+            self.db,
+            {"id": saved["id"], "remark": "补笼位", "status": "规划中", "serum_titer": "ELISA人:2500"},
+            full_edit=False,
+        )
+        self.assertEqual(kept["remark"], "补笼位")
+        self.assertEqual(kept["status"], "规划中")
+        with self.assertRaisesRegex(ForbiddenError, "不能修改状态"):
+            service.save(self.db, {"id": saved["id"], "status": "待剖鼠"}, full_edit=False)
+        with self.assertRaisesRegex(ForbiddenError, "不能修改"):
+            service.save(self.db, {"id": saved["id"], "plate_nos": "P-2"}, full_edit=False)
 
     def test_save_batch_assigns_unique_ids(self):
         result = service.save_batch(

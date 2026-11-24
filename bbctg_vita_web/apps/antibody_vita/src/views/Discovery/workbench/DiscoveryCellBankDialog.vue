@@ -109,7 +109,7 @@ import {
   saveDiscoveryCellBank,
 } from '#/api/discoveryWorkbench'
 
-const CELL_KINDS = ['脾细胞', '淋巴结', '骨髓', 'PBMC', '血浆细胞', '全细胞', '浆细胞', '其他']
+const CELL_KINDS = ['脾细胞', '淋巴结', '骨髓', 'PBMC', '血浆细胞', '全细胞', '浆细胞', '流穿液', '其他']
 
 function today() {
   const now = new Date()

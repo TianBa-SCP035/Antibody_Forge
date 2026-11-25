@@ -164,8 +164,6 @@ DRIFT_COMPARE_FIELDS = (
     "synthetic_corp",
     "synthetic_count",
     "synthetic_date",
-    "arrival_count",
-    "arrival_date",
     "selection_method",
     "is_rechoose",
 )
@@ -175,8 +173,6 @@ DRIFT_FIELD_LABELS = {
     "synthetic_corp": "合成公司",
     "synthetic_count": "合成个数",
     "synthetic_date": "合成日期",
-    "arrival_count": "到货个数",
-    "arrival_date": "发货日期",
     "selection_method": "挑选方式",
     "is_rechoose": "是否补挑",
 }

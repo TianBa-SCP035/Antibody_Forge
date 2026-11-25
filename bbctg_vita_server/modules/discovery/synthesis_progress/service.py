@@ -1554,7 +1554,7 @@ def adopt_source(
     )
     if not target_fields:
         raise ValueError("未指定可采用的来源字段")
-    rederive = bool({"order_no", "arrival_date"}.intersection(target_fields))
+    rederive = "order_no" in target_fields
     if rederive:
         lock_workbench_queue(db, DiscoverySynthesisOrder)
     row = db.get(DiscoverySynthesisOrder, int(row_id))

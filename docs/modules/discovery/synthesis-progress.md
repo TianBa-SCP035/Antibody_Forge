@@ -42,8 +42,8 @@
 | `synthesis_code` / `order_no` / `batch_label` | 转码 / 订单号 / 批次 | 送测转码（最长 64）、合成订单号（最长 64）、工单批次（最长 255）。`TRF-` 开头的订单号是转染与表达交接写入的转染工单号：只由交接写入，已有的不能修改或清空，也不能手填（见 §5 第 7 项） |
 | `synthetic_corp` | 合成公司 | 最长 64；预设：`君跻`、`擎科`、`金斯瑞`、`内部`，支持自填。新建改造类工单（`改造` / `内部转染` / `改亚型`）未填时默认 `内部`；关联 One 后 `内部` 与空值一样由 One 回填 |
 | `order_sender` | 下单人 | 最长 128；系统内不可编辑，由 One 同步，原样保存订单文件上传人（多为「中文名 英文名」），见第 5 节；具 `eng_edit` 的改造实验员新建工单时填本人显示名 |
-| `synthetic_count` / `arrival_count` | 合成个数 / 到货个数 | 可选非负整数（`0` 合法，空为 `NULL`；Excel 输入自动剥离 `个`/`条`） |
-| `synthetic_date` / `arrival_date` / `flow_date` / `affinity_date` | 合成日期 / 发货日期 / 流式日期 / 亲和力日期 | `YYYY-MM-DD`。`arrival_date` 页面称发货日期，取 One `deliverydate`。保存时若清空 `affinity_date` 且当次请求未传 `affinity_result`，后端自动将 `affinity_result` 清空为 `NULL` |
+| `synthetic_count` / `arrival_count` | 合成个数 / 到货个数 | 可选非负整数（`0` 合法，空为 `NULL`；Excel 输入自动剥离 `个`/`条`）。`arrival_count` 只取上清推送的在板孔数，One 不再写入 |
+| `synthetic_date` / `arrival_date` / `flow_date` / `affinity_date` | 合成日期 / 发货日期 / 流式日期 / 亲和力日期 | `YYYY-MM-DD`。`arrival_date` 页面称发货日期，指上清发货，只取合成公司上清板布局推送（见 §One 同步的快照字段说明），One 不再写入。保存时若清空 `affinity_date` 且当次请求未传 `affinity_result`，后端自动将 `affinity_result` 清空为 `NULL` |
 | `affinity_status` | 亲和力检测状态 | 枚举：`亲和力待检测`、`亲和力检测中`、`亲和力已完成`、`亲和力不适用`（仅 `多次穿膜`，系统写入，不能手选）；验证前阶段为 `NULL` |
 | `affinity_owner` | 亲和力人员 | 可多人，按填写顺序以 `、` 拼接（输入可用逗号、顿号、加号分隔，去重），拼接后最长 64；抽屉与 Excel 编辑左键单选、右键追加，Excel 粘贴逐个匹配人员；表头筛选按单个人名 |
 | `affinity_result` | 亲和力结果 | 可空；枚举：`正常`、`阳性极少`、`全阴` |
@@ -63,7 +63,7 @@
 
 ### 自动推导与手动修改规则（`sync_derived_statuses`）
 
-当新建工单，或保存请求未显式传入 `status` 且修改了 `AUTO_STATUS_FIELDS`（`order_no`、`supply_mode`、`arrival_date`、`affinity_owner`、`affinity_date`、`report_reason`、`flow_date`、`target_type`、`target_codes`、`affinity_status`、`flow_status`），或 One 库同步回填/采用 `order_no`、`arrival_date` 时触发自动推导；若请求显式传入 `status`，直接保存人工指定的 `status`。
+当新建工单，或保存请求未显式传入 `status` 且修改了 `AUTO_STATUS_FIELDS`（`order_no`、`supply_mode`、`arrival_date`、`affinity_owner`、`affinity_date`、`report_reason`、`flow_date`、`target_type`、`target_codes`、`affinity_status`、`flow_status`），或 One 库同步回填/采用 `order_no`、上清推送写入 `arrival_date` 时触发自动推导；若请求显式传入 `status`，直接保存人工指定的 `status`。
 
 1. **手动切换实验子状态联动**：
    - 将 `affinity_status` 打回 `亲和力待检测` 时保留 `affinity_owner`（与整单打回一致，留作记录）。
@@ -181,13 +181,14 @@
      2. `batch_label`（取 `|` 前主干及剥离 `_数字`/`_C数字` 后基础名）匹配 `t.projectid`、`t.projectcode` 或 `t.batchname`；
      3. `synthesis_code` 匹配 `t.synthesiscode` 或 `t.projectcode`（仅 `supply_mode = '合成到货'`；改亚型、内部转染与原合成共用转码，只按前两轮关联）。
 3. **快照字段、自动回填与差异采用**：
-   - `SNAPSHOT_STORED_FIELDS`（存入 `source_snapshot` 的 **10 个字段**）：`DRIFT_COMPARE_FIELDS` 加 `synthesis_code`、`batch_label`。
-   - `DRIFT_COMPARE_FIELDS`（参与差异比对的 **8 个字段**）：`order_no`、`synthetic_corp`、`synthetic_count`、`synthetic_date`、`arrival_count`、`arrival_date`、`selection_method`、`is_rechoose`。
-   - 个数和日期原样取 One，不做修正：`arrival_count` 取 `a.supernatantcounts`，为空时取 `a.plasmidcounts`；`synthetic_date` 取 `a.syntheticdate`，发货日期 `arrival_date` 取分析表 `a.deliverydate`。One 没有单独的到货日期列；过程表 `one_task_synthetic_task_process.arrivedate` 是「几月几号到货/发货多少个」这类文字，不是日期，不接入。
+   - `SNAPSHOT_STORED_FIELDS`（存入 `source_snapshot` 的 **8 个字段**）：`DRIFT_COMPARE_FIELDS` 加 `synthesis_code`、`batch_label`。
+   - `DRIFT_COMPARE_FIELDS`（参与差异比对的 **6 个字段**）：`order_no`、`synthetic_corp`、`synthetic_count`、`synthetic_date`、`selection_method`、`is_rechoose`。
+   - `synthetic_count` 取 `a.syntheticcount`，`synthetic_date` 取 `a.syntheticdate`，原样取，不做修正。
+   - 发货日期 `arrival_date` 和到货个数 `arrival_count` 不从 One 取（One 的 `deliverydate`、`plasmidcounts`、`supernatantcounts` 记的是质粒），只由 [上清板布局接收](./supernatant-receive-api.md) 写入：某订单号收到孔位时，把订单号匹配（不区分大小写）、`合成到货`、未完成未取消的工单发货日期写成该订单第一批孔位的接收日期，到货个数写成该订单当前在板孔数（不含未合成），发货日期变了就重新推导状态并在进入终态时重编队列。已完成、已取消的工单不改。两列仍可手动编辑；转染交接的工单照 §7 写入。
    - `selection_method` 取 One `a.selectmethod`（逗号、顿号或加号分隔，去掉 `补挑` 后按预设顺序以顿号拼接）；`is_rechoose` 在 `a.isrechooseorder = 'true'` 或 `selectmethod` 含 `补挑` 时为 `是`，`'false'` 时为 `否`，其他为空。
-   - 本地为空的快照字段（或重新绑定时仍等于上一版快照自动填入值的字段）自动用 One 库值回填，触及 `order_no` 或 `arrival_date` 时自动推导状态并在进入终态时重编队列。
+   - 本地为空的快照字段（或重新绑定时仍等于上一版快照自动填入值的字段）自动用 One 库值回填，触及 `order_no` 时自动推导状态并在进入终态时重编队列。
    - `order_sender` 不进快照、不比对差异，每次核对都直接改成 One 当前值（One 没有上传记录时清空）。
-   - 本地已有非空值且与快照不一致时（本地 `CN` 与远端 `GS` 前缀订单号除外），不覆盖本地值，返回 `drift_fields` 与 `has_drift = true`；抽屉字段下显示「来源最新」横幅，由具备 `edit` 权限的用户点击「采用」或「全部采用」调用 `POST /adopt_source` 覆盖；采用了 `order_no` 或 `arrival_date` 时同样在队列锁内重新推导状态，进入终态即出队重编。
+   - 本地已有非空值且与快照不一致时（本地 `CN` 与远端 `GS` 前缀订单号除外），不覆盖本地值，返回 `drift_fields` 与 `has_drift = true`；抽屉字段下显示「来源最新」横幅，由具备 `edit` 权限的用户点击「采用」或「全部采用」调用 `POST /adopt_source` 覆盖；采用了 `order_no` 时同样在队列锁内重新推导状态，进入终态即出队重编。
 4. **本地重号提示与远端候选补全**：
    - `duplicates`（请求行数 ≤ 50 时返回）：检测当前行与本地其他工单在 `order_no`、`batch_label`、`synthesis_code` 上的重号（已绑定 One 的行前端仅提示 `order_no` 重号，未绑定行提示三项重号），抽屉横幅支持右键复制冲突编号。
    - `candidates`（单行点查 `len(rows) == 1` 时返回，最多 20 条）：返回同 `synthesis_code` 或同 `batch_label` 下尚未被占用的其他 One 库订单快照，供抽屉 `order_no`、`batch_label`、`synthesis_code` 输入框自动补全选择。
@@ -198,7 +199,7 @@
    - 范围：ngs 与 beacon 中 `a.created >= ONE_AUTO_CREATE_SINCE`（当前值为 `2026-11-01`）、未删除且未被本地工单关联的记录；早于该边界的订单不自动建单。
    - 跳过改造类批次：订单文件名（`refstr`）`_数字clones` 前的前缀（取不到时用 `t.projectcode`）按 `_` 拆分后第 5 段为 `M数字`（如 `23R037_RM_C_W_M1_20261102`）时不建，这类改造/改亚型/转染工单由人工先建空单，再经三轮匹配绑定。
    - 去重：有订单号的按订单号建一条，本地已有同订单号（不区分大小写）时不建；没有订单号的按文件只建一条 `待下单` 行，同文件已有订单号或已有记录在本地时不建。同文件先建了无订单号的 `待下单` 行、后来同文件另一条记录才下单时，改绑那一行（按上一版快照替换自动填入值）而不是再建。
-   - 字段：快照 10 个字段与下单人取 One；`priority`、`pm`、`project_code`、`experiment_id`、`study_type`、`mouse_strain` 沿用同 `batch_label` 或同 `synthesis_code` 的最新本地行，`owner` 不沿用，留空待审核标记；靶点编号取 `t.target` 中的 `[20R147]`，没有时取文件前缀或转码开头的 `数字数字R数字数字数字`，单个编号时名称取靶点库，否则用 One 的名称，都取不到时沿用同批次行的靶点；仍无小鼠品系时按转码品系标记（如 `RMCW`）取本地同标记行中最多的品系。`created_by` 为 `One同步`，状态按订单号与发货日期自动推导，并按优先级排到同优先级队尾。
+   - 字段：快照 8 个字段与下单人取 One；`priority`、`pm`、`project_code`、`experiment_id`、`study_type`、`mouse_strain` 沿用同 `batch_label` 或同 `synthesis_code` 的最新本地行，`owner` 不沿用，留空待审核标记；靶点编号取 `t.target` 中的 `[20R147]`，没有时取文件前缀或转码开头的 `数字数字R数字数字数字`，单个编号时名称取靶点库，否则用 One 的名称，都取不到时沿用同批次行的靶点；仍无小鼠品系时按转码品系标记（如 `RMCW`）取本地同标记行中最多的品系。`created_by` 为 `One同步`，状态按订单号自动推导，并按优先级排到同优先级队尾。
    - 删除：已关联 One 的工单不能删除，只能改为 `已取消`；要彻底去掉需在 One 删除对应记录，否则下次同步会重新建出。
 7. **转染与表达交接（`POST /api/molecular-cell/transfection/handoff_synthesis`）**：已完成的转染工单交接为一条 `常规合成` + `内部转染` 的工单，合成 / 到货个数取蛋白数，合成日期取转染日期，发货日期取完成日期，因此直接推导为 `待检测`；按新建规则校验必填项、默认合成公司 `内部` 并排入队列，订单号写转染工单号（`TRF-YYMMDD-XXXXXX`，内部转染没有合成公司订单号）。转染模块按订单号反查是否已交接，所以这类订单号前后端都锁定不能改；其余字段照常编辑，合成单可以删除，删除后转染工单可重新交接。这类订单号与 One 订单号不会相同，不影响 One 匹配。规则见 [转染与表达](../molecular-cell/transfection.md) §4。
 

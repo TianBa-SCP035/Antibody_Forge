@@ -28,6 +28,8 @@ MAX_RESPONSE_CAPTURE = 64 * 1024
 _BUSINESS_CODE_PREFIX = re.compile(
     rb'^\s*\{\s*"code"\s*:\s*(-?\d+)',
 )
+# 对外约定 code 1 成功、0 失败的接口，只按 HTTP 状态判定结果
+_PARTNER_CODE_PATHS = frozenset({"/api/protein-supernatant/receive"})
 
 
 class AuditMiddleware:
@@ -161,6 +163,7 @@ def _finalize_attempt(
         status_code,
         body,
         response_truncated=response_truncated,
+        partner_code=context.path in _PARTNER_CODE_PATHS,
     )
     if context.has_committed_result(result):
         return
@@ -173,11 +176,14 @@ def _parse_result(
     body: bytes,
     *,
     response_truncated: bool = False,
+    partner_code: bool = False,
 ) -> tuple[str, str | None]:
     if status_code >= 400:
         fallback = f"HTTP {status_code}"
     else:
         fallback = None
+    if partner_code and status_code < 400:
+        return "success", None
     if not body:
         return ("failed", fallback) if fallback else ("success", None)
     try:
@@ -203,7 +209,7 @@ def _error_message(data: Any) -> str | None:
     if not isinstance(data, dict):
         return None
     nested = data.get("data") if isinstance(data.get("data"), dict) else {}
-    value = data.get("message") or data.get("detail") or nested.get("message")
+    value = data.get("message") or data.get("detail") or nested.get("message") or data.get("msg")
     return str(value)[:2000] if value else None
 
 

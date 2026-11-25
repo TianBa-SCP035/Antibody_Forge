@@ -36,6 +36,16 @@ class ResultParsingTests(unittest.TestCase):
         self.assertEqual(_parse_result(200, json.dumps({"code": 1, "message": "保存失败"}).encode()), ("failed", "保存失败"))
         self.assertEqual(_parse_result(200, json.dumps({"code": 0, "data": {}}).encode()), ("success", None))
 
+    def test_partner_code_follows_http_status(self):
+        ok = json.dumps({"code": 1, "msg": "success", "data": None}).encode()
+        self.assertEqual(_parse_result(200, ok, partner_code=True), ("success", None))
+        bad = json.dumps({"code": 0, "msg": "data[1]：wellno「未合成」不是 96 孔板孔号", "data": None},
+                         ensure_ascii=False).encode()
+        self.assertEqual(
+            _parse_result(400, bad, partner_code=True),
+            ("failed", "data[1]：wellno「未合成」不是 96 孔板孔号"),
+        )
+
     def test_truncated_json_response_uses_business_code_prefix(self):
         self.assertEqual(
             _parse_result(200, b'{"code":1,"message":"' + b"x" * 1024, response_truncated=True),

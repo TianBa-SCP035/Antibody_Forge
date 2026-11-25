@@ -92,6 +92,12 @@ class OrderFileTests(DbTestCase):
             volume=Decimal("1"),
             sample_enter_vol=Decimal("1"),
         ))
+        self.db.add(SynthesisSupernatantWell(
+            order_no="BAO9",
+            corp_name="擎科",
+            sample_name="Ab0",
+            not_synthesized=True,
+        ))
         self.db.commit()
         output, filename = order_files.export_plate_layout(self.db, synthesis.id)
         self.assertTrue(filename.startswith("版布局_bao9_"))
@@ -101,6 +107,7 @@ class OrderFileTests(DbTestCase):
         self.assertEqual(sheet["F2"].value, 100.5)
         self.assertIsNone(sheet["F3"].value)
         self.assertIsNone(sheet["G3"].value)
+        self.assertEqual((sheet["D4"].value, sheet["E4"].value, sheet["H4"].value), ("未合成", "Ab0", None))
 
         empty = self._synthesis(synthesis_order_id="SYN-261123-EMPTY01", order_no="NONE")
         with self.assertRaises(NotFoundError):

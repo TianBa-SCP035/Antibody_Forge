@@ -64,12 +64,7 @@ class OneSyncMappingTests(unittest.TestCase):
                     "syntheticdate": "2026-03-01",
                     "deliverydate": "2026-02-20",
                 },
-                {"arrival_count": 192, "synthetic_date": "2026-03-01", "arrival_date": "2026-02-20"},
-            ),
-            (
-                "ngs",
-                {"id": 12, "syntheticcount": 96, "plasmidcounts": 192},
-                {"arrival_count": 192},
+                {"synthetic_count": 96, "synthetic_date": "2026-03-01"},
             ),
         )
         for source_type, raw, expected in cases:
@@ -77,6 +72,8 @@ class OneSyncMappingTests(unittest.TestCase):
                 snap = one_sync.build_remote_snapshot(source_type, raw)
                 for key, val in expected.items():
                     self.assertEqual(snap[key], val)
+                # 发货日期、到货个数只取合成公司上清推送
+                self.assertFalse({"arrival_count", "arrival_date"} & set(snap))
 
 
 class OneSyncServiceTests(DbTestCase):
@@ -239,9 +236,8 @@ class OneSyncServiceTests(DbTestCase):
 
         self.assertTrue(check_res["remote_available"])
         patched = check_res["updated_items"][0]
-        self.assertEqual(patched["arrival_count"], 115)
-        self.assertEqual(patched["arrival_date"], "2026-03-17")
-        self.assertEqual(patched["status"], "待检测")
+        self.assertEqual((patched["arrival_count"], patched["arrival_date"]), (None, None))
+        self.assertEqual(patched["status"], "合成中")
         self.assertEqual(patched["synthetic_count"], 118)
         self.assertEqual(patched["order_sender"], "任鸿滨 Hongbin Ren")
         self.assertTrue(patched["has_drift"])

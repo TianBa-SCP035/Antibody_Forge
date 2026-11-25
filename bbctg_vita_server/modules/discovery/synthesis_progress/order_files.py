@@ -49,22 +49,32 @@ def export_plate_layout(db: Session, row_id: int):
     wells = db.scalars(
         select(SynthesisSupernatantWell)
         .where(func.lower(SynthesisSupernatantWell.order_no) == order_no.lower())
-        .order_by(SynthesisSupernatantWell.plate_no, SynthesisSupernatantWell.well_no, SynthesisSupernatantWell.id)
+        .order_by(
+            SynthesisSupernatantWell.not_synthesized,
+            SynthesisSupernatantWell.plate_no,
+            SynthesisSupernatantWell.well_no,
+            SynthesisSupernatantWell.sample_name,
+            SynthesisSupernatantWell.id,
+        )
     ).all()
     if not wells:
         raise NotFoundError("还没有收到这家合成公司的版布局")
     headers = ["订单号", "合成公司", "板号", "孔号", "蛋白名称", "浓度(ug/mL)", "规格(mL/支)", "体积(mL)", "质粒量(ug)"]
+
+    def amount(value):
+        return None if value is None else float(value)
+
     rows = [
         [
             well.order_no,
             well.corp_name,
             well.plate_no,
-            well.well_no,
+            "未合成" if well.not_synthesized else well.well_no,
             well.sample_name,
-            None if well.potency is None else float(well.potency),
-            None if well.specs is None else float(well.specs),
-            float(well.volume),
-            float(well.sample_enter_vol),
+            amount(well.potency),
+            amount(well.specs),
+            amount(well.volume),
+            amount(well.sample_enter_vol),
         ]
         for well in wells
     ]

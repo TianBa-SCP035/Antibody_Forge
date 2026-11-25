@@ -1,4 +1,5 @@
-"""合成公司推送的上清板布局：校验后一孔一行保存，同一「订单号 + 板号」整板覆盖。"""
+"""合成公司推送的上清板布局：校验后一孔一行保存，同一「订单号 + 板号 + 孔号」再推时覆盖该孔。
+未合成的样品按「订单号 + 样品名」记一行标记，样品后来上板时去掉标记。"""
 
 from __future__ import annotations
 
@@ -7,10 +8,14 @@ import json
 import re
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from models.discovery import DiscoverySynthesisOrder
 from models.supernatant import SynthesisSupernatantWell
+from modules.discovery.synthesis_progress.constants import STATUS_CANCELLED, STATUS_COMPLETED, SUPPLY_MODE_ARRIVAL
+from modules.discovery.synthesis_progress.one_sync import sync_derived_statuses
+from utils.clock import now_local
 
 MAX_TEXT = 64
 MAX_SAMPLE_NAME = 128
@@ -27,6 +32,8 @@ _NUMBER_FIELDS = (
     ("sampleentervol", "sample_enter_vol", "sampleEnterVol", False),
 )
 _NOT_APPLICABLE = {"/", "／"}
+# 擎科把没合成出来的样品也放进推送，板号、孔号写这个，样品不在板上
+_NOT_ON_PLATE = {"未合成", "noshipping"}
 
 
 class SupernatantReceiveError(Exception):
@@ -79,8 +86,8 @@ def _fail(errors: list[str]) -> SupernatantReceiveError:
     return SupernatantReceiveError(message)
 
 
-def parse_payload(raw: bytes) -> tuple[str, str, dict[str, dict[str, dict[str, Any]]]]:
-    """返回 (订单号, 合成公司, {板号: {孔号: 孔位}})；任一处不合格整次拒收。"""
+def parse_payload(raw: bytes) -> tuple[str, str, dict[str, dict[str, dict[str, Any]]], list[str]]:
+    """返回 (订单号, 合成公司, {板号: {孔号: 孔位}}, 未合成样品名)；任一处不合格整次拒收。"""
     try:
         body = json.loads(raw.decode("utf-8"))
     except UnicodeDecodeError as exc:
@@ -100,14 +107,23 @@ def parse_payload(raw: bytes) -> tuple[str, str, dict[str, dict[str, dict[str, A
         raise _fail(errors)
 
     plates: dict[str, dict[str, dict[str, Any]]] = {}
+    not_synthesized: dict[str, None] = {}
     for index, item in enumerate(rows, start=1):
         if not isinstance(item, dict):
             errors.append(f"data[{index}] 必须是对象")
             continue
         item = _lower_keys(item)
         row_errors: list[str] = []
-        plate_no = _required_text(item.get("plateno"), "plateno", MAX_TEXT, row_errors)
         well_text = _text(item.get("wellno"))
+        if well_text.lower() in _NOT_ON_PLATE:
+            # 未合成的行只认样品名，浓度、体积对方会填 M、0 之类，不校验
+            sample_name = _required_text(item.get("samplename"), "sampleName", MAX_SAMPLE_NAME, row_errors)
+            if row_errors:
+                errors.append(f"data[{index}]：" + "，".join(row_errors))
+            else:
+                not_synthesized[sample_name] = None
+            continue
+        plate_no = _required_text(item.get("plateno"), "plateno", MAX_TEXT, row_errors)
         well = _WELL.fullmatch(well_text.upper())
         if not well:
             row_errors.append(f"wellno「{well_text}」不是 96 孔板孔号（A1-H12）")
@@ -131,23 +147,79 @@ def parse_payload(raw: bytes) -> tuple[str, str, dict[str, dict[str, dict[str, A
 
     if errors:
         raise _fail(errors)
-    return order_no, corp_name, plates
+    return order_no, corp_name, plates, list(not_synthesized)
+
+
+def _mark_shipped(db: Session, order_no: str, ship_date: str, well_count: int) -> None:
+    """合成与验证的发货日期、到货个数只取上清推送：首次推送当天、板上孔数。"""
+    from modules.discovery.synthesis_progress.service import settle_queue_after_sync
+
+    orders = db.scalars(
+        select(DiscoverySynthesisOrder).where(
+            func.lower(DiscoverySynthesisOrder.order_no) == order_no.lower(),
+            DiscoverySynthesisOrder.supply_mode == SUPPLY_MODE_ARRIVAL,
+            DiscoverySynthesisOrder.status.not_in((STATUS_COMPLETED, STATUS_CANCELLED)),
+        )
+    ).all()
+    status_changed = False
+    for row in orders:
+        row.arrival_count = well_count
+        if row.arrival_date == ship_date:
+            continue
+        before = row.status
+        row.arrival_date = ship_date
+        sync_derived_statuses(row, changed_fields={"arrival_date"})
+        status_changed = status_changed or row.status != before
+    if status_changed:
+        settle_queue_after_sync(db)
 
 
 def receive(db: Session, raw: bytes) -> dict[str, Any]:
-    order_no, corp_name, plates = parse_payload(raw)
-    old_rows = db.scalars(
-        select(SynthesisSupernatantWell).where(
-            SynthesisSupernatantWell.order_no == order_no,
-            SynthesisSupernatantWell.plate_no.in_(list(plates)),
-        )
+    # 对方一单会分几批推，同一块板可能拆在不同批里，所以只按孔位覆盖，不删整板
+    order_no, corp_name, plates, not_synthesized = parse_payload(raw)
+    rows = db.scalars(
+        select(SynthesisSupernatantWell).where(SynthesisSupernatantWell.order_no == order_no)
     ).all()
-    for row in old_rows:
-        db.delete(row)
-    # 同一工作单元里插入先于删除执行，不先落库会撞唯一键
-    db.flush()
+    existing = {(row.plate_no, row.well_no): row for row in rows if not row.not_synthesized}
+    now = now_local()
+    first_received = min((row.received_at for row in existing.values() if row.received_at), default=now)
+    ship_date = first_received.date().isoformat()
+    well_keys = set(existing) | {(plate_no, well_no) for plate_no, wells in plates.items() for well_no in wells}
+    pending = {row.sample_name: row for row in rows if row.not_synthesized}
+    on_plate = {row.sample_name for row in rows if not row.not_synthesized}
     for plate_no, wells in plates.items():
         for well_no in sorted(wells):
-            db.add(SynthesisSupernatantWell(order_no=order_no, corp_name=corp_name, plate_no=plate_no, **wells[well_no]))
+            fields = wells[well_no]
+            on_plate.add(fields["sample_name"])
+            marker = pending.pop(fields["sample_name"], None)
+            if marker is not None:
+                db.delete(marker)
+            row = existing.get((plate_no, well_no))
+            if row is None:
+                db.add(SynthesisSupernatantWell(
+                    order_no=order_no, corp_name=corp_name, plate_no=plate_no, received_at=now, **fields
+                ))
+                continue
+            row.corp_name = corp_name
+            for key, value in fields.items():
+                setattr(row, key, value)
+    # 已经在板上的样品以板上为准，后来的「未合成」不覆盖
+    for sample_name in not_synthesized:
+        if sample_name in on_plate:
+            continue
+        marker = pending.get(sample_name)
+        if marker is None:
+            pending[sample_name] = marker = SynthesisSupernatantWell(
+                order_no=order_no, sample_name=sample_name, not_synthesized=True
+            )
+            db.add(marker)
+        marker.corp_name = corp_name
+    if plates:
+        _mark_shipped(db, order_no, ship_date, len(well_keys))
     db.commit()
-    return {"order_no": order_no, "plates": len(plates), "wells": sum(len(wells) for wells in plates.values())}
+    return {
+        "order_no": order_no,
+        "plates": len(plates),
+        "wells": sum(len(wells) for wells in plates.values()),
+        "not_synthesized": len(not_synthesized),
+    }

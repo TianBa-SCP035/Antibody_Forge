@@ -248,9 +248,6 @@ def build_remote_snapshot(
     synthetic_count = _clean_int(row_map.get("syntheticcount"))
     synthetic_date = normalize_date_text(row_map.get("syntheticdate"))
 
-    arrival_date = normalize_date_text(row_map.get("deliverydate"))
-    sup_count = _clean_int(row_map.get("supernatantcounts"))
-    arrival_count = sup_count if sup_count is not None else _clean_int(row_map.get("plasmidcounts"))
     method_tokens = split_tokens(_clean_str(row_map.get("selectmethod"), 128))
     rechoose_flag = str(row_map.get("isrechooseorder") or "").strip().lower()
     if rechoose_flag == "true" or RECHOOSE_TOKEN in method_tokens:
@@ -269,8 +266,6 @@ def build_remote_snapshot(
         "synthetic_corp": synthetic_corp,
         "synthetic_count": synthetic_count,
         "synthetic_date": synthetic_date,
-        "arrival_count": arrival_count,
-        "arrival_date": arrival_date,
         "selection_method": join_tokens([t for t in method_tokens if t != RECHOOSE_TOKEN], SELECTION_METHOD_OPTIONS),
         "is_rechoose": is_rechoose,
         "order_sender": _clean_str(row_map.get("uploader"), 128),
@@ -363,7 +358,7 @@ def apply_remote_snapshot_to_row(
         if should_fill and current_val != remote_val:
             setattr(row, field, remote_val)
             changed = True
-            if field in {"order_no", "arrival_date"}:
+            if field == "order_no":
                 status_input_changed = True
 
     # 下单人系统内不可编辑，始终跟随 One 的值（含清空）。
@@ -390,9 +385,6 @@ _NGS_QUERY_BASE = """
         a.syntheticcount AS syntheticcount,
         a.syntheticcorp AS syntheticcorp,
         a.syntheticdate AS syntheticdate,
-        a.plasmidcounts AS plasmidcounts,
-        a.supernatantcounts AS supernatantcounts,
-        a.deliverydate AS deliverydate,
         a.selectmethod AS selectmethod,
         a.isrechooseorder AS isrechooseorder,
         t.synthesiscode AS synthesiscode,
@@ -422,9 +414,6 @@ _BEACON_QUERY_BASE = """
         a.syntheticcount AS syntheticcount,
         a.syntheticcorp AS syntheticcorp,
         a.syntheticdate AS syntheticdate,
-        a.plasmidcounts AS plasmidcounts,
-        a.supernatantcounts AS supernatantcounts,
-        a.deliverydate AS deliverydate,
         a.selectmethod AS selectmethod,
         a.isrechooseorder AS isrechooseorder,
         t.synthesiscode AS synthesiscode,
@@ -884,8 +873,6 @@ def _collect_single_row_candidates(
                 "synthetic_corp": s.get("synthetic_corp"),
                 "synthetic_count": s.get("synthetic_count"),
                 "synthetic_date": s.get("synthetic_date"),
-                "arrival_count": s.get("arrival_count"),
-                "arrival_date": s.get("arrival_date"),
             }
         )
         if len(items) >= 20:

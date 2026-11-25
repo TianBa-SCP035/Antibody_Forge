@@ -1,5 +1,5 @@
 # 分子与细胞 · 文库构建
-> 承接上游发现交接或手工创建的建库任务，记录各工艺关键数据、产物位置与内部胶图/引物质控。相关：[引物库](./primer-library.md) · [转染与表达](./transfection.md) · [发现工作台](../discovery/workbench.md) · [项目工作台共用约定](../workbench.md)
+> 承接上游发现交接或手工创建的建库任务，记录各工艺关键数据、产物位置与内部胶图/引物质控。相关：[引物库](./primer-library.md) · [转染与表达](./transfection.md) · [NGS测序](../discovery/ngs.md) · [发现工作台](../discovery/workbench.md) · [项目工作台共用约定](../workbench.md)
 
 ## 1. 入口与权限
 
@@ -156,7 +156,7 @@
 | 按钮 | 权限 | 行为 |
 |---|---|---|
 | **质检** | `molecular.page.library_detail` | 跳转 `/molecular-cell/library-construction/result?id=<id>` |
-| **交接** | `molecular.library.edit` 或 `molecular.transfection.edit` | 只对单细胞孔板开放：确认后调用 `POST /api/molecular-cell/transfection/handoff_library` 新建一条 PCR 转染工单，见 [转染与表达](./transfection.md) §4；其他类型提示「只有单细胞孔板工单交接到转染与表达」 |
+| **交接** | 单细胞孔板：`molecular.library.edit` 或 `molecular.transfection.edit`；其余测序类：`molecular.library.edit` 或 `discovery.ngs.edit` | 单细胞孔板确认后调用 `POST /api/molecular-cell/transfection/handoff_library` 新建一条 PCR 转染工单，见 [转染与表达](./transfection.md) §4。混管、外周血、浆细胞 NGS、噬菌体确认后调用 `POST /api/discovery/ngs/handoff_library` 新建一条测序单，同一文库可多次交接，见 [NGS测序](../discovery/ngs.md) |
 | **删除** | `molecular.library.edit` | 二次确认后调用 `POST /delete`，删除工单并清理无其他工单引用的独占质检文件与测序包；已交接为转染工单的不能删除 |
 
 ### 4.2 新建、Excel 批量编辑与导出
@@ -251,7 +251,7 @@
   - 交接创建包含 `phage_display` 且发现安排处于 `规划中`、`待冲击`、`待剖鼠`、`待建库` 时，发现状态推进为 `待噬菌体`；否则若处于 `规划中`、`待冲击`、`待剖鼠`，推进为 `待建库`。文库构建完成不会自动将发现安排推进为 `待测序`。
   - 只要 `molecular_library_order` 中存在 `source_discovery_id = discovery_id` 的工单（含 `已取消`），发现工作台即禁止删除该发现安排，需先删除关联的建库工单。
 
-单细胞孔板工单向下游交接到转染与表达（未取消即可，不要求质检结论；一条只交接一次），字段携带见 [转染与表达](./transfection.md) §4。
+单细胞孔板工单向下游交接到转染与表达（未取消即可，不要求质检结论；一条只交接一次），字段携带见 [转染与表达](./transfection.md) §4。其余测序类工单（未取消即可）向下游交接到 NGS测序，一条文库可以交接多次，字段携带见 [NGS测序](../discovery/ngs.md)。
 
 ## 7. 接口
 

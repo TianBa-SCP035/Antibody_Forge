@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from core.config import get_settings
 from core.errors import BusinessError, ConflictError, NotFoundError
 from models.immunology import (
+    SerumAntigenCheck,
     SerumElisaPlate,
     SerumFacsPlate,
     SerumFile,
@@ -72,6 +73,7 @@ def is_ongoing_status(status: Any) -> bool:
 EXPERIMENT_CHILD_MODELS = (
     SerumImmMouse,
     SerumImmAntigen,
+    SerumAntigenCheck,
     SerumImmStep,
     SerumTiterTarget,
     SerumTiterPc,

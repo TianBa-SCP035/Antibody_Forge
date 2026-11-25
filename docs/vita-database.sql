@@ -466,6 +466,20 @@ CREATE TABLE IF NOT EXISTS serum_imm_antigen (
   UNIQUE KEY uq_experiment_antigen (experiment_id, antigen_id)
 ) COMMENT='免疫抗原信息表';
 
+CREATE TABLE IF NOT EXISTS serum_antigen_check (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  experiment_id VARCHAR(64) NULL COMMENT '实验ID',
+  antigen_row_id BIGINT NOT NULL COMMENT '免疫抗原记录ID',
+  assay VARCHAR(16) NOT NULL COMMENT '验证项目',
+  qualified VARCHAR(4) NULL COMMENT '是否合格：是/否',
+  images JSON NULL COMMENT '结果图片',
+  updated_by VARCHAR(64) NULL COMMENT '最后修改人',
+  updated_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_serum_antigen_check_assay (antigen_row_id, assay),
+  KEY idx_serum_antigen_check_experiment_id (experiment_id)
+) COMMENT='免疫抗原活性验证表';
+
 CREATE TABLE IF NOT EXISTS serum_imm_step (
   step_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '步骤主键ID',
   experiment_id VARCHAR(64) NULL COMMENT '实验ID',
@@ -639,6 +653,55 @@ CREATE TABLE IF NOT EXISTS discovery_cell_bank (
   PRIMARY KEY (id),
   KEY idx_discovery_cell_bank_workbench_id (workbench_id)
 ) COMMENT='抗体发现留存细胞冻存';
+
+CREATE TABLE IF NOT EXISTS discovery_ngs_run (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  ngs_run_id VARCHAR(32) NOT NULL COMMENT '测序单号',
+  sample_library VARCHAR(16) NOT NULL COMMENT '样品库',
+  status VARCHAR(16) NOT NULL COMMENT '状态',
+  source_library_order_id VARCHAR(32) NULL COMMENT '来源文库工单号',
+  library_code VARCHAR(64) NULL COMMENT '建库编号',
+  target_name VARCHAR(128) NULL COMMENT '靶点名称',
+  target_codes JSON NULL COMMENT '靶点编号列表',
+  project_code VARCHAR(64) NULL COMMENT '项目编号',
+  project_level VARCHAR(64) NULL COMMENT '项目级别',
+  study_type VARCHAR(64) NULL COMMENT '课题类型',
+  pm VARCHAR(64) NULL COMMENT 'PM',
+  mouse_strain VARCHAR(128) NULL COMMENT '小鼠品系',
+  antigen_tag VARCHAR(64) NULL COMMENT '标签形式',
+  immunogen VARCHAR(1000) NULL COMMENT '具体免疫原',
+  cell_count VARCHAR(64) NULL COMMENT '细胞数量',
+  library_checked VARCHAR(128) NULL COMMENT '建库测序核对',
+  load_note VARCHAR(255) NULL COMMENT '上库备注',
+  library_instrument_on DATE NULL COMMENT '建库上机日期',
+  sequencing_date DATE NULL COMMENT '测序上机日期',
+  instrument_no VARCHAR(64) NULL COMMENT '仪器号',
+  dissociation_buffer VARCHAR(255) NULL COMMENT '解离液',
+  screening_antigen VARCHAR(1000) NULL COMMENT '筛选抗原',
+  batch_name VARCHAR(128) NULL COMMENT '批次号',
+  synthesis_code VARCHAR(64) NULL COMMENT '送合成转码',
+  synthesis_order_id VARCHAR(32) NULL COMMENT '合成与验证单号',
+  rna_location VARCHAR(255) NULL COMMENT 'RNA冻存位置',
+  cdna_location VARCHAR(255) NULL COMMENT 'cDNA冻存位置',
+  library_location VARCHAR(255) NULL COMMENT '库冻存位置',
+  sample_source VARCHAR(32) NULL COMMENT '样品来源',
+  screening_goal VARCHAR(1000) NULL COMMENT '筛选目标',
+  fragment_size VARCHAR(32) NULL COMMENT '片段大小',
+  barcode VARCHAR(64) NULL COMMENT 'barcode',
+  sequenced VARCHAR(16) NULL COMMENT '是否已测序',
+  owner VARCHAR(64) NULL COMMENT '负责人',
+  remark VARCHAR(1000) NULL COMMENT '备注',
+  created_by VARCHAR(64) NULL COMMENT '创建人',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_discovery_ngs_run_id (ngs_run_id),
+  UNIQUE KEY uk_discovery_ngs_run_synthesis_order (synthesis_order_id),
+  KEY idx_discovery_ngs_run_library_order (source_library_order_id),
+  KEY idx_discovery_ngs_run_library_code (library_code),
+  KEY idx_discovery_ngs_run_status (status),
+  KEY idx_discovery_ngs_run_sequencing_date (sequencing_date)
+) COMMENT='NGS测序';
 
 CREATE TABLE IF NOT EXISTS discovery_synthesis_order (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -855,6 +918,7 @@ CREATE TABLE IF NOT EXISTS molecular_transfection_order (
   pm VARCHAR(64) NULL COMMENT 'PM',
   mouse_strain VARCHAR(128) NULL COMMENT '小鼠品系',
   plate_nos JSON NULL COMMENT '孔板编号列表',
+  pcr_rows JSON NULL COMMENT 'PCR转染板号与重轻链',
   status VARCHAR(24) NOT NULL DEFAULT '待转染' COMMENT '状态',
   priority VARCHAR(24) NOT NULL DEFAULT '正常' COMMENT '优先级',
   owner VARCHAR(64) NULL COMMENT '负责人',

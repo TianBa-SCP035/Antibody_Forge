@@ -1,7 +1,7 @@
 from models.order_sync import OrderSync, OrderSyncBoard
 from models.supernatant import SynthesisSupernatantWell
 from models.target import Target
-from models.discovery import DiscoveryCellBank, DiscoverySynthesisOrder, DiscoveryWorkbench
+from models.discovery import DiscoveryCellBank, DiscoveryNgsRun, DiscoverySynthesisOrder, DiscoveryWorkbench
 from models.molecular_cell import (
     MolecularCellCheckoutItem,
     MolecularCellCheckoutRequest,
@@ -16,6 +16,7 @@ from models.molecular_cell import (
 )
 from models.mega_automation import MegaFlowWorkOrder, MegaFlowWorkOrderDispatch
 from models.immunology import (
+    SerumAntigenCheck,
     SerumElisaPlate,
     SerumFacsPlate,
     SerumFile,
@@ -48,6 +49,7 @@ __all__ = [
     "SynthesisSupernatantWell",
     "Target",
     "DiscoveryCellBank",
+    "DiscoveryNgsRun",
     "DiscoveryWorkbench",
     "DiscoverySynthesisOrder",
     "MolecularCellCheckoutItem",
@@ -62,6 +64,7 @@ __all__ = [
     "MolecularTransfectionProtein",
     "MegaFlowWorkOrder",
     "MegaFlowWorkOrderDispatch",
+    "SerumAntigenCheck",
     "SerumElisaPlate",
     "SerumFacsPlate",
     "SerumFile",

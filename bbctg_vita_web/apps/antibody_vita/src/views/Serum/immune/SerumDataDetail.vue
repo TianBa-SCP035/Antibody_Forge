@@ -276,6 +276,11 @@
                   <el-table-column prop="antigen_name" label="抗原名称" min-width="120" />
                   <el-table-column prop="species" label="物种" width="70" />
                   <el-table-column prop="antigen_type" label="类型" width="70" />
+                  <el-table-column label="活性验证" width="96">
+                    <template #default="{ row }">
+                      <AntigenCheckMark :summary="antigenCheckMap[row.id]" @open="openAntigenCheck(row)" />
+                    </template>
+                  </el-table-column>
                 </el-table>
               </el-col>
 
@@ -354,6 +359,11 @@
             </el-table-column>
 
             <el-table-column prop="antigen_name" label="抗原名称" min-width="160" />
+            <el-table-column label="活性验证" width="96">
+              <template #default="{ row }">
+                <AntigenCheckMark :summary="antigenCheckMap[row.id]" @open="openAntigenCheck(row)" />
+              </template>
+            </el-table-column>
             <el-table-column prop="species" label="物种" width="90" />
             <el-table-column prop="antigen_type" label="类型" width="90" />
 
@@ -462,6 +472,12 @@
         />
       </el-tab-pane>
     </el-tabs>
+    <AntigenCheckDialog
+      v-model="antigenCheckVisible"
+      :antigen="antigenCheckTarget"
+      :can-edit="canEditAntigenCheck"
+      @changed="onAntigenCheckChanged"
+    />
   </div>
 </template>
 
@@ -499,6 +515,12 @@ import {
 
 import { notifyApiError } from '#/api/errors'
 import { exportScheme, exportSchemePdf, fetchDetail } from '#/api/serum'
+import {
+  fetchAntigenCheckSummaries,
+  SERUM_WORKBENCH_EDIT,
+  SERUM_WORKBENCH_SUPPORT_EDIT,
+} from '#/api/serumWorkbench'
+import { hasAccessCode } from '#/utils/accessCode'
 import { copyToClipboard } from '#/utils/clipboard'
 import { downloadBlob } from '#/utils/file-resource'
 import { SERUM_ERRORS } from '../shared/errors'
@@ -510,6 +532,8 @@ import {
 import { getSerumProjectStatusTagType } from '#/utils/serumProjectStatus'
 import { shouldRefreshTabData } from '#/utils/staleTabRefresh'
 
+import AntigenCheckDialog from '../shared/AntigenCheckDialog.vue'
+import AntigenCheckMark from '../shared/AntigenCheckMark.vue'
 import SerumDetailTiterTab from '../titer/SerumDetailTiterTab.vue'
 
 function compareImmStepOrder(a, b) {
@@ -524,6 +548,8 @@ function compareImmStepOrder(a, b) {
 export default {
   name: 'SerumDataDetail',
   components: {
+    AntigenCheckDialog,
+    AntigenCheckMark,
     ArrowLeft,
     Calendar,
     Collection,
@@ -586,11 +612,17 @@ export default {
         titer_pcs: []
       },
       tabDataFetchedAt: 0,
+      antigenCheckMap: {},
+      antigenCheckVisible: false,
+      antigenCheckTarget: null,
     }
   },
   computed: {
     currentUserInfo() {
       return this.userStore.userInfo || {}
+    },
+    canEditAntigenCheck() {
+      return hasAccessCode(this.currentUserInfo, SERUM_WORKBENCH_EDIT, SERUM_WORKBENCH_SUPPORT_EDIT)
     },
     currentUserName() {
       return getSerumUserName(this.currentUserInfo)
@@ -725,6 +757,7 @@ export default {
       fetchDetail(id)
         .then((res) => {
           this.postForm = { ...this.postForm, ...(res || {}) }
+          this.loadAntigenChecks(this.postForm.experiment_id)
           
           if (this.activeTab === 'plan-details' && this.postForm.mouse_groups && this.postForm.mouse_groups.length > 0) {
             const firstGroup = this.postForm.mouse_groups[0]
@@ -738,6 +771,25 @@ export default {
           this.loading = false
           this.tabDataFetchedAt = Date.now()
         })
+    },
+    async loadAntigenChecks(experimentId) {
+      this.antigenCheckMap = {}
+      if (!experimentId) return
+      try {
+        const data = await fetchAntigenCheckSummaries(experimentId)
+        if (this.postForm.experiment_id !== experimentId) return
+        this.antigenCheckMap = Object.fromEntries((data?.items || []).map((item) => [item.antigen_row_id, item]))
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '加载抗原活性验证失败' } })
+      }
+    },
+    openAntigenCheck(antigen) {
+      if (!antigen?.id) return
+      this.antigenCheckTarget = { ...antigen }
+      this.antigenCheckVisible = true
+    },
+    onAntigenCheckChanged(summary) {
+      if (summary?.antigen_row_id) this.antigenCheckMap = { ...this.antigenCheckMap, [summary.antigen_row_id]: summary }
     },
     goBack() {
       this.$router.go(-1)

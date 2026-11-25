@@ -296,6 +296,13 @@
         <WorkbenchDrawerField v-else v-bind="drawerFieldBind(field)" />
       </template>
       <template #after-fields>
+        <TransfectionPcrRows
+          v-if="editingRow.transfection_type === TYPE_PCR"
+          :order-id="editingRow.id"
+          :rows="editingRow.pcr_rows"
+          :can-edit="canEdit"
+          @change="onPcrRowsChange"
+        />
         <TransfectionProteinPanel
           :order-id="editingRow.id"
           :order-code="editingRow.transfection_order_id"
@@ -383,6 +390,7 @@ import { listTableLockMixin } from '#/utils/listTableLock'
 import { applyOptionLists } from '#/utils/optionLists'
 import { uniqueNames } from '#/utils/userOptions'
 import { plateNumbersFromText, plateNumbersText } from '../library/libraryColumns'
+import TransfectionPcrRows from './TransfectionPcrRows.vue'
 import TransfectionProteinPanel from './TransfectionProteinPanel.vue'
 import TransfectionRowActions from './TransfectionRowActions.vue'
 import {
@@ -397,6 +405,7 @@ import {
   statusTone,
   TRANSFECTION_VIEW_PREFS_KEY,
   TYPE_HINTS,
+  TYPE_PCR,
   TYPE_PLASMID,
   WORKBENCH_COLUMNS,
 } from './transfectionColumns'
@@ -460,6 +469,7 @@ export default {
     ElRadioGroup,
     ListFilterSelect,
     Tools,
+    TransfectionPcrRows,
     TransfectionProteinPanel,
     TransfectionRowActions,
     UserSelect,
@@ -499,7 +509,7 @@ export default {
   },
   workbenchSheet: { columns: SHEET_COLUMNS, order: SHEET_COLUMN_ORDER },
   setup() {
-    return { Download, fetchTransfectionRecordedTargets, Plus, Search, Tickets, typeHints: TYPE_HINTS }
+    return { Download, fetchTransfectionRecordedTargets, Plus, Search, Tickets, TYPE_PCR, typeHints: TYPE_HINTS }
   },
   data() {
     return {
@@ -645,6 +655,11 @@ export default {
     },
     onDrawerRowSynced(row) {
       this.plateDraft = plateNumbersText(row?.plate_nos)
+    },
+    onPcrRowsChange(rows) {
+      if (!this.editingRow) return
+      this.editingRow.pcr_rows = rows
+      this.persistRow(this.editingRow, 'pcr_rows')
     },
     onPlateDraftInput(value) {
       if (!this.editingRow) return

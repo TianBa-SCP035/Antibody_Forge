@@ -147,6 +147,14 @@ export const homeQuickNavPresetDefs: QuickNavPresetDef[] = [
     url: '/discovery/synthesis-progress',
   },
   {
+    id: 'discovery-ngs',
+    titleKey: 'page.home.presetDiscoveryNgsTitle',
+    subtitleKey: 'page.home.presetDiscoveryNgsSubtitle',
+    icon: 'lucide:dna',
+    iconClass: 'bg-violet-500/15 text-violet-600',
+    url: '/discovery/ngs',
+  },
+  {
     id: 'primer-library',
     titleKey: 'page.home.presetPrimerLibraryTitle',
     subtitleKey: 'page.home.presetPrimerLibrarySubtitle',

@@ -39,6 +39,7 @@ Windows： 无需路径约定，固定环境为 local。
 | `SUPERNATANT_RECEIVE_TOKEN` / `SUPERNATANT_RECEIVE_IPS` | 上清板布局接收 `POST /api/protein-supernatant/receive` 的同类校验；对接合成公司后应配置令牌 |
 | `SUPERNATANT_QUERY_URLS` | 合成公司上清板布局查询地址，`合成公司=地址`，英文分号分隔（如 `擎科=http://…/query-protein-clear-plate-layout-push`）；留空则不补查 |
 | `SUPERNATANT_QUERY_TOKENS` | 各合成公司查询接口令牌，`合成公司=令牌`，英文分号分隔（君跻的查询令牌与推送令牌不同）；没配的沿用 `SUPERNATANT_RECEIVE_TOKEN` |
+| `PROTEIN_GENE_API_URL` / `PROTEIN_GENE_API_KEY` | 蛋白基因名接口（李宗强，`GET ?protein_name=`，密钥放请求头 `X-API-Key`）；转染导入只填蛋白名称、转染表里又没有时按名称查重轻链。留空则只查转染表 |
 | `YUNZHIJIA_*` | 云之家（可选） |
 | `CELL_DB_URL` / `EMPLOYEE_DB_URL` / `ONE_DB_URL` | 外部只读库（可选）；分别提供细胞库存、员工与靶点主数据、One 合成订单与交付进度 |
 | `LABILLION_BASE_URL` / `LABILLION_USERNAME` / `LABILLION_PASSWORD` / `LABILLION_PLATFORM_ID` | 镁伽 Labillion（可选；URL 留空则不推送。配了 URL 后用户名、密码和 `PUBLIC_API_BASE_URL` 必填。`PLATFORM_ID` 是登录后请求头 `Platform`） |

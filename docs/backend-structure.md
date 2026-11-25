@@ -20,7 +20,7 @@ bbctg_vita_server/
     options/           # 跨模块下拉：靶点库搜索、在职人员搜索
     immunology/        # serum / workbench / titer / cell
     atlas/             # 千鼠万抗
-    discovery/         # 抗体发现：workbench / synthesis_progress（合成与验证，含 One 库同步）
+    discovery/         # 抗体发现：workbench / synthesis_progress（合成与验证，含 One 库同步）/ ngs（NGS测序）
     molecular_cell/    # 分子与细胞：library_orders（文库构建）/ primer_catalog（引物库）/ transfection（转染与表达）
     mega_automation/   # 镁伽流式工单（含 callback、labillion_sync）
     order_sync/        # 工单数据回传

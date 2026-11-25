@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.errors import ConflictError
+from integrations import protein_gene
 from models.molecular_cell import (
     MolecularTransfectionItem,
     MolecularTransfectionOrder,
@@ -68,9 +69,12 @@ def _problem_message(problems: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _parse_items(items: list[dict[str, Any]]) -> tuple[list[tuple[int, str, str, str | None]], list[str]]:
-    """逐行整理三列，返回（行号、蛋白名称、重链、轻链）和问题清单；行号是表格里的行号。"""
-    parsed: list[tuple[int, str, str, str | None]] = []
+def _parse_items(items: list[dict[str, Any]]) -> tuple[list[tuple[int, str, str | None, str | None]], list[str]]:
+    """逐行整理三列，返回（行号、蛋白名称、重链、轻链）和问题清单；行号是表格里的行号。
+
+    重链、轻链都没填的行重链记 None，导入时再按名称查。
+    """
+    parsed: list[tuple[int, str, str | None, str | None]] = []
     problems: list[str] = []
     first_line: dict[str, int] = {}
     for index, item in enumerate(items, start=2):
@@ -82,20 +86,80 @@ def _parse_items(items: list[dict[str, Any]]) -> tuple[list[tuple[int, str, str,
         except ValueError as exc:
             problems.append(f"第 {line} 行：{exc}")
             continue
-        if not name or not heavy:
-            problems.append(f"第 {line} 行：{'缺少蛋白名称' if not name else '缺少重链'}")
+        if not name:
+            problems.append(f"第 {line} 行：缺少蛋白名称")
+            continue
+        if not heavy and light:
+            problems.append(f"第 {line} 行：缺少重链（只填蛋白名称时会自动查重轻链）")
             continue
         key = _key(name)
         if key in first_line:
             problems.append(f"第 {line} 行：蛋白名称 {name} 与第 {first_line[key]} 行重复")
             continue
         first_line[key] = line
-        parsed.append((line, name, heavy, light))
+        parsed.append((line, name, heavy or None, light))
     return parsed, problems
 
 
-def _editable_order(db: Session, order_id: int) -> _O:
-    order = load_order(db, order_id, lock=True)
+def _fill_chains(
+    db: Session,
+    parsed: list[tuple[int, str, str | None, str | None]],
+    problems: list[str],
+) -> tuple[list[tuple[int, str, str, str | None]], int, int]:
+    """只填了名称的行补上重轻链：先查转染表，没有再查基因名接口（查到的随本次导入登记进转染表）。
+
+    返回补好的行、从转染表补的个数、从接口补的个数；补不上的行记进 problems。
+    """
+    missing = [name for _, name, heavy, _ in parsed if heavy is None]
+    known = {
+        _key(protein.protein_name): protein
+        for protein in db.scalars(
+            select(_Protein).where(func.lower(_Protein.protein_name).in_([_key(name) for name in missing]))
+        ).all()
+    } if missing else {}
+    remote: dict[str, tuple[str, str | None]] = {}
+    remote_issues: dict[str, str] = {}
+    remote_error = ""
+    remote_names = [name for name in missing if _key(name) not in known]
+    if remote_names:
+        try:
+            remote, remote_issues = protein_gene.lookup(remote_names)
+        except protein_gene.ProteinGeneUnavailable as exc:
+            remote_error = str(exc)
+    filled: list[tuple[int, str, str, str | None]] = []
+    from_table = from_api = 0
+    for line, name, heavy, light in parsed:
+        if heavy is not None:
+            filled.append((line, name, heavy, light))
+            continue
+        protein = known.get(_key(name))
+        if protein is not None:
+            filled.append((line, name, protein.heavy_chain, protein.light_chain))
+            from_table += 1
+            continue
+        chains = remote.get(name)
+        if chains:
+            try:
+                found_heavy = clean_text(FIELDS["heavy_chain"], chains[0])
+                found_light = clean_text(FIELDS["light_chain"], chains[1])
+            except ValueError as exc:
+                problems.append(f"第 {line} 行：基因名接口查到的 {name} {exc}")
+                continue
+            filled.append((line, name, found_heavy, found_light))
+            from_api += 1
+            continue
+        if remote_error:
+            reason = f"{remote_error}，没能查重轻链"
+        elif name in remote_issues:
+            reason = f"{remote_issues[name]}，请在文件里填上重轻链"
+        else:
+            reason = "基因名接口也查不到重轻链"
+        problems.append(f"第 {line} 行：{name} 只填了名称，转染表里没有，{reason}")
+    return filled, from_table, from_api
+
+
+def _editable_order(db: Session, order_id: int, *, lock: bool = True) -> _O:
+    order = load_order(db, order_id, lock=lock)
     synthesis_id = handed_off_to(db, order)
     if synthesis_id:
         raise ValueError(f"已交接到合成与验证 {synthesis_id}，蛋白清单不能再改")
@@ -109,12 +173,16 @@ def import_proteins(
     created_by: str | None = None,
 ) -> dict[str, Any]:
     """用导入的表格替换本单的蛋白清单；任何一行有问题整个文件不导入，并列出全部问题行。"""
-    order = _editable_order(db, order_id)
+    _editable_order(db, order_id, lock=False)
     if not items:
         raise ValueError("文件里没有蛋白")
     if len(items) > MAX_IMPORT_ROWS:
         raise ValueError(f"单次最多导入 {MAX_IMPORT_ROWS} 个蛋白")
     parsed, problems = _parse_items(items)
+    # 查外部接口可能要几十秒，放在锁工单之前；查完结束这次读事务，后面的读取不沿用查询前的快照。
+    parsed, from_table, from_api = _fill_chains(db, parsed, problems)
+    db.rollback()
+    order = _editable_order(db, order_id)
 
     existing = {
         _key(protein.protein_name): protein
@@ -186,6 +254,8 @@ def import_proteins(
         "created": created,
         "updated": updated,
         "removed": removed,
+        "from_table": from_table,
+        "from_api": from_api,
         "order": serialize_rows(db, [order])[0],
     }
 

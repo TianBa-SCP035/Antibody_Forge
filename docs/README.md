@@ -26,6 +26,7 @@
 | 小鼠免疫 · 免疫工作台 | [modules/immunology/workbench.md](./modules/immunology/workbench.md) |
 | 抗体发现 · 发现工作台 | [modules/discovery/workbench.md](./modules/discovery/workbench.md) |
 | 抗体发现 · 合成与验证 | [modules/discovery/synthesis-progress.md](./modules/discovery/synthesis-progress.md) |
+| 抗体发现 · NGS测序 | [modules/discovery/ngs.md](./modules/discovery/ngs.md) |
 | 分子与细胞 · 文库构建 | [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md) |
 | 分子与细胞 · 引物库 | [modules/molecular-cell/primer-library.md](./modules/molecular-cell/primer-library.md) |
 | 分子与细胞 · 转染与表达 | [modules/molecular-cell/transfection.md](./modules/molecular-cell/transfection.md) |

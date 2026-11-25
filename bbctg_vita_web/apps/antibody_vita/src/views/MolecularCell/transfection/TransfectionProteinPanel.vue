@@ -34,7 +34,7 @@
       :on-change="readFile"
     >
       <ElIcon class="protein-upload-icon"><UploadFilled /></ElIcon>
-      <div class="protein-upload-hint">抗体名称、重链名称、轻链名称 · 整份替换 · 有问题整份不导入</div>
+      <div class="protein-upload-hint">抗体名称、重链名称、轻链名称（只填名称会自动查重轻链） · 整份替换 · 有问题整份不导入</div>
     </ElUpload>
     <p v-else-if="lockReason" class="protein-lock">{{ lockReason }}</p>
 
@@ -183,8 +183,12 @@ async function readFile(file: UploadFile) {
   importing.value = true;
   try {
     const result = await importTransfectionProteins(orderId, rows);
+    const looked = [
+      result.from_table ? `转染表补全 ${result.from_table} 个` : '',
+      result.from_api ? `基因名接口补全 ${result.from_api} 个` : '',
+    ].filter(Boolean);
     ElMessage.success(
-      `已导入 ${result.total} 个蛋白：新登记 ${result.created} 个，改重轻链 ${result.updated} 个，从转染表删除 ${result.removed} 个`,
+      `已导入 ${result.total} 个蛋白：新登记 ${result.created} 个，改重轻链 ${result.updated} 个，从转染表删除 ${result.removed} 个${looked.length ? `；只填名称的行${looked.join('、')}` : ''}`,
     );
     emit('changed', result.order);
     if (orderId === props.orderId) await load();

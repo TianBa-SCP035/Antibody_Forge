@@ -86,6 +86,9 @@ class Settings(BaseSettings):
     # 各合成公司查询接口的请求头令牌，「合成公司=令牌」用英文分号分隔；没配的沿用 supernatant_receive_token。
     supernatant_query_tokens: str = ""
     public_api_base_url: str = ""
+    # 蛋白基因名接口：转染导入只填蛋白名称、转染表里又没有时，按名称查重轻链；密钥放请求头 X-API-Key。
+    protein_gene_api_url: str = ""
+    protein_gene_api_key: str = ""
 
     model_config = SettingsConfigDict(
         env_file=DEFAULT_ENV_FILE,

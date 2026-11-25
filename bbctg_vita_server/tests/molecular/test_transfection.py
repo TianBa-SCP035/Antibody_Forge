@@ -111,6 +111,24 @@ class TransfectionTests(DbTestCase):
         with self.assertRaisesRegex(ValueError, "转染类型"):
             service.save(self.db, {})
 
+    def test_pcr_rows_trim_drop_blank_and_check_quantity(self):
+        order = self._order(transfection_type=service.TYPE_PCR)
+        self.assertEqual(order["pcr_rows"], [])
+        saved = service.save(self.db, {"id": order["id"], "pcr_rows": [
+            {"plate_no": " B01 ", "heavy_chain": "H1", "light_chain": "L1", "quantity": "3"},
+            {"plate_no": "", "heavy_chain": " ", "light_chain": None, "quantity": ""},
+            {"plate_no": "B02", "quantity": None},
+        ]})
+        self.assertEqual(saved["pcr_rows"], [
+            {"plate_no": "B01", "heavy_chain": "H1", "light_chain": "L1", "quantity": 3},
+            {"plate_no": "B02", "heavy_chain": "", "light_chain": "", "quantity": None},
+        ])
+        with self.assertRaisesRegex(ValueError, "第 1 行数量必须是非负整数"):
+            service.save(self.db, {"id": order["id"], "pcr_rows": [{"plate_no": "B01", "quantity": "-1"}]})
+        self.db.rollback()
+        with self.assertRaisesRegex(ValueError, "板号行格式不正确"):
+            service.save(self.db, {"id": order["id"], "pcr_rows": "B01"})
+
     def test_status_follows_dates_and_explicit_status_fills_dates(self):
         order = self._order()
         saved = service.save(self.db, {"id": order["id"], "transfected_on": "2026-11-10"})
@@ -159,7 +177,7 @@ class TransfectionTests(DbTestCase):
                     ("A1", "H1", None),
                     ("a1", "H9", None),
                     ("", "H3", None),
-                    ("A4", "", None),
+                    ("A4", "", "L4"),
                     ("OLD1", "VH-OLD", "VK-NEW"),
                     ("A6", "H" * 129, None),
                 ),
@@ -177,6 +195,40 @@ class TransfectionTests(DbTestCase):
         self.db.rollback()
         self.assertEqual(self._names(order["id"]), [])
         self.assertEqual(proteins.list_proteins(self.db)["total"], 1)
+
+    def test_import_fills_name_only_rows_from_table_then_gene_api(self):
+        gene = proteins.protein_gene
+        order = self._order()
+        self._history("OLD1", "VH-OLD", "VK-OLD")
+        with patch.object(gene, "lookup", return_value=({"N1": ("VH-N1", "VK-N1")}, {})) as lookup:
+            result = proteins.import_proteins(
+                self.db, order["id"], _rows(("old1", "", None), ("N1", None, ""), ("A1", "H1", None))
+            )
+        lookup.assert_called_once_with(["N1"])
+        self.assertEqual((result["from_table"], result["from_api"], result["created"]), (1, 1, 2))
+        listed = {
+            item["protein_name"]: (item["heavy_chain"], item["light_chain"])
+            for item in proteins.order_proteins(self.db, order["id"])["items"]
+        }
+        self.assertEqual(listed, {"OLD1": ("VH-OLD", "VK-OLD"), "N1": ("VH-N1", "VK-N1"), "A1": ("H1", None)})
+
+        other = self._order()
+        with patch.object(gene, "lookup", side_effect=AssertionError("已登记的不再查接口")):
+            result = proteins.import_proteins(self.db, other["id"], _rows(("n1", "", "")))
+        self.assertEqual((result["from_table"], result["from_api"]), (1, 0))
+
+        unavailable = gene.ProteinGeneUnavailable("基因名接口密钥无效")
+        with patch.object(gene, "lookup", side_effect=unavailable), self.assertRaises(ValueError) as caught:
+            proteins.import_proteins(self.db, other["id"], _rows(("X9", "", ""), ("X8", "H8", None)))
+        self.assertIn("第 2 行：X9 只填了名称，转染表里没有，基因名接口密钥无效，没能查重轻链", str(caught.exception))
+        self.db.rollback()
+        self.db.rollback()
+        issues = {"X7": "接口只在 NGS 查到基因名 G7，分不出重轻链"}
+        with patch.object(gene, "lookup", return_value=({}, issues)), self.assertRaises(ValueError) as caught:
+            proteins.import_proteins(self.db, other["id"], _rows(("X9", "", ""), ("X7", "", "")))
+        message = str(caught.exception)
+        self.assertIn("第 2 行：X9 只填了名称，转染表里没有，基因名接口也查不到重轻链", message)
+        self.assertIn("第 3 行：X7 只填了名称，转染表里没有，接口只在 NGS 查到基因名 G7，分不出重轻链，请在文件里填上重轻链", message)
 
     def test_reimport_overwrites_and_drops_only_own_unshared_proteins(self):
         first = self._order()

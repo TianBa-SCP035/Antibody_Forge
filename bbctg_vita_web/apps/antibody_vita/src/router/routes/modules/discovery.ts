@@ -1,12 +1,13 @@
 import type { RouteRecordRaw } from 'vue-router';
 
 const DISCOVERY_WORKBENCH_TAB_GROUP = '/discovery/workbench';
+const DISCOVERY_NGS_TAB_GROUP = '/discovery/ngs';
 const DISCOVERY_SYNTHESIS_TAB_GROUP = '/discovery/synthesis-progress';
 
 const routes: RouteRecordRaw[] = [
   {
     meta: {
-      authority: ['discovery.page.workbench', 'discovery.page.synthesis_progress'],
+      authority: ['discovery.page.workbench', 'discovery.page.ngs', 'discovery.page.synthesis_progress'],
       featureCode: 'menu.discovery',
       icon: 'lucide:microscope',
       order: 15,
@@ -44,6 +45,21 @@ const routes: RouteRecordRaw[] = [
           order: 10,
           tabGroup: DISCOVERY_SYNTHESIS_TAB_GROUP,
           title: '合成与验证',
+        },
+      },
+      {
+        name: 'DiscoveryNgs',
+        path: '/discovery/ngs',
+        component: () => import('#/views/Discovery/ngs/NgsList.vue'),
+        meta: {
+          authority: ['discovery.page.ngs'],
+          featureCode: 'menu.discovery.ngs',
+          fullPathKey: false,
+          icon: 'lucide:dna',
+          keepAlive: true,
+          order: 15,
+          tabGroup: DISCOVERY_NGS_TAB_GROUP,
+          title: 'NGS测序',
         },
       },
     ],

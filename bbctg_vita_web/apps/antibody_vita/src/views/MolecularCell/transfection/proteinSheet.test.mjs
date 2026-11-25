@@ -30,11 +30,17 @@ test('认常见表头写法，表头上方的说明行不管', () => {
     ['A1', 'H1', 'L1'],
   ]
   assert.deepEqual(proteinRowsFromSheet(rows), [{ row: 3, protein_name: 'A1', heavy_chain: 'H1', light_chain: 'L1' }])
-  assert.equal(proteinRowsFromSheet([['蛋白名称', '重链浓度', '轻链']]), null)
+  assert.equal(proteinRowsFromSheet([['名称', '重链', '轻链']]), null)
+})
+
+test('只有名称列也能读，重轻链留空交给后端查', () => {
+  assert.deepEqual(proteinRowsFromSheet([['蛋白名称', '重链浓度'], ['P1', '2ug'], ['', '']]), [
+    { row: 2, protein_name: 'P1', heavy_chain: '', light_chain: '' },
+  ])
 })
 
 test('缺表头的表返回 null，工作簿里取第一张带表头的表', () => {
-  assert.equal(proteinRowsFromSheet([['抗体名称', '重链']]), null)
+  assert.equal(proteinRowsFromSheet([['重链名称', '轻链名称']]), null)
   const items = proteinRowsFromWorkbook(
     book({ 说明: [['填写说明']], 蛋白: [['蛋白名称', '重链', '轻链'], ['A1', 'H1', '']] }),
     readAt(1),

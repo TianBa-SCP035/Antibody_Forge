@@ -102,6 +102,43 @@ export function copyWorkbench(id: number | string) {
   );
 }
 
+export function fetchAntigenCheckSummaries(experimentId: string) {
+  return requestClient.get('/serum/workbench/antigen_check/summaries', {
+    params: { experiment_id: experimentId },
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function fetchAntigenCheck(antigenRowId: number) {
+  return requestClient.get('/serum/workbench/antigen_check/detail', {
+    params: { antigen_row_id: antigenRowId },
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function saveAntigenCheck(data: { antigen_row_id: number; assay: string; qualified: null | string }) {
+  return requestClient.post('/serum/workbench/antigen_check/save', data, {
+    timeout: SAVE_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function uploadAntigenCheckImage(data: FormData) {
+  return requestClient.post('/serum/workbench/antigen_check/image/upload', data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: DOWNLOAD_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function removeAntigenCheckImage(antigenRowId: number, assay: string, file: string) {
+  return requestClient.post(
+    '/serum/workbench/antigen_check/image/remove',
+    { antigen_row_id: antigenRowId, assay, file },
+    skipGlobalErrorHandler,
+  );
+}
+
 export function reorderWorkbench(movedId: number | string, targetId: number | string) {
   return requestClient.post(
     '/serum/workbench/reorder',

@@ -68,7 +68,7 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 | `serum.page.workbench` | page | 免疫工作台（查看） |
 | `serum.workbench.edit` | action | 免疫工作台全部编辑，供管理员使用 |
 | `serum.workbench.draft_edit` | action | 新建、复制及维护草稿；只能编辑/删除“草稿”，不能改状态、审核结果、是否可开展、审核人，不能开展或下架 |
-| `serum.workbench.support_edit` | action | 只编辑“小鼠后勤”和“抗原”字段，不能新增、复制、删除、开展、下架或修改其他分区 |
+| `serum.workbench.support_edit` | action | 只编辑“小鼠后勤”和“抗原”字段，并可填写抗原活性验证；不能新增、复制、删除、开展、下架或修改其他分区 |
 | `serum.page.list` | page | 免疫实验列表 |
 | `serum.page.detail` | page | 详情页 |
 | `serum.page.edit` | page | 编辑页 |
@@ -125,6 +125,8 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 | `discovery.page.workbench` | page | 发现工作台列表 |
 | `discovery.workbench.edit` | action | 发现工作台全部编辑：新增、保存、删除、排序安排，可交接文库 |
 | `discovery.workbench.immune_edit` | action | 发现工作台免疫编辑：可新增、保存其他字段、删除、冻存和既往筛选，可从效价下发。不能改状态、优先级、负责人、排序、筛选抗原、血清效价、阳性细胞数、板号，不能排序，不能交接文库 |
+| `discovery.page.ngs` | page | NGS测序列表 |
+| `discovery.ngs.edit` | action | NGS测序编辑：新建、保存、删除、送合成；也可从文库构建交接 |
 | `discovery.page.synthesis_progress` | page | 合成与验证列表与外部订单比对 |
 | `discovery.synthesis_progress.edit` | action | 合成与验证全部编辑：新增、保存、批量粘贴、把负责人标记为「无人问津」（或取消标记）、删除、采用来源变更及手动同步合成订单；只有此权限能看到全部合成公司（其他人看到 `***`，改造实验员只能看到改造类工单的） |
 | `discovery.synthesis_progress.pm_edit` | action | PM操作合成与验证：新建工单（PM 自动填本人且不可改，负责人不可填）、认领「无人问津」合成结果（不限工单归属），认领 7 天内可改回「无人问津」，不能改给他人；仅限归属本人的工单（有负责人时只归负责人，负责人为空或「无人问津」时归 PM）可编辑项目与改造需求字段（项目编号、课题类型、靶点、小鼠品系、优先级、排序、订单性质、供应方式、改造类型/方式/母本/要求、备注）、调整排序及删除待下单工单；不能改 PM、实验号、靶点类型 |
@@ -132,7 +134,7 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 | `discovery.synthesis_progress.affinity_edit` | action | 亲和力操作合成与验证：在状态列往返修改亲和力实验状态（待检测/检测中/已完成），并编辑亲和力人员、亲和力结果、亲和力日期、未出原因（填亲和力日期时亲和力人员为空会自动填本人）；不能打回已完成的工单 |
 | `discovery.synthesis_progress.flow_edit` | action | 流式操作合成与验证：在状态列往返修改流式实验状态（待检测/已完成/不做），并编辑流式日期、流式说明；不能打回已完成的工单。与亲和力权限同时具备时，可在有未出原因时把亲和力标为已完成（结案），也可把已完成的工单打回待检测重做，或把任何未取消的工单改为已取消（不能从已取消改回） |
 
-写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/delete`、`/reorder` 及 `/api/discovery/synthesis-progress/save`、`/save_batch`、`/claim`、`/reorder`、`/delete`、`/adopt_source`、`/sync_now` 在路由上用 `require(..., audit=)` 声明操作日志名称。字段与规则见 [modules/discovery/workbench.md](./modules/discovery/workbench.md) 与 [modules/discovery/synthesis-progress.md](./modules/discovery/synthesis-progress.md)。权限码和菜单开关（`menu.discovery` / `menu.discovery.workbench` / `menu.discovery.synthesis_progress`）在 `modules/discovery/permissions.py`。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。选靶点 / 人名时复用公共选项接口 `GET /api/options/targets` 与 `/api/options/users`：能打开任一业务页面（系统管理以外的 page 类权限）即可访问，新模块的页面权限自动包含在内。
+写接口 `POST /api/discovery/workbench/save`、`/save_batch`、`/delete`、`/reorder`，`/api/discovery/ngs/save`、`/batch_save`、`/delete`、`/handoff_library`、`/handoff_synthesis`，以及 `/api/discovery/synthesis-progress/save`、`/save_batch`、`/claim`、`/reorder`、`/delete`、`/adopt_source`、`/sync_now` 在路由上用 `require(..., audit=)` 声明操作日志名称。字段与规则见 [modules/discovery/workbench.md](./modules/discovery/workbench.md)、[modules/discovery/ngs.md](./modules/discovery/ngs.md) 与 [modules/discovery/synthesis-progress.md](./modules/discovery/synthesis-progress.md)。权限码和菜单开关（`menu.discovery` / `menu.discovery.workbench` / `menu.discovery.ngs` / `menu.discovery.synthesis_progress`）在 `modules/discovery/permissions.py`。不写入示例角色/权限包；超级管理员走 `is_superuser`，其他人在系统管理里按需授权。选靶点 / 人名时复用公共选项接口 `GET /api/options/targets` 与 `/api/options/users`：能打开任一业务页面（系统管理以外的 page 类权限）即可访问，新模块的页面权限自动包含在内。
 
 ### 2.5 分子与细胞（`molecular.*`）
 
@@ -247,6 +249,7 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 | 免疫工作台全部编辑 | `serum.workbench.edit`（无项目负责人二次校验） |
 | 工作台草稿维护 | `serum.workbench.draft_edit`；按草稿状态和字段白名单校验，可保存草稿方案 |
 | 工作台实验保障 | `serum.workbench.support_edit`；按“小鼠后勤”和“抗原”字段白名单校验，不限制项目状态 |
+| 抗原活性验证 | 查看：`serum.page.workbench` 或 `serum.page.detail`；填写判定、上传/删除图片：`serum.workbench.edit` 或 `serum.workbench.support_edit`，不看项目负责人和状态 |
 | 工作台开展 | `serum.workbench.edit`，外加 `serum.project.edit` 或 `serum.project.edit_all`（此时尚无正式项目，不校验负责人） |
 | 靶点搜索 | `serum.page.edit` 或 `serum.page.workbench` |
 | 保存项目（有 id） | 当前负责人或审核人且不改负责人 → `serum.project.edit`；否则 `serum.project.edit_all` |
@@ -363,7 +366,7 @@ flowchart LR
 |----------|------|------|
 | `menu` | `menu.atlas`、`menu.atlas.target_library` | 千鼠万抗侧栏 |
 | `menu` | `menu.serum`、`menu.serum.workbench`、`menu.serum.list`、`menu.serum.titer_order` | 免疫实验侧栏 |
-| `menu` | `menu.discovery`、`menu.discovery.workbench`、`menu.discovery.synthesis_progress` | 抗体发现侧栏 |
+| `menu` | `menu.discovery`、`menu.discovery.workbench`、`menu.discovery.ngs`、`menu.discovery.synthesis_progress` | 抗体发现侧栏 |
 | `menu` | `menu.molecular_cell`、`menu.molecular_cell.library`、`menu.molecular_cell.primer` | 分子与细胞侧栏 |
 | `menu` | `menu.mega_automation`、`menu.mega_automation.flow_work_orders` | 镁伽自动化侧栏 |
 | `menu` | `menu.system`、`menu.system.user_permission`、`menu.system.features` | 系统管理侧栏 |

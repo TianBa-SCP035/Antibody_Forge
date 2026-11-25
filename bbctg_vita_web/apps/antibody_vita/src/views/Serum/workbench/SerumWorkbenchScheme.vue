@@ -326,7 +326,25 @@
                 </template>
             </el-table-column>
         </el-table>
+        <div v-if="postForm.antigens.length" class="antigen-check-row">
+            <span class="antigen-check-label">活性验证</span>
+            <span v-for="antigen in postForm.antigens" :key="antigen.id || `new-${antigen.antigen_id}`" class="antigen-check-item">
+                <span class="antigen-check-name">{{ antigen.antigen_id }} · {{ antigen.antigen_name || '未命名' }}</span>
+                <AntigenCheckMark
+                    :summary="antigenCheckMap[antigen.id]"
+                    :disabled="!antigen.id"
+                    disabled-tip="方案保存后才能填写"
+                    @open="openAntigenCheck(antigen)"
+                />
+            </span>
+        </div>
     </el-card>
+    <AntigenCheckDialog
+      v-model="antigenCheckVisible"
+      :antigen="antigenCheckTarget"
+      :can-edit="canEditAntigenCheck"
+      @changed="onAntigenCheckChanged"
+    />
 
     <el-card class="box-card" :body-style="{ padding: '15px' }">
         <template #header>
@@ -790,13 +808,17 @@ import {
 
 import { notifyApiError } from '#/api/errors'
 import {
+  fetchAntigenCheckSummaries,
   fetchWorkbenchDetail,
   fetchWorkbenchOptions,
   saveWorkbenchScheme,
   startWorkbench,
   SERUM_WORKBENCH_DRAFT_EDIT,
   SERUM_WORKBENCH_EDIT,
+  SERUM_WORKBENCH_SUPPORT_EDIT,
 } from '#/api/serumWorkbench'
+import AntigenCheckDialog from '../shared/AntigenCheckDialog.vue'
+import AntigenCheckMark from '../shared/AntigenCheckMark.vue'
 import { SERUM_ERRORS } from '../shared/errors'
 import serumSchemeMixin, { reindexGroupSortOrder } from '../shared/serumSchemeMixin'
 import ListFilterSelect from '#/components/ListFilterSelect.vue'
@@ -875,6 +897,8 @@ export default {
   mixins: [serumSchemeMixin],
   name: 'SerumWorkbenchScheme',
   components: {
+    AntigenCheckDialog,
+    AntigenCheckMark,
     ListFilterSelect,
     MouseRegistryDialog,
     UserSelect,
@@ -916,6 +940,9 @@ export default {
       schemeProjectStatusOptions: SCHEME_PROJECT_STATUS_OPTIONS,
       loadingWorkbenchId: null,
       activeWorkbenchId: null,
+      antigenCheckMap: {},
+      antigenCheckVisible: false,
+      antigenCheckTarget: null,
     }
   },
   computed: {
@@ -927,6 +954,9 @@ export default {
     },
     canDraftEdit() {
       return hasAccessCode(this.currentUserInfo, SERUM_WORKBENCH_DRAFT_EDIT)
+    },
+    canEditAntigenCheck() {
+      return hasAccessCode(this.currentUserInfo, SERUM_WORKBENCH_EDIT, SERUM_WORKBENCH_SUPPORT_EDIT)
     },
     canEdit() {
       return Boolean(this.activeWorkbenchId)
@@ -1111,6 +1141,7 @@ export default {
         }
         this.activeGroupTab = this.postForm.mouse_groups[0]?.group_id || null
         this.autoRecalcDates = this.shouldAutoRecalcDates()
+        this.loadAntigenChecks(this.postForm.experiment_id)
       } catch (err) {
         if (isLatest()) {
           notifyApiError(err, { messages: SERUM_ERRORS.workbench.schemeLoad })
@@ -1304,6 +1335,25 @@ export default {
         this.doAutoSave()
       }, 3000)
     },
+    async loadAntigenChecks(experimentId) {
+      this.antigenCheckMap = {}
+      if (!experimentId) return
+      try {
+        const data = await fetchAntigenCheckSummaries(experimentId)
+        if (this.postForm.experiment_id !== experimentId) return
+        this.antigenCheckMap = Object.fromEntries((data?.items || []).map((item) => [item.antigen_row_id, item]))
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '加载抗原活性验证失败' } })
+      }
+    },
+    openAntigenCheck(antigen) {
+      if (!antigen?.id) return
+      this.antigenCheckTarget = { ...antigen }
+      this.antigenCheckVisible = true
+    },
+    onAntigenCheckChanged(summary) {
+      if (summary?.antigen_row_id) this.antigenCheckMap = { ...this.antigenCheckMap, [summary.antigen_row_id]: summary }
+    },
     applySaveResponse(response, submittedProjectCode) {
       if (!response) return
       if (response.id) {
@@ -1492,6 +1542,25 @@ export default {
 .small-header {
     font-size: 15px;
     line-height: 28px;
+}
+.antigen-check-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 18px;
+    margin-top: 10px;
+    font-size: 12px;
+}
+.antigen-check-label {
+    color: var(--el-text-color-secondary);
+}
+.antigen-check-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.antigen-check-name {
+    color: var(--el-text-color-regular);
 }
 .scheme-header-actions {
     float: right;

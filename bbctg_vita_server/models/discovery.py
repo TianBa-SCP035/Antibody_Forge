@@ -276,3 +276,112 @@ class DiscoveryCellBank(Base):
             "created_at": created,
         }
 
+
+class DiscoveryNgsRun(Base):
+    __tablename__ = "discovery_ngs_run"
+    __log_label__ = "NGS测序"
+    __audit_label__ = ("ngs_run_id", "library_code")
+    __table_args__ = (
+        UniqueConstraint("ngs_run_id", name="uk_discovery_ngs_run_id"),
+        UniqueConstraint("synthesis_order_id", name="uk_discovery_ngs_run_synthesis_order"),
+        Index("idx_discovery_ngs_run_library_order", "source_library_order_id"),
+        Index("idx_discovery_ngs_run_library_code", "library_code"),
+        Index("idx_discovery_ngs_run_status", "status"),
+        Index("idx_discovery_ngs_run_sequencing_date", "sequencing_date"),
+        {"comment": "NGS测序"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    ngs_run_id: Mapped[str] = mapped_column(String(32), nullable=False, comment="测序单号")
+    sample_library: Mapped[str] = mapped_column(String(16), nullable=False, comment="样品库")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, comment="状态")
+    source_library_order_id: Mapped[str | None] = mapped_column(String(32), comment="来源文库工单号")
+    library_code: Mapped[str | None] = mapped_column(String(64), comment="建库编号")
+    target_name: Mapped[str | None] = mapped_column(String(128), comment="靶点名称")
+    target_codes: Mapped[list[str] | None] = mapped_column(JSON, comment="靶点编号列表")
+    project_code: Mapped[str | None] = mapped_column(String(64), comment="项目编号")
+    project_level: Mapped[str | None] = mapped_column(String(64), comment="项目级别")
+    study_type: Mapped[str | None] = mapped_column(String(64), comment="课题类型")
+    pm: Mapped[str | None] = mapped_column(String(64), comment="PM")
+    mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="小鼠品系")
+    antigen_tag: Mapped[str | None] = mapped_column(String(64), comment="标签形式")
+    immunogen: Mapped[str | None] = mapped_column(String(1000), comment="具体免疫原")
+    cell_count: Mapped[str | None] = mapped_column(String(64), comment="细胞数量")
+    library_checked: Mapped[str | None] = mapped_column(String(128), comment="建库测序核对")
+    load_note: Mapped[str | None] = mapped_column(String(255), comment="上库备注")
+    library_instrument_on: Mapped[str | None] = mapped_column(DateString, comment="建库上机日期")
+    sequencing_date: Mapped[str | None] = mapped_column(DateString, comment="测序上机日期")
+    instrument_no: Mapped[str | None] = mapped_column(String(64), comment="仪器号")
+    dissociation_buffer: Mapped[str | None] = mapped_column(String(255), comment="解离液")
+    screening_antigen: Mapped[str | None] = mapped_column(String(1000), comment="筛选抗原")
+    batch_name: Mapped[str | None] = mapped_column(String(128), comment="批次号")
+    synthesis_code: Mapped[str | None] = mapped_column(String(64), comment="送合成转码")
+    synthesis_order_id: Mapped[str | None] = mapped_column(String(32), comment="合成与验证单号")
+    rna_location: Mapped[str | None] = mapped_column(String(255), comment="RNA冻存位置")
+    cdna_location: Mapped[str | None] = mapped_column(String(255), comment="cDNA冻存位置")
+    library_location: Mapped[str | None] = mapped_column(String(255), comment="库冻存位置")
+    sample_source: Mapped[str | None] = mapped_column(String(32), comment="样品来源")
+    screening_goal: Mapped[str | None] = mapped_column(String(1000), comment="筛选目标")
+    fragment_size: Mapped[str | None] = mapped_column(String(32), comment="片段大小")
+    barcode: Mapped[str | None] = mapped_column(String(64), comment="barcode")
+    sequenced: Mapped[str | None] = mapped_column(String(16), comment="是否已测序")
+    owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
+    remark: Mapped[str | None] = mapped_column(String(1000), comment="备注")
+    created_by: Mapped[str | None] = mapped_column(String(64), comment="创建人")
+    created_at: Mapped[object | None] = mapped_column(DateTime, server_default=func.current_timestamp(), comment="创建时间")
+    updated_at: Mapped[object | None] = mapped_column(
+        DateTime,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+        comment="更新时间",
+    )
+
+    def to_dict(self) -> dict:
+        def format_time(dt):
+            if dt is None:
+                return None
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        codes = self.target_codes if isinstance(self.target_codes, list) else []
+        return {
+            "id": self.id,
+            "ngs_run_id": self.ngs_run_id,
+            "sample_library": self.sample_library,
+            "status": self.status,
+            "source_library_order_id": self.source_library_order_id,
+            "library_code": self.library_code,
+            "target_name": self.target_name,
+            "target_codes": codes,
+            "project_code": self.project_code,
+            "project_level": self.project_level,
+            "study_type": self.study_type,
+            "pm": self.pm,
+            "mouse_strain": self.mouse_strain,
+            "antigen_tag": self.antigen_tag,
+            "immunogen": self.immunogen,
+            "cell_count": self.cell_count,
+            "library_checked": self.library_checked,
+            "load_note": self.load_note,
+            "library_instrument_on": self.library_instrument_on,
+            "sequencing_date": self.sequencing_date,
+            "instrument_no": self.instrument_no,
+            "dissociation_buffer": self.dissociation_buffer,
+            "screening_antigen": self.screening_antigen,
+            "batch_name": self.batch_name,
+            "synthesis_code": self.synthesis_code,
+            "synthesis_order_id": self.synthesis_order_id,
+            "rna_location": self.rna_location,
+            "cdna_location": self.cdna_location,
+            "library_location": self.library_location,
+            "sample_source": self.sample_source,
+            "screening_goal": self.screening_goal,
+            "fragment_size": self.fragment_size,
+            "barcode": self.barcode,
+            "sequenced": self.sequenced,
+            "owner": self.owner,
+            "remark": self.remark,
+            "created_by": self.created_by,
+            "created_at": format_time(self.created_at),
+            "updated_at": format_time(self.updated_at),
+        }
+

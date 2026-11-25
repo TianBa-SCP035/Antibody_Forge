@@ -17,8 +17,8 @@
         type="success"
         plain
         :icon="CopyDocument"
-        :class="{ 'no-permission-btn': !canHandoff }"
-        :title="!canHandoff ? '您没有权限交接工单' : '单细胞孔板交接到转染与表达'"
+        :class="{ 'no-permission-btn': !canHandoffThis }"
+        :title="handoffTitle"
         @click="$emit('handoff', row)"
       >
         交接
@@ -49,11 +49,24 @@ export default {
     row: { type: Object, required: true },
     canEdit: { type: Boolean, default: false },
     canHandoff: { type: Boolean, default: false },
+    canNgs: { type: Boolean, default: false },
     canView: { type: Boolean, default: false },
   },
   emits: ['delete', 'handoff', 'qc'],
   setup() {
     return { CopyDocument, Delete, Document }
+  },
+  computed: {
+    isPlate() {
+      return this.row.build_type === 'plate_single_cell'
+    },
+    canHandoffThis() {
+      return this.isPlate ? this.canHandoff : this.canNgs
+    },
+    handoffTitle() {
+      if (!this.canHandoffThis) return '您没有权限交接工单'
+      return this.isPlate ? '单细胞孔板交接到转染与表达' : '交接到 NGS测序'
+    },
   },
 }
 </script>

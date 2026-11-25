@@ -32,6 +32,7 @@ MOUNTS: tuple[Mount, ...] = (
     Mount("modules.auth.routes:router", "/auth", "认证"),
     Mount("modules.atlas.routes:router", "/atlas", "千鼠万抗"),
     Mount("modules.discovery.workbench.routes:router", "/discovery/workbench", "抗体发现-发现工作台"),
+    Mount("modules.discovery.ngs.routes:router", "/discovery/ngs", "抗体发现-NGS测序"),
     Mount("modules.discovery.synthesis_progress.routes:router", "/discovery/synthesis-progress", "抗体发现-合成进度"),
     Mount("modules.immunology.serum.routes:router", "/serum", "免疫部-血清"),
     Mount("modules.immunology.workbench.routes:router", "/serum/workbench", "免疫部-免疫工作台"),

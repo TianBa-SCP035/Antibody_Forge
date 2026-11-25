@@ -1,7 +1,7 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -11,7 +11,7 @@ from db.session import get_db
 from models.system import SysUser
 from modules.auth.dependencies import actor_name, get_current_user
 from modules.auth.permissions import UserContext, get_user_context, require
-from modules.immunology.workbench import service
+from modules.immunology.workbench import antigen_check, service
 from utils.filter_values import DEFAULT_RECORDED_TARGET_LIMIT, MAX_RECORDED_TARGET_LIMIT
 from utils.model_fields import fields_request_model
 
@@ -27,6 +27,8 @@ PERMISSION_SCOPES = {
 }
 ROW_EDIT_PERMISSIONS = tuple(PERMISSION_SCOPES)
 DRAFT_EDIT_PERMISSIONS = (WORKBENCH_EDIT_PERMISSION, WORKBENCH_DRAFT_EDIT_PERMISSION)
+ANTIGEN_CHECK_VIEW_PERMISSIONS = (WORKBENCH_VIEW_PERMISSION, "serum.page.detail")
+ANTIGEN_CHECK_EDIT_PERMISSIONS = (WORKBENCH_EDIT_PERMISSION, WORKBENCH_SUPPORT_EDIT_PERMISSION)
 
 
 WorkbenchFields = fields_request_model("SerumWorkbenchFields", service.FIELDS)
@@ -72,6 +74,18 @@ class WorkbenchIdRequest(BaseModel):
 class WorkbenchReorderRequest(BaseModel):
     moved_id: int = Field(gt=0)
     target_id: int = Field(gt=0)
+
+
+class AntigenCheckSaveRequest(BaseModel):
+    antigen_row_id: int = Field(gt=0)
+    assay: str = Field(min_length=1, max_length=16)
+    qualified: Literal["是", "否", ""] | None = None
+
+
+class AntigenCheckImageRemoveRequest(BaseModel):
+    antigen_row_id: int = Field(gt=0)
+    assay: str = Field(min_length=1, max_length=16)
+    file: str = Field(min_length=1, max_length=64)
 
 
 def _edit_scopes(context: UserContext) -> frozenset[str]:
@@ -133,6 +147,71 @@ def workbench_detail(
     if data is None:
         raise NotFoundError(service.MISSING_ROW)
     return success(data)
+
+
+@router.get("/antigen_check/summaries", dependencies=[require(*ANTIGEN_CHECK_VIEW_PERMISSIONS)])
+def antigen_check_summaries(
+    experiment_id: str = Query(min_length=1, max_length=64),
+    db: Session = Depends(get_db),
+) -> dict:
+    return success({"items": antigen_check.experiment_summaries(db, experiment_id)})
+
+
+@router.get("/antigen_check/detail", dependencies=[require(*ANTIGEN_CHECK_VIEW_PERMISSIONS)])
+def antigen_check_detail(
+    antigen_row_id: int = Query(gt=0),
+    db: Session = Depends(get_db),
+) -> dict:
+    return success(antigen_check.detail(db, antigen_row_id))
+
+
+@router.post("/antigen_check/save", dependencies=[require(*ANTIGEN_CHECK_EDIT_PERMISSIONS, audit="保存免疫抗原活性判定")])
+def antigen_check_save(
+    data: AntigenCheckSaveRequest,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    return success(
+        antigen_check.save_result(db, data.antigen_row_id, data.assay, data.qualified, actor_name(current_user))
+    )
+
+
+@router.post(
+    "/antigen_check/image/upload",
+    dependencies=[require(*ANTIGEN_CHECK_EDIT_PERMISSIONS, audit="上传免疫抗原活性验证图片")],
+)
+def antigen_check_image_upload(
+    antigen_row_id: int = Form(gt=0),
+    assay: str = Form(min_length=1, max_length=16),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    return success(antigen_check.add_image(db, antigen_row_id, assay, file, actor_name(current_user)))
+
+
+@router.post(
+    "/antigen_check/image/remove",
+    dependencies=[require(*ANTIGEN_CHECK_EDIT_PERMISSIONS, audit="删除免疫抗原活性验证图片")],
+)
+def antigen_check_image_remove(
+    data: AntigenCheckImageRemoveRequest,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+) -> dict:
+    return success(
+        antigen_check.remove_image(db, data.antigen_row_id, data.assay, data.file, actor_name(current_user))
+    )
+
+
+@router.get("/antigen_check/image", dependencies=[require(*ANTIGEN_CHECK_VIEW_PERMISSIONS)])
+def antigen_check_image(
+    antigen_row_id: int = Query(gt=0),
+    file: str = Query(min_length=1, max_length=64),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    path, name = antigen_check.image_file(db, antigen_row_id, file)
+    return FileResponse(path, filename=name)
 
 
 @router.post("/save", dependencies=[require(*ROW_EDIT_PERMISSIONS, audit="保存免疫工作台")])

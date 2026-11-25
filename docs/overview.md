@@ -41,6 +41,7 @@ Windows 在仓库根运行 `start_dev.bat`；Linux test/prod 运行 `./start_dev
 | 小鼠免疫 | `/serum/workbench`、`/serum/list`、`/serum/detail`、`/serum/edit` 等 | `/api/serum`、`/api/serum/workbench` | 免疫工作台（开做前准备）、实验列表、笼位、方案导出 |
 | 抗体发现 · 发现工作台 | `/discovery/workbench` | `/api/discovery/workbench` | 剖鼠取细胞与筛选安排；工作台 / Excel |
 | 抗体发现 · 合成与验证 | `/discovery/synthesis-progress` | `/api/discovery/synthesis-progress` | 合成订单、到货及流式/亲和力初筛验证跟踪；One 库同步与比对 |
+| 抗体发现 · NGS测序 | `/discovery/ngs` | `/api/discovery/ngs` | 文库构建之后的测序上机，送合成后进入合成与验证 |
 | 分子与细胞 · 引物库 | `/molecular-cell/primer-library` | `/api/molecular-cell/library-orders/catalog` | 引物的查看、编辑、导入导出 |
 | 分子与细胞 · 文库构建 | `/molecular-cell/library-construction`、`/molecular-cell/library-construction/result` | `/api/molecular-cell/library-orders` | 建库工单、胶图与质检文件；发现交接 |
 | 分子与细胞 · 转染与表达 | `/molecular-cell/transfection`、`/molecular-cell/transfection/proteins` | `/api/molecular-cell/transfection` | 转染工单与转染表；文库单细胞孔板交接进来，交接到合成与验证 |

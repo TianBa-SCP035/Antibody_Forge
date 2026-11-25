@@ -312,6 +312,7 @@ class MolecularTransfectionOrder(Base):
     pm: Mapped[str | None] = mapped_column(String(64), comment="PM")
     mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="小鼠品系")
     plate_nos: Mapped[list[str] | None] = mapped_column(JSON, comment="孔板编号列表")
+    pcr_rows: Mapped[list[dict] | None] = mapped_column(JSON, comment="PCR转染板号与重轻链")
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="待转染", comment="状态")
     priority: Mapped[str] = mapped_column(String(24), nullable=False, default="正常", comment="优先级")
     owner: Mapped[str | None] = mapped_column(String(64), comment="负责人")
@@ -336,6 +337,7 @@ class MolecularTransfectionOrder(Base):
         }
         data["target_codes"] = self.target_codes if isinstance(self.target_codes, list) else []
         data["plate_nos"] = self.plate_nos if isinstance(self.plate_nos, list) else []
+        data["pcr_rows"] = self.pcr_rows if isinstance(self.pcr_rows, list) else []
         return {key: _format_value(value) for key, value in data.items()}
 
 

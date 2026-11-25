@@ -257,6 +257,7 @@
             :row="row"
             :can-edit="canEdit"
             :can-handoff="canHandoff"
+            :can-ngs="canNgs"
             :can-view="canViewDetail"
             @qc="openResult"
             @handoff="handleDownstreamHandoff"
@@ -305,6 +306,7 @@
               :row="row"
               :can-edit="canEdit"
               :can-handoff="canHandoff"
+              :can-ngs="canNgs"
               :can-view="canViewDetail"
               @qc="openResult"
               @handoff="handleDownstreamHandoff"
@@ -367,6 +369,7 @@
           :row="editingRow"
           :can-edit="canEdit"
           :can-handoff="canHandoff"
+          :can-ngs="canNgs"
           :can-view="canViewDetail"
           @qc="openResult"
           @handoff="handleDownstreamHandoff"
@@ -546,6 +549,7 @@ import {
   TRANSFECTION_LIBRARY_HANDOFF,
   TRANSFECTION_PAGE,
 } from '#/api/molecularTransfection'
+import { handoffLibraryToNgs, NGS_LIBRARY_HANDOFF, NGS_PAGE } from '#/api/discoveryNgs'
 import { notifyApiError } from '#/api/errors'
 import { dateBreakRowClass } from '#/components/workbench/dateBreakRowClass'
 import AdvancedOpsBar from '#/components/AdvancedOpsBar.vue'
@@ -799,6 +803,12 @@ export default {
     },
     canHandoff() {
       return hasAccessCode(useUserStore().userInfo, ...TRANSFECTION_LIBRARY_HANDOFF)
+    },
+    canNgs() {
+      return hasAccessCode(useUserStore().userInfo, ...NGS_LIBRARY_HANDOFF)
+    },
+    canViewNgs() {
+      return hasAccessCode(useUserStore().userInfo, NGS_PAGE)
     },
     canViewTransfection() {
       return hasAccessCode(useUserStore().userInfo, TRANSFECTION_PAGE)
@@ -1195,12 +1205,11 @@ export default {
       this.$router.push({ path: '/molecular-cell/library-construction/result', query: { id: row.id } })
     },
     async handleDownstreamHandoff(row) {
+      if (row.build_type !== BUILD_PLATE) {
+        return this.handoffToNgs(row)
+      }
       if (!this.canHandoff) {
         ElMessage.warning('您没有权限交接文库工单')
-        return
-      }
-      if (row.build_type !== BUILD_PLATE) {
-        ElMessage.info('只有单细胞孔板工单交接到转染与表达')
         return
       }
       try {
@@ -1235,6 +1244,44 @@ export default {
         return
       }
       this.$router.push({ name: 'TransfectionList', query: { order: code } })
+    },
+    async handoffToNgs(row) {
+      if (!this.canNgs) {
+        ElMessage.warning('您没有权限交接文库工单')
+        return
+      }
+      try {
+        await ElMessageBox.confirm(
+          `把 ${row.library_code || row.library_order_id} 交接到 NGS测序？会新建一条测序单，带上建库编号、项目、靶点、PM 和小鼠品系。同一文库可以多次交接。`,
+          '交接确认',
+          { type: 'warning', confirmButtonText: '交接' },
+        )
+      } catch {
+        return
+      }
+      if (!await this.flushEditorForAction(row)) return
+      let created
+      try {
+        created = await handoffLibraryToNgs(row.id)
+      } catch (error) {
+        notifyApiError(error, { messages: { default: '交接失败' } })
+        return
+      }
+      const code = created.ngs_run_id
+      if (!this.canViewNgs) {
+        ElMessage.success(`已交接为测序单 ${code}`)
+        return
+      }
+      try {
+        await ElMessageBox.confirm(`已交接为测序单 ${code}，现在去 NGS测序查看？`, '交接成功', {
+          type: 'success',
+          confirmButtonText: '去查看',
+          cancelButtonText: '留在本页',
+        })
+      } catch {
+        return
+      }
+      this.$router.push({ name: 'DiscoveryNgs', query: { run: code } })
     },
     openRowCheckout(row) {
       this.checkoutSelection = { order_ids: [row.id] }

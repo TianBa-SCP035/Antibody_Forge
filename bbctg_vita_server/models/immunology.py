@@ -186,6 +186,30 @@ class SerumImmAntigen(Base):
         }
 
 
+class SerumAntigenCheck(Base):
+    __tablename__ = "serum_antigen_check"
+    __log_label__ = "免疫抗原活性验证"
+    __audit_label__ = ("experiment_id", "assay")
+    __table_args__ = (
+        UniqueConstraint("antigen_row_id", "assay", name="uk_serum_antigen_check_assay"),
+        Index("idx_serum_antigen_check_experiment_id", "experiment_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str | None] = mapped_column(String(64), comment="实验ID")
+    antigen_row_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="免疫抗原记录ID")
+    assay: Mapped[str] = mapped_column(String(16), nullable=False, comment="验证项目")
+    qualified: Mapped[str | None] = mapped_column(String(4), comment="是否合格：是/否")
+    images: Mapped[list[dict] | None] = mapped_column(JSON, comment="结果图片")
+    updated_by: Mapped[str | None] = mapped_column(String(64), comment="最后修改人")
+    updated_at: Mapped[object | None] = mapped_column(
+        DateTime,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+        comment="最后修改时间",
+    )
+
+
 class SerumImmStep(Base):
     __tablename__ = "serum_imm_step"
     __log_label__ = "免疫项目"

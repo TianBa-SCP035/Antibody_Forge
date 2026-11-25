@@ -93,8 +93,11 @@ CUSTOM_FIELDS = frozenset({
     "priority",
     "target_codes",
     "plate_nos",
+    "pcr_rows",
     "mouse_strain",
 })
+PCR_ROW_LIMITS = {"plate_no": ("板号", 64), "heavy_chain": ("重链", 128), "light_chain": ("轻链", 128)}
+MAX_PCR_ROWS = 500
 BREAK_FIELDS = frozenset({"remark"})
 # 交接到合成与验证后，合成单的合成、到货日期取自这里，这几项不能再改。
 HANDOFF_LOCKED_FIELDS = ("transfection_type", "status", "transfected_on", "finished_on")
@@ -148,6 +151,40 @@ def _apply_status(row: _O, chosen: str | None) -> None:
         row.status = _derived_status(row)
 
 
+def _normalize_pcr_rows(value: Any) -> list[dict[str, Any]]:
+    """PCR 转染抽屉里的板号行：板号、重链、轻链、数量；整行空的去掉。"""
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise ValueError("板号行格式不正确")
+    if len(value) > MAX_PCR_ROWS:
+        raise ValueError(f"板号行最多 {MAX_PCR_ROWS} 行")
+    rows = []
+    for index, item in enumerate(value, start=1):
+        if not isinstance(item, dict):
+            raise ValueError("板号行格式不正确")
+        cleaned: dict[str, Any] = {}
+        for key, (label, limit) in PCR_ROW_LIMITS.items():
+            text = str(item.get(key) or "").strip()
+            if len(text) > limit:
+                raise ValueError(f"第 {index} 行{label}不能超过 {limit} 个字符")
+            cleaned[key] = text
+        raw = item.get("quantity")
+        if raw in (None, "") or (isinstance(raw, str) and not raw.strip()):
+            cleaned["quantity"] = None
+        else:
+            try:
+                quantity = int(str(raw).strip())
+            except ValueError:
+                raise ValueError(f"第 {index} 行数量必须是非负整数") from None
+            if quantity < 0:
+                raise ValueError(f"第 {index} 行数量必须是非负整数")
+            cleaned["quantity"] = quantity
+        if any(cleaned[key] for key in PCR_ROW_LIMITS) or cleaned["quantity"] is not None:
+            rows.append(cleaned)
+    return rows
+
+
 def _apply_fields(row: _O, data: dict[str, Any], *, handed_off: bool) -> None:
     before = {field: getattr(row, field) for field in HANDOFF_LOCKED_FIELDS}
     if "transfection_type" in data:
@@ -158,6 +195,8 @@ def _apply_fields(row: _O, data: dict[str, Any], *, handed_off: bool) -> None:
         row.target_codes = normalize_target_codes(data.get("target_codes"))
     if "plate_nos" in data:
         row.plate_nos = normalize_plate_nos(data.get("plate_nos"))
+    if "pcr_rows" in data:
+        row.pcr_rows = _normalize_pcr_rows(data.get("pcr_rows"))
     if "mouse_strain" in data:
         row.mouse_strain = clean_text(FIELDS["mouse_strain"], join_tokens(data.get("mouse_strain"), MOUSE_STRAIN_OPTIONS))
     for field, spec in FIELDS.items():
@@ -419,6 +458,7 @@ def save(db: Session, data: dict[str, Any], created_by: str | None = None) -> di
             priority=DEFAULT_PRIORITY,
             target_codes=[],
             plate_nos=[],
+            pcr_rows=[],
             created_by=(created_by or "").strip() or None,
         )
         db.add(row)

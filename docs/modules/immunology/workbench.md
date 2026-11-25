@@ -11,8 +11,10 @@
 | `serum.page.workbench` | 查看页面、列表、详情、选项、靶点、表头取值和导出 |
 | `serum.workbench.edit` | 编辑全部字段；新建、复制、删除、开展、下架和队列拖动 |
 | `serum.workbench.draft_edit` | 新建和复制；维护、删除草稿；不能修改状态、审核人、审核结果和可否开展 |
-| `serum.workbench.support_edit` | 编辑已有记录的“小鼠后勤”和“抗原”字段 |
+| `serum.workbench.support_edit` | 编辑已有记录的“小鼠后勤”和“抗原”字段；填写抗原活性验证 |
 | `serum.project.edit` / `serum.project.edit_all` | 开展时额外校验的正式项目编辑权限 |
+
+抗原活性验证：`serum.page.workbench` 或 `serum.page.detail` 可查看，`serum.workbench.edit` 或 `serum.workbench.support_edit` 可填写，见 §4.1。
 
 多项工作台编辑权限按字段范围合并。
 
@@ -24,6 +26,7 @@
 | `serum_imm_project` | 开展后的正式免疫项目 |
 | `serum_imm_mouse` | 小鼠分组 |
 | `serum_imm_antigen` | 免疫抗原 |
+| `serum_antigen_check` | 免疫抗原活性验证：一条抗原记录（`antigen_row_id`）每个验证项目一行，存是否合格和结果图片 |
 | `serum_imm_step` | 免疫步骤 |
 | `serum_titer_target` | 效价标靶 |
 | `serum_titer_pc` | 效价阳参 |
@@ -90,6 +93,13 @@
 
 “列表导出”沿用当前全部筛选。页面没有导入入口。
 
+### 4.1 抗原活性验证
+
+- 入口：方案页「抗原信息」表下方的“活性验证”一行（每条抗原一个判定标记），以及免疫实验详情里两张抗原表的“活性验证”列。点标记打开弹窗；新加的抗原要等方案自动保存拿到记录 ID 后才能点。
+- 弹窗按 `SEC-HPLC`、`SDS-PAGE`、`ELISA`、`FACS`、`荧光` 五项分区：每项选“是否合格”（`是` / `否`，可清空），加结果图片（选文件，或点该分区后 Ctrl+V 粘贴截图；png/jpg/gif/webp/bmp，每项最多 12 张），点缩略图看大图。改动立即保存。
+- 抗原旁的标记：有一项判 `否` 显示“否”，已判的都合格显示“是”，都没判显示“未判定”；后面带“已判项数/5”。是否开展课题仍由人看结果后在工作台“可否开展”里定，系统不联动。
+- 判定跟着抗原记录：方案保存保留原记录 ID，判定不丢；在方案里删掉抗原后判定不再显示。实验号变更（开展、改项目编号、下架）时随五类子表一起切换，删除工作台或正式项目时一并删除。复制工作台不复制判定。图片存 `uploads/serum_antigen_check/<抗原记录ID>/`。
+
 ## 5. 跨模块联动
 
 开展后，工作台与正式免疫项目通过 `experiment_id` 关联。正式项目改项目编号时，后端生成新的实验号并同步关联记录。
@@ -114,6 +124,12 @@
 | POST | `/api/serum/workbench/unlist` | `serum.workbench.edit` | 下架正式项目 |
 | POST | `/api/serum/workbench/copy` | `serum.workbench.edit` 或 `serum.workbench.draft_edit` | 复制为草稿 |
 | POST | `/api/serum/workbench/reorder` | `serum.workbench.edit` | 将 `moved_id` 放到 `target_id` 的队列位 |
+| GET | `/api/serum/workbench/antigen_check/summaries` | `serum.page.workbench` 或 `serum.page.detail` | 按 `experiment_id` 返回每条抗原的判定标记 |
+| GET | `/api/serum/workbench/antigen_check/detail` | 同上 | 一条抗原五项的判定和图片 |
+| GET | `/api/serum/workbench/antigen_check/image` | 同上 | 取结果图片 |
+| POST | `/api/serum/workbench/antigen_check/save` | `serum.workbench.edit` 或 `serum.workbench.support_edit` | 保存一项的是否合格 |
+| POST | `/api/serum/workbench/antigen_check/image/upload` | 同上 | 上传一项的结果图片 |
+| POST | `/api/serum/workbench/antigen_check/image/remove` | 同上 | 去掉一张结果图片 |
 
 ## 7. 定时任务与外部集成
 

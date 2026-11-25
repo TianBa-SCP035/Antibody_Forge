@@ -32,7 +32,7 @@ _NUMBER_FIELDS = (
     ("sampleentervol", "sample_enter_vol", "sampleEnterVol", False),
 )
 _NOT_APPLICABLE = {"/", "／"}
-# 擎科把没合成出来的样品也放进推送，板号、孔号写这个，样品不在板上
+# 没合成出来的样品也会推过来，样品不在板上：擎科孔号写这个，君跻板号写「未合成」、孔号写 0
 _NOT_ON_PLATE = {"未合成", "noshipping"}
 
 
@@ -115,7 +115,7 @@ def parse_payload(raw: bytes) -> tuple[str, str, dict[str, dict[str, dict[str, A
         item = _lower_keys(item)
         row_errors: list[str] = []
         well_text = _text(item.get("wellno"))
-        if well_text.lower() in _NOT_ON_PLATE:
+        if well_text.lower() in _NOT_ON_PLATE or _text(item.get("plateno")).lower() in _NOT_ON_PLATE:
             # 未合成的行只认样品名，浓度、体积对方会填 M、0 之类，不校验
             sample_name = _required_text(item.get("samplename"), "sampleName", MAX_SAMPLE_NAME, row_errors)
             if row_errors:

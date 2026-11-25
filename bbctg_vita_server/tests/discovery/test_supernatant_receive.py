@@ -130,13 +130,16 @@ class SupernatantReceiveTest(DbTestCase):
             _well("未合成", "未合成", "S9", potency="M", specs="0", volume="0", sampleEnterVol="0"),
             _well("P1", "noShipping", "S10", potency="M"),
             _well("未合成", "未合成", "S1", potency="M"),
+            _well("未合成", "0", "S11", potency="0", specs="0", volume="0", sampleEnterVol="0"),
             _well("P1", "A3", "S3"),
         ))
         self.assertEqual(marked.json()["code"], 1)
         rows = list(self.db.scalars(select(SynthesisSupernatantWell)))
         self.assertEqual(sorted(row.well_no for row in rows if not row.not_synthesized), ["A01", "A02", "A03"])
         markers = {row.sample_name: row for row in rows if row.not_synthesized}
-        self.assertEqual(sorted(markers), ["S10", "S9"])
+        self.assertEqual(sorted(markers), ["S10", "S11", "S9"])
+        self.db.delete(markers["S11"])
+        self.db.commit()
         self.assertEqual((markers["S9"].plate_no, markers["S9"].well_no, markers["S9"].volume), (None, None, None))
 
         self.client.post(URL, json=_payload(_well("未合成", "未合成", "S9"), _well("P2", "B5", "S9")))
@@ -213,9 +216,11 @@ class SupernatantReceiveTest(DbTestCase):
                 {"code": 1, "data": _payload(*rows, order_no=json["orderNo"])}
                 if rows else {"code": 0, "msg": f"订单不存在：{json['orderNo']}"}
             )
-            return SimpleNamespace(json=lambda: reply)
+            return SimpleNamespace(status_code=200, json=lambda: reply)
 
-        settings = SimpleNamespace(supernatant_query_urls="擎科=http://q", supernatant_receive_token="t")
+        settings = SimpleNamespace(
+            supernatant_query_urls="擎科=http://q", supernatant_query_tokens="", supernatant_receive_token="t"
+        )
         now = datetime(2026, 11, 25, 10, 0)
         with patch("modules.supernatant_receive.query.get_settings", return_value=settings), \
                 patch("modules.supernatant_receive.query.requests.post", side_effect=fake_post), \
@@ -236,6 +241,41 @@ class SupernatantReceiveTest(DbTestCase):
 
         summary = service_synthesis.serialize_order(dated)["supernatant"]
         self.assertEqual((summary["wells"], summary["not_synthesized"]), (2, 1))
+
+    def test_gentlegen_query_uses_own_token_and_uppercase_order_no(self):
+        shipped = self._order("cn2611240000481", synthetic_corp="君跻", synthetic_date="2026-11-01")
+        waiting = self._order("CN2611240000482", synthetic_corp="君跻", synthetic_date="2026-11-01")
+        calls = []
+
+        def fake_post(url, json, headers, timeout):
+            calls.append((url, headers["X-Callback-Token"], json["orderNo"]))
+            if json["orderNo"] == "CN2611240000482":
+                return SimpleNamespace(status_code=200, json=lambda: {"code": 0, "msg": "订单数据为空", "data": None})
+            body = {
+                "corpName": "GentleGen", "orderNo": json["orderNo"], "data": [
+                    _well("CN2611240000484-26X644_GG14-A", "A1", "S1", potency="/", specs="/", volume="0.95",
+                          sampleEnterVol="0.95"),
+                    _well("未合成", "0", "S2", potency="0", specs="0", volume="0", sampleEnterVol="0"),
+                ],
+            }
+            return SimpleNamespace(status_code=200, json=lambda: {"code": 1, "msg": "success", "data": body})
+
+        settings = SimpleNamespace(
+            supernatant_query_urls="擎科=http://q;君跻=http://j/api/Delivery/ProteinQuery",
+            supernatant_query_tokens="君跻=jt", supernatant_receive_token="t",
+        )
+        now = datetime(2026, 11, 25, 10, 0)
+        with patch("modules.supernatant_receive.query.get_settings", return_value=settings), \
+                patch("modules.supernatant_receive.query.requests.post", side_effect=fake_post), \
+                patch("modules.supernatant_receive.query.now_local", return_value=now), \
+                patch("modules.supernatant_receive.service.now_local", return_value=now):
+            found = query.pull_order(self.db, "君跻", shipped.order_no)
+            waited = query.pull_order(self.db, "君跻", waiting.order_no)
+        self.assertEqual(calls[0], ("http://j/api/Delivery/ProteinQuery", "jt", "CN2611240000481"))
+        self.assertEqual((found["state"], found["wells"], found["not_synthesized"]), (query.FOUND, 1, 1))
+        self.assertEqual(waited["state"], query.MISSING)
+        self.db.refresh(shipped)
+        self.assertEqual((shipped.arrival_date, shipped.arrival_count), ("2026-11-25", 1))
 
     def test_bad_body_and_missing_order(self):
         cases = (

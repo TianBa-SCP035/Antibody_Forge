@@ -42,7 +42,7 @@
 | `synthesis_code` / `order_no` / `batch_label` | 转码 / 订单号 / 批次 | 送测转码（最长 64）、合成订单号（最长 64）、工单批次（最长 255）。`TRF-` 开头的订单号是转染与表达交接写入的转染工单号：只由交接写入，已有的不能修改或清空，也不能手填（见 §5 第 7 项） |
 | `synthetic_corp` | 合成公司 | 最长 64；预设：`君跻`、`擎科`、`金斯瑞`、`内部`，支持自填。新建改造类工单（`改造` / `内部转染` / `改亚型`）未填时默认 `内部`；关联 One 后 `内部` 与空值一样由 One 回填 |
 | `order_sender` | 下单人 | 最长 128；系统内不可编辑，由 One 同步，原样保存订单文件上传人（多为「中文名 英文名」），见第 5 节；具 `eng_edit` 的改造实验员新建工单时填本人显示名 |
-| `synthetic_count` / `arrival_count` | 合成个数 / 发货个数 | 可选非负整数（`0` 合法，空为 `NULL`；Excel 输入自动剥离 `个`/`条`）。`arrival_count` 只取上清推送的在板孔数，One 不再写入 |
+| `synthetic_count` / `arrival_count` | 合成个数 / 发货个数 | 可选非负整数（`0` 合法，空为 `NULL`；Excel 输入自动剥离 `个`/`条`）。`arrival_count` 只取上清推送的在板蛋白数（按样品名去重），One 不再写入 |
 | `synthetic_date` / `arrival_date` / `flow_date` / `affinity_date` | 合成日期 / 发货日期 / 流式日期 / 亲和力日期 | `YYYY-MM-DD`。`arrival_date` 页面称发货日期，指上清发货，只取合成公司上清板布局推送（见 §One 同步的快照字段说明），One 不再写入。保存时若清空 `affinity_date` 且当次请求未传 `affinity_result`，后端自动将 `affinity_result` 清空为 `NULL` |
 | `affinity_status` | 亲和力检测状态 | 枚举：`亲和力待检测`、`亲和力检测中`、`亲和力已完成`、`亲和力不适用`（仅 `多次穿膜`，系统写入，不能手选）；验证前阶段为 `NULL` |
 | `affinity_owner` | 亲和力人员 | 可多人，按填写顺序以 `、` 拼接（输入可用逗号、顿号、加号分隔，去重），拼接后最长 64；抽屉与 Excel 编辑左键单选、右键追加，Excel 粘贴逐个匹配人员；表头筛选按单个人名 |
@@ -185,7 +185,7 @@
    - `SNAPSHOT_STORED_FIELDS`（存入 `source_snapshot` 的 **8 个字段**）：`DRIFT_COMPARE_FIELDS` 加 `synthesis_code`、`batch_label`。
    - `DRIFT_COMPARE_FIELDS`（参与差异比对的 **6 个字段**）：`order_no`、`synthetic_corp`、`synthetic_count`、`synthetic_date`、`selection_method`、`is_rechoose`。
    - `synthetic_count` 取 `a.syntheticcount`，`synthetic_date` 取 `a.syntheticdate`，原样取，不做修正。
-   - 发货日期 `arrival_date` 和发货个数 `arrival_count` 不从 One 取（One 的 `deliverydate`、`plasmidcounts`、`supernatantcounts` 记的是质粒），只由 [上清板布局接收](./supernatant-receive-api.md) 写入：某订单号收到孔位时，把订单号匹配（不区分大小写）、`合成到货`、未完成未取消的工单发货日期写成该订单第一批孔位的接收日期，发货个数写成该订单当前在板孔数（不含未合成），发货日期变了就重新推导状态并在进入终态时重编队列。已完成、已取消的工单不改。两列仍可手动编辑；转染交接的工单照 §7 写入。
+   - 发货日期 `arrival_date` 和发货个数 `arrival_count` 不从 One 取（One 的 `deliverydate`、`plasmidcounts`、`supernatantcounts` 记的是质粒），只由 [上清板布局接收](./supernatant-receive-api.md) 写入：某订单号收到孔位时，把订单号匹配（不区分大小写）、`合成到货`、未完成未取消的工单发货日期写成该订单第一批孔位的接收日期，发货个数写成该订单当前在板蛋白数（按样品名去重，不含未合成），发货日期变了就重新推导状态并在进入终态时重编队列。已完成、已取消的工单不改。两列仍可手动编辑；转染交接的工单照 §7 写入。
    - `selection_method` 取 One `a.selectmethod`（逗号、顿号或加号分隔，去掉 `补挑` 后按预设顺序以顿号拼接）；`is_rechoose` 在 `a.isrechooseorder = 'true'` 或 `selectmethod` 含 `补挑` 时为 `是`，`'false'` 时为 `否`，其他为空。
    - 本地为空的快照字段（或重新绑定时仍等于上一版快照自动填入值的字段）自动用 One 库值回填，触及 `order_no` 时自动推导状态并在进入终态时重编队列。
    - `order_sender` 不进快照、不比对差异，每次核对都直接改成 One 当前值（One 没有上传记录时清空）。

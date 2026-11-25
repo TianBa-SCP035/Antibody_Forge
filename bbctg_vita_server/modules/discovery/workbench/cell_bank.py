@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from core.errors import NotFoundError
 from models.discovery import DiscoveryCellBank, DiscoveryWorkbench
+from models.molecular_cell import MolecularCellCheckoutItem, MolecularCellCheckoutRequest
 from utils.clock import today_local
 from utils.normalize import normalize_date
 
@@ -53,6 +54,23 @@ def _workbench(db: Session, workbench_id: int) -> DiscoveryWorkbench:
     return row
 
 
+def _pending_requests(db: Session, record_ids: list[int]) -> dict[int, str]:
+    """文库构建提交、还在待审核的出库申请：冻存记录 ID → 申请单号。"""
+    if not record_ids:
+        return {}
+    rows = db.execute(
+        select(MolecularCellCheckoutItem.cell_bank_id, MolecularCellCheckoutRequest.request_no)
+        .join(MolecularCellCheckoutRequest, MolecularCellCheckoutRequest.id == MolecularCellCheckoutItem.request_id)
+        .where(MolecularCellCheckoutRequest.status == "待审核", MolecularCellCheckoutItem.cell_bank_id.in_(record_ids))
+    ).all()
+    return {int(record_id): request_no for record_id, request_no in rows}
+
+
+def _ensure_not_pending(db: Session, record_id: int) -> None:
+    if _pending_requests(db, [record_id]):
+        raise ValueError("这条冻存细胞在出库审核中，审核后再操作")
+
+
 def list_records(db: Session, workbench_id: int) -> dict[str, Any]:
     _workbench(db, workbench_id)
     rows = db.scalars(
@@ -60,7 +78,8 @@ def list_records(db: Session, workbench_id: int) -> dict[str, Any]:
         .where(DiscoveryCellBank.workbench_id == workbench_id)
         .order_by(DiscoveryCellBank.id.desc())
     ).all()
-    return {"items": [row.to_dict() for row in rows]}
+    pending = _pending_requests(db, [row.id for row in rows])
+    return {"items": [{**row.to_dict(), "checkout_request_no": pending.get(row.id)} for row in rows]}
 
 
 def save_record(db: Session, data: dict[str, Any], created_by: str | None = None) -> dict[str, Any]:
@@ -97,6 +116,7 @@ def checkout_record(db: Session, record_id: int, checked_out_by: Any) -> dict[st
     name = _text(checked_out_by, "checked_out_by")
     if not name:
         raise ValueError("请填写出库人")
+    _ensure_not_pending(db, row.id)
     row.checked_out_by = name
     row.checked_out_on = today_local().isoformat()
     db.commit()
@@ -108,5 +128,6 @@ def delete_record(db: Session, record_id: int) -> None:
     row = db.get(DiscoveryCellBank, record_id)
     if not row:
         raise NotFoundError("冻存记录不存在")
+    _ensure_not_pending(db, row.id)
     db.delete(row)
     db.commit()

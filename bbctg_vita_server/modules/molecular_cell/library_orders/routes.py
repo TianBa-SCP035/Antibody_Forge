@@ -26,7 +26,7 @@ from modules.auth.permissions import (
     permission_denied,
     require,
 )
-from modules.molecular_cell.library_orders import service
+from modules.molecular_cell.library_orders import cell_checkout, service
 from modules.molecular_cell.library_orders.result_upload import (
     TRACE_EXTENSIONS,
     preview_extension,
@@ -44,6 +44,7 @@ DETAIL_PERMISSION = "molecular.page.library_detail"
 FILE_PERMISSION = "molecular.library.file.manage"
 QC_CONCLUSION_FIELDS = {"qc_result", "qc_owner", "qc_on", "qc_note"}
 HANDOFF_PERMISSIONS = (EDIT_PERMISSION, "discovery.workbench.edit")
+CHECKOUT_REVIEW_PERMISSION = "molecular.library.cell_checkout.review"
 
 
 def _type_scope(context: UserContext = Depends(get_user_context)) -> service.TypeScope:
@@ -84,6 +85,25 @@ class HandoffRequest(BaseModel):
     discovery_workbench_id: int | None = Field(default=None, gt=0)
     discovery_id: str | None = None
     items: list[dict] = Field(min_length=1)
+
+
+class CellCheckoutSelection(BaseModel):
+    order_ids: list[int] = Field(default_factory=list, max_length=cell_checkout.MAX_ORDERS)
+    filters: dict | None = None
+
+
+class CellCheckoutSubmitRequest(CellCheckoutSelection):
+    cell_bank_ids: list[int] = Field(min_length=1, max_length=5000)
+
+
+class CellCheckoutListRequest(BaseModel):
+    status: str | None = Field(default=None, max_length=16)
+
+
+class CellCheckoutReviewRequest(BaseModel):
+    id: int = Field(gt=0)
+    approve: bool
+    note: str | None = Field(default=None, max_length=500)
 
 
 class FileListRequest(BaseModel):
@@ -248,6 +268,47 @@ def delete_order(
     scope: service.TypeScope = Depends(_type_scope),
 ) -> dict:
     return success(service.delete_order(db, data.id, scope))
+
+
+@router.post(
+    "/cell_checkout/candidates",
+    dependencies=[require(EDIT_PERMISSION), audit_quiet("查询可出库冻存细胞", "library_checkout")],
+)
+def cell_checkout_candidates(
+    data: CellCheckoutSelection,
+    db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
+) -> dict:
+    return success(cell_checkout.candidates(db, data.model_dump(), scope))
+
+
+@router.post("/cell_checkout/submit", dependencies=[require(EDIT_PERMISSION, audit="提交冻存细胞出库申请")])
+def cell_checkout_submit(
+    data: CellCheckoutSubmitRequest,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+    scope: service.TypeScope = Depends(_type_scope),
+) -> dict:
+    return success(cell_checkout.submit(db, data.model_dump(), actor_name(current_user), scope))
+
+
+@router.post("/cell_checkout/list", dependencies=[require(PAGE_PERMISSION)])
+def cell_checkout_list(
+    data: CellCheckoutListRequest | None = None,
+    db: Session = Depends(get_db),
+    scope: service.TypeScope = Depends(_type_scope),
+) -> dict:
+    return success(cell_checkout.list_requests(db, data.model_dump() if data else {}, scope))
+
+
+@router.post("/cell_checkout/review", dependencies=[require(CHECKOUT_REVIEW_PERMISSION, audit="审核冻存细胞出库")])
+def cell_checkout_review(
+    data: CellCheckoutReviewRequest,
+    db: Session = Depends(get_db),
+    current_user: SysUser = Depends(get_current_user),
+    scope: service.TypeScope = Depends(_type_scope),
+) -> dict:
+    return success(cell_checkout.review(db, data.id, data.approve, actor_name(current_user), data.note, scope))
 
 
 @router.post("/files/list", dependencies=[require(DETAIL_PERMISSION), audit_quiet("刷新质检核对", "library_file")])

@@ -189,6 +189,13 @@ class SupernatantReceiveTest(DbTestCase):
         self.db.refresh(pending)
         self.assertEqual((pending.arrival_date, pending.arrival_count), ("2026-11-24", 2))
 
+        old_plate = "BAO0000900-GSZB00494/20R041_RMBWB_Protein Supernatant-A-0123456789"
+        self.assertGreater(len(old_plate), 64)
+        resp = self.client.post(URL, json=_payload(_well(old_plate, "A1", "S1"), _well(old_plate, "A2", "S3")))
+        self.assertEqual(resp.json()["code"], 1)
+        self.db.refresh(pending)
+        self.assertEqual(pending.arrival_count, 2)
+
         snapshot = {"order_no": "BAO0000900", "arrival_date": "2026-11-20", "arrival_count": 192}
         apply_remote_snapshot_to_row(pending, snapshot)
         self.assertEqual((pending.arrival_date, pending.arrival_count), ("2026-11-24", 2))

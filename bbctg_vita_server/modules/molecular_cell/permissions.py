@@ -29,6 +29,9 @@ ACCESS = ModuleAccess(
                  parent_code="molecular.page.library", sort_order=432, message="只能处理部分建库类型")
             for code, build_type in LIBRARY_TYPE_PERMISSIONS.items()
         ),
+        action("molecular.library.cell_checkout.review", "审核冻存细胞出库", resource="library_checkout",
+               action="review", ui_key="molecular.library.cell_checkout.review_button",
+               parent_code="molecular.page.library", sort_order=432, message="没有权限审核冻存细胞出库"),
         page("molecular.page.library_detail", "文库构建详情", resource="library_detail",
              route_path="/molecular-cell/library-construction/result", parent_code="molecular.page.library",
              sort_order=433, message="没有权限查看文库构建详情"),
@@ -50,6 +53,7 @@ ACCESS = ModuleAccess(
         "library": "文库工单",
         "library_detail": "文库工单",
         "library_file": "构建文件",
+        "library_checkout": "冻存细胞出库",
         "transfection": "转染工单",
         "primer": "引物库",
     },

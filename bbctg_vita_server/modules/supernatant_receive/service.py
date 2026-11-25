@@ -18,6 +18,8 @@ from modules.discovery.synthesis_progress.one_sync import sync_derived_statuses
 from utils.clock import now_local
 
 MAX_TEXT = 64
+# 君跻旧板号形如「订单号-GSZB00159/20R246_RMBWB02B11_Protein Supernatant-A」，超过 64
+MAX_PLATE_NO = 128
 MAX_SAMPLE_NAME = 128
 MAX_ERRORS = 10
 # 对应 DECIMAL(16,4)
@@ -123,7 +125,7 @@ def parse_payload(raw: bytes) -> tuple[str, str, dict[str, dict[str, dict[str, A
             else:
                 not_synthesized[sample_name] = None
             continue
-        plate_no = _required_text(item.get("plateno"), "plateno", MAX_TEXT, row_errors)
+        plate_no = _required_text(item.get("plateno"), "plateno", MAX_PLATE_NO, row_errors)
         well = _WELL.fullmatch(well_text.upper())
         if not well:
             row_errors.append(f"wellno「{well_text}」不是 96 孔板孔号（A1-H12）")
@@ -151,7 +153,7 @@ def parse_payload(raw: bytes) -> tuple[str, str, dict[str, dict[str, dict[str, A
 
 
 def _mark_shipped(db: Session, order_no: str, ship_date: str, well_count: int, *, keep_date: bool = False) -> None:
-    """合成与验证的发货日期、发货个数只取上清推送：首次推送当天、板上孔数。
+    """合成与验证的发货日期、发货个数只取上清推送：首次推送当天、板上蛋白数。
     keep_date：补查到的布局不知道实际发货日，已有发货日期的工单不改日期。"""
     from modules.discovery.synthesis_progress.service import settle_queue_after_sync
 
@@ -185,7 +187,6 @@ def receive(db: Session, raw: bytes, *, pulled: bool = False) -> dict[str, Any]:
     now = now_local()
     first_received = min((row.received_at for row in existing.values() if row.received_at), default=now)
     ship_date = first_received.date().isoformat()
-    well_keys = set(existing) | {(plate_no, well_no) for plate_no, wells in plates.items() for well_no in wells}
     pending = {row.sample_name: row for row in rows if row.not_synthesized}
     on_plate = {row.sample_name for row in rows if not row.not_synthesized}
     for plate_no, wells in plates.items():
@@ -216,7 +217,14 @@ def receive(db: Session, raw: bytes, *, pulled: bool = False) -> dict[str, Any]:
             db.add(marker)
         marker.corp_name = corp_name
     if plates:
-        _mark_shipped(db, order_no, ship_date, len(well_keys), keep_date=pulled)
+        # 发货个数按蛋白计：君跻有的单同一批蛋白挂在新旧两个板号下，按孔数会翻倍
+        db.flush()
+        proteins = db.scalar(
+            select(func.count(func.distinct(SynthesisSupernatantWell.sample_name))).where(
+                SynthesisSupernatantWell.order_no == order_no, SynthesisSupernatantWell.not_synthesized.is_(False)
+            )
+        )
+        _mark_shipped(db, order_no, ship_date, proteins or 0, keep_date=pulled)
     db.commit()
     return {
         "order_no": order_no,

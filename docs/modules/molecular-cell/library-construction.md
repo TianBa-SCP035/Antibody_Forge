@@ -15,7 +15,8 @@
 |---|---|---|
 | `molecular.page.library` | `page` | 访问文库构建列表；查询列表（`/list`）、表头筛选值（`/column_values`）、已录入靶点（`/recorded_targets`）、下拉枚举（`/options`）、启用引物选项（`/catalog/options`）及导出列表（`/export_list`） |
 | `molecular.page.library_detail` | `page` | 访问文库质控详情页；查询工单质检文件与测序包（`/files/list`）、下载或在线预览文件（`/files/download`）、查询下拉枚举（`/options`）及启用引物选项（`/catalog/options`） |
-| `molecular.library.edit` | `action` | 新建、编辑、取消、删除工单（`/save`、`/batch_save`、`/delete`），以及发现交接查询与创建（`/by-discovery`、`/handoff`） |
+| `molecular.library.edit` | `action` | 新建、编辑、取消、删除工单（`/save`、`/batch_save`、`/delete`），发现交接查询与创建（`/by-discovery`、`/handoff`），以及冻存细胞出库申请（`/cell_checkout/candidates`、`/cell_checkout/submit`） |
+| `molecular.library.cell_checkout.review` | `action` | 审核冻存细胞出库申请（`/cell_checkout/review`）；查看申请单只要 `molecular.page.library` |
 | `molecular.library.file.manage` | `action` | 质检文件预检与上传（`/files/preflight`、`/files/upload_batch`）、文件改名/标最终/框选区域（`/files/update`）、删除文件或测序包（`/files/delete`）；更新已有工单且仅修改质检结论四字段（`qc_result`、`qc_owner`、`qc_on`、`qc_note`）时，`/save` 与 `/batch_save` 亦接受本权限 |
 | `discovery.workbench.edit` | `action` | 在发现工作台查询已交接工单并发起交接创建（`/by-discovery`、`/handoff`） |
 | `molecular.library.type.plate_single_cell` | `data` | 限定单细胞孔板：见下方「按建库类型限定数据范围」 |
@@ -23,7 +24,7 @@
 **按建库类型限定数据范围**：每种可单独授权的建库类型对应一个 `molecular.library.type.<build_type>`，登记在 `modules/molecular_cell/permissions.py` 的 `LIBRARY_SCOPE_TYPES`（目前只有单细胞孔板），新增类型在那里加一行即可。类型权限点只划范围、不放行接口，能不能改仍看上表的编辑与质检权限。
 
 - 一个都没配的人不限；配了的人只能看、改配了的类型（多个取并集，角色和个人覆盖合并计算）；超级管理员不受限。只配类型权限点 = 只能查看这些类型；再加编辑或质检权限 = 只能在这些类型里编辑或管质检。
-- 范围由路由按权限算出、不取自请求，每个文库构建接口都按它收窄：列表、统计、表头筛选值、导出、已录入靶点只含范围内类型；范围外的已有工单与文件（详情、质检文件列表、下载、保存、删除、文件改名/标最终/删除、质检页上传）按「不存在」处理（404）；新建、交接或把工单改成范围外的类型返回 403。
+- 范围由路由按权限算出、不取自请求，每个文库构建接口都按它收窄：列表、统计、表头筛选值、导出、已录入靶点只含范围内类型；冻存细胞出库只取范围内工单，含范围外工单的出库申请单不显示、不能审核；范围外的已有工单与文件（详情、质检文件列表、下载、保存、删除、文件改名/标最终/删除、质检页上传）按「不存在」处理（404）；新建、交接或把工单改成范围外的类型返回 403。
 - 批量质检上传先按全部工单匹配文件名再收窄，匹配到范围外工单的文件跳过并提示「建库编号 X 不在你可查看的建库类型内」，不会改挂到别的工单。
 - 测序包是多张工单共看的文件夹：包里还关联范围外工单时，不往该包追加文件（另存新包），也不能在文件夹预览里删除其中的文件；解除本工单与包的关联不受影响。
 - 发现交接查询（`/by-discovery`）只返回范围内的已有工单与建议；建议按全部已有工单计算，范围外已建过的类型不会被重复建议。
@@ -150,7 +151,7 @@
   - 表头筛选覆盖除 `target_codes`（靶点编号）和 `actions`（操作）外的全部列；`plate_nos` 按 JSON 数组包含匹配。
   - 右键「查询」清空全部筛选与表头条件。筛选条件、排序与页码保存在浏览器存储中，从质控详情页返回时恢复。
 - **行内编辑与抽屉**：工作台视图默认展示项目编号、靶点、建库类型、样品来源、样品类型、建库编号、负责人、状态、优先级、操作；行内可直接修改 `priority`、`status`、`received_on`。项目编号用列表统一的蓝色编号样式；有来源发现 ID 的工单点击编号跳回发现工作台并定位该安排（同抽屉里的来源发现 ID），手工创建的不可点。项目编号可能对应多个免疫实验，不跳免疫详情。左键点行打开右侧无遮罩抽屉（支持「上一条 / 下一条」切换，字段修改后自动保存）。
-- **操作列（`LibraryRowActions.vue`）**：行操作列与抽屉顶部工具栏固定三个按钮：
+- **操作列（`LibraryRowActions.vue`）**：行操作列与抽屉顶部工具栏固定三个按钮（抽屉里另有「冻存出库」，见 §4.5）：
 
 | 按钮 | 权限 | 行为 |
 |---|---|---|
@@ -183,6 +184,20 @@
   - **序列与峰图预览（`SeqReadPreview.vue`、`AbiTracePreview.vue`）**：显示读段方向胶囊（`正向/反向 · i5 端/i7 端`，`i5` 端直接命中为正向、反补命中为反向，`i7` 端相反）与碱基数（`<= 400 bp` 标红）。打开时按核对结果自动填入搜索串并高亮定位（完全匹配填整段期待串，`arm_only` 填 `左臂......右臂`，反补命中自动开启「反补」状态按钮）；点击方向胶囊循环切换「完整引物 → 两侧同源臂 → 左臂 → 右臂」，搜索框用 `.` 或 `。` 分隔两段时按成对区间查找。峰图无自身核对结果时沿用同包同名 `.seq` 的核对状态。
   - **通用预览（`FilePreviewer.vue`）**：支持图片、文本（`.seq`/`.txt`/`.fa`/`.fasta`/`.md`/`.log`）、表格（`.xls`/`.xlsx`/`.csv`）、`.pdf`、`.docx`、视频（`.mp4`/`.webm`/`.ogg`/`.ogv`/`.mov`）在线预览，其余格式下载查看。
 - **右侧工单检查器**：分「质检判读」「样品信息」「建库记录」三个标签页；修改 `qc_result`、`qc_owner`、`qc_on`、`qc_note` 需 `molecular.library.edit` 或 `molecular.library.file.manage`，修改其余字段需 `molecular.library.edit`。
+
+### 4.5 冻存细胞出库与审核
+
+冻存细胞是发现工作台「冻存」登记的留存细胞（`discovery_cell_bank`，见 [发现工作台](../discovery/workbench.md)），文库工单按 `source_discovery_id` 找到对应发现安排的冻存记录。可出库 = 未出库、且不在待审核申请单里；同一发现安排对应多张工单时，一条冻存记录只出现一次，明细取第一张工单。
+
+- **申请**（`LibraryCellCheckoutDialog.vue`）：抽屉顶部「冻存出库」只取本工单（需 `molecular.library.edit`，且只在有来源发现 ID 的工单上显示）；页头「一键出库」要求已填「建库编号」筛选，按当前全部筛选条件（不分页，最多 500 张工单）取工单。弹窗列出可出库记录并默认全选，可取消勾选；提交后整批生成一张申请单（`CKO-yyMMdd-XXXXXX`），申请人取当前用户、申请日期取当天、数量为冻存记录条数。提交时任一记录已出库或已在审核中，整批拒绝并刷新。
+- **审核**（`LibraryCellCheckoutReviewDialog.vue`）：页头「出库审核」按 `待审核`（默认）、`已通过`、`已驳回`、全部列出申请单（最近 200 张），展示申请单号、出库申请人、数量、申请日期、状态、审核人、审核时间、审核意见；展开行看明细：建库编号、靶点、上机日期、鼠型（小鼠品系）、细胞数量（冻存记录细胞量）、样品来源、细胞类型、管数、冻存位置、备注（发现台冻存备注，用来区分不同鼠型的细胞）。明细是提交时的快照。
+- **通过**：冻存记录写出库人 = 申请人、出库日期 = 审核当天（审核前已出库或已删除的跳过）；**驳回**可填原因（最长 500 字），记录回到可出库。只能审核 `待审核` 的申请单。
+- 冻存记录在待审核申请单里时，发现工作台冻存弹窗的出库人显示「审核中」，不能直接出库或删除。
+
+| 表 | 说明 |
+|---|---|
+| `molecular_cell_checkout_request` | 申请单：`request_no`（唯一）、`status`（`待审核`/`已通过`/`已驳回`）、`applicant`、`applied_on`、`item_count`、`reviewer`、`reviewed_at`、`review_note` |
+| `molecular_cell_checkout_item` | 明细：`request_id`、`cell_bank_id`、`library_order_id`，以及建库编号、发现安排号、靶点、上机日期、小鼠品系、样品来源（显示名）、细胞类型、细胞量、管数、冻存位置、备注快照 |
 
 ## 5. 文件与存储
 
@@ -254,6 +269,10 @@
 | `POST` | `/api/molecular-cell/library-orders/export_list` | `molecular.page.library` | 按当前筛选与排序导出工单 Excel |
 | `POST` | `/api/molecular-cell/library-orders/handoff` | `discovery.workbench.edit` 或 `molecular.library.edit` | 从发现工作台交接批量创建建库工单并更新发现状态 |
 | `POST` | `/api/molecular-cell/library-orders/delete` | `molecular.library.edit` | 删除工单并清理无其他工单引用的独占质检文件与测序包（已交接为转染工单的不能删除） |
+| `POST` | `/api/molecular-cell/library-orders/cell_checkout/candidates` | `molecular.library.edit` | 按 `order_ids` 或 `filters`（须含建库编号）列出可出库冻存记录 |
+| `POST` | `/api/molecular-cell/library-orders/cell_checkout/submit` | `molecular.library.edit` | 同上选择条件加 `cell_bank_ids`，生成一张待审核申请单 |
+| `POST` | `/api/molecular-cell/library-orders/cell_checkout/list` | `molecular.page.library` | 按 `status` 列出申请单及明细 |
+| `POST` | `/api/molecular-cell/library-orders/cell_checkout/review` | `molecular.library.cell_checkout.review` | `id`、`approve`、`note`：通过（写出库）或驳回 |
 | `POST` | `/api/molecular-cell/library-orders/files/list` | `molecular.page.library_detail` | 查询指定 `order_id` 的工单信息、已配置引物序列、质检文件及测序包（打开时自动按最新规则重核序列） |
 | `POST` | `/api/molecular-cell/library-orders/files/upload_batch` | `molecular.library.file.manage` | 批量上传文件或测序包（`order_id` 可选：传则挂当前工单，不传则按预检跨工单关联） |
 | `POST` | `/api/molecular-cell/library-orders/files/preflight` | `molecular.library.file.manage` | 列表批量上传前的无状态路径与建库编号预检 |

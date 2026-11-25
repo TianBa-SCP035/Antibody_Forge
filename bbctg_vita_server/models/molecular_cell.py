@@ -403,3 +403,70 @@ class MolecularTransfectionItem(Base):
         nullable=False,
         comment="蛋白ID",
     )
+
+
+class MolecularCellCheckoutRequest(Base):
+    __tablename__ = "molecular_cell_checkout_request"
+    __log_label__ = "冻存细胞出库申请"
+    __audit_label__ = ("request_no",)
+    __table_args__ = (
+        UniqueConstraint("request_no", name="uk_molecular_cell_checkout_request_no"),
+        Index("idx_molecular_cell_checkout_request_status", "status"),
+        {"comment": "冻存细胞出库申请"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    request_no: Mapped[str] = mapped_column(String(32), nullable=False, comment="申请单号")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="待审核", comment="审核状态")
+    applicant: Mapped[str | None] = mapped_column(String(64), comment="出库申请人")
+    applied_on: Mapped[date | None] = mapped_column(Date, comment="申请日期")
+    item_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="冻存记录数量")
+    reviewer: Mapped[str | None] = mapped_column(String(64), comment="审核人")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, comment="审核时间")
+    review_note: Mapped[str | None] = mapped_column(String(500), comment="审核意见")
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), comment="创建时间"
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            column.name: _format_value(getattr(self, column.name))
+            for column in self.__table__.columns
+        }
+
+
+class MolecularCellCheckoutItem(Base):
+    __tablename__ = "molecular_cell_checkout_item"
+    __log_label__ = "冻存细胞出库明细"
+    __table_args__ = (
+        Index("idx_molecular_cell_checkout_item_request_id", "request_id"),
+        Index("idx_molecular_cell_checkout_item_cell_bank_id", "cell_bank_id"),
+        {"comment": "冻存细胞出库申请明细"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    request_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("molecular_cell_checkout_request.id"),
+        nullable=False,
+        comment="申请单ID",
+    )
+    cell_bank_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="发现留存细胞ID")
+    library_order_id: Mapped[int | None] = mapped_column(BigInteger, comment="文库工单ID")
+    library_code: Mapped[str | None] = mapped_column(String(64), comment="建库编号")
+    discovery_id: Mapped[str | None] = mapped_column(String(32), comment="发现安排号")
+    target_name: Mapped[str | None] = mapped_column(String(128), comment="靶点名称")
+    instrument_on: Mapped[date | None] = mapped_column(Date, comment="上机日期")
+    mouse_strain: Mapped[str | None] = mapped_column(String(128), comment="小鼠品系")
+    sample_source: Mapped[str | None] = mapped_column(String(32), comment="样品来源")
+    cell_kind: Mapped[str | None] = mapped_column(String(32), comment="细胞类型")
+    cell_count: Mapped[str | None] = mapped_column(String(64), comment="细胞量")
+    tube_count: Mapped[int | None] = mapped_column(Integer, comment="管数")
+    box_location: Mapped[str | None] = mapped_column(String(128), comment="冻存位置")
+    remark: Mapped[str | None] = mapped_column(String(500), comment="冻存备注")
+
+    def to_dict(self) -> dict:
+        return {
+            column.name: _format_value(getattr(self, column.name))
+            for column in self.__table__.columns
+        }

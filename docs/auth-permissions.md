@@ -139,7 +139,8 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 | 权限码 | 类型 | 说明 |
 |--------|------|------|
 | `molecular.page.library` | page | 文库构建列表与字典查询 |
-| `molecular.library.edit` | action | 两页的工单编辑：保存、取消、Excel、手工新增、删除 |
+| `molecular.library.edit` | action | 两页的工单编辑：保存、取消、Excel、手工新增、删除；申请冻存细胞出库 |
+| `molecular.library.cell_checkout.review` | action | 审核文库构建提交的冻存细胞出库申请（通过即写出库） |
 | `molecular.library.type.plate_single_cell` | data | 限定单细胞孔板：配了任一类型权限点的人只能看、改这些类型（改仍需编辑或质检权限），一个都没配的不限 |
 | `molecular.page.library_detail` | page | 质控详情、文件列表与下载 |
 | `molecular.library.file.manage` | action | 质检文件，以及质检结论、质检人、质检日期、质检说明 |
@@ -148,7 +149,7 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 | `molecular.page.transfection` | page | 转染与表达和转染表查询 |
 | `molecular.transfection.edit` | action | 转染工单新建、编辑、删除，导入和删除蛋白清单，交接到合成与验证，在文库构建交接单细胞孔板 |
 
-写接口 `POST /api/molecular-cell/library-orders/save`、`/batch_save`、`/delete`、`/handoff`、`/files/upload_batch`、`/files/update`、`/files/delete`、`/catalog/save`、`/catalog/delete`、`/catalog/batch_update`、`/catalog/batch_delete`、`/catalog/batch_save` 在路由上声明操作日志名称；使用 POST 返回文件的 `/catalog/export` 按页面权限检查，和其他导出一样不记日志。上传前的路径预检 `/files/preflight` 不写库，用 `audit_quiet()` 不记日志。查询 `/catalog/list`、`/catalog/column_values` 和全选 `/catalog/ids` 不记操作日志。取消统一通过 `/save` 更新状态。只改质检结论、质检人、质检日期、质检说明时，`/save` 也接受 `molecular.library.file.manage`；`/batch_save` 在每一条都只改这些字段时同样接受。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。转染与表达的写接口 `POST /api/molecular-cell/transfection/save`、`/batch_save`、`/delete`、`/handoff_library`、`/handoff_synthesis`、`/proteins/import`、`/proteins/clear` 声明操作日志名称；`/handoff_library` 同时接受 `molecular.library.edit`，并按文库构建的建库类型范围收窄；查询与导出不记日志，见 [modules/molecular-cell/transfection.md](./modules/molecular-cell/transfection.md)。权限码和菜单开关（`menu.molecular_cell` / `menu.molecular_cell.library` / `menu.molecular_cell.primer` / `menu.molecular_cell.transfection`）在 `modules/molecular_cell/permissions.py`。不写入示例角色/权限包。已录入靶点搜索用本模块的 `GET /api/molecular-cell/library-orders/recorded_targets`；选靶点 / 人名用公共选项接口 `GET /api/options/targets` 与 `/api/options/users`。
+写接口 `POST /api/molecular-cell/library-orders/save`、`/batch_save`、`/delete`、`/handoff`、`/cell_checkout/submit`、`/cell_checkout/review`、`/files/upload_batch`、`/files/update`、`/files/delete`、`/catalog/save`、`/catalog/delete`、`/catalog/batch_update`、`/catalog/batch_delete`、`/catalog/batch_save` 在路由上声明操作日志名称；使用 POST 返回文件的 `/catalog/export` 按页面权限检查，和其他导出一样不记日志。上传前的路径预检 `/files/preflight` 和出库候选查询 `/cell_checkout/candidates` 不写库，用 `audit_quiet()` 不记日志。查询 `/catalog/list`、`/catalog/column_values` 和全选 `/catalog/ids` 不记操作日志。取消统一通过 `/save` 更新状态。只改质检结论、质检人、质检日期、质检说明时，`/save` 也接受 `molecular.library.file.manage`；`/batch_save` 在每一条都只改这些字段时同样接受。`POST /handoff` 与 `GET /by-discovery` 同时接受 `discovery.workbench.edit`。字段、类型 profile 与交接规则见 [modules/molecular-cell/library-construction.md](./modules/molecular-cell/library-construction.md)。转染与表达的写接口 `POST /api/molecular-cell/transfection/save`、`/batch_save`、`/delete`、`/handoff_library`、`/handoff_synthesis`、`/proteins/import`、`/proteins/clear` 声明操作日志名称；`/handoff_library` 同时接受 `molecular.library.edit`，并按文库构建的建库类型范围收窄；查询与导出不记日志，见 [modules/molecular-cell/transfection.md](./modules/molecular-cell/transfection.md)。权限码和菜单开关（`menu.molecular_cell` / `menu.molecular_cell.library` / `menu.molecular_cell.primer` / `menu.molecular_cell.transfection`）在 `modules/molecular_cell/permissions.py`。不写入示例角色/权限包。已录入靶点搜索用本模块的 `GET /api/molecular-cell/library-orders/recorded_targets`；选靶点 / 人名用公共选项接口 `GET /api/options/targets` 与 `/api/options/users`。
 
 ### 2.6 系统模块（`system.*`）
 

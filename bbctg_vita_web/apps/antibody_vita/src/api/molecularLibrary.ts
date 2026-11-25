@@ -6,6 +6,7 @@ export const LIBRARY_PAGE = 'molecular.page.library';
 export const LIBRARY_PAGE_DETAIL = 'molecular.page.library_detail';
 export const LIBRARY_EDIT = 'molecular.library.edit';
 export const LIBRARY_FILE_MANAGE = 'molecular.library.file.manage';
+export const LIBRARY_CHECKOUT_REVIEW = 'molecular.library.cell_checkout.review';
 /** 从发现工作台交接建库：有任一权限即可 */
 export const LIBRARY_HANDOFF = [DISCOVERY_WORKBENCH_EDIT, LIBRARY_EDIT];
 /** 交接建库后跳到文库构建定位新工单（sessionStorage），键值已发布不要改 */
@@ -102,6 +103,41 @@ export function deleteLibraryOrder(id: number | string) {
     { id },
     skipGlobalErrorHandler,
   );
+}
+
+/** 冻存细胞出库：按工单 ID，或按列表筛选条件（须含建库编号）取全部匹配工单 */
+export type CellCheckoutSelection = {
+  order_ids?: number[];
+  filters?: Record<string, any>;
+};
+
+export function fetchCellCheckoutCandidates(data: CellCheckoutSelection) {
+  return requestClient.post('/molecular-cell/library-orders/cell_checkout/candidates', data, {
+    timeout: LONG_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function submitCellCheckout(data: CellCheckoutSelection & { cell_bank_ids: number[] }) {
+  return requestClient.post('/molecular-cell/library-orders/cell_checkout/submit', data, {
+    timeout: LONG_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function fetchCellCheckoutRequests(status = '') {
+  return requestClient.post(
+    '/molecular-cell/library-orders/cell_checkout/list',
+    { status },
+    skipGlobalErrorHandler,
+  );
+}
+
+export function reviewCellCheckout(data: { id: number; approve: boolean; note?: string }) {
+  return requestClient.post('/molecular-cell/library-orders/cell_checkout/review', data, {
+    timeout: SAVE_TIMEOUT,
+    ...skipGlobalErrorHandler,
+  });
 }
 
 export function fetchLibraryFiles(orderId: number | string) {

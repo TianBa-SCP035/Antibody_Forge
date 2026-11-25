@@ -72,11 +72,18 @@
       <el-table-column prop="cell_count" label="细胞量" width="90" />
       <el-table-column prop="box_location" label="位置" min-width="100" show-overflow-tooltip />
       <el-table-column prop="operator" label="操作人" width="90" />
-      <el-table-column prop="checked_out_by" label="出库人" width="90" show-overflow-tooltip />
+      <el-table-column label="出库人" width="90" show-overflow-tooltip>
+        <template #default="{ row: record }">
+          <span v-if="record.checkout_request_no" class="bank-pending" :title="`文库构建出库申请 ${record.checkout_request_no}`">审核中</span>
+          <span v-else>{{ record.checked_out_by }}</span>
+        </template>
+      </el-table-column>
       <el-table-column v-if="canEdit" label="操作" width="110" align="center">
         <template #default="{ row: record }">
-          <el-button link type="primary" @click="checkout(record)">出库</el-button>
-          <el-button link type="danger" @click="remove(record)">删除</el-button>
+          <template v-if="!record.checkout_request_no">
+            <el-button link type="primary" @click="checkout(record)">出库</el-button>
+            <el-button link type="danger" @click="remove(record)">删除</el-button>
+          </template>
         </template>
       </el-table-column>
     </el-table>
@@ -273,6 +280,9 @@ export default {
 .bank-form :deep(.el-select),
 .bank-form :deep(.el-input) {
   width: 100%;
+}
+.bank-pending {
+  color: var(--el-color-warning);
 }
 .bank-actions {
   display: flex;

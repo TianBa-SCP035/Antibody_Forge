@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS synthesis_supernatant_well (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
   order_no VARCHAR(64) NOT NULL COMMENT '合成订单号',
   corp_name VARCHAR(64) NOT NULL COMMENT '合成公司',
-  plate_no VARCHAR(64) NULL COMMENT '板号，未合成时为空',
+  plate_no VARCHAR(128) NULL COMMENT '板号，未合成时为空',
   well_no VARCHAR(8) NULL COMMENT '孔号，未合成时为空',
   sample_name VARCHAR(128) NOT NULL COMMENT '蛋白名称',
   not_synthesized TINYINT(1) NOT NULL DEFAULT 0 COMMENT '未合成',
@@ -900,6 +900,45 @@ CREATE TABLE IF NOT EXISTS molecular_transfection_item (
   CONSTRAINT fk_molecular_transfection_item_protein
     FOREIGN KEY (protein_id) REFERENCES molecular_transfection_protein (id)
 ) COMMENT='转染工单蛋白';
+
+CREATE TABLE IF NOT EXISTS molecular_cell_checkout_request (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  request_no VARCHAR(32) NOT NULL COMMENT '申请单号',
+  status VARCHAR(16) NOT NULL DEFAULT '待审核' COMMENT '审核状态',
+  applicant VARCHAR(64) NULL COMMENT '出库申请人',
+  applied_on DATE NULL COMMENT '申请日期',
+  item_count INT NOT NULL DEFAULT 0 COMMENT '冻存记录数量',
+  reviewer VARCHAR(64) NULL COMMENT '审核人',
+  reviewed_at DATETIME NULL COMMENT '审核时间',
+  review_note VARCHAR(500) NULL COMMENT '审核意见',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_molecular_cell_checkout_request_no (request_no),
+  KEY idx_molecular_cell_checkout_request_status (status)
+) COMMENT='冻存细胞出库申请';
+
+CREATE TABLE IF NOT EXISTS molecular_cell_checkout_item (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  request_id BIGINT NOT NULL COMMENT '申请单ID',
+  cell_bank_id BIGINT NOT NULL COMMENT '发现留存细胞ID',
+  library_order_id BIGINT NULL COMMENT '文库工单ID',
+  library_code VARCHAR(64) NULL COMMENT '建库编号',
+  discovery_id VARCHAR(32) NULL COMMENT '发现安排号',
+  target_name VARCHAR(128) NULL COMMENT '靶点名称',
+  instrument_on DATE NULL COMMENT '上机日期',
+  mouse_strain VARCHAR(128) NULL COMMENT '小鼠品系',
+  sample_source VARCHAR(32) NULL COMMENT '样品来源',
+  cell_kind VARCHAR(32) NULL COMMENT '细胞类型',
+  cell_count VARCHAR(64) NULL COMMENT '细胞量',
+  tube_count INT NULL COMMENT '管数',
+  box_location VARCHAR(128) NULL COMMENT '冻存位置',
+  remark VARCHAR(500) NULL COMMENT '冻存备注',
+  PRIMARY KEY (id),
+  KEY idx_molecular_cell_checkout_item_request_id (request_id),
+  KEY idx_molecular_cell_checkout_item_cell_bank_id (cell_bank_id),
+  CONSTRAINT fk_molecular_cell_checkout_item_request
+    FOREIGN KEY (request_id) REFERENCES molecular_cell_checkout_request (id)
+) COMMENT='冻存细胞出库申请明细';
 
 
 -- =============================================================================

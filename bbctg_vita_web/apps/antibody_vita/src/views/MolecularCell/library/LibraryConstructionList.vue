@@ -82,6 +82,15 @@
       <div class="header-actions">
         <span class="total-count text-secondary">共 {{ total }} 条工单</span>
         <el-button
+          :icon="Box"
+          :class="{ 'no-permission-btn': !canEdit }"
+          :title="!canEdit ? '您没有权限申请冻存细胞出库' : '按建库编号筛选后，把筛出的工单的冻存细胞一次提交出库申请'"
+          @click="openBatchCheckout"
+        >
+          一键出库
+        </el-button>
+        <el-button :icon="Stamp" @click="checkoutReviewVisible = true">出库审核</el-button>
+        <el-button
           type="primary"
           :icon="Plus"
           :class="{ 'no-permission-btn': !canEdit }"
@@ -363,6 +372,17 @@
           @handoff="handleDownstreamHandoff"
           @delete="handleDelete"
         />
+        <el-button
+          v-if="canEdit && editingRow.source_discovery_id"
+          class="list-table-action-btn"
+          type="primary"
+          plain
+          :icon="Box"
+          title="把来源发现安排在库的冻存细胞提交出库申请"
+          @click="openRowCheckout(editingRow)"
+        >
+          冻存出库
+        </el-button>
       </template>
       <template #field="{ field }">
                 <div v-if="field.type === 'primer-matrix'" class="primer-matrix">
@@ -476,12 +496,19 @@
       </template>
     </el-dialog>
     <LibraryResultUploadDialog v-model="resultUploadVisible" @uploaded="getList" />
+    <LibraryCellCheckoutDialog
+      v-model="checkoutVisible"
+      :selection="checkoutSelection"
+      :headline="checkoutHeadline"
+      @submitted="checkoutReviewVisible = true"
+    />
+    <LibraryCellCheckoutReviewDialog v-model="checkoutReviewVisible" :can-review="canReviewCheckout" />
     <WorkbenchHeaderMenu v-bind="headerMenuBind" />
   </div>
 </template>
 
 <script>
-import { Download, Plus, Search, Tools, Upload } from '@element-plus/icons-vue'
+import { Box, Download, Plus, Search, Stamp, Tools, Upload } from '@element-plus/icons-vue'
 import {
   ElButton,
   ElCard,
@@ -508,6 +535,7 @@ import {
   fetchLibraryOrderOptions,
   saveLibraryOrder,
   fetchLibraryRecordedTargets,
+  LIBRARY_CHECKOUT_REVIEW,
   LIBRARY_CREATED_KEY,
   LIBRARY_EDIT,
   LIBRARY_FILE_MANAGE,
@@ -544,6 +572,8 @@ import {
   WorkbenchTargetFilter,
 } from '#/components/workbench'
 import UserSelect from '#/components/UserSelect.vue'
+import LibraryCellCheckoutDialog from './LibraryCellCheckoutDialog.vue'
+import LibraryCellCheckoutReviewDialog from './LibraryCellCheckoutReviewDialog.vue'
 import LibraryResultUploadDialog from './LibraryResultUploadDialog.vue'
 import LibraryRowActions from './LibraryRowActions.vue'
 import { listPageMixin } from '#/utils/listPage'
@@ -700,6 +730,8 @@ export default {
     ElOption,
     ElPagination,
     ElSelect,
+    LibraryCellCheckoutDialog,
+    LibraryCellCheckoutReviewDialog,
     LibraryResultUploadDialog,
     LibraryRowActions,
     UserSelect,
@@ -714,7 +746,7 @@ export default {
     VxeSelect,
   },
   setup() {
-    return { Download, fetchLibraryRecordedTargets, Plus, Search, Upload }
+    return { Box, Download, fetchLibraryRecordedTargets, Plus, Search, Stamp, Upload }
   },
   data() {
     return {
@@ -739,6 +771,10 @@ export default {
       createVisible: false,
       creating: false,
       resultUploadVisible: false,
+      checkoutVisible: false,
+      checkoutSelection: null,
+      checkoutHeadline: '',
+      checkoutReviewVisible: false,
       createPick: '',
       listLoaded: false,
       libraryCodeFill: null,
@@ -769,6 +805,9 @@ export default {
     },
     canManageFiles() {
       return hasAccessCode(useUserStore().userInfo, LIBRARY_FILE_MANAGE)
+    },
+    canReviewCheckout() {
+      return hasAccessCode(useUserStore().userInfo, LIBRARY_CHECKOUT_REVIEW)
     },
     activeType() {
       return this.listQuery.build_type || ''
@@ -1196,6 +1235,30 @@ export default {
         return
       }
       this.$router.push({ name: 'TransfectionList', query: { order: code } })
+    },
+    openRowCheckout(row) {
+      this.checkoutSelection = { order_ids: [row.id] }
+      this.checkoutHeadline = [row.library_code || row.library_order_id, row.source_project_code, row.target_name]
+        .filter(Boolean)
+        .join(' · ')
+      this.checkoutVisible = true
+    },
+    openBatchCheckout() {
+      if (!this.canEdit) {
+        ElMessage.warning('您没有权限申请冻存细胞出库')
+        return
+      }
+      const code = String(this.listQuery.library_code || '').trim()
+      if (!code) {
+        ElMessage.info('先在「建库编号」里筛选，再一键出库')
+        return
+      }
+      const filters = this.buildQuery()
+      delete filters.page
+      delete filters.limit
+      this.checkoutSelection = { filters }
+      this.checkoutHeadline = `建库编号：${code}`
+      this.checkoutVisible = true
     },
     deleteConfirmText(row) {
       return `确认删除 ${row.library_code || row.library_order_id || '这条工单'}？工单及其独占质检文件将一并删除，且无法恢复。`

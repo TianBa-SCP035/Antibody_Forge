@@ -20,7 +20,7 @@ class SynthesisSupernatantWell(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
     order_no: Mapped[str] = mapped_column(String(64), nullable=False, comment="合成订单号")
     corp_name: Mapped[str] = mapped_column(String(64), nullable=False, comment="合成公司")
-    plate_no: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="板号，未合成时为空")
+    plate_no: Mapped[str | None] = mapped_column(String(128), nullable=True, comment="板号，未合成时为空")
     well_no: Mapped[str | None] = mapped_column(String(8), nullable=True, comment="孔号，未合成时为空")
     sample_name: Mapped[str] = mapped_column(String(128), nullable=False, comment="蛋白名称")
     not_synthesized: Mapped[bool] = mapped_column(

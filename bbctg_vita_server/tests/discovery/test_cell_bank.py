@@ -2,12 +2,13 @@
 
 from core.errors import NotFoundError
 from models.discovery import DiscoveryCellBank, DiscoveryWorkbench
+from models.molecular_cell import MolecularCellCheckoutItem, MolecularCellCheckoutRequest
 from modules.discovery.workbench import cell_bank, service
 from support import DbTestCase
 
 
 class CellBankTests(DbTestCase):
-    tables = (DiscoveryWorkbench, DiscoveryCellBank)
+    tables = (DiscoveryWorkbench, DiscoveryCellBank, MolecularCellCheckoutRequest, MolecularCellCheckoutItem)
 
     def test_save_lists_and_deletes_for_one_arrangement(self):
         saved = service.save(self.db, {"project_code": "P1", "mouse_nos": "1、2"})

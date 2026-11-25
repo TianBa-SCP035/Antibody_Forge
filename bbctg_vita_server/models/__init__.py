@@ -3,6 +3,8 @@ from models.supernatant import SynthesisSupernatantWell
 from models.target import Target
 from models.discovery import DiscoveryCellBank, DiscoverySynthesisOrder, DiscoveryWorkbench
 from models.molecular_cell import (
+    MolecularCellCheckoutItem,
+    MolecularCellCheckoutRequest,
     MolecularLibraryOrder,
     MolecularLibraryResultFile,
     MolecularLibraryResultLink,
@@ -48,6 +50,8 @@ __all__ = [
     "DiscoveryCellBank",
     "DiscoveryWorkbench",
     "DiscoverySynthesisOrder",
+    "MolecularCellCheckoutItem",
+    "MolecularCellCheckoutRequest",
     "MolecularLibraryOrder",
     "MolecularLibraryResultFile",
     "MolecularLibraryResultLink",

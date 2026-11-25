@@ -46,5 +46,8 @@ ACCESS = ModuleAccess(
             sort_order=215, hour=1, minute=15),
         job("job.discovery_synthesis_order_sync", "合成与验证外部订单同步", "同步 One 合成订单与交付进度",
             sort_order=225, hour=0, minute=20, schedule="interval", every=1, unit="hour"),
+        job("job.discovery_supernatant_pull", "合成公司上清补查",
+            "合成日期过了 7 天还没收到上清推送的工单，向合成公司查询，查到就入库",
+            sort_order=226, hour=0, minute=50, schedule="interval", every=2, unit="hour"),
     ),
 )

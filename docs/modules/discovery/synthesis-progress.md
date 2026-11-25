@@ -42,7 +42,7 @@
 | `synthesis_code` / `order_no` / `batch_label` | 转码 / 订单号 / 批次 | 送测转码（最长 64）、合成订单号（最长 64）、工单批次（最长 255）。`TRF-` 开头的订单号是转染与表达交接写入的转染工单号：只由交接写入，已有的不能修改或清空，也不能手填（见 §5 第 7 项） |
 | `synthetic_corp` | 合成公司 | 最长 64；预设：`君跻`、`擎科`、`金斯瑞`、`内部`，支持自填。新建改造类工单（`改造` / `内部转染` / `改亚型`）未填时默认 `内部`；关联 One 后 `内部` 与空值一样由 One 回填 |
 | `order_sender` | 下单人 | 最长 128；系统内不可编辑，由 One 同步，原样保存订单文件上传人（多为「中文名 英文名」），见第 5 节；具 `eng_edit` 的改造实验员新建工单时填本人显示名 |
-| `synthetic_count` / `arrival_count` | 合成个数 / 到货个数 | 可选非负整数（`0` 合法，空为 `NULL`；Excel 输入自动剥离 `个`/`条`）。`arrival_count` 只取上清推送的在板孔数，One 不再写入 |
+| `synthetic_count` / `arrival_count` | 合成个数 / 发货个数 | 可选非负整数（`0` 合法，空为 `NULL`；Excel 输入自动剥离 `个`/`条`）。`arrival_count` 只取上清推送的在板孔数，One 不再写入 |
 | `synthetic_date` / `arrival_date` / `flow_date` / `affinity_date` | 合成日期 / 发货日期 / 流式日期 / 亲和力日期 | `YYYY-MM-DD`。`arrival_date` 页面称发货日期，指上清发货，只取合成公司上清板布局推送（见 §One 同步的快照字段说明），One 不再写入。保存时若清空 `affinity_date` 且当次请求未传 `affinity_result`，后端自动将 `affinity_result` 清空为 `NULL` |
 | `affinity_status` | 亲和力检测状态 | 枚举：`亲和力待检测`、`亲和力检测中`、`亲和力已完成`、`亲和力不适用`（仅 `多次穿膜`，系统写入，不能手选）；验证前阶段为 `NULL` |
 | `affinity_owner` | 亲和力人员 | 可多人，按填写顺序以 `、` 拼接（输入可用逗号、顿号、加号分隔，去重），拼接后最长 64；抽屉与 Excel 编辑左键单选、右键追加，Excel 粘贴逐个匹配人员；表头筛选按单个人名 |
@@ -57,7 +57,8 @@
 | `eng_method` | 改造方式 | 最长 128；预设：`AI`、`NGS姐妹克隆`、`理性设计`、`饱和突变`、`其他`，支持多选与自填，按预设顺序以顿号拼接 |
 | `eng_parent_seq` / `eng_requirement` / `eng_result` | 改造详情字段 | 改造序列或母本（最长 500）、改造要求（最长 1000）、改造结果（最长 500），均保留换行 |
 | `project_code` / `experiment_id` / `study_type` / `pm` | 项目串联字段 | 各最长 64；`experiment_id` 仅用于跨模块关联与搜索，前端表格与抽屉不展示该列 |
-| `created_by` / `created_at` / `updated_at` | 审计字段 | 创建人与创建/更新时间；序列化输出另附计算字段 `drift_fields` 与 `has_drift` |
+| `supernatant_checked_at` | 上清补查时间 | 只读；最近一次向合成公司查询上清板布局的时间（定时补查或抽屉里手动查询都会写），见 §7 |
+| `created_by` / `created_at` / `updated_at` | 审计字段 | 创建人与创建/更新时间；序列化输出另附计算字段 `drift_fields` 与 `has_drift`，以及按订单号（不区分大小写）汇总的上清孔位 `supernatant`：`wells`（已收孔位数，含未合成）、`not_synthesized`（未合成个数）、`first_received_at`（首次接收时间） |
 
 ## 3. 状态与流转
 
@@ -184,7 +185,7 @@
    - `SNAPSHOT_STORED_FIELDS`（存入 `source_snapshot` 的 **8 个字段**）：`DRIFT_COMPARE_FIELDS` 加 `synthesis_code`、`batch_label`。
    - `DRIFT_COMPARE_FIELDS`（参与差异比对的 **6 个字段**）：`order_no`、`synthetic_corp`、`synthetic_count`、`synthetic_date`、`selection_method`、`is_rechoose`。
    - `synthetic_count` 取 `a.syntheticcount`，`synthetic_date` 取 `a.syntheticdate`，原样取，不做修正。
-   - 发货日期 `arrival_date` 和到货个数 `arrival_count` 不从 One 取（One 的 `deliverydate`、`plasmidcounts`、`supernatantcounts` 记的是质粒），只由 [上清板布局接收](./supernatant-receive-api.md) 写入：某订单号收到孔位时，把订单号匹配（不区分大小写）、`合成到货`、未完成未取消的工单发货日期写成该订单第一批孔位的接收日期，到货个数写成该订单当前在板孔数（不含未合成），发货日期变了就重新推导状态并在进入终态时重编队列。已完成、已取消的工单不改。两列仍可手动编辑；转染交接的工单照 §7 写入。
+   - 发货日期 `arrival_date` 和发货个数 `arrival_count` 不从 One 取（One 的 `deliverydate`、`plasmidcounts`、`supernatantcounts` 记的是质粒），只由 [上清板布局接收](./supernatant-receive-api.md) 写入：某订单号收到孔位时，把订单号匹配（不区分大小写）、`合成到货`、未完成未取消的工单发货日期写成该订单第一批孔位的接收日期，发货个数写成该订单当前在板孔数（不含未合成），发货日期变了就重新推导状态并在进入终态时重编队列。已完成、已取消的工单不改。两列仍可手动编辑；转染交接的工单照 §7 写入。
    - `selection_method` 取 One `a.selectmethod`（逗号、顿号或加号分隔，去掉 `补挑` 后按预设顺序以顿号拼接）；`is_rechoose` 在 `a.isrechooseorder = 'true'` 或 `selectmethod` 含 `补挑` 时为 `是`，`'false'` 时为 `否`，其他为空。
    - 本地为空的快照字段（或重新绑定时仍等于上一版快照自动填入值的字段）自动用 One 库值回填，触及 `order_no` 时自动推导状态并在进入终态时重编队列。
    - `order_sender` 不进快照、不比对差异，每次核对都直接改成 One 当前值（One 没有上传记录时清空）。
@@ -201,7 +202,7 @@
    - 去重：有订单号的按订单号建一条，本地已有同订单号（不区分大小写）时不建；没有订单号的按文件只建一条 `待下单` 行，同文件已有订单号或已有记录在本地时不建。同文件先建了无订单号的 `待下单` 行、后来同文件另一条记录才下单时，改绑那一行（按上一版快照替换自动填入值）而不是再建。
    - 字段：快照 8 个字段与下单人取 One；`priority`、`pm`、`project_code`、`experiment_id`、`study_type`、`mouse_strain` 沿用同 `batch_label` 或同 `synthesis_code` 的最新本地行，`owner` 不沿用，留空待审核标记；靶点编号取 `t.target` 中的 `[20R147]`，没有时取文件前缀或转码开头的 `数字数字R数字数字数字`，单个编号时名称取靶点库，否则用 One 的名称，都取不到时沿用同批次行的靶点；仍无小鼠品系时按转码品系标记（如 `RMCW`）取本地同标记行中最多的品系。`created_by` 为 `One同步`，状态按订单号自动推导，并按优先级排到同优先级队尾。
    - 删除：已关联 One 的工单不能删除，只能改为 `已取消`；要彻底去掉需在 One 删除对应记录，否则下次同步会重新建出。
-7. **转染与表达交接（`POST /api/molecular-cell/transfection/handoff_synthesis`）**：已完成的转染工单交接为一条 `常规合成` + `内部转染` 的工单，合成 / 到货个数取蛋白数，合成日期取转染日期，发货日期取完成日期，因此直接推导为 `待检测`；按新建规则校验必填项、默认合成公司 `内部` 并排入队列，订单号写转染工单号（`TRF-YYMMDD-XXXXXX`，内部转染没有合成公司订单号）。转染模块按订单号反查是否已交接，所以这类订单号前后端都锁定不能改；其余字段照常编辑，合成单可以删除，删除后转染工单可重新交接。这类订单号与 One 订单号不会相同，不影响 One 匹配。规则见 [转染与表达](../molecular-cell/transfection.md) §4。
+7. **转染与表达交接（`POST /api/molecular-cell/transfection/handoff_synthesis`）**：已完成的转染工单交接为一条 `常规合成` + `内部转染` 的工单，合成 / 发货个数取蛋白数，合成日期取转染日期，发货日期取完成日期，因此直接推导为 `待检测`；按新建规则校验必填项、默认合成公司 `内部` 并排入队列，订单号写转染工单号（`TRF-YYMMDD-XXXXXX`，内部转染没有合成公司订单号）。转染模块按订单号反查是否已交接，所以这类订单号前后端都锁定不能改；其余字段照常编辑，合成单可以删除，删除后转染工单可重新交接。这类订单号与 One 订单号不会相同，不影响 One 匹配。规则见 [转染与表达](../molecular-cell/transfection.md) §4。
 
 ## 6. 接口
 
@@ -221,12 +222,28 @@
 | `POST` | `/api/discovery/synthesis-progress/sync_now` | `discovery.synthesis_progress.edit` | 手动立即执行一次定时同步（批量匹配与进度回填，再自动建单），返回 `linked`、`created`、`updated`、`unchanged`、`total` |
 | `POST` | `/api/discovery/synthesis-progress/export_list` | `discovery.page.synthesis_progress` | 按当前筛选与排序导出 Excel（`.xlsx`） |
 | `GET` | `/api/discovery/synthesis-progress/transfection_pairs?id=` | `discovery.page.synthesis_progress` | 订单号为 `TRF-` 转染工单号时，返回该单蛋白的重链、轻链配对；否则 `items` 为空 |
-| `GET` | `/api/discovery/synthesis-progress/plate_layout?id=` | `discovery.page.synthesis_progress` | 按订单号下载合成公司推送的上清板布局 Excel；还没收到时 404 |
+| `GET` | `/api/discovery/synthesis-progress/plate_layout?id=` | `discovery.page.synthesis_progress` | 按订单号下载合成公司上清板布局 Excel；还没收到返回 404「还没收到合成公司的上清板布局」，全部未合成返回 404「合成公司回复这单的样品都没合成出来，没有上板」 |
+| `GET` | `/api/discovery/synthesis-progress/plate_layout/preview?id=` | `discovery.page.synthesis_progress` | 版布局预览：`plates`（每块板的 `plate_no` 与孔位明细 `wells`）、`missing`（未合成样品名）、`supernatant_checked_at`；没收到或全部未合成时 `plates` 为空，`message` 说明原因，不报错 |
+| `POST` | `/api/discovery/synthesis-progress/plate_layout/query?id=` | `discovery.page.synthesis_progress` | 仅 `合成到货` 工单：按订单号向合成公司查询上清板布局，查到按 [上清板布局接收](./supernatant-receive-api.md) 入库；返回 `status`（`found` / `missing` 未发货 / `failed` / `unsupported` 没有查询接口）、`message`、`wells`、`not_synthesized` 与刷新后的 `row` |
 
-行操作在「删除 / 取消」前提供「配对」（仅转染交接单）。配对弹窗列出蛋白、重链、轻链，并可跳到转染表。打开抽屉后，订单号有值时可以下载版布局，按订单号（不区分大小写）导出已接收的孔位。
+行操作在「删除 / 取消」前提供「配对」（仅转染交接单）。配对弹窗列出蛋白、重链、轻链，并可跳到转染表。
+
+抽屉里的「版布局」按钮在 `合成到货` 且有订单号、或已收到孔位时显示，点击打开预览弹窗：
+- 顶部一行写订单号、靶点、已收孔数、未合成个数和上次向合成公司查询的时间。
+- 「布局」页每块板一个 8×12 网格，格子写蛋白名称，悬停显示孔号、浓度、体积和接收时间，未合成的样品列在网格下方；「孔位明细」页列出全部孔位。
+- 底部「刷新」（仅 `合成到货` 工单）当场向合成公司查询（最长约 90 秒），有更新就入库并刷新弹窗与抽屉；「下载 Excel」在有孔位时可用。
+- 打开时一个孔位都没收到，会自动向合成公司查一次。没查到按结果分别提示「应是还没发货」「这家合成公司还没有查询接口」「查询接口超时 / 连不上」等，不统一报下载失败。
+
+下载的 Excel 参照合成公司孔板上清 COA：第一页「订单号布局表」首行为订单号与靶点，每块板一个「板号」行加 8×12 网格（表头黄色底），未合成的样品列在最后；第二页「孔位明细」列出板号、孔号、蛋白名称、浓度、规格、体积、质粒量。质控信息和图片不生成；不写合成公司名。
 
 ## 7. 定时任务
 
 - **任务代码**：`job.discovery_synthesis_order_sync`（名称：「合成与验证外部订单同步」，实现：`jobs/synthesis_order_sync.py`）。
 - **默认周期**：每隔 1 小时执行一次（`schedule: "interval", every: 1, unit: "hour"`，起始时间 `00:20`）。在系统管理页面修改任务开关或调度配置后，通过 `jobs/registry.py` 的 `apply_job_schedule` 立即生效，无需重启服务。
 - **执行逻辑**：调用 `service.sync_from_one`，筛选本地主状态处于非终态（`待下单`、`合成中`、`待检测`、`检测中`）且已绑定 `source_one_id` 或 `supply_mode == '合成到货'` 的工单，以 3 秒连接超时、15 秒读取超时批量核对 One 库并回填合成与到货字段；随后按第 5 节第 6 项把 One 新订单建成新行。当环境未配置或无法连接 `ONE_DB_URL` 时自动跳过，运行日志记录为 `skipped`（「未配置 ONE_DB_URL，已跳过」）。
+
+上清补查：
+- **任务代码**：`job.discovery_supernatant_pull`（名称：「合成公司上清补查」，实现：`jobs/supernatant_pull.py`、`modules/supernatant_receive/query.py`）。
+- **默认周期**：每隔 2 小时（起始 `00:50`）。
+- **执行逻辑**：挑出 `合成到货`、未完成未取消、有订单号、合成公司配了查询接口（`SUPERNATANT_QUERY_URLS`）、合成日期为空或已过 7 天、且一个上清孔位都没收到的工单，按上次补查时间（没查过的优先）、合成日期排序，每次最多查 40 个订单号。查到的布局按推送同样入库，但已有发货日期的工单不改日期（补查拿不到实际发货日）；没有布局的说明合成公司还没发货。每单查完都写 `supernatant_checked_at`。运行摘要为「补查 N 单：查到 x，未发货 y，失败 z」。未配查询地址或 `SUPERNATANT_RECEIVE_TOKEN` 时记为 skipped。
+- 「未发货」与「未合成」的区分：查询没有布局为未发货；有布局但孔号为「未合成」的样品是合成失败，单独计数，不计入发货个数。

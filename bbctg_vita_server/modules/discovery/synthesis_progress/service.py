@@ -12,10 +12,11 @@ from io import BytesIO
 from typing import Any
 
 from sqlalchemy import String, and_, case, cast, func, not_, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from core.errors import ForbiddenError, NotFoundError
 from models.discovery import DiscoverySynthesisOrder
+from models.supernatant import SynthesisSupernatantWell
 from models.target import Target
 from modules.discovery.synthesis_progress.constants import (
     ACTIVE_STATUSES,
@@ -157,6 +158,7 @@ FIELDS = model_fields(
         "order_sender",
         "owner_claimed_at",
         "source_snapshot",
+        "supernatant_checked_at",
     ),
 )
 
@@ -362,12 +364,55 @@ def next_synthesis_order_id(db: Session) -> str:
     raise ValueError("无法分配合成与验证单号")
 
 
-def serialize_order(row: DiscoverySynthesisOrder) -> dict[str, Any]:
+def supernatant_summaries(db: Session, order_nos: list[Any]) -> dict[str, dict[str, Any]]:
+    """按订单号（不区分大小写）汇总收到的上清：在板孔数、未合成样品数、首次接收时间。"""
+    keys = {str(item or "").strip().upper() for item in order_nos} - {""}
+    if not keys:
+        return {}
+    rows = db.execute(
+        select(
+            func.upper(SynthesisSupernatantWell.order_no),
+            SynthesisSupernatantWell.not_synthesized,
+            func.count(),
+            func.min(SynthesisSupernatantWell.received_at),
+        )
+        .where(SynthesisSupernatantWell.order_no.in_(keys | {key.lower() for key in keys}))
+        .group_by(func.upper(SynthesisSupernatantWell.order_no), SynthesisSupernatantWell.not_synthesized)
+    ).all()
+    out: dict[str, dict[str, Any]] = {}
+    for order_no, not_synthesized, count, first_at in rows:
+        item = out.setdefault(order_no, {"wells": 0, "not_synthesized": 0, "first_received_at": None})
+        if not_synthesized:
+            item["not_synthesized"] = int(count)
+        else:
+            item["wells"] = int(count)
+            item["first_received_at"] = first_at.strftime("%Y-%m-%d %H:%M") if first_at else None
+    return out
+
+
+def _empty_supernatant() -> dict[str, Any]:
+    return {"wells": 0, "not_synthesized": 0, "first_received_at": None}
+
+
+def serialize_order(row: DiscoverySynthesisOrder, supernatant: dict[str, Any] | None = None) -> dict[str, Any]:
     data = row.to_dict()
     drifts = compute_drift_fields(row)
     data["drift_fields"] = drifts
     data["has_drift"] = bool(drifts)
+    if supernatant is None:
+        session = object_session(row)
+        key = str(row.order_no or "").strip().upper()
+        supernatant = supernatant_summaries(session, [key]).get(key) if session is not None and key else None
+    data["supernatant"] = supernatant or _empty_supernatant()
     return data
+
+
+def serialize_orders(db: Session, rows: list[DiscoverySynthesisOrder]) -> list[dict[str, Any]]:
+    summaries = supernatant_summaries(db, [row.order_no for row in rows])
+    return [
+        serialize_order(row, summaries.get(str(row.order_no or "").strip().upper()) or _empty_supernatant())
+        for row in rows
+    ]
 
 
 def mask_synthetic_corp(value: Any, *, keep_engineering_rows: bool = False) -> Any:
@@ -1034,7 +1079,7 @@ def get_list(db: Session, data: dict[str, Any], *, include_cancelled: bool = Tru
         count_stmt,
         payload,
         order_by=_list_order(payload),
-        serialize_rows=lambda rows: [serialize_order(row) for row in rows],
+        serialize_rows=lambda rows: serialize_orders(db, list(rows)),
         stats=_list_stats(db, payload, include_cancelled=include_cancelled),
     )
 
@@ -1452,12 +1497,8 @@ def save_batch(
         for item in items
     ]
     db.commit()
-    saved = []
-    for row_id in saved_ids:
-        row = db.get(DiscoverySynthesisOrder, row_id)
-        if row:
-            saved.append(serialize_order(row))
-    return {"items": saved}
+    rows = [row for row in (db.get(DiscoverySynthesisOrder, row_id) for row_id in saved_ids) if row]
+    return {"items": serialize_orders(db, rows)}
 
 
 def claim_order(
@@ -1539,7 +1580,7 @@ def reorder(
             raise ForbiddenError(error)
 
     rows = reorder_queue(db, QUEUE_SPEC, moved_id, target_id, authorize=_authorize)
-    return {"items": [serialize_order(row) for row in rows]}
+    return {"items": serialize_orders(db, rows)}
 
 
 def adopt_source(
@@ -1767,7 +1808,7 @@ EXPORT_COLUMNS = (
     ("工单批次", "batch_label"),
     ("合成个数", "synthetic_count"),
     ("合成日期", "synthetic_date"),
-    ("到货个数", "arrival_count"),
+    ("发货个数", "arrival_count"),
     ("发货日期", "arrival_date"),
     ("检测备注", "remark"),
     ("亲和力状态", "affinity_status"),

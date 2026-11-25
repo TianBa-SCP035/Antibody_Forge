@@ -134,8 +134,9 @@ class DiscoverySynthesisOrder(Base):
     synthetic_count: Mapped[int | None] = mapped_column(Integer, comment="合成个数")
     synthetic_date: Mapped[str | None] = mapped_column(DateString, comment="合成日期")
     order_sender: Mapped[str | None] = mapped_column(String(128), comment="下单人")
-    arrival_count: Mapped[int | None] = mapped_column(Integer, comment="到货个数")
+    arrival_count: Mapped[int | None] = mapped_column(Integer, comment="发货个数")
     arrival_date: Mapped[str | None] = mapped_column(DateString, comment="发货日期")
+    supernatant_checked_at: Mapped[object | None] = mapped_column(DateTime, comment="上清补查时间")
     affinity_status: Mapped[str | None] = mapped_column(String(32), comment="亲和力检测状态")
     affinity_owner: Mapped[str | None] = mapped_column(String(64), comment="亲和力人员")
     flow_date: Mapped[str | None] = mapped_column(DateString, comment="流式日期")
@@ -200,6 +201,7 @@ class DiscoverySynthesisOrder(Base):
             "order_sender": self.order_sender,
             "arrival_count": self.arrival_count,
             "arrival_date": self.arrival_date,
+            "supernatant_checked_at": format_time(self.supernatant_checked_at),
             "affinity_status": self.affinity_status,
             "affinity_owner": self.affinity_owner,
             "flow_date": self.flow_date,

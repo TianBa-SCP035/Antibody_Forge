@@ -11,6 +11,8 @@ const SAVE_TIMEOUT = 5000;
 const REMOTE_CHECK_TIMEOUT = 3000;
 const SYNC_NOW_TIMEOUT = 30_000;
 const DOWNLOAD_TIMEOUT = 360_000;
+// 合成公司查询接口大单要几十秒
+const PLATE_QUERY_TIMEOUT = 90_000;
 
 type PostConfig = Parameters<typeof requestClient.post>[2];
 type RequestConfig = Parameters<typeof requestClient.get>[1];
@@ -140,6 +142,21 @@ export function exportSynthesisPlateLayout(id: number | string) {
     timeout: DOWNLOAD_TIMEOUT,
     ...downloadConfig,
   });
+}
+
+export function fetchSynthesisPlateLayoutPreview(id: number | string) {
+  return requestClient.get('/discovery/synthesis-progress/plate_layout/preview', {
+    params: { id },
+    ...skipGlobalErrorHandler,
+  });
+}
+
+export function querySynthesisPlateLayout(id: number | string) {
+  return requestClient.post(
+    '/discovery/synthesis-progress/plate_layout/query',
+    {},
+    { params: { id }, timeout: PLATE_QUERY_TIMEOUT, ...skipGlobalErrorHandler },
+  );
 }
 
 export function exportDiscoverySynthesisList(data: any) {

@@ -150,8 +150,9 @@ def parse_payload(raw: bytes) -> tuple[str, str, dict[str, dict[str, dict[str, A
     return order_no, corp_name, plates, list(not_synthesized)
 
 
-def _mark_shipped(db: Session, order_no: str, ship_date: str, well_count: int) -> None:
-    """合成与验证的发货日期、到货个数只取上清推送：首次推送当天、板上孔数。"""
+def _mark_shipped(db: Session, order_no: str, ship_date: str, well_count: int, *, keep_date: bool = False) -> None:
+    """合成与验证的发货日期、发货个数只取上清推送：首次推送当天、板上孔数。
+    keep_date：补查到的布局不知道实际发货日，已有发货日期的工单不改日期。"""
     from modules.discovery.synthesis_progress.service import settle_queue_after_sync
 
     orders = db.scalars(
@@ -164,7 +165,7 @@ def _mark_shipped(db: Session, order_no: str, ship_date: str, well_count: int) -
     status_changed = False
     for row in orders:
         row.arrival_count = well_count
-        if row.arrival_date == ship_date:
+        if row.arrival_date == ship_date or (keep_date and row.arrival_date):
             continue
         before = row.status
         row.arrival_date = ship_date
@@ -174,7 +175,7 @@ def _mark_shipped(db: Session, order_no: str, ship_date: str, well_count: int) -
         settle_queue_after_sync(db)
 
 
-def receive(db: Session, raw: bytes) -> dict[str, Any]:
+def receive(db: Session, raw: bytes, *, pulled: bool = False) -> dict[str, Any]:
     # 对方一单会分几批推，同一块板可能拆在不同批里，所以只按孔位覆盖，不删整板
     order_no, corp_name, plates, not_synthesized = parse_payload(raw)
     rows = db.scalars(
@@ -215,7 +216,7 @@ def receive(db: Session, raw: bytes) -> dict[str, Any]:
             db.add(marker)
         marker.corp_name = corp_name
     if plates:
-        _mark_shipped(db, order_no, ship_date, len(well_keys))
+        _mark_shipped(db, order_no, ship_date, len(well_keys), keep_date=pulled)
     db.commit()
     return {
         "order_no": order_no,

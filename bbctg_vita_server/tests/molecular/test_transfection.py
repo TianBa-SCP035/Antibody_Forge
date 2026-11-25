@@ -20,6 +20,7 @@ from models.molecular_cell import (
     MolecularTransfectionOrder,
     MolecularTransfectionProtein,
 )
+from models.supernatant import SynthesisSupernatantWell
 from models.target import Target
 from modules.auth.permissions import PermissionRequirement, UserContext
 from modules.discovery.synthesis_progress import service as synthesis_service
@@ -51,6 +52,7 @@ class TransfectionTests(DbTestCase):
         MolecularTransfectionOrder,
         MolecularTransfectionProtein,
         MolecularTransfectionItem,
+        SynthesisSupernatantWell,
     )
 
     def setUp(self):

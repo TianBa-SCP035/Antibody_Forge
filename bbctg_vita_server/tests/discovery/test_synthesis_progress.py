@@ -7,11 +7,12 @@ from sqlalchemy import event, select, update
 
 from core.errors import ConflictError, ForbiddenError
 from models.discovery import DiscoverySynthesisOrder
+from models.supernatant import SynthesisSupernatantWell
 from models.target import Target
 from modules.discovery.synthesis_progress import one_sync, service
 from support import DbTestCase
 
-TABLES = (Target, DiscoverySynthesisOrder)
+TABLES = (Target, DiscoverySynthesisOrder, SynthesisSupernatantWell)
 FIXED_NOW = datetime(2026, 11, 17, 10, 0, 0)
 
 

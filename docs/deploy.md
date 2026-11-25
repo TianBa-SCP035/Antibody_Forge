@@ -37,6 +37,7 @@ Windows： 无需路径约定，固定环境为 local。
 | `ORDER_SYNC_TOKEN` / `ORDER_SYNC_IPS` / `ORDER_SYNC_MAX_MB` | 工单数据回传 `POST /api/order-experiment/sync` 的同类校验与 JSON 文件上限（默认 20MB） |
 | `FCS_SMB_HOST` / `FCS_SMB_PORT` / `FCS_SMB_SHARE` / `FCS_SMB_USER` / `FCS_SMB_PASSWORD` | 镁伽流式结果共享（SMB，只读下载回传引用的可视化图和热图，单文件上限同 `UPLOAD_MAX_MB`）；`HOST` 留空则不下载，回传核对照常、效价导入记「下载失败」。依赖 `smbprotocol`（已在 `requirements.txt`） |
 | `SUPERNATANT_RECEIVE_TOKEN` / `SUPERNATANT_RECEIVE_IPS` | 上清板布局接收 `POST /api/protein-supernatant/receive` 的同类校验；对接合成公司后应配置令牌 |
+| `SUPERNATANT_QUERY_URLS` | 合成公司上清板布局查询地址，`合成公司=地址`，英文分号分隔（如 `擎科=http://…/query-protein-clear-plate-layout-push`）；请求头令牌同 `SUPERNATANT_RECEIVE_TOKEN`。留空则不补查 |
 | `YUNZHIJIA_*` | 云之家（可选） |
 | `CELL_DB_URL` / `EMPLOYEE_DB_URL` / `ONE_DB_URL` | 外部只读库（可选）；分别提供细胞库存、员工与靶点主数据、One 合成订单与交付进度 |
 | `LABILLION_BASE_URL` / `LABILLION_USERNAME` / `LABILLION_PASSWORD` / `LABILLION_PLATFORM_ID` | 镁伽 Labillion（可选；URL 留空则不推送。配了 URL 后用户名、密码和 `PUBLIC_API_BASE_URL` 必填。`PLATFORM_ID` 是登录后请求头 `Platform`） |
@@ -178,6 +179,7 @@ sudo apt install -y libreoffice
 | `discovery_auto_update_status` | 01:15 | 自动推进已过期的抗体发现冲击免状态 |
 | `labillion_status_sync` | 02:00 | 镁伽非终态流式工单状态批量同步；未配 `LABILLION_BASE_URL` 时 skip 并记日志 |
 | `discovery_synthesis_order_sync` | 每隔 1 小时 | One 合成订单与交付进度同步，并把 One 新订单建成合成与验证工单；未配 `ONE_DB_URL` 时 skip 并记日志 |
+| `discovery_supernatant_pull` | 每隔 2 小时 | 合成日期过了 7 天仍没收到上清推送的合成到货工单，向合成公司查询上清板布局并入库，每次最多 40 单；未配 `SUPERNATANT_QUERY_URLS` 或令牌时 skip |
 
 每个任务（含「立即执行」）运行前先取 MySQL `GET_LOCK`，取不到就跳过并记日志，所以即使误开了多个后端进程也不会重复执行；但仍建议只让一个进程开调度。
 

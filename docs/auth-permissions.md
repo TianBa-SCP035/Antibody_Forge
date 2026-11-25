@@ -368,7 +368,7 @@ flowchart LR
 | `menu` | `menu.system`、`menu.system.user_permission`、`menu.system.features` | 系统管理侧栏 |
 | `feature` | `feature.drm_file_security` | DRM 上传解密 / 下载加密（请求时读库，立即生效；另需 env 与 SDK） |
 | `feature` | `feature.yunzhijia_auto_provision` | 云之家登录自动开户（请求时读库，立即生效） |
-| `job` | `job.employee_profile_sync`、`job.target_master_sync`、`job.serum_auto_update_status`、`job.discovery_auto_update_status`、`job.mega_labillion_status_sync`、`job.discovery_synthesis_order_sync` | 定时任务开关与执行时间；各任务作用与默认时间见 [deploy.md](./deploy.md)「定时任务」 |
+| `job` | `job.employee_profile_sync`、`job.target_master_sync`、`job.serum_auto_update_status`、`job.discovery_auto_update_status`、`job.mega_labillion_status_sync`、`job.discovery_synthesis_order_sync`、`job.discovery_supernatant_pull` | 定时任务开关与执行时间；各任务作用与默认时间见 [deploy.md](./deploy.md)「定时任务」 |
 
 **定时任务页（系统功能）**：启用开关与执行时间改完即写库，并立即重排正在运行的调度，无需重启。「立即执行」随时可点，直接调对应 job 函数，local 未开 scheduler 也可用。
 

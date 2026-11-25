@@ -649,13 +649,13 @@
           @pairing="openPairing"
         />
         <el-button
-          v-if="String(editingRow.order_no || '').trim()"
+          v-if="showPlateLayout(editingRow)"
           class="list-table-action-btn"
           type="primary"
           plain
           :icon="Download"
-          title="下载合成公司发来的版布局"
-          @click="downloadPlateLayout(editingRow)"
+          :title="plateLayoutTitle(editingRow)"
+          @click="openPlateLayout(editingRow)"
         >
           版布局
         </el-button>
@@ -753,6 +753,7 @@
       </template>
     </WorkbenchDrawer>
     <SynthesisPairingDialog v-model="pairingVisible" :row="pairingRow" />
+    <SynthesisPlateLayoutDialog v-model="plateLayoutVisible" :row="plateLayoutRow" @refreshed="applySavedFields" />
   </div>
 </template>
 
@@ -814,7 +815,6 @@ import {
   claimDiscoverySynthesis,
   deleteDiscoverySynthesis,
   exportDiscoverySynthesisList,
-  exportSynthesisPlateLayout,
   fetchDiscoverySynthesisColumnValues,
   fetchDiscoverySynthesisList,
   fetchDiscoverySynthesisOptions,
@@ -830,7 +830,6 @@ import {
   SYNTHESIS_PM_EDIT,
 } from '#/api/discoverySynthesis'
 import { notifyApiError } from '#/api/errors'
-import { downloadListExcel } from '#/utils/downloadExcel'
 import { skipGlobalErrorHandler } from '#/api/request'
 import { SERUM_PAGE_DETAIL } from '#/api/serum'
 import { hasAccessCode } from '#/utils/accessCode'
@@ -843,6 +842,7 @@ import { uniqueNames } from '#/utils/userOptions'
 import UserSelect from '#/components/UserSelect.vue'
 import SynthesisAssayStatusEditor from './SynthesisAssayStatusEditor.vue'
 import SynthesisPairingDialog from './SynthesisPairingDialog.vue'
+import SynthesisPlateLayoutDialog from './SynthesisPlateLayoutDialog.vue'
 import SynthesisRowActions from './SynthesisRowActions.vue'
 import { openSerumProject } from '../openSerumProject'
 import {
@@ -1015,6 +1015,7 @@ export default {
     UserSelect,
     SynthesisAssayStatusEditor,
     SynthesisPairingDialog,
+    SynthesisPlateLayoutDialog,
     SynthesisRowActions,
     Tools,
     WorkbenchColorMark,
@@ -1078,6 +1079,8 @@ export default {
       workbenchColumns: WORKBENCH_COLUMNS,
       pairingVisible: false,
       pairingRow: null,
+      plateLayoutVisible: false,
+      plateLayoutRow: null,
       headerMenuColumns: HEADER_MENU_COLUMNS,
       cellColorOptions: CELL_COLOR_OPTIONS,
       remoteDuplicatesById: {},
@@ -1477,17 +1480,18 @@ export default {
       this.pairingRow = row
       this.pairingVisible = true
     },
-    async downloadPlateLayout(row) {
-      if (!row?.id) return
-      if (!String(row.order_no || '').trim()) {
-        ElMessage.warning('请先填写订单号')
-        return
-      }
-      try {
-        await downloadListExcel(() => exportSynthesisPlateLayout(row.id), `版布局_${row.order_no}.xlsx`)
-      } catch (error) {
-        notifyApiError(error, { messages: { default: '版布局下载失败' } })
-      }
+    showPlateLayout(row) {
+      if (!row?.id || !String(row.order_no || '').trim()) return false
+      return row.supply_mode === '合成到货' || Number(row.supernatant?.wells) > 0
+    },
+    plateLayoutTitle(row) {
+      const wells = Number(row?.supernatant?.wells) || 0
+      return wells ? `已收到 ${wells} 孔，点击预览和下载` : '还没收到合成公司的上清板布局，点击查看'
+    },
+    openPlateLayout(row) {
+      if (!this.showPlateLayout(row)) return
+      this.plateLayoutRow = row
+      this.plateLayoutVisible = true
     },
     async handleClaim(row) {
       if (!row?.id) return

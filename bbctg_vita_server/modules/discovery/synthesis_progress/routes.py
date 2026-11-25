@@ -298,3 +298,23 @@ def synthesis_plate_layout(
 
     output, filename = order_files.export_plate_layout(db, id)
     return xlsx_response(output, filename)
+
+
+@router.get("/plate_layout/preview", dependencies=[require(SYNTHESIS_VIEW_PERMISSION)])
+def synthesis_plate_layout_preview(
+    id: int = Query(gt=0),
+    db: Session = Depends(get_db),
+) -> dict:
+    return success(order_files.plate_layout_preview(db, id))
+
+
+@router.post(
+    "/plate_layout/query",
+    dependencies=[require(SYNTHESIS_VIEW_PERMISSION), audit_quiet("向合成公司查询上清板布局", "synthesis_progress")],
+)
+def synthesis_plate_layout_query(
+    id: int = Query(gt=0),
+    db: Session = Depends(get_db),
+    context: UserContext = Depends(get_user_context),
+) -> dict:
+    return success(_visible(order_files.query_plate_layout(db, id), _user_scopes(context)))

@@ -68,47 +68,61 @@ class OrderFileTests(DbTestCase):
         plain = self._synthesis(synthesis_order_id="SYN-261123-PLAIN01", order_no="BAO1")
         self.assertIsNone(order_files.transfection_pairs(self.db, plain.id)["transfection_order_id"])
 
-    def test_plate_layout_exports_company_wells(self):
-        synthesis = self._synthesis(order_no="bao9")
+    def _well(self, plate_no, well_no, sample_name, **fields):
         self.db.add(SynthesisSupernatantWell(
-            order_no="BAO9",
-            corp_name="擎科",
-            plate_no="P1",
-            well_no="A01",
-            sample_name="Ab1",
-            potency=Decimal("100.5000"),
-            specs=Decimal("2"),
-            volume=Decimal("20"),
-            sample_enter_vol=Decimal("1.2500"),
+            order_no="BAO9", corp_name="擎科", plate_no=plate_no, well_no=well_no, sample_name=sample_name,
+            potency=fields.get("potency", Decimal("100.5000")), specs=fields.get("specs", Decimal("2")),
+            volume=Decimal("20"), sample_enter_vol=Decimal("1.2500"),
         ))
-        self.db.add(SynthesisSupernatantWell(
-            order_no="BAO9",
-            corp_name="擎科",
-            plate_no="P1",
-            well_no="A02",
-            sample_name="Ab2",
-            potency=None,
-            specs=None,
-            volume=Decimal("1"),
-            sample_enter_vol=Decimal("1"),
-        ))
-        self.db.add(SynthesisSupernatantWell(
-            order_no="BAO9",
-            corp_name="擎科",
-            sample_name="Ab0",
-            not_synthesized=True,
-        ))
+
+    def test_plate_layout_exports_grid_like_company_coa(self):
+        synthesis = self._synthesis(order_no="bao9", target_name="CLEC12A")
+        self._well("P1", "A01", "Ab1")
+        self._well("P1", "B01", "Ab2", potency=None, specs=None)
+        self._well("P1", "H12", "Ab3")
+        self._well("P2", "A01", "Ab4")
+        self.db.add(SynthesisSupernatantWell(order_no="BAO9", corp_name="擎科", sample_name="Ab0", not_synthesized=True))
         self.db.commit()
         output, filename = order_files.export_plate_layout(self.db, synthesis.id)
-        self.assertTrue(filename.startswith("版布局_bao9_"))
-        sheet = load_workbook(BytesIO(output.getvalue())).active
-        self.assertEqual(sheet["A2"].value, "BAO9")
-        self.assertEqual(sheet["E2"].value, "Ab1")
-        self.assertEqual(sheet["F2"].value, 100.5)
-        self.assertIsNone(sheet["F3"].value)
-        self.assertIsNone(sheet["G3"].value)
-        self.assertEqual((sheet["D4"].value, sheet["E4"].value, sheet["H4"].value), ("未合成", "Ab0", None))
+        self.assertEqual(filename, "bao9孔板上清布局-CLEC12A.xlsx")
+        book = load_workbook(BytesIO(output.getvalue()))
+        grid, detail = book.worksheets
+        self.assertEqual((grid.title, grid["A1"].value, grid["B1"].value), ("bao9布局表", "bao9", "CLEC12A"))
+        self.assertEqual((grid["B3"].value, grid["A4"].value, grid["M4"].value), ("P1", "96孔板1", 12))
+        self.assertEqual((grid["A5"].value, grid["B5"].value, grid["B6"].value, grid["M12"].value),
+                         ("A", "Ab1", "Ab2", "Ab3"))
+        self.assertIsNone(grid["A13"].value)
+        self.assertEqual((grid["B14"].value, grid["A15"].value, grid["B16"].value), ("P2", "96孔板2", "Ab4"))
+        self.assertEqual((grid["A25"].value, grid["B25"].value), ("未合成", "Ab0"))
 
+        self.assertEqual([cell.value for cell in detail[1]][:3], ["板号", "孔号", "蛋白名称"])
+        self.assertEqual([detail.cell(row, 3).value for row in range(2, 7)], ["Ab1", "Ab2", "Ab3", "Ab4", "Ab0"])
+        self.assertEqual((detail["D2"].value, detail["D3"].value, detail["B6"].value), (100.5, None, "未合成"))
+
+    def test_plate_layout_missing_messages_tell_why(self):
         empty = self._synthesis(synthesis_order_id="SYN-261123-EMPTY01", order_no="NONE")
-        with self.assertRaises(NotFoundError):
+        with self.assertRaisesRegex(NotFoundError, "还没收到"):
             order_files.export_plate_layout(self.db, empty.id)
+        unsynth = self._synthesis(synthesis_order_id="SYN-261123-UNSYN01", order_no="BAO9")
+        self.db.add(SynthesisSupernatantWell(order_no="BAO9", corp_name="擎科", sample_name="Ab0", not_synthesized=True))
+        self.db.commit()
+        with self.assertRaisesRegex(NotFoundError, "都没合成出来"):
+            order_files.export_plate_layout(self.db, unsynth.id)
+
+    def test_plate_layout_preview_lists_plates_and_reason(self):
+        synthesis = self._synthesis(order_no="bao9", target_name="CLEC12A")
+        empty = self._synthesis(synthesis_order_id="SYN-261123-EMPTY01", order_no="NONE")
+        self._well("P2", "A01", "Ab4")
+        self._well("P1", "B01", "Ab2", potency=None)
+        self._well("P1", "A01", "Ab1")
+        self.db.add(SynthesisSupernatantWell(order_no="BAO9", corp_name="擎科", sample_name="Ab0", not_synthesized=True))
+        self.db.commit()
+        preview = order_files.plate_layout_preview(self.db, synthesis.id)
+        self.assertEqual((preview["order_no"], preview["target_name"], preview["message"]), ("bao9", "CLEC12A", ""))
+        self.assertEqual([plate["plate_no"] for plate in preview["plates"]], ["P1", "P2"])
+        self.assertEqual([well["sample_name"] for well in preview["plates"][0]["wells"]], ["Ab1", "Ab2"])
+        self.assertIsNone(preview["plates"][0]["wells"][1]["potency"])
+        self.assertEqual(preview["missing"], ["Ab0"])
+        self.assertNotIn("corp_name", preview["plates"][0]["wells"][0])
+        blank = order_files.plate_layout_preview(self.db, empty.id)
+        self.assertEqual((blank["plates"], blank["message"]), ([], order_files.LAYOUT_MISSING))

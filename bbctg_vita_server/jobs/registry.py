@@ -11,6 +11,7 @@ from jobs.discovery_status import discovery_auto_update_status_job
 from jobs.employee_profile_sync import employee_profile_sync_job
 from jobs.labillion_status_sync import labillion_status_sync_job
 from jobs.serum_status import auto_update_status_job
+from jobs.supernatant_pull import supernatant_pull_job
 from jobs.synthesis_order_sync import synthesis_order_sync_job
 from jobs.target_master_sync import target_master_sync_job
 from modules.system.audit_context import audit_scope
@@ -61,6 +62,13 @@ SCHEDULED_JOBS = [
         "resource": "synthesis_progress",
         "feature_code": "job.discovery_synthesis_order_sync",
         "func": synthesis_order_sync_job,
+    },
+    {
+        "id": "discovery_supernatant_pull",
+        "name": "合成公司上清补查",
+        "resource": "synthesis_progress",
+        "feature_code": "job.discovery_supernatant_pull",
+        "func": supernatant_pull_job,
     },
 ]
 

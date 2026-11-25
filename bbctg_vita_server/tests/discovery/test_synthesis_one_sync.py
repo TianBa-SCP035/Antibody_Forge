@@ -4,11 +4,12 @@ import unittest
 from unittest.mock import patch
 
 from models.discovery import DiscoverySynthesisOrder
+from models.supernatant import SynthesisSupernatantWell
 from models.target import Target
 from modules.discovery.synthesis_progress import one_sync, service
 from support import DbTestCase
 
-TABLES = (Target, DiscoverySynthesisOrder)
+TABLES = (Target, DiscoverySynthesisOrder, SynthesisSupernatantWell)
 
 
 class OneSyncMappingTests(unittest.TestCase):
@@ -72,7 +73,7 @@ class OneSyncMappingTests(unittest.TestCase):
                 snap = one_sync.build_remote_snapshot(source_type, raw)
                 for key, val in expected.items():
                     self.assertEqual(snap[key], val)
-                # 发货日期、到货个数只取合成公司上清推送
+                # 发货日期、发货个数只取合成公司上清推送
                 self.assertFalse({"arrival_count", "arrival_date"} & set(snap))
 
 

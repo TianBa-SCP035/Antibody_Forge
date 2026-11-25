@@ -303,7 +303,7 @@ export const FIELDS = defineFields({
     sheet: { width: 120 },
   },
   arrival_count: {
-    label: '到货个数',
+    label: '发货个数',
     type: 'int',
     header: { type: 'number', values: 'all' },
     list: { show: true, minWidth: 90 },
@@ -595,6 +595,7 @@ export const SHEET_HEADER_ALIASES = Object.freeze({
   送合成日期: 'synthetic_date',
   上清交付数: 'arrival_count',
   上清交付数目: 'arrival_count',
+  到货个数: 'arrival_count',
   上清到货日期: 'arrival_date',
   上清发货日期: 'arrival_date',
   发货日期: 'arrival_date',

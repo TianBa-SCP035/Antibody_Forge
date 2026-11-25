@@ -81,6 +81,8 @@ class Settings(BaseSettings):
     fcs_smb_password: str = ""
     supernatant_receive_token: str = ""
     supernatant_receive_ips: str = ""
+    # 合成公司上清板布局查询接口，「合成公司=地址」用英文分号分隔；请求头令牌同 supernatant_receive_token。
+    supernatant_query_urls: str = ""
     public_api_base_url: str = ""
 
     model_config = SettingsConfigDict(

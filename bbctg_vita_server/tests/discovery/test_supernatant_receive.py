@@ -11,7 +11,9 @@ from sqlalchemy import select
 from db.session import get_db
 from models.discovery import DiscoverySynthesisOrder
 from models.supernatant import SynthesisSupernatantWell
+from modules.discovery.synthesis_progress import service as service_synthesis
 from modules.discovery.synthesis_progress.one_sync import apply_remote_snapshot_to_row, compute_drift_fields
+from modules.supernatant_receive import query
 from modules.supernatant_receive.routes import router
 from support import DbTestCase
 
@@ -189,6 +191,51 @@ class SupernatantReceiveTest(DbTestCase):
         self.assertEqual((pending.arrival_date, pending.arrival_count), ("2026-11-24", 2))
         self.assertNotIn("arrival_date", pending.source_snapshot)
         self.assertEqual(compute_drift_fields(pending), [])
+
+    def test_pull_pending_queries_due_orders_and_keeps_known_ship_date(self):
+        dated = self._order("BAO1", synthetic_corp="擎科", synthetic_date="2026-11-01", arrival_date="2026-11-10")
+        fresh = self._order("BAO2", synthetic_corp="擎科", synthetic_date="2026-11-02")
+        missing = self._order("BAO3", synthetic_corp="擎科", synthetic_date="2026-11-03")
+        recent = self._order("BAO4", synthetic_corp="擎科", synthetic_date="2026-11-22")
+        other = self._order("BAO5", synthetic_corp="君跻", synthetic_date="2026-11-01")
+        self.client.post(URL, json=_payload(_well("P1", "A1", "S1"), order_no="BAO6"))
+        received = self._order("BAO6", synthetic_corp="擎科", synthetic_date="2026-11-01")
+        layouts = {
+            "BAO1": [_well("P1", "A1", "S1"), _well("P1", "B1", "S2"), _well("未合成", "未合成", "S3")],
+            "BAO2": [_well("P1", "A1", "S1")],
+        }
+        asked = []
+
+        def fake_post(url, json, headers, timeout):
+            asked.append(json["orderNo"])
+            rows = layouts.get(json["orderNo"])
+            reply = (
+                {"code": 1, "data": _payload(*rows, order_no=json["orderNo"])}
+                if rows else {"code": 0, "msg": f"订单不存在：{json['orderNo']}"}
+            )
+            return SimpleNamespace(json=lambda: reply)
+
+        settings = SimpleNamespace(supernatant_query_urls="擎科=http://q", supernatant_receive_token="t")
+        now = datetime(2026, 11, 25, 10, 0)
+        with patch("modules.supernatant_receive.query.get_settings", return_value=settings), \
+                patch("modules.supernatant_receive.query.requests.post", side_effect=fake_post), \
+                patch("modules.supernatant_receive.query.today_local", return_value=now.date()), \
+                patch("modules.supernatant_receive.query.now_local", return_value=now), \
+                patch("modules.supernatant_receive.service.now_local", return_value=now):
+            result = query.pull_pending(self.db)
+            self.assertEqual(query.pull_order(self.db, "君跻", "BAO5")["state"], query.UNSUPPORTED)
+        self.assertEqual(sorted(asked), ["BAO1", "BAO2", "BAO3"])
+        self.assertEqual((result["total"], result["found"], result["missing"], result["failed"]), (3, 2, 1, 0))
+        for row in (dated, fresh, missing, recent, other, received):
+            self.db.refresh(row)
+        self.assertEqual((dated.arrival_date, dated.arrival_count), ("2026-11-10", 2))
+        self.assertEqual((fresh.arrival_date, fresh.arrival_count, fresh.status), ("2026-11-25", 1, "待检测"))
+        self.assertEqual((missing.arrival_date, missing.supernatant_checked_at), (None, now))
+        self.assertIsNone(recent.supernatant_checked_at)
+        self.assertIsNone(other.supernatant_checked_at)
+
+        summary = service_synthesis.serialize_order(dated)["supernatant"]
+        self.assertEqual((summary["wells"], summary["not_synthesized"]), (2, 1))
 
     def test_bad_body_and_missing_order(self):
         cases = (

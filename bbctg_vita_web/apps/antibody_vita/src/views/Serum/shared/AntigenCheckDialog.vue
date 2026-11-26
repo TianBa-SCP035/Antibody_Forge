@@ -9,7 +9,7 @@
     @closed="onClosed"
   >
     <div v-loading="loading" class="check-body">
-      <p v-if="canEdit" class="check-hint">截图后直接 Ctrl+V，粘到高亮的这一项；点另一项再粘就是那一项</p>
+      <p v-if="canEdit" class="check-hint">截图后直接 Ctrl+V，粘到高亮的这一项；点另一项再粘就是那一项。点图片看原图</p>
       <div
         v-for="item in items"
         :key="item.assay"
@@ -46,8 +46,10 @@
               :src="thumbs[image.file]"
               :preview-src-list="previewList(item)"
               :initial-index="previewIndex(item, image)"
+              :title="image.name"
               fit="cover"
               preview-teleported
+              :z-index="5000"
             />
             <button
               v-if="canEdit"
@@ -283,8 +285,8 @@ export default {
 }
 .check-thumb {
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: 88px;
+  height: 88px;
   overflow: hidden;
   border-radius: 4px;
   background: var(--el-fill-color-light);
@@ -292,6 +294,7 @@ export default {
 .check-thumb .el-image {
   width: 100%;
   height: 100%;
+  cursor: zoom-in;
 }
 .check-remove {
   position: absolute;
@@ -313,8 +316,8 @@ export default {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  width: 104px;
-  height: 72px;
+  width: 88px;
+  height: 88px;
   border-radius: 4px;
   background: var(--el-fill-color-light);
   color: var(--el-text-color-secondary);

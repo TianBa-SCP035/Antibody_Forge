@@ -22,10 +22,18 @@
         :disabled="!canEdit"
         @change="commitText"
       />
-      <p v-if="canEdit" class="prior-hint">截图或复制图片后，在这里直接 Ctrl+V</p>
+      <p v-if="canEdit" class="prior-hint">截图或复制图片后直接 Ctrl+V。点图片看原图，可缩放、前后翻</p>
       <div class="prior-images">
-        <div v-for="item in images" :key="item.file" class="prior-thumb">
-          <img v-if="thumbs[item.file]" :src="thumbs[item.file]" :alt="item.name" />
+        <div v-for="item in images" :key="item.file" class="prior-thumb" :title="item.name">
+          <el-image
+            v-if="thumbs[item.file]"
+            :src="thumbs[item.file]"
+            :preview-src-list="previewList"
+            :initial-index="previewIndex(item)"
+            fit="cover"
+            preview-teleported
+            :z-index="5000"
+          />
           <button v-if="canEdit" type="button" class="prior-remove" title="去掉这张" @click="remove(item)">×</button>
         </div>
         <label v-if="canEdit" class="prior-add">
@@ -38,7 +46,7 @@
 </template>
 
 <script>
-import { ElDialog, ElInput, ElMessage } from 'element-plus'
+import { ElDialog, ElImage, ElInput, ElMessage } from 'element-plus'
 
 import { notifyApiError } from '#/api/errors'
 import {
@@ -50,7 +58,7 @@ import { fetchFileBlob } from '#/utils/file-resource'
 
 export default {
   name: 'DiscoveryPriorScreeningCell',
-  components: { ElDialog, ElInput },
+  components: { ElDialog, ElImage, ElInput },
   props: {
     row: { type: Object, default: null },
     canEdit: { type: Boolean, default: false },
@@ -71,6 +79,9 @@ export default {
     images() {
       const value = this.row?.prior_screening_images
       return Array.isArray(value) ? value.filter((item) => item?.file) : []
+    },
+    previewList() {
+      return this.images.map((item) => this.thumbs[item.file]).filter(Boolean)
     },
   },
   watch: {
@@ -107,6 +118,9 @@ export default {
       event.preventDefault()
       event.stopPropagation()
       this.uploadFiles(files)
+    },
+    previewIndex(item) {
+      return Math.max(0, this.previewList.indexOf(this.thumbs[item.file]))
     },
     commitText() {
       if (!this.canEdit || !this.row) return
@@ -215,16 +229,16 @@ export default {
 }
 .prior-thumb {
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: 88px;
+  height: 88px;
   overflow: hidden;
   border-radius: 4px;
   background: var(--el-fill-color-light);
 }
-.prior-thumb img {
+.prior-thumb :deep(.el-image) {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  cursor: zoom-in;
 }
 .prior-remove {
   position: absolute;
@@ -244,8 +258,8 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 72px;
-  height: 72px;
+  width: 88px;
+  height: 88px;
   border-radius: 4px;
   background: var(--el-fill-color-light);
   color: var(--el-text-color-secondary);

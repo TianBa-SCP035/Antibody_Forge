@@ -15,15 +15,21 @@ def _response(status=200, body=None):
     return response
 
 
-def _body(heavy=(), light=(), genes=(), code=20000):
+def _item(name, heavy=(), light=(), genes=()):
     return {
-        "code": code,
-        "data": {
-            "beacon": {"heavy_chain_names": list(heavy), "light_chain_names": list(light), "matched": bool(heavy)},
-            "ngs": {"gene_names": list(genes), "matched": bool(genes)},
-            "protein_name": "x",
-        },
+        "input_protein_name": name,
+        "protein_name": name,
+        "beacon": {"heavy_chain_names": list(heavy), "light_chain_names": list(light), "matched": bool(heavy)},
+        "ngs": {"gene_names": list(genes), "matched": bool(genes)},
     }
+
+
+def _body(heavy=(), light=(), genes=(), code=20000, protein="x"):
+    return {"code": code, "data": _item(protein, heavy, light, genes)}
+
+
+def _batch(*items, code=20000):
+    return {"code": code, "data": {"items": list(items)}}
 
 
 class ProteinGeneTests(unittest.TestCase):
@@ -43,35 +49,66 @@ class ProteinGeneTests(unittest.TestCase):
         self.assertEqual(result(_body(["VH1"])["data"]), ("VH1", None))
         self.assertIn("多条重链（VH1、VH2）", result(_body(["VH1", "VH2"], ["VK1"])["data"]))
         self.assertIn("多条轻链", result(_body(["VH1"], ["VK1", "VK2"])["data"]))
-        self.assertIn("NGS 查到基因名 G1、G2", result(_body(genes=["G1", "G2"])["data"]))
+        self.assertIn("没有和这个蛋白名称对上", result(_body(genes=["G1", "G2"])["data"]))
         self.assertIsNone(result(_body()["data"]))
+        heavy_only = "20R062_RNBK01AAAYP5"
+        self.assertEqual(
+            result(_body(genes=[f"Vh1$0-{heavy_only}"], protein=heavy_only)["data"]),
+            (f"Vh1$0-{heavy_only}", None),
+        )
+        combined = "20R891_RLBKS1AAAD4B_h1.0"
+        combined_gene = "Vh1.0VKB-20R891_RLBKS1AAAD4B"
+        self.assertEqual(
+            result(_body(genes=[combined_gene, "Vh1.0VKB-20R891_OTHER"], protein=combined)["data"]),
+            (combined_gene, None),
+        )
+        many = result(_body(
+            genes=[f"Vh1$0-{heavy_only}", f"Vh1.0-{heavy_only}"],
+            protein=heavy_only,
+        )["data"])
+        self.assertIn("多条基因名", many)
+        self.assertNotIn("OTHER", many)
 
-    def test_lookup_splits_found_and_issues_and_sends_key(self):
-        bodies = {
-            "P1": _response(body=_body(["VH1"], ["VK1"])),
-            "P2": _response(body=_body()),
-            "P3": _response(body=_body(genes=["G3"])),
-        }
-        with patch.object(
-            protein_gene.requests, "get", side_effect=lambda url, params, headers, timeout: bodies[params["protein_name"]]
-        ) as get:
+    def test_lookup_posts_names_and_matches_input_protein_name(self):
+        body = _batch(
+            _item("p3", genes=["G3"]),
+            _item("P1", ["VH1"], ["VK1"]),
+            _item("P2"),
+        )
+        with patch.object(protein_gene.requests, "post", return_value=_response(body=body)) as post:
             found, issues = protein_gene.lookup(["P1", "P2", "P3", "P1"])
         self.assertEqual(found, {"P1": ("VH1", "VK1")})
         self.assertEqual(list(issues), ["P3"])
-        self.assertEqual(get.call_count, 3)
-        self.assertEqual(get.call_args.kwargs["headers"], {"X-API-Key": "k"})
+        self.assertNotIn("P2", found)
+        self.assertEqual(post.call_count, 1)
+        self.assertEqual(post.call_args.args[0], "http://gene.test/api")
+        self.assertEqual(post.call_args.kwargs["json"], {"protein_names": ["P1", "P2", "P3"]})
+        self.assertEqual(post.call_args.kwargs["headers"], {"X-API-Key": "k"})
+
+    def test_lookup_splits_batches_of_500(self):
+        with patch.object(protein_gene, "BATCH_SIZE", 2), patch.object(
+            protein_gene.requests, "post", return_value=_response(body=_batch())
+        ) as post:
+            protein_gene.lookup(["A", "B", "C"])
+        self.assertEqual(
+            [call.kwargs["json"]["protein_names"] for call in post.call_args_list],
+            [["A", "B"], ["C"]],
+        )
 
     def test_bad_key_error_code_or_network_makes_whole_batch_unavailable(self):
         bad_key = _response(status=401, body={"code": 401, "data": {}, "message": "接口密钥无效"})
-        with patch.object(protein_gene.requests, "get", return_value=bad_key):
+        with patch.object(protein_gene.requests, "post", return_value=bad_key):
             with self.assertRaisesRegex(protein_gene.ProteinGeneUnavailable, "密钥无效"):
                 protein_gene.lookup(["P1"])
         failed = _response(body={"code": 50000, "data": {}, "message": "数据库异常"})
-        with patch.object(protein_gene.requests, "get", return_value=failed):
+        with patch.object(protein_gene.requests, "post", return_value=failed):
             with self.assertRaisesRegex(protein_gene.ProteinGeneUnavailable, "50000 数据库异常"):
                 protein_gene.lookup(["P1"])
-        with patch.object(protein_gene.requests, "get", side_effect=requests.ConnectionError()):
+        with patch.object(protein_gene.requests, "post", side_effect=requests.ConnectionError()):
             with self.assertRaisesRegex(protein_gene.ProteinGeneUnavailable, "连不上"):
+                protein_gene.lookup(["P1"])
+        with patch.object(protein_gene.requests, "post", return_value=_response(body={"code": 20000, "data": {}})):
+            with self.assertRaisesRegex(protein_gene.ProteinGeneUnavailable, "格式不对"):
                 protein_gene.lookup(["P1"])
         with patch.object(get_settings(), "protein_gene_api_key", ""):
             with self.assertRaisesRegex(protein_gene.ProteinGeneUnavailable, "没有配置"):

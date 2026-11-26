@@ -11,7 +11,7 @@ from typing import Any, NamedTuple
 
 from fastapi import UploadFile
 from PIL import Image
-from sqlalchemy import func, or_, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -982,7 +982,11 @@ def _require_in_scope(build_type: str | None, scope: TypeScope) -> None:
 
 
 def _scope_clauses(scope: TypeScope) -> list:
-    return [] if scope is None else [MolecularLibraryOrder.build_type.in_(scope)]
+    if scope is None:
+        return []
+    if not scope:
+        return [false()]
+    return [MolecularLibraryOrder.build_type.in_(scope)]
 
 
 def _scope_payload(scope: TypeScope) -> list[str] | None:
@@ -3307,7 +3311,9 @@ def _package_visible(db: Session, package_id: int, scope: TypeScope) -> bool:
 
 def _package_within_scope(db: Session, package_id: int, scope: TypeScope) -> bool:
     """测序包是多张工单共看的文件夹，改动包内容（追加、删除文件）要求这些工单都在范围内。"""
-    return scope is None or all(_in_scope(build_type, scope) for build_type in _package_build_types(db, package_id))
+    return scope is None or bool(scope) and all(
+        _in_scope(build_type, scope) for build_type in _package_build_types(db, package_id)
+    )
 
 
 def get_stored_file(db: Session, file_id: int, scope: TypeScope = None) -> tuple[str, Path]:

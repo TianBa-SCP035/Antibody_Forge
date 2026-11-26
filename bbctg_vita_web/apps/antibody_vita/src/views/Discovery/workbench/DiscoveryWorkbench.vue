@@ -611,7 +611,6 @@ const IMMUNE_LOCKED_FIELDS = new Set([
   'owner',
   'sort_order',
   'screening_antigen',
-  'serum_titer',
   'positive_cell_count',
   'plate_nos',
 ])

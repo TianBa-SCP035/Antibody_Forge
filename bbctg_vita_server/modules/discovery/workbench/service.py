@@ -88,11 +88,10 @@ IMMUNE_LOCKED_FIELDS = frozenset({
     "owner",
     "sort_order",
     "screening_antigen",
-    "serum_titer",
     "positive_cell_count",
     "plate_nos",
 })
-IMMUNE_LOCKED_MESSAGE = "当前权限不能修改状态、优先级、负责人、排序、筛选抗原、血清效价、阳性细胞数和板号"
+IMMUNE_LOCKED_MESSAGE = "当前权限不能修改状态、优先级、负责人、排序、筛选抗原、阳性细胞数和板号"
 BREAK_FIELDS = frozenset({
     "mouse_nos",
     "plate_nos",

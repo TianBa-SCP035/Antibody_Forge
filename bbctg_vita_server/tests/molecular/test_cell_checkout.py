@@ -103,3 +103,16 @@ class CellCheckoutTests(DbTestCase):
         self.assertEqual(cell_checkout.list_requests(self.db, {}, plate_only)["items"], [])
         with self.assertRaises(NotFoundError):
             cell_checkout.review(self.db, request["id"], True, "管理员", scope=plate_only)
+
+    def test_empty_scope_hides_orders_but_review_stays_open(self):
+        order, banks = self._order_with_cells("C302", {"cell_kind": "脾细胞"})
+        request = cell_checkout.submit(
+            self.db, {"order_ids": [order["id"]], "cell_bank_ids": [banks[0]["id"]]}, "李四",
+        )
+        blocked = frozenset()
+        found = cell_checkout.candidates(self.db, {"order_ids": [order["id"]]}, blocked)
+        self.assertEqual((found["order_count"], found["items"]), (0, []))
+        listed = cell_checkout.list_requests(self.db, {}, blocked)
+        self.assertEqual([row["id"] for row in listed["items"]], [request["id"]])
+        reviewed = cell_checkout.review(self.db, request["id"], True, "管理员", scope=blocked)
+        self.assertEqual(reviewed["status"], "已通过")

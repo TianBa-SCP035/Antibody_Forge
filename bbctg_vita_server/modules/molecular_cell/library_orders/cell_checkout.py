@@ -168,8 +168,8 @@ def submit(
 
 
 def _scope_filters(scope: service.TypeScope) -> list:
-    """含范围外建库类型工单的申请单按不存在处理。"""
-    if scope is None:
+    """含范围外建库类型工单的申请单按不存在处理。空范围是工单一张不给看，审核仍看全部申请。"""
+    if not scope:
         return []
     outside = (
         select(MolecularCellCheckoutItem.request_id)

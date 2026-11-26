@@ -124,7 +124,7 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 |--------|------|------|
 | `discovery.page.workbench` | page | 发现工作台列表 |
 | `discovery.workbench.edit` | action | 发现工作台全部编辑：新增、保存、删除、排序安排，可交接文库 |
-| `discovery.workbench.immune_edit` | action | 发现工作台免疫编辑：可新增、保存其他字段、删除、冻存和既往筛选，可从效价下发。不能改状态、优先级、负责人、排序、筛选抗原、血清效价、阳性细胞数、板号，不能排序，不能交接文库 |
+| `discovery.workbench.immune_edit` | action | 发现工作台免疫编辑：可新增、保存其他字段（含血清效价）、删除、冻存和既往筛选，可从效价下发。不能改状态、优先级、负责人、排序、筛选抗原、阳性细胞数、板号，不能排序，不能交接文库 |
 | `discovery.page.ngs` | page | NGS测序列表 |
 | `discovery.ngs.edit` | action | NGS测序编辑：新建、保存、删除、送合成；也可从文库构建交接 |
 | `discovery.page.synthesis_progress` | page | 合成与验证列表与外部订单比对 |
@@ -143,7 +143,13 @@ DDL 与示例权限包、角色见 [vita-database.sql](./vita-database.sql)。
 | `molecular.page.library` | page | 文库构建列表与字典查询 |
 | `molecular.library.edit` | action | 两页的工单编辑：保存、取消、Excel、手工新增、删除；申请冻存细胞出库 |
 | `molecular.library.cell_checkout.review` | action | 审核文库构建提交的冻存细胞出库申请（通过即写出库） |
-| `molecular.library.type.plate_single_cell` | data | 限定单细胞孔板：配了任一类型权限点的人只能看、改这些类型（改仍需编辑或质检权限），一个都没配的不限 |
+| `molecular.library.type.plate_single_cell` | data | 限定单细胞孔板：配了其中几种的人只能看、改这些类型（改仍需编辑或质检权限），一个都没配的不限；七种都配上则一张工单都看不到，页面仍可进，出库审核不收窄 |
+| `molecular.library.type.pooled_bcr` | data | 限定混管 H/K/L：规则同上，多个类型权限点一起配时范围取并集 |
+| `molecular.library.type.pooled_barcode` | data | 限定混管 Barcode：规则同上 |
+| `molecular.library.type.peripheral_blood_bcr` | data | 限定外周血 BCR：规则同上 |
+| `molecular.library.type.plasma_ngs` | data | 限定浆细胞 NGS：规则同上 |
+| `molecular.library.type.phage_display` | data | 限定噬菌体展示：规则同上 |
+| `molecular.library.type.phage_ngs` | data | 限定噬菌体 NGS：规则同上 |
 | `molecular.page.library_detail` | page | 质控详情、文件列表与下载 |
 | `molecular.library.file.manage` | action | 质检文件，以及质检结论、质检人、质检日期、质检说明 |
 | `molecular.page.primer` | page | 引物库 |
@@ -321,7 +327,7 @@ flowchart LR
 
 各业务模块的权限码常量放在对应的 `src/api/*.ts`。例如镁伽流式工单常量位于 `api/megaAutomation.ts`，页面通过 `hasAccessCode` 判断 `FLOW_WORK_ORDER_EDIT` 与 `FLOW_WORK_ORDER_DISPATCH`。`utils/serumPermission.ts` 只保留血清模块需要结合项目负责人等数据判断的业务规则。
 
-系统管理页各 Tab 按 `system.*.manage` / `operation_log.view` 显隐。
+系统管理页各 Tab 按 `system.*.manage` / `operation_log.view` 显隐。权限点列表、权限包里的权限点、个人覆盖都按模块收起，展开后按页面列出，可按名称或权限码搜索。
 
 无权限时多为 `no-permission-btn` 样式，而非路由级 403。
 

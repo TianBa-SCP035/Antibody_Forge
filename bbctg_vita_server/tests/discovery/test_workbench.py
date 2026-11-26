@@ -63,6 +63,12 @@ class DiscoveryWorkbenchIdTests(DbTestCase):
         )
         self.assertEqual(kept["remark"], "补笼位")
         self.assertEqual(kept["status"], "规划中")
+        titer = service.save(
+            self.db,
+            {"id": saved["id"], "serum_titer": "ELISA人:5000"},
+            full_edit=False,
+        )
+        self.assertEqual(titer["serum_titer"], "ELISA人:5000")
         with self.assertRaisesRegex(ForbiddenError, "不能修改状态"):
             service.save(self.db, {"id": saved["id"], "status": "待剖鼠"}, full_edit=False)
         with self.assertRaisesRegex(ForbiddenError, "不能修改"):

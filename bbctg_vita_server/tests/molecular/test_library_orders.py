@@ -25,7 +25,7 @@ from modules.molecular_cell.library_orders import routes as order_routes
 from modules.molecular_cell.library_orders import service
 import modules.system.audit_middleware as audit_middleware
 from modules.molecular_cell.library_orders.result_upload import assembled_primer
-from modules.molecular_cell.permissions import LIBRARY_TYPE_PERMISSIONS
+from modules.molecular_cell.permissions import LIBRARY_SCOPE_TYPES, LIBRARY_TYPE_PERMISSIONS
 from modules.auth.permissions import UserContext
 from modules.system.audit_context import AuditContext, reset_audit_context, set_audit_context
 from support import DbTestCase
@@ -155,6 +155,9 @@ class LibraryOrderTests(DbTestCase):
         self.assertEqual(service.get_options(self.db, plate_only)["build_type_scope"], [service.BUILD_PLATE])
         self.assertIsNone(service.get_options(self.db)["build_type_scope"])
         self.assertEqual(len(service.get_list(self.db, {})["items"]), 2)
+        blocked = frozenset()
+        self.assertEqual(service.get_list(self.db, {}, blocked)["items"], [])
+        self.assertEqual(service.get_options(self.db, blocked)["build_type_scope"], [])
 
     def test_type_scope_limits_edits_to_scoped_types(self):
         plate = service.save(self.db, {"build_type": service.BUILD_PLATE, "library_code": "P1"})
@@ -1303,14 +1306,20 @@ def _user(permissions, superuser=False) -> UserContext:
 
 class LibraryOrderRouteTests(unittest.TestCase):
     def test_type_permissions_map_to_build_types(self):
-        self.assertTrue(set(LIBRARY_TYPE_PERMISSIONS.values()) <= set(service.BUILD_TYPE_ORDER))
+        self.assertEqual(set(LIBRARY_TYPE_PERMISSIONS.values()), set(service.BUILD_TYPE_ORDER))
+        self.assertEqual(LIBRARY_SCOPE_TYPES, service.BUILD_TYPE_LABELS)
 
     def test_type_scope_comes_from_type_permissions(self):
         plate = "molecular.library.type.plate_single_cell"
+        phage = "molecular.library.type.phage_display"
         self.assertIsNone(order_routes._type_scope(_user(["molecular.page.library", "molecular.library.edit"])))
-        self.assertIsNone(order_routes._type_scope(_user([plate], superuser=True)))
+        self.assertIsNone(order_routes._type_scope(_user([plate, phage], superuser=True)))
         scoped = _user(["molecular.page.library", plate, "molecular.library.edit"])
         self.assertEqual(order_routes._type_scope(scoped), frozenset({service.BUILD_PLATE}))
+        both = _user(["molecular.page.library", plate, phage])
+        self.assertEqual(order_routes._type_scope(both), frozenset({service.BUILD_PLATE, service.BUILD_PHAGE_DISPLAY}))
+        every = _user(list(LIBRARY_TYPE_PERMISSIONS))
+        self.assertEqual(order_routes._type_scope(every), frozenset())
 
     def test_every_library_route_applies_type_scope(self):
         def uses_scope(dependant) -> bool:

@@ -2,18 +2,33 @@ from collections.abc import Collection
 
 from core.module_spec import ModuleAccess, action, data, menu, page
 
-# 可单独授权的建库类型：配了任一个的人在文库构建里只能看、改这些类型的工单（改仍要编辑或质检权限）；
-# 一个都没配的不限。
-LIBRARY_SCOPE_TYPES = {"plate_single_cell": "单细胞孔板"}
+# 可单独授权的建库类型：配了其中几种的人在文库构建里只能看、改这些类型的工单（改仍要编辑或质检权限）；
+# 一个都没配的不限；七种都配上则一张工单都看不到（空集），页面仍可进，出库审核不按这个空范围收窄。
+LIBRARY_SCOPE_TYPES = {
+    "plate_single_cell": "单细胞孔板",
+    "pooled_bcr": "混管 H/K/L",
+    "pooled_barcode": "混管 Barcode",
+    "peripheral_blood_bcr": "外周血 BCR",
+    "plasma_ngs": "浆细胞 NGS",
+    "phage_display": "噬菌体展示",
+    "phage_ngs": "噬菌体 NGS",
+}
 LIBRARY_TYPE_PERMISSIONS = {f"molecular.library.type.{build_type}": build_type for build_type in LIBRARY_SCOPE_TYPES}
 
 
 def library_type_scope(permissions: Collection[str], is_superuser: bool) -> frozenset[str] | None:
-    """配了建库类型权限的人只能看、改这些类型；超级管理员和一个都没配的人不限（None）。"""
+    """配了其中几种的人只能看、改这些类型。七种都配上返回空集，一张工单都看不到。
+
+    超级管理员和一个都没配的人不限（None）。
+    """
     if is_superuser:
         return None
     types = frozenset(build_type for code, build_type in LIBRARY_TYPE_PERMISSIONS.items() if code in permissions)
-    return types or None
+    if not types:
+        return None
+    if types == frozenset(LIBRARY_SCOPE_TYPES):
+        return frozenset()
+    return types
 
 
 ACCESS = ModuleAccess(

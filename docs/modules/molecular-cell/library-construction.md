@@ -20,16 +20,22 @@
 | `molecular.library.file.manage` | `action` | 质检文件预检与上传（`/files/preflight`、`/files/upload_batch`）、文件改名/标最终/框选区域（`/files/update`）、删除文件或测序包（`/files/delete`）；更新已有工单且仅修改质检结论四字段（`qc_result`、`qc_owner`、`qc_on`、`qc_note`）时，`/save` 与 `/batch_save` 亦接受本权限 |
 | `discovery.workbench.edit` | `action` | 在发现工作台查询已交接工单并发起交接创建（`/by-discovery`、`/handoff`） |
 | `molecular.library.type.plate_single_cell` | `data` | 限定单细胞孔板：见下方「按建库类型限定数据范围」 |
+| `molecular.library.type.pooled_bcr` | `data` | 限定混管 H/K/L：规则同上 |
+| `molecular.library.type.pooled_barcode` | `data` | 限定混管 Barcode：规则同上 |
+| `molecular.library.type.peripheral_blood_bcr` | `data` | 限定外周血 BCR：规则同上 |
+| `molecular.library.type.plasma_ngs` | `data` | 限定浆细胞 NGS：规则同上 |
+| `molecular.library.type.phage_display` | `data` | 限定噬菌体展示：规则同上 |
+| `molecular.library.type.phage_ngs` | `data` | 限定噬菌体 NGS：规则同上 |
 
-**按建库类型限定数据范围**：每种可单独授权的建库类型对应一个 `molecular.library.type.<build_type>`，登记在 `modules/molecular_cell/permissions.py` 的 `LIBRARY_SCOPE_TYPES`（目前只有单细胞孔板），新增类型在那里加一行即可。类型权限点只划范围、不放行接口，能不能改仍看上表的编辑与质检权限。
+**按建库类型限定数据范围**：七种建库类型各对应一个 `molecular.library.type.<build_type>`，登记在 `modules/molecular_cell/permissions.py` 的 `LIBRARY_SCOPE_TYPES`，名称与建库类型标签一致。类型权限点只划范围、不放行接口，能不能改仍看上表的编辑与质检权限。
 
-- 一个都没配的人不限；配了的人只能看、改配了的类型（多个取并集，角色和个人覆盖合并计算）；超级管理员不受限。只配类型权限点 = 只能查看这些类型；再加编辑或质检权限 = 只能在这些类型里编辑或管质检。
-- 范围由路由按权限算出、不取自请求，每个文库构建接口都按它收窄：列表、统计、表头筛选值、导出、已录入靶点只含范围内类型；冻存细胞出库只取范围内工单，含范围外工单的出库申请单不显示、不能审核；范围外的已有工单与文件（详情、质检文件列表、下载、保存、删除、文件改名/标最终/删除、质检页上传）按「不存在」处理（404）；新建、交接或把工单改成范围外的类型返回 403。
+- 一个都没配的人不限；配了其中几种的人只能看、改这几种（多个取并集，角色和个人覆盖合并计算）；七种都配上的人一张工单都看不到，页面仍可进。超级管理员不受限。只配类型权限点 = 只能查看这些类型；再加编辑或质检权限 = 只能在这些类型里编辑或管质检。
+- 范围由路由按权限算出、不取自请求，每个文库构建接口都按它收窄：列表、统计、表头筛选值、导出、已录入靶点只含范围内类型；冻存细胞出库申请只取范围内工单，含范围外工单的出库申请单不显示、不能审核。七种都配上时工单范围是空的，申请和候选同样没有，但出库审核列出并审核全部申请单。范围外的已有工单与文件（详情、质检文件列表、下载、保存、删除、文件改名/标最终/删除、质检页上传）按「不存在」处理（404）；新建、交接或把工单改成范围外的类型返回 403。
 - 批量质检上传先按全部工单匹配文件名再收窄，匹配到范围外工单的文件跳过并提示「建库编号 X 不在你可查看的建库类型内」，不会改挂到别的工单。
 - 测序包是多张工单共看的文件夹：包里还关联范围外工单时，不往该包追加文件（另存新包），也不能在文件夹预览里删除其中的文件；解除本工单与包的关联不受影响。
 - 发现交接查询（`/by-discovery`）只返回范围内的已有工单与建议；建议按全部已有工单计算，范围外已建过的类型不会被重复建议。
-- `/options` 与 `/by-discovery` 返回 `build_type_scope`（`null` 为不限，否则为范围内类型列表）：列表页只显示范围内的统计块，建库类型下拉、新建与交接弹窗只给范围内的类型；编辑和上传入口仍按编辑与质检权限显示。
-- 典型配法：只看单细胞孔板 = `molecular.page.library` + `molecular.page.library_detail` + 类型权限点；只编辑单细胞孔板 = 再加 `molecular.library.edit`（需要管质检再加 `molecular.library.file.manage`）。
+- `/options` 与 `/by-discovery` 返回 `build_type_scope`（`null` 为不限，`[]` 为一张都看不到，否则为范围内类型列表）：列表页只显示范围内的统计块，建库类型下拉、新建与交接弹窗只给范围内的类型；编辑和上传入口仍按编辑与质检权限显示。
+- 典型配法：只看某一种建库类型 = `molecular.page.library` + `molecular.page.library_detail` + 对应类型权限点；只编辑该类型 = 再加 `molecular.library.edit`（需要管质检再加 `molecular.library.file.manage`）。多个类型权限点一起配，范围取并集。只进页面审核出库、不看工单 = `molecular.page.library` + `molecular.library.cell_checkout.review` + 全部七个类型权限点。
 
 ## 2. 数据与编号
 

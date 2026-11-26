@@ -10,7 +10,7 @@
 |---|---|
 | `discovery.page.workbench` | 查看页面、列表、选项、靶点、表头取值和导出 |
 | `discovery.workbench.edit` | 全部编辑：新建、编辑、批量保存、删除、排序；可从效价下发和交接文库 |
-| `discovery.workbench.immune_edit` | 免疫编辑：可新建、改其他字段、删除、冻存和既往筛选，也可从效价下发新建。不能改状态、优先级、负责人、排序、筛选抗原、血清效价、阳性细胞数、板号，不能排序，不能交接文库。改剖鼠或冲击日期时，状态仍按日期自动推进。免疫管理员、免疫方案编辑（免疫牛马），以及 PM 张文姣的个人允许，使用这个权限，不再使用全部编辑 |
+| `discovery.workbench.immune_edit` | 免疫编辑：可新建、改其他字段（含血清效价）、删除、冻存和既往筛选，也可从效价下发新建。不能改状态、优先级、负责人、排序、筛选抗原、阳性细胞数、板号，不能排序，不能交接文库。改剖鼠或冲击日期时，状态仍按日期自动推进。免疫管理员、免疫方案编辑（免疫牛马），以及 PM 张文姣的个人允许，使用这个权限，不再使用全部编辑 |
 | `molecular.library.edit` | 可交接文库，但不授予发现工作台编辑权限 |
 | `serum.page.detail` | 操作列“详情”进入免疫实验详情 |
 
@@ -100,7 +100,7 @@
 
 ### 效价下发
 
-效价实验列表的“测序”按钮始终可点击。缺少 `discovery.workbench.edit` 或 `discovery.workbench.immune_edit` 时显示权限提示；具备权限时打开 `TiterMouseSelectWizard.vue`，并要求至少选择一只小鼠。免疫编辑下发时可以写入血清效价，之后在发现工作台里不能再改。
+效价实验列表的“测序”按钮始终可点击。缺少 `discovery.workbench.edit` 或 `discovery.workbench.immune_edit` 时显示权限提示；具备权限时打开 `TiterMouseSelectWizard.vue`，并要求至少选择一只小鼠。免疫编辑下发时可以写入血清效价，之后在发现工作台里也可以改血清效价。
 
 `utils/titerDiscoveryHandoff.ts` 使用 `buildFacsConclusionForPage` 和 `summarizeTiterBrief` 生成快照，再调用 `POST /api/discovery/workbench/save`。每次确认都新增一行，不按实验号去重，也不保存效价工单 ID。
 

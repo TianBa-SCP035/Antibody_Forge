@@ -9,7 +9,7 @@ import type {
   SystemUserPermissionOverrides,
 } from '#/api';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 import { useAccessStore, useUserStore } from '@vben/stores';
 
@@ -20,6 +20,8 @@ import {
   ElCard,
   ElCheckbox,
   ElCheckboxGroup,
+  ElCollapse,
+  ElCollapseItem,
   ElCol,
   ElDatePicker,
   ElDialog,
@@ -84,6 +86,12 @@ const userDialogVisible = ref(false);
 const passwordDialogVisible = ref(false);
 const roleDialogVisible = ref(false);
 const bundleDialogVisible = ref(false);
+const permissionCatalogKeyword = ref('');
+const permissionCatalogOpen = ref<string[]>([]);
+const bundlePermissionKeyword = ref('');
+const bundlePermissionOpen = ref<string[]>([]);
+const overridePermissionKeyword = ref('');
+const overridePermissionOpen = ref<string[]>([]);
 const batchRoleDialogVisible = ref(false);
 const overrideDialogVisible = ref(false);
 const logDetailVisible = ref(false);
@@ -303,16 +311,77 @@ const permissionsForTable = computed(() => {
   }));
 });
 
-const groupedPermissions = computed(() => {
-  const groups = new Map<string, typeof permissionsForTable.value>();
-  for (const permission of permissionsForTable.value) {
-    const groupKey = permission.owner_page_name;
-    const list = groups.get(groupKey) || [];
+const PERMISSION_MODULE_ORDER = ['atlas', 'discovery', 'molecular', 'serum', 'mega', 'system'];
+
+type PermissionModuleGroup<T extends { code: string }> = {
+  code: string;
+  name: string;
+  count: number;
+  pages: { name: string; items: T[] }[];
+};
+
+function permissionModuleCode(permission: { module?: string; code: string }) {
+  return permission.module || permission.code.split('.')[0] || 'other';
+}
+
+function groupPermissionsByModule<
+  T extends { module?: string; code: string; owner_page_name: string },
+>(items: T[]): PermissionModuleGroup<T>[] {
+  const modules = new Map<string, Map<string, T[]>>();
+  for (const permission of items) {
+    const moduleCode = permissionModuleCode(permission);
+    const pages = modules.get(moduleCode) || new Map<string, T[]>();
+    const list = pages.get(permission.owner_page_name) || [];
     list.push(permission);
-    groups.set(groupKey, list);
+    pages.set(permission.owner_page_name, list);
+    modules.set(moduleCode, pages);
   }
-  return [...groups.entries()].map(([name, items]) => ({ name, items }));
-});
+  const codes = [...modules.keys()].sort((left, right) => {
+    const leftIndex = PERMISSION_MODULE_ORDER.indexOf(left);
+    const rightIndex = PERMISSION_MODULE_ORDER.indexOf(right);
+    return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
+  });
+  return codes.map((code) => {
+    const pages = [...(modules.get(code)?.entries() || [])].map(([name, pageItems]) => ({
+      name,
+      items: pageItems,
+    }));
+    return {
+      code,
+      name: getPermissionModuleName(code),
+      pages,
+      count: pages.reduce((total, page) => total + page.items.length, 0),
+    };
+  });
+}
+
+function filterPermissions<
+  T extends { name?: string; code: string; type_name?: string; owner_page_name?: string },
+>(items: T[], keyword: string) {
+  const text = keyword.trim().toLowerCase();
+  if (!text) return items;
+  return items.filter((item) =>
+    `${item.name || ''} ${item.code} ${item.type_name || ''} ${item.owner_page_name || ''}`
+      .toLowerCase()
+      .includes(text),
+  );
+}
+
+function selectedPermissionCount(group: PermissionModuleGroup<{ code: string }>, codes: string[]) {
+  const selected = new Set(codes);
+  return group.pages.reduce(
+    (total, page) => total + page.items.filter((item) => selected.has(item.code)).length,
+    0,
+  );
+}
+
+const permissionModuleGroups = computed(() =>
+  groupPermissionsByModule(filterPermissions(permissionsForTable.value, permissionCatalogKeyword.value)),
+);
+
+const bundlePermissionGroups = computed(() =>
+  groupPermissionsByModule(filterPermissions(permissionsForTable.value, bundlePermissionKeyword.value)),
+);
 
 const groupedPermissionBundles = computed(() => {
   const groups = new Map<string, SystemPermissionBundle[]>();
@@ -344,15 +413,11 @@ const overridePermissionRows = computed(() => {
   }));
 });
 
-const groupedOverridePermissions = computed(() => {
-  const groups = new Map<string, typeof overridePermissionRows.value>();
-  for (const permission of overridePermissionRows.value) {
-    const list = groups.get(permission.owner_page_name) || [];
-    list.push(permission);
-    groups.set(permission.owner_page_name, list);
-  }
-  return [...groups.entries()].map(([name, items]) => ({ name, items }));
-});
+const overridePermissionGroups = computed(() =>
+  groupPermissionsByModule(
+    filterPermissions(overridePermissionRows.value, overridePermissionKeyword.value),
+  ),
+);
 
 function formatRoleNames(roleIds?: number[]) {
   return (roleIds || [])
@@ -640,8 +705,33 @@ function resetRoleForm(role?: SystemRole) {
 
 function openBundleDialog(bundle?: SystemPermissionBundle) {
   resetBundleForm(bundle);
+  bundlePermissionKeyword.value = '';
+  const selected = new Set(bundleForm.permission_codes);
+  const opened = groupPermissionsByModule(permissionsForTable.value)
+    .filter(
+      (group) =>
+        group.code === bundleForm.module ||
+        group.pages.some((page) => page.items.some((item) => selected.has(item.code))),
+    )
+    .map((group) => group.code);
+  bundlePermissionOpen.value = opened.length ? opened : [bundleForm.module];
   bundleDialogVisible.value = true;
 }
+
+watch(bundlePermissionKeyword, (value) => {
+  if (!value.trim()) return;
+  bundlePermissionOpen.value = bundlePermissionGroups.value.map((group) => group.code);
+});
+
+watch(permissionCatalogKeyword, (value) => {
+  if (!value.trim()) return;
+  permissionCatalogOpen.value = permissionModuleGroups.value.map((group) => group.code);
+});
+
+watch(overridePermissionKeyword, (value) => {
+  if (!value.trim()) return;
+  overridePermissionOpen.value = overridePermissionGroups.value.map((group) => group.code);
+});
 
 const dataRequest = createLatestRequest();
 const logRequest = createLatestRequest();
@@ -994,6 +1084,8 @@ async function openOverrideDialog(user: SystemUser) {
   overrideForm.allow_codes = [];
   overrideForm.deny_codes = [];
   overrideForm.reason = '';
+  overridePermissionKeyword.value = '';
+  overridePermissionOpen.value = [];
   overrideDialogVisible.value = true;
   overrideLoading.value = true;
   try {
@@ -1006,6 +1098,12 @@ async function openOverrideDialog(user: SystemUser) {
       .filter((item) => item.effect === 'deny')
       .map((item) => item.permission_code);
     overrideForm.reason = result.overrides[0]?.reason || '';
+    const marked = new Set([...overrideForm.allow_codes, ...overrideForm.deny_codes]);
+    overridePermissionOpen.value = groupPermissionsByModule(overridePermissionRows.value)
+      .filter((group) =>
+        group.pages.some((page) => page.items.some((item) => marked.has(item.code))),
+      )
+      .map((group) => group.code);
   } catch (error: unknown) {
     userOverrideData.value = null;
     overrideForm.allow_codes = [];
@@ -1470,27 +1568,44 @@ onMounted(loadData);
           <el-alert
             class="section-gap"
             show-icon
-            title="权限点按页面或业务归属展示。权限码在各模块代码里登记，页面只读。"
+            title="权限点按模块收起，展开后按页面列出。权限码在各模块代码里登记，页面只读。"
             type="info"
           />
-          <el-empty v-if="!groupedPermissions.length" description="暂无权限点" />
-          <div
-            v-for="group in groupedPermissions"
-            v-else
-            :key="group.name"
-            class="permission-table-group"
-          >
-            <div class="permission-table-title">{{ group.name }}</div>
-            <el-table v-loading="loading" :data="group.items" border stripe>
-              <el-table-column prop="name" label="功能" min-width="150" />
-              <el-table-column prop="type_name" label="类型" width="120" />
-              <el-table-column prop="action_name" label="动作" width="120" />
-              <el-table-column prop="code" label="权限码" min-width="220" />
-              <el-table-column prop="route_path_text" label="路由" min-width="150" />
-              <el-table-column prop="ui_key_text" label="UI 标识" min-width="180" />
-              <el-table-column prop="status" label="状态" width="90" />
-            </el-table>
-          </div>
+          <el-input
+            v-model="permissionCatalogKeyword"
+            class="permission-search"
+            clearable
+            placeholder="搜索权限名称或权限码"
+          />
+          <el-empty v-if="!permissionModuleGroups.length" description="没有匹配的权限点" />
+          <el-collapse v-else v-model="permissionCatalogOpen" class="permission-collapse">
+            <el-collapse-item
+              v-for="group in permissionModuleGroups"
+              :key="group.code"
+              :name="group.code"
+            >
+              <template #title>
+                <span class="permission-module-title">{{ group.name }}</span>
+                <span class="permission-module-count">{{ group.count }}</span>
+              </template>
+              <div
+                v-for="page in group.pages"
+                :key="page.name"
+                class="permission-table-group"
+              >
+                <div class="permission-table-title">{{ page.name }}</div>
+                <el-table v-loading="loading" :data="page.items" border stripe>
+                  <el-table-column prop="name" label="功能" min-width="150" />
+                  <el-table-column prop="type_name" label="类型" width="120" />
+                  <el-table-column prop="action_name" label="动作" width="120" />
+                  <el-table-column prop="code" label="权限码" min-width="220" />
+                  <el-table-column prop="route_path_text" label="路由" min-width="150" />
+                  <el-table-column prop="ui_key_text" label="UI 标识" min-width="180" />
+                  <el-table-column prop="status" label="状态" width="90" />
+                </el-table>
+              </div>
+            </el-collapse-item>
+          </el-collapse>
         </el-tab-pane>
 
         <el-tab-pane v-if="canViewLogs" label="操作日志" name="logs">
@@ -2050,7 +2165,7 @@ onMounted(loadData);
       </template>
     </el-dialog>
 
-    <el-dialog v-model="bundleDialogVisible" title="权限包" width="920px">
+    <el-dialog v-model="bundleDialogVisible" title="权限包" width="980px">
       <el-form :model="bundleForm" label-width="110px">
         <div class="dialog-section">
           <div class="dialog-section-title">权限包信息</div>
@@ -2102,24 +2217,39 @@ onMounted(loadData);
           <div class="dialog-section-title">包含权限点</div>
           <el-form-item label="权限点">
             <div class="permission-groups">
-              <el-empty v-if="!groupedPermissions.length" description="暂无权限点" />
-              <div
-                v-for="group in groupedPermissions"
-                v-else
-                :key="group.name"
-                class="permission-group"
-              >
-                <div class="permission-group-title">{{ group.name }}</div>
-                <el-checkbox-group v-model="bundleForm.permission_codes">
-                  <el-checkbox
-                    v-for="permission in group.items"
-                    :key="permission.code"
-                    :label="permission.code"
-                  >
-                    {{ permission.name }}（{{ permission.type_name }}）
-                  </el-checkbox>
-                </el-checkbox-group>
-              </div>
+              <el-input
+                v-model="bundlePermissionKeyword"
+                class="permission-search"
+                clearable
+                placeholder="搜索权限名称或权限码"
+              />
+              <el-empty v-if="!bundlePermissionGroups.length" description="没有匹配的权限点" />
+              <el-collapse v-else v-model="bundlePermissionOpen" class="permission-collapse">
+                <el-collapse-item
+                  v-for="group in bundlePermissionGroups"
+                  :key="group.code"
+                  :name="group.code"
+                >
+                  <template #title>
+                    <span class="permission-module-title">{{ group.name }}</span>
+                    <span class="permission-module-count">
+                      已选 {{ selectedPermissionCount(group, bundleForm.permission_codes) }}/{{ group.count }}
+                    </span>
+                  </template>
+                  <div v-for="page in group.pages" :key="page.name" class="permission-group">
+                    <div class="permission-group-title">{{ page.name }}</div>
+                    <el-checkbox-group v-model="bundleForm.permission_codes" class="permission-check-grid">
+                      <el-checkbox
+                        v-for="permission in page.items"
+                        :key="permission.code"
+                        :label="permission.code"
+                      >
+                        {{ permission.name }}（{{ permission.type_name }}）
+                      </el-checkbox>
+                    </el-checkbox-group>
+                  </div>
+                </el-collapse-item>
+              </el-collapse>
             </div>
           </el-form-item>
         </div>
@@ -2159,50 +2289,67 @@ onMounted(loadData);
         </el-form-item>
       </el-form>
       <div v-loading="overrideLoading" class="override-permission-groups">
-        <el-empty v-if="!groupedOverridePermissions.length" description="暂无权限点" />
-        <div
-          v-for="group in groupedOverridePermissions"
-          v-else
-          :key="group.name"
-          class="permission-table-group"
-        >
-          <div class="permission-table-title">{{ group.name }}</div>
-          <el-table :data="group.items" border stripe>
-            <el-table-column prop="name" label="权限" min-width="150" />
-            <el-table-column prop="type_name" label="类型" width="110" />
-            <el-table-column prop="code" label="权限码" min-width="220" />
-            <el-table-column label="角色带来" width="90">
-              <template #default="{ row }">
-                <el-tag :type="row.from_role ? 'success' : 'info'">
-                  {{ row.from_role ? '是' : '否' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="额外允许" width="100">
-              <template #default="{ row }">
-                <el-checkbox
-                  :model-value="row.is_allowed"
-                  @change="(checked) => toggleOverridePermission(row.code, 'allow', Boolean(checked))"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column label="明确拒绝" width="100">
-              <template #default="{ row }">
-                <el-checkbox
-                  :model-value="row.is_denied"
-                  @change="(checked) => toggleOverridePermission(row.code, 'deny', Boolean(checked))"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column label="最终有效" width="90">
-              <template #default="{ row }">
-                <el-tag :type="row.is_effective ? 'success' : 'info'">
-                  {{ row.is_effective ? '是' : '否' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
+        <el-input
+          v-model="overridePermissionKeyword"
+          class="permission-search"
+          clearable
+          placeholder="搜索权限名称或权限码"
+        />
+        <el-empty v-if="!overridePermissionGroups.length" description="没有匹配的权限点" />
+        <el-collapse v-else v-model="overridePermissionOpen" class="permission-collapse">
+          <el-collapse-item
+            v-for="group in overridePermissionGroups"
+            :key="group.code"
+            :name="group.code"
+          >
+            <template #title>
+              <span class="permission-module-title">{{ group.name }}</span>
+              <span class="permission-module-count">{{ group.count }}</span>
+            </template>
+            <div
+              v-for="page in group.pages"
+              :key="page.name"
+              class="permission-table-group"
+            >
+              <div class="permission-table-title">{{ page.name }}</div>
+              <el-table :data="page.items" border stripe>
+                <el-table-column prop="name" label="权限" min-width="150" />
+                <el-table-column prop="type_name" label="类型" width="110" />
+                <el-table-column prop="code" label="权限码" min-width="220" />
+                <el-table-column label="角色带来" width="90">
+                  <template #default="{ row }">
+                    <el-tag :type="row.from_role ? 'success' : 'info'">
+                      {{ row.from_role ? '是' : '否' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="额外允许" width="100">
+                  <template #default="{ row }">
+                    <el-checkbox
+                      :model-value="row.is_allowed"
+                      @change="(checked) => toggleOverridePermission(row.code, 'allow', Boolean(checked))"
+                    />
+                  </template>
+                </el-table-column>
+                <el-table-column label="明确拒绝" width="100">
+                  <template #default="{ row }">
+                    <el-checkbox
+                      :model-value="row.is_denied"
+                      @change="(checked) => toggleOverridePermission(row.code, 'deny', Boolean(checked))"
+                    />
+                  </template>
+                </el-table-column>
+                <el-table-column label="最终有效" width="90">
+                  <template #default="{ row }">
+                    <el-tag :type="row.is_effective ? 'success' : 'info'">
+                      {{ row.is_effective ? '是' : '否' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
       </div>
       <template #footer>
         <el-button @click="overrideDialogVisible = false">取消</el-button>
@@ -2477,16 +2624,23 @@ onMounted(loadData);
 }
 
 .override-permission-groups {
+  display: flex;
+  flex-direction: column;
   max-height: 520px;
+}
+
+.override-permission-groups .permission-collapse,
+.permission-groups .permission-collapse {
+  min-height: 0;
   padding-right: 6px;
   overflow: auto;
 }
 
 .permission-groups {
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  max-height: 420px;
-  padding-right: 6px;
-  overflow: auto;
+  max-height: 460px;
 }
 
 .permission-group {
@@ -2503,10 +2657,54 @@ onMounted(loadData);
   font-weight: 700;
 }
 
+.permission-search {
+  margin-bottom: 10px;
+}
+
+.permission-collapse {
+  border-top: none;
+  border-bottom: none;
+}
+
+.permission-collapse :deep(.el-collapse-item__header),
+.permission-collapse :deep(.el-collapse-item__wrap) {
+  border-bottom-color: var(--el-border-color-extra-light);
+}
+
+.permission-collapse :deep(.el-collapse-item__header) {
+  height: 40px;
+  background: transparent;
+}
+
+.permission-module-title {
+  color: #334155;
+  font-weight: 700;
+}
+
+.permission-module-count {
+  margin-left: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.permission-check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+}
+
 .permission-group :deep(.el-checkbox) {
-  min-width: 260px;
-  margin-right: 18px;
-  margin-bottom: 8px;
+  min-width: 0;
+  height: auto;
+  margin-right: 0;
+  white-space: normal;
+  align-items: flex-start;
+}
+
+.permission-group :deep(.el-checkbox__label) {
+  line-height: 1.4;
+  white-space: normal;
 }
 
 .pagination-line {
@@ -2537,7 +2735,8 @@ html.dark .bundle-card-main p {
 html.dark .dialog-section-title,
 html.dark .bundle-group-title,
 html.dark .permission-table-title,
-html.dark .permission-group-title {
+html.dark .permission-group-title,
+html.dark .permission-module-title {
   color: var(--el-text-color-primary);
 }
 

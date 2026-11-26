@@ -184,7 +184,7 @@ export const HANDOFF_METHOD_ROWS = [
     ],
   },
 ]
-/** scope 是后端按建库类型权限给出的可见类型（build_type_scope），null 表示不限；超出范围的类型看不到也建不了。 */
+/** scope 是后端按建库类型权限给出的可见类型（build_type_scope），null 表示不限，空数组表示一张工单都看不到。 */
 export function inBuildTypeScope(scope, buildType) {
   return !scope || scope.includes(buildType)
 }

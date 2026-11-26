@@ -10,8 +10,8 @@
       title="既往筛选"
       width="520px"
       append-to-body
-      @open="loadThumbs"
-      @closed="clearThumbs"
+      @open="onOpen"
+      @closed="onClosed"
     >
       <el-input
         v-model="draft"
@@ -22,6 +22,7 @@
         :disabled="!canEdit"
         @change="commitText"
       />
+      <p v-if="canEdit" class="prior-hint">截图或复制图片后，在这里直接 Ctrl+V</p>
       <div class="prior-images">
         <div v-for="item in images" :key="item.file" class="prior-thumb">
           <img v-if="thumbs[item.file]" :src="thumbs[item.file]" :alt="item.name" />
@@ -29,7 +30,7 @@
         </div>
         <label v-if="canEdit" class="prior-add">
           加图片
-          <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp" hidden @change="upload" />
+          <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp" multiple hidden @change="upload" />
         </label>
       </div>
     </el-dialog>
@@ -37,13 +38,14 @@
 </template>
 
 <script>
-import { ElDialog, ElInput } from 'element-plus'
+import { ElDialog, ElInput, ElMessage } from 'element-plus'
 
 import { notifyApiError } from '#/api/errors'
 import {
   removeDiscoveryPriorImage,
   uploadDiscoveryPriorImage,
 } from '#/api/discoveryWorkbench'
+import { clipboardHasImage, clipboardImageFiles } from '#/utils/clipboardImages'
 import { fetchFileBlob } from '#/utils/file-resource'
 
 export default {
@@ -59,6 +61,7 @@ export default {
       open: false,
       draft: '',
       thumbs: {},
+      uploadChain: Promise.resolve(),
     }
   },
   computed: {
@@ -76,9 +79,35 @@ export default {
     },
   },
   beforeUnmount() {
+    this.unbindPaste()
     this.clearThumbs()
   },
   methods: {
+    onOpen() {
+      window.addEventListener('paste', this.onWindowPaste, true)
+      this.loadThumbs()
+    },
+    onClosed() {
+      this.unbindPaste()
+      this.clearThumbs()
+    },
+    unbindPaste() {
+      window.removeEventListener('paste', this.onWindowPaste, true)
+    },
+    onWindowPaste(event) {
+      if (!this.open || !this.canEdit) return
+      const files = clipboardImageFiles(event.clipboardData, '既往筛选')
+      if (!files.length) {
+        if (clipboardHasImage(event.clipboardData)) {
+          event.preventDefault()
+          ElMessage.warning('这种图片格式不支持，请用 PNG 或 JPG')
+        }
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      this.uploadFiles(files)
+    },
     commitText() {
       if (!this.canEdit || !this.row) return
       const next = String(this.draft || '')
@@ -106,9 +135,19 @@ export default {
       this.thumbs = {}
     },
     async upload(event) {
-      const file = event.target.files?.[0]
+      const files = [...(event.target.files || [])]
       event.target.value = ''
-      if (!file || !this.canEdit || !this.row?.id) return
+      if (files.length) await this.uploadFiles(files)
+    },
+    uploadFiles(files) {
+      this.uploadChain = files.reduce(
+        (chain, file) => chain.then(() => this.uploadFile(file)),
+        this.uploadChain,
+      )
+      return this.uploadChain
+    },
+    async uploadFile(file) {
+      if (!this.canEdit || !this.row?.id || !this.open) return
       const body = new FormData()
       body.append('workbench_id', String(this.row.id))
       body.append('file', file)
@@ -163,11 +202,16 @@ export default {
   color: var(--el-text-color-secondary);
   font-size: 12px;
 }
+.prior-hint {
+  margin: 8px 0 0;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
 .prior-images {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 .prior-thumb {
   position: relative;

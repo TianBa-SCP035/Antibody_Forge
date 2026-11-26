@@ -15,7 +15,11 @@ from core.config import get_settings
 from models.discovery import DiscoverySynthesisOrder
 from models.supernatant import SynthesisSupernatantWell
 from modules.auth.external import CALLBACK_TOKEN_HEADER
-from modules.discovery.synthesis_progress.constants import STATUS_CANCELLED, STATUS_COMPLETED, SUPPLY_MODE_ARRIVAL
+from modules.discovery.synthesis_progress.constants import (
+    STATUS_CANCELLED,
+    STATUS_COMPLETED,
+    TRANSFECTION_ORDER_PREFIX,
+)
 from modules.supernatant_receive.service import SupernatantReceiveError, receive
 from utils.clock import now_local, today_local
 
@@ -117,9 +121,9 @@ def pull_pending(db: Session) -> dict[str, Any]:
     rows = db.execute(
         select(DiscoverySynthesisOrder.synthetic_corp, func.upper(func.trim(DiscoverySynthesisOrder.order_no)))
         .where(
-            DiscoverySynthesisOrder.supply_mode == SUPPLY_MODE_ARRIVAL,
             DiscoverySynthesisOrder.status.not_in((STATUS_COMPLETED, STATUS_CANCELLED)),
             func.trim(func.coalesce(DiscoverySynthesisOrder.order_no, "")) != "",
+            ~func.upper(func.trim(DiscoverySynthesisOrder.order_no)).like(f"{TRANSFECTION_ORDER_PREFIX}%"),
             DiscoverySynthesisOrder.synthetic_corp.in_(list(urls)),
             (DiscoverySynthesisOrder.synthetic_date.is_(None)) | (DiscoverySynthesisOrder.synthetic_date <= due),
             ~received,

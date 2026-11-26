@@ -1482,7 +1482,7 @@ export default {
     },
     showPlateLayout(row) {
       if (!row?.id || !String(row.order_no || '').trim()) return false
-      return row.supply_mode === '合成到货' || Number(row.supernatant?.wells) > 0
+      return !isTransfectionOrderNo(row.order_no) || Number(row.supernatant?.wells) > 0
     },
     plateLayoutTitle(row) {
       const wells = Number(row?.supernatant?.wells) || 0

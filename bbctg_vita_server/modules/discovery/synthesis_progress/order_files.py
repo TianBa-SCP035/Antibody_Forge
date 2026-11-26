@@ -10,7 +10,7 @@ from models.discovery import DiscoverySynthesisOrder
 from models.molecular_cell import MolecularTransfectionOrder
 from models.supernatant import SynthesisSupernatantWell
 from modules.discovery.synthesis_progress import service
-from modules.discovery.synthesis_progress.constants import SUPPLY_MODE_ARRIVAL
+from modules.discovery.synthesis_progress.constants import TRANSFECTION_ORDER_PREFIX
 from modules.molecular_cell.transfection.proteins import order_proteins
 
 MISSING_ROW = "合成与验证记录不存在"
@@ -226,8 +226,8 @@ def query_plate_layout(db: Session, row_id: int) -> dict:
     order_no = str(row.order_no or "").strip()
     if not order_no:
         raise ValueError("请先填写订单号")
-    if row.supply_mode != SUPPLY_MODE_ARRIVAL:
-        result = {"state": query.UNSUPPORTED, "message": "只有合成到货的工单才有合成公司的上清板布局"}
+    if order_no.upper().startswith(TRANSFECTION_ORDER_PREFIX):
+        result = {"state": query.UNSUPPORTED, "message": "转染交接单没有合成公司的上清板布局"}
     else:
         result = query.pull_order(db, row.synthetic_corp, order_no)
         db.refresh(row)

@@ -224,14 +224,14 @@
 | `GET` | `/api/discovery/synthesis-progress/transfection_pairs?id=` | `discovery.page.synthesis_progress` | 订单号为 `TRF-` 转染工单号时，返回该单蛋白的重链、轻链配对；否则 `items` 为空 |
 | `GET` | `/api/discovery/synthesis-progress/plate_layout?id=` | `discovery.page.synthesis_progress` | 按订单号下载合成公司上清板布局 Excel；还没收到返回 404「还没收到合成公司的上清板布局」，全部未合成返回 404「合成公司回复这单的样品都没合成出来，没有上板」 |
 | `GET` | `/api/discovery/synthesis-progress/plate_layout/preview?id=` | `discovery.page.synthesis_progress` | 版布局预览：`plates`（每块板的 `plate_no` 与孔位明细 `wells`）、`missing`（未合成样品名）、`supernatant_checked_at`；没收到或全部未合成时 `plates` 为空，`message` 说明原因，不报错 |
-| `POST` | `/api/discovery/synthesis-progress/plate_layout/query?id=` | `discovery.page.synthesis_progress` | 仅 `合成到货` 工单：按订单号向合成公司查询上清板布局，查到按 [上清板布局接收](./supernatant-receive-api.md) 入库；返回 `status`（`found` / `missing` 未发货 / `failed` / `unsupported` 没有查询接口）、`message`、`wells`、`not_synthesized` 与刷新后的 `row` |
+| `POST` | `/api/discovery/synthesis-progress/plate_layout/query?id=` | `discovery.page.synthesis_progress` | 订单号不是 `TRF-` 转染工单号时，按订单号向合成公司查询上清板布局（改造、内部转染只要是外部送合的订单号也查），查到按 [上清板布局接收](./supernatant-receive-api.md) 入库；返回 `status`（`found` / `missing` 未发货 / `failed` / `unsupported` 没有查询接口或是转染交接单）、`message`、`wells`、`not_synthesized` 与刷新后的 `row` |
 
 行操作在「删除 / 取消」前提供「配对」（仅转染交接单）。配对弹窗列出蛋白、重链、轻链，并可跳到转染表。
 
-抽屉里的「版布局」按钮在 `合成到货` 且有订单号、或已收到孔位时显示，点击打开预览弹窗：
+抽屉里的「版布局」按钮在有合成公司订单号（不是 `TRF-` 转染工单号）、或已收到孔位时显示。改造单、内部转染单只要订单号是外部送合的，和合成到货一样能预览、刷新和下载。点击打开预览弹窗：
 - 顶部一行写订单号、靶点、已收孔数、未合成个数和上次向合成公司查询的时间。
 - 「布局」页每块板一个 8×12 网格，格子写蛋白名称，悬停显示孔号、浓度、体积和接收时间，未合成的样品列在网格下方；「孔位明细」页列出全部孔位。
-- 底部「刷新」（仅 `合成到货` 工单）当场向合成公司查询（最长约 90 秒），有更新就入库并刷新弹窗与抽屉；「下载 Excel」在有孔位时可用。
+- 底部「刷新」（订单号不是 `TRF-`）当场向合成公司查询（最长约 90 秒），有更新就入库并刷新弹窗与抽屉；「下载 Excel」在有孔位时可用。发货日期和发货个数仍只写到 `合成到货` 工单，内部转染、改亚型不因这次查询改阶段。
 - 打开时一个孔位都没收到，会自动向合成公司查一次。没查到按结果分别提示「应是还没发货」「这家合成公司还没有查询接口」「查询接口超时 / 连不上」等，不统一报下载失败。
 
 下载的 Excel 参照合成公司孔板上清 COA：第一页「订单号布局表」首行为订单号与靶点，每块板一个「板号」行加 8×12 网格（表头黄色底），未合成的样品列在最后；第二页「孔位明细」列出板号、孔号、蛋白名称、浓度、规格、体积、质粒量。质控信息和图片不生成；不写合成公司名。
@@ -245,5 +245,5 @@
 上清补查：
 - **任务代码**：`job.discovery_supernatant_pull`（名称：「合成公司上清补查」，实现：`jobs/supernatant_pull.py`、`modules/supernatant_receive/query.py`）。
 - **默认周期**：每隔 2 小时（起始 `00:50`）。
-- **执行逻辑**：挑出 `合成到货`、未完成未取消、有订单号、合成公司配了查询接口（`SUPERNATANT_QUERY_URLS`）、合成日期为空或已过 7 天、且一个上清孔位都没收到的工单，按上次补查时间（没查过的优先）、合成日期排序，每次最多查 40 个订单号。查到的布局按推送同样入库，但已有发货日期的工单不改日期（补查拿不到实际发货日）；没有布局的说明合成公司还没发货。每单查完都写 `supernatant_checked_at`。运行摘要为「补查 N 单：查到 x，未发货 y，失败 z」。未配查询地址或 `SUPERNATANT_RECEIVE_TOKEN` 时记为 skipped。
+- **执行逻辑**：挑出未完成未取消、有合成公司订单号（`TRF-` 转染工单号除外，改造和内部转染的外部送合订单号同样补查）、合成公司配了查询接口（`SUPERNATANT_QUERY_URLS`）、合成日期为空或已过 7 天、且一个上清孔位都没收到的工单，按上次补查时间（没查过的优先）、合成日期排序，每次最多查 40 个订单号。查到的布局按推送同样入库，但已有发货日期的工单不改日期（补查拿不到实际发货日），发货日期和发货个数仍只写到 `合成到货`；没有布局的说明合成公司还没发货。每单查完都写 `supernatant_checked_at`。运行摘要为「补查 N 单：查到 x，未发货 y，失败 z」。未配查询地址或 `SUPERNATANT_RECEIVE_TOKEN` 时记为 skipped。
 - 「未发货」与「未合成」的区分：查询没有布局为未发货；有布局但孔号为「未合成」的样品是合成失败，单独计数，不计入发货个数。

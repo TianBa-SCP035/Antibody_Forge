@@ -5,16 +5,17 @@
     width="720px"
     append-to-body
     @update:model-value="$emit('update:modelValue', $event)"
-    @open="load"
-    @closed="reset"
+    @open="onOpen"
+    @closed="onClosed"
   >
     <div v-loading="loading" class="check-body">
+      <p v-if="canEdit" class="check-hint">截图后直接 Ctrl+V，粘到高亮的这一项；点另一项再粘就是那一项</p>
       <div
         v-for="item in items"
         :key="item.assay"
         class="check-section"
-        tabindex="0"
-        @paste="onPaste($event, item.assay)"
+        :class="{ 'is-paste-target': canEdit && item.assay === pasteAssay }"
+        @mousedown="pasteAssay = item.assay"
       >
         <div class="check-head">
           <span class="check-assay">{{ item.assay }}</span>
@@ -58,8 +59,7 @@
           </div>
           <label v-if="canEdit" class="check-add">
             <span>加图片</span>
-            <small>或点此区域后粘贴</small>
-            <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp" hidden @change="onPick($event, item.assay)" />
+            <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp" multiple hidden @change="onPick($event, item.assay)" />
           </label>
           <span v-if="!canEdit && !item.images.length" class="check-empty">暂无图片</span>
         </div>
@@ -78,9 +78,8 @@ import {
   saveAntigenCheck,
   uploadAntigenCheckImage,
 } from '#/api/serumWorkbench'
+import { clipboardHasImage, clipboardImageFiles } from '#/utils/clipboardImages'
 import { fetchFileBlob } from '#/utils/file-resource'
-
-const IMAGE_SUFFIX = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp' }
 
 export default {
   name: 'AntigenCheckDialog',
@@ -97,6 +96,8 @@ export default {
       items: [],
       thumbs: {},
       saving: {},
+      pasteAssay: '',
+      uploadChain: Promise.resolve(),
     }
   },
   computed: {
@@ -106,9 +107,35 @@ export default {
     },
   },
   beforeUnmount() {
+    this.unbindPaste()
     this.clearThumbs()
   },
   methods: {
+    onOpen() {
+      window.addEventListener('paste', this.onWindowPaste, true)
+      this.load()
+    },
+    onClosed() {
+      this.unbindPaste()
+      this.reset()
+    },
+    unbindPaste() {
+      window.removeEventListener('paste', this.onWindowPaste, true)
+    },
+    onWindowPaste(event) {
+      if (!this.modelValue || !this.canEdit || !this.pasteAssay) return
+      const files = clipboardImageFiles(event.clipboardData, `${this.pasteAssay}-粘贴`)
+      if (!files.length) {
+        if (clipboardHasImage(event.clipboardData)) {
+          event.preventDefault()
+          ElMessage.warning('这种图片格式不支持，请用 PNG 或 JPG')
+        }
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      this.uploadFiles(this.pasteAssay, files)
+    },
     async load() {
       const id = this.antigen?.id
       if (!id) return
@@ -123,6 +150,7 @@ export default {
     },
     apply(data, { notify = false } = {}) {
       this.items = Array.isArray(data?.items) ? data.items : []
+      if (!this.items.some((item) => item.assay === this.pasteAssay)) this.pasteAssay = this.items[0]?.assay || ''
       this.loadThumbs()
       if (notify) this.$emit('changed', { antigen_row_id: this.antigen?.id, ...data?.summary })
     },
@@ -150,6 +178,7 @@ export default {
     reset() {
       this.clearThumbs()
       this.items = []
+      this.pasteAssay = ''
     },
     previewList(item) {
       return item.images.map((image) => this.thumbs[image.file]).filter(Boolean)
@@ -169,29 +198,20 @@ export default {
       }
     },
     onPick(event, assay) {
-      const file = event.target.files?.[0]
+      const files = [...(event.target.files || [])]
       event.target.value = ''
-      if (file) this.upload(assay, file)
+      this.pasteAssay = assay
+      if (files.length) this.uploadFiles(assay, files)
     },
-    onPaste(event, assay) {
-      if (!this.canEdit) return
-      const file = [...(event.clipboardData?.items || [])]
-        .find((entry) => entry.kind === 'file' && entry.type.startsWith('image/'))
-        ?.getAsFile()
-      if (!file) return
-      event.preventDefault()
-      const suffix = IMAGE_SUFFIX[file.type]
-      if (!suffix) {
-        ElMessage.warning('这种图片格式不支持，请用 PNG 或 JPG')
-        return
-      }
-      const named = /\.[a-z]+$/i.test(file.name) && file.name !== 'image.png'
-        ? file
-        : new File([file], `${assay}-粘贴.${suffix}`, { type: file.type })
-      this.upload(assay, named)
+    uploadFiles(assay, files) {
+      this.uploadChain = files.reduce(
+        (chain, file) => chain.then(() => this.upload(assay, file)),
+        this.uploadChain,
+      )
+      return this.uploadChain
     },
     async upload(assay, file) {
-      if (!this.canEdit || !this.antigen?.id) return
+      if (!this.canEdit || !this.antigen?.id || !this.modelValue) return
       const body = new FormData()
       body.append('antigen_row_id', String(this.antigen.id))
       body.append('assay', assay)
@@ -227,9 +247,13 @@ export default {
   border-radius: 4px;
   outline: none;
 }
-.check-section:focus-within,
-.check-section:focus {
+.check-section.is-paste-target {
   border-color: var(--el-color-primary-light-5);
+}
+.check-hint {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 .check-head {
   display: flex;
@@ -296,10 +320,6 @@ export default {
   color: var(--el-text-color-secondary);
   font-size: 12px;
   cursor: pointer;
-}
-.check-add small {
-  font-size: 11px;
-  color: var(--el-text-color-placeholder);
 }
 .check-empty {
   color: var(--el-text-color-placeholder);

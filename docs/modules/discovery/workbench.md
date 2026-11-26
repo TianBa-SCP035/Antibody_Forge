@@ -28,7 +28,7 @@
 | `mouse_count` | 小鼠只数 | 可空非负整数，`0` 合法 |
 | `mouse_nos` / `serum_titer` | 鼠号 / 血清效价 | 保留换行 |
 | `screening_methods` | 筛选方式 | `达普`、`噬菌体`、`Beacon`、`NGS` 多选，英文逗号存储 |
-| `prior_screening` | 既往筛选 | 文字最长 2000 字，可另传最多 12 张图片（png、jpg、gif、webp、bmp）。图片不进文本保存，走 `/prior_screening/upload`、`/remove`、`/file` |
+| `prior_screening` | 既往筛选 | 文字最长 2000 字，可另传最多 12 张图片（png、jpg、gif、webp、bmp）。弹窗打开后直接 Ctrl+V 粘贴截图或复制的图片，一次可粘多张；文字粘贴仍进文字框。图片不进文本保存，走 `/prior_screening/upload`、`/remove`、`/file` |
 | `harvest_date` | 剖鼠日期 | `YYYY-MM-DD`；文库交接时作为上机日期。早于今天的日期不能再改；今天和之后的日期可以改，方便换项目后重调 |
 | `boost_date` | 冲击日期 | 修改剖鼠日期时自动设为剖鼠日期前 5 天；之后可单独修改 |
 | `positive_cell_count` | 阳性细胞数 | 保留换行，最长 255 字符 |

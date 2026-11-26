@@ -42,7 +42,7 @@ class OrderFileTests(DbTestCase):
             synthesis_order_id=fields.pop("synthesis_order_id", "SYN-261123-ABC123"),
             status="合成中",
             priority="正常",
-            order_kind="常规合成",
+            order_kind=fields.pop("order_kind", "常规合成"),
             supply_mode=fields.pop("supply_mode", "合成到货"),
             **fields,
         )
@@ -126,3 +126,25 @@ class OrderFileTests(DbTestCase):
         self.assertNotIn("corp_name", preview["plates"][0]["wells"][0])
         blank = order_files.plate_layout_preview(self.db, empty.id)
         self.assertEqual((blank["plates"], blank["message"]), ([], order_files.LAYOUT_MISSING))
+
+    def test_plate_layout_query_follows_company_order_no_not_supply_mode(self):
+        from modules.supernatant_receive import query
+
+        engineering = self._synthesis(
+            synthesis_order_id="SYN-261123-ENG0001",
+            order_kind="改造",
+            supply_mode="内部转染",
+            order_no="CN2611180000772",
+            synthetic_corp="君跻",
+        )
+        transfection = self._synthesis(
+            synthesis_order_id="SYN-261123-TRF0001",
+            supply_mode="内部转染",
+            order_no="TRF-261123-ABC123",
+        )
+        with patch("modules.supernatant_receive.query.pull_order", return_value={"state": query.MISSING, "message": "还没发货"}) as pulled:
+            result = order_files.query_plate_layout(self.db, engineering.id)
+        pulled.assert_called_once_with(self.db, "君跻", "CN2611180000772")
+        self.assertEqual(result["state"], query.MISSING)
+        blocked = order_files.query_plate_layout(self.db, transfection.id)
+        self.assertEqual(blocked["state"], query.UNSUPPORTED)

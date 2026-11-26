@@ -159,8 +159,8 @@ class SupernatantReceiveTest(DbTestCase):
             synthesis_order_id=fields.pop("synthesis_order_id", f"SYN-261124-{order_no[-6:]}"),
             status=fields.pop("status", "合成中"),
             priority="正常",
-            order_kind="常规合成",
-            supply_mode="合成到货",
+            order_kind=fields.pop("order_kind", "常规合成"),
+            supply_mode=fields.pop("supply_mode", "合成到货"),
             order_no=order_no,
             target_type=fields.pop("target_type", "分泌型"),
             **fields,
@@ -208,6 +208,19 @@ class SupernatantReceiveTest(DbTestCase):
         missing = self._order("BAO3", synthetic_corp="擎科", synthetic_date="2026-11-03")
         recent = self._order("BAO4", synthetic_corp="擎科", synthetic_date="2026-11-22")
         other = self._order("BAO5", synthetic_corp="君跻", synthetic_date="2026-11-01")
+        engineering = self._order(
+            "CN2611180000772",
+            order_kind="改造",
+            supply_mode="内部转染",
+            synthetic_corp="擎科",
+            synthetic_date="2026-11-01",
+        )
+        internal = self._order(
+            "TRF-261118-ABC123",
+            supply_mode="内部转染",
+            synthetic_corp="擎科",
+            synthetic_date="2026-11-01",
+        )
         self.client.post(URL, json=_payload(_well("P1", "A1", "S1"), order_no="BAO6"))
         received = self._order("BAO6", synthetic_corp="擎科", synthetic_date="2026-11-01")
         layouts = {
@@ -236,15 +249,18 @@ class SupernatantReceiveTest(DbTestCase):
                 patch("modules.supernatant_receive.service.now_local", return_value=now):
             result = query.pull_pending(self.db)
             self.assertEqual(query.pull_order(self.db, "君跻", "BAO5")["state"], query.UNSUPPORTED)
-        self.assertEqual(sorted(asked), ["BAO1", "BAO2", "BAO3"])
-        self.assertEqual((result["total"], result["found"], result["missing"], result["failed"]), (3, 2, 1, 0))
-        for row in (dated, fresh, missing, recent, other, received):
+        self.assertEqual(sorted(asked), ["BAO1", "BAO2", "BAO3", "CN2611180000772"])
+        self.assertEqual((result["total"], result["found"], result["missing"], result["failed"]), (4, 2, 2, 0))
+        for row in (dated, fresh, missing, recent, other, received, engineering, internal):
             self.db.refresh(row)
         self.assertEqual((dated.arrival_date, dated.arrival_count), ("2026-11-10", 2))
         self.assertEqual((fresh.arrival_date, fresh.arrival_count, fresh.status), ("2026-11-25", 1, "待检测"))
         self.assertEqual((missing.arrival_date, missing.supernatant_checked_at), (None, now))
         self.assertIsNone(recent.supernatant_checked_at)
         self.assertIsNone(other.supernatant_checked_at)
+        self.assertEqual(engineering.supernatant_checked_at, now)
+        self.assertIsNone(engineering.arrival_date)
+        self.assertIsNone(internal.supernatant_checked_at)
 
         summary = service_synthesis.serialize_order(dated)["supernatant"]
         self.assertEqual((summary["wells"], summary["not_synthesized"]), (2, 1))

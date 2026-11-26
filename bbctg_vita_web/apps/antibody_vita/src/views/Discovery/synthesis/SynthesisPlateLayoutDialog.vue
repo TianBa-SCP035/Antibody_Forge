@@ -100,6 +100,7 @@ import {
   querySynthesisPlateLayout,
 } from '#/api/discoverySynthesis'
 import { downloadListExcel } from '#/utils/downloadExcel'
+import { isTransfectionOrderNo } from './synthesisColumns'
 
 const ROWS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 const COLUMNS = Array.from({ length: 12 }, (_, index) => index + 1)
@@ -132,7 +133,7 @@ export default {
       return this.preview?.missing || []
     },
     canQuery() {
-      return this.row?.supply_mode === '合成到货'
+      return Boolean(String(this.row?.order_no || '').trim()) && !isTransfectionOrderNo(this.row?.order_no)
     },
     grids() {
       return this.plates.map((plate) => {

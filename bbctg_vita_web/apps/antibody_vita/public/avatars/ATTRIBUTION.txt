@@ -1,0 +1,19 @@
+站内头像来源：爱给网 aigei.com 动图库（含 5open.com 镜像），由使用方挑选。
+文件按网站原样下载（网站生成的方图或原图），未做裁剪或修改。
+原图地址：https://s1.aigei.com/src/img/gif/<前两位>/<hash>.gif（需网站签名 token）
+
+avatar-01.gif  hash=1e89f7235c394f2abecb1247d342bfa9
+avatar-02.gif  hash=5a22d5ffa64347368d87813c41cbd7b3
+avatar-03.gif  hash=6d61af1803f649ebad012128eee93242
+avatar-04.gif  hash=1644ae8483424bfc9c17c770c3d82301
+avatar-05.gif  hash=6fda9fd4ea1947f0b174735dd443a651
+avatar-06.gif  hash=e0649830171f4d5abcdb9208f83f9451
+avatar-07.gif  hash=4676cf9e173149e6a6575580c4c676ee
+avatar-08.gif  hash=fd77d07e67d54aa38c06784936a0c6f6
+avatar-09.gif  hash=77c19b65b69e4334b0f2eff0255ce486
+avatar-10.gif  hash=3aff0af01896479593d586d43101d9c0
+avatar-11.gif  hash=663744afcbc94350a29a34967e8d163c
+avatar-12.gif  hash=c313d7d2e7634d6d8d7ab7e643cb63bb
+avatar-13.gif  hash=4438d841d29c40d8b4c787a6bffa1565
+avatar-14.gif  hash=74f8cd8708554d0e9ab71c71b3b14994
+avatar-15.gif  hash=c36aec31acf842d0b136598e5b04c0a8

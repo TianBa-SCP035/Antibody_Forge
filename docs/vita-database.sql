@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
   position_title VARCHAR(128) NULL COMMENT '职位',
   gender VARCHAR(16) NULL COMMENT '性别',
   profile_signature VARCHAR(255) NULL COMMENT '个性名片语句',
+  avatar VARCHAR(500) NULL COMMENT '头像设置',
   employment_status VARCHAR(32) NOT NULL DEFAULT 'active' COMMENT '在职状态',
   email VARCHAR(128) NULL COMMENT '邮箱',
   mobile VARCHAR(32) NULL COMMENT '手机号',

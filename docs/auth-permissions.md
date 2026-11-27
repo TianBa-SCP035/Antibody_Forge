@@ -226,7 +226,7 @@ context.allows("a", "b")   # 判断
 context.require("a")       # 无权限则 HTTP 403
 ```
 
-同一请求里路由的 `require` 和函数体共用一次权限计算（`get_user_context` 是请求级依赖）。登录后上下文通过 `build_user_context` 生成，并在 `/api/user/info`、`/api/auth/codes` 下发给前端（`permissions` 与 `accessCodes` 内容相同）。
+同一请求里路由的 `require` 和函数体共用一次权限计算（`get_user_context` 是请求级依赖）。登录后上下文通过 `build_user_context` 生成，并在 `/api/user/info`、`/api/auth/codes` 下发给前端（`permissions` 与 `accessCodes` 内容相同）。`/api/user/info` 的 `avatar` 按 `sys_user.avatar` 解析：未设置时按用户 ID 和当天日期从站内 `/avatars/avatar-01.gif` 到 `avatar-15.gif` 随机一张，当天刷新不变；`text` 返回空串，前端显示姓名文字（不参与随机）；其余为用户选的站内动图、上传图片或外部链接。`avatarSetting` 是原始设置，`builtinAvatars` 是站内动图列表，个人中心点头像可更换。
 
 ## 4. 后端：接口鉴权与业务规则
 
@@ -243,7 +243,11 @@ JWT 由 `SECRET_KEY` 签名；所有业务路由默认需携带 `Authorization: 
 **无需权限点**的接口（仍需登录）：
 
 - `PUT /api/auth/user/profile` — 个性名片
+- `PUT /api/auth/user/avatar` — 本人头像设置（`avatar` 传空串、`text`、站内动图地址、本人上传地址或 http(s) 链接）
+- `POST /api/auth/user/avatar/upload` — 上传本人头像图片或动图（≤5MB），存 `uploads/avatars/`，换头像时删掉旧上传文件
 - `POST /api/auth/user/change_password` — 设置/修改本人密码（≥6 位，不需原密码）
+
+`GET /api/auth/avatar/{文件名}` 不需登录，供 `<img>` 直接加载上传的头像；文件名带用户 ID 和随机串。
 
 ### 4.2 血清：权限 + 项目负责人
 

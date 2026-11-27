@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import type { ProfileUserInfo } from '#/api';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
-import { preferences } from '@vben/preferences';
 import { useUserStore } from '@vben/stores';
 
 import {
   ElButton,
   ElCard,
+  ElDialog,
   ElInput,
   ElMessage,
   ElTag,
@@ -17,7 +17,9 @@ import {
 import {
   changePasswordApi,
   getUserInfoApi,
+  updateAvatarApi,
   updateProfileSignatureApi,
+  uploadAvatarApi,
 } from '#/api';
 import { notifyApiError } from '#/api/errors';
 import { skipGlobalErrorHandler } from '#/api/request';
@@ -33,16 +35,36 @@ const savingSignature = ref(false);
 const passwordForm = ref({ newPassword: '', confirmPassword: '' });
 const savingPassword = ref(false);
 
+const AVATAR_MAX_MB = 5;
+const avatarDialog = ref(false);
+const avatarBroken = ref(false);
+const savingAvatar = ref(false);
+const avatarLink = ref('');
+const avatarFileInput = ref<HTMLInputElement | null>(null);
+
 const avatarUrl = computed(() => {
-  const avatar = profile.value?.avatar || preferences.app.defaultAvatar;
+  const avatar = profile.value?.avatar || '';
   if (!avatar) return '';
   if (/^https?:\/\//i.test(avatar)) return avatar;
   return avatar.startsWith('/') ? avatar : `/${avatar}`;
 });
 
+const avatarSetting = computed(() => profile.value?.avatarSetting || '');
+const builtinAvatars = computed(() => profile.value?.builtinAvatars || []);
+const customAvatar = computed(() => {
+  const value = avatarSetting.value;
+  return value && value !== 'text' && !builtinAvatars.value.includes(value) ? value : '';
+});
+
+watch(avatarUrl, () => {
+  avatarBroken.value = false;
+});
+
 const displayName = computed(
   () => profile.value?.realName || profile.value?.username || '—',
 );
+
+const avatarText = computed(() => displayName.value.slice(-2).toUpperCase());
 
 const orgLine = computed(() =>
   [profile.value?.department, profile.value?.groupName].filter(Boolean).join(' · '),
@@ -119,6 +141,57 @@ async function handleSaveSignature() {
   }
 }
 
+function openAvatarDialog() {
+  avatarLink.value = /^https?:\/\//i.test(customAvatar.value) ? customAvatar.value : '';
+  avatarDialog.value = true;
+}
+
+function applyAvatar(data: ProfileUserInfo) {
+  profile.value = data;
+  userStore.setUserInfo(data);
+  ElMessage.success('头像已更换');
+}
+
+async function pickAvatar(value: string) {
+  if (savingAvatar.value) return;
+  savingAvatar.value = true;
+  try {
+    applyAvatar(await updateAvatarApi(value, skipGlobalErrorHandler));
+  } catch (error: unknown) {
+    notifyApiError(error, { messages: SYSTEM_ERRORS.saveAvatar });
+  } finally {
+    savingAvatar.value = false;
+  }
+}
+
+function useAvatarLink() {
+  const link = avatarLink.value.trim();
+  if (!/^https?:\/\/\S+$/i.test(link)) {
+    ElMessage.warning('请填写 http:// 或 https:// 开头的图片链接');
+    return;
+  }
+  pickAvatar(link);
+}
+
+async function handleAvatarFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  if (file.size > AVATAR_MAX_MB * 1024 * 1024) {
+    ElMessage.warning(`图片不能超过 ${AVATAR_MAX_MB}MB`);
+    return;
+  }
+  savingAvatar.value = true;
+  try {
+    applyAvatar(await uploadAvatarApi(file, skipGlobalErrorHandler));
+  } catch (error: unknown) {
+    notifyApiError(error, { messages: SYSTEM_ERRORS.saveAvatar });
+  } finally {
+    savingAvatar.value = false;
+  }
+}
+
 async function handleSavePassword() {
   const { newPassword, confirmPassword } = passwordForm.value;
   if (newPassword.length < 6) {
@@ -154,9 +227,23 @@ onMounted(loadProfile);
       <div class="profile-layout">
         <ElCard shadow="never" class="panel-card panel-card--hero profile-layout__hero">
           <div class="hero-inner">
-            <div class="hero-avatar-wrap">
-              <img v-if="avatarUrl" :src="avatarUrl" alt="" class="hero-avatar" />
-            </div>
+            <button
+              type="button"
+              class="hero-avatar-wrap"
+              title="更换头像"
+              :disabled="!profile"
+              @click="openAvatarDialog"
+            >
+              <img
+                v-if="avatarUrl && !avatarBroken"
+                :src="avatarUrl"
+                alt=""
+                class="hero-avatar"
+                @error="avatarBroken = true"
+              />
+              <span v-else class="hero-avatar hero-avatar--text">{{ avatarText }}</span>
+              <span class="hero-avatar-edit">更换</span>
+            </button>
             <div class="hero-meta">
               <h1 class="hero-name">{{ displayName }}</h1>
               <p v-if="profile?.username" class="hero-id">{{ profile.username }}</p>
@@ -287,6 +374,71 @@ onMounted(loadProfile);
         </div>
       </div>
     </div>
+
+    <ElDialog v-model="avatarDialog" title="更换头像" width="600px" append-to-body>
+      <div v-loading="savingAvatar" class="avatar-picker">
+        <div class="avatar-grid">
+          <button
+            type="button"
+            class="avatar-option avatar-option--label"
+            :class="{ 'is-active': !avatarSetting }"
+            title="每天随机换一张站内动图"
+            @click="pickAvatar('')"
+          >
+            随机
+          </button>
+          <button
+            type="button"
+            class="avatar-option avatar-option--name"
+            :class="{ 'is-active': avatarSetting === 'text' }"
+            title="显示姓名文字"
+            @click="pickAvatar('text')"
+          >
+            {{ avatarText }}
+          </button>
+          <button
+            v-if="customAvatar"
+            type="button"
+            class="avatar-option is-active"
+            title="当前自定义头像"
+          >
+            <img :src="customAvatar" alt="" />
+          </button>
+          <button
+            v-for="src in builtinAvatars"
+            :key="src"
+            type="button"
+            class="avatar-option"
+            :class="{ 'is-active': avatarSetting === src }"
+            @click="pickAvatar(src)"
+          >
+            <img :src="src" alt="" loading="lazy" />
+          </button>
+        </div>
+        <p class="avatar-hint">
+          默认「随机」：每天从站内动图里随机一张，当天刷新不变；「{{ avatarText }}」为姓名文字头像，不参与随机。
+        </p>
+        <div class="avatar-custom">
+          <ElButton @click="avatarFileInput?.click()">上传图片 / 动图</ElButton>
+          <input
+            ref="avatarFileInput"
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
+            hidden
+            @change="handleAvatarFile"
+          />
+          <ElInput
+            v-model="avatarLink"
+            clearable
+            placeholder="或粘贴图片 / 动图链接 https://…"
+            @keyup.enter="useAvatarLink"
+          />
+          <ElButton type="primary" :disabled="!avatarLink.trim()" @click="useAvatarLink">
+            使用链接
+          </ElButton>
+        </div>
+      </div>
+    </ElDialog>
   </div>
 </template>
 
@@ -468,11 +620,32 @@ onMounted(loadProfile);
 }
 
 .hero-avatar-wrap {
+  position: relative;
   flex-shrink: 0;
   padding: 2px;
+  border: none;
   border-radius: 14px;
   background: linear-gradient(135deg, var(--el-color-primary), var(--el-color-primary-light-3));
   box-shadow: 0 4px 14px color-mix(in srgb, var(--el-color-primary) 22%, transparent);
+  cursor: pointer;
+}
+
+.hero-avatar-edit {
+  position: absolute;
+  inset: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  font-size: 13px;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.45);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.hero-avatar-wrap:hover .hero-avatar-edit {
+  opacity: 1;
 }
 
 .hero-avatar {
@@ -482,6 +655,77 @@ onMounted(loadProfile);
   border-radius: 12px;
   object-fit: cover;
   border: 2px solid var(--el-bg-color);
+  box-sizing: border-box;
+}
+
+.hero-avatar--text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+.avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 10px;
+}
+
+.avatar-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-extra-light);
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.avatar-option:hover {
+  border-color: var(--el-color-primary-light-5);
+}
+
+.avatar-option.is-active {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 2px var(--el-color-primary-light-7);
+}
+
+.avatar-option img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-option--label {
+  font-size: 14px;
+  color: var(--el-text-color-regular);
+}
+
+.avatar-option--name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+.avatar-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+}
+
+.avatar-custom {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .hero-meta {

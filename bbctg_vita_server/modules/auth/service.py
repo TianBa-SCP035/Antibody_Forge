@@ -1,10 +1,15 @@
+import hashlib
 import re
+import secrets
+from pathlib import Path
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
+from core.errors import NotFoundError
+from integrations.drm_service import decrypt_upload_file_if_available
 from integrations.yunzhijia import YunzhijiaClient
 from models.system import SysUser
 from modules.auth.permissions import build_user_context
@@ -12,8 +17,27 @@ from modules.auth.security import create_access_token, hash_password, verify_pas
 from modules.system.audit import write_operation_log
 from modules.system.features import is_feature_enabled
 from utils.clock import now_local
+from utils.uploads import contained_path, read_limited, upload_filename
 
 YUNZHIJIA_AUTO_PROVISION_FEATURE = "feature.yunzhijia_auto_provision"
+BUILTIN_AVATARS = [f"/avatars/avatar-{slot:02d}.gif" for slot in range(1, 16)]
+AVATAR_TEXT = "text"
+AVATAR_UPLOAD_PREFIX = "/api/auth/avatar/"
+AVATAR_MAX_BYTES = 5 * 1024 * 1024
+AVATAR_LINK_MAX_LENGTH = 500
+_AVATAR_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+_AVATAR_FILE = re.compile(r"^(\d+)_[a-f0-9]{16}\.(?:png|jpg|jpeg|gif|webp|bmp)$")
+
+
+def resolve_avatar(setting: str | None, user_id: int) -> str:
+    """头像设置转展示地址：未设置时按用户和日期随机一张站内动图，当天不变；文字头像返回空串，由前端显示姓名。"""
+    value = (setting or "").strip()
+    if not value:
+        seed = f"{user_id}:{now_local().date().isoformat()}".encode()
+        return BUILTIN_AVATARS[int(hashlib.md5(seed).hexdigest(), 16) % len(BUILTIN_AVATARS)]
+    if value == AVATAR_TEXT:
+        return ""
+    return value
 
 
 def login_with_password(db: Session, username: str, password: str) -> dict:
@@ -158,7 +182,9 @@ def build_user_info(db: Session, user: SysUser) -> dict:
         "roles": context.roles,
         "permissions": context.permissions,
         "accessCodes": context.permissions,
-        "avatar": "https://wpimg.wallstcn.com/f778738c-e4f8-4870-b634-56703b4acafe.gif",
+        "avatar": resolve_avatar(user.avatar, context.id),
+        "avatarSetting": user.avatar or "",
+        "builtinAvatars": BUILTIN_AVATARS,
         "realName": context.display_name,
         "username": context.username,
         "homePath": "/home",
@@ -184,6 +210,64 @@ def update_profile_signature(db: Session, user: SysUser, signature: str | None) 
     db.commit()
     db.refresh(user)
     return build_user_info(db, user)
+
+
+def update_avatar(db: Session, user: SysUser, value: str | None) -> dict:
+    """空串为随机站内头像；text 为姓名文字；也可选站内动图、本人上传的图片或 http(s) 图片链接。"""
+    normalized = (value or "").strip()
+    if normalized and normalized != AVATAR_TEXT and normalized not in BUILTIN_AVATARS:
+        if normalized.startswith(AVATAR_UPLOAD_PREFIX):
+            matched = _AVATAR_FILE.fullmatch(normalized[len(AVATAR_UPLOAD_PREFIX):])
+            if not matched or int(matched.group(1)) != user.id:
+                raise ValueError("头像图片不存在")
+        elif not re.fullmatch(r"https?://\S+", normalized, re.IGNORECASE):
+            raise ValueError("请填写 http:// 或 https:// 开头的图片链接")
+        if len(normalized) > AVATAR_LINK_MAX_LENGTH:
+            raise ValueError(f"头像链接不能超过 {AVATAR_LINK_MAX_LENGTH} 个字符")
+    _replace_avatar(db, user, normalized or None)
+    return build_user_info(db, user)
+
+
+def upload_avatar(db: Session, user: SysUser, upload: UploadFile) -> dict:
+    filename = upload_filename(upload.filename)
+    suffix = Path(filename).suffix.lower()
+    if suffix not in _AVATAR_SUFFIXES:
+        raise ValueError("请上传 png、jpg、gif、webp 或 bmp 图片")
+    content = read_limited(upload, AVATAR_MAX_BYTES, "头像图片")
+    if not content:
+        raise ValueError("图片是空的")
+    stored = f"{user.id}_{secrets.token_hex(8)}{suffix}"
+    folder = _avatar_folder()
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / stored
+    target.write_bytes(content)
+    decrypt_upload_file_if_available(db, target)
+    _replace_avatar(db, user, AVATAR_UPLOAD_PREFIX + stored)
+    return build_user_info(db, user)
+
+
+def avatar_file(name: str) -> Path:
+    if not _AVATAR_FILE.fullmatch(name or ""):
+        raise NotFoundError("头像不存在")
+    path = contained_path(_avatar_folder(), name)
+    if not path.is_file():
+        raise NotFoundError("头像不存在")
+    return path
+
+
+def _avatar_folder() -> Path:
+    return Path(get_settings().repository_root) / "uploads" / "avatars"
+
+
+def _replace_avatar(db: Session, user: SysUser, value: str | None) -> None:
+    old = user.avatar or ""
+    user.avatar = value
+    db.commit()
+    db.refresh(user)
+    if old != (value or "") and old.startswith(AVATAR_UPLOAD_PREFIX):
+        name = old[len(AVATAR_UPLOAD_PREFIX):]
+        if _AVATAR_FILE.fullmatch(name):
+            contained_path(_avatar_folder(), name).unlink(missing_ok=True)
 
 
 def change_user_password(db: Session, user: SysUser, new_password: str) -> None:

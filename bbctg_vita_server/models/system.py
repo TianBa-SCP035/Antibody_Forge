@@ -25,6 +25,7 @@ class SysUser(Base):
     position_title: Mapped[str | None] = mapped_column(String(128), comment="职位")
     gender: Mapped[str | None] = mapped_column(String(16), comment="性别")
     profile_signature: Mapped[str | None] = mapped_column(String(255), comment="个性名片语句")
+    avatar: Mapped[str | None] = mapped_column(String(500), comment="头像设置")
     employment_status: Mapped[str] = mapped_column(String(32), default="active", comment="在职状态")
     email: Mapped[str | None] = mapped_column(String(128), comment="邮箱")
     mobile: Mapped[str | None] = mapped_column(String(32), comment="手机号")

@@ -1,12 +1,15 @@
 """登录与权限：有效权限计算、账号密码和云之家登录、个人资料、外部回调来源校验。"""
 
+import io
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import select
 
+from core.errors import NotFoundError
 from models.system import (
     SysFeatureFlag,
     SysOperationLog,
@@ -128,7 +131,7 @@ class LoginTests(DbTestCase):
 
 
 class ProfileTests(DbTestCase):
-    tables = USER_TABLES
+    tables = (*USER_TABLES, SysFeatureFlag)
 
     def setUp(self):
         super().setUp()
@@ -148,9 +151,35 @@ class ProfileTests(DbTestCase):
     def test_user_info_exposes_profile_but_not_account_internals(self):
         info = auth_service.build_user_info(self.db, self.user)
         self.assertEqual((info["department"], info["groupName"], info["jobNo"]), ("研发部", "一组", "E001"))
+        self.assertIn(info["avatar"], auth_service.BUILTIN_AVATARS)
+        self.assertEqual(auth_service.build_user_info(self.db, self.user)["avatar"], info["avatar"])
+        self.assertEqual(info["avatarSetting"], "")
         self.assertTrue(info["hasPassword"])
         self.assertNotIn("openid", info)
         self.assertNotIn("status", info)
+
+    def test_avatar_setting_accepts_text_builtin_link_and_own_upload(self):
+        self.assertEqual(auth_service.update_avatar(self.db, self.user, "text")["avatar"], "")
+        builtin = auth_service.BUILTIN_AVATARS[2]
+        self.assertEqual(auth_service.update_avatar(self.db, self.user, builtin)["avatar"], builtin)
+        link = "https://example.com/a.gif"
+        self.assertEqual(auth_service.update_avatar(self.db, self.user, f"  {link} ")["avatarSetting"], link)
+        self.assertIn(auth_service.update_avatar(self.db, self.user, "")["avatar"], auth_service.BUILTIN_AVATARS)
+        for bad in ("javascript:alert(1)", "/etc/passwd", f"{auth_service.AVATAR_UPLOAD_PREFIX}999_{'a' * 16}.gif"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                auth_service.update_avatar(self.db, self.user, bad)
+
+        with tempfile.TemporaryDirectory() as root, patch.object(
+            auth_service, "get_settings", return_value=SimpleNamespace(repository_root=root, upload_max_bytes=1024)
+        ):
+            first = auth_service.upload_avatar(self.db, self.user, UploadFile(filename="me.gif", file=io.BytesIO(b"GIF89a")))
+            first_name = first["avatar"].removeprefix(auth_service.AVATAR_UPLOAD_PREFIX)
+            self.assertTrue(auth_service.avatar_file(first_name).is_file())
+            with self.assertRaises(ValueError):
+                auth_service.upload_avatar(self.db, self.user, UploadFile(filename="x.txt", file=io.BytesIO(b"x")))
+            auth_service.update_avatar(self.db, self.user, "text")
+            with self.assertRaises(NotFoundError):
+                auth_service.avatar_file(first_name)
 
     def test_signature_is_trimmed_and_limited(self):
         result = auth_service.update_profile_signature(self.db, self.user, "  new sig  ")

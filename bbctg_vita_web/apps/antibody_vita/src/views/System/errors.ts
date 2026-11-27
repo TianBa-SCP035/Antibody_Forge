@@ -19,4 +19,7 @@ export const SYSTEM_ERRORS = {
   saveProfile: {
     default: '保存失败',
   } satisfies OperationMessages,
+  saveAvatar: {
+    default: '头像保存失败',
+  } satisfies OperationMessages,
 } as const;
